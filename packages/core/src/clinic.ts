@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import { z } from 'zod';
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+const e164 = z.string().regex(/^\+[1-9]\d{7,14}$/, 'expected E.164, like +13035550100');
+
+export const OpeningWindow = z.object({ open: hhmm, close: hhmm })
+  .refine((w) => w.open < w.close, 'a window must close after it opens');
+
+/** 0 = Sunday. A missing or empty day is closed. */
+export const WeeklyHours = z.partialRecord(z.enum(['0', '1', '2', '3', '4', '5', '6']), z.array(OpeningWindow));
+
+export const Provider = z.object({
+  id: z.string(),
+  name: z.string(),
+  // the provider's own bookable hours; falls back to the clinic's hours when absent
+  hours: WeeklyHours.optional(),
+  visitTypeIds: z.array(z.string()).min(1),
+});
+
+export const VisitType = z.object({
+  id: z.string(),
+  name: z.string(), // "new patient visit", said to callers as written
+  minutes: z.number().int().min(5).max(240),
+});
+
+export const TransferTarget = z.enum(['front_desk', 'billing', 'on_call']);
+export type TransferTarget = z.infer<typeof TransferTarget>;
+
+export const RoutingRule = z.object({
+  target: TransferTarget,
+  // tel:+1... or sip:... ; validated as a URI the SIP refer can use
+  uri: z.string().regex(/^(tel:\+[1-9]\d{7,14}|sips?:[^\s]+)$/),
+  when: z.enum(['open', 'closed', 'always']),
+  priority: z.number().int().default(0),
+});
+
+export const Faq = z.object({
+  id: z.string(),
+  question: z.string(),
+  answer: z.string().max(600),
+});
+
+export const ClinicConfig = z.object({
+  id: z.string(),
+  name: z.string(),
+  timezone: z.string().refine((tz) => {
+    try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
+  }, 'unknown IANA time zone'),
+  phoneNumbers: z.array(e164).min(1),
+  hours: WeeklyHours,
+  holidays: z.array(isoDate).default([]),
+  // callers must know they are talking to software; the greeting has to say so
+  greeting: z.string().max(400).refine((g) => /\b(AI|artificial intelligence|automated|virtual)\b.{0,20}\b(assistant|receptionist|agent)\b/i.test(g),
+    'the greeting must disclose that the caller is speaking with an AI assistant'),
+  voice: z.string().default('marin'),
+  providers: z.array(Provider).min(1),
+  visitTypes: z.array(VisitType).min(1),
+  routing: z.array(RoutingRule).default([]),
+  faqs: z.array(Faq).default([]),
+  emergencyTransferEnabled: z.boolean().default(false),
+  recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
+    .default({ enabled: false })
+    .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice; several US states require all-party consent'),
+});
+export type ClinicConfig = z.infer<typeof ClinicConfig>;
+export type Provider = z.infer<typeof Provider>;
+export type VisitType = z.infer<typeof VisitType>;
+export type RoutingRule = z.infer<typeof RoutingRule>;
