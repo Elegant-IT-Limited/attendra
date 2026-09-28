@@ -2,6 +2,16 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [Unreleased]
+
+### Security
+
+- The OpenAI webhook has a per-address rate limit (600 a minute by default) and answers 429 above it. The health check is not limited.
+
+### Changed
+
+- CI runs the gitleaks CLI, pinned and checksum-verified, and the current major versions of the GitHub actions.
+
 ## [0.1.0] - 2026-09-28
 
 First public version.
