@@ -1,0 +1,47 @@
+# Local stack: Postgres, the migrations, the synthetic demo seed, and the voice service.
+#   cp .env.example .env   # fill in the OpenAI and Twilio values
+#   docker compose -f infra/docker-compose.yml up
+# The voice service needs a public HTTPS URL for OpenAI's webhook (see docs/self-hosting.md).
+name: attendra
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: attendra
+      POSTGRES_PASSWORD: attendra
+      POSTGRES_DB: attendra
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U attendra"]
+      interval: 3s
+      retries: 20
+
+  migrate:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    command: ["pnpm", "db:migrate"]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+    depends_on: { postgres: { condition: service_healthy } }
+
+  seed:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    command: ["pnpm", "db:seed"]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+    depends_on: { migrate: { condition: service_completed_successfully } }
+
+  voice:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    command: ["pnpm", "--filter", "@attendra/voice", "start"]
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+    ports: ["8080:8080"]
+    depends_on: { seed: { condition: service_completed_successfully } }
+
+volumes:
+  pgdata:

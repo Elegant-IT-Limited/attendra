@@ -1,0 +1,19 @@
+{
+  "name": "@attendra/voice-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit -p ." },
+  "dependencies": {
+    "@attendra/agent": "workspace:*",
+    "@attendra/core": "workspace:*",
+    "@attendra/observability": "workspace:*",
+    "openai": "7.23.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
+  }
+}

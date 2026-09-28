@@ -1,0 +1,28 @@
+{
+  "name": "@attendra/voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@attendra/agent": "workspace:*",
+    "@attendra/core": "workspace:*",
+    "@attendra/db": "workspace:*",
+    "@attendra/observability": "workspace:*",
+    "@attendra/scheduling": "workspace:*",
+    "@attendra/telephony": "workspace:*",
+    "@attendra/voice-engine": "workspace:*",
+    "fastify": "5.12.5",
+    "openai": "7.23.0",
+    "twilio": "6.1.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16"
+  }
+}
