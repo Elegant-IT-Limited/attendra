@@ -2,7 +2,9 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
-## [Unreleased]
+## [0.1.1] - 2026-09-28
+
+Security and CI fixes after the first release.
 
 ### Security
 
