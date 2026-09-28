@@ -1,0 +1,41 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: unit, integration and eval scenarios (Postgres in-process)
+        run: pnpm test
+      - name: eval report
+        run: pnpm eval
+        env: { FORCE_COLOR: '1' }
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
+
+  dco:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: every commit is signed off (DCO)
+        run: |
+          missing=$(git log --format='%H %(trailers:key=Signed-off-by,valueonly)' origin/${{ github.base_ref }}..HEAD | awk 'NF==1 {print $1}')
+          if [ -n "$missing" ]; then echo "commits without Signed-off-by:"; echo "$missing"; exit 1; fi

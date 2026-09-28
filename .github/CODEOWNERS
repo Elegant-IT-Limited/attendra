@@ -1,0 +1,6 @@
+# Safety-critical paths need a maintainer review.
+*                                   @elegantitltd
+/packages/core/src/emergency.ts     @elegantitltd
+/packages/agent/src/tools.ts        @elegantitltd
+/packages/observability/            @elegantitltd
+/packages/db/migrations/            @elegantitltd

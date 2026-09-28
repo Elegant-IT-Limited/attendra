@@ -1,0 +1,32 @@
+{
+  "name": "attendra",
+  "private": true,
+  "description": "Open-source AI phone receptionist for medical practices: Twilio SIP, OpenAI GPT-Live, and a TypeScript backend that owns identity, scheduling and audit.",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "pnpm --filter @attendra/evals run eval",
+    "db:migrate": "pnpm --filter @attendra/db run migrate",
+    "db:seed": "pnpm --filter @attendra/db run seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.4",
+    "eslint": "10.11.0",
+    "tsx": "4.23.15",
+    "turbo": "2.11.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "5.0.2"
+  },
+  "type": "module"
+}

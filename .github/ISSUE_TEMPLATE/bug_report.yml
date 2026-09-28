@@ -1,0 +1,19 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste real patient data** (names, dates of birth, phone numbers, transcripts) into an issue. Use the synthetic demo patients.
+        Security problems go through private vulnerability reporting, see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: Steps to reproduce, what you expected, what you saw. }
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Version or commit }
+  - type: textarea
+    id: logs
+    attributes: { label: Logs, description: Redacted logs only. The built-in logger already removes PHI., render: text }
