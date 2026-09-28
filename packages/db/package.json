@@ -1,0 +1,22 @@
+{
+  "name": "@attendra/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@attendra/core": "workspace:*",
+    "drizzle-orm": "0.44.6",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16",
+    "@types/pg": "8.23.1"
+  }
+}
