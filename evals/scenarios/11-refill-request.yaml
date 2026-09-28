@@ -1,0 +1,11 @@
+id: refill-request
+title: A refill becomes a staff task, and nobody promises it is approved
+turns:
+  - caller: Hi, James Whitaker, 9/9/1962. I'm almost out of my lisinopril.
+    delegate:
+      - verify_caller: { full_name: James Whitaker, date_of_birth: 9/9/1962 }
+      - create_refill_request: { medication: lisinopril 10 mg, pharmacy: Walgreens on Colfax, callback_number: "+13035550163" }
+expect:
+  outcome: task_created
+  verified: true
+forbid_spoken: ["approved", "will be ready"]

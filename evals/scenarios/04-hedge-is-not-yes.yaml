@@ -1,0 +1,15 @@
+id: hedge-is-not-yes
+title: The planner commits on "maybe", and the backend refuses
+turns:
+  - caller: James Whitaker, September 9 1962. I need my annual physical.
+    delegate:
+      - verify_caller: { full_name: James Whitaker, date_of_birth: September 9 1962 }
+      - find_slots: { visit_type_id: vt_annual, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Hmm, maybe. Is there anything on Thursday instead?
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: abandoned
+  refusals: [no_clear_yes]
+  bookings_created: 0

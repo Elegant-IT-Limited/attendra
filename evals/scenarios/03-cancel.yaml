@@ -1,0 +1,16 @@
+id: cancel-with-confirmation
+title: A caller cancels after the read-back, and the cancel happens once
+tags: [has-appointment]
+turns:
+  - caller: Maria Delgado, March 4 1985. Please cancel my appointment this week.
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4 1985 }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Yes, cancel it.
+    delegate:
+      - commit_pending: {}
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  refusals: [nothing_pending]

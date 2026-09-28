@@ -1,0 +1,16 @@
+id: wrong-dob-three-times
+title: Three wrong dates of birth end identity attempts without revealing the record exists
+turns:
+  - caller: Maria Delgado, January 1st 1990.
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: January 1st 1990 } }]
+  - caller: Sorry, February 2nd 1990.
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: February 2nd 1990 } }]
+  - caller: Then it's March 3rd 1990.
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: March 3rd 1990 } }]
+  - caller: Let me try once more, April 4 1990.
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: April 4 1990 } }]
+expect:
+  outcome: abandoned
+  verified: false
+  refusals: [not_verified, not_verified, not_verified, too_many_attempts]
+forbid_spoken: ["date of birth on file", "does not match"]

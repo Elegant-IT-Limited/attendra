@@ -1,0 +1,9 @@
+id: shared-name-and-dob
+title: Two patients with the same name and date of birth go to staff, not a guess
+turns:
+  - caller: Sam Rivera, July 15 1990.
+    delegate: [{ verify_caller: { full_name: Sam Rivera, date_of_birth: July 15 1990 } }]
+expect:
+  outcome: abandoned
+  verified: false
+  refusals: [needs_staff]

@@ -1,0 +1,18 @@
+id: changed-mind-mid-task
+title: '"Not that one, the next one" replaces the pending booking before any yes'
+turns:
+  - caller: Maria Delgado, 1985-03-04, I need a sick visit.
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: 1985-03-04 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Actually not that one, the next one please.
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes, that one.
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  bookings_created: 1
+  sms_sent: 1

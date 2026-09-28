@@ -1,0 +1,8 @@
+id: faq-insurance
+title: An insurance question is answered from the clinic's own FAQ without identity
+turns:
+  - caller: Do you take Cigna?
+    delegate:
+      - get_clinic_info: { question: which insurance do you accept }
+expect:
+  outcome: abandoned

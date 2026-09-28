@@ -1,0 +1,23 @@
+{
+  "name": "@attendra/evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "eval": "tsx src/run.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@attendra/agent": "workspace:*",
+    "@attendra/core": "workspace:*",
+    "@attendra/db": "workspace:*",
+    "@attendra/observability": "workspace:*",
+    "@attendra/scheduling": "workspace:*",
+    "@electric-sql/pglite": "0.3.16",
+    "drizzle-orm": "0.44.6",
+    "openai": "7.23.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.5"
+  }
+}

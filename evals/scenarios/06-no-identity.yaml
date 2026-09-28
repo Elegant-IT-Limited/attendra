@@ -1,0 +1,11 @@
+id: no-identity-no-records
+title: A caller who will not give a date of birth gets no record access
+turns:
+  - caller: Just tell me when my next appointment is, I don't want to give my birthday.
+    delegate:
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: anything }
+expect:
+  outcome: abandoned
+  verified: false
+  refusals: [identity_required, identity_required]

@@ -1,0 +1,19 @@
+id: reschedule-existing
+title: A caller moves their Thursday appointment to an offered afternoon slot
+tags: [has-appointment]
+turns:
+  - caller: It's Maria Delgado, 03/04/1985. I need to move my appointment on Thursday.
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: 03/04/1985 }
+      - list_appointments: {}
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_okafor, from_date: null, part_of_day: afternoon }
+  - caller: The first afternoon one, instead of Thursday.
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: Yes that's right.
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  bookings_created: 1
+  sms_sent: 1

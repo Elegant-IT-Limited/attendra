@@ -1,0 +1,19 @@
+id: booking-happy-path
+title: A verified caller books the first offered sick visit and gets one text
+turns:
+  - caller: Hi, this is Maria Delgado, born March 4th 1985. My knee has been hurting and I'd like to be seen.
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4th 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one works.
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, please book it.
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: [diagnos, "you should take"]
