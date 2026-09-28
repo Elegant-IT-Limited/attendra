@@ -42,6 +42,15 @@ describe('tenant isolation', () => {
   });
 });
 
+describe('seed', () => {
+  it('can run twice without creating a second copy of any patient', async () => {
+    const again = await seedDemo(t.db, cipher);
+    expect(again.patientIds).toEqual(ids);
+    const rows = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.patients));
+    expect(rows).toHaveLength(4);
+  });
+});
+
 describe('PHI at rest', () => {
   it('stores names, dates of birth and phone numbers only as ciphertext', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select * from patients`)).rows);
