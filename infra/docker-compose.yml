@@ -1,8 +1,18 @@
-# Local stack: Postgres, the migrations, the synthetic demo seed, and the voice service.
-#   cp .env.example .env   # fill in the OpenAI and Twilio values
-#   docker compose -f infra/docker-compose.yml up
-# The voice service needs a public HTTPS URL for OpenAI's webhook (see docs/self-hosting.md).
+# Local stack: Postgres, the migrations, the seed, the dashboard API and the dashboard.
+#   cp .env.example .env   # set ATTENDRA_DATA_KEY and BETTER_AUTH_SECRET
+#   docker compose -f infra/docker-compose.yml up              # dashboard on http://localhost:3000
+#   docker compose -f infra/docker-compose.yml --profile voice up   # also the voice service (needs OpenAI and Twilio)
+# With ATTENDRA_DEMO_MODE=true in .env, the seed records a week of demo calls and adds
+# the demo logins; their password is printed once (docker compose logs seed) unless
+# ATTENDRA_DEMO_PASSWORD is set. Leave it false for anything that will hold real patient data.
+# The voice service needs a public HTTPS URL for OpenAI's webhook (docs/live-call.md).
 name: attendra
+
+x-node: &node
+  build: { context: .., dockerfile: infra/Dockerfile }
+  env_file: ../.env
+  environment:
+    DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
 
 services:
   postgres:
@@ -11,7 +21,7 @@ services:
       POSTGRES_USER: attendra
       POSTGRES_PASSWORD: attendra
       POSTGRES_DB: attendra
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U attendra"]
@@ -19,28 +29,34 @@ services:
       retries: 20
 
   migrate:
-    build: { context: .., dockerfile: infra/Dockerfile }
+    <<: *node
     command: ["pnpm", "db:migrate"]
-    env_file: ../.env
-    environment:
-      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
     depends_on: { postgres: { condition: service_healthy } }
 
   seed:
-    build: { context: .., dockerfile: infra/Dockerfile }
-    command: ["pnpm", "db:seed"]
-    env_file: ../.env
-    environment:
-      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+    <<: *node
+    # demo data (clinic, patients, recorded calls, logins) in demo mode; the clinic and patients only otherwise
+    command: ["sh", "-c", "case \"$$ATTENDRA_DEMO_MODE\" in true|1) pnpm --filter @attendra/api demo:seed ;; *) pnpm db:seed ;; esac"]
     depends_on: { migrate: { condition: service_completed_successfully } }
 
-  voice:
-    build: { context: .., dockerfile: infra/Dockerfile }
-    command: ["pnpm", "--filter", "@attendra/voice", "start"]
-    env_file: ../.env
+  api:
+    <<: *node
+    command: ["pnpm", "--filter", "@attendra/api", "start"]
     environment:
       DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
-    ports: ["8080:8080"]
+      TRUST_PROXY: "true"
+    depends_on: { seed: { condition: service_completed_successfully } }
+
+  web:
+    build: { context: .., dockerfile: infra/web.Dockerfile, args: { API_URL: "http://api:8081" } }
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [api]
+
+  voice:
+    <<: *node
+    profiles: [voice]
+    command: ["pnpm", "--filter", "@attendra/voice", "start"]
+    ports: ["127.0.0.1:8080:8080"]
     depends_on: { seed: { condition: service_completed_successfully } }
 
 volumes:

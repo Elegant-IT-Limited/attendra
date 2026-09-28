@@ -1,11 +1,15 @@
-# One image for the voice service and the migrate/seed jobs. v0.1 runs TypeScript
-# directly through tsx; a compiled production build lands with the dashboard in v0.2.
+# One image for the voice service, the dashboard API and the migrate/seed jobs. They
+# run TypeScript directly through tsx. The dashboard itself has its own image
+# (web.Dockerfile), a compiled Next.js build.
 FROM node:22-slim
-ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
-RUN corepack enable
+# pnpm is fetched once here, into a directory the node user can read at runtime
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH COREPACK_HOME=/corepack COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack install -g pnpm@10.34.5 && chmod -R a+rX /corepack
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/api/package.json apps/api/
 COPY apps/voice/package.json apps/voice/
+COPY apps/web/package.json apps/web/
 COPY packages/agent/package.json packages/agent/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
@@ -17,4 +21,4 @@ COPY evals/package.json evals/
 RUN pnpm install --frozen-lockfile
 COPY . .
 USER node
-EXPOSE 8080
+EXPOSE 8080 8081
