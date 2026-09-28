@@ -4,6 +4,7 @@ import { ClinicConfig } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { callerNumber, dialledNumber } from '@attendra/telephony';
 import { CallRunner, type CallRecorder, type VoiceEngine } from '@attendra/voice-engine';
+import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 export interface IncomingCall { id: string; type: string; data: { session_id: string; sip_headers?: { name: string; value: string }[] } }
@@ -21,6 +22,8 @@ export interface VoiceDeps {
   planner: Planner;
   log: Logger;
   now?: () => Date;
+  /** Webhook deliveries allowed per source address per minute. Defaults to 600. */
+  webhookRateLimit?: number;
 }
 
 const INCOMING = new Set(['live.transport.incoming', 'live.call.incoming']); // the second is deprecated but still delivered during migration
@@ -40,25 +43,31 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   app.get('/healthz', async () => ({ ok: true }));
 
-  app.post('/webhooks/openai', async (req, reply) => {
-    let event: IncomingCall;
-    try {
-      event = await deps.verifyWebhook(req.body as string, req.headers);
-    } catch {
-      deps.log.warn({ path: '/webhooks/openai' }, 'rejected webhook with an invalid signature');
-      return reply.code(400).send({ error: 'invalid signature' });
-    }
-    if (!INCOMING.has(event.type)) return reply.code(200).send({ ignored: event.type });
-    // Claim the delivery (retries) and the session (the same call can arrive as both
-    // live.transport.incoming and the deprecated live.call.incoming). First one wins.
-    if (!(await deps.claimDelivery(event.id)) || !(await deps.claimDelivery(`session:${event.data.session_id}`))) {
-      return reply.code(200).send({ duplicate: true });
-    }
+  // Every delivery costs a signature check and a database round trip, so the webhook
+  // gets a per-address limit. OpenAI sends from a small pool of addresses, which is why
+  // the default is generous. The health check stays unlimited for load balancers.
+  app.register(async (webhooks) => {
+    await webhooks.register(rateLimit, { max: deps.webhookRateLimit ?? 600, timeWindow: 60_000 });
+    webhooks.post('/webhooks/openai', async (req, reply) => {
+      let event: IncomingCall;
+      try {
+        event = await deps.verifyWebhook(req.body as string, req.headers);
+      } catch {
+        deps.log.warn({ path: '/webhooks/openai' }, 'rejected webhook with an invalid signature');
+        return reply.code(400).send({ error: 'invalid signature' });
+      }
+      if (!INCOMING.has(event.type)) return reply.code(200).send({ ignored: event.type });
+      // Claim the delivery (retries) and the session (the same call can arrive as both
+      // live.transport.incoming and the deprecated live.call.incoming). First one wins.
+      if (!(await deps.claimDelivery(event.id)) || !(await deps.claimDelivery(`session:${event.data.session_id}`))) {
+        return reply.code(200).send({ duplicate: true });
+      }
 
-    const task = handleIncoming(event);
-    running.add(task);
-    void task.finally(() => running.delete(task));
-    return reply.code(200).send({ accepted: true });
+      const task = handleIncoming(event);
+      running.add(task);
+      void task.finally(() => running.delete(task));
+      return reply.code(200).send({ accepted: true });
+    });
   });
 
   /**
