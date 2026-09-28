@@ -8,7 +8,9 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit -p .",
-    "add-member": "tsx scripts/add-member.ts"
+    "add-member": "tsx scripts/add-member.ts",
+    "demo": "tsx scripts/demo-server.ts",
+    "demo:seed": "tsx scripts/demo-seed.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
@@ -27,6 +29,7 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@attendra/evals": "workspace:*",
     "@electric-sql/pglite": "0.3.16",
     "drizzle-orm": "0.45.3"
   },
