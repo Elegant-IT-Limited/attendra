@@ -88,7 +88,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       await runner.start();
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
-      await (accepted ? deps.engine.hangup(sessionId) : deps.engine.reject(sessionId, 503)).catch(() => {});
+      // best effort: the call is already failing, and a second error must not escape
+      await Promise.resolve().then(() => (accepted ? deps.engine.hangup(sessionId) : deps.engine.reject(sessionId, 503))).catch(() => {});
     }
   }
 
