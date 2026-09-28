@@ -36,7 +36,8 @@ jobs:
           ./gitleaks git --redact --verbose --exit-code 1 .
 
   dco:
-    if: github.event_name == 'pull_request'
+    # Dependabot cannot sign off, and its PRs only bump versions, so they are exempt.
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
