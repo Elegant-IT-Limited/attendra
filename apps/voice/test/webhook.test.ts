@@ -10,7 +10,7 @@ const log = createLogger({ name: 'test', destination: new Writable({ write: (_c,
 function deps(over: Partial<VoiceDeps> = {}) {
   const seen = new Set<string>();
   const engine = {
-    name: 'fake', accept: vi.fn(async () => {}), reject: vi.fn(async () => {}), transfer: vi.fn(), hangup: vi.fn(),
+    name: 'fake', accept: vi.fn(async () => {}), reject: vi.fn(async () => {}), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}),
     attach: vi.fn(() => ({ send: vi.fn(), onEvent: vi.fn(), onError: vi.fn(), onClose: (h: (c: number) => void) => setTimeout(() => h(1000), 0), close: vi.fn() })),
   } satisfies VoiceDeps['engine'];
   const d: VoiceDeps = {
