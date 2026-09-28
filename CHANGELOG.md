@@ -2,6 +2,25 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [Unreleased]
+
+### Added
+
+- The staff dashboard (`apps/web`) and its API (`apps/api`): the call list with outcomes and flags, each call's transcript and tool steps, the refill and callback queue with claim and done, clinic settings, and the audit log.
+- Sign-in with Better Auth: organizations, four roles (owner, admin, staff, viewer), TOTP two-factor required before any clinic data, 12-hour sessions, no public sign-up. People are added with `pnpm add-member`.
+- Every transcript and task view is audited in the same transaction as the read. A clinic you do not belong to answers 404.
+- The task queue: claim, release (owners and admins can release anyone's), done. The menu badge uses a count that reads no patient data.
+- The dashboard signs out after 15 idle minutes and clears its cache on sign-out. API responses are never cached.
+- Demo mode: `pnpm demo` starts the API on an in-memory Postgres with a week of calls played through the real agent, plus the dashboard. Docker Compose does the same with `ATTENDRA_DEMO_MODE=true`, with a random demo password and transfer numbers locked.
+- `pnpm db:add-number` points a phone number at a clinic. [docs/live-call.md](docs/live-call.md) walks a small server to a real test call.
+- Call scenarios carry the assistant's spoken reply, checked against `forbid_spoken` like everything else it says.
+- End-to-end dashboard tests (Playwright) in CI.
+
+### Fixed
+
+- Read-backs said "a annual physical"; they now use "an" before a vowel.
+- `pnpm db:seed` could create a second copy of each demo patient when run twice, and reset the clinic's settings on every start.
+
 ## [0.1.1] - 2026-09-28
 
 Security and CI fixes after the first release.
