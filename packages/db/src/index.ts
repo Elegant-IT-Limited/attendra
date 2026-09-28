@@ -7,3 +7,4 @@ export * from './repositories/patients';
 export * from './repositories/tasks';
 export * from './seed';
 export * as schema from './schema';
+export { authModels } from './auth-schema';

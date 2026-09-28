@@ -65,7 +65,7 @@ export async function claimDelivery(db: Database, id: string, source: 'openai' |
 }
 
 export async function saveClinic(db: Database, orgId: string, config: { id: string; name: string; timezone: string; phoneNumbers: string[] }) {
-  await db.execute(sql`insert into organizations (id, name) values (${orgId}, ${orgId}) on conflict do nothing`);
+  await db.execute(sql`insert into organizations (id, name, slug) values (${orgId}, ${orgId}, ${orgId}) on conflict do nothing`);
   await db.execute(sql`insert into clinics (id, org_id, name, timezone, config) values (${config.id}, ${orgId}, ${config.name}, ${config.timezone}, ${JSON.stringify(config)}::jsonb)
     on conflict (id) do update set name = excluded.name, timezone = excluded.timezone, config = excluded.config`);
   for (const n of config.phoneNumbers) {
