@@ -3,14 +3,17 @@ title: A caller moves their Thursday appointment to an offered afternoon slot
 tags: [has-appointment]
 turns:
   - caller: It's Maria Delgado, 03/04/1985. I need to move my appointment on Thursday.
+    reply: "Thanks, Maria. I see your appointment on Thursday. With Dr. Okafor in the afternoon, the first opening is {offered.0}."
     delegate:
       - verify_caller: { full_name: Maria Delgado, date_of_birth: 03/04/1985 }
       - list_appointments: {}
       - find_slots: { visit_type_id: vt_sick, provider_id: prov_okafor, from_date: null, part_of_day: afternoon }
   - caller: The first afternoon one, instead of Thursday.
+    reply: "So that's {readback}. Shall I make the change?"
     delegate:
       - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
   - caller: Yes that's right.
+    reply: "Done, it's moved. I've texted you the new time."
     delegate:
       - commit_pending: {}
 expect:
