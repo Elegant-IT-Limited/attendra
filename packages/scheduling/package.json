@@ -1,0 +1,14 @@
+{
+  "name": "@attendra/scheduling",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit -p ." },
+  "dependencies": {
+    "@attendra/core": "workspace:*",
+    "@attendra/db": "workspace:*",
+    "drizzle-orm": "0.44.6"
+  }
+}
