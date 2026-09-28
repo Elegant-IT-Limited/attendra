@@ -97,8 +97,8 @@ importers:
         specifier: 0.3.16
         version: 0.3.16
       drizzle-orm:
-        specifier: 0.44.6
-        version: 0.44.6(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
       openai:
         specifier: 7.23.0
         version: 7.23.0(ws@8.22.0)(zod@4.6.5)
@@ -146,8 +146,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       drizzle-orm:
-        specifier: 0.44.6
-        version: 0.44.6(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
       pg:
         specifier: 8.23.0
         version: 8.23.0
@@ -174,8 +174,8 @@ importers:
         specifier: workspace:*
         version: link:../db
       drizzle-orm:
-        specifier: 0.44.6
-        version: 0.44.6(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
 
   packages/telephony:
     dependencies:
@@ -186,8 +186,8 @@ importers:
         specifier: workspace:*
         version: link:../db
       drizzle-orm:
-        specifier: 0.44.6
-        version: 0.44.6(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0)
       twilio:
         specifier: 6.1.2
         version: 6.1.2
@@ -829,8 +829,8 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
-  drizzle-orm@0.44.6:
-    resolution: {integrity: sha512-uy6uarrrEOc9K1u5/uhBFJbdF5VJ5xQ/Yzbecw3eAYOunv5FDeYkR2m8iitocdHBOHbvorviKOW5GVw0U1j4LQ==}
+  drizzle-orm@0.45.3:
+    resolution: {integrity: sha512-CAloER21cDdcgZ1OmjrZX82EeRNsdP+y0onX/eyoYDaYzki/adrAa91lzM5jWh7zZPK4qUbw/6LGv9J+A+uizA==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
       '@cloudflare/workers-types': '>=4'
@@ -838,6 +838,7 @@ packages:
       '@libsql/client': '>=0.10.0'
       '@libsql/client-wasm': '>=0.10.0'
       '@neondatabase/serverless': '>=0.10.0'
+      '@netlify/db': '>=0.4.0'
       '@op-engineering/op-sqlite': '>=2'
       '@opentelemetry/api': ^1.4.1
       '@planetscale/database': '>=1.13'
@@ -873,6 +874,8 @@ packages:
       '@libsql/client-wasm':
         optional: true
       '@neondatabase/serverless':
+        optional: true
+      '@netlify/db':
         optional: true
       '@op-engineering/op-sqlite':
         optional: true
@@ -2255,7 +2258,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  drizzle-orm@0.44.6(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0):
+  drizzle-orm@0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(pg@8.23.0):
     optionalDependencies:
       '@electric-sql/pglite': 0.3.16
       '@types/pg': 8.23.1

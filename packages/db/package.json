@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
-    "drizzle-orm": "0.44.6",
+    "drizzle-orm": "0.45.3",
     "pg": "8.23.0"
   },
   "devDependencies": {

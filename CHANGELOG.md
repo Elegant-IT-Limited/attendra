@@ -7,6 +7,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ### Security
 
 - The OpenAI webhook has a per-address rate limit (600 a minute by default) and answers 429 above it. The health check is not limited.
+- drizzle-orm moves to 0.45.3 for CVE-2026-39356 (SQL identifiers were not escaped). Attendra builds identifiers only from its own schema, never from caller input, so it was not exploitable here.
 
 ### Changed
 
