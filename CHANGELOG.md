@@ -6,6 +6,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- A summary of every call, written by a new worker service (`apps/worker`, on pg-boss in the same Postgres). It holds two or three sentences for staff, what the caller wanted, how they came across, whether the call needs review and why, and a suggested follow-up. It is encrypted, written once per call, and audited. Without an OpenAI key it is written from the call's facts alone.
+- The call page shows the summary with intent and sentiment badges and the review flag, and a flagged call can be marked reviewed. The call list has a Needs review filter, Today lists flagged calls, and requests the assistant created show the suggested next step.
+- A retention period per clinic (`retentionDays`, 2555 days by default): a nightly job deletes older transcripts and summaries and audits how many.
+- Background jobs retry with exponential backoff and then go to a dead-letter queue. The `worker_jobs` view shows each clinic its own jobs.
 - The assistant can have a name ("Maya"), which it introduces itself with. A name never counts as the AI disclosure: the greeting must still say AI assistant, and a greeting that names the software is refused.
 - Spanish, and Bangla as an experimental language. Each clinic chooses the languages its assistant speaks and a primary language; calls start in the primary one and follow the caller. Offered times, read-backs, text messages and the emergency script are in the caller's language, and visit types and providers can have a name in each. See [docs/languages.md](docs/languages.md).
 - The emergency guardrail and the clear-yes check work in every language on every call. The emergency script gives the clinic's emergency number, which defaults from its country (911, 999), and names 988 only in the United States.
@@ -39,6 +43,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
+- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
 - The demo clinic's assistant is called Maya and speaks English and Spanish.
 - Signing in now opens Today instead of the call list.
@@ -107,6 +113,8 @@ Security and CI fixes after the first release.
 
 ### Changed
 
+- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
+- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - CI runs the gitleaks CLI, pinned and checksum-verified, and the current major versions of the GitHub actions.
 
 ## [0.1.0] - 2026-09-28
