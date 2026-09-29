@@ -4,6 +4,7 @@ import {
   CallRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
+import type { KnowledgeBase } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { type JobQueue, noJobs } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
@@ -31,6 +32,8 @@ export interface VoiceRuntime {
   jobs?: JobQueue;
   /** Scripted calls with no audio and no model, started from the dashboard. The local demo turns them on. */
   simulatedCalls?: boolean;
+  /** The clinic's own documents, searched by the assistant. */
+  knowledge?: KnowledgeBase;
 }
 
 const noSms: SmsSender = { send: async () => { throw new Error('SMS is not configured'); } };
@@ -92,6 +95,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendMode
       scheduler: new BuiltinScheduler(db),
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
+      knowledge: rt.knowledge,
       messenger: new TwilioMessenger(db, cipher, rt.twilio ? twilioSender(twilio(rt.twilio.accountSid, rt.twilio.authToken)) : noSms, (clinicId) => {
         const from = clinicNumbers.get(clinicId);
         if (!from) throw new Error(`no sending number known for clinic ${clinicId}`);
