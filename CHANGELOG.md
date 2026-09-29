@@ -6,6 +6,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- A Quality page for owners and managers: week by week, calls handled without staff, booking success, turns to a booking, why the assistant said no, transfers, calls flagged for review, after-hours calls and cost per call and per booking. Every number opens the calls behind it. See [docs/quality.md](docs/quality.md).
+- `pnpm eval --live --judge`: a judge model scores each live transcript on outcome, no medical advice, disclosure, read-back, politeness and brevity, and writes `evals/reports/<date>.md`. The scripted evals are unchanged.
+- `pnpm sim --scenarios 20`: a model plays the patient from personas in `evals/sim/personas.yaml`, against the real assistant as text, and the quality numbers are printed. The caller and the assistant are interfaces, ready for a voice simulation.
+- A manual `quality` workflow runs both with the repository's `OPENAI_API_KEY` secret and keeps the reports.
 - Webhooks, under Settings > Integrations, for n8n, Zapier, Make or a clinic's own systems: `call.completed`, `call.summary.ready`, `appointment.booked`, `.rescheduled`, `.cancelled`, `request.created` and `request.done`, signed per the Standard Webhooks specification with a secret per endpoint that is shown once and can be rotated with a day's overlap. Payloads carry ids, times, types, outcomes and counts, and no patient data. See [docs/webhooks.md](docs/webhooks.md), with verification code in TypeScript and Python and an n8n recipe.
 - Deliveries are worker jobs, retried with backoff for about a day and logged with status codes and timings. The log has Redeliver, and Send test event tries an endpoint at once. An endpoint that fails three events in a row is turned off, and owners and managers are told on Today.
 - Only public HTTPS addresses are allowed, checked when an endpoint is saved and again after DNS at every delivery, with the connection pinned to the checked address. A new permission, `integrations:manage`, is for owners and managers.
@@ -54,6 +58,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
+- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
 - Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
 - Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
 - The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
@@ -129,6 +135,8 @@ Security and CI fixes after the first release.
 
 ### Changed
 
+- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
+- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
 - Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
 - Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
 - The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
