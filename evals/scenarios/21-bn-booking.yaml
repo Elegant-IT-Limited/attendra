@@ -1,0 +1,26 @@
+id: bn-booking
+title: A Bangla caller books a blood test, says "ji", and the read-back is in Bangla
+tags: [language, bn]
+clinic: dhanmondi
+turns:
+  - caller: আসসালামু আলাইকুম। আমি রহিমা খাতুন, জন্ম ১২ মে ১৯৭৯। আমি একটা রক্ত পরীক্ষা করাতে চাই।
+    reply: "ধন্যবাদ, রহিমা আপা, আপনার তথ্য পেয়েছি। রক্ত পরীক্ষার জন্য {offered.0}, অথবা {offered.1} খালি আছে।"
+    delegate:
+      - verify_caller: { full_name: Rahima Khatun, date_of_birth: ১২ মে ১৯৭৯ }
+      - find_slots: { visit_type_id: vt_blood, provider_id: null, from_date: null, part_of_day: any }
+  - caller: প্রথমটা দিন।
+    reply: "নিশ্চিত করছি: {readback}। ঠিক আছে?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: জি, করে দিন।
+    reply: "হয়ে গেছে, {booked}। আপনার নম্বরে একটা মেসেজ পাঠিয়েছি।"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: bn
+  spoken_contains: ["রক্ত পরীক্ষা", "নমুনা সংগ্রহ কক্ষ"]
+forbid_spoken: [diagnos, "ওষুধ খান"]

@@ -1,0 +1,26 @@
+id: bn-mixed-language
+title: A caller mixing Bangla and English books home collection with a day-first date of birth
+tags: [language, bn]
+clinic: dhanmondi
+caller_number: "+8801000000113"
+turns:
+  - caller: Hello, ami Tahmina Akter, date of birth 20/02/1992. Amar home sample collection lagbe, kalke shokale possible?
+    reply: "ধন্যবাদ, তাহমিনা আপা। কাল সকালে {offered.0} খালি আছে।"
+    delegate:
+      - verify_caller: { full_name: Tahmina Akter, date_of_birth: 20/02/1992 }
+      - find_slots: { visit_type_id: vt_home, provider_id: null, from_date: "2026-09-30", part_of_day: morning }
+  - caller: Oita thik ache, book korun.
+    reply: "নিশ্চিত করছি: {readback}। ঠিক আছে?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Ji, confirm.
+    reply: "হয়ে গেছে। আপনার নম্বরে একটা মেসেজ পাঠিয়েছি।"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: bn
+  spoken_contains: ["বাসা থেকে নমুনা সংগ্রহ", "বুধবার"]
