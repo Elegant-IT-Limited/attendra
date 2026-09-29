@@ -84,6 +84,8 @@ export class FrontDeskRepository {
   async listCalls(clinicId: string, opts: {
     before?: { startedAt: string; id: string }; limit: number;
     from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; patientIds?: string[]; needsReview?: boolean;
+    /** Calls where a tool was refused with this code, for the quality page's links. */
+    refusal?: string;
     names?: { userId: string; audit: 'list' | 'search'; matches?: number };
   }) {
     return withClinic(this.db, clinicId, async (tx) => {
@@ -110,7 +112,8 @@ export class FrontDeskRepository {
           opts.channel ? eq(calls.channel, opts.channel) : undefined,
           opts.emergency !== undefined ? eq(calls.emergencyFlag, opts.emergency) : undefined,
           opts.patientIds ? inArray(calls.patientId, opts.patientIds) : undefined,
-          opts.needsReview ? sql`${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null` : undefined))
+          opts.needsReview ? sql`${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null` : undefined,
+          opts.refusal ? sql`exists (select 1 from call_actions r where r.call_id = ${calls.id} and r.result->>'error' = ${opts.refusal})` : undefined))
         .groupBy(calls.id, patients.id, callSummaries.callId).orderBy(desc(calls.startedAt), desc(calls.id)).limit(opts.limit);
       const shown = rows.flatMap((r) => (r.firstNameEnc && r.patientId ? [r.patientId] : []));
       if (opts.names?.audit === 'search') {
@@ -120,7 +123,7 @@ export class FrontDeskRepository {
         // everything that changes what the list shows is in the key: filters, page, and who is on it
         const key = [
           `from=${opts.from?.toISOString() ?? ''}`, `to=${opts.to?.toISOString() ?? ''}`, `outcome=${opts.outcome ?? ''}`, `channel=${opts.channel ?? ''}`,
-          `emergency=${opts.emergency ?? ''}`, `review=${opts.needsReview ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
+          `emergency=${opts.emergency ?? ''}`, `review=${opts.needsReview ?? ''}`, `refusal=${opts.refusal ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
         ].join(';');
         await recordView(tx, { clinicId, actor: actorOf(opts.names.userId), action: 'calls.listed', entity: 'call', entityId: key }, 5);
       }
