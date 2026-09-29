@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
-import { type Database, FrontDeskRepository, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
 import { StaffScheduler } from '@attendra/scheduling';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
@@ -48,7 +48,7 @@ export interface ApiDeps {
 // through /api/v1/clinics/:clinicId/members, which is behind the guard, and with
 // `pnpm add-member`.
 const AUTH_ROUTES = new Set([
-  'POST /sign-in/email', 'POST /sign-out', 'GET /get-session',
+  'POST /sign-in/email', 'POST /sign-out', 'GET /get-session', 'POST /change-password',
   'POST /two-factor/enable', 'POST /two-factor/verify-totp', 'POST /two-factor/verify-backup-code',
 ]);
 
@@ -119,11 +119,39 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
     url: '/api/auth/*',
     handler: async (req, reply) => {
       const url = new URL(req.url, deps.options.publicUrl);
-      if (!AUTH_ROUTES.has(`${req.method} ${url.pathname.replace(/^\/api\/auth/, '')}`)) return reply.status(404).send({ error: 'not_found' });
-      const body = req.method === 'POST' && req.body !== undefined ? JSON.stringify(req.body) : undefined;
+      const route = `${req.method} ${url.pathname.replace(/^\/api\/auth/, '')}`;
+      if (!AUTH_ROUTES.has(route)) return reply.status(404).send({ error: 'not_found' });
+      let input = (req.body ?? {}) as Record<string, unknown>;
       const headers = toHeaders(req.headers);
       headers.set('x-forwarded-for', req.ip);
+      const now = deps.now?.() ?? new Date();
+
+      // A temporary password works once, and only for 72 hours.
+      if (route === 'POST /sign-in/email' && typeof input.email === 'string') {
+        const state = await passwordState(deps.db, { email: input.email });
+        if (state?.mustChange && state.expiresAt && state.expiresAt < now) {
+          return reply.status(401).send({ error: 'temporary_password_expired', message: 'This temporary password has expired. Ask your practice manager to reset it.' });
+        }
+      }
+      // Whoever typed a temporary password must not be able to set up the second step for its owner.
+      let changing: string | null = null;
+      if (route === 'POST /two-factor/enable' || route === 'POST /change-password') {
+        const session = await deps.auth.api.getSession({ headers });
+        if (!session) return reply.status(401).send({ error: 'signed_out' });
+        const state = await passwordState(deps.db, { userId: session.user.id });
+        if (route === 'POST /two-factor/enable' && state?.mustChange) return reply.status(403).send({ error: 'password_change_required', message: 'Choose your own password first.' });
+        if (route === 'POST /change-password') {
+          if (typeof input.newPassword === 'string' && input.newPassword === input.currentPassword) {
+            return reply.status(400).send({ error: 'same_password', message: 'Choose a new password, not the one you were given.' });
+          }
+          // every other session ends: the one the manager may have opened with the temporary password too
+          input = { ...input, revokeOtherSessions: true };
+          changing = session.user.id;
+        }
+      }
+      const body = req.method === 'POST' ? JSON.stringify(input) : undefined;
       const res = await deps.auth.handler(new Request(url, { method: req.method, headers, body }));
+      if (changing && res.ok) await clearTemporaryPassword(deps.db, changing);
       reply.status(res.status);
       res.headers.forEach((value, key) => { if (key !== 'set-cookie') reply.header(key, value); });
       const cookies = res.headers.getSetCookie();

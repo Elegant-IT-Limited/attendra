@@ -6,7 +6,7 @@ import { connect } from '@attendra/db';
 import { parseArgs } from 'node:util';
 import { createAuth } from '../src/auth';
 import { loadEnv } from '../src/config';
-import { addMember } from '../src/members';
+import { addMemberReport } from '../src/members';
 
 const { values } = parseArgs({ options: { email: { type: 'string' }, name: { type: 'string' }, org: { type: 'string' }, role: { type: 'string' } } });
 const role = values.role as 'owner' | 'admin' | 'staff' | 'viewer';
@@ -17,6 +17,9 @@ if (!values.email || !values.name || !values.org || !['owner', 'admin', 'staff',
 const password = process.env.ATTENDRA_NEW_PASSWORD ?? '';
 const env = loadEnv();
 const db = connect(env.DATABASE_URL);
-const id = await addMember(createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET }), db, { email: values.email, name: values.name, password, orgId: values.org, role });
-console.log(`added ${values.email} to ${values.org} as ${role} (user ${id}). They set up two-factor at first sign-in.`);
+// the operator typed this password, so it is temporary: changed at first sign-in, and gone in 72 hours
+const { userId, existing } = await addMemberReport(createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET }), db, { email: values.email, name: values.name, password, orgId: values.org, role, temporary: true });
+console.log(existing
+  ? `${values.email} already had an account; added them to ${values.org} as ${role} (user ${userId}). Their own password is unchanged; ATTENDRA_NEW_PASSWORD was not used.`
+  : `added ${values.email} to ${values.org} as ${role} (user ${userId}). They change the password at first sign-in, within 72 hours, then set up two-factor.`);
 process.exit(0);
