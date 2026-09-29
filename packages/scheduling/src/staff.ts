@@ -11,7 +11,9 @@ export type CancelReason = 'patient_asked' | 'clinic_asked' | 'booked_in_error' 
 
 export type StaffChange =
   | { status: 'done' | 'already_done'; appointmentId: string }
-  | { status: 'refused'; reason: SlotProblem | 'cancelled' }
+  | { status: 'refused'; reason: SlotProblem | 'cancelled' | 'just_cancelled' | 'idempotency_mismatch' }
+  /** The patient is already booked, with any provider, at an overlapping time. */
+  | { status: 'refused'; reason: 'patient_busy'; patientName: string }
   | { status: 'not_found' };
 
 const actorOf = (userId: string) => `user:${userId}`;
@@ -23,7 +25,11 @@ const actorOf = (userId: string) => `user:${userId}`;
  *
  * Every change is idempotent: a booking by its key, a move to where the appointment
  * already is, and a cancel of one already cancelled all answer 'already_done' and
- * write nothing, so a double click or a retried request changes nothing twice.
+ * write nothing, so a double click or a retried request changes nothing twice. A key
+ * sent again with a different patient, provider, visit or time is a mistake, not a
+ * retry, and is refused. Moves and cancels only change a row that is still booked,
+ * so one that was cancelled a moment ago by someone else, or by the assistant, is
+ * reported as just cancelled instead of being moved back to life.
  */
 export class StaffScheduler {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly now = () => new Date()) {}
@@ -31,15 +37,24 @@ export class StaffScheduler {
   async book(clinic: ClinicConfig, input: { patientId: string; providerId: string; visitTypeId: string; start: Date; note?: string | null; idempotencyKey: string }, userId: string): Promise<StaffChange> {
     const key = `staff:${userId}:${input.idempotencyKey}`;
     const existing = await byKey(this.db, clinic.id, key);
-    if (existing) return { status: 'already_done', appointmentId: existing.id };
+    if (existing) {
+      const same = existing.patientId === input.patientId && existing.providerId === input.providerId && existing.visitTypeId === input.visitTypeId
+        && existing.startsAt.getTime() === input.start.getTime();
+      return same ? { status: 'already_done', appointmentId: existing.id } : { status: 'refused', reason: 'idempotency_mismatch' };
+    }
     const visitType = clinic.visitTypes.find((v) => v.id === input.visitTypeId);
     const check = await withClinic(this.db, clinic.id, async (tx) => {
-      const [patient] = await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, input.patientId)));
-      if (!patient) return 'no_patient' as const;
-      return slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now());
+      const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, input.patientId)));
+      if (!patient) return { kind: 'no_patient' } as const;
+      const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now());
+      if (problem) return { kind: 'problem', problem } as const;
+      const end = new Date(input.start.getTime() + (visitType?.minutes ?? 0) * 60_000);
+      if (await this.patientBusy(tx, clinic.id, input.patientId, input.start, end)) return { kind: 'busy', name: this.nameOf(clinic.id, patient) } as const;
+      return null;
     });
-    if (check === 'no_patient') return { status: 'not_found' };
-    if (check) return { status: 'refused', reason: check };
+    if (check?.kind === 'no_patient') return { status: 'not_found' };
+    if (check?.kind === 'problem') return { status: 'refused', reason: check.problem };
+    if (check?.kind === 'busy') return { status: 'refused', reason: 'patient_busy', patientName: check.name };
     const note = input.note?.trim();
     const result = await insertAppointment(this.db, clinic.id, {
       patientId: input.patientId, providerId: input.providerId, visitTypeId: input.visitTypeId,
@@ -64,8 +79,15 @@ export class StaffScheduler {
         const problem = slotProblem(clinic, await this.busy(tx, clinic, providerId, input.start, row.id), { providerId, visitTypeId: row.visitTypeId, start: input.start }, this.now());
         if (problem) return { status: 'refused', reason: problem } as const;
         const minutes = (row.endsAt.getTime() - row.startsAt.getTime()) / 60_000;
-        await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: new Date(input.start.getTime() + minutes * 60_000), updatedAt: new Date() })
-          .where(eq(appointments.id, row.id));
+        const end = new Date(input.start.getTime() + minutes * 60_000);
+        if (await this.patientBusy(tx, clinic.id, row.patientId, input.start, end, row.id)) {
+          const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, row.patientId)));
+          return { status: 'refused', reason: 'patient_busy', patientName: this.nameOf(clinic.id, patient!) } as const;
+        }
+        // only a row that is still booked: someone may have cancelled it since it was read
+        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date() })
+          .where(and(eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
+        if (!moved.length) return { status: 'refused', reason: 'just_cancelled' } as const;
         await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: 'appointment.rescheduled.staff', entity: 'appointment', entityId: row.id });
         return { status: 'done', appointmentId } as const;
       });
@@ -78,15 +100,36 @@ export class StaffScheduler {
 
   async cancel(clinic: ClinicConfig, appointmentId: string, input: { reason?: CancelReason | null }, userId: string): Promise<StaffChange> {
     return withClinic(this.db, clinic.id, async (tx) => {
+      // one conditional update, so a cancel racing another cancel, or a move, changes the row once
+      const cancelled = await tx.update(appointments).set({
+        status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date(),
+        // like the assistant's cancels, a staff cancel carries a key, so a retry of it is recognised as one
+        cancelKey: `staff:${userId}:${appointmentId}`,
+      }).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId), eq(appointments.status, 'booked'), gt(appointments.startsAt, this.now())))
+        .returning({ id: appointments.id });
+      if (cancelled.length) {
+        await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: 'appointment.cancelled.staff', entity: 'appointment', entityId: appointmentId });
+        return { status: 'done', appointmentId } as const;
+      }
       const [row] = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId)));
       if (!row) return { status: 'not_found' } as const;
       if (row.status === 'cancelled') return { status: 'already_done', appointmentId } as const;
-      if (row.startsAt.getTime() <= this.now().getTime()) return { status: 'refused', reason: 'past' } as const;
-      await tx.update(appointments).set({ status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date() })
-        .where(eq(appointments.id, row.id));
-      await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: 'appointment.cancelled.staff', entity: 'appointment', entityId: row.id });
-      return { status: 'done', appointmentId } as const;
+      return { status: 'refused', reason: 'past' } as const;
     });
+  }
+
+  /** Whether the patient already has a booked appointment, with any provider, that overlaps [start, end). */
+  private async patientBusy(tx: Tx, clinicId: string, patientId: string, start: Date, end: Date, except?: string) {
+    const [clash] = await tx.select({ id: appointments.id }).from(appointments).where(and(
+      eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), eq(appointments.status, 'booked'),
+      lt(appointments.startsAt, end), gt(appointments.endsAt, start), except ? ne(appointments.id, except) : undefined,
+    )).limit(1);
+    return !!clash;
+  }
+
+  private nameOf(clinicId: string, p: typeof patients.$inferSelect) {
+    const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+    return `${this.cipher.decrypt(p.firstNameEnc, ctx('first_name'))} ${this.cipher.decrypt(p.lastNameEnc, ctx('last_name'))}`;
   }
 
   /** Booked time for one provider on the local day of `start`, leaving out the appointment being moved. */

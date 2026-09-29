@@ -196,7 +196,8 @@ export const PatientList = z.object({
 export const PatientInput = z.object({
   firstName: personName,
   lastName: personName,
-  dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d <= new Date().toISOString().slice(0, 10) && d >= '1890-01-01', 'a real date of birth, not in the future'),
+  // "not in the future" is checked against the clinic's own date by the route, not the server's
+  dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber.optional(),
 });
 export const PatientSaved = z.object({ id: z.string() });

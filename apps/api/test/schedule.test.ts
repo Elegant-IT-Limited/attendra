@@ -179,6 +179,35 @@ describe('moving and cancelling', () => {
   });
 });
 
+describe('mistakes the desk can make', () => {
+  it('says plainly when the patient is already booked then, and when a key was used for something else', async () => {
+    const busy = await api.request('POST', C, { cookie: as.staff, body: bookBody('09:00', 'patient-busy', { providerId: 'prov_lindqvist' }) });
+    expect(busy.statusCode).toBe(409);
+    expect(busy.json()).toMatchObject({ reason: 'patient_busy', message: 'James Whitaker already has an appointment then.' });
+    const first = await api.request('POST', C, { cookie: as.staff, body: bookBody('11:40', 'key-once') });
+    expect(first.json().status).toBe('done');
+    const reuse = await api.request('POST', C, { cookie: as.staff, body: bookBody('12:40', 'key-once') });
+    expect(reuse.statusCode).toBe(409);
+    expect(reuse.json().error).toBe('idempotency_mismatch');
+  });
+});
+
+describe('the daylight saving change on 2026-11-01', () => {
+  it('lists the days across the change and books Monday 8:00 local, which is 15:00 UTC', async () => {
+    const monday = zonedInstant('2026-11-02', '08:00', DEMO_CLINIC.timezone).toISOString();
+    expect(monday).toBe('2026-11-02T15:00:00.000Z');
+    const res = await api.request('POST', C, { cookie: as.staff, body: bookBody('08:00', 'dst-monday', { startsAt: monday }) });
+    expect(res.json().status).toBe('done');
+    const friday = await api.request('POST', C, { cookie: as.staff, body: bookBody('09:00', 'dst-friday', { startsAt: zonedInstant('2026-10-30', '09:00', DEMO_CLINIC.timezone).toISOString() }) });
+    expect(friday.json().status).toBe('done');
+    // Sunday the 1st is 25 hours long: the range from it takes in Monday, and not the Friday before
+    const range = (await api.request('GET', `${C}?from=2026-11-01&days=2`, { cookie: as.staff })).json().appointments;
+    expect(range.map((a: { id: string; startsAt: string }) => a.startsAt)).toEqual([monday]);
+    expect((await api.request('GET', `${C}?from=2026-10-31&days=1`, { cookie: as.staff })).json().appointments).toEqual([]);
+    expect((await api.request('POST', C, { cookie: as.staff, body: bookBody('10:00', 'dst-sunday', { startsAt: zonedInstant('2026-11-01', '10:00', DEMO_CLINIC.timezone).toISOString() }) })).json().reason).toBe('closed');
+  });
+});
+
 describe('a call and what it booked', () => {
   it('shows the appointments a call booked on the call page', async () => {
     const call = (await api.request('GET', `/api/v1/clinics/${DEMO_CLINIC.id}/calls/${api.callId}`, { cookie: as.staff })).json();

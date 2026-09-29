@@ -140,11 +140,18 @@ describe('adding and editing', () => {
     expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04' } })).statusCode).toBe(409);
   });
 
+  it('judges a date of birth "in the future" by the clinic\'s date, not the server\'s', async () => {
+    // 8 pm on Monday 28 September in Denver is already Tuesday the 29th in UTC
+    const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29' } });
+    expect(tomorrowThere.statusCode).toBe(422);
+    expect(tomorrowThere.json().issues[0]).toMatchObject({ path: 'dob', message: 'a date of birth cannot be in the future' });
+    expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28' } })).statusCode).toBe(200);
+  });
+
   it('validates the details', async () => {
     for (const body of [
       { firstName: '', lastName: 'X', dob: '1990-01-01' },
       { firstName: 'X', lastName: 'Y', dob: '01/01/1990' },
-      { firstName: 'X', lastName: 'Y', dob: '2999-01-01' },
       { firstName: 'X', lastName: 'Y', dob: '1990-01-01', phone: '555' },
       { firstName: 'X'.repeat(81), lastName: 'Y', dob: '1990-01-01' },
     ]) {
