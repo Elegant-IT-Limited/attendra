@@ -14,7 +14,7 @@ export const PHI_KEYS = new Set([
   'phone', 'phone_number', 'callback_number', 'from', 'to', 'caller_id', 'ani',
   'email', 'address', 'ssn', 'mrn', 'insurance_id', 'member_id',
   'transcript', 'text', 'delta', 'content', 'utterance', 'message_body', 'body',
-  'medication', 'pharmacy', 'reason', 'symptoms', 'notes',
+  'medication', 'pharmacy', 'reason', 'symptoms', 'notes', 'note', 'query', 'search',
 ]);
 
 const PATTERNS: [RegExp, string][] = [

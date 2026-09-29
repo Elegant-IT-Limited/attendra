@@ -2,6 +2,7 @@
 import type { AppointmentSummary, BookingResult, SchedulerAdapter, Slot } from '@attendra/core';
 import { type Database, schema, withClinic } from '@attendra/db';
 import { and, eq, gt, inArray, lt } from 'drizzle-orm';
+import { byKey, insertAppointment } from './write';
 
 const { appointments, auditLogs } = schema;
 
@@ -33,25 +34,13 @@ export class BuiltinScheduler implements SchedulerAdapter {
    * racing for one slot end with exactly one booking and one "slot_taken".
    */
   async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string }): Promise<BookingResult> {
-    const existing = await this.byKey(clinicId, input.idempotencyKey);
+    const existing = await byKey(this.db, clinicId, input.idempotencyKey);
     if (existing) return { status: 'already_done', appointment: summary(existing) };
-    try {
-      return await withClinic(this.db, clinicId, async (tx) => {
-        const [row] = await tx.insert(appointments).values({
-          clinicId, patientId: input.patientId, providerId: input.slot.providerId, visitTypeId: input.slot.visitTypeId,
-          startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
-        }).returning();
-        await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.booked', entity: 'appointment', entityId: row!.id, callId: input.callId });
-        return { status: 'booked', appointment: summary(row!) } as const;
-      });
-    } catch (err) {
-      if (isConstraint(err, '23P01')) return { status: 'slot_taken' }; // exclusion_violation
-      if (isConstraint(err, '23505')) { // the same key won a race with us
-        const again = await this.byKey(clinicId, input.idempotencyKey);
-        if (again) return { status: 'already_done', appointment: summary(again) };
-      }
-      throw err;
-    }
+    const result = await insertAppointment(this.db, clinicId, {
+      patientId: input.patientId, providerId: input.slot.providerId, visitTypeId: input.slot.visitTypeId,
+      startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
+    }, { actor: this.actor, action: 'appointment.booked', callId: input.callId });
+    return result.status === 'slot_taken' ? result : { status: result.status, appointment: summary(result.row) };
   }
 
   async cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }) {
@@ -61,7 +50,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       ));
       if (!row) return { status: 'not_found' } as const; // includes someone else's appointment
       if (row.status === 'cancelled') return { status: row.cancelKey === input.idempotencyKey ? 'already_done' : 'not_found' } as const;
-      await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId })
+      await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId, updatedAt: new Date() })
         .where(eq(appointments.id, row.id));
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: row.id, callId: input.callId });
       return { status: 'cancelled' } as const;
@@ -76,16 +65,4 @@ export class BuiltinScheduler implements SchedulerAdapter {
       return rows.map(summary);
     });
   }
-
-  private async byKey(clinicId: string, key: string) {
-    return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.idempotencyKey, key)));
-      return row;
-    });
-  }
-}
-
-function isConstraint(err: unknown, code: string): boolean {
-  const e = err as { code?: string; cause?: { code?: string } };
-  return e?.code === code || e?.cause?.code === code;
 }

@@ -44,6 +44,9 @@ importers:
       '@attendra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@attendra/scheduling':
+        specifier: workspace:*
+        version: link:../../packages/scheduling
       '@fastify/rate-limit':
         specifier: 11.2.0
         version: 11.2.0
@@ -81,6 +84,9 @@ importers:
       '@attendra/evals':
         specifier: workspace:*
         version: link:../../evals
+      '@attendra/voice':
+        specifier: workspace:*
+        version: link:../voice
       '@electric-sql/pglite':
         specifier: 0.3.16
         version: 0.3.16
@@ -249,6 +255,9 @@ importers:
       '@electric-sql/pglite':
         specifier: 0.3.16
         version: 0.3.16
+      drizzle-orm:
+        specifier: 0.45.3
+        version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.0)
 
   packages/core:
     dependencies:

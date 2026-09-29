@@ -1,10 +1,12 @@
 # Local stack: Postgres, the migrations, the seed, the dashboard API and the dashboard.
 #   cp .env.example .env   # set ATTENDRA_DATA_KEY and BETTER_AUTH_SECRET
 #   docker compose -f infra/docker-compose.yml up              # dashboard on http://localhost:3000
-#   docker compose -f infra/docker-compose.yml --profile voice up   # also the voice service (needs OpenAI and Twilio)
+#   docker compose -f infra/docker-compose.yml --profile voice up   # also the voice service (needs OPENAI_API_KEY)
 # With ATTENDRA_DEMO_MODE=true in .env, the seed records a week of demo calls and adds
 # the demo logins, with ATTENDRA_DEMO_PASSWORD as their password. Leave it false for anything that will hold real patient data.
-# The voice service needs a public HTTPS URL for OpenAI's webhook (docs/live-call.md).
+# Test calls from the dashboard need the voice profile, VOICE_INTERNAL_TOKEN and
+# VOICE_URL=http://voice:8080 (docs/test-calls.md). Phone calls also need a public
+# HTTPS URL for OpenAI's webhook, and Twilio (docs/live-call.md).
 name: attendra
 
 x-node: &node

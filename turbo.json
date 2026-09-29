@@ -23,7 +23,15 @@
     },
     "demo": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "OPENAI_API_KEY",
+        "GPT_LIVE_MODEL",
+        "ATTENDRA_BACKEND_MODEL",
+        "BROWSER_CALL_MAX_SECONDS",
+        "VOICE_PORT",
+        "ATTENDRA_TEST_CALLS"
+      ]
     }
   }
 }

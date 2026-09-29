@@ -4,6 +4,7 @@ import { createLogger } from '@attendra/observability';
 import { createApi } from './app';
 import { createAuth } from './auth';
 import { loadEnv } from './config';
+import { httpVoiceClient } from './voice';
 
 const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
@@ -17,6 +18,7 @@ const app = await createApi({
   log,
   options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE },
   trustProxy: env.TRUST_PROXY,
+  voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

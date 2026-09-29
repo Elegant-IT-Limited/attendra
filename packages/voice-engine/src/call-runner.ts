@@ -35,7 +35,12 @@ export class CallRunner {
       this.sideband.onError((err) => this.log.warn({ session_id: this.sessionId, err }, 'sideband error'));
       this.sideband.onClose((code) => {
         // a socket that drops before session.closed leaves the call without final usage
-        if (!this.closed) void this.finish('connection_lost', null, `socket closed ${code} before session.closed`).then(resolve);
+        // resolve even when the final write fails, or the call never counts as over
+        if (!this.closed) {
+          void this.finish('connection_lost', null, `socket closed ${code} before session.closed`)
+            .catch((err) => this.log.error({ session_id: this.sessionId, err }, 'closing the call record failed'))
+            .finally(resolve);
+        }
         else resolve();
       });
     });

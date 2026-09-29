@@ -19,7 +19,10 @@ const config: NextConfig = {
         { key: 'X-Frame-Options', value: 'DENY' },
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'Referrer-Policy', value: 'same-origin' },
-        { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+        // The microphone is for the test call page. The policy applies to the document
+        // the app loaded in, and the app moves between pages without reloading, so it
+        // is allowed for this origin rather than for one path. Frames never get it.
+        { key: 'Permissions-Policy', value: 'camera=(), microphone=(self), geolocation=()' },
       ],
     }];
   },
