@@ -47,6 +47,7 @@ export class CallsController {
       startedAt: call.startedAt.toISOString(),
       endedAt: call.endedAt?.toISOString() ?? null,
       actions: call.actions.map((a) => ({ ...a, at: a.at.toISOString() })),
+      appointments: call.appointments.map((a) => ({ ...a, startsAt: a.startsAt.toISOString() })),
     };
   }
 }

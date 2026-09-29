@@ -44,6 +44,9 @@ importers:
       '@attendra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@attendra/scheduling':
+        specifier: workspace:*
+        version: link:../../packages/scheduling
       '@fastify/rate-limit':
         specifier: 11.2.0
         version: 11.2.0

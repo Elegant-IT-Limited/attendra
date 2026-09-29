@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+import { addDays, ClinicConfig, localDateOf, zonedInstant } from '@attendra/core';
+import type { FrontDeskRepository, ScheduleEntry, ScheduleRepository } from '@attendra/db';
+import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
+import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+import {
+  type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, RescheduleAppointment, Schedule,
+  ScheduleQuery, SlotList, SlotQuery,
+} from '../contracts';
+import { schemaOf } from '../http/openapi';
+import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
+import { CLOCK, FRONT_DESK, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
+import { ZodPipe } from '../http/zod.pipe';
+
+const isUuid = (s: string) => z.uuid().safeParse(s).success;
+
+/** What the front desk is told when a time cannot be booked. */
+const REFUSED: Record<SlotProblem | 'cancelled', string> = {
+  taken: 'That time was just taken. Pick another one.',
+  closed: 'That time is outside the provider\'s hours.',
+  holiday: 'The clinic is closed that day for a holiday.',
+  past: 'That time has already passed.',
+  not_offered: 'This provider does not do that visit type.',
+  unknown_provider: 'There is no such provider at this clinic.',
+  unknown_visit_type: 'There is no such visit type at this clinic.',
+  cancelled: 'This appointment is cancelled. Book a new one instead.',
+};
+
+const by = (b: import('@attendra/db').BookedBy | null): BookedBy | null =>
+  !b ? null : b.kind === 'assistant' ? { kind: 'assistant', callId: b.callId } : { kind: 'staff', name: b.name };
+
+const toAppointment = (a: ScheduleEntry): Appointment => ({
+  id: a.id, patientId: a.patientId, patientName: a.patientName, providerId: a.providerId, visitTypeId: a.visitTypeId,
+  startsAt: a.startsAt.toISOString(), endsAt: a.endsAt.toISOString(), status: a.status,
+  cancelReason: a.cancelReason as Appointment['cancelReason'], bookedBy: by(a.bookedBy)!, cancelledBy: by(a.cancelledBy), createdAt: a.createdAt.toISOString(),
+});
+
+@ApiTags('schedule')
+@ApiCookieAuth()
+@ApiParam({ name: 'clinicId', example: 'clinic_maple' })
+@Controller('clinics/:clinicId/appointments')
+export class AppointmentsController {
+  constructor(
+    @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
+    @Inject(SCHEDULE) private readonly schedule: ScheduleRepository,
+    @Inject(STAFF_SCHEDULER) private readonly scheduler: StaffScheduler,
+    @Inject(CLOCK) private readonly now: () => Date,
+  ) {}
+
+  @Get()
+  @Requires('schedule:read')
+  @ApiOperation({ summary: 'Appointments that start on the given clinic-time days, booked and cancelled. Audited as one view of the range.' })
+  @ApiOkResponse({ schema: schemaOf(Schedule) })
+  async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ScheduleQuery)) q: z.infer<typeof ScheduleQuery>, @CurrentStaff() staff: Staff): Promise<Schedule> {
+    const clinic = await this.clinic(clinicId);
+    const from = zonedInstant(q.from, '00:00', clinic.timezone);
+    const to = zonedInstant(addDays(q.from, q.days), '00:00', clinic.timezone);
+    const rows = await this.schedule.range(clinicId, { from, to, providerId: q.providerId, label: `${q.from}+${q.days}` }, staff.userId);
+    return { from: q.from, days: q.days, appointments: rows.map(toAppointment) };
+  }
+
+  @Get('slots')
+  @Requires('schedule:read')
+  @ApiOperation({ summary: 'Open times for one visit type, by the same rules the assistant books with. No patient data.' })
+  @ApiOkResponse({ schema: schemaOf(SlotList) })
+  async slots(@Param('clinicId') clinicId: string, @Query(new ZodPipe(SlotQuery)) q: z.infer<typeof SlotQuery>): Promise<SlotList> {
+    const clinic = await this.clinic(clinicId);
+    if (!clinic.visitTypes.some((v) => v.id === q.visitTypeId)) throw this.invalid('visitTypeId', 'unknown visit type');
+    if (q.providerId && !clinic.providers.some((p) => p.id === q.providerId)) throw this.invalid('providerId', 'unknown provider');
+    const now = this.now();
+    const today = localDateOf(now, clinic.timezone);
+    const from = q.from && q.from > today ? q.from : today;
+    const busy = await this.desk.busy(clinicId, {
+      from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding,
+    });
+    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now });
+    return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) };
+  }
+
+  @Get(':appointmentId')
+  @Requires('schedule:read')
+  @ApiOperation({ summary: 'One appointment with the patient\'s name, date of birth and phone. Audited as a PHI view.' })
+  @ApiOkResponse({ schema: schemaOf(AppointmentDetail) })
+  @ApiNotFoundResponse()
+  async get(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @CurrentStaff() staff: Staff): Promise<AppointmentDetail> {
+    const a = isUuid(id) ? await this.schedule.appointment(clinicId, id, staff.userId) : null;
+    if (!a) throw new NotFoundException({ error: 'not_found' });
+    return {
+      ...toAppointment(a), note: a.note, updatedAt: a.updatedAt.toISOString(),
+      patient: { id: a.patient.id, name: `${a.patient.firstName} ${a.patient.lastName}`, dob: a.patient.dob, phone: a.patient.phone },
+    };
+  }
+
+  @Post()
+  @HttpCode(200)
+  @Requires('schedule:write')
+  @ApiOperation({ summary: 'Book an appointment for a patient. Idempotent by key. Audited.' })
+  @ApiBody({ schema: schemaOf(BookAppointment) })
+  @ApiOkResponse({ schema: schemaOf(AppointmentChange) })
+  @ApiConflictResponse({ description: 'The time cannot be booked; `reason` says why' })
+  async book(@Param('clinicId') clinicId: string, @Body(new ZodPipe(BookAppointment)) body: z.infer<typeof BookAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
+    const clinic = await this.clinic(clinicId);
+    return this.answer(await this.scheduler.book(clinic, { ...body, start: new Date(body.startsAt) }, staff.userId));
+  }
+
+  @Post(':appointmentId/reschedule')
+  @HttpCode(200)
+  @Requires('schedule:write')
+  @ApiOperation({ summary: 'Move a booking to another time, and optionally another provider. Moving it where it already is changes nothing. Audited.' })
+  @ApiBody({ schema: schemaOf(RescheduleAppointment) })
+  @ApiOkResponse({ schema: schemaOf(AppointmentChange) })
+  @ApiConflictResponse({ description: 'The new time cannot be booked; `reason` says why' })
+  async reschedule(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(RescheduleAppointment)) body: z.infer<typeof RescheduleAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
+    if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
+    const clinic = await this.clinic(clinicId);
+    return this.answer(await this.scheduler.reschedule(clinic, id, { start: new Date(body.startsAt), providerId: body.providerId }, staff.userId));
+  }
+
+  @Post(':appointmentId/cancel')
+  @HttpCode(200)
+  @Requires('schedule:write')
+  @ApiOperation({ summary: 'Cancel a booking, with an optional reason. Cancelling it twice changes nothing. Audited.' })
+  @ApiBody({ schema: schemaOf(CancelAppointment) })
+  @ApiOkResponse({ schema: schemaOf(AppointmentChange) })
+  async cancel(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(CancelAppointment)) body: z.infer<typeof CancelAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
+    if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
+    const clinic = await this.clinic(clinicId);
+    return this.answer(await this.scheduler.cancel(clinic, id, { reason: body.reason }, staff.userId));
+  }
+
+  private answer(result: StaffChange): AppointmentChange {
+    if (result.status === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result.status === 'refused') {
+      if (result.reason === 'unknown_provider' || result.reason === 'unknown_visit_type') {
+        throw this.invalid(result.reason === 'unknown_provider' ? 'providerId' : 'visitTypeId', REFUSED[result.reason]);
+      }
+      throw new ConflictException({ error: 'slot_unavailable', reason: result.reason, message: REFUSED[result.reason] });
+    }
+    return { appointmentId: result.appointmentId, status: result.status };
+  }
+
+  private invalid(path: string, message: string) {
+    return new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path, message }] });
+  }
+
+  private async clinic(clinicId: string) {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    return ClinicConfig.parse(stored);
+  }
+}
