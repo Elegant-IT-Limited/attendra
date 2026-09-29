@@ -54,6 +54,22 @@ export async function auditResults(tx: Tx, clinicId: string, userId: string, pat
  * role inside one clinic's scope, and every read of patient data writes an audit
  * row in the same transaction, so a view that failed to audit also failed to show.
  */
+/** A staff member's own number at the clinic's practice, for a take-over. Owner connection: memberships are not clinic rows. */
+export async function transferNumber(db: Database, userId: string, clinicId: string): Promise<string | null> {
+  const [row] = await db.select({ n: memberships.transferNumber }).from(memberships)
+    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+  return row?.n ?? null;
+}
+
+export async function setTransferNumber(db: Database, userId: string, clinicId: string, number: string | null): Promise<boolean> {
+  const org = await orgOfClinic(db, clinicId);
+  if (!org) return false;
+  const rows = await db.update(memberships).set({ transferNumber: number })
+    .where(and(eq(memberships.userId, userId), eq(memberships.organizationId, org))).returning({ id: memberships.id });
+  return rows.length > 0;
+}
+
 export class FrontDeskRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
@@ -115,6 +131,31 @@ export class FrontDeskRepository {
           ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : null,
       }));
     });
+  }
+
+  /**
+   * A staff member starts watching a live call. Its captions are PHI, so the watch is
+   * audited once, as it starts; a reconnect to the same stream is the same watch.
+   * False when the call is not this clinic's.
+   */
+  async watchLive(clinicId: string, callId: string, userId: string, audit: boolean): Promise<boolean> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [call] = await tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call) return false;
+      if (audit) await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.live.watched', entity: 'call', entityId: callId, callId });
+      return true;
+    });
+  }
+
+  /** A staff action on a live call, audited under the person who took it. Counts only: a coaching note's length, never its words. */
+  async recordLiveAction(clinicId: string, callId: string, userId: string, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff', counts?: Record<string, number>) {
+    await withClinic(this.db, clinicId, (tx) => tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'call', entityId: callId, callId, counts: counts ?? null }));
+  }
+
+  /** The live call list with verified callers' short names, recorded once per five minutes for the same calls. */
+  async recordLiveList(clinicId: string, userId: string, callIds: string[]) {
+    if (!callIds.length) return;
+    await withClinic(this.db, clinicId, (tx) => recordView(tx, { clinicId, actor: actorOf(userId), action: 'calls.live.listed', entity: 'call', entityId: patientSetKey(callIds) }, 5));
   }
 
   /** One call with its transcript. Reading the transcript is a PHI access. */

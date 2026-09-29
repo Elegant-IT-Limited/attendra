@@ -75,6 +75,8 @@ export const memberships = pgTable('memberships', {
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   role: text('role', { enum: ['owner', 'admin', 'staff', 'viewer'] }).notNull().default('viewer'),
   createdAt: ts('created_at').notNull().defaultNow(),
+  // a staff member's own number for taking over a live call, if they gave one
+  transferNumber: text('transfer_number'),
 });
 
 export const invitations = pgTable('invitations', {
