@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
-import { authSessions, authUsers, memberships } from '../auth-schema';
+import { memberships } from '../auth-schema';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { recordView } from './audit';
@@ -38,42 +38,6 @@ export async function addMembership(db: Database, orgId: string, userId: string,
 export async function orgOfClinic(db: Database, clinicId: string): Promise<string | null> {
   const [row] = await db.select({ orgId: clinics.orgId }).from(clinics).where(eq(clinics.id, clinicId));
   return row?.orgId ?? null;
-}
-
-/**
- * The people in an organization, with their role, whether two-step sign-in is on and
- * when they last signed in. Owner connection: these are auth tables, which the
- * application role cannot read.
- */
-export async function listMembers(db: Database, orgId: string) {
-  return db.select({
-    userId: authUsers.id, name: authUsers.name, email: authUsers.email, role: memberships.role, twoFactorEnabled: authUsers.twoFactorEnabled,
-    addedAt: memberships.createdAt,
-    lastSignInAt: sql<Date | null>`(select max(${authSessions.createdAt}) from ${authSessions} where ${authSessions.userId} = ${authUsers.id})`,
-  }).from(memberships).innerJoin(authUsers, eq(authUsers.id, memberships.userId))
-    .where(eq(memberships.organizationId, orgId)).orderBy(authUsers.name);
-}
-
-export async function setMemberRole(db: Database, orgId: string, userId: string, role: StaffRole) {
-  const rows = await db.update(memberships).set({ role }).where(and(eq(memberships.organizationId, orgId), eq(memberships.userId, userId))).returning({ id: memberships.id });
-  return rows.length === 1;
-}
-
-/** Takes someone out of an organization and signs them out everywhere, so an open tab stops working at once. */
-export async function removeMember(db: Database, orgId: string, userId: string) {
-  return db.transaction(async (tx) => {
-    const rows = await tx.delete(memberships).where(and(eq(memberships.organizationId, orgId), eq(memberships.userId, userId))).returning({ id: memberships.id });
-    if (rows.length) await tx.delete(authSessions).where(eq(authSessions.userId, userId));
-    return rows.length === 1;
-  });
-}
-
-/** Writes a member change to the audit trail of every clinic in the organization. */
-export async function auditMemberChange(db: Database, orgId: string, entry: { actor: string; action: string; memberId: string }) {
-  const orgClinics = await db.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, orgId));
-  for (const c of orgClinics) {
-    await withClinic(db, c.id, (tx) => tx.insert(auditLogs).values({ clinicId: c.id, actor: entry.actor, action: entry.action, entity: 'member', entityId: entry.memberId }));
-  }
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
