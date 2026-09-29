@@ -14,6 +14,8 @@ export const PERMISSIONS = {
   'calls:list': ['owner', 'admin', 'staff', 'viewer'],
   'calls:read': ['owner', 'admin', 'staff'],
   'calls:test': ['owner', 'admin', 'staff'],
+  // on a live call: send the assistant a note, take the call, or end it
+  'calls:coach': ['owner', 'admin', 'staff'],
   'patients:read': ['owner', 'admin', 'staff'],
   'patients:write': ['owner', 'admin', 'staff'],
   'schedule:read': ['owner', 'admin', 'staff'],
