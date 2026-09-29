@@ -19,7 +19,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - `GET /overview` counts calls, bookings, changes, requests, handovers, after-hours calls and talk time in the database, with no patient data, so a viewer sees it too. `GET /tasks/waiting` lists unclaimed requests by type and age only.
 - Requests (what the dashboard called Tasks): each type explained in a line at the top, filters by type, status, assigned to me and unassigned, the patient and the call each one came from, how long it has waited and who has it. Staff add internal notes, which are encrypted and never edited, and close a request with an outcome ("Called back", "No answer, left a message", "Refill sent to the pharmacy", "Not needed"). Owners and managers can assign one to a teammate.
 - Calls: filters by date range, outcome, channel and emergency, a search by patient name (a POST, matched through the verified patient), and a Caller column with the verified patient's name, or "Unknown caller".
-- Team: owners and managers list the people who can sign in, with their role, two-step sign-in and last sign-in; add someone and see a temporary password once, to pass on in person; change a role; and remove someone, which signs them out everywhere. A manager cannot touch an owner or make one, nobody changes or removes themselves, and there is always an owner. Every change is audited.
+- Team: owners and managers list the people who can sign in, with their role and whether they have set up their password and two-step sign-in; add someone and see a temporary password once, to pass on in person; reset a password; change a role; and remove someone. A manager cannot touch an owner or make one, nobody changes, resets or removes themselves, and there is always an owner. Each change and its audit rows are one transaction with the team locked, so this holds under races too.
+- A temporary password is for one sign-in and 72 hours. The person chooses their own password before anything else, two-step setup included, so whoever read the temporary one out never holds a working password for them; every other session ends when they do. `pnpm add-member` passwords are temporary too. An email that already has an Attendra account with another practice is refused (`account_exists`) rather than added.
+- The front desk cannot book a patient into a time that overlaps another of their appointments, with any provider, and a booking key sent again for a different booking is refused (`idempotency_mismatch`).
 - The menu is grouped the way a front desk works: Today; Front desk (Schedule, Patients, Requests, Calls); Assistant (Test call, Settings); Admin (Team, Audit log). The audit log has plain words for every action and names people for owners and managers.
 - `pnpm demo` fills three weeks of the demo calendar around today: the demo calls' own bookings, linked to their calls, and about 60 percent of the rest booked by staff, with a few cancellations.
 
@@ -30,6 +32,16 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Migration `0006_request_notes.sql` adds `task_notes` (encrypted, insert-only for the application role, with Row Level Security) and a request's outcome and who assigned it.
 - The call list names the verified caller for roles that may read calls, and audits that view once per 5 minutes; a viewer's call list still has no patient data.
 - `POST /tasks/:id/done` takes an optional `outcome`.
+- Migration `0007_password_change.sql` adds `must_change_password` and `temporary_password_expires_at` to `auth_users`. `POST /api/auth/change-password` joins the auth allowlist; the API answers 403 `password_change_required` until it has been used.
+- Migration `0008_same_clinic_links.sql`: composite foreign keys keep `calls.patient_id` and `task_notes.task_id` inside one clinic, since Row Level Security does not cover foreign key checks.
+- A repeat view is only folded into an earlier audit row when every parameter of the view and every patient it showed are the same. Searches write one `patient.search.result` row per patient shown.
+- Removing someone from the team releases the requests they held, and signs them out only when they belong to no other practice. The Team page no longer shows a last sign-in time, which could not be told apart by practice.
+- Moving and cancelling at the desk only change a booking that is still booked, so a cancel that landed a moment earlier is reported instead of undone. Dates of birth are checked against the clinic's date.
+
+### Fixed
+
+- The demo moved its own bookings forward in milliseconds, so after a clock change a visit shifted by an hour. It now moves them by whole weeks of local time.
+- The week view's provider headers showed initials; they show the short name, with the full name on hover.
 - Migration `0005_call_patient.sql` adds `calls.patient_id`, set in the same transaction as the tool action that verified the caller.
 - The redacting logger also replaces `query` and `search` fields.
 - Migration `0004_staff_scheduling.sql`: appointments record the staff member who booked or cancelled them, a cancel reason, an encrypted note and an update time, and a booking must come from a call or a person.
