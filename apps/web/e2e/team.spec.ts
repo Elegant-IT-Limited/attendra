@@ -25,8 +25,8 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await row.getByLabel('Role for Riley Stone').selectOption({ label: 'Viewer' });
   await expect(page.getByText('Riley Stone is now viewer.', { exact: false })).toBeVisible();
   await page.getByRole('link', { name: 'Audit log' }).click();
-  await expect(page.getByText('Changed someone\'s role').first()).toBeVisible();
-  await expect(page.getByText('Added a person to the team').first()).toBeVisible();
+  await expect(page.getByText('Changed someone\'s role to viewer').first()).toBeVisible();
+  await expect(page.getByText('Added a person to the team, as front desk').first()).toBeVisible();
 
   // Riley signs in with the temporary password, as a viewer now
   const riley = await (await browser.newContext()).newPage();
@@ -34,6 +34,12 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.getByLabel('Email').fill('riley@maple-demo.test');
   await riley.getByLabel('Password').fill(password);
   await riley.getByRole('button', { name: 'Sign in', exact: true }).click();
+  // a temporary password is for one sign-in: Riley picks their own before anything else
+  await expect(riley).toHaveURL(/\/change-password$/);
+  await riley.getByLabel('Temporary password').fill(password);
+  await riley.getByLabel('New password', { exact: true }).fill('riley picks a long one');
+  await riley.getByLabel('New password again').fill('riley picks a long one');
+  await riley.getByRole('button', { name: 'Save my password' }).click();
   await expect(riley.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   await expect(riley.getByRole('link', { name: 'Patients' })).toHaveCount(0);
   await riley.goto(`${new URL(riley.url()).pathname}/patients`);

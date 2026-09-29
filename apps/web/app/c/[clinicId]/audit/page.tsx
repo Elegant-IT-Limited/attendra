@@ -42,15 +42,19 @@ const ACTIONS: Record<string, string> = {
   'patient.updated': 'Changed a patient\'s details',
   'calls.listed': 'Looked at the call list with names',
   'calls.searched': 'Searched calls by patient',
-  'member.added': 'Added a person to the team',
-  'member.role.changed': 'Changed someone\'s role',
   'member.removed': 'Removed a person from the team',
+  'member.password.reset': 'Issued a new temporary password',
+  'patient.search.result': 'Saw a patient in search results',
 };
+
+const ROLE_WORDS: Record<string, string> = { owner: 'owner', admin: 'practice manager', staff: 'front desk', viewer: 'viewer' };
 
 // actions that carry a detail after the last dot: sms.sent.<template>, call.transferred.<target>
 function describe(action: string) {
   if (ACTIONS[action]) return ACTIONS[action];
   if (action.startsWith('sms.sent.')) return 'Sent a text confirmation';
+  if (action.startsWith('member.added:')) return `Added a person to the team, as ${ROLE_WORDS[action.slice(13)] ?? action.slice(13)}`;
+  if (action.startsWith('member.role.changed:')) return `Changed someone's role to ${ROLE_WORDS[action.slice(20)] ?? action.slice(20)}`;
   if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replace('_', ' ')})`;
   return action;
 }
