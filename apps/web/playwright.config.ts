@@ -14,10 +14,16 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:3000', trace: 'retain-on-failure' },
   projects: [
     { name: 'sign-in', testMatch: /auth\.setup\.ts/ },
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, dependencies: ['sign-in'] },
+    {
+      name: 'chromium',
+      dependencies: ['sign-in'],
+      // a fake microphone for the test call page
+      use: { ...devices['Desktop Chrome'], permissions: ['microphone'], launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] } },
+    },
   ],
   webServer: [
-    { command: 'pnpm --filter @attendra/api demo', url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    // test calls stay off even when a .env holds an OpenAI key: these specs never spend credit
+    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off' }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI, timeout: 120_000 },
     { command: 'pnpm --filter @attendra/web dev', url: 'http://localhost:3000/sign-in', reuseExistingServer: !process.env.CI, timeout: 120_000 },
   ],
 });

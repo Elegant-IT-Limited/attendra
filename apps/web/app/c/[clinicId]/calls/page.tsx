@@ -8,6 +8,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Outcome } from '@/components/calls/outcome';
 import { PageHeader } from '@/components/shell';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -77,7 +78,12 @@ export default function Calls() {
                   <TD className="whitespace-nowrap">
                     {openable ? <Link href={`/c/${clinicId}/calls/${c.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>{clinicTime(c.startedAt, tz)}</Link> : clinicTime(c.startedAt, tz)}
                   </TD>
-                  <TD><Outcome outcome={c.outcome} emergency={c.emergency} /></TD>
+                  <TD>
+                    <span className="inline-flex flex-wrap items-center gap-1.5">
+                      <Outcome outcome={c.outcome} emergency={c.emergency} />
+                      {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
+                    </span>
+                  </TD>
                   <TD className="whitespace-nowrap text-muted-foreground">
                     {c.verified
                       ? <span className="inline-flex items-center gap-1 text-foreground"><CheckCircle2 className="size-4 text-primary" /> Verified</span>

@@ -15,6 +15,7 @@ import { clinicTime } from '@/lib/format';
 
 const ACTIONS: Record<string, string> = {
   'call.transcript.viewed': 'Read a call transcript',
+  'call.test.started': 'Started a browser test call',
   'task.viewed': 'Viewed a task',
   'task.claimed': 'Claimed a task',
   'task.done': 'Closed a task',

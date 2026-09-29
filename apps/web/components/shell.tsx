@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ListChecks, LogOut, Phone, PhoneCall, Settings, ShieldCheck } from 'lucide-react';
+import { ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect } from 'react';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 const NAV = [
   { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list' },
   { href: 'tasks', label: 'Tasks', icon: ListChecks, permission: 'tasks:read' },
+  { href: 'test-call', label: 'Test call', icon: Mic, permission: 'calls:test' },
   { href: 'settings', label: 'Settings', icon: Settings, permission: 'settings:read' },
   { href: 'audit', label: 'Audit log', icon: ShieldCheck, permission: 'audit:read' },
 ];
@@ -66,7 +67,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           <p className="text-xs text-muted-foreground">{clinic.timezone.replace('_', ' ')}</p>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
-          {NAV.filter((n) => can(n.permission)).map((n) => {
+          {NAV.filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls)).map((n) => {
             const active = pathname.startsWith(`/c/${clinicId}/${n.href}`);
             const count = n.href === 'tasks' ? openTasks.data?.open : undefined;
             return (
