@@ -70,6 +70,12 @@ pnpm demo        # then open http://localhost:3000
 
 This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls, and starts the dashboard. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk); the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
 
+| The week's calls | One call: transcript and every tool step |
+|---|---|
+| ![The call list with outcomes, emergency flags and what the assistant did](docs/images/calls.png) | ![A booking call: the read-back, the clear yes and the confirmed change](docs/images/call-detail.png) |
+| **Refills and callbacks for the front desk** | **Clinic settings, validated before they save** |
+| ![The task queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
+
 ### Take a real call
 
 [docs/live-call.md](docs/live-call.md) takes a small server to a real phone number the demo clinic answers, in about an hour. For your own clinic, follow [docs/self-hosting.md](docs/self-hosting.md).
