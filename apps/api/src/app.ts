@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
-import { type Database, FrontDeskRepository, type PhiCipher } from '@attendra/db';
+import { type Database, FrontDeskRepository, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { StaffScheduler } from '@attendra/scheduling';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
 import { Module, type DynamicModule } from '@nestjs/common';
@@ -13,8 +14,9 @@ import { CallsController } from './calls/calls.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, DB, FRONT_DESK, LOGGER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
+import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
 import pkg from '../package.json' with { type: 'json' };
@@ -33,6 +35,8 @@ export interface ApiDeps {
   rateLimit?: number;
   /** Proxy hops in front of the API whose X-Forwarded-For is trusted (1 behind the dashboard). */
   trustProxy?: number;
+  /** The clock for booking rules ("no past times"). Tests set it; the default is the real time. */
+  now?: () => Date;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
@@ -49,7 +53,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, CallsController, TestCallsController, TasksController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, CallsController, TestCallsController, TasksController, AppointmentsController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: AUTH, useValue: deps.auth },
@@ -57,6 +61,9 @@ class ApiModule {
         { provide: API_OPTIONS, useValue: deps.options },
         { provide: VOICE, useValue: deps.voice ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
+        { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
+        { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },
+        { provide: CLOCK, useValue: deps.now ?? (() => new Date()) },
         { provide: APP_GUARD, useClass: StaffGuard },
       ],
     };

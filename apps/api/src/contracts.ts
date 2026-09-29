@@ -55,6 +55,11 @@ export const CallSummary = z.object({
 export const CallList = z.object({ calls: z.array(CallSummary), next: z.string().nullable() });
 
 export const CallDetail = CallSummary.omit({ tools: true, verified: true }).extend({
+  /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
+  appointments: z.array(z.object({
+    id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
+    status: z.enum(['booked', 'cancelled']), change: z.enum(['booked', 'cancelled']),
+  })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
   tasks: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
@@ -80,6 +85,67 @@ export const Task = z.object({
 export const TaskList = z.object({ tasks: z.array(Task) });
 export const TaskCount = z.object({ open: z.number() });
 
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+const instant = z.iso.datetime({ offset: true });
+
+export const CancelReason = z.enum(['patient_asked', 'clinic_asked', 'booked_in_error', 'other']);
+
+/** Who made or cancelled a booking: the assistant on a call, or a named staff member. */
+export const BookedBy = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('assistant'), callId: z.string() }),
+  z.object({ kind: z.literal('staff'), name: z.string().nullable() }),
+]);
+
+export const ScheduleQuery = z.object({
+  from: isoDate,
+  days: z.coerce.number().int().min(1).max(14).default(1),
+  providerId: z.string().max(64).optional(),
+});
+export const Appointment = z.object({
+  id: z.string(),
+  patientId: z.string(),
+  patientName: z.string(),
+  providerId: z.string(),
+  visitTypeId: z.string(),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+  status: z.enum(['booked', 'cancelled']),
+  cancelReason: CancelReason.nullable(),
+  bookedBy: BookedBy,
+  cancelledBy: BookedBy.nullable(),
+  createdAt: z.iso.datetime(),
+});
+export const Schedule = z.object({ from: isoDate, days: z.number(), appointments: z.array(Appointment) });
+export const AppointmentDetail = Appointment.extend({
+  note: z.string().nullable(),
+  updatedAt: z.iso.datetime(),
+  patient: z.object({ id: z.string(), name: z.string(), dob: z.string(), phone: z.string().nullable() }),
+});
+
+export const SlotQuery = z.object({
+  visitTypeId: z.string().max(64),
+  providerId: z.string().max(64).optional(),
+  from: isoDate.optional(),
+  days: z.coerce.number().int().min(1).max(14).default(7),
+  partOfDay: z.enum(['morning', 'afternoon', 'any']).default('any'),
+  /** The appointment being moved, so its own time counts as free. */
+  excluding: z.uuid().optional(),
+});
+export const SlotList = z.object({ slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime() })) });
+
+export const BookAppointment = z.object({
+  patientId: z.uuid(),
+  providerId: z.string().max(64),
+  visitTypeId: z.string().max(64),
+  startsAt: instant,
+  note: z.string().trim().max(500).optional(),
+  /** A new one per booking attempt: the same key twice is one booking. */
+  idempotencyKey: z.string().min(8).max(100),
+});
+export const RescheduleAppointment = z.object({ startsAt: instant, providerId: z.string().max(64).optional() });
+export const CancelAppointment = z.object({ reason: CancelReason.optional() });
+export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
+
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
@@ -104,3 +170,11 @@ export type TaskCount = z.infer<typeof TaskCount>;
 export type AuditEntry = z.infer<typeof AuditEntry>;
 export type AuditList = z.infer<typeof AuditList>;
 export type ApiError = z.infer<typeof ApiError>;
+export type Appointment = z.infer<typeof Appointment>;
+export type AppointmentDetail = z.infer<typeof AppointmentDetail>;
+export type Schedule = z.infer<typeof Schedule>;
+export type SlotList = z.infer<typeof SlotList>;
+export type BookAppointment = z.infer<typeof BookAppointment>;
+export type AppointmentChange = z.infer<typeof AppointmentChange>;
+export type CancelReason = z.infer<typeof CancelReason>;
+export type BookedBy = z.infer<typeof BookedBy>;
