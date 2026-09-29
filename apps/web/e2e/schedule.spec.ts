@@ -7,12 +7,17 @@ const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
 async function findInWeek(page: Page, name: RegExp) {
   await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
+  const heading = page.getByRole('heading', { level: 2, name: /^Week of / });
   for (let week = 0; week < 3; week++) {
     // the grid keeps the previous week on screen until the next one arrives, so wait for this one
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
     await expect(page.getByTestId('lane').first()).toBeVisible();
     if (await block.count()) return block.first();
+    // straight after the click the old week is still on screen and not yet busy: wait for the new heading first
+    const before = await heading.textContent();
     await page.getByRole('button', { name: 'Next week' }).click();
+    await expect(heading).not.toHaveText(before!);
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
   }
   throw new Error(`no appointment matching ${name} in the next three weeks`);
 }
