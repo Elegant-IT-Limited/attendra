@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { detectEmergencies, EMERGENCY_INSTRUCTION, resolveTransfer, SELF_HARM_INSTRUCTION, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import type { Planner } from './planner';
@@ -20,7 +20,7 @@ export const clamp = (s: string) => (s.length <= MAX_APPEND_CHARS ? s : `${s.sli
 // Call control waits for the spoken result: "I'll connect you now" before the ring,
 // the goodbye before the line drops.
 const AFTER_SPEECH_MS = 3500;
-// and the 911 line before an emergency transfer starts ringing
+// and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 
 export interface ActionRecorder {
@@ -42,7 +42,9 @@ export class CallAgent {
     private readonly planner: Planner,
     private readonly log: Logger,
     private readonly actions?: ActionRecorder,
-  ) {}
+  ) {
+    if (!state.turns.length) state.language = ctx.clinic.primaryLanguage;
+  }
 
   /**
    * Every caller fragment passes the emergency guardrail before anything else, and
@@ -52,6 +54,8 @@ export class CallAgent {
    */
   onCallerTranscript(delta: string, startMs: number, endMs: number): Outbound[] {
     this.state.addTranscript('caller', delta, startMs, endMs);
+    const { clinic } = this.ctx;
+    if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
     const fresh = detectEmergencies(this.state.recentCallerText()).filter((m) => !this.state.emergencyKinds.has(m.kind));
     const match = fresh[0];
     if (!match) return [];
@@ -64,7 +68,12 @@ export class CallAgent {
     this.state.revision++; // and any request already in flight is dropped, not spoken over the script
     this.log.warn({ call_id: this.ctx.callId, emergency_kind: match.kind }, 'emergency guardrail triggered');
 
-    const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: match.kind === 'self_harm' ? SELF_HARM_INSTRUCTION : EMERGENCY_INSTRUCTION }];
+    // The script is said in the language the emergency was said in, when the clinic
+    // offers it, and otherwise in the language of the call. The number is the clinic's.
+    const pack = PACKS[clinic.languages.includes(match.language) ? match.language : this.state.language];
+    const number = emergencyNumberFor(clinic);
+    const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic)) : pack.emergencyScript(number);
+    const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     if (first && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
       if (onCall.ok) out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { Slot } from '@attendra/core';
+import type { Language, Slot } from '@attendra/core';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -33,6 +33,12 @@ export class CallState {
   emergency: { kind: string; atMs: number } | null = null;
   /** Every emergency kind already answered, so a new kind (bleeding after chest pain) is answered too. */
   readonly emergencyKinds = new Set<string>();
+  /**
+   * The language the caller is being answered in: the clinic's primary language until
+   * the caller's own words say otherwise. Read-backs, texts and the emergency script
+   * follow it.
+   */
+  language: Language = 'en';
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */

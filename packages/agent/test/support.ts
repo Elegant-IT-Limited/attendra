@@ -1,5 +1,5 @@
-import { DEMO_CLINIC, type Messenger, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo } from '@attendra/db';
+import { type ClinicConfig, DEMO_CLINIC, type Messenger, zonedInstant } from '@attendra/core';
+import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo, seedDhanmondi } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { BuiltinScheduler } from '@attendra/scheduling';
@@ -20,12 +20,13 @@ class PlanQueue implements Planner {
   }
 }
 
-export async function world() {
+/** A fresh database with a demo clinic in it: Maple Street unless the test asks for Dhanmondi. */
+export async function world(which: 'maple' | 'dhanmondi' = 'maple') {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
-  const { patientIds } = await seedDemo(t.db, cipher);
-  const sms: { to: string; template: string }[] = [];
-  const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template }); } };
+  const { patientIds, clinic } = await (which === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
+  const sms: { to: string; template: string; language?: string; when?: string }[] = [];
+  const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); } };
   const backend = {
     patients: new PostgresPatientDirectory(t.db, cipher),
     scheduler: new BuiltinScheduler(t.db),
@@ -37,14 +38,14 @@ export async function world() {
   let n = 0;
 
   /** With `record`, tool actions are written to the call record the way the voice service writes them. */
-  async function call(callerNumber: string | null = '+13035550147', opts: { record?: boolean } = {}) {
-    const callId = await calls.open(DEMO_CLINIC.id, `live_test_${++n}`, callerNumber);
+  async function call(callerNumber: string | null = which === 'dhanmondi' ? '+8801000000111' : '+13035550147', opts: { record?: boolean; clinic?: ClinicConfig } = {}) {
+    const callId = await calls.open(clinic.id, `live_test_${++n}`, callerNumber);
     const state = new CallState();
     const plans = new PlanQueue();
     const actions: ActionRecorder | undefined = opts.record
-      ? { record: (a) => calls.recordAction(DEMO_CLINIC.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
+      ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
       : undefined;
-    const agent = new CallAgent(state, { clinic: DEMO_CLINIC, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
+    const agent = new CallAgent(state, { clinic: opts.clinic ?? clinic, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
     let clock = 0;
     let delegations = 0;
     return {
