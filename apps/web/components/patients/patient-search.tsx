@@ -72,7 +72,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
           ))}
         </ul>
       )}
-      {results.data?.patients.length === 25 && ready && <p className="text-xs text-muted-foreground">Showing the first 25. Type more to narrow it down.</p>}
+      {ready && (results.data?.truncated || results.data?.patients.length === 25) && <p className="text-xs text-muted-foreground">Showing the first matches; type more of the name.</p>}
     </div>
   );
 }
