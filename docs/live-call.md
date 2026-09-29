@@ -61,6 +61,7 @@ Fill in `.env`:
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | from the Twilio console |
 | `PUBLIC_URL` | `https://attendra-demo.example.com` |
 | `ATTENDRA_DEMO_MODE` | `true` |
+| `ATTENDRA_DEMO_PASSWORD` | a passphrase of your own, 12 characters or more |
 
 Then:
 
@@ -73,7 +74,7 @@ The second command points your Twilio number at the demo clinic and makes it the
 
 ## 5. Call it
 
-1. Get the demo password the seed printed: `sudo docker compose -f infra/docker-compose.yml logs seed`. (Set `ATTENDRA_DEMO_PASSWORD` in `.env` before the first start if you would rather choose it.) Open `https://attendra-demo.example.com` and sign in as `manager@maple-demo.test`. You see the week of recorded demo calls.
+1. Open `https://attendra-demo.example.com` and sign in as `manager@maple-demo.test` with your `ATTENDRA_DEMO_PASSWORD`. You see the week of recorded demo calls.
 2. Call your Twilio number. The assistant greets you as Maple Street Family Medicine and says it is an AI assistant.
 3. Try it as Maria Delgado, born March 4, 1985: ask for a sick visit, pick a time, say yes. Or ask whether they take Cigna. Or say you have chest pain.
 4. Hang up. The call is at the top of **Calls** with its transcript, and any refill or callback is under **Tasks**.

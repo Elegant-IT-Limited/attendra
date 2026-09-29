@@ -16,7 +16,7 @@ Staff see transcripts and refill requests, so the dashboard is the one place a s
 
 A session ends 12 hours after sign-in however busy it is, and the dashboard signs out after 15 idle minutes and clears everything it had cached. Rate limits apply to every route, sign-in included. API responses are `Cache-Control: no-store`.
 
-A demo deployment gets a random password for its demo logins, printed once by the seed, and cannot change transfer numbers, because a demo that takes real calls is on the internet. Only `pnpm demo`, which runs on one machine and forgets everything when it stops, shows its password on the sign-in page.
+A demo deployment's logins use a password the operator sets (`ATTENDRA_DEMO_PASSWORD`, never printed or defaulted), and it cannot change transfer numbers, because a demo that takes real calls is on the internet. Only `pnpm demo`, which runs on one machine and forgets everything when it stops, shows its password on the sign-in page.
 
 What we gave up, for now:
 
