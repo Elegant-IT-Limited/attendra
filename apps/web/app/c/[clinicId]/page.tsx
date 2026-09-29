@@ -7,6 +7,7 @@ import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren } from 'lucide-react
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
 import { capital } from '@/components/schedule/booking-dialog';
 import { PageHeader } from '@/components/shell';
@@ -50,6 +51,7 @@ export default function Today() {
   return (
     <>
       <PageHeader title="Today" description={<>{greeting}. {dayTitle(today)}, times are {zoneLabel(tz)}.</>} />
+      <LiveNow clinicId={clinicId} canWatch={can('calls:read')} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
         <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Last 7 days" />
         <StatCard label="Booked this week" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
