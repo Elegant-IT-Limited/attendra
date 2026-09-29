@@ -38,6 +38,15 @@
   --danger-soft: oklch(0.95 0.04 27);
   --warn-soft: oklch(0.96 0.06 85);
   --ok-soft: oklch(0.95 0.05 160);
+  /* visit types on the schedule */
+  --visit-1: oklch(0.6 0.12 250);
+  --visit-1-soft: oklch(0.95 0.03 250);
+  --visit-2: oklch(0.55 0.1 170);
+  --visit-2-soft: oklch(0.95 0.035 170);
+  --visit-3: oklch(0.6 0.14 310);
+  --visit-3-soft: oklch(0.95 0.035 310);
+  --visit-4: oklch(0.65 0.13 60);
+  --visit-4-soft: oklch(0.95 0.04 70);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -57,6 +66,14 @@
     --danger-soft: oklch(0.3 0.07 27);
     --warn-soft: oklch(0.32 0.06 85);
     --ok-soft: oklch(0.3 0.05 160);
+    --visit-1: oklch(0.72 0.11 250);
+    --visit-1-soft: oklch(0.3 0.05 250);
+    --visit-2: oklch(0.72 0.1 170);
+    --visit-2-soft: oklch(0.3 0.05 170);
+    --visit-3: oklch(0.72 0.12 310);
+    --visit-3-soft: oklch(0.3 0.05 310);
+    --visit-4: oklch(0.75 0.12 70);
+    --visit-4-soft: oklch(0.32 0.05 70);
   }
 }
 
