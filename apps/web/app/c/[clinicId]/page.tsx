@@ -14,21 +14,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { dayTitle, TASK_TYPES, timeOf, TOOLS, zoneLabel } from '@/lib/format';
+import { dayTitle, TASK_TYPES, timeOf, TOOLS, waited, zoneLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const REFRESH = 30_000;
 const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
-
-/** "2 days", "3 hours", "12 minutes": how long something has waited. */
-function waited(iso: string, now: number) {
-  const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
-  if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} hour${h === 1 ? '' : 's'}`;
-  const d = Math.round(h / 24);
-  return `${d} day${d === 1 ? '' : 's'}`;
-}
 
 /** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
 export default function Today() {
@@ -84,7 +74,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
     onMutate: () => setTaken(null),
-    onSuccess: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); router.push(`/c/${clinicId}/tasks`); },
+    onSuccess: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); router.push(`/c/${clinicId}/requests`); },
     onError: (e) => { setTaken(e instanceof ApiFailure && e.status === 409 ? 'Someone else claimed that one first.' : 'That did not work. Try again.'); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
   });
   const day = now - 86_400_000;
@@ -101,7 +91,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       key: t.id, icon: t.type === 'refill' ? <Pill className="size-4 text-primary" /> : <PhoneCall className="size-4 text-primary" />, title: TASK_TYPES[t.type] ?? t.type, detail: `Waiting ${waited(t.createdAt, now)}, nobody has it yet`,
       action: canWork
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
-        : <Link href={`/c/${clinicId}/tasks`} className={LINK}>Open</Link>,
+        : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
     })),
     ...unresolved.map((c) => ({
       key: c.id, icon: <PhoneOff className="size-4 text-muted-foreground" />, title: c.outcome === 'transferred' ? 'A call went to a person' : 'A call ended with nothing done',

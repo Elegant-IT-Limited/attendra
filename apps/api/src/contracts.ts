@@ -14,7 +14,7 @@ export const Health = z.object({
 });
 
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean() }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean() }),
   demoMode: z.boolean(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
@@ -42,6 +42,8 @@ export const Page = z.object({
 
 export const CallSummary = z.object({
   id: z.string(),
+  /** The verified patient's name, for roles that may read calls; null for everyone else, and for calls nobody was verified on. */
+  patientName: z.string().nullable(),
   channel: z.enum(['phone', 'web']),
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
@@ -52,9 +54,30 @@ export const CallSummary = z.object({
   tools: z.array(z.string()),
   verified: z.boolean(),
 });
-export const CallList = z.object({ calls: z.array(CallSummary), next: z.string().nullable() });
+export const CallList = z.object({
+  calls: z.array(CallSummary), next: z.string().nullable(),
+  /** A search stopped at its cap: there may be more matches. */
+  truncated: z.boolean().optional(),
+});
 
-export const CallDetail = CallSummary.omit({ tools: true, verified: true }).extend({
+const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
+const CallFilters = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional(),
+  outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']).optional(),
+  channel: z.enum(['phone', 'web']).optional(),
+  emergency: boolParam.optional(),
+});
+/** The call list's filters, in clinic-time days (`to` is inclusive). */
+export const CallQuery = Page.extend(CallFilters.shape);
+/** A name search is a POST: a name is PHI and stays out of URLs. */
+export const CallSearch = z.object({
+  query: z.string().trim().min(2, 'type at least two characters').max(100),
+  from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
+  emergency: z.boolean().optional(),
+});
+
+export const CallDetail = CallSummary.omit({ tools: true, verified: true, patientName: true }).extend({
   /** The patient the agent verified on this call, if it verified anyone. */
   patient: z.object({ id: z.string(), name: z.string() }).nullable(),
   /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
@@ -70,7 +93,15 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true }).exte
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 
-export const TaskQuery = z.object({ status: z.enum(['open', 'done']).default('open') });
+export const TaskQuery = z.object({
+  status: z.enum(['open', 'done']).default('open'),
+  type: z.enum(['callback', 'refill', 'voicemail', 'review']).optional(),
+  assignee: z.enum(['me', 'unassigned']).optional(),
+});
+export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed']);
+export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
+export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
+export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({
   id: z.string(),
   type: z.enum(['callback', 'refill', 'voicemail', 'review']),
@@ -82,7 +113,11 @@ export const Task = z.object({
   doneAt: z.iso.datetime().nullable(),
   doneByUserId: z.string().nullable(),
   patientName: z.string().nullable(),
+  patientId: z.string().nullable(),
   details: z.record(z.string(), z.string()),
+  outcome: TaskOutcome.nullable(),
+  assigneeName: z.string().nullable(),
+  notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
 export const TaskCount = z.object({ open: z.number() });
@@ -153,11 +188,16 @@ const phoneNumber = z.string().trim().max(30).refine((v) => v === '' || v.replac
 
 export const PatientSearch = z.object({ query: z.string().trim().min(2, 'type at least two characters').max(100) });
 export const PatientCard = z.object({ id: z.string(), name: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(), phone: z.string().nullable() });
-export const PatientList = z.object({ patients: z.array(PatientCard) });
+export const PatientList = z.object({
+  patients: z.array(PatientCard),
+  /** The search read its whole cap of patients: someone further on may match too. */
+  truncated: z.boolean().optional(),
+});
 export const PatientInput = z.object({
   firstName: personName,
   lastName: personName,
-  dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d <= new Date().toISOString().slice(0, 10) && d >= '1890-01-01', 'a real date of birth, not in the future'),
+  // "not in the future" is checked against the clinic's own date by the route, not the server's
+  dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber.optional(),
 });
 export const PatientSaved = z.object({ id: z.string() });
@@ -175,6 +215,18 @@ export const PatientProfile = PatientCard.extend({
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
 });
+
+export const Member = z.object({
+  userId: z.string(), name: z.string(), email: z.string(), role: Role, twoFactorEnabled: z.boolean(),
+  /** Still on the temporary password they were given. */
+  mustChangePassword: z.boolean(),
+  addedAt: z.iso.datetime(), you: z.boolean(),
+});
+export const MemberList = z.object({ members: z.array(Member) });
+export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role });
+/** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
+export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
+export const ChangeRole = z.object({ role: Role });
 
 export const OverviewQuery = z.object({ days: z.coerce.number().int().min(1).max(31).default(7) });
 const Activity = z.object({
@@ -232,3 +284,6 @@ export type PatientSaved = z.infer<typeof PatientSaved>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
 export type Overview = z.infer<typeof Overview>;
 export type WaitingTasks = z.infer<typeof WaitingTasks>;
+export type Member = z.infer<typeof Member>;
+export type MemberList = z.infer<typeof MemberList>;
+export type AddedMember = z.infer<typeof AddedMember>;

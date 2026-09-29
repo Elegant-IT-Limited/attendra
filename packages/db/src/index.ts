@@ -9,6 +9,7 @@ export * from './repositories/front-desk';
 export * from './repositories/tasks';
 export * from './repositories/audit';
 export * from './repositories/schedule';
+export * from './repositories/team';
 export * from './demo-schedule';
 export * from './seed';
 export * as schema from './schema';

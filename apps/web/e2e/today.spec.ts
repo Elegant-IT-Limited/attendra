@@ -8,7 +8,7 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
 
   // the demo's refill and callback requests are waiting, each with one clear action
   const attention = page.getByRole('list', { name: 'Needs attention' });
-  await expect(attention.getByText(/Refill request|Callback/).first()).toBeVisible();
+  await expect(attention.getByText(/Prescription refill|Callback/).first()).toBeVisible();
   await expect(attention.getByRole('button', { name: 'Claim' }).first()).toBeVisible();
 
   await expect(page.getByRole('heading', { name: 'Today\'s schedule' })).toBeVisible();
@@ -23,6 +23,6 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
 
   // claiming from Today takes the request and opens the queue
   await attention.getByRole('button', { name: 'Claim' }).first().click();
-  await expect(page).toHaveURL(/\/tasks$/);
+  await expect(page).toHaveURL(/\/requests$/);
   await expect(page.getByText('You have it').first()).toBeVisible();
 });

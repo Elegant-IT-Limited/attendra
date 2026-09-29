@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, House, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck, Users } from 'lucide-react';
+import { CalendarDays, House, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck, UserCog, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect } from 'react';
@@ -11,15 +11,32 @@ import { api, useClinic } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
-const NAV = [
-  { href: '', label: 'Today', icon: House, permission: 'calls:list' },
-  { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list' },
-  { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read' },
-  { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read' },
-  { href: 'tasks', label: 'Tasks', icon: ListChecks, permission: 'tasks:read' },
-  { href: 'test-call', label: 'Test call', icon: Mic, permission: 'calls:test' },
-  { href: 'settings', label: 'Settings', icon: Settings, permission: 'settings:read' },
-  { href: 'audit', label: 'Audit log', icon: ShieldCheck, permission: 'audit:read' },
+// The menu in the groups a front desk thinks in. A group with nothing the role may open is not shown.
+const NAV: { group: string | null; items: { href: string; label: string; icon: typeof Phone; permission: string }[] }[] = [
+  { group: null, items: [{ href: '', label: 'Today', icon: House, permission: 'calls:list' }] },
+  {
+    group: 'Front desk',
+    items: [
+      { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read' },
+      { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read' },
+      { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:read' },
+      { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list' },
+    ],
+  },
+  {
+    group: 'Assistant',
+    items: [
+      { href: 'test-call', label: 'Test call', icon: Mic, permission: 'calls:test' },
+      { href: 'settings', label: 'Settings', icon: Settings, permission: 'settings:read' },
+    ],
+  },
+  {
+    group: 'Admin',
+    items: [
+      { href: 'team', label: 'Team', icon: UserCog, permission: 'members:manage' },
+      { href: 'audit', label: 'Audit log', icon: ShieldCheck, permission: 'audit:read' },
+    ],
+  },
 ];
 
 const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
@@ -69,20 +86,25 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           <p className="truncate text-sm font-medium">{clinic.name}</p>
           <p className="text-xs text-muted-foreground">{clinic.timezone.replace('_', ' ')}</p>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
-          {NAV.filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls)).map((n) => {
-            const active = n.href ? pathname.startsWith(`/c/${clinicId}/${n.href}`) : pathname === `/c/${clinicId}`;
-            const count = n.href === 'tasks' ? openTasks.data?.open : undefined;
-            return (
-              <Link key={n.href || 'today'} href={n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`} aria-current={active ? 'page' : undefined}
-                className={cn('flex items-center gap-2.5 rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors',
-                  active ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
-                <n.icon className="size-4" />
-                <span className="flex-1">{n.label}</span>
-                {!!count && <span className="rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">{count}</span>}
-              </Link>
-            );
-          })}
+        <nav aria-label="Main" className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:gap-4 md:overflow-visible">
+          {NAV.map((g) => ({ ...g, items: g.items.filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls)) })).filter((g) => g.items.length).map((g) => (
+            <div key={g.group ?? 'home'} className="flex gap-1 md:flex-col" role="group" aria-label={g.group ?? 'Home'}>
+              {g.group && <p className="hidden px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:block">{g.group}</p>}
+              {g.items.map((n) => {
+                const active = n.href ? pathname.startsWith(`/c/${clinicId}/${n.href}`) : pathname === `/c/${clinicId}`;
+                const count = n.href === 'requests' ? openTasks.data?.open : undefined;
+                return (
+                  <Link key={n.href || 'today'} href={n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`} aria-current={active ? 'page' : undefined}
+                    className={cn('flex items-center gap-2.5 rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      active ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                    <n.icon className="size-4" aria-hidden />
+                    <span className="flex-1">{n.label}</span>
+                    {!!count && <span className="rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground" aria-label={`${count} open`}>{count}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="mt-auto hidden border-t border-border px-5 py-4 md:block">
           <p className="truncate text-sm font-medium">{me?.user.name}</p>

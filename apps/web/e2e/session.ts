@@ -10,3 +10,13 @@ export async function openAs(browser: Browser, role: keyof typeof STATE, prepare
   await expect(page).toHaveURL(/\/c\/[^/]+$/); // the Today screen
   return page;
 }
+
+/** A fresh sign-in, for specs that run after another spec has signed a shared login out. */
+export async function signInAgain(browser: Browser, label: 'Practice manager' | 'Front desk') {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto('/sign-in');
+  await page.getByRole('button', { name: label }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/c\/[^/]+$/);
+  return page;
+}

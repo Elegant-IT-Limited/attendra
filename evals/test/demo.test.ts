@@ -1,9 +1,9 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { createPhiCipher, FrontDeskRepository, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { recordDemoCalls } from '../src/demo';
+import { recordDemoCalls, shiftByWeeks } from '../src/demo';
 import { loadScenarios } from '../src/scenario';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -51,6 +51,16 @@ describe('demo calls', () => {
   it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
+  });
+
+  it('moves a booking by whole weeks of local time, keeping 8:00 at 8:00 across the 2026-11-01 clock change', () => {
+    const tz = DEMO_CLINIC.timezone;
+    const tuesday = zonedInstant('2026-10-27', '08:00', tz); // daylight time, 14:00 UTC
+    expect(tuesday.toISOString()).toBe('2026-10-27T14:00:00.000Z');
+    const moved = shiftByWeeks(tuesday, 1, tz);
+    expect(moved.toISOString()).toBe('2026-11-03T15:00:00.000Z'); // standard time: an hour later in UTC
+    expect(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }).format(moved)).toBe('Tuesday 8:00 AM');
+    expect(shiftByWeeks(tuesday, 0, tz)).toEqual(tuesday);
   });
 
   it('refuses to run on a database that already has real calls', async () => {

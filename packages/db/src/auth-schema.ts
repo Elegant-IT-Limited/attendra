@@ -15,6 +15,9 @@ export const authUsers = pgTable('auth_users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
+  // ours, not Better Auth's: set when a manager issues a temporary password (migration 0007)
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
+  temporaryPasswordExpiresAt: ts('temporary_password_expires_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
