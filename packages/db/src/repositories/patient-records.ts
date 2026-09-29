@@ -134,7 +134,11 @@ export class PatientRecords {
     return new Map(rows.map((r) => { const c = this.card(clinicId, r); return [r.id, `${c.firstName} ${c.lastName}`]; }));
   }
 
-  /** Every patient whose name matches the words, for search features that go through another table (a patient's calls). */
+  /** Every patient whose name matches the words, for searches that go through another table (a patient's calls). Not audited here: the search that uses it is. */
+  async idsMatching(clinicId: string, query: string): Promise<string[]> {
+    return withClinic(this.db, clinicId, (tx) => this.idsByName(tx, clinicId, query));
+  }
+
   async idsByName(tx: Tx, clinicId: string, query: string): Promise<string[]> {
     const w = words(query);
     if (!w.length) return [];
