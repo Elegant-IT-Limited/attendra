@@ -6,13 +6,17 @@ import { permissionsFor } from '../access';
 import { Me } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { BeforeTwoFactor, CurrentStaff, type Staff } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, DB } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, DB, VOICE, type VoiceClient } from '../http/tokens';
 
 @ApiTags('me')
 @ApiCookieAuth()
 @Controller('me')
 export class MeController {
-  constructor(@Inject(DB) private readonly db: Database, @Inject(API_OPTIONS) private readonly options: ApiOptions) {}
+  constructor(
+    @Inject(DB) private readonly db: Database,
+    @Inject(API_OPTIONS) private readonly options: ApiOptions,
+    @Inject(VOICE) private readonly voice: VoiceClient | null,
+  ) {}
 
   @Get()
   @BeforeTwoFactor()
@@ -23,6 +27,7 @@ export class MeController {
     return {
       user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled },
       demoMode: this.options.demoMode,
+      testCalls: !!this.voice,
       clinics: clinics.map((c) => ({ id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role) })),
     };
   }

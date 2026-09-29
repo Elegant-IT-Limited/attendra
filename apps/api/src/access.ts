@@ -6,13 +6,14 @@ import type { StaffRole } from '@attendra/db';
  * every route; the web app reads the same table only to hide buttons.
  *
  * viewer  reads the call list and the audit trail, never a transcript or a task
- * staff   works the front desk: transcripts, the task queue
+ * staff   works the front desk: transcripts, the task queue, test calls from the browser
  * admin   also edits clinic settings
  * owner   everything, including members (members are managed from the CLI in v0.2)
  */
 export const PERMISSIONS = {
   'calls:list': ['owner', 'admin', 'staff', 'viewer'],
   'calls:read': ['owner', 'admin', 'staff'],
+  'calls:test': ['owner', 'admin', 'staff'],
   'tasks:read': ['owner', 'admin', 'staff'],
   'tasks:work': ['owner', 'admin', 'staff'],
   'tasks:reassign': ['owner', 'admin'],
