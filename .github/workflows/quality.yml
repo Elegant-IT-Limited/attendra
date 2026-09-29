@@ -1,0 +1,38 @@
+name: quality
+# Manual only, never on a schedule or a push: it calls OpenAI with the repository's
+# OPENAI_API_KEY secret, and each run costs credit. CI (ci.yml) runs the scripted
+# evals, which call nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: How many simulated calls to run
+        required: false
+        default: '20'
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # passed as a variable, not written into the script, so an input cannot become a command
+      SCENARIOS: ${{ inputs.scenarios }}
+      FORCE_COLOR: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: simulated callers against the real assistant
+        run: |
+          set -o pipefail
+          mkdir -p evals/reports
+          pnpm sim --scenarios "${SCENARIOS:-20}" | tee "evals/reports/sim-$(date -u +%F).txt"
+      - name: live evals, scored by the judge
+        run: pnpm eval --live --judge
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: { name: quality-report, path: evals/reports, retention-days: 30 }
