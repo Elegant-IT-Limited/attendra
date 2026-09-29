@@ -25,7 +25,12 @@ function SignIn() {
     setError(null);
     const res = await authClient.signIn.email({ email, password });
     setBusy(false);
-    if (res.error) return setError(res.error.status === 429 ? 'Too many attempts. Wait a minute and try again.' : 'That email and password do not match.');
+    if (res.error) {
+      const code = (res.error as { error?: string }).error;
+      return setError(res.error.status === 429 ? 'Too many attempts. Wait a minute and try again.'
+        : code === 'temporary_password_expired' ? 'This temporary password has expired. Ask your practice manager to reset it.'
+          : 'That email and password do not match.');
+    }
     // with two-factor on, the client plugin has already moved us to /two-factor;
     // otherwise a full load, so nothing cached from an earlier session survives
     if (!(res.data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) window.location.assign('/');

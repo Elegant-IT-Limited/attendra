@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { authUsers, memberships } from '../auth-schema';
 import type { Database, Tx } from '../client';
 import { auditLogs, clinics } from '../schema';
@@ -7,13 +8,24 @@ import { auditLogs, clinics } from '../schema';
 export type AuditEntry = typeof auditLogs.$inferInsert;
 
 /**
+ * "p:" and the first 16 hex characters of a sha256 of the sorted patient ids a view
+ * showed. Part of a view's entity id, so a refresh that shows someone new is a new
+ * view and writes a new row, while the ids themselves stay out of the key.
+ */
+export function patientSetKey(patientIds: Iterable<string>) {
+  const ids = [...new Set(patientIds)].sort();
+  return `p:${createHash('sha256').update(ids.join(',')).digest('hex').slice(0, 16)}`;
+}
+
+/**
  * Records a view of patient data inside the transaction that read it.
  *
  * Screens that refresh on a timer (the schedule, the call list) would otherwise
  * write the same row every 30 seconds for as long as they stay open. With `window`,
- * a repeat of the same view by the same person within that many minutes is
- * covered by the row already there; the first view, and any view of something
- * different, is always written.
+ * a repeat of exactly the same view by the same person within that many minutes is
+ * covered by the row already there. "Exactly the same" is the entity id, which
+ * callers build from every parameter of the view and patientSetKey of who it
+ * showed: a different filter, page or set of patients is always a new row.
  */
 export async function recordView(tx: Tx, entry: AuditEntry, window = 0) {
   if (window > 0) {

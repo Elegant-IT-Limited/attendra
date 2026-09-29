@@ -16,10 +16,12 @@ Inbound calls over direct SIP, identity check, built-in scheduler, two-step writ
 
 - Test calls from the browser over WebRTC (done).
 - The Schedule: day and week views, staff booking, moving and cancelling with the assistant's rules, and the call page linked to what it booked (done).
+- Today, the home screen: what needs attention, the day's appointments and what the assistant did (done).
 - Patients: search, add and edit, a record with appointments, verified calls and requests, and calls linked to the verified patient (done).
 - Live calls in the dashboard, and staff take-over.
 - `apps/worker`: post-call summaries, retention purge, SMS status; voicemail with transcription.
-- Member management in the dashboard.
+- Member management in the dashboard (done).
+- Requests with notes, outcomes and assignment, and calls with filters, patient search and caller names (done).
 - Clinic sign-up, billing and cost per call, for hosted deployments.
 
 ## v0.4: reach

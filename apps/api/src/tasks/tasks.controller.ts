@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { FrontDeskRepository } from '@attendra/db';
-import { ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
-import { ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { type Database, type FrontDeskRepository, staffNames, staffRole } from '@attendra/db';
+import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskCount, TaskList, TaskQuery } from '../contracts';
+import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { FRONT_DESK } from '../http/tokens';
+import { DB, FRONT_DESK } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
@@ -18,15 +18,23 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/tasks')
 export class TasksController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database) {}
 
   @Get()
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'The callback and refill queue. Open tasks oldest first, done tasks newest first. Audited per task.' })
+  @ApiOperation({ summary: 'The request queue (refills, callbacks, voicemail), filtered by type and by who has them. Open ones oldest first, done ones newest first. Audited per request shown.' })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(TaskQuery)) q: z.infer<typeof TaskQuery>, @CurrentStaff() staff: Staff): Promise<TaskList> {
-    const tasks = await this.desk.listTasks(clinicId, { status: q.status, limit: 100 }, staff.userId);
-    return { tasks: tasks.map((t) => ({ ...t, createdAt: t.createdAt.toISOString(), claimedAt: iso(t.claimedAt), doneAt: iso(t.doneAt) })) };
+    const assignee = q.assignee === 'me' ? { userId: staff.userId } : q.assignee;
+    const tasks = await this.desk.listTasks(clinicId, { status: q.status, type: q.type, assignee, limit: 100 }, staff.userId);
+    const names = await staffNames(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
+    return {
+      tasks: tasks.map(({ assignedByUserId: _by, notes, ...t }) => ({
+        ...t, createdAt: t.createdAt.toISOString(), claimedAt: iso(t.claimedAt), doneAt: iso(t.doneAt),
+        assigneeName: t.assigneeUserId ? names.get(t.assigneeUserId) ?? null : null,
+        notes: notes.map((n) => ({ id: n.id, author: names.get(n.authorUserId) ?? null, at: n.at.toISOString(), body: n.body })),
+      })),
+    };
   }
 
   @Get('count')
@@ -35,6 +43,14 @@ export class TasksController {
   @ApiOkResponse({ schema: schemaOf(TaskCount) })
   async count(@Param('clinicId') clinicId: string): Promise<TaskCount> {
     return { open: await this.desk.openTaskCount(clinicId) };
+  }
+
+  @Get('waiting')
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'Open tasks nobody has claimed, oldest first: type and age only, for the home screen. No patient data, not audited.' })
+  @ApiOkResponse({ schema: schemaOf(WaitingTasks) })
+  async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {
+    return { tasks: (await this.desk.waitingTasks(clinicId)).map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })) };
   }
 
   @Post(':taskId/claim')
@@ -50,11 +66,35 @@ export class TasksController {
   @Post(':taskId/done')
   @HttpCode(204)
   @Requires('tasks:work')
-  @ApiOperation({ summary: 'Close a task you hold, or one nobody holds' })
+  @ApiOperation({ summary: 'Close a request you hold, or one nobody holds, with what came of it. Audited.' })
+  @ApiBody({ schema: schemaOf(TaskDone), required: false })
   @ApiNoContentResponse()
   @ApiConflictResponse({ description: 'Someone else holds the task, or it is already done' })
-  async done(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @CurrentStaff() staff: Staff) {
-    this.outcome(isUuid(taskId) ? await this.desk.completeTask(clinicId, taskId, staff.userId) : 'not_found');
+  async done(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskDone)) body: z.infer<typeof TaskDone>, @CurrentStaff() staff: Staff) {
+    this.outcome(isUuid(taskId) ? await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null) : 'not_found');
+  }
+
+  @Post(':taskId/notes')
+  @HttpCode(204)
+  @Requires('tasks:work')
+  @ApiOperation({ summary: 'Add an internal note to a request. Stored encrypted; notes are never edited. Audited.' })
+  @ApiBody({ schema: schemaOf(TaskNoteInput) })
+  @ApiNoContentResponse()
+  async note(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskNoteInput)) body: z.infer<typeof TaskNoteInput>, @CurrentStaff() staff: Staff) {
+    this.outcome(isUuid(taskId) ? await this.desk.addTaskNote(clinicId, taskId, staff.userId, body.body) : 'not_found');
+  }
+
+  @Post(':taskId/assign')
+  @HttpCode(204)
+  @Requires('tasks:reassign')
+  @ApiOperation({ summary: 'Give an open request to a teammate who works the front desk. Owners and managers. Audited.' })
+  @ApiBody({ schema: schemaOf(TaskAssign) })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ description: 'The request is already done' })
+  async assign(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskAssign)) body: z.infer<typeof TaskAssign>, @CurrentStaff() staff: Staff) {
+    const role = await staffRole(this.db, body.userId, clinicId);
+    if (!role || role === 'viewer') throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'userId', message: 'assign requests to someone who works the front desk here' }] });
+    this.outcome(isUuid(taskId) ? await this.desk.assignTask(clinicId, taskId, body.userId, staff.userId) : 'not_found');
   }
 
   @Post(':taskId/release')
@@ -68,7 +108,7 @@ export class TasksController {
     this.outcome(isUuid(taskId) ? await this.desk.releaseTask(clinicId, taskId, staff.userId, override) : 'not_found');
   }
 
-  private outcome(result: 'claimed' | 'done' | 'released' | 'taken' | 'not_found') {
+  private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'taken' | 'not_found') {
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result === 'taken') throw new ConflictException({ error: 'task_taken', message: 'Someone else holds this task, or it is already done.' });
   }

@@ -68,7 +68,7 @@ No keys are needed for either. The scenarios run the real backend against a real
 pnpm demo        # then open http://localhost:3000
 ```
 
-This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls, fills three weeks of the calendar around today, and starts the dashboard: the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), the refill and callback queue, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk); the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
+This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, the team, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk); the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
 
 | The week's calls | One call: transcript and every tool step |
 |---|---|
@@ -88,7 +88,7 @@ Put an OpenAI key in `.env` at the repo root (`OPENAI_API_KEY=sk-...`) and run `
 
 ```
 apps/voice/            the webhook and the per-call runner (Fastify)
-apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, tasks, settings, audit (NestJS)
+apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, requests, team, settings, audit (NestJS)
 apps/web/              the staff dashboard (Next.js, Tailwind, TanStack Query), Playwright specs in e2e/
 packages/core/         clinic config, hours, slots, routing, identity, emergency and confirmation rules, the ports
 packages/agent/        CallState, the tools and their guards, the delegation loop, the Responses API planner

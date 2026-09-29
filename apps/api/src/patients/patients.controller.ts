@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { staffNames, type Database } from '@attendra/db';
+import { ClinicConfig, localDateOf } from '@attendra/core';
+import { type FrontDeskRepository, staffNames, type Database } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { type PatientCard, PatientInput, PatientList, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, DB, PATIENTS } from '../http/tokens';
+import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -22,7 +23,17 @@ export class PatientsController {
     @Inject(PATIENTS) private readonly records: PatientRecords,
     @Inject(DB) private readonly db: Database,
     @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
   ) {}
+
+  /** A date of birth cannot be after today where the clinic is, whatever the server's own date. */
+  private async checkDob(clinicId: string, dob: string) {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    if (dob > localDateOf(this.now(), ClinicConfig.parse(stored).timezone)) {
+      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'dob', message: 'a date of birth cannot be in the future' }] });
+    }
+  }
 
   /** A POST, not a GET: what is typed can be a name or a date of birth, and URLs end up in logs. */
   @Post('search')
@@ -34,7 +45,7 @@ export class PatientsController {
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientSearch)) body: z.infer<typeof PatientSearch>, @CurrentStaff() staff: Staff): Promise<PatientList> {
     const found = await this.records.search(clinicId, body.query, staff.userId, this.now());
     if (!found) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'query', message: 'type a name, a date of birth or a full phone number' }] });
-    return { patients: found.map(toCard) };
+    return { patients: found.patients.map(toCard), truncated: found.truncated };
   }
 
   @Get('recent')
@@ -80,6 +91,7 @@ export class PatientsController {
   @ApiOkResponse({ schema: schemaOf(PatientSaved) })
   @ApiConflictResponse({ description: 'Someone with this name and date of birth is already on file; `id` is theirs' })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
+    await this.checkDob(clinicId, body.dob);
     return this.answer(await this.records.create(clinicId, body, staff.userId));
   }
 
@@ -91,6 +103,7 @@ export class PatientsController {
   @ApiConflictResponse({ description: 'The change would make them the same as someone already on file' })
   async update(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
+    await this.checkDob(clinicId, body.dob);
     return this.answer(await this.records.update(clinicId, id, body, staff.userId));
   }
 
