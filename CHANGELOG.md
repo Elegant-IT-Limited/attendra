@@ -6,6 +6,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- Webhooks, under Settings > Integrations, for n8n, Zapier, Make or a clinic's own systems: `call.completed`, `call.summary.ready`, `appointment.booked`, `.rescheduled`, `.cancelled`, `request.created` and `request.done`, signed per the Standard Webhooks specification with a secret per endpoint that is shown once and can be rotated with a day's overlap. Payloads carry ids, times, types, outcomes and counts, and no patient data. See [docs/webhooks.md](docs/webhooks.md), with verification code in TypeScript and Python and an n8n recipe.
+- Deliveries are worker jobs, retried with backoff for about a day and logged with status codes and timings. The log has Redeliver, and Send test event tries an endpoint at once. An endpoint that fails three events in a row is turned off, and owners and managers are told on Today.
+- Only public HTTPS addresses are allowed, checked when an endpoint is saved and again after DNS at every delivery, with the connection pinned to the checked address. A new permission, `integrations:manage`, is for owners and managers.
 - The clinic's knowledge: a practice manager uploads documents (PDF, text or markdown, up to 5 MB) under Settings > Knowledge, and the assistant answers from them, and only from them. Search is hybrid (pgvector and full text, fused), keeps the best four passages, and says "I don't have that information, I can have someone call you back" when nothing answers. An Ask a question box shows the answer and the passages it came from. See [decision 8](docs/decisions/0008-clinic-knowledge.md).
 - A new `search_knowledge` tool, and `get_clinic_info` adds passages from the documents when the FAQ has no answer. A medical question (dosing, side effects, whether to take something) is refused in code before anything is searched, in English, Spanish and Bangla.
 - Documents are indexed by the worker, once per content: text extraction with unpdf, chunks of about 500 tokens by heading and paragraph, and embeddings with `ATTENDRA_EMBEDDING_MODEL` (`text-embedding-3-small` by default), or local ones with no key. Uploads and deletes are audited.
@@ -51,6 +54,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
 - Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
 - The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
 - Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
@@ -125,6 +129,7 @@ Security and CI fixes after the first release.
 
 ### Changed
 
+- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
 - Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
 - The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
 - Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.

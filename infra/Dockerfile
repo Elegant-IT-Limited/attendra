@@ -19,6 +19,7 @@ COPY packages/observability/package.json packages/observability/
 COPY packages/scheduling/package.json packages/scheduling/
 COPY packages/telephony/package.json packages/telephony/
 COPY packages/voice-engine/package.json packages/voice-engine/
+COPY packages/webhooks/package.json packages/webhooks/
 COPY evals/package.json evals/
 RUN pnpm install --frozen-lockfile
 COPY . .
