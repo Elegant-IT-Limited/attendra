@@ -6,6 +6,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- `apps/mcp`: an MCP server over stdio and Streamable HTTP, so other AI agents can work with the front desk: `find_open_slots`, `list_todays_schedule`, `list_open_requests`, `mark_request_done` and `get_quality_summary`. No tool books or cancels. See [docs/mcp.md](docs/mcp.md), with a Claude Desktop config.
+- Settings > API keys: per-clinic keys with scopes (`schedule:read`, `requests:read`, `requests:write`) and an expiry, shown once and stored only as a SHA-256 hash, revocable, and audited at every use as `mcp.<tool>`.
 - A Quality page for owners and managers: week by week, calls handled without staff, booking success, turns to a booking, why the assistant said no, transfers, calls flagged for review, after-hours calls and cost per call and per booking. Every number opens the calls behind it. See [docs/quality.md](docs/quality.md).
 - `pnpm eval --live --judge`: a judge model scores each live transcript on outcome, no medical advice, disclosure, read-back, politeness and brevity, and writes `evals/reports/<date>.md`. The scripted evals are unchanged.
 - `pnpm sim --scenarios 20`: a model plays the patient from personas in `evals/sim/personas.yaml`, against the real assistant as text, and the quality numbers are printed. The caller and the assistant are interfaces, ready for a voice simulation.
@@ -58,6 +60,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
+- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
 - A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
 - The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
 - Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
@@ -135,6 +139,8 @@ Security and CI fixes after the first release.
 
 ### Changed
 
+- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
+- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
 - A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
 - The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
 - Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
