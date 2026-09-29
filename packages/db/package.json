@@ -4,11 +4,15 @@
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
-  "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
     "migrate": "tsx scripts/migrate.ts",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "add-number": "tsx scripts/add-number.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",

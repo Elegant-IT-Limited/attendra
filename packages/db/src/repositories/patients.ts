@@ -8,7 +8,7 @@ import { auditLogs, patients } from '../schema';
 const lastName = (full: string) => normalizeName(full).split(' ').at(-1) ?? '';
 // keyed per clinic, so the same person at two clinics does not share a lookup value
 export const patientLookupKey = (clinicId: string, full: string, dob: string) => `${clinicId}|${lastName(full)}|${dob}`;
-const phoneKey = (clinicId: string, phone: string) => `${clinicId}|${phone.replace(/\D/g, '').slice(-10)}`;
+export const phoneKey = (clinicId: string, phone: string) => `${clinicId}|${phone.replace(/\D/g, '').slice(-10)}`;
 
 export class PostgresPatientDirectory implements PatientDirectory {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly actor = 'voice-agent') {}

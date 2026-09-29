@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "eval": "pnpm --filter @attendra/evals run eval",
     "db:migrate": "pnpm --filter @attendra/db run migrate",
-    "db:seed": "pnpm --filter @attendra/db run seed"
+    "db:seed": "pnpm --filter @attendra/db run seed",
+    "db:add-number": "pnpm --filter @attendra/db run add-number"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
