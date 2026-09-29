@@ -81,6 +81,11 @@ export class CallRunner {
     }
   }
 
+  /** Carries out what staff asked for on a live call (a note, a take-over, a goodbye) the same way as the agent's own outbound. */
+  act(outbound: Outbound[]): Promise<void> {
+    return this.dispatch(outbound);
+  }
+
   private async dispatch(outbound: Outbound[]) {
     for (const o of outbound) {
       if (o.type === 'transfer' || o.type === 'hangup') {
