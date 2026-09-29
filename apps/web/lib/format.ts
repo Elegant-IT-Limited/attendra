@@ -23,7 +23,7 @@ export const OUTCOMES: Record<string, { label: string; tone: 'ok' | 'warn' | 'da
   booked: { label: 'Booked', tone: 'ok' },
   rescheduled: { label: 'Rescheduled', tone: 'ok' },
   cancelled: { label: 'Cancelled', tone: 'accent' },
-  task_created: { label: 'Task for staff', tone: 'warn' },
+  task_created: { label: 'Request for staff', tone: 'warn' },
   transferred: { label: 'Transferred', tone: 'accent' },
   info: { label: 'Answered', tone: 'neutral' },
   emergency: { label: 'Emergency', tone: 'danger' },
