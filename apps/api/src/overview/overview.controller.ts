@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, isOpen, localDateOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, isOpen, localDateOf, zonedInstant } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
 import { Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -50,13 +50,22 @@ export class OverviewController {
     const clinic = ClinicConfig.parse(stored);
     const now = this.now();
     const midnight = zonedInstant(localDateOf(now, clinic.timezone), '00:00', clinic.timezone);
-    const since = new Date(Math.min(midnight.getTime(), now.getTime() - q.days * 86_400_000));
+    // far enough back for both the rolling period and the first day the trend lines show
+    const firstDay = zonedInstant(addDays(localDateOf(now, clinic.timezone), 1 - q.days), '00:00', clinic.timezone);
+    const since = new Date(Math.min(midnight.getTime(), firstDay.getTime(), now.getTime() - q.days * 86_400_000));
     const activity = await this.desk.activity(clinicId, since);
+    const today = localDateOf(now, clinic.timezone);
+    const daily = Array.from({ length: q.days }, (_, i) => addDays(today, i - q.days + 1)).map((date) => {
+      const onDay = (d: Date) => localDateOf(d, clinic.timezone) === date;
+      const calls = activity.calls.filter((c) => onDay(c.startedAt));
+      return { date, calls: calls.length, booked: calls.filter((c) => c.outcome === 'booked').length, requests: activity.requests.filter(onDay).length };
+    });
     return {
       days: q.days,
       costPerMinute: COST_PER_MINUTE,
       today: summarize(activity, clinic, midnight),
       period: summarize(activity, clinic, new Date(now.getTime() - q.days * 86_400_000)),
+      daily,
     };
   }
 }

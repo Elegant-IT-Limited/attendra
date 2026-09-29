@@ -39,6 +39,10 @@ describe('the overview', () => {
     expect(res.today).toEqual({ callsAnswered: 2, booked: 1, rescheduled: 0, cancelled: 1, requestsTaken: 0, handedToStaff: 0, afterHours: 1, talkMinutes: 3, estimatedCost: 0.15 });
     expect(res.period).toEqual({ callsAnswered: 5, booked: 1, rescheduled: 1, cancelled: 1, requestsTaken: 1, handedToStaff: 1, afterHours: 3, talkMinutes: 5.8, estimatedCost: 0.29 });
     expect(res).toMatchObject({ days: 7, costPerMinute: 0.05 });
+    // one entry per clinic day, oldest first, ending today; the browser test is not counted
+    expect(res.daily.map((d: { date: string }) => d.date)).toEqual(['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29']);
+    expect(res.daily.at(-1)).toEqual({ date: '2026-09-29', calls: 2, booked: 1, requests: 0 });
+    expect(res.daily.find((d: { date: string }) => d.date === '2026-09-28')).toEqual({ date: '2026-09-28', calls: 1, booked: 0, requests: 1 });
   });
 
   it('carries no patient data, so a viewer sees it and nothing is audited', async () => {
