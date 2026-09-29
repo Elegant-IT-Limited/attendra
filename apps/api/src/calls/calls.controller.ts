@@ -29,7 +29,7 @@ export class CallsController {
   @ApiOkResponse({ schema: schemaOf(CallList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(CallQuery)) q: z.infer<typeof CallQuery>, @CurrentStaff() staff: Staff): Promise<CallList> {
     const calls = await this.desk.listCalls(clinicId, {
-      before: q.before, limit: q.limit, outcome: q.outcome, channel: q.channel, emergency: q.emergency, needsReview: q.review === 'needed' || undefined,
+      before: q.before, limit: q.limit, outcome: q.outcome, channel: q.channel, emergency: q.emergency, needsReview: q.review === 'needed' || undefined, refusal: q.refusal,
       ...(await this.range(clinicId, q)), names: this.names(staff, 'list'),
     });
     return this.page(calls, q.limit);

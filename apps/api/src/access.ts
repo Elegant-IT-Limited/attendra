@@ -26,6 +26,8 @@ export const PERMISSIONS = {
   'settings:read': ['owner', 'admin', 'staff', 'viewer'],
   'settings:write': ['owner', 'admin'],
   'audit:read': ['owner', 'admin'],
+  // how the assistant is doing: containment, bookings, refusals, cost
+  'quality:read': ['owner', 'admin'],
   'members:manage': ['owner', 'admin'],
   // webhooks: where the clinic's events go, and their secrets
   'integrations:manage': ['owner', 'admin'],
