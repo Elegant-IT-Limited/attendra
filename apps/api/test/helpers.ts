@@ -27,14 +27,16 @@ export function totp(uri: string, at = Date.now()) {
   return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null }) {
+/** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[] }) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
-  const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
+  const log = createLogger({ name: 'test', level: opts.logs ? 'debug' : 'info', destination: new Writable({ write: (c, _e, done) => { opts.logs?.push(String(c)); done(); } }) });
   const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log });
   const users = {
+    owner: await addMember(auth, t.db, { email: 'omar@maple.example', name: 'Omar Owner', password: PASSWORD, orgId: 'org_demo', role: 'owner' }),
     admin: await addMember(auth, t.db, { email: 'olga@maple.example', name: 'Olga Admin', password: PASSWORD, orgId: 'org_demo', role: 'admin' }),
     staff: await addMember(auth, t.db, { email: 'ana@maple.example', name: 'Ana Front', password: PASSWORD, orgId: 'org_demo', role: 'staff' }),
     viewer: await addMember(auth, t.db, { email: 'vic@maple.example', name: 'Vic Viewer', password: PASSWORD, orgId: 'org_demo', role: 'viewer' }),
@@ -49,10 +51,10 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     type: 'refill', callId, patientId: patientIds.maria!, idempotencyKey: 'api-refill', details: { medication: 'lisinopril', pharmacy: 'Main St', callback_number: '+13035550147' },
   });
 
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode }, voice: opts.voice });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode }, voice: opts.voice, now: opts.now });
   const http = app.getHttpAdapter().getInstance();
 
-  type Method = 'GET' | 'POST' | 'PUT';
+  type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null } = {}) => {
     const headers: Record<string, string> = {};
     if (o.cookie) headers.cookie = o.cookie;
@@ -79,5 +81,5 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     return cookie;
   }
 
-  return { t, app, request, signIn, users, callId, taskId, close: async () => { await app.close(); await t.close(); } };
+  return { t, app, request, signIn, users, patientIds, callId, taskId, close: async () => { await app.close(); await t.close(); } };
 }

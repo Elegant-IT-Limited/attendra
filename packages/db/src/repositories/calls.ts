@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
@@ -34,8 +34,17 @@ export class CallRepository {
     }));
   }
 
-  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; idempotencyKey: string | null; taskRevision: number }) {
-    await withClinic(this.db, clinicId, (tx) => tx.insert(callActions).values({ clinicId, callId, ...a }));
+  /**
+   * One tool action. `patientId` is the caller the agent has verified by name and
+   * date of birth, when it has; it links the call to that patient in the same
+   * transaction, so a patient's calls can be listed. A link is never replaced.
+   */
+  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; idempotencyKey: string | null; taskRevision: number; patientId?: string | null }) {
+    const { patientId, ...action } = a;
+    await withClinic(this.db, clinicId, async (tx) => {
+      await tx.insert(callActions).values({ clinicId, callId, ...action });
+      if (patientId) await tx.update(calls).set({ patientId }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId), isNull(calls.patientId)));
+    });
   }
 
   async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean }) {

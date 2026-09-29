@@ -1,9 +1,9 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { createPhiCipher, FrontDeskRepository, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { recordDemoCalls } from '../src/demo';
+import { recordDemoCalls, shiftByWeeks } from '../src/demo';
 import { loadScenarios } from '../src/scenario';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -40,9 +40,27 @@ describe('demo calls', () => {
     expect(hedge!.transcript.map((s) => s.text).join(' ')).toContain('for an annual physical');
   });
 
+  it('links each call to the patient the agent verified, and leaves the rest unlinked', async () => {
+    const patientOf = async (id: string) => ((await t.db.execute(sql`select patient_id from calls where id = ${results.find((r) => r.id === id)!.callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+    const { patientIds } = await seedDemo(t.db, cipher);
+    expect(await patientOf('booking-happy-path')).toBe(patientIds.maria);
+    expect(await patientOf('no-identity-no-records')).toBeNull();
+    expect(await patientOf('shared-name-and-dob')).toBeNull(); // two records match: nobody is verified
+  });
+
   it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
+  });
+
+  it('moves a booking by whole weeks of local time, keeping 8:00 at 8:00 across the 2026-11-01 clock change', () => {
+    const tz = DEMO_CLINIC.timezone;
+    const tuesday = zonedInstant('2026-10-27', '08:00', tz); // daylight time, 14:00 UTC
+    expect(tuesday.toISOString()).toBe('2026-10-27T14:00:00.000Z');
+    const moved = shiftByWeeks(tuesday, 1, tz);
+    expect(moved.toISOString()).toBe('2026-11-03T15:00:00.000Z'); // standard time: an hour later in UTC
+    expect(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }).format(moved)).toBe('Tuesday 8:00 AM');
+    expect(shiftByWeeks(tuesday, 0, tz)).toEqual(tuesday);
   });
 
   it('refuses to run on a database that already has real calls', async () => {

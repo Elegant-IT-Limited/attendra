@@ -22,3 +22,5 @@ What we gave up, for now:
 
 - Single sign-on (Google Workspace, Microsoft Entra). Better Auth supports it, and it is the first thing larger practices will ask for.
 - A person who has not enrolled in two-factor yet signs in with the password alone and is taken straight to enrolment; until they finish, anyone with that password could enrol their own authenticator. Add people the day they start, and have them enrol at once. A one-time enrolment link from `add-member` closes this in a later version.
+
+**Update, v0.3 (2026-09-29).** Owners and managers now manage people from the dashboard's Team page. It is served by our own API under `StaffGuard` (`/api/v1/clinics/:clinicId/members`, permission `members:manage`), so two-factor and the role table apply to it like every other route, and it adds people through the same code as `pnpm add-member`. Better Auth's organization and member routes stay closed; no auth route was added. A new person gets a temporary password shown once to the manager; the one-time enrolment link above is still the better answer and is still to come.

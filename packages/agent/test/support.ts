@@ -4,7 +4,7 @@ import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { Writable } from 'node:stream';
-import { CallAgent, CallState, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep } from '../src';
+import { type ActionRecorder, CallAgent, CallState, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep } from '../src';
 
 // Monday 28 September 2026, 8 pm in Denver: after hours, the case the product is for.
 export const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
@@ -36,11 +36,15 @@ export async function world() {
   const calls = new CallRepository(t.db, cipher);
   let n = 0;
 
-  async function call(callerNumber: string | null = '+13035550147') {
+  /** With `record`, tool actions are written to the call record the way the voice service writes them. */
+  async function call(callerNumber: string | null = '+13035550147', opts: { record?: boolean } = {}) {
     const callId = await calls.open(DEMO_CLINIC.id, `live_test_${++n}`, callerNumber);
     const state = new CallState();
     const plans = new PlanQueue();
-    const agent = new CallAgent(state, { clinic: DEMO_CLINIC, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger);
+    const actions: ActionRecorder | undefined = opts.record
+      ? { record: (a) => calls.recordAction(DEMO_CLINIC.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
+      : undefined;
+    const agent = new CallAgent(state, { clinic: DEMO_CLINIC, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
     let clock = 0;
     let delegations = 0;
     return {
