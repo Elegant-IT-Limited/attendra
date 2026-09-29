@@ -2,6 +2,7 @@ id: shared-name-and-dob
 title: Two patients with the same name and date of birth go to staff, not a guess
 turns:
   - caller: Sam Rivera, July 15 1990.
+    reply: "Thanks, Sam. I want to be sure I have the right record, so I'll ask the front desk to call you back and finish this with you."
     delegate: [{ verify_caller: { full_name: Sam Rivera, date_of_birth: July 15 1990 } }]
 expect:
   outcome: abandoned

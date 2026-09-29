@@ -2,12 +2,16 @@ id: wrong-dob-three-times
 title: Three wrong dates of birth end identity attempts without revealing the record exists
 turns:
   - caller: Maria Delgado, January 1st 1990.
+    reply: "I'm sorry, I couldn't match those details. Could you say your date of birth again?"
     delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: January 1st 1990 } }]
   - caller: Sorry, February 2nd 1990.
+    reply: "I still couldn't find a match. Could you check the date once more?"
     delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: February 2nd 1990 } }]
   - caller: Then it's March 3rd 1990.
+    reply: "I'm not able to confirm your identity on this call. I can ask the front desk to call you back and sort it out."
     delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: March 3rd 1990 } }]
   - caller: Let me try once more, April 4 1990.
+    reply: "I'm sorry, I can't try again on this call. Would you like a callback from the front desk?"
     delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: April 4 1990 } }]
 expect:
   outcome: abandoned
