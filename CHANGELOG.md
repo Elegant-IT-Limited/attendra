@@ -17,6 +17,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - `/api/v1/me` says whether the deployment has test calls (`testCalls`).
 - The dashboard allows its own pages to use the microphone (`Permissions-Policy: microphone=(self)`); camera and location stay off.
 
+### Fixed
+
+Found on the first live test call:
+
+- A clear "yeah" to a read-back was refused when the assistant began speaking before the proposal was back and read it out in the same breath. Any assistant speech after the proposal now counts as the read-back.
+- A cough or breath the transcriber marks in brackets ("[clear throat]") after the caller's yes made the yes not count. Bracketed sounds are now ignored.
+- The assistant could not answer "are you open tomorrow?": clinic info now carries the next seven days of hours.
+- The planner did not know today's date, so "next week" became today. Its prompt now states the date, and `find_slots` says how to set `from_date`.
+
 ## [0.2.0] - 2026-09-29
 
 The front desk: a staff dashboard, its API, and demo mode.

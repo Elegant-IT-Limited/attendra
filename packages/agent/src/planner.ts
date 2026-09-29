@@ -21,8 +21,8 @@ export interface PlannerOutput { say: string | null; quiet?: string }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
   verify_caller: 'Verify the caller by full name and date of birth before anything about their own record.',
-  get_clinic_info: 'Hours, address, parking, insurance and preparation questions, from the clinic FAQ.',
-  find_slots: 'Find up to 3 open appointment slots. Returns slot ids to offer.',
+  get_clinic_info: 'Hours for today and the next 7 days, address, parking, insurance and preparation questions, from the clinic FAQ.',
+  find_slots: 'Find up to 3 open appointment slots. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
   list_appointments: 'List the verified caller\'s upcoming appointments.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',

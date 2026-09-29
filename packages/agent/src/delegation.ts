@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { detectEmergencies, EMERGENCY_INSTRUCTION, resolveTransfer, SELF_HARM_INSTRUCTION, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { detectEmergencies, EMERGENCY_INSTRUCTION, resolveTransfer, SELF_HARM_INSTRUCTION, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import type { Planner } from './planner';
@@ -101,7 +101,7 @@ export class CallAgent {
     };
 
     try {
-      const plan = await this.planner.plan({ clinic: this.ctx.clinic, state: this.state, nowLine: todaysHoursLine(this.ctx.clinic, this.ctx.now()) }, execute);
+      const plan = await this.planner.plan({ clinic: this.ctx.clinic, state: this.state, nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}` }, execute);
       if (revision !== this.state.revision) {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];
