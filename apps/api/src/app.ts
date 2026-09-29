@@ -21,6 +21,7 @@ import { PatientsController } from './patients/patients.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
+import { TeamController } from './team/team.controller';
 import pkg from '../package.json' with { type: 'json' };
 
 const { version } = pkg;
@@ -44,7 +45,8 @@ export interface ApiDeps {
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
 // (organization and member admin, account changes) stays closed: those routes sit
 // outside StaffGuard, so they would skip the two-factor rule. Members are managed
-// with `pnpm add-member` in v0.2.
+// through /api/v1/clinics/:clinicId/members, which is behind the guard, and with
+// `pnpm add-member`.
 const AUTH_ROUTES = new Set([
   'POST /sign-in/email', 'POST /sign-out', 'GET /get-session',
   'POST /two-factor/enable', 'POST /two-factor/verify-totp', 'POST /two-factor/verify-backup-code',
@@ -55,7 +57,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: AUTH, useValue: deps.auth },
