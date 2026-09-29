@@ -179,6 +179,29 @@ export class FrontDeskRepository {
     });
   }
 
+  /**
+   * What the assistant did since `from`, for the home screen: the phone calls it
+   * answered (browser tests are staff trying it out, so they are left out) and the
+   * requests it took. Times, outcomes and durations only; no patient data.
+   */
+  async activity(clinicId: string, from: Date) {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select({ startedAt: calls.startedAt, outcome: calls.outcome, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds })
+        .from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.channel, 'phone'), sql`${calls.startedAt} >= ${from}`));
+      const requests = await tx.select({ createdAt: tasks.createdAt }).from(tasks)
+        .innerJoin(calls, eq(calls.id, tasks.callId))
+        .where(and(eq(tasks.clinicId, clinicId), eq(calls.channel, 'phone'), sql`${tasks.createdAt} >= ${from}`));
+      return { calls: rows.map((r) => ({ ...r, voiceSeconds: r.voiceSeconds === null ? 0 : Number(r.voiceSeconds) })), requests: requests.map((r) => r.createdAt) };
+    });
+  }
+
+  /** Open requests nobody has claimed, oldest first: type and age only, so the home screen shows them without reading patient data. */
+  async waitingTasks(clinicId: string, limit = 20) {
+    return withClinic(this.db, clinicId, (tx) => tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
+      .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId)))
+      .orderBy(tasks.createdAt).limit(limit));
+  }
+
   /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */
   async busy(clinicId: string, q: { from: Date; to: Date; except?: string }) {
     return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt })

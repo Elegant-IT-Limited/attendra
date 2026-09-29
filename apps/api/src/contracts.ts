@@ -176,6 +176,23 @@ export const PatientProfile = PatientCard.extend({
   })),
 });
 
+export const OverviewQuery = z.object({ days: z.coerce.number().int().min(1).max(31).default(7) });
+const Activity = z.object({
+  callsAnswered: z.number(),
+  booked: z.number(),
+  rescheduled: z.number(),
+  cancelled: z.number(),
+  requestsTaken: z.number(),
+  handedToStaff: z.number(),
+  afterHours: z.number(),
+  talkMinutes: z.number(),
+  /** talkMinutes at the per-minute rate below, in US dollars. */
+  estimatedCost: z.number(),
+});
+/** Counts only, for the home screen. No patient data, so a viewer sees it too. */
+export const Overview = z.object({ days: z.number(), costPerMinute: z.number(), today: Activity, period: Activity });
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })) });
+
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
@@ -213,3 +230,5 @@ export type PatientList = z.infer<typeof PatientList>;
 export type PatientInput = z.infer<typeof PatientInput>;
 export type PatientSaved = z.infer<typeof PatientSaved>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
+export type Overview = z.infer<typeof Overview>;
+export type WaitingTasks = z.infer<typeof WaitingTasks>;

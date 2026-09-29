@@ -16,6 +16,7 @@ import { HealthController } from './health.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
+import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
@@ -54,7 +55,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: AUTH, useValue: deps.auth },

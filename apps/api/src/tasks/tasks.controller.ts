@@ -3,7 +3,7 @@ import type { FrontDeskRepository } from '@attendra/db';
 import { ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskCount, TaskList, TaskQuery } from '../contracts';
+import { TaskCount, TaskList, TaskQuery, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -35,6 +35,14 @@ export class TasksController {
   @ApiOkResponse({ schema: schemaOf(TaskCount) })
   async count(@Param('clinicId') clinicId: string): Promise<TaskCount> {
     return { open: await this.desk.openTaskCount(clinicId) };
+  }
+
+  @Get('waiting')
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'Open tasks nobody has claimed, oldest first: type and age only, for the home screen. No patient data, not audited.' })
+  @ApiOkResponse({ schema: schemaOf(WaitingTasks) })
+  async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {
+    return { tasks: (await this.desk.waitingTasks(clinicId)).map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })) };
   }
 
   @Post(':taskId/claim')
