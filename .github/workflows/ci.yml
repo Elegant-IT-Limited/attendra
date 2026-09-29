@@ -43,5 +43,6 @@ jobs:
         with: { fetch-depth: 0 }
       - name: every commit is signed off (DCO)
         run: |
-          missing=$(git log --format='%H %(trailers:key=Signed-off-by,valueonly)' origin/${{ github.base_ref }}..HEAD | awk 'NF==1 {print $1}')
+          # the pull request's own commits: HEAD here is GitHub's merge commit, which is never signed
+          missing=$(git log --no-merges --format='%H %(trailers:key=Signed-off-by,valueonly,separator=%x2C)' origin/${{ github.base_ref }}..${{ github.event.pull_request.head.sha }} | awk 'NF==1 {print $1}')
           if [ -n "$missing" ]; then echo "commits without Signed-off-by:"; echo "$missing"; exit 1; fi
