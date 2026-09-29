@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, isOpen, localParts, todaysHoursLine, zonedInstant } from '../src';
+import { DEMO_CLINIC, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 describe('clinic-local time', () => {
   it('turns a Denver wall-clock time into the right UTC instant, on both sides of DST', () => {
@@ -29,5 +29,18 @@ describe('opening hours', () => {
   it('describes a split day in one line', () => {
     expect(todaysHoursLine(DEMO_CLINIC, zonedInstant('2026-09-29', '07:00', 'America/Denver')))
       .toBe('Today the clinic is open 08:00 to 12:00 and 13:00 to 17:00.');
+  });
+});
+
+describe('the date and the week, for the planner', () => {
+  const at = zonedInstant('2026-09-29', '10:14', 'America/Denver');
+  it('says what day it is in the clinic', () => {
+    expect(todayLine(DEMO_CLINIC, at)).toBe('Today is Tuesday, 2026-09-29, 10:14 clinic time.');
+  });
+  it('lists seven days from today, weekends closed', () => {
+    const week = weekHours(DEMO_CLINIC, at).split('; ');
+    expect(week).toHaveLength(7);
+    expect(week[0]).toMatch(/^Tuesday 2026-09-29: \d/);
+    expect(week[4]).toBe('Saturday 2026-10-03: closed');
   });
 });

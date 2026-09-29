@@ -155,6 +155,38 @@ describe('review fixes', () => {
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
   });
 
+  it('counts a read-back spoken in the same breath as "let me book that", as on the first live test call', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, new patient visit, afternoon');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_new', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+    ]);
+    c.assistant('I have 1, 2 or 3 PM. Which time would you like?');
+    c.caller('3');
+    c.assistant('Sure, I will go ahead and book that.'); // already speaking while the proposal runs
+    await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) }]);
+    c.assistant('Tuesday at 3 PM with Dr. Okafor for a new patient visit. Would you like me to book it?'); // same turn
+    c.caller('Yeah');
+    c.assistant('Alright, booking that now.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('ignores a cough or a breath after the yes', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.caller('Yes. I said yes');
+    c.assistant('Thanks, I will book it.');
+    c.caller('[clear throat');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
   it('refuses to move an appointment the caller does not have', async () => {
     const c = await w.call();
     await c.delegate([
