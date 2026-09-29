@@ -22,11 +22,24 @@ const ACTIONS: Record<string, string> = {
   'task.created.callback': 'Took a callback request',
   'patient.identified': 'Verified a caller',
   'clinic.settings.updated': 'Changed clinic settings',
+  'appointment.booked': 'Booked an appointment',
+  'appointment.cancelled': 'Cancelled an appointment',
+  'task.released': 'Released a task',
+  'task.released.override': 'Released someone else\'s task',
+  'task.created.voicemail': 'Took a voicemail',
 };
+
+// actions that carry a detail after the last dot: sms.sent.<template>, call.transferred.<target>
+function describe(action: string) {
+  if (ACTIONS[action]) return ACTIONS[action];
+  if (action.startsWith('sms.sent.')) return 'Sent a text confirmation';
+  if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replace('_', ' ')})`;
+  return action;
+}
 
 function actor(a: string, meId?: string) {
   if (a === 'voice-agent') return <Badge tone="accent">Assistant</Badge>;
-  if (a.startsWith('user:')) return <span>{a.slice(5) === meId ? 'You' : 'Staff member'} <span className="font-mono text-xs text-muted-foreground">{a.slice(5, 13)}</span></span>;
+  if (a.startsWith('user:')) return a.slice(5) === meId ? <span>You</span> : <span>Staff member <span className="font-mono text-xs text-muted-foreground">{a.slice(5, 13)}</span></span>;
   return <span className="text-muted-foreground">{a}</span>;
 }
 
@@ -56,7 +69,7 @@ export default function Audit() {
                     <TRow key={e.id}>
                       <TD className="whitespace-nowrap">{clinicTime(e.at, tz)}</TD>
                       <TD>{actor(e.actor, me?.user.id)}</TD>
-                      <TD>{ACTIONS[e.action] ?? e.action}</TD>
+                      <TD>{describe(e.action)}</TD>
                       <TD className="hidden text-muted-foreground md:table-cell">
                         {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">call</Link> : e.entity}
                         {e.entityId && <span className="ml-2 font-mono text-xs">{e.entityId.slice(0, 8)}</span>}

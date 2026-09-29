@@ -84,9 +84,9 @@ export default function Settings() {
               {windows(d).length === 0 && <span className="text-sm text-muted-foreground">Closed</span>}
               {windows(d).map((w, i) => (
                 <span key={i} className="flex items-center gap-1.5">
-                  <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-28" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
+                  <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-36" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
                   <span className="text-muted-foreground">to</span>
-                  <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-28" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
+                  <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-36" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
                   <Button type="button" size="sm" variant="ghost" aria-label="Remove hours" onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
                 </span>
               ))}
