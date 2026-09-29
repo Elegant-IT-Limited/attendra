@@ -109,6 +109,8 @@ export async function runTool(
       const hours = todaysHoursLine(clinic, ctx.now());
       const answer = answerFromFaqs(clinic.faqs, question);
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      // a question answered from the clinic's own words is a call the assistant handled
+      if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
       return {
         ok: true,
         data: {
@@ -123,6 +125,7 @@ export async function runTool(
       if (isMedicalQuestion(question)) return MEDICAL();
       const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
       if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      if (state.outcome === 'abandoned') state.outcome = 'info';
       return {
         ok: true,
         data: {
