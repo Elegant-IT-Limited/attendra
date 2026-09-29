@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { memberships } from '../auth-schema';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, calls, callSegments, clinics, patients, tasks } from '../schema';
+import { appointments, auditLogs, callActions, calls, callSegments, clinics, patients, tasks } from '../schema';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
 
@@ -69,6 +69,11 @@ export class FrontDeskRepository {
       const segments = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
       const actions = await tx.select().from(callActions).where(eq(callActions.callId, callId)).orderBy(callActions.id);
       const callTasks = await tx.select({ id: tasks.id, type: tasks.type, status: tasks.status }).from(tasks).where(eq(tasks.callId, callId));
+      // what the call booked or cancelled, so the call page can link to it on the schedule
+      const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
+        status: appointments.status, createdByCallId: appointments.createdByCallId }).from(appointments)
+        .where(and(eq(appointments.clinicId, clinicId), or(eq(appointments.createdByCallId, callId), eq(appointments.cancelledByCallId, callId))))
+        .orderBy(appointments.startsAt);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId });
       const ctx = phiContext(clinicId, 'call_segments.text');
       return {
@@ -77,6 +82,10 @@ export class FrontDeskRepository {
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx), startMs: s.startMs, endMs: s.endMs })),
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
         tasks: callTasks,
+        appointments: changed.map((a) => ({
+          id: a.id, startsAt: a.startsAt, providerId: a.providerId, visitTypeId: a.visitTypeId, status: a.status,
+          change: a.createdByCallId === callId ? 'booked' as const : 'cancelled' as const,
+        })),
       };
     });
   }
@@ -160,6 +169,13 @@ export class FrontDeskRepository {
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
       return exists ? 'taken' : 'not_found';
     });
+  }
+
+  /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */
+  async busy(clinicId: string, q: { from: Date; to: Date; except?: string }) {
+    return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt })
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
+        lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
   }
 
   async settings(clinicId: string): Promise<unknown | null> {

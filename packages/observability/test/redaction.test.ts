@@ -29,6 +29,10 @@ describe('the redacting logger', () => {
     expect(lines.join('')).not.toContain('555-0147');
   });
 
+  it('replaces the note staff type on an appointment', () => {
+    expect(redact({ appointment_id: 'appt_1', note: 'Wheelchair access needed.' })).toEqual({ appointment_id: 'appt_1', note: '[redacted]' });
+  });
+
   it('walks nested objects and arrays', () => {
     expect(redact({ turns: [{ speaker: 'caller', text: 'hi' }], meta: { phone: 'x', ms: 1200 } }))
       .toEqual({ turns: [{ speaker: 'caller', text: '[redacted]' }], meta: { phone: '[redacted]', ms: 1200 } });

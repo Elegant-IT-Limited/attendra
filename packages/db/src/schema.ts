@@ -53,8 +53,14 @@ export const appointments = pgTable('appointments', {
   status: text('status', { enum: ['booked', 'cancelled'] }).notNull().default('booked'),
   idempotencyKey: text('idempotency_key').notNull(),
   createdByCallId: uuid('created_by_call_id'),
+  createdByUserId: text('created_by_user_id'),
   cancelKey: text('cancel_key'),
   cancelledByCallId: uuid('cancelled_by_call_id'),
+  cancelledByUserId: text('cancelled_by_user_id'),
+  cancelReason: text('cancel_reason', { enum: ['patient_asked', 'clinic_asked', 'booked_in_error', 'other'] }),
+  noteEnc: text('note_enc'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const calls = pgTable('calls', {
