@@ -22,7 +22,11 @@ pnpm test                 # vitest: unit, Postgres (PGlite) integration, eval sc
 pnpm eval                 # scenario report; --live uses the real planner model
 pnpm lint && pnpm typecheck
 pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; synthetic data only
-docker compose -f infra/docker-compose.yml up
+pnpm demo                 # API on an in-memory Postgres with demo calls, plus the dashboard on :3000
+pnpm test:e2e             # Playwright against the demo (starts both servers)
+pnpm add-member --email <e> --name <n> --org <org> --role owner|admin|staff|viewer   # password in ATTENDRA_NEW_PASSWORD
+pnpm db:add-number --clinic <clinic id> --number <E.164>
+docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service
 ```
 
 Keep these working. If you add a command, add it here and in the README.
@@ -57,6 +61,7 @@ Keep these working. If you add a command, add it here and in the README.
 
 - Queries filter on `clinic_id` and run inside `withClinic`; RLS is the second wall. A new table needs a policy and a cross-tenant test.
 - Every PHI read and every write goes to `audit_logs`.
+- Dashboard routes declare their permission with `@Requires(...)` (table in `apps/api/src/access.ts`) and need a `:clinicId`. A new route needs a cross-clinic 404 test and a role test in `apps/api/test`.
 - Secrets come from the environment. Update `.env.example` when you add one.
 
 ## Conventions
