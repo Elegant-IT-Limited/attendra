@@ -75,6 +75,7 @@ const CallFilters = z.object({
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
   review: z.literal('needed').optional(),
+  refusal: z.string().regex(/^[a-z_]{2,40}$/).optional(),
 });
 /** The call list's filters, in clinic-time days (`to` is inclusive). */
 export const CallQuery = Page.extend(CallFilters.shape);
@@ -170,6 +171,22 @@ export const WebhookAttempt = z.object({
   statusCode: z.number().nullable(), durationMs: z.number(), error: z.string().nullable(), at: z.iso.datetime(),
 });
 export const WebhookAttempts = z.object({ attempts: z.array(WebhookAttempt) });
+
+/** One week of how the assistant did, counted in the database. Codes and counts only. */
+export const QualityWeek = z.object({
+  start: z.string(), end: z.string(), calls: z.number(),
+  /** Calls the assistant finished without staff: booked, moved, cancelled, or answered. */
+  contained: z.number(), containmentRate: z.number().nullable(),
+  bookingAttempts: z.number(), bookings: z.number(), bookingSuccess: z.number().nullable(),
+  avgTurnsToBooking: z.number().nullable(),
+  refusals: z.array(z.object({ code: z.string(), count: z.number() })),
+  transferred: z.number(), transferredShare: z.number().nullable(),
+  flagged: z.number(), flaggedShare: z.number().nullable(),
+  afterHours: z.number(),
+  voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
+});
+export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
+export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
@@ -351,6 +368,8 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type LiveCall = z.infer<typeof LiveCall>;
+export type Quality = z.infer<typeof Quality>;
+export type QualityWeek = z.infer<typeof QualityWeek>;
 export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
 export type KnowledgeDocuments = z.infer<typeof KnowledgeDocuments>;
 export type KnowledgeAnswer = z.infer<typeof KnowledgeAnswer>;
