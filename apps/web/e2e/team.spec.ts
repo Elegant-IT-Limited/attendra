@@ -35,7 +35,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.getByLabel('Password').fill(password);
   await riley.getByRole('button', { name: 'Sign in', exact: true }).click();
   // a temporary password is for one sign-in: Riley picks their own before anything else
-  await expect(riley).toHaveURL(/\/change-password$/);
+  await expect(riley).toHaveURL(/\/change-password$/, { timeout: 20_000 }); // next dev compiles the page on first use
   await riley.getByLabel('Temporary password').fill(password);
   await riley.getByLabel('New password', { exact: true }).fill('riley picks a long one');
   await riley.getByLabel('New password again').fill('riley picks a long one');
