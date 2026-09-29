@@ -80,7 +80,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('signing out clears the screen', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
-    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.getByRole('button', { name: /account and theme/ }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/sign-in$/);
     await page.goto('/');
     await expect(page).toHaveURL(/\/sign-in$/);

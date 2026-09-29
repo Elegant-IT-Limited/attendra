@@ -9,7 +9,7 @@ test('front desk claims a refill request, adds a note, and closes it with an out
 
   await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
   const card = page.getByTestId('task').first();
-  await expect(card.getByText(/Prescription refill, waiting/)).toBeVisible();
+  await expect(card.getByText(/Prescription refill, came in/)).toBeVisible();
   await card.getByRole('button', { name: 'Claim' }).click();
   await expect(card.getByText('You have it')).toBeVisible();
 
