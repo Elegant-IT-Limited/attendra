@@ -11,7 +11,7 @@
 import { createPhiCipher } from '@attendra/db';
 import { openTestDatabase } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
-import { createVoiceApp } from '@attendra/voice/runtime';
+import { createSimulatedVoiceApp, createVoiceApp } from '@attendra/voice/runtime';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
 import { startWorker, summariserFromEnv } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
@@ -59,23 +59,30 @@ if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo call
 const demoSignIn = { password: LOCAL_DEMO_PASSWORD, logins: DEMO_LOGINS.map(({ email, label }) => ({ email, label })) };
 let voice = null;
 let voiceNote = 'Test calls are off. Put OPENAI_API_KEY in .env to talk to the receptionist from the browser.';
-if (process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off') {
+// Simulated calls play a scripted conversation through the real agent, with no audio
+// and no model, so Live now has something to show. On unless ATTENDRA_SIMULATED_CALLS=off.
+const simulated = process.env.ATTENDRA_SIMULATED_CALLS !== 'off';
+const realCalls = !!process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off';
+if (realCalls || simulated) {
   const voicePort = Number(process.env.VOICE_PORT || 8080);
   const maxSeconds = Number(process.env.BROWSER_CALL_MAX_SECONDS || 300);
   const internalToken = randomBytes(32).toString('base64url');
-  const voiceApp = createVoiceApp({
-    db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }),
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    liveModel: process.env.GPT_LIVE_MODEL || 'gpt-live-1',
-    backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
-    internalToken,
-    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300,
-    jobs: bossQueue(boss),
-  });
+  const common = {
+    db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }), internalToken,
+    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300, jobs: bossQueue(boss),
+  };
+  const voiceApp = realCalls
+    ? createVoiceApp({
+      ...common, openaiApiKey: process.env.OPENAI_API_KEY!, simulatedCalls: simulated,
+      liveModel: process.env.GPT_LIVE_MODEL || 'gpt-live-1', backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
+    })
+    : createSimulatedVoiceApp(common);
   try {
     await voiceApp.listen({ port: voicePort, host: '127.0.0.1' });
-    voice = httpVoiceClient(`http://127.0.0.1:${voicePort}`, internalToken);
-    voiceNote = 'Test calls are on: open Test call in the dashboard and allow the microphone.';
+    voice = httpVoiceClient(`http://127.0.0.1:${voicePort}`, internalToken, 15_000, { browserCalls: realCalls, simulatedCalls: simulated });
+    voiceNote = realCalls
+      ? 'Test calls are on: open Test call in the dashboard and allow the microphone.'
+      : 'Test calls are off (no OPENAI_API_KEY). Simulated calls are on: Test call > Play a simulated call.';
   } catch (err) {
     voiceNote = `Test calls are off: port ${voicePort} is taken (${(err as { code?: string }).code ?? 'error'}). Set VOICE_PORT to another port.`;
   }

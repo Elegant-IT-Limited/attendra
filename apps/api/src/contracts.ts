@@ -18,6 +18,8 @@ export const Me = z.object({
   demoMode: z.boolean(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
+  /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
+  simulatedCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()) })),
 });
 
@@ -114,6 +116,21 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
 });
+
+/** The calls going on now. Codes only; the verified caller's short name only for roles that may read calls. */
+export const LiveCall = z.object({
+  callId: z.string(), channel: z.enum(['phone', 'web']), startedAt: z.iso.datetime(),
+  verified: z.boolean(),
+  /** "Maria D.", for roles that may read calls. */
+  caller: z.string().nullable(),
+  doing: z.string().nullable(), waitingForYes: z.boolean(), emergency: z.boolean(),
+});
+export const LiveCalls = z.object({ calls: z.array(LiveCall), counts: z.object({ live: z.number(), emergencies: z.number() }) });
+const actionKey = z.string().min(8).max(100);
+export const LiveCoach = z.object({ note: z.string().trim().min(1, 'write a note first').max(300, 'keep it to 300 characters'), key: actionKey });
+export const LiveTakeOver = z.object({ target: z.enum(['front_desk', 'me']), key: actionKey });
+export const LiveEnd = z.object({ key: actionKey });
+export const TransferNumber = z.object({ number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'a full number with the country code, like +13035550123').nullable() });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
@@ -294,6 +311,8 @@ export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
+export type LiveCall = z.infer<typeof LiveCall>;
+export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
 export type TestCall = z.infer<typeof TestCall>;
