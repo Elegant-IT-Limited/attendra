@@ -1,85 +1,193 @@
 @import 'tailwindcss';
 
-/* One palette, light and dark: calm neutrals, a teal accent, red kept for emergencies. */
+/*
+ * Attendra's design tokens. Components and pages use these names only, never raw
+ * colour values, so light and dark are two sets of values for one set of names.
+ * docs/design.md says when to use which.
+ */
+
+/* dark mode is chosen by the person (system, light or dark), applied as data-theme on <html> before first paint */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-sans: var(--font-inter), var(--font-bengali), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* one type scale: 12, 13, 14, 16, 20, 24, 30 */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 1.875rem;
+  --text-2xl--line-height: 2.25rem;
+
+  /* colour: semantic names only */
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-card: var(--card);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-overlay: var(--overlay);
   --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
   --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-accent: var(--accent);
+  --color-on-primary: var(--on-primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --color-warn-soft: var(--warn-soft);
-  --color-ok-soft: var(--ok-soft);
-  --radius-lg: 0.625rem;
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-focus: var(--focus);
+
+  /* shape: a 4 px grid (Tailwind's own spacing), three radii, two shadow levels */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-xs: 0 1px 2px 0 var(--shadow-colour);
+  --shadow-lg: 0 8px 24px -6px var(--shadow-colour-strong), 0 2px 6px -2px var(--shadow-colour);
+
+  /* motion: short and quiet, for panels, popovers, toasts and hover only */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: var(--ease-out);
 }
 
-:root {
+:root,
+[data-theme=light] {
+  color-scheme: light;
   --background: oklch(0.985 0.002 250);
-  --foreground: oklch(0.22 0.02 255);
-  --card: oklch(1 0 0);
-  --muted: oklch(0.96 0.005 250);
-  --muted-foreground: oklch(0.52 0.02 255);
-  --border: oklch(0.91 0.008 250);
-  --input: oklch(0.88 0.01 250);
-  --ring: oklch(0.6 0.1 190);
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.965 0.004 250);
+  --overlay: oklch(0.2 0.02 255 / 0.28);
+  --border: oklch(0.915 0.006 250);
+  --border-strong: oklch(0.85 0.01 250);
+  --text: oklch(0.22 0.02 255);
+  --text-muted: oklch(0.47 0.02 255);
   --primary: oklch(0.47 0.09 190);
-  --primary-foreground: oklch(0.99 0 0);
-  --accent: oklch(0.95 0.03 190);
-  --danger: oklch(0.55 0.2 27);
-  --danger-soft: oklch(0.95 0.04 27);
-  --warn-soft: oklch(0.96 0.06 85);
-  --ok-soft: oklch(0.95 0.05 160);
-  /* visit types on the schedule */
-  --visit-1: oklch(0.6 0.12 250);
+  --on-primary: oklch(0.99 0 0);
+  --primary-soft: oklch(0.955 0.03 190);
+  --success: oklch(0.48 0.11 155);
+  --success-soft: oklch(0.95 0.05 155);
+  --warning: oklch(0.5 0.11 65);
+  --warning-soft: oklch(0.96 0.06 85);
+  --danger: oklch(0.52 0.2 27);
+  --danger-soft: oklch(0.955 0.035 27);
+  --info: oklch(0.5 0.13 250);
+  --info-soft: oklch(0.955 0.03 250);
+  --focus: oklch(0.58 0.11 190);
+  --shadow-colour: oklch(0.2 0.02 255 / 0.06);
+  --shadow-colour-strong: oklch(0.2 0.02 255 / 0.14);
+  /* visit types on the schedule: categories, not states */
+  --visit-1: oklch(0.58 0.12 250);
   --visit-1-soft: oklch(0.95 0.03 250);
-  --visit-2: oklch(0.55 0.1 170);
+  --visit-2: oklch(0.53 0.1 170);
   --visit-2-soft: oklch(0.95 0.035 170);
-  --visit-3: oklch(0.6 0.14 310);
+  --visit-3: oklch(0.58 0.14 310);
   --visit-3-soft: oklch(0.95 0.035 310);
-  --visit-4: oklch(0.65 0.13 60);
+  --visit-4: oklch(0.62 0.13 60);
   --visit-4-soft: oklch(0.95 0.04 70);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.17 0.01 255);
-    --foreground: oklch(0.94 0.005 250);
-    --card: oklch(0.21 0.012 255);
-    --muted: oklch(0.25 0.012 255);
-    --muted-foreground: oklch(0.7 0.015 255);
-    --border: oklch(0.3 0.012 255);
-    --input: oklch(0.34 0.012 255);
-    --ring: oklch(0.7 0.1 190);
-    --primary: oklch(0.72 0.1 190);
-    --primary-foreground: oklch(0.18 0.02 220);
-    --accent: oklch(0.28 0.04 190);
-    --danger: oklch(0.68 0.18 27);
-    --danger-soft: oklch(0.3 0.07 27);
-    --warn-soft: oklch(0.32 0.06 85);
-    --ok-soft: oklch(0.3 0.05 160);
-    --visit-1: oklch(0.72 0.11 250);
-    --visit-1-soft: oklch(0.3 0.05 250);
-    --visit-2: oklch(0.72 0.1 170);
-    --visit-2-soft: oklch(0.3 0.05 170);
-    --visit-3: oklch(0.72 0.12 310);
-    --visit-3-soft: oklch(0.3 0.05 310);
-    --visit-4: oklch(0.75 0.12 70);
-    --visit-4-soft: oklch(0.32 0.05 70);
+[data-theme=dark] {
+  color-scheme: dark;
+  --background: oklch(0.16 0.01 255);
+  --surface: oklch(0.2 0.012 255);
+  --surface-raised: oklch(0.235 0.013 255);
+  --surface-sunken: oklch(0.245 0.012 255);
+  --overlay: oklch(0.05 0.01 255 / 0.6);
+  --border: oklch(0.3 0.012 255);
+  --border-strong: oklch(0.38 0.012 255);
+  --text: oklch(0.95 0.005 250);
+  --text-muted: oklch(0.73 0.015 255);
+  --primary: oklch(0.75 0.1 190);
+  --on-primary: oklch(0.17 0.02 220);
+  --primary-soft: oklch(0.29 0.045 190);
+  --success: oklch(0.77 0.12 155);
+  --success-soft: oklch(0.29 0.05 155);
+  --warning: oklch(0.82 0.12 80);
+  --warning-soft: oklch(0.31 0.06 80);
+  --danger: oklch(0.72 0.16 27);
+  --danger-soft: oklch(0.3 0.07 27);
+  --info: oklch(0.76 0.1 250);
+  --info-soft: oklch(0.29 0.05 250);
+  --focus: oklch(0.74 0.1 190);
+  --shadow-colour: oklch(0 0 0 / 0.3);
+  --shadow-colour-strong: oklch(0 0 0 / 0.5);
+  --visit-1: oklch(0.72 0.11 250);
+  --visit-1-soft: oklch(0.3 0.05 250);
+  --visit-2: oklch(0.72 0.1 170);
+  --visit-2-soft: oklch(0.3 0.05 170);
+  --visit-3: oklch(0.72 0.12 310);
+  --visit-3-soft: oklch(0.3 0.05 310);
+  --visit-4: oklch(0.75 0.12 70);
+  --visit-4-soft: oklch(0.32 0.05 70);
+}
+
+/* one focus ring, everywhere: a 2 px ring in the focus colour, offset from the element */
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--focus);
   }
+}
+
+/* the pulse on anything live: slow, small, and gone for people who ask for less motion */
+@keyframes attendra-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@utility animate-live {
+  animation: attendra-pulse 1.6s var(--ease-out) infinite;
+}
+
+/* panels and popovers slide or fade in over 180 ms */
+@keyframes attendra-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes attendra-rise-in { from { opacity: 0; transform: translateY(4px) scale(0.99); } to { opacity: 1; transform: none; } }
+@keyframes attendra-slide-in { from { transform: translateX(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@utility animate-fade-in { animation: attendra-fade-in 180ms var(--ease-out); }
+@utility animate-rise-in { animation: attendra-rise-in 180ms var(--ease-out); }
+@utility animate-slide-in { animation: attendra-slide-in 200ms var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  background: var(--background);
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
+  color: var(--text);
   font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+  /* every figure, time and count lines up */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--primary-soft);
 }
