@@ -15,6 +15,7 @@ Inbound calls over direct SIP, identity check, built-in scheduler, two-step writ
 ## v0.3: the working front desk (now)
 
 - Test calls from the browser over WebRTC (done).
+- The Schedule: day and week views, staff booking, moving and cancelling with the assistant's rules, and the call page linked to what it booked (done).
 - Live calls in the dashboard, and staff take-over.
 - `apps/worker`: post-call summaries, retention purge, SMS status; voicemail with transcription.
 - Member management in the dashboard.
