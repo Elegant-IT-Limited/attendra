@@ -4,7 +4,7 @@ import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { createHmac } from 'node:crypto';
 import { Writable } from 'node:stream';
-import { createApi } from '../src/app';
+import { type ApiDeps, createApi } from '../src/app';
 import { createAuth } from '../src/auth';
 import type { VoiceClient } from '../src/http/tokens';
 import { addMember } from '../src/members';
@@ -28,7 +28,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[] }) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[] } & Pick<ApiDeps, 'jobs' | 'knowledge'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -51,7 +51,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     type: 'refill', callId, patientId: patientIds.maria!, idempotencyKey: 'api-refill', details: { medication: 'lisinopril', pharmacy: 'Main St', callback_number: '+13035550147' },
   });
 
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode }, voice: opts.voice, now: opts.now });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

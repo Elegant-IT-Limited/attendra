@@ -132,6 +132,21 @@ export const LiveTakeOver = z.object({ target: z.enum(['front_desk', 'me']), key
 export const LiveEnd = z.object({ key: actionKey });
 export const TransferNumber = z.object({ number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'a full number with the country code, like +13035550123').nullable() });
 
+/** A document in the clinic's knowledge. Clinic information, never patient data. */
+export const KnowledgeDocument = z.object({
+  id: z.string(), title: z.string(), sourceType: z.enum(['text', 'markdown', 'pdf']), sizeBytes: z.number(),
+  status: z.enum(['queued', 'indexing', 'ready', 'failed']), failure: z.string().nullable(), chunkCount: z.number(),
+  uploadedBy: z.string().nullable(), updatedAt: z.iso.datetime(),
+});
+export const KnowledgeDocuments = z.object({ documents: z.array(KnowledgeDocument) });
+export const KnowledgeUpload = z.object({ title: z.string().trim().min(1, 'give the document a title').max(200), name: z.string().max(200).default('') });
+export const KnowledgeAsk = z.object({ question: z.string().trim().min(2, 'ask a question').max(300) });
+export const KnowledgeAnswer = z.object({
+  answer: z.string(),
+  citations: z.array(z.object({ documentId: z.string(), title: z.string(), text: z.string() })),
+  refusal: z.enum(['medical', 'no_information']).nullable(),
+});
+
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 
@@ -312,6 +327,9 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type LiveCall = z.infer<typeof LiveCall>;
+export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
+export type KnowledgeDocuments = z.infer<typeof KnowledgeDocuments>;
+export type KnowledgeAnswer = z.infer<typeof KnowledgeAnswer>;
 export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;

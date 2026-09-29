@@ -15,8 +15,10 @@
   "dependencies": {
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
+    "@attendra/worker": "workspace:*",
     "@fastify/rate-limit": "11.2.0",
     "@fastify/static": "10.1.5",
     "@nestjs/common": "12.1.1",
@@ -25,6 +27,7 @@
     "@nestjs/swagger": "12.0.2",
     "better-auth": "1.7.6",
     "fastify": "5.12.5",
+    "openai": "7.23.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.6.5"
@@ -32,7 +35,6 @@
   "devDependencies": {
     "@attendra/evals": "workspace:*",
     "@attendra/voice": "workspace:*",
-    "@attendra/worker": "workspace:*",
     "@electric-sql/pglite": "0.3.16",
     "drizzle-orm": "0.45.3"
   },
