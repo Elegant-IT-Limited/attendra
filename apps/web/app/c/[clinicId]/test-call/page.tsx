@@ -6,6 +6,7 @@ import { Bot, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SimulatedCall } from '@/components/calls/simulated-call';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -177,7 +178,7 @@ export default function TestCallPage() {
   }, [release]);
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
-  if (me && !me.testCalls) return <Empty title="Test calls are off">{FAILURES.voice_not_configured}</Empty>;
+  if (me && !me.testCalls) return <><Empty title="Test calls are off">{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
   const busy = phase === 'connecting' || phase === 'live' || phase === 'ending';
 
   return (
@@ -228,6 +229,7 @@ export default function TestCallPage() {
           </CardContent>
         </Card>
       </div>
+      {me?.simulatedCalls && <SimulatedCall clinicId={clinicId} />}
       <audio ref={audio} autoPlay className="hidden" />
     </>
   );

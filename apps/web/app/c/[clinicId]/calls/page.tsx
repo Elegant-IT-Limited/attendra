@@ -6,6 +6,7 @@ import { CheckCircle2, CircleDashed, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
@@ -78,6 +79,7 @@ export default function Calls() {
   return (
     <>
       <PageHeader title="Calls" description={<>Every call the assistant answered. Open one to read the transcript and see what it did. Times are {zoneLabel(tz)}.</>} />
+      <LiveNow clinicId={clinicId} canWatch={openable} />
       <Card className="mb-4 px-4 py-3">
         <div className="flex flex-wrap items-end gap-3">
           {can('calls:read') && (
