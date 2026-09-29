@@ -1,4 +1,4 @@
-# One image for the voice service, the dashboard API and the migrate/seed jobs. They
+# One image for the voice service, the dashboard API, the worker and the migrate/seed jobs. They
 # run TypeScript directly through tsx. The dashboard itself has its own image
 # (web.Dockerfile), a compiled Next.js build.
 FROM node:22-slim
@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/voice/package.json apps/voice/
+COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/
 COPY packages/agent/package.json packages/agent/
 COPY packages/core/package.json packages/core/

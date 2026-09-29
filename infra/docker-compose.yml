@@ -1,4 +1,4 @@
-# Local stack: Postgres, the migrations, the seed, the dashboard API and the dashboard.
+# Local stack: Postgres, the migrations, the seed, the dashboard API, the worker and the dashboard.
 #   cp .env.example .env   # set ATTENDRA_DATA_KEY and BETTER_AUTH_SECRET
 #   docker compose -f infra/docker-compose.yml up              # dashboard on http://localhost:3000
 #   docker compose -f infra/docker-compose.yml --profile voice up   # also the voice service (needs OPENAI_API_KEY)
@@ -47,6 +47,14 @@ services:
       DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
       TRUST_PROXY: "true"
     depends_on: { seed: { condition: service_completed_successfully } }
+
+  # background jobs: call summaries, the nightly retention purge. Without OPENAI_API_KEY
+  # it writes summaries from each call's facts, with no model.
+  worker:
+    <<: *node
+    command: ["pnpm", "--filter", "@attendra/worker", "start"]
+    depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
   web:
     build: { context: .., dockerfile: infra/web.Dockerfile, args: { API_URL: "http://api:8081" } }
