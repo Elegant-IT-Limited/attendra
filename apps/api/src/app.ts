@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
+import type { KnowledgeBase } from '@attendra/core';
 import { clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
+import { type JobQueue, noJobs } from '@attendra/worker/queue';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
 import { Module, type DynamicModule } from '@nestjs/common';
@@ -10,12 +13,13 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
-import { LiveController } from './calls/live.controller';
 import { CallsController } from './calls/calls.controller';
+import { LiveController } from './calls/live.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
+import { KnowledgeController } from './knowledge/knowledge.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, JOBS, KNOWLEDGE, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
@@ -35,6 +39,10 @@ export interface ApiDeps {
   options: ApiOptions;
   /** The voice service, for browser test calls. Without it the endpoint answers 503. */
   voice?: VoiceClient | null;
+  /** Where uploads are sent to be indexed. Without it a document stays queued. */
+  jobs?: JobQueue;
+  /** Search and answers over the clinic's documents, for the Ask a question box. */
+  knowledge?: { base: KnowledgeBase; answerer: Answerer };
   /** Requests per address per minute on /api/v1. Behind the web proxy, set trustProxy. */
   rateLimit?: number;
   /** Proxy hops in front of the API whose X-Forwarded-For is trusted (1 behind the dashboard). */
@@ -58,7 +66,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, OverviewController, CallsController, LiveController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, CallsController, LiveController, KnowledgeController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -66,6 +74,8 @@ class ApiModule {
         { provide: LOGGER, useValue: deps.log },
         { provide: API_OPTIONS, useValue: deps.options },
         { provide: VOICE, useValue: deps.voice ?? null },
+        { provide: JOBS, useValue: deps.jobs ?? noJobs },
+        { provide: KNOWLEDGE, useValue: deps.knowledge ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
@@ -89,6 +99,11 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   const app = await NestFactory.create<NestFastifyApplication>(ApiModule.with(deps), adapter, { logger: false });
   app.setGlobalPrefix('api/v1');
   const fastify = app.getHttpAdapter().getInstance();
+
+  // Documents for the clinic's knowledge arrive as raw bytes, up to 5 MB; everything else stays under the 512 KB limit.
+  fastify.removeContentTypeParser('text/plain');
+  fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer', bodyLimit: 5 * 1024 * 1024 + 1024 },
+    (_req, body, done) => done(null, body));
 
   // every route, Better Auth's included: sign-in is where guessing happens
   await fastify.register(rateLimit, { max: deps.rateLimit ?? 600, timeWindow: 60_000 });
