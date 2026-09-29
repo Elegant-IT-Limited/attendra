@@ -74,6 +74,8 @@ export const ClinicConfig = z.object({
   routing: z.array(RoutingRule).default([]),
   faqs: z.array(Faq).default([]),
   emergencyTransferEnabled: z.boolean().default(false),
+  // transcripts and call summaries older than this are deleted; about 7 years by default, as many US states keep records
+  retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
     .default({ enabled: false })
     .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice; several US states require all-party consent'),
