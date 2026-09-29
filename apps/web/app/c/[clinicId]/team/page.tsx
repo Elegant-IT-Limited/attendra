@@ -14,7 +14,6 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, zoneLabel } from '@/lib/format';
 
 const ROLES: { id: Member['role']; label: string; detail: string }[] = [
   { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
@@ -41,6 +40,14 @@ export default function Team() {
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
+  const [issued, setIssued] = useState<{ name: string; email: string; password: string } | null>(null);
+  const reset = useMutation({
+    mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
+    onMutate: () => setNotice(null),
+    onSuccess: (r, m) => setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }),
+    onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
+    onSettled: refresh,
+  });
   const remove = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'DELETE' }),
     onMutate: () => setNotice(null),
@@ -56,14 +63,14 @@ export default function Team() {
 
   return (
     <>
-      <PageHeader title="Team" description={<>Who can sign in to this clinic, and what each person can do. Times are {zoneLabel(clinic?.timezone ?? 'UTC')}.</>}
+      <PageHeader title="Team" description="Who can sign in to this clinic, and what each person can do."
         actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add a person</Button>} />
       {notice && <Alert tone={notice.tone} className="mb-4">{notice.text}</Alert>}
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
             <Table>
-              <THead><tr><TH>Name</TH><TH>Role</TH><TH className="hidden md:table-cell">Two-step sign-in</TH><TH className="hidden md:table-cell">Last signed in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
+              <THead><tr><TH>Name</TH><TH>Role</TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
               <tbody>
                 {members.data!.members.map((m) => {
                   const locked = m.you || (m.role === 'owner' && myRole !== 'owner');
@@ -84,11 +91,14 @@ export default function Team() {
                         )}
                       </TD>
                       <TD className="hidden md:table-cell">
-                        {m.twoFactorEnabled ? <span className="inline-flex items-center gap-1 text-sm"><ShieldCheck className="size-4 text-primary" /> On</span>
-                          : <span className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ShieldOff className="size-4" /> Not set up yet</span>}
+                        {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-muted-foreground"><KeyRound className="size-4" /> Has not chosen a password yet</span>
+                          : m.twoFactorEnabled ? <span className="inline-flex items-center gap-1 text-sm"><ShieldCheck className="size-4 text-primary" /> Two-step on</span>
+                            : <span className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ShieldOff className="size-4" /> Two-step not set up yet</span>}
                       </TD>
-                      <TD className="hidden whitespace-nowrap text-muted-foreground md:table-cell">{m.lastSignInAt ? clinicTime(m.lastSignInAt, clinic?.timezone ?? 'UTC') : 'Never'}</TD>
-                      <TD className="text-right">{!locked && <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>Remove</Button>}</TD>
+                      <TD className="whitespace-nowrap text-right">
+                        {!locked && <Button size="sm" variant="ghost" disabled={reset.isPending} onClick={() => reset.mutate(m)}>Reset password</Button>}
+                        {!locked && <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>Remove</Button>}
+                      </TD>
                     </TRow>
                   );
                 })}
@@ -99,6 +109,10 @@ export default function Team() {
       <p className="mt-3 text-xs text-muted-foreground">You cannot change your own role or remove yourself, and there is always at least one owner. Every change is in the audit log.</p>
 
       <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
+      <Panel open={!!issued} onOpenChange={(o) => !o && setIssued(null)} title={`New temporary password for ${issued?.name ?? ''}`}
+        description="They were signed out everywhere. The old password no longer works." footer={<Button onClick={() => setIssued(null)}>Done</Button>}>
+        {issued && <OneTimePassword email={issued.email} password={issued.password} />}
+      </Panel>
       <Panel open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title={`Remove ${removing?.name ?? ''}?`}
         description="They are signed out straight away and can no longer open this clinic. Their past actions stay in the audit log."
         footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep them</Button><Button variant="danger" disabled={remove.isPending} onClick={() => removing && remove.mutate(removing)}>{remove.isPending ? 'Removing…' : 'Remove'}</Button></>}>
@@ -111,12 +125,11 @@ export default function Team() {
 function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
   const [form, setForm] = useState({ name: '', email: '', role: 'staff' });
   const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
-  const [copied, setCopied] = useState(false);
   const add = useMutation({
     mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify(form) }),
     onSuccess: (r) => { setAdded({ ...r, name: form.name, email: form.email }); onAdded(); },
   });
-  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff' }); setCopied(false); add.reset(); } onOpenChange(o); };
+  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff' }); add.reset(); } onOpenChange(o); };
   const submit = (e: FormEvent) => { e.preventDefault(); add.mutate(); };
 
   return (
@@ -124,18 +137,7 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
       description={added ? undefined : 'They sign in with their email and a temporary password, then set up two-step sign-in.'}
       footer={added ? <Button onClick={() => close(false)}>Done</Button> : undefined}>
       {added ? (
-        added.temporaryPassword ? (
-          <div className="space-y-3 text-sm">
-            <Alert tone="warn" title="Shown once">Pass this on in person, not by email or chat. It will not be shown again.</Alert>
-            <p>Email: <span className="font-medium">{added.email}</span></p>
-            <div className="flex items-center gap-2">
-              <KeyRound className="size-4 text-muted-foreground" aria-hidden />
-              <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-base tracking-wide" data-testid="temporary-password">{added.temporaryPassword}</code>
-              <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard?.writeText(added.temporaryPassword!); setCopied(true); }}><Copy /> {copied ? 'Copied' : 'Copy'}</Button>
-            </div>
-            <p className="text-muted-foreground">At first sign-in they are asked to set up two-step sign-in with an authenticator app.</p>
-          </div>
-        ) : <p className="text-sm">They already have an Attendra account, so they sign in with the password they use now.</p>
+        <OneTimePassword email={added.email} password={added.temporaryPassword} />
       ) : (
         <form onSubmit={submit} className="space-y-4">
           {add.isError && <Alert tone="warn">{message(add.error)}</Alert>}
@@ -157,5 +159,22 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
         </form>
       )}
     </Panel>
+  );
+}
+
+/** A temporary password, shown once. It must be changed at first sign-in and stops working after 72 hours. */
+function OneTimePassword({ email, password }: { email: string; password: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-3 text-sm">
+      <Alert tone="warn" title="Shown once">Pass this on in person, not by email or chat. It works for 72 hours, and they choose their own password the first time they sign in.</Alert>
+      <p>Email: <span className="font-medium">{email}</span></p>
+      <div className="flex items-center gap-2">
+        <KeyRound className="size-4 text-muted-foreground" aria-hidden />
+        <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-base tracking-wide" data-testid="temporary-password">{password}</code>
+        <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard?.writeText(password); setCopied(true); }}><Copy /> {copied ? 'Copied' : 'Copy'}</Button>
+      </div>
+      <p className="text-muted-foreground">After their own password, they set up two-step sign-in with an authenticator app.</p>
+    </div>
   );
 }
