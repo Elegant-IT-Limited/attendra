@@ -19,6 +19,8 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | Planner | Decides which tools to call for one delegation and what the result sentence is. `ResponsesPlanner` in production; `ScriptedPlanner` in tests and scripted evals. |
 | `packages/core` | Pure rules with no I/O: clinic config, hours, slots, routing, identity parsing, confirmation, emergency phrases, and the ports the backend implements. |
 | `packages/db` | SQL migrations, RLS, PHI encryption, repositories implementing the ports. |
+| `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
+| `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
 
 ## A delegation, in detail
 
@@ -29,6 +31,14 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 
 The emergency guardrail is not a delegation. It runs on every `session.input_transcript.delta`, over a rolling window of the caller's recent words, and appends a fixed `session.instructions.append` with `delegation_id: null` the moment it matches.
 
+## The dashboard
+
+A request from the browser goes to the dashboard's own origin; Next forwards `/api` to `apps/api`. The session cookie is first-party and `SameSite=Lax`, and on top of that every write must carry the dashboard's own `Origin`.
+
+`StaffGuard` then checks, in order: the session is valid; the person has two-factor on (skipped only in demo mode); on a clinic route, the person belongs to the clinic's organization and their role has the route's permission (the table is in `apps/api/src/access.ts`). A clinic someone does not belong to answers 404, so ids cannot be probed. After the guard, everything runs as `attendra_app` inside `withClinic`, like the voice path.
+
+Reading a transcript or a task is a PHI access and writes an audit row in the same transaction as the read. The call list carries no patient data at all.
+
 ## Data
 
-Postgres 16 is the only store in v0.1. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, dates of birth, phone numbers, transcript text and task details are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).
+Postgres 16 is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, dates of birth, phone numbers, transcript text and task details are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).

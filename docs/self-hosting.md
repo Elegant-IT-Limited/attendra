@@ -20,11 +20,21 @@ Twilio's walkthrough of the same trunk setup: <https://www.twilio.com/en-us/blog
 ## 3. Run it
 
 ```bash
-cp .env.example .env     # fill in OpenAI, Twilio and ATTENDRA_DATA_KEY (openssl rand -base64 32)
-docker compose -f infra/docker-compose.yml up
+cp .env.example .env     # OpenAI, Twilio, ATTENDRA_DATA_KEY and BETTER_AUTH_SECRET (openssl rand -base64 32 for each), PUBLIC_URL
+docker compose -f infra/docker-compose.yml --profile voice up -d --build
 ```
 
-Compose starts Postgres, applies the migrations, loads the demo clinic ("Maple Street Family Medicine", `+13035550100`) and starts the voice service on port 8080. Expose it over HTTPS (a reverse proxy or a tunnel) at the URL you gave OpenAI.
+Compose starts Postgres, applies the migrations, loads the demo clinic ("Maple Street Family Medicine") and starts the dashboard API, the dashboard on port 3000 and the voice service on port 8080. Put both behind HTTPS on one address: `/webhooks/*` to the voice service, everything else to the dashboard. [live-call.md](live-call.md) has a Caddy example.
+
+Then add yourself and point your number at the clinic:
+
+```bash
+docker compose -f infra/docker-compose.yml exec -e ATTENDRA_NEW_PASSWORD='a long passphrase' api \
+  pnpm add-member --email you@clinic.example --name "Your Name" --org org_demo --role owner
+docker compose -f infra/docker-compose.yml exec api pnpm db:add-number --clinic clinic_demo_maple --number +1XXXXXXXXXX
+```
+
+At first sign-in the dashboard asks you to set up two-step sign-in with an authenticator app.
 
 Using your own Postgres instead of Compose? Run the migrations as the database owner, and let the service's login role switch into the application role the RLS policies are written for:
 
@@ -32,14 +42,12 @@ Using your own Postgres instead of Compose? Run the migrations as the database o
 grant attendra_app to <your_service_user>;
 ```
 
-To make your own number reach the demo clinic, add it to the clinic's `phoneNumbers` in `packages/core/src/demo.ts` and run `pnpm db:seed` again, or insert it into `phone_numbers`.
-
 ## 4. Check it
 
-- `GET /healthz` returns `{ "ok": true }`.
+- `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`.
 - A call to the number is answered with the demo greeting. The service logs `call accepted` with the session id; no caller details appear in the log.
-- After the call, the `calls` row has `close_reason`, `voice_seconds` and an `outcome`.
+- After the call, it is at the top of **Calls** in the dashboard with its transcript, outcome and length.
 
 ## Configuring your clinic
 
-A clinic is one validated JSON document (`ClinicConfig` in `packages/core/src/clinic.ts`): time zone, weekly hours, holidays, providers with their own hours and visit types, routing rules for transfers, the FAQ, the greeting, the voice, and whether emergency transfer is on. Invalid config is refused at load, with the field that failed.
+A clinic is one validated JSON document (`ClinicConfig` in `packages/core/src/clinic.ts`): time zone, weekly hours, holidays, providers with their own hours and visit types, routing rules for transfers, the FAQ, the greeting, the voice, and whether emergency transfer is on. Invalid config is refused at load, with the field that failed. A practice manager edits all of it under **Settings** in the dashboard, where the same validation runs before anything is saved; phone numbers stay with the operator (`pnpm db:add-number`).

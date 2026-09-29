@@ -2,16 +2,17 @@
 
 Plans change with what pilots teach us; this is the current order.
 
-## v0.1 (now)
+## v0.1
 
 Inbound calls over direct SIP, identity check, built-in scheduler, two-step writes, emergency guardrail, refill and callback tasks, SMS confirmations, RLS and encrypted PHI, the redacting logger, 15 call scenarios in CI.
 
-## v0.2: the front desk
+## v0.2: the front desk (now)
 
-- `apps/api` (NestJS): auth with organisations and roles, TOTP 2FA for staff, clinic configuration, call and task APIs.
-- `apps/web` (Next.js): live and past calls with transcript and outcome, the task queue, clinic settings, take-over of a live call.
-- `apps/worker` (BullMQ on Redis): post-call summaries, retention purge, SMS status.
-- Voicemail with transcription; warm transfer.
+- `apps/api` (NestJS): sign-in with Better Auth, organizations and four roles, TOTP two-factor required, the call, task, settings and audit APIs, OpenAPI.
+- `apps/web` (Next.js): past calls with transcript and every tool step, the task queue with claim and done, clinic settings with the same validation the voice service uses, the audit log.
+- Demo mode: `pnpm demo` runs everything in one process with a week of calls played through the real agent.
+
+Moved to v0.3: live calls and take-over in the dashboard, `apps/worker` (post-call summaries, retention purge, SMS status), voicemail with transcription, warm transfer, member management in the dashboard, single sign-on.
 
 ## v0.3: reach
 
