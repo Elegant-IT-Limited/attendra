@@ -52,7 +52,7 @@ export class TwilioMessenger implements Messenger {
     try {
       const { sid } = await this.sender.send({ from: this.fromNumberFor(clinicId), to: input.to, body: renderSms(input.template, input.vars, input.language) });
       await withClinic(this.db, clinicId, async (tx) => {
-        await tx.update(smsMessages).set({ status: 'sent' }).where(where);
+        await tx.update(smsMessages).set({ status: 'sent', providerSid: sid }).where(where);
         await tx.insert(auditLogs).values({ clinicId, actor: 'voice-agent', action: `sms.sent.${input.template}`, entity: 'sms', entityId: sid });
       });
     } catch (err) {
