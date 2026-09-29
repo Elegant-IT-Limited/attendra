@@ -2,6 +2,7 @@
 // Injection tokens. Every constructor names its token, so nothing depends on
 // emitted type metadata (tsx and Vitest do not emit it).
 export const DB = Symbol('db');
+export const CIPHER = Symbol('cipher');
 export const AUTH = Symbol('auth');
 export const FRONT_DESK = Symbol('front-desk');
 export const SCHEDULE = Symbol('schedule');
