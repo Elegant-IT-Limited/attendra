@@ -53,10 +53,15 @@ function transcriptFor(state: CallState): string {
  * The production planner: the Responses API with our tools as strict function
  * tools. store: false keeps the request inside Zero Data Retention, which also means
  * we resend the running input (with the model's encrypted reasoning) each round
- * instead of chaining response ids.
+ * instead of chaining response ids. A caller is waiting, so each round has a short
+ * timeout, and the rounds and each round's output are capped: that is the ceiling
+ * on what one delegation can cost.
  */
 export class ResponsesPlanner implements Planner {
-  constructor(private readonly openai: OpenAI, private readonly model: string, private readonly maxRounds = 5) {}
+  constructor(
+    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 5,
+    private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
+  ) {}
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
     const tools = TOOL_NAMES.map((name) => ({
@@ -69,9 +74,10 @@ export class ResponsesPlanner implements Planner {
     for (let round = 0; round < this.maxRounds; round++) {
       const res = await this.openai.responses.create({
         model: this.model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
+        max_output_tokens: this.limits.maxOutputTokens,
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
-      });
+      }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
       const calls = res.output.filter((o) => o.type === 'function_call');
       if (!calls.length) return { say: res.output_text?.trim() || null };
       for (const item of res.output) {
