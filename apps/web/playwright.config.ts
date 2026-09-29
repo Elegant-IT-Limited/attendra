@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { defineConfig, devices } from '@playwright/test';
 
-// The demo API (in-memory Postgres, 15 recorded calls) and the dashboard, started fresh
+// The demo API (in-memory Postgres, two demo clinics and their recorded calls) and the dashboard, started fresh
 // for every run. The setup project signs in once per role (sign-in is rate limited,
 // as it should be); the specs then run in order against that one shared demo clinic,
 // with no retries, because they change it.

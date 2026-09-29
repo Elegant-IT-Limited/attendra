@@ -41,7 +41,7 @@ function SignIn() {
       {idle && <Alert>You were signed out after 15 minutes without activity.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
-          <p>Sign in with either login. The password is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
+          <p>Sign in with any of these logins. The password is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {health.data.demoSignIn.logins.map((l) => (
               <Button key={l.email} type="button" size="sm" variant="outline" onClick={() => { setEmail(l.email); setPassword(health.data!.demoSignIn!.password); }}>{l.label}</Button>
