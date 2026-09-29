@@ -5,8 +5,8 @@ import type { StaffRole } from '@attendra/db';
  * What each role may do in the dashboard. One table, checked by the API guard on
  * every route; the web app reads the same table only to hide buttons.
  *
- * viewer  reads the call list and the settings, never a transcript, a task or the schedule
- * staff   works the front desk: transcripts, the task queue, the schedule, test calls from the browser
+ * viewer  reads the call list and the settings, never a transcript, a task, a patient or the schedule
+ * staff   works the front desk: transcripts, the task queue, patients, the schedule, test calls from the browser
  * admin   also edits clinic settings
  * owner   everything, including members (members are managed from the CLI in v0.2)
  */
@@ -14,6 +14,8 @@ export const PERMISSIONS = {
   'calls:list': ['owner', 'admin', 'staff', 'viewer'],
   'calls:read': ['owner', 'admin', 'staff'],
   'calls:test': ['owner', 'admin', 'staff'],
+  'patients:read': ['owner', 'admin', 'staff'],
+  'patients:write': ['owner', 'admin', 'staff'],
   'schedule:read': ['owner', 'admin', 'staff'],
   'schedule:write': ['owner', 'admin', 'staff'],
   'tasks:read': ['owner', 'admin', 'staff'],

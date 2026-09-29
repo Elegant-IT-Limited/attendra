@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
-import { type Database, FrontDeskRepository, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { type Database, FrontDeskRepository, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
 import { StaffScheduler } from '@attendra/scheduling';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
@@ -14,8 +14,9 @@ import { CallsController } from './calls/calls.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
+import { PatientsController } from './patients/patients.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
@@ -53,7 +54,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, CallsController, TestCallsController, TasksController, AppointmentsController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: AUTH, useValue: deps.auth },
@@ -62,6 +63,7 @@ class ApiModule {
         { provide: VOICE, useValue: deps.voice ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
+        { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
         { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },
         { provide: CLOCK, useValue: deps.now ?? (() => new Date()) },
         { provide: APP_GUARD, useClass: StaffGuard },

@@ -55,6 +55,8 @@ export const CallSummary = z.object({
 export const CallList = z.object({ calls: z.array(CallSummary), next: z.string().nullable() });
 
 export const CallDetail = CallSummary.omit({ tools: true, verified: true }).extend({
+  /** The patient the agent verified on this call, if it verified anyone. */
+  patient: z.object({ id: z.string(), name: z.string() }).nullable(),
   /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
   appointments: z.array(z.object({
     id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
@@ -146,6 +148,34 @@ export const RescheduleAppointment = z.object({ startsAt: instant, providerId: z
 export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
 
+const personName = z.string().trim().min(1, 'required').max(80);
+const phoneNumber = z.string().trim().max(30).refine((v) => v === '' || v.replace(/\D/g, '').length >= 10, 'a phone number has at least 10 digits');
+
+export const PatientSearch = z.object({ query: z.string().trim().min(2, 'type at least two characters').max(100) });
+export const PatientCard = z.object({ id: z.string(), name: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(), phone: z.string().nullable() });
+export const PatientList = z.object({ patients: z.array(PatientCard) });
+export const PatientInput = z.object({
+  firstName: personName,
+  lastName: personName,
+  dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d <= new Date().toISOString().slice(0, 10) && d >= '1890-01-01', 'a real date of birth, not in the future'),
+  phone: phoneNumber.optional(),
+});
+export const PatientSaved = z.object({ id: z.string() });
+export const PatientProfile = PatientCard.extend({
+  createdAt: z.iso.datetime(),
+  /** The provider they have seen most, when they have seen one. */
+  usualProviderId: z.string().nullable(),
+  appointments: z.array(z.object({
+    id: z.string(), providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(),
+    status: z.enum(['booked', 'cancelled']), bookedBy: BookedBy,
+  })),
+  calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable() })),
+  requests: z.array(z.object({
+    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), status: z.enum(['open', 'done']), callId: z.string().nullable(),
+    createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
+  })),
+});
+
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
@@ -178,3 +208,8 @@ export type BookAppointment = z.infer<typeof BookAppointment>;
 export type AppointmentChange = z.infer<typeof AppointmentChange>;
 export type CancelReason = z.infer<typeof CancelReason>;
 export type BookedBy = z.infer<typeof BookedBy>;
+export type PatientCard = z.infer<typeof PatientCard>;
+export type PatientList = z.infer<typeof PatientList>;
+export type PatientInput = z.infer<typeof PatientInput>;
+export type PatientSaved = z.infer<typeof PatientSaved>;
+export type PatientProfile = z.infer<typeof PatientProfile>;
