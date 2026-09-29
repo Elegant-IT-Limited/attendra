@@ -6,6 +6,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- A design system for the dashboard: semantic colour tokens for light and dark, Inter and Noto Sans Bengali self-hosted, one type scale, three radii, two shadows and one focus ring, and a component kit (buttons, fields, switches, tabs, panels, menus, tooltips, toasts, stat cards with sparklines and more). See [docs/design.md](docs/design.md).
+- Dark mode, chosen per person (system, light or dark) and applied before the first paint.
+- A command palette (Cmd+K or Ctrl+K) to jump to a page, find a patient, start a booking or a test call, or switch the theme, and keyboard shortcuts (G then T, S, P, R or C; N; ?).
+- Request actions update at once and roll back if the server refuses, with a toast, and Undo after a claim. Today opens with four stat cards and seven-day trends; `/overview` returns per-day counts for them.
+- The sidebar collapses to icons from 1024 px, and a phone gets a bottom bar. Every main page is checked with axe in light and dark in the e2e suite.
 - Test calls from the browser: a Test call page in the dashboard talks to the clinic's receptionist through the microphone over WebRTC, with the live settings and the same tools and guardrails as a phone call. Only an OpenAI key is needed; `pnpm demo` turns it on when it finds one. See [docs/test-calls.md](docs/test-calls.md).
 - Calls record where they came from (`phone` or `web`). Browser tests are marked in the call list and on the call page, and each one is audited with the person who started it, in the same transaction as the call row.
 - Test calls end on their own after `BROWSER_CALL_MAX_SECONDS` (300 by default), a clinic can have two open at once, and they never send texts.
