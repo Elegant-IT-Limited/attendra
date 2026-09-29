@@ -12,6 +12,7 @@ export * from './repositories/schedule';
 export * from './repositories/team';
 export * from './repositories/summaries';
 export * from './repositories/knowledge';
+export * from './repositories/webhooks';
 export * from './demo-schedule';
 export * from './seed';
 export * as schema from './schema';
