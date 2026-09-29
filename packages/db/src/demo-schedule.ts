@@ -21,6 +21,14 @@ export const DEMO_SCHEDULE_PATIENTS = [
   ['Maya', 'Singh', '1987-07-29'], ['Isaac', 'Feldman', '1977-02-08'], ['Rosa', 'Ibáñez', '1963-05-18'], ['Leo', 'Marchetti', '2008-11-26'],
 ].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+1720555${String(110 + i).padStart(4, '0')}` }));
 
+/** The Dhaka demo clinic's walk-in register: invented names, +880 10 numbers no operator issues. */
+export const DHANMONDI_SCHEDULE_PATIENTS = [
+  ['Nasima', 'Begum', '1963-04-11'], ['Rafiq', 'Islam', '1975-09-02'], ['Shirin', 'Sultana', '1990-01-19'], ['Mahbub', 'Alam', '1984-06-27'],
+  ['Farzana', 'Haque', '1997-03-08'], ['Jamal', 'Uddin', '1958-12-30'], ['Laila', 'Chowdhury', '1981-07-14'], ['Arif', 'Hasan', '2002-10-05'],
+  ['Sumaiya', 'Noor', '1995-05-23'], ['Kamrul', 'Ahsan', '1970-02-16'], ['Rokeya', 'Parvin', '1966-08-09'], ['Tanvir', 'Ahmed', '1989-11-21'],
+  ['Moushumi', 'Das', '1987-04-30'], ['Imran', 'Kabir', '1979-01-07'], ['Sadia', 'Islam', '2000-09-12'], ['Habib', 'Mia', '1955-06-18'],
+].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+88010000002${String(10 + i).padStart(2, '0')}` }));
+
 /** A small, seeded generator: the same demo every time it starts, so screenshots and specs are stable. */
 function random(seed: number) {
   let a = seed >>> 0;
@@ -44,7 +52,7 @@ const REASONS = ['patient_asked', 'patient_asked', 'clinic_asked', 'booked_in_er
  *
  * Runs once: a clinic whose calendar already holds seeded bookings is left alone.
  */
-export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { patientIds: Record<string, string>; staffUserIds: string[]; now?: Date; clinic?: ClinicConfig }) {
+export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { patientIds: Record<string, string>; staffUserIds: string[]; now?: Date; clinic?: ClinicConfig; extraPatients?: typeof DEMO_SCHEDULE_PATIENTS; notes?: string[] }) {
   const clinic = opts.clinic ?? DEMO_CLINIC;
   const now = opts.now ?? new Date();
   if (!opts.staffUserIds.length) throw new Error('the demo schedule needs at least one staff member to have made its bookings');
@@ -54,7 +62,7 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
 
   const directory = new PostgresPatientDirectory(db, cipher, 'seed');
   const pool = Object.values(opts.patientIds);
-  for (const p of DEMO_SCHEDULE_PATIENTS) {
+  for (const p of opts.extraPatients ?? DEMO_SCHEDULE_PATIENTS) {
     const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: patients.id }).from(patients)
       .where(and(eq(patients.clinicId, clinic.id), eq(patients.phoneHash, cipher.hash(phoneKey(clinic.id, p.phone))))));
     pool.push(existing?.id ?? await directory.create(clinic.id, p));
@@ -85,7 +93,7 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
           if (rand() < 0.6 && !clashes(provider.id, start, end)) {
             const cancelled = rand() < 0.06;
             const bookedBy = pick(opts.staffUserIds);
-            const note = rand() < 0.15 ? pick(NOTES) : null;
+            const note = rand() < 0.15 ? pick(opts.notes ?? NOTES) : null;
             rows.push({
               clinicId: clinic.id, patientId: pick(pool), providerId: provider.id, visitTypeId: visit.id, startsAt: start, endsAt: end,
               idempotencyKey: `seed:${provider.id}:${start.toISOString()}`, createdByUserId: bookedBy,
