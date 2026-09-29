@@ -14,7 +14,7 @@ export const Health = z.object({
 });
 
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean() }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean() }),
   demoMode: z.boolean(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
@@ -209,12 +209,14 @@ export const PatientProfile = PatientCard.extend({
 
 export const Member = z.object({
   userId: z.string(), name: z.string(), email: z.string(), role: Role, twoFactorEnabled: z.boolean(),
-  lastSignInAt: z.iso.datetime().nullable(), addedAt: z.iso.datetime(), you: z.boolean(),
+  /** Still on the temporary password they were given. */
+  mustChangePassword: z.boolean(),
+  addedAt: z.iso.datetime(), you: z.boolean(),
 });
 export const MemberList = z.object({ members: z.array(Member) });
 export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role });
-/** The temporary password is shown once, for the manager to pass on in person. Null when the person already had an account. */
-export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string().nullable() });
+/** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
+export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
 export const ChangeRole = z.object({ role: Role });
 
 export const OverviewQuery = z.object({ days: z.coerce.number().int().min(1).max(31).default(7) });
