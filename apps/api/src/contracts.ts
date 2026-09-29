@@ -147,6 +147,30 @@ export const KnowledgeAnswer = z.object({
   refusal: z.enum(['medical', 'no_information']).nullable(),
 });
 
+export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'request.created', 'request.done'] as const;
+export const WebhookEndpoint = z.object({
+  id: z.string(), url: z.string(), description: z.string(), events: z.array(z.enum(WEBHOOK_EVENTS)), enabled: z.boolean(),
+  /** repeated_failures when Attendra turned it off, turned_off when someone did. */
+  disabledReason: z.string().nullable(), disabledAt: z.iso.datetime().nullable(), consecutiveFailures: z.number(), createdAt: z.iso.datetime(),
+  /** A new secret was made in the last 24 hours, and deliveries carry both signatures. */
+  rotating: z.boolean(),
+  lastAttempt: z.object({ at: z.iso.datetime(), statusCode: z.number().nullable(), error: z.string().nullable() }).nullable(),
+});
+export const WebhookEndpoints = z.object({ endpoints: z.array(WebhookEndpoint) });
+export const WebhookEndpointInput = z.object({
+  url: z.string().trim().max(2000),
+  description: z.string().trim().max(200).default(''),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
+});
+export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional() });
+/** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
+export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
+export const WebhookAttempt = z.object({
+  id: z.number(), eventId: z.string(), eventType: z.string(), kind: z.enum(['automatic', 'test', 'redelivery']), attempt: z.number(),
+  statusCode: z.number().nullable(), durationMs: z.number(), error: z.string().nullable(), at: z.iso.datetime(),
+});
+export const WebhookAttempts = z.object({ attempts: z.array(WebhookAttempt) });
+
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 
@@ -330,6 +354,11 @@ export type LiveCall = z.infer<typeof LiveCall>;
 export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
 export type KnowledgeDocuments = z.infer<typeof KnowledgeDocuments>;
 export type KnowledgeAnswer = z.infer<typeof KnowledgeAnswer>;
+export type WebhookEndpoint = z.infer<typeof WebhookEndpoint>;
+export type WebhookEndpoints = z.infer<typeof WebhookEndpoints>;
+export type WebhookSecret = z.infer<typeof WebhookSecret>;
+export type WebhookAttempt = z.infer<typeof WebhookAttempt>;
+export type WebhookAttempts = z.infer<typeof WebhookAttempts>;
 export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;

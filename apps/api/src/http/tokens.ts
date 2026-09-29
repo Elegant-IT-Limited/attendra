@@ -15,6 +15,8 @@ export const LOGGER = Symbol('logger');
 export const VOICE = Symbol('voice');
 export const JOBS = Symbol('jobs');
 export const KNOWLEDGE = Symbol('knowledge');
+export const EVENTS = Symbol('events');
+export const WEBHOOK_GUARD = Symbol('webhook-guard');
 
 /** Starts and ends browser test calls on the voice service. Null when the deployment has none. */
 export interface LiveCallSummary {

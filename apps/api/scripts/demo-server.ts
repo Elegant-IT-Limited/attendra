@@ -13,7 +13,7 @@ import { openTestDatabase } from '@attendra/db/testing';
 import { HybridKnowledgeBase, LocalAnswerer, LocalEmbedder, ModelAnswerer } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { createSimulatedVoiceApp, createVoiceApp } from '@attendra/voice/runtime';
-import { bossQueue, createBoss } from '@attendra/worker/queue';
+import { bossQueue, createBoss, eventSink } from '@attendra/worker/queue';
 import { startWorker, summariserFromEnv } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
 import OpenAI from 'openai';
@@ -55,7 +55,12 @@ const summariser = process.env.ATTENDRA_TEST_CALLS === 'off' ? new LocalSummaris
 // The demo's documents are indexed with local embeddings, so every part of the demo searches with them too.
 const embedder = new LocalEmbedder();
 const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), embedder);
-await startWorker({ boss, db, cipher, summariser, embedder, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false });
+// Webhooks to this machine over plain HTTP, for trying n8n locally and for the e2e suite's receiver. Never in a deployment.
+const webhooks = { allowLoopback: process.env.ATTENDRA_WEBHOOKS_ALLOW_LOCAL === 'on' };
+await startWorker({
+  boss, db, cipher, summariser, embedder, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false,
+  events: eventSink(bossQueue(boss)), webhooks,
+});
 
 const failed = results.filter((r) => !r.passed);
 if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo calls did not play as their scenario expects');
@@ -95,7 +100,7 @@ if (realCalls || simulated) {
 
 // Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
-const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer }, options: { publicUrl, demoMode: true, demoSignIn } });
+const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);
