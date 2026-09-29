@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { ClinicConfig } from '@attendra/core';
 import type { ApiError, Me } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 
@@ -36,3 +37,11 @@ export function useClinic(clinicId: string) {
   const clinic = me.data?.clinics.find((c) => c.id === clinicId);
   return { ...me, clinic, can: (p: string) => !!clinic?.permissions.includes(p) };
 }
+
+/** The clinic's configuration: providers, visit types, hours and holidays. No patient data. */
+export function useClinicConfig(clinicId: string) {
+  return useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`), staleTime: 5 * 60_000 });
+}
+
+/** A fresh key for one write attempt. A retry of the same attempt reuses it, so it is applied once. */
+export const newKey = () => crypto.randomUUID();

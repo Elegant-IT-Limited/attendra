@@ -60,3 +60,56 @@ export const REFUSALS: Record<string, string> = {
 export const TASK_TYPES: Record<string, string> = { refill: 'Refill request', callback: 'Callback', voicemail: 'Voicemail', review: 'Needs review' };
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Tue 6 Oct 3:00 PM", in the clinic's zone: the short form the schedule and call page use. */
+export function shortWhen(iso: string, timeZone: string) {
+  const d = new Date(iso);
+  const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone, ...o }).format(d);
+  return `${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part({ hour: 'numeric', minute: '2-digit' })}`;
+}
+
+/** "3:00 PM" in the clinic's zone. */
+export const timeOf = (iso: string | Date, timeZone: string) =>
+  new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+
+/** "Tuesday 29 September" for a local YYYY-MM-DD, with no time zone arithmetic. */
+export function dayTitle(date: string, style: 'long' | 'short' = 'long') {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  const at = new Date(Date.UTC(y, m - 1, d, 12));
+  const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...o }).format(at);
+  return style === 'long' ? `${f({ weekday: 'long' })} ${d} ${f({ month: 'long' })}` : `${f({ weekday: 'short' })} ${d} ${f({ month: 'short' })}`;
+}
+
+/** "Mountain Time (America/Denver)": shown once per page, so every time on it has a zone. */
+export function zoneLabel(timeZone: string) {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
+  return name ? `${name} (${timeZone.replace('_', ' ')})` : timeZone;
+}
+
+export function phone(e164: string | null | undefined) {
+  if (!e164) return '';
+  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}
+
+/** "4 March 1985" from YYYY-MM-DD. */
+export function dob(date: string) {
+  const [y, m, d] = date.split('-').map(Number) as [number, number, number];
+  return `${d} ${new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long' }).format(new Date(Date.UTC(y, m - 1, d)))} ${y}`;
+}
+
+export const CANCEL_REASONS: Record<string, string> = {
+  patient_asked: 'The patient asked',
+  clinic_asked: 'The clinic needed to move it',
+  booked_in_error: 'Booked by mistake',
+  other: 'Something else',
+};
+
+/** One colour per visit type, in the order the clinic lists them. Tokens live in globals.css. */
+export const VISIT_TONES = [
+  'border-l-[var(--visit-1)] bg-[var(--visit-1-soft)]',
+  'border-l-[var(--visit-2)] bg-[var(--visit-2-soft)]',
+  'border-l-[var(--visit-3)] bg-[var(--visit-3-soft)]',
+  'border-l-[var(--visit-4)] bg-[var(--visit-4-soft)]',
+];
+export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]'];
