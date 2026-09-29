@@ -14,12 +14,17 @@ export const QUEUES = {
   summariseCall: 'summarise-call',
   purgeRetention: 'purge-retention',
   smsStatus: 'sms-status',
+  /** A document uploaded to the clinic's knowledge: text, chunks, embeddings. */
+  indexDocument: 'index-document',
   /** Where a job goes after its last retry fails, to be looked at, not retried. */
   deadLetter: 'dead-letter',
 } as const;
 
 export const CallJob = z.object({ clinicId: z.string().min(1), callId: z.uuid() });
 export type CallJob = z.infer<typeof CallJob>;
+
+export const DocumentJob = z.object({ clinicId: z.string().min(1), documentId: z.uuid(), hash: z.string().regex(/^[0-9a-f]{64}$/) });
+export type DocumentJob = z.infer<typeof DocumentJob>;
 
 export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(['queued', 'sent', 'delivered', 'undelivered', 'failed']) });
 export type SmsStatusJob = z.infer<typeof SmsStatusJob>;
@@ -41,14 +46,19 @@ export function jobId(kind: string, key: string): string {
 /** What the voice service and the API need from the queue: to say that something happened. */
 export interface JobQueue {
   callCompleted(job: CallJob): Promise<void>;
+  /** Once per document content: the same bytes uploaded again are the same job. */
+  indexDocument(job: DocumentJob): Promise<void>;
 }
 
-export const noJobs: JobQueue = { callCompleted: async () => {} };
+export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {} };
 
 export function bossQueue(boss: PgBoss): JobQueue {
   return {
     async callCompleted(job) {
       await boss.send(QUEUES.callCompleted, CallJob.parse(job), { id: jobId(QUEUES.callCompleted, job.callId) });
+    },
+    async indexDocument(job) {
+      await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}`) });
     },
   };
 }
@@ -70,7 +80,7 @@ export async function ensureQueues(boss: PgBoss, retry: Partial<RetryPolicy> = R
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
   const create = async (name: string, options: Parameters<PgBoss['createQueue']>[1]) => { if (!existing.has(name)) await boss.createQueue(name, options); };
   await create(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
-  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus]) {
+  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument]) {
     const policy: Record<string, unknown> = { ...RETRY, ...retry };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
     await create(name, { ...policy, deadLetter: QUEUES.deadLetter });

@@ -12,6 +12,7 @@
   "dependencies": {
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "drizzle-orm": "0.45.3",
     "openai": "7.23.0",
