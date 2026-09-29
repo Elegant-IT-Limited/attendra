@@ -10,7 +10,7 @@ export default function Home() {
   const me = useMe();
   const router = useRouter();
   const first = me.data?.clinics[0];
-  useEffect(() => { if (first) router.replace(`/c/${first.id}/calls`); }, [first, router]);
+  useEffect(() => { if (first) router.replace(`/c/${first.id}`); }, [first, router]);
   if (me.data && !first) {
     return <Empty title="No clinic yet">Your account is not a member of any clinic. Ask your practice owner to add you.</Empty>;
   }

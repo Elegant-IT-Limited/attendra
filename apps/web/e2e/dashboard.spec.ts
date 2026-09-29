@@ -4,6 +4,7 @@ import { openAs } from './session';
 test.describe.serial('the front desk, end to end on the demo clinic', () => {
   test('a manager sees the week of calls', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
     await expect(page.locator('tbody tr')).toHaveCount(15);
@@ -13,6 +14,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await page.getByRole('tab', { name: 'Bookings and changes' }).click();
     await page.locator('tbody tr').last().getByRole('link').click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/); // the list's cells also contain the tool names
@@ -24,6 +26,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('an emergency call is flagged at the top', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await page.getByText('Emergency', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Emergency language on this call')).toBeVisible();
