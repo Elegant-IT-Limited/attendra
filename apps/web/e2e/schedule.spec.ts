@@ -8,6 +8,8 @@ async function findInWeek(page: Page, name: RegExp) {
   await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   for (let week = 0; week < 3; week++) {
+    // the grid keeps the previous week on screen until the next one arrives, so wait for this one
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
     await expect(page.getByTestId('lane').first()).toBeVisible();
     if (await block.count()) return block.first();
     await page.getByRole('button', { name: 'Next week' }).click();
