@@ -17,7 +17,7 @@ import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, timeOf } from '@/lib/
 
 type Mode = 'view' | 'reschedule' | 'cancel';
 
-export const LINK_BUTTON = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-card px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+export const LINK_BUTTON = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-sunken focus-ring';
 
 /** One appointment, opened from the schedule. Closes with Escape; every change says how it went. */
 export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, canWrite, patientHref }: {
@@ -113,36 +113,36 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                 <Select id="cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)}>
                   {Object.entries(CANCEL_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </Select>
-                <p className="text-xs text-muted-foreground">The time opens up for booking again straight away.</p>
+                <p className="text-xs text-text-muted">The time opens up for booking again straight away.</p>
               </div>
             ) : (
               <>
                 <section className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patient</h3>
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">Patient</h3>
                   <div className="text-sm">
                     {patientHref ? <Link href={patientHref(a.patient.id)} className="font-medium hover:underline">{a.patient.name}</Link> : <p className="font-medium">{a.patient.name}</p>}
-                    <p className="text-muted-foreground">Born {dob(a.patient.dob)}</p>
-                    {a.patient.phone && <a href={`tel:${a.patient.phone}`} className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"><Phone className="size-3.5" /> {phone(a.patient.phone)}</a>}
+                    <p className="text-text-muted">Born {dob(a.patient.dob)}</p>
+                    {a.patient.phone && <a href={`tel:${a.patient.phone}`} className="inline-flex items-center gap-1 text-text-muted hover:text-text"><Phone className="size-3.5" /> {phone(a.patient.phone)}</a>}
                   </div>
                 </section>
                 <section className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Visit</h3>
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">Visit</h3>
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-                    <dt className="text-muted-foreground">With</dt><dd>{provider(a.providerId)}</dd>
-                    <dt className="text-muted-foreground">Type</dt><dd>{capital(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
-                    <dt className="text-muted-foreground">Note</dt><dd className="whitespace-pre-wrap">{a.note ?? <span className="text-muted-foreground">None</span>}</dd>
+                    <dt className="text-text-muted">With</dt><dd>{provider(a.providerId)}</dd>
+                    <dt className="text-text-muted">Type</dt><dd>{capital(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
+                    <dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{a.note ?? <span className="text-text-muted">None</span>}</dd>
                   </dl>
                 </section>
                 <section className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Booked</h3>
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">Booked</h3>
                   <p className="flex items-start gap-2 text-sm">
-                    {a.bookedBy.kind === 'assistant' ? <Bot className="mt-0.5 size-4 text-primary" /> : <User className="mt-0.5 size-4 text-muted-foreground" />}
+                    {a.bookedBy.kind === 'assistant' ? <Bot className="mt-0.5 size-4 text-primary" /> : <User className="mt-0.5 size-4 text-text-muted" />}
                     <span>By {who(a.bookedBy)}, {clinicTime(a.createdAt, tz)}.{' '}
                       {a.bookedBy.kind === 'assistant' && <Link href={`/c/${clinicId}/calls/${a.bookedBy.callId}`} className="text-primary hover:underline">Open the call and its transcript</Link>}
                     </span>
                   </p>
                 </section>
-                {!upcoming && a.status === 'booked' && <p className="text-xs text-muted-foreground">This appointment has started or passed, so it can no longer be moved or cancelled.</p>}
+                {!upcoming && a.status === 'booked' && <p className="text-xs text-text-muted">This appointment has started or passed, so it can no longer be moved or cancelled.</p>}
               </>
             )}
           </div>

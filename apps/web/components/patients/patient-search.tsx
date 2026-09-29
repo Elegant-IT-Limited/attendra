@@ -47,24 +47,24 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
       <div className="space-y-1.5">
         <Label htmlFor="patient-search">Find a patient</Label>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="patient-search" type="search" autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
             onChange={(e) => setText(e.target.value)} placeholder="Name, date of birth, or phone number" />
         </div>
-        <p className="text-xs text-muted-foreground">For example Delgado, 03/04/1985 or (303) 555-0147.</p>
+        <p className="text-xs text-text-muted">For example Delgado, 03/04/1985 or (303) 555-0147.</p>
       </div>
       {!ready ? empty : results.isPending ? <Skeleton className="h-24" /> : unreadable ? (
-        <p className="text-sm text-muted-foreground">Type a name, a whole date of birth, or all ten digits of a phone number.</p>
+        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or all ten digits of a phone number.</p>
       ) : results.isError ? (
         <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
       ) : !results.data?.patients.length ? (
-        <p className="text-sm text-muted-foreground">No patient matches. Check the spelling, or add them as a new patient.</p>
+        <p className="text-sm text-text-muted">No patient matches. Check the spelling, or add them as a new patient.</p>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border" aria-label="Matching patients" aria-busy={results.isFetching}>
           {results.data.patients.map((p) => (
             <li key={p.id}>
               {renderResult ? renderResult(p) : (
-                <button type="button" onClick={() => onPick?.(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+                <button type="button" onClick={() => onPick?.(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none">
                   <PatientLine p={p} />
                 </button>
               )}
@@ -72,7 +72,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
           ))}
         </ul>
       )}
-      {ready && (results.data?.truncated || results.data?.patients.length === 25) && <p className="text-xs text-muted-foreground">Showing the first matches; type more of the name.</p>}
+      {ready && (results.data?.truncated || results.data?.patients.length === 25) && <p className="text-xs text-text-muted">Showing the first matches; type more of the name.</p>}
     </div>
   );
 }
@@ -82,9 +82,9 @@ export function PatientLine({ p }: { p: PatientCard }) {
     <>
       <span className="min-w-0">
         <span className="block truncate font-medium">{p.name}</span>
-        <span className="block text-xs text-muted-foreground">Born {dob(p.dob)}, age {age(p.dob)}</span>
+        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob)}</span>
       </span>
-      {p.phone && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{phone(p.phone)}</span>}
+      {p.phone && <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span>}
     </>
   );
 }
