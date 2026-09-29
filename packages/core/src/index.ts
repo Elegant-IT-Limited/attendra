@@ -2,6 +2,7 @@
 export * from './clinic';
 export * from './confirmation';
 export * from './locales';
+export * from './medical';
 export * from './demo';
 export * from './emergency';
 export * from './hours';
