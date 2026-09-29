@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig } from '@attendra/core';
-import { allClinics, CallSummaryRepository, type Database, ensureWorkerJobsView, type PhiCipher, purgeCallRecords, schema, withClinic } from '@attendra/db';
+import { allClinics, CallSummaryRepository, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, purgeCallRecords, schema, withClinic } from '@attendra/db';
+import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Logger } from '@attendra/observability';
 import { and, eq } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { CallJob, ensureQueues, jobId, QUEUES, SmsStatusJob } from './queue';
+import { CallJob, DocumentJob, ensureQueues, jobId, QUEUES, SmsStatusJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
 export interface WorkerDeps {
@@ -13,6 +14,8 @@ export interface WorkerDeps {
   db: Database;
   cipher: PhiCipher;
   summariser: Summariser;
+  /** Embeds the clinic's documents. The same model must embed the questions at call time. */
+  embedder?: Embedder;
   log: Logger;
   now?: () => Date;
   /** Twilio delivery statuses. Off until Twilio sends them (ATTENDRA_SMS_STATUS=on). */
@@ -30,6 +33,12 @@ export interface WorkerDeps {
 export function summariserFromEnv(env: { OPENAI_API_KEY?: string; ATTENDRA_SUMMARY_MODEL?: string }): Summariser {
   if (!env.OPENAI_API_KEY) return new LocalSummariser();
   return new ModelSummariser(new OpenAI({ apiKey: env.OPENAI_API_KEY }), env.ATTENDRA_SUMMARY_MODEL || 'gpt-6-luna');
+}
+
+/** Embeddings for this environment: OpenAI's with a key (ATTENDRA_EMBEDDING_MODEL), local ones without. Every service must agree. */
+export function embedderFromEnv(env: { OPENAI_API_KEY?: string; ATTENDRA_EMBEDDING_MODEL?: string }): Embedder {
+  if (!env.OPENAI_API_KEY) return new LocalEmbedder();
+  return new OpenAIEmbedder(new OpenAI({ apiKey: env.OPENAI_API_KEY }), env.ATTENDRA_EMBEDDING_MODEL || 'text-embedding-3-small');
 }
 
 /** The job handlers, apart from pg-boss, so tests can run them one at a time. */
@@ -68,6 +77,14 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       return results;
     },
 
+    /** Indexes one uploaded document. Unchanged content with the same model is left as it is. */
+    async indexDocument(job: DocumentJob) {
+      const { clinicId, documentId } = DocumentJob.parse(job);
+      const result = await indexDocument(new KnowledgeRepository(d.db), d.embedder ?? new LocalEmbedder(), clinicId, documentId);
+      d.log.info({ clinic_id: clinicId, document_id: documentId, result }, 'document indexed');
+      return result;
+    },
+
     /** Records a text's delivery status from Twilio. A placeholder until Twilio status callbacks are wired to the queue. */
     async smsStatus(job: SmsStatusJob) {
       const { clinicId, messageSid, status } = SmsStatusJob.parse(job);
@@ -94,6 +111,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<CallJob>(QUEUES.callCompleted, poll, each(h.callCompleted));
   await d.boss.work<CallJob>(QUEUES.summariseCall, { ...poll, localConcurrency: 2 }, each(h.summariseCall));
   await d.boss.work(QUEUES.purgeRetention, each(() => h.purgeRetention()));
+  await d.boss.work<DocumentJob>(QUEUES.indexDocument, poll, each(h.indexDocument));
   if (d.smsStatus) await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, each(h.smsStatus));
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {

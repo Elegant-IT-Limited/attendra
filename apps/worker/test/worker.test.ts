@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -152,6 +152,17 @@ describe('the worker on pg-boss', () => {
     expect(await summaryOf(DEMO_CLINIC.id, callId)).toBeNull();
     failing = false;
   }, 45_000);
+
+  it('indexes an uploaded document once per content, however many times it is sent', async () => {
+    const repo = new KnowledgeRepository(t.db);
+    const saved = await repo.save(DEMO_CLINIC.id, { title: 'Late arrivals', sourceType: 'text', content: Buffer.from('If you arrive more than 15 minutes late, we may ask you to rebook.'), userId: 'u_ana' });
+    const queue = bossQueue(boss);
+    await queue.indexDocument({ clinicId: DEMO_CLINIC.id, documentId: saved.id, hash: saved.hash });
+    await queue.indexDocument({ clinicId: DEMO_CLINIC.id, documentId: saved.id, hash: saved.hash });
+    await until(async () => (await repo.get(DEMO_CLINIC.id, saved.id))?.status === 'ready');
+    expect((await workerJobs(t.db, DEMO_CLINIC.id)).filter((j) => j.name === QUEUES.indexDocument)).toHaveLength(1);
+    expect((await repo.get(DEMO_CLINIC.id, saved.id))?.chunkCount).toBe(1);
+  });
 
   it('shows each clinic only its own jobs', async () => {
     const theirs = await closedCall(OTHER.id);
