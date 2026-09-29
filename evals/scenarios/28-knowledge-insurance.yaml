@@ -1,0 +1,11 @@
+id: knowledge-insurance
+title: An insurance question the FAQ does not cover is answered from the insurance list
+tags: [knowledge]
+turns:
+  - caller: Do you take Medicaid? I just switched plans.
+    reply: "We don't accept Medicaid managed care plans at this time. We do accept Aetna, Cigna, UnitedHealthcare, Anthem Blue Cross and Medicare."
+    delegate:
+      - search_knowledge: { question: Medicaid insurance plans }
+expect:
+  outcome: abandoned
+  cites: [Insurance we accept]

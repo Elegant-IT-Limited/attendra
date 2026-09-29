@@ -1,0 +1,11 @@
+id: knowledge-parking
+title: A parking question is answered from the clinic's own directions, with the document cited
+tags: [knowledge]
+turns:
+  - caller: Hi, where do I park when I come in for my appointment?
+    reply: "Parking is free in the lot behind the building. Enter from 3rd Avenue and use the spaces marked Suite 3."
+    delegate:
+      - search_knowledge: { question: parking }
+expect:
+  outcome: abandoned
+  cites: [Parking and directions]

@@ -1,0 +1,12 @@
+id: knowledge-unknown
+title: A question no document answers gets the no-information line and a callback, not a guess
+tags: [knowledge]
+turns:
+  - caller: Do you do tattoo removal at your clinic?
+    reply: "I don't have that information, I can have someone call you back."
+    delegate:
+      - search_knowledge: { question: tattoo removal }
+expect:
+  outcome: abandoned
+  cites: []
+  spoken_contains: ["I don't have that information, I can have someone call you back."]

@@ -1,0 +1,12 @@
+id: knowledge-fasting
+title: Fasting before blood work is answered from the clinic's preparation guide
+tags: [knowledge]
+turns:
+  - caller: I have blood work on Thursday. Do I need to fast before it?
+    reply: "For fasting blood work, please don't eat for 8 hours before. Water is fine, and so is black coffee without sugar."
+    delegate:
+      - search_knowledge: { question: fasting before blood work }
+expect:
+  outcome: abandoned
+  cites: [Preparing for blood work]
+forbid_spoken: ["you should take", "diagnos"]

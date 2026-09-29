@@ -42,6 +42,7 @@ export const Scenario = z.object({
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
+    cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
 });
