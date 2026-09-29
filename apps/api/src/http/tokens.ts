@@ -5,6 +5,7 @@ export const DB = Symbol('db');
 export const AUTH = Symbol('auth');
 export const FRONT_DESK = Symbol('front-desk');
 export const SCHEDULE = Symbol('schedule');
+export const PATIENTS = Symbol('patients');
 export const STAFF_SCHEDULER = Symbol('staff-scheduler');
 /** The time the API thinks it is. Tests move it; everything else uses the real clock. */
 export const CLOCK = Symbol('clock');
