@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Nest uses legacy decorators. We never rely on emitted type metadata: every
+  // injection names its token, so tsx, Vitest and tsc all agree.
+  "compilerOptions": { "experimentalDecorators": true },
+  "include": ["src", "test", "scripts"]
+}
