@@ -16,6 +16,8 @@ export const Health = z.object({
 export const Me = z.object({
   user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean() }),
   demoMode: z.boolean(),
+  /** Whether this deployment has a voice service for test calls from the browser. */
+  testCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()) })),
 });
 
@@ -40,6 +42,7 @@ export const Page = z.object({
 
 export const CallSummary = z.object({
   id: z.string(),
+  channel: z.enum(['phone', 'web']),
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),
   outcome: z.string().nullable(),
@@ -56,6 +59,9 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true }).exte
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
   tasks: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
 });
+
+export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
+export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 
 export const TaskQuery = z.object({ status: z.enum(['open', 'done']).default('open') });
 export const Task = z.object({
@@ -93,6 +99,7 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
+export type TestCall = z.infer<typeof TestCall>;
 export type TaskCount = z.infer<typeof TaskCount>;
 export type AuditEntry = z.infer<typeof AuditEntry>;
 export type AuditList = z.infer<typeof AuditList>;

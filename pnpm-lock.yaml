@@ -81,6 +81,9 @@ importers:
       '@attendra/evals':
         specifier: workspace:*
         version: link:../../evals
+      '@attendra/voice':
+        specifier: workspace:*
+        version: link:../voice
       '@electric-sql/pglite':
         specifier: 0.3.16
         version: 0.3.16

@@ -27,7 +27,7 @@ export class CallsController {
     const last = calls.at(-1);
     return {
       calls: calls.map((c) => ({
-        id: c.id, outcome: c.outcome, emergency: c.emergency, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
+        id: c.id, channel: c.channel, outcome: c.outcome, emergency: c.emergency, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
         startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString() ?? null,
       })),
       next: calls.length === page.limit && last ? callCursor.encode(last) : null,

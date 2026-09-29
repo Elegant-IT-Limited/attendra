@@ -6,6 +6,7 @@ import { createHmac } from 'node:crypto';
 import { Writable } from 'node:stream';
 import { createApi } from '../src/app';
 import { createAuth } from '../src/auth';
+import type { VoiceClient } from '../src/http/tokens';
 import { addMember } from '../src/members';
 
 export const ORIGIN = 'http://localhost:3000';
@@ -26,7 +27,7 @@ export function totp(uri: string, at = Date.now()) {
   return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-export async function startApi(opts: { demoMode: boolean }) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null }) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -48,7 +49,7 @@ export async function startApi(opts: { demoMode: boolean }) {
     type: 'refill', callId, patientId: patientIds.maria!, idempotencyKey: 'api-refill', details: { medication: 'lisinopril', pharmacy: 'Main St', callback_number: '+13035550147' },
   });
 
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode } });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode }, voice: opts.voice });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT';

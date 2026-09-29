@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@attendra/evals": "workspace:*",
+    "@attendra/voice": "workspace:*",
     "@electric-sql/pglite": "0.3.16",
     "drizzle-orm": "0.45.3"
   },
