@@ -56,7 +56,7 @@ describe('booking over the phone', () => {
     const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(spoken(done)).toContain('"booked":true');
     expect(await bookings()).toHaveLength(1);
-    expect(w.sms).toEqual([{ to: '+13035550147', template: 'booking_confirmed' }]);
+    expect(w.sms).toMatchObject([{ to: '+13035550147', template: 'booking_confirmed', language: 'en' }]);
     expect(c.state.outcome).toBe('booked');
   });
 

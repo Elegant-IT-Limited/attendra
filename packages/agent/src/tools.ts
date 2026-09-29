@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, type AuditLog, type ClinicConfig, findSlots, isClearYes, localDateOf, type Messenger, parseDob,
+  addDays, type AuditLog, type ClinicConfig, emergencyNumberFor, findSlots, isClearYes, localDateOf, localName, type Messenger, PACKS, parseDob,
   type PatientDirectory, resolveTransfer, type SchedulerAdapter, speakSlot, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, weekHours, zonedInstant,
 } from '@attendra/core';
@@ -58,7 +58,7 @@ export async function runTool(
   const parsed = ToolArgs[name].safeParse(rawArgs);
   if (!parsed.success) return refuse('invalid_arguments', 'Ask the caller to repeat that detail.');
   if (state.emergency && !EMERGENCY_ALLOWED.has(name)) {
-    return refuse('emergency_in_progress', 'Do not continue the task. Repeat that if this is an emergency they should call 911.');
+    return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic)}.`);
   }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
@@ -68,6 +68,11 @@ export async function runTool(
   }
   const { clinic } = ctx;
   const args = parsed.data as Record<string, unknown>;
+  // everything said back to the caller is in the language they are speaking
+  const lang = state.language;
+  const pack = PACKS[lang];
+  const when = (start: Date) => speakSlot(start, clinic.timezone, lang);
+  const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
 
   switch (name) {
     case 'verify_caller': {
@@ -76,7 +81,8 @@ export async function runTool(
         return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       }
       state.verifyAttempts++;
-      const dob = parseDob(String(args.date_of_birth), ctx.now());
+      // numeric dates are month first only in North America
+      const dob = parseDob(String(args.date_of_birth), ctx.now(), clinic.phoneNumbers[0]!.startsWith('+1') ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', 'Ask for the date of birth again, month, day and year.');
       const found = await backend.patients.findByNameAndDob(clinic.id, String(args.full_name), dob);
       if (found.status === 'found') {
@@ -96,7 +102,7 @@ export async function runTool(
 
     case 'find_slots': {
       const visitType = clinic.visitTypes.find((v) => v.id === args.visit_type_id);
-      if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => v.name).join(', ')}.`);
+      if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => localName(v, lang)).join(', ')}.`);
       const providers = args.provider_id ? clinic.providers.filter((p) => p.id === args.provider_id) : clinic.providers;
       const now = ctx.now();
       const today = localDateOf(now, clinic.timezone);
@@ -110,7 +116,7 @@ export async function runTool(
       return {
         ok: true,
         data: {
-          slots: slots.map((s) => ({ slot_id: s.id, when: speakSlot(s.start, clinic.timezone), provider: clinic.providers.find((p) => p.id === s.providerId)?.name })),
+          slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId) })),
           note: slots.length ? 'Offer these as written. Do not invent other times.' : 'No openings in the next two weeks; offer a callback.',
         },
       };
@@ -118,23 +124,23 @@ export async function runTool(
 
     case 'list_appointments': {
       const upcoming = await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now());
-      return { ok: true, data: { appointments: upcoming.map((a) => ({ appointment_id: a.id, when: speakSlot(a.start, clinic.timezone), provider: clinic.providers.find((p) => p.id === a.providerId)?.name })) } };
+      return { ok: true, data: { appointments: upcoming.map((a) => ({ appointment_id: a.id, when: when(a.start), provider: providerName(a.providerId) })) } };
     }
 
     case 'propose_booking': {
       const slot = state.offered.get(String(args.slot_id));
       if (!slot) return refuse('slot_not_offered', 'Only offer times returned by find_slots. Look up slots again.');
       const replaces = (args.replaces_appointment_id as string | null) ?? null;
-      let replacing = '';
+      let replacing: string | null = null;
       if (replaces) {
         const current = (await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now())).find((a) => a.id === replaces);
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
-        replacing = `, moving it from ${speakSlot(current.start, clinic.timezone)}`;
+        replacing = when(current.start);
       }
-      const provider = clinic.providers.find((p) => p.id === slot.providerId)?.name ?? 'the provider';
-      const visit = clinic.visitTypes.find((v) => v.id === slot.visitTypeId)?.name ?? 'visit';
-      const article = /^[aeiou]/i.test(visit) ? 'an' : 'a';
-      const readback = `${speakSlot(slot.start, clinic.timezone)} with ${provider} for ${article} ${visit}${replacing}`;
+      const provider = providerName(slot.providerId) ?? 'the provider';
+      const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
+      const visit = visitType ? localName(visitType, lang) : 'visit';
+      const readback = pack.readbackBooking({ when: when(slot.start), provider, visit, replacing });
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
     }
@@ -143,7 +149,7 @@ export async function runTool(
       const upcoming = await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now());
       const appt = upcoming.find((a) => a.id === args.appointment_id);
       if (!appt) return refuse('unknown_appointment', 'Use list_appointments to find the appointment first.');
-      const readback = `cancel the appointment on ${speakSlot(appt.start, clinic.timezone)}`;
+      const readback = pack.readbackCancel({ when: when(appt.start) });
       state.pending = { kind: 'cancel', appointmentId: appt.id, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
     }
@@ -182,8 +188,8 @@ export async function runTool(
       if (patient.phone) {
         try {
           await backend.messenger.sendTemplate(clinic.id, {
-            to: patient.phone, template: 'booking_confirmed', idempotencyKey: key(ctx.callId, 'sms', result.appointment.id),
-            vars: { clinic: clinic.name, when: speakSlot(result.appointment.start, clinic.timezone), clinicPhone: clinic.phoneNumbers[0]! },
+            to: patient.phone, template: 'booking_confirmed', idempotencyKey: key(ctx.callId, 'sms', result.appointment.id), language: lang,
+            vars: { clinic: clinic.name, when: when(result.appointment.start), clinicPhone: clinic.phoneNumbers[0]! },
           });
           smsSent = true;
         } catch (err) {
