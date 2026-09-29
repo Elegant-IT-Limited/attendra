@@ -22,6 +22,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
 | `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
 | `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, the nightly retention purge, and (behind a flag) text delivery statuses. |
+| `packages/webhooks` | Standard Webhooks signing, the SSRF guard (public HTTPS only, checked after DNS and pinned to the checked address), and one delivery. [docs/webhooks.md](webhooks.md). |
 | `packages/knowledge` | The clinic's documents: text extraction (unpdf), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
 
 ## A delegation, in detail
@@ -70,6 +71,8 @@ When a call closes, the voice service enqueues a `call.completed` job. The job's
 `summarise-call` reads the transcript and what the tools did (an audited PHI read), and asks the Responses API for a structured summary: two or three sentences for staff, the caller's intent, their sentiment, whether the call needs review and why, and a suggested follow-up. The output must match a strict JSON schema and is checked again with zod; an emergency call is always flagged, whatever the model says. The summary is encrypted into `call_summaries`, once per call, and the write is audited. Without an OpenAI key the worker writes the same shape from the call's facts alone, with no model.
 
 A job that fails is retried with exponential backoff (15 seconds up to an hour, five times) and then moved to a dead-letter queue, where nothing retries it. Job data holds ids only, never patient data, and a failure is kept as a code (`summary_model_http_503`), never a message that could echo the transcript. The `worker_jobs` view shows each clinic its own jobs, and the call page says when a summary is still coming or could not be written.
+
+**Webhooks.** The agent, the API and the worker emit domain events (a booking, a closed request, a finished call) through an `EventSink`. Each event has an id derived from what happened, so a retried booking is one event. The `webhook-event` job stores it and queues one `deliver-webhook` job per endpoint that wants it; a delivery is retried with backoff for about a day, logged at every attempt, and an endpoint that fails three events in a row is turned off. Emitting never fails the thing that happened: a booking stands whatever the queue does.
 
 `purge-retention` runs at 03:00 UTC. For each clinic it deletes transcripts and summaries of calls older than the clinic's `retentionDays` (2555 by default, about 7 years) and audits how many it deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
 
