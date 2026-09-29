@@ -8,14 +8,14 @@ The conversation prompt says so, and so does the planner prompt, but the real gu
 
 ## Emergencies
 
-`detectEmergency` in `packages/core/src/emergency.ts` runs on every caller transcript fragment, over a rolling window so a phrase split across fragments is still caught. It is a phrase list, not a classifier, and it deliberately errs toward false positives: telling someone with a cough to call 911 costs a moment of confusion; missing chest pain costs far more.
+`detectEmergency` in `packages/core/src/emergency.ts` runs on every caller transcript fragment, over a rolling window so a phrase split across fragments is still caught. It is a phrase list, not a classifier, and it deliberately errs toward false positives: telling someone with a cough to call 911 costs a moment of confusion; missing chest pain costs far more. The phrases live in the language packs (`packages/core/src/locales/`), and every language's phrases are checked on every call, whatever languages the clinic offers (see [languages](languages.md)).
 
 On a match, the backend immediately:
 
-1. sends a fixed instruction to stop the task and say "If this is a medical emergency, please hang up and call 911 right away" (for self-harm language, the 988 Suicide and Crisis Lifeline script);
+1. sends a fixed instruction to stop the task and say "If this is a medical emergency, please hang up and call 911 right away" (for self-harm language, the 988 Suicide and Crisis Lifeline script). The script is in the language the emergency was said in when the clinic offers it, otherwise in the call's language, and gives the clinic's emergency number: 911 by default in the United States, 999 in Bangladesh. 988 is named only at United States clinics;
 2. drops any change waiting for confirmation, refuses every further write for the rest of the call, and discards any request already in flight;
 3. marks the call as an emergency for staff review;
-4. if the clinic enabled it and the match is a specific medical kind (not just the word "emergency"), transfers to the on-call line after a short delay, so the caller hears the 911 line first.
+4. if the clinic enabled it and the match is a specific medical kind (not just the word "emergency"), transfers to the on-call line after a short delay, so the caller hears the emergency number first.
 
 The guardrail keeps listening after the first match: a different kind later in the call ("and now he has passed out") gets its own instruction. The one negation it honours is "it is not an emergency", and only for the bare word; "no chest pain" style negations are too easy to mishear.
 
@@ -23,7 +23,7 @@ No clinic setting turns the guardrail off.
 
 ### Before any release
 
-The phrase list and both scripts must be reviewed by a licensed clinician, and the review recorded in the pull request that changes them. The list covers cardiac, breathing, stroke, bleeding, unresponsiveness, self-harm, overdose and severe allergic reaction; every pattern has a test in `packages/core/test/safety-rules.test.ts`.
+The phrase list and both scripts must be reviewed by a licensed clinician, and the review recorded in the pull request that changes them. The list covers cardiac, breathing, stroke, bleeding, unresponsiveness, self-harm, overdose and severe allergic reaction; every pattern has a test in `packages/core/test/safety-rules.test.ts` or, for Spanish and Bangla, `packages/core/test/languages.test.ts`. The Spanish and Bangla lists need a clinician who works in that language; until the Bangla list has had that review, Bangla stays experimental.
 
 ## Identity
 

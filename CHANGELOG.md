@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- The assistant can have a name ("Maya"), which it introduces itself with. A name never counts as the AI disclosure: the greeting must still say AI assistant, and a greeting that names the software is refused.
+- Spanish, and Bangla as an experimental language. Each clinic chooses the languages its assistant speaks and a primary language; calls start in the primary one and follow the caller. Offered times, read-backs, text messages and the emergency script are in the caller's language, and visit types and providers can have a name in each. See [docs/languages.md](docs/languages.md).
+- The emergency guardrail and the clear-yes check work in every language on every call. The emergency script gives the clinic's emergency number, which defaults from its country (911, 999), and names 988 only in the United States.
+- A second demo clinic, Dhanmondi Diagnostic Centre in Dhaka, in Bangla first and English second, open Saturday to Thursday, with its own login (`frontdesk@dhanmondi-demo.test`) that sees only that clinic.
+- Settings > Assistant and languages: the assistant's name, the languages with an Experimental badge on Bangla, the primary language, the emergency number, and a greeting preview in each language.
+- 11 new evals: 5 in Spanish (a booking, a hedge, chest pain, a refill, three wrong dates of birth) and 6 in Bangla (a booking with "ji", the hedge "na, pore", report times, a price, an emergency with 999, and a caller mixing Bangla and English). Scenarios can name their clinic and check the call's language, what was said and which FAQ answered.
+- Dates of birth can be said with Spanish or Bengali month names and Bengali digits, and a numeric date is read day first outside North America.
 - A design system for the dashboard: semantic colour tokens for light and dark, Inter and Noto Sans Bengali self-hosted, one type scale, three radii, two shadows and one focus ring, and a component kit (buttons, fields, switches, tabs, panels, menus, tooltips, toasts, stat cards with sparklines and more). See [docs/design.md](docs/design.md).
 - Dark mode, chosen per person (system, light or dark) and applied before the first paint.
 - A command palette (Cmd+K or Ctrl+K) to jump to a page, find a patient, start a booking or a test call, or switch the theme, and keyboard shortcuts (G then T, S, P, R or C; N; ?).
@@ -32,6 +39,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
+- The demo clinic's assistant is called Maya and speaks English and Spanish.
 - Signing in now opens Today instead of the call list.
 - "Tasks" are "Requests" everywhere in the dashboard, and `/tasks` pages move to `/requests`. The API keeps the name `tasks`.
 - Migration `0006_request_notes.sql` adds `task_notes` (encrypted, insert-only for the application role, with Row Level Security) and a request's outcome and who assigned it.
