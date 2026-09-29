@@ -48,7 +48,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
     clinicById: async (id) => remember(await clinicById(db, id)),
     openCall: (clinicId, sessionId, from, channel, startedBy) => calls.open(clinicId, sessionId, from, channel, startedBy),
     actionsFor: (clinicId, callId) => ({
-      record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision }),
+      record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }),
     }),
     recorderFor: (clinicId, callId) => ({
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),

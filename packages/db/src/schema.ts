@@ -40,6 +40,7 @@ export const patients = pgTable('patients', {
   phoneEnc: text('phone_enc'),
   phoneHash: text('phone_hash'),
   externalRef: text('external_ref'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const appointments = pgTable('appointments', {
@@ -75,6 +76,7 @@ export const calls = pgTable('calls', {
   voiceSeconds: numeric('voice_seconds', { precision: 10, scale: 2 }),
   closeReason: text('close_reason'),
   channel: text('channel', { enum: ['phone', 'web'] }).notNull().default('phone'),
+  patientId: uuid('patient_id'),
 });
 
 export const callSegments = pgTable('call_segments', {
