@@ -4,6 +4,7 @@ import { openAs } from './session';
 test.describe.serial('the front desk, end to end on the demo clinic', () => {
   test('a manager sees the week of calls', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
     await expect(page.locator('tbody tr')).toHaveCount(15);
@@ -13,6 +14,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await page.getByRole('tab', { name: 'Bookings and changes' }).click();
     await page.locator('tbody tr').last().getByRole('link').click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/); // the list's cells also contain the tool names
@@ -24,14 +26,15 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('an emergency call is flagged at the top', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
-    await page.getByText('Emergency', { exact: true }).first().click();
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
+    await page.locator('tbody').getByText('Emergency', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Emergency language on this call')).toBeVisible();
   });
 
   test('front desk claims a refill, releases it, claims it again and closes it', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    await page.getByRole('link', { name: /Tasks/ }).click();
+    await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
     await expect(tasks).toHaveCount(3);
     const first = tasks.first();
@@ -41,6 +44,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Release' }).click();
     await expect(first.getByText('Unclaimed')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
+    await first.getByRole('button', { name: 'Mark done' }).click();
+    await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
     await expect(tasks).toHaveCount(2);
     await page.getByRole('tab', { name: 'Done' }).click();

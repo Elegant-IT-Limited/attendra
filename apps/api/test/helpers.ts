@@ -27,12 +27,13 @@ export function totp(uri: string, at = Date.now()) {
   return String((mac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date }) {
+/** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[] }) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
-  const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
+  const log = createLogger({ name: 'test', level: opts.logs ? 'debug' : 'info', destination: new Writable({ write: (c, _e, done) => { opts.logs?.push(String(c)); done(); } }) });
   const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log });
   const users = {
     owner: await addMember(auth, t.db, { email: 'omar@maple.example', name: 'Omar Owner', password: PASSWORD, orgId: 'org_demo', role: 'owner' }),

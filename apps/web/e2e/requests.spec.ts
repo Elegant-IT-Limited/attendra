@@ -1,0 +1,29 @@
+import { expect, test } from '@playwright/test';
+import { openAs } from './session';
+
+test('front desk claims a refill request, adds a note, and closes it with an outcome', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  await page.getByRole('link', { name: /^Requests/ }).click();
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible();
+  await expect(page.getByText('The patient asked for a refill. Check with the care team, then call them back.')).toBeVisible();
+
+  await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
+  const card = page.getByTestId('task').first();
+  await expect(card.getByText(/Prescription refill, waiting/)).toBeVisible();
+  await card.getByRole('button', { name: 'Claim' }).click();
+  await expect(card.getByText('You have it')).toBeVisible();
+
+  await card.getByLabel('Add a note for the team').fill('Pharmacy confirmed they have it in stock.');
+  await card.getByRole('button', { name: 'Add note' }).click();
+  await expect(card.getByText('Pharmacy confirmed they have it in stock.')).toBeVisible();
+  await expect(card.getByText(/Jordan \(front desk\),/)).toBeVisible();
+
+  await card.getByRole('button', { name: 'Mark done' }).click();
+  await card.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
+  await card.getByRole('button', { name: 'Mark done' }).click();
+  await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toHaveCount(0);
+
+  await page.getByRole('tab', { name: 'Done' }).click();
+  const done = page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' });
+  await expect(done.getByText('Refill sent to the pharmacy')).toBeVisible();
+});

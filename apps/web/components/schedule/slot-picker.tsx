@@ -37,7 +37,9 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
     })}`),
   });
   const byDay = new Map<string, SlotList['slots']>();
-  for (const s of slots.data?.slots ?? []) {
+  // earliest first within a day, whoever the provider: the search returns them provider by provider
+  const sorted = [...(slots.data?.slots ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.providerId.localeCompare(b.providerId));
+  for (const s of sorted) {
     const d = localDateOf(new Date(s.startsAt), clinic.timezone);
     byDay.set(d, [...(byDay.get(d) ?? []), s]);
   }
