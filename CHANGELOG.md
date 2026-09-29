@@ -6,6 +6,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- Live calls: Today and Calls show a Live now strip with each call's length, who is calling once verified, and what the assistant is doing. Opening one shows live captions that follow the conversation (and pause while you scroll up), the tool steps as they run, the read-back waiting for a yes, and an emergency banner the moment the guardrail fires. When the call ends the page becomes the call record.
+- Staff on a live call can send the assistant a short note, take the call to the front desk line or their own number, or end it. A note never overrides the rules in code. Each action is audited, sent once per click, and a second person is told who already has the call. A browser test call cannot be transferred. A new permission, `calls:coach`, is for owners, managers and front desk staff.
+- An opt-in sound and notification when an emergency starts on any live call, kept per browser.
+- Simulated calls in the local demo: a scripted booking call through the real assistant, with no audio and no OpenAI, from Test call. The e2e suite watches, coaches and ends one.
 - A summary of every call, written by a new worker service (`apps/worker`, on pg-boss in the same Postgres). It holds two or three sentences for staff, what the caller wanted, how they came across, whether the call needs review and why, and a suggested follow-up. It is encrypted, written once per call, and audited. Without an OpenAI key it is written from the call's facts alone.
 - The call page shows the summary with intent and sentiment badges and the review flag, and a flagged call can be marked reviewed. The call list has a Needs review filter, Today lists flagged calls, and requests the assistant created show the suggested next step.
 - A retention period per clinic (`retentionDays`, 2555 days by default): a nightly job deletes older transcripts and summaries and audits how many.
@@ -43,6 +47,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
+- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
 - Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
 - The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
@@ -113,6 +119,8 @@ Security and CI fixes after the first release.
 
 ### Changed
 
+- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
+- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
 - Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
 - The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - CI runs the gitleaks CLI, pinned and checksum-verified, and the current major versions of the GitHub actions.

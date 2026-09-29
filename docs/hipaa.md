@@ -42,6 +42,7 @@ Self-hosters are responsible for their own BAAs and operations.
 - Recording is off by default. Turning it on requires a recording notice, because several US states require all-party consent.
 - Every call starts with an AI-assistant disclosure: a clinic greeting that does not say so is rejected when the configuration loads. A name for the assistant never counts as the disclosure.
 - Call summaries are encrypted like transcripts. The summary model is called with `store: false`, a timeout and a cap on input and output, and is told to summarise only what was said, never to add advice or a diagnosis. The worker's read of a transcript and its write of a summary are both audited (`call.transcript.read`, `call.summary.written`), and so is a staff member marking a flagged call reviewed (`call.summary.reviewed`).
+- Live calls add these actions: `call.live.watched`, once per watch, since the captions are what the caller says; `calls.live.listed`, when the live list shows verified callers' short names ("Maria D."), once per 5 minutes; `call.coached`, with the note's length and never its words; `call.taken_over` and `call.ended_by_staff`. A viewer's live list has no names and writes nothing. Live events are held in the voice service's memory only, for as long as the call and a minute after.
 - Background jobs carry ids only. A failed job keeps an error code, never text from the call.
 - Transcripts and summaries are deleted after each clinic's retention period (`retentionDays`, 2555 days by default). The purge is audited with counts only (`retention.purged`).
 

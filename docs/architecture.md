@@ -32,6 +32,36 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 
 The emergency guardrail is not a delegation. It runs on every `session.input_transcript.delta`, over a rolling window of the caller's recent words, and appends a fixed `session.instructions.append` with `delegation_id: null` the moment it matches.
 
+## Live calls
+
+Staff can watch a call as it happens, send the assistant a note, take the call, or end it.
+
+```mermaid
+sequenceDiagram
+  participant Caller
+  participant Voice as Voice service (CallRunner, CallAgent)
+  participant Registry as Live registry (in memory)
+  participant API as Dashboard API
+  participant Staff as Browser
+  Caller->>Voice: speech, as transcript deltas
+  Voice->>Registry: captions, tool steps, state, emergency
+  Staff->>API: GET /calls/:id/live (EventSource)
+  API->>Voice: GET /internal/live/:id (token)
+  Registry-->>API: snapshot, replay since Last-Event-ID, then new events
+  API-->>Staff: the same stream, audited once as call.live.watched
+  Staff->>API: POST /live/coach, /take-over or /end, with a key per click
+  API->>Voice: the action (token), audited as call.coached, call.taken_over or call.ended_by_staff
+  Voice->>Caller: an instruction to the voice model, then a transfer or a hang-up
+```
+
+`CallAgent` emits a `LiveEvent` for every caption delta, every tool step as it starts and finishes (the tool's name and its result code, never argument values), each change to the verified caller, the pending read-back and what the assistant is doing, an emergency, a staff action, and the end. The voice service keeps them in a `LiveRegistry`: the calls running now, per clinic, each with a replay buffer of its last 2,000 events. A watcher gets a snapshot of where the call stands, the buffer after its `Last-Event-ID`, then each new event, with a heartbeat every 15 seconds. A finished call stays in the registry for a minute, so a watcher still sees how it ended.
+
+A coaching note reaches the voice model as an instruction marked as coming from staff. It changes nothing in code: `runTool` still refuses a booking without a read-back and a clear yes, a patient action before verification, and anything after an emergency, whatever the model does with the note. A take-over and an end are claims: the first one wins, the same click sent twice is the same claim, and anyone else is told who has the call. A browser test call cannot be transferred.
+
+**One voice instance.** The registry lives in the voice service's memory, so the API must reach the instance that runs the call. That is the deployment Attendra supports today: one voice service. To run several, move the registry to Postgres. Each voice instance writes its events to a table keyed by call and event id, with the clinic's Row Level Security like any other call row, and sends a `NOTIFY` that carries only the call id and the new event id, because any database role can `LISTEN` on any channel. The API `LISTEN`s, reads the new rows inside `withClinic`, and streams them as today; `Last-Event-ID` becomes a query on the table. Staff actions become rows that the instance running the call picks up on its own channel. The HTTP contract to the browser does not change.
+
+Simulated calls (`SimulatedEngine` in `packages/voice-engine`) play a scripted conversation into the real runner, agent, tools and database, with no audio and no model. The local demo turns them on so Live now has something to show without a phone or a key, and the e2e suite uses them to watch, coach and end a call.
+
 ## After a call
 
 When a call closes, the voice service enqueues a `call.completed` job. The job's id is derived from the call id, so a second close, a retried webhook or a restart is still one job. The worker picks it up and queues the work every closed call needs; today that is `summarise-call`.
