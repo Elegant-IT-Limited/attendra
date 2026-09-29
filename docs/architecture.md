@@ -21,7 +21,8 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `packages/db` | SQL migrations, RLS, PHI encryption, repositories implementing the ports. |
 | `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
 | `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
-| `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, the nightly retention purge, and (behind a flag) text delivery statuses. |
+| `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, the nightly retention purge, and (behind a flag) text delivery statuses. |
+| `packages/knowledge` | The clinic's documents: text extraction (unpdf), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
 
 ## A delegation, in detail
 
@@ -86,4 +87,4 @@ Patients (`/clinics/:clinicId/patients`) go through `PatientRecords`. Search is 
 
 ## Data
 
-Postgres 16 is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, dates of birth, phone numbers, transcript text, task details and appointment notes are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).
+Postgres 16 with pgvector is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, dates of birth, phone numbers, transcript text, task details, appointment notes and call summaries are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).

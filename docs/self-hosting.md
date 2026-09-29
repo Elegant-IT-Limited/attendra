@@ -36,7 +36,17 @@ docker compose -f infra/docker-compose.yml exec api pnpm db:add-number --clinic 
 
 At first sign-in the dashboard asks you to set up two-step sign-in with an authenticator app.
 
-Using your own Postgres instead of Compose? Run the migrations as the database owner, and let the service's login role switch into the application role the RLS policies are written for:
+**Upgrading an install that ran `postgres:16`.** v0.4 needs the pgvector extension for the clinic's knowledge. The `pgvector/pgvector:pg16` image is Postgres 16 with pgvector added, and reads the same data directory, so the upgrade is a new image and nothing else:
+
+```bash
+docker compose -f infra/docker-compose.yml down        # keeps the pgdata volume
+git pull                                               # compose now names pgvector/pgvector:pg16
+docker compose -f infra/docker-compose.yml up -d --build
+```
+
+The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`. Back up first, as for any upgrade: `docker compose exec postgres pg_dump -U attendra attendra > attendra.sql`.
+
+Using your own Postgres instead of Compose? It needs the pgvector extension installed (the `postgresql-16-pgvector` package on Debian and Ubuntu, or your provider's pgvector option); the migration enables it. Run the migrations as the database owner, and let the service's login role switch into the application role the RLS policies are written for:
 
 ```sql
 grant attendra_app to <your_service_user>;
