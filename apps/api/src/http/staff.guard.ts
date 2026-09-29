@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, type StaffRole, staffRole } from '@attendra/db';
+import { type Database, passwordState, type StaffRole, staffRole } from '@attendra/db';
 import {
   type CanActivate, createParamDecorator, type ExecutionContext, ForbiddenException, Inject, Injectable,
   NotFoundException, SetMetadata, UnauthorizedException,
@@ -15,6 +15,8 @@ export interface Staff {
   name: string;
   email: string;
   twoFactorEnabled: boolean;
+  /** A temporary password is still in use: nothing but "who am I" until it is changed. */
+  mustChangePassword: boolean;
   /** Set on clinic routes, after the membership check. */
   clinicId?: string;
   role?: StaffRole;
@@ -28,7 +30,7 @@ const PUBLIC = 'attendra:public';
 
 /** The permission a clinic route needs. The route must have a :clinicId parameter. */
 export const Requires = (permission: Permission) => SetMetadata(PERMISSION, permission);
-/** For the few routes a signed-in person needs before enrolling in two-factor (who am I?). */
+/** For the few routes a signed-in person needs before their account is ready: before changing a temporary password, and before enrolling in two-factor (who am I?). */
 export const BeforeTwoFactor = () => SetMetadata(BEFORE_TWO_FACTOR, true);
 /** No session needed. Only the health check, which carries no data. */
 export const Public = () => SetMetadata(PUBLIC, true);
@@ -51,7 +53,7 @@ export function toHeaders(raw: FastifyRequest['headers']): Headers {
 /**
  * Every /api/v1 request passes here. In order: a write must come from the dashboard's
  * own origin (the session cookie alone is not enough), the session must be valid,
- * two-factor must be on, and on clinic routes the person must be a member of the
+ * a temporary password must have been changed, two-factor must be on, and on clinic routes the person must be a member of the
  * clinic's organization with a role that has the route's permission. A clinic
  * someone does not belong to answers 404, not 403, so ids cannot be probed.
  */
@@ -75,9 +77,12 @@ export class StaffGuard implements CanActivate {
     const session = await this.auth.api.getSession({ headers: toHeaders(req.headers) });
     if (!session) throw new UnauthorizedException({ error: 'signed_out' });
     const user = session.user as typeof session.user & { twoFactorEnabled?: boolean | null };
-    req.staff = { userId: user.id, name: user.name, email: user.email, twoFactorEnabled: !!user.twoFactorEnabled };
+    const password = await passwordState(this.db, { userId: user.id });
+    req.staff = { userId: user.id, name: user.name, email: user.email, twoFactorEnabled: !!user.twoFactorEnabled, mustChangePassword: !!password?.mustChange };
 
     const beforeTwoFactor = meta<boolean>(BEFORE_TWO_FACTOR);
+    // demo mode or not: the person who typed a temporary password must not be able to act as its owner
+    if (!beforeTwoFactor && req.staff.mustChangePassword) throw new ForbiddenException({ error: 'password_change_required' });
     if (!beforeTwoFactor && !this.options.demoMode && !req.staff.twoFactorEnabled) {
       throw new ForbiddenException({ error: 'two_factor_required' });
     }

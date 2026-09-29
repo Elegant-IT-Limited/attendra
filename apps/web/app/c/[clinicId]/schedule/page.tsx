@@ -50,7 +50,8 @@ function ScheduleScreen() {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') ?? '') ? params.get('date')! : today;
   const open = params.get('appointment');
   const [providerId, setProviderId] = useState('');
-  const [showCancelled, setShowCancelled] = useState(true);
+  // in a week the columns are narrow and a cancelled block sits on top of the booking that replaced it, so they start hidden there
+  const [cancelledShown, setCancelledShown] = useState({ day: true, week: false });
   const [booking, setBooking] = useState(false);
 
   const set = (next: Record<string, string | null>) => {
@@ -69,6 +70,8 @@ function ScheduleScreen() {
     refetchInterval: 30_000,
   });
 
+  const showCancelled = cancelledShown[view];
+  const setShowCancelled = (v: boolean) => setCancelledShown((c) => ({ ...c, [view]: v }));
   const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked'), [schedule.data, showCancelled]);
 
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;

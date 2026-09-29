@@ -36,6 +36,7 @@ export default function Settings() {
     onError: (e) => { if (e instanceof ApiFailure) setIssues(e.body.issues ?? [{ path: '', message: e.message }]); },
   });
 
+  if (saved.isError) return <><PageHeader title="Settings" /><Alert tone="danger">The clinic settings did not load. Refresh the page; if it keeps failing, check that the API is running.</Alert></>;
   if (!draft) return <><PageHeader title="Settings" /><Skeleton className="h-96" /></>;
   const c = draft;
   const set = (patch: Partial<ClinicConfig>) => setDraft({ ...c, ...patch });
