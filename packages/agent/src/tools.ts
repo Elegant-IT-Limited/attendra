@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, type AuditLog, type ClinicConfig, emergencyNumberFor, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, type AuditLog, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   type Messenger, NO_INFORMATION, PACKS, parseDob,
   type PatientDirectory, resolveTransfer, type SchedulerAdapter, speakSlot, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, weekHours, zonedInstant,
@@ -18,6 +18,8 @@ export interface Backend {
   messenger: Messenger;
   /** The clinic's own documents. Without it, the assistant answers from the FAQ alone. */
   knowledge?: KnowledgeBase;
+  /** The clinic's webhooks hear about bookings, cancellations and requests. */
+  events?: EventSink;
 }
 
 export interface CallContext {
@@ -72,6 +74,8 @@ export async function runTool(
   }
   const { clinic } = ctx;
   const args = parsed.data as Record<string, unknown>;
+  // never let a webhook problem undo or hold up what the caller was told
+  const emit = (e: DomainEvent) => backend.events?.emit(clinic.id, e).catch((err: unknown) => ctx.log?.warn({ call_id: ctx.callId, type: e.type, err }, 'event not queued'));
   // everything said back to the caller is in the language they are speaking
   const lang = state.language;
   const pack = PACKS[lang];
@@ -194,6 +198,9 @@ export async function runTool(
         state.pending = null;
         if (cancelled.status === 'not_found') return refuse('unknown_appointment', 'Say you could not find that appointment and offer a callback.');
         state.outcome = 'cancelled';
+        if (cancelled.status === 'cancelled') {
+          await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
+        }
         return { ok: true, data: { cancelled: true } };
       }
 
@@ -211,6 +218,13 @@ export async function runTool(
         oldStillActive = moved.status === 'not_found';
       }
       state.outcome = pending.replacesAppointmentId && !oldStillActive ? 'rescheduled' : 'booked';
+      if (result.status === 'booked') {
+        const a = result.appointment;
+        const facts = { appointmentId: a.id, patientId: patient.id, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.start.toISOString(), endsAt: a.end.toISOString(), by: 'assistant', callId: ctx.callId };
+        await emit(state.outcome === 'rescheduled'
+          ? { type: 'appointment.rescheduled', key: `${a.id}|${facts.startsAt}`, data: { ...facts, previousAppointmentId: pending.replacesAppointmentId } }
+          : { type: 'appointment.booked', key: a.id, data: facts });
+      }
       // the booking stands whatever happens to the text message; never report it as failed
       let smsSent = false;
       if (patient.phone) {
@@ -240,6 +254,7 @@ export async function runTool(
         details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: String(args.callback_number) },
       });
       state.outcome = 'task_created';
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id, say: 'Tell them the request is with the care team, who will review it. Do not promise approval or a time.' } };
     }
 
@@ -250,6 +265,7 @@ export async function runTool(
         details: { reason: String(args.reason), callback_number: String(args.callback_number) },
       });
       if (!state.emergency) state.outcome = 'task_created';
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
     }
 
