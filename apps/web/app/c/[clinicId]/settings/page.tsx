@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { Field, Section } from '@/components/settings/section';
+import { SettingsNav } from '@/components/settings/settings-nav';
 import { Switch } from '@/components/ui/controls';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ export default function Settings() {
   return (
     <>
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
+      <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       {issues && issues.length > 0 && (
         <Alert tone="danger" title="Not saved. Fix these first:" className="mb-6">

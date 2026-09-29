@@ -1,9 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { signInAgain } from './session';
+import { openAs } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
-  // dashboard.spec ends by signing the stored manager session out
-  const page = await signInAgain(browser, 'Practice manager');
+  const page = await openAs(browser, 'manager');
   await page.getByRole('link', { name: 'Team' }).click();
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
   await expect(page.getByRole('row', { name: /Priya \(practice manager\).*You/ })).toBeVisible();

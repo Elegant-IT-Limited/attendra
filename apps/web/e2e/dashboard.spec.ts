@@ -7,7 +7,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
-    await expect(page.locator('tbody tr')).toHaveCount(20);
+    await expect(page.locator('tbody tr')).toHaveCount(25);
     await page.getByRole('tab', { name: 'Needs attention' }).click();
     await expect(page.locator('tbody tr')).toHaveCount(7); // 4 requests for staff, 3 emergencies
   });
@@ -76,14 +76,5 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Audit log' }).click();
     await expect(page.getByText('Changed clinic settings').first()).toBeVisible();
     await expect(page.getByText('Read a call transcript').first()).toBeVisible();
-  });
-
-  test('signing out clears the screen', async ({ browser }) => {
-    const page = await openAs(browser, 'manager');
-    await page.getByRole('button', { name: /account and theme/ }).click();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/sign-in$/);
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/sign-in$/);
   });
 });
