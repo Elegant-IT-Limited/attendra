@@ -27,14 +27,14 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
   test('an emergency call is flagged at the top', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
-    await page.getByText('Emergency', { exact: true }).first().click();
+    await page.locator('tbody').getByText('Emergency', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Emergency language on this call')).toBeVisible();
   });
 
   test('front desk claims a refill, releases it, claims it again and closes it', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    await page.getByRole('link', { name: /Tasks/ }).click();
+    await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
     await expect(tasks).toHaveCount(3);
     const first = tasks.first();
@@ -44,6 +44,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Release' }).click();
     await expect(first.getByText('Unclaimed')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
+    await first.getByRole('button', { name: 'Mark done' }).click();
+    await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
     await expect(tasks).toHaveCount(2);
     await page.getByRole('tab', { name: 'Done' }).click();
