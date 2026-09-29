@@ -42,7 +42,7 @@ export class CallsController {
     const calls = await this.desk.listCalls(clinicId, {
       limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, patientIds, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
     });
-    return this.page(calls, Number.POSITIVE_INFINITY);
+    return { ...this.page(calls, Number.POSITIVE_INFINITY), truncated: calls.length >= 100 };
   }
 
   private names(staff: Staff, audit: 'list' | 'search') {

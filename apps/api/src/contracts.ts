@@ -54,7 +54,11 @@ export const CallSummary = z.object({
   tools: z.array(z.string()),
   verified: z.boolean(),
 });
-export const CallList = z.object({ calls: z.array(CallSummary), next: z.string().nullable() });
+export const CallList = z.object({
+  calls: z.array(CallSummary), next: z.string().nullable(),
+  /** A search stopped at its cap: there may be more matches. */
+  truncated: z.boolean().optional(),
+});
 
 const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
 const CallFilters = z.object({
@@ -184,7 +188,11 @@ const phoneNumber = z.string().trim().max(30).refine((v) => v === '' || v.replac
 
 export const PatientSearch = z.object({ query: z.string().trim().min(2, 'type at least two characters').max(100) });
 export const PatientCard = z.object({ id: z.string(), name: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(), phone: z.string().nullable() });
-export const PatientList = z.object({ patients: z.array(PatientCard) });
+export const PatientList = z.object({
+  patients: z.array(PatientCard),
+  /** The search read its whole cap of patients: someone further on may match too. */
+  truncated: z.boolean().optional(),
+});
 export const PatientInput = z.object({
   firstName: personName,
   lastName: personName,

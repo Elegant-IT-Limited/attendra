@@ -71,7 +71,8 @@ describe('reading', () => {
       id: booked, patientName: 'James Whitaker', providerId: 'prov_okafor', status: 'booked', bookedBy: { kind: 'staff', name: 'Ana Front' },
     })]);
     // the admin opened this day in the role test too, a moment ago: still one row
-    expect((await audit('schedule.viewed')).filter((r) => r.actor === `user:${api.users.admin}`)).toEqual([{ actor: `user:${api.users.admin}`, entity_id: '2026-09-29+1' }]);
+    const mine = (await audit('schedule.viewed')).filter((r) => r.actor === `user:${api.users.admin}` && r.entity_id.startsWith('2026-09-29+1;provider=all;p:'));
+    expect(mine).toHaveLength(1);
     expect((await api.request('GET', `${C}?from=2026-09-30&days=1`, { cookie: as.admin })).json().appointments).toEqual([]);
   });
 

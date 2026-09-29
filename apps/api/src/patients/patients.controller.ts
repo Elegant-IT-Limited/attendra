@@ -34,7 +34,7 @@ export class PatientsController {
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientSearch)) body: z.infer<typeof PatientSearch>, @CurrentStaff() staff: Staff): Promise<PatientList> {
     const found = await this.records.search(clinicId, body.query, staff.userId, this.now());
     if (!found) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'query', message: 'type a name, a date of birth or a full phone number' }] });
-    return { patients: found.map(toCard) };
+    return { patients: found.patients.map(toCard), truncated: found.truncated };
   }
 
   @Get('recent')

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { memberships } from '../auth-schema';
-import { type Database, withClinic } from '../client';
+import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { recordView } from './audit';
+import { patientSetKey, recordView } from './audit';
 import { appointments, auditLogs, callActions, calls, callSegments, clinics, patients, taskNotes, tasks } from '../schema';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
@@ -41,6 +41,12 @@ export async function orgOfClinic(db: Database, clinicId: string): Promise<strin
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
+
+/** One row per patient a search showed, in the search's transaction. The query itself is never written. */
+export async function auditResults(tx: Tx, clinicId: string, userId: string, patientIds: string[]) {
+  const unique = [...new Set(patientIds)];
+  if (unique.length) await tx.insert(auditLogs).values(unique.map((id) => ({ clinicId, actor: actorOf(userId), action: 'patient.search.result', entity: 'patient', entityId: id })));
+}
 
 /**
  * What the staff dashboard reads and changes. Every method runs as the application
@@ -84,11 +90,17 @@ export class FrontDeskRepository {
           opts.emergency !== undefined ? eq(calls.emergencyFlag, opts.emergency) : undefined,
           opts.patientIds ? inArray(calls.patientId, opts.patientIds) : undefined))
         .groupBy(calls.id, patients.id).orderBy(desc(calls.startedAt), desc(calls.id)).limit(opts.limit);
-      const named = !!opts.names && rows.some((r) => r.firstNameEnc);
+      const shown = rows.flatMap((r) => (r.firstNameEnc && r.patientId ? [r.patientId] : []));
       if (opts.names?.audit === 'search') {
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(opts.names.userId), action: 'calls.searched', entity: 'call', entityId: `matches:${rows.length}` });
-      } else if (named) {
-        await recordView(tx, { clinicId, actor: actorOf(opts.names!.userId), action: 'calls.listed', entity: 'call', entityId: null }, 5);
+        await auditResults(tx, clinicId, opts.names.userId, shown);
+      } else if (opts.names && shown.length) {
+        // everything that changes what the list shows is in the key: filters, page, and who is on it
+        const key = [
+          `from=${opts.from?.toISOString() ?? ''}`, `to=${opts.to?.toISOString() ?? ''}`, `outcome=${opts.outcome ?? ''}`, `channel=${opts.channel ?? ''}`,
+          `emergency=${opts.emergency ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
+        ].join(';');
+        await recordView(tx, { clinicId, actor: actorOf(opts.names.userId), action: 'calls.listed', entity: 'call', entityId: key }, 5);
       }
       const ctx = (col: string) => phiContext(clinicId, col);
       return rows.map(({ firstNameEnc, lastNameEnc, ...r }) => ({
