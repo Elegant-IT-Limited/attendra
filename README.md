@@ -76,6 +76,10 @@ This starts the API on an in-memory Postgres, plays every call scenario through 
 | **Refills and callbacks for the front desk** | **Clinic settings, validated before they save** |
 | ![The task queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
 
+### Talk to it
+
+Put an OpenAI key in `.env` at the repo root (`OPENAI_API_KEY=sk-...`) and run `pnpm demo` again. The dashboard's **Test call** page then talks to the demo clinic's receptionist through your microphone, about $0.05 a minute. No phone number needed: [docs/test-calls.md](docs/test-calls.md).
+
 ### Take a real call
 
 [docs/live-call.md](docs/live-call.md) takes a small server to a real phone number the demo clinic answers, in about an hour. For your own clinic, follow [docs/self-hosting.md](docs/self-hosting.md).
