@@ -13,6 +13,7 @@
     "@attendra/agent": "workspace:*",
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
     "@attendra/telephony": "workspace:*",
