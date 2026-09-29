@@ -25,7 +25,7 @@ export class MeController {
   async me(@CurrentStaff() staff: Staff): Promise<Me> {
     const clinics = await clinicsForUser(this.db, staff.userId);
     return {
-      user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled },
+      user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword },
       demoMode: this.options.demoMode,
       testCalls: !!this.voice,
       clinics: clinics.map((c) => ({ id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role) })),

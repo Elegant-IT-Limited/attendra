@@ -26,6 +26,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function redirectFor(error: unknown): string | null {
   if (!(error instanceof ApiFailure)) return null;
   if (error.status === 401) return '/sign-in';
+  if (error.status === 403 && error.body.error === 'password_change_required') return '/change-password';
   if (error.status === 403 && error.body.error === 'two_factor_required') return '/setup-two-factor';
   return null;
 }

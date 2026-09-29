@@ -117,7 +117,7 @@ describe('staff bookings', () => {
 describe('moving and cancelling', () => {
   let id: string;
   beforeAll(async () => {
-    const r = await book('14:00', 'desk-move');
+    const r = await book('14:00', 'desk-move', { patientId: ids.maria! });
     if (r.status !== 'done') throw new Error(r.status);
     id = r.appointmentId;
   });
@@ -149,7 +149,7 @@ describe('moving and cancelling', () => {
   });
 
   it('frees the slot for the next booking once cancelled', async () => {
-    expect((await book('09:00', 'desk-after', { providerId: 'prov_lindqvist' })).status).toBe('done');
+    expect((await book('09:00', 'desk-after', { providerId: 'prov_lindqvist', patientId: ids.sam_b! })).status).toBe('done');
   });
 
   it('answers not_found for another clinic\'s appointment', async () => {
@@ -162,5 +162,66 @@ describe('the database', () => {
   it('refuses an appointment that came from neither a call nor a person', async () => {
     await expect(t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key)
       values (${DEMO_CLINIC.id}, ${ids.maria!}, 'prov_okafor', 'vt_sick', '2026-10-01T16:00:00Z', '2026-10-01T16:20:00Z', 'no-source')`)).rejects.toThrow();
+  });
+});
+
+describe('races and mistakes', () => {
+  it('a move loses cleanly to a cancel that landed after the move read the row', async () => {
+    const r = await book('15:00', 'race-move');
+    if (r.status !== 'done') throw new Error(r.status);
+    // someone else cancels between this move's read and its write, as a second request would
+    const racing = new StaffScheduler(t.db, cipher, () => NOW) as unknown as { busy: (...a: unknown[]) => Promise<unknown>; reschedule: StaffScheduler['reschedule'] };
+    const busy = racing.busy.bind(racing);
+    racing.busy = async (tx: unknown, ...rest: unknown[]) => {
+      await (tx as { execute: (q: unknown) => Promise<unknown> }).execute(sql`update appointments set status = 'cancelled' where id = ${r.appointmentId}`);
+      return busy(tx, ...rest);
+    };
+    expect(await racing.reschedule(DEMO_CLINIC, r.appointmentId, { start: at('2026-09-29', '16:00') }, 'u_ana')).toEqual({ status: 'refused', reason: 'just_cancelled' });
+    const [row] = (await t.db.execute(sql`select status, starts_at from appointments where id = ${r.appointmentId}`)).rows as { status: string; starts_at: string }[];
+    expect(row!.status).toBe('cancelled');
+    expect(new Date(row!.starts_at)).toEqual(at('2026-09-29', '15:00')); // not moved back to life at a new time
+  });
+
+  it('a staff cancel carries a cancel key, and cancelling twice still changes it once', async () => {
+    const r = await book('15:20', 'cancel-key');
+    if (r.status !== 'done') throw new Error(r.status);
+    const [a, b] = await Promise.all([staff.cancel(DEMO_CLINIC, r.appointmentId, {}, 'u_ana'), staff.cancel(DEMO_CLINIC, r.appointmentId, {}, 'u_ben')]);
+    expect([a.status, b.status].sort()).toEqual(['already_done', 'done']);
+    const [row] = (await t.db.execute(sql`select cancel_key from appointments where id = ${r.appointmentId}`)).rows as { cancel_key: string }[];
+    expect(row!.cancel_key).toMatch(new RegExp(`^staff:u_(ana|ben):${r.appointmentId}$`));
+    expect((await audit('appointment.cancelled.staff')).filter((x) => x.entity_id === r.appointmentId)).toHaveLength(1);
+  });
+
+  it('a key sent again for a different booking is refused, not taken as a retry', async () => {
+    expect((await book('15:40', 'key-reuse')).status).toBe('done');
+    expect(await book('15:40', 'key-reuse')).toMatchObject({ status: 'already_done' });
+    expect(await book('16:00', 'key-reuse')).toEqual({ status: 'refused', reason: 'idempotency_mismatch' });
+    expect(await book('15:40', 'key-reuse', { patientId: ids.maria! })).toEqual({ status: 'refused', reason: 'idempotency_mismatch' });
+    expect(await book('15:40', 'key-reuse', { providerId: 'prov_lindqvist' })).toEqual({ status: 'refused', reason: 'idempotency_mismatch' });
+  });
+
+  it('will not book a patient into two places at once, whatever the provider', async () => {
+    const sam = { patientId: ids.sam_a! };
+    expect((await book('10:40', 'sam-1', sam)).status).toBe('done');
+    // Dr. Lindqvist is free at 10:40, but Sam is not
+    expect(await book('10:40', 'sam-2', { ...sam, providerId: 'prov_lindqvist' })).toEqual({ status: 'refused', reason: 'patient_busy', patientName: 'Sam Rivera' });
+    expect(await book('10:40', 'sam-3', { ...sam, providerId: 'prov_lindqvist', visitTypeId: 'vt_annual', start: at('2026-09-29', '10:20') })).toMatchObject({ reason: 'patient_busy' });
+    // and a move into the same clash is refused too
+    const other = await book('11:00', 'sam-4', { ...sam, providerId: 'prov_lindqvist' });
+    if (other.status !== 'done') throw new Error(other.status);
+    expect(await staff.reschedule(DEMO_CLINIC, other.appointmentId, { start: at('2026-09-29', '10:40') }, 'u_ana')).toMatchObject({ reason: 'patient_busy', patientName: 'Sam Rivera' });
+  });
+});
+
+describe('the daylight saving change on 2026-11-01', () => {
+  it('books Monday 2 November at 8:00 local time, which is 15:00 UTC once clocks go back', async () => {
+    const s = new StaffScheduler(t.db, cipher, () => zonedInstant('2026-10-30', '12:00', tz));
+    const r = await s.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-11-02', '08:00'), idempotencyKey: 'dst-1' }, 'u_ana');
+    expect(r.status).toBe('done');
+    expect(at('2026-11-02', '08:00').toISOString()).toBe('2026-11-02T15:00:00.000Z');
+    expect(at('2026-10-30', '08:00').toISOString()).toBe('2026-10-30T14:00:00.000Z');
+    // Sunday the 1st, the changeover day itself, is closed
+    expect(await s.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-11-01', '10:00'), idempotencyKey: 'dst-2' }, 'u_ana'))
+      .toEqual({ status: 'refused', reason: 'closed' });
   });
 });

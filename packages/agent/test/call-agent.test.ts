@@ -1,4 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
 import { world } from './support';
@@ -11,6 +12,27 @@ const firstSlot = (results: ToolResult[]) => (results.find((r) => Array.isArray(
 type Out = Awaited<ReturnType<CallAgent['onDelegation']>>;
 const spoken = (out: Out) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
 const bookings = () => w.backend.scheduler.upcoming(DEMO_CLINIC.id, w.patientIds.maria!, new Date('2026-09-28T00:00:00Z'));
+
+describe('the call record', () => {
+  const patientOf = async (callId: string) => ((await w.t.db.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+
+  it('links a call to the patient once, and only once, the caller is verified', async () => {
+    const c = await w.call('+13035550147', { record: true });
+    c.caller('Hi, this is Maria Delgado, born March 5th 1985.');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 5th 1985' } }]);
+    expect(await patientOf(c.callId)).toBeNull(); // the wrong date of birth, and a matching phone number, prove nothing
+    c.caller('Sorry, March 4th 1985.');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } }]);
+    expect(await patientOf(c.callId)).toBe(w.patientIds.maria);
+  });
+
+  it('leaves a call with nobody verified unlinked', async () => {
+    const c = await w.call('+13035550147', { record: true });
+    c.caller('What time do you open tomorrow?');
+    await c.delegate([{ tool: 'get_clinic_info', args: { question: 'opening hours' } }]);
+    expect(await patientOf(c.callId)).toBeNull();
+  });
+});
 
 describe('booking over the phone', () => {
   it('verifies, offers real slots, reads back, and books only after a clear yes, then texts once', async () => {

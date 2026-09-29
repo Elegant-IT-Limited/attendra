@@ -10,7 +10,12 @@ export default function Home() {
   const me = useMe();
   const router = useRouter();
   const first = me.data?.clinics[0];
-  useEffect(() => { if (first) router.replace(`/c/${first.id}/calls`); }, [first, router]);
+  // a temporary password comes first, then two-step sign-in, then the clinic
+  const mustChange = me.data?.user.mustChangePassword;
+  useEffect(() => {
+    if (mustChange) router.replace('/change-password');
+    else if (first) router.replace(`/c/${first.id}`);
+  }, [mustChange, first, router]);
   if (me.data && !first) {
     return <Empty title="No clinic yet">Your account is not a member of any clinic. Ask your practice owner to add you.</Empty>;
   }

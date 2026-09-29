@@ -24,7 +24,8 @@ const AFTER_SPEECH_MS = 3500;
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 
 export interface ActionRecorder {
-  record(entry: { tool: string; argsRedacted: unknown; result: unknown; revision: number }): Promise<void>;
+  /** `patientId` is set once the caller is verified, so the call record can be linked to them. */
+  record(entry: { tool: string; argsRedacted: unknown; result: unknown; revision: number; patientId?: string | null }): Promise<void>;
 }
 
 /**
@@ -95,6 +96,7 @@ export class CallAgent {
         argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
         result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
         revision,
+        patientId: this.state.verifiedPatient?.id ?? null,
       });
       if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
       return result;

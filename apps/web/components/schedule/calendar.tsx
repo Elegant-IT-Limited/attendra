@@ -12,7 +12,8 @@ type Provider = ClinicConfig['providers'][number];
 
 const hoursFor = (clinic: ClinicConfig, p: Provider, date: string) => windowsOn(p.hours ?? clinic.hours, weekdayOf(date));
 const minutesOf = (iso: string, tz: string) => localParts(new Date(iso), tz).minutes;
-const initials = (name: string) => name.replace(/^Dr\.?\s+/, '').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+/** "Okafor" for "Dr. Nkem Okafor": what fits a week column. The full name is on hover. */
+const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(/\s+/).at(-1) ?? name;
 
 /**
  * The schedule as a grid: one column per provider for a day, or one column per day
@@ -52,7 +53,7 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
               <div key={d} className={cn('border-l border-border px-2 py-2 text-sm', d === today && 'bg-accent')}>
                 <p className={cn('font-medium', d === today && 'text-primary')}>{dayTitle(d, 'short')}</p>
                 <div className="mt-1 flex gap-1 text-[11px] text-muted-foreground">
-                  {holiday ? <span>Holiday, closed</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={p.name}>{initials(p.name)}</span>)}
+                  {holiday ? <span>Holiday, closed</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={p.name}><abbr title={p.name} className="no-underline">{shortName(p.name)}</abbr></span>)}
                 </div>
               </div>
             );

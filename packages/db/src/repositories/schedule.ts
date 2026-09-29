@@ -3,7 +3,7 @@ import { and, asc, eq, gt, lt } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, patients } from '../schema';
-import { recordView, staffNames } from './audit';
+import { patientSetKey, recordView, staffNames } from './audit';
 
 export type BookedBy = { kind: 'assistant'; callId: string } | { kind: 'staff'; userId: string; name: string | null };
 
@@ -40,8 +40,9 @@ export class ScheduleRepository {
         .where(and(eq(appointments.clinicId, clinicId), lt(appointments.startsAt, q.to), gt(appointments.endsAt, q.from),
           q.providerId ? eq(appointments.providerId, q.providerId) : undefined))
         .orderBy(asc(appointments.startsAt), asc(appointments.id));
-      // a screen left open refreshes every 30 seconds; one row per person per range per 5 minutes
-      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'schedule.viewed', entity: 'schedule', entityId: q.label }, 5);
+      // a screen left open refreshes every 30 seconds: the same range, filter and patients within 5 minutes is one row
+      const key = `${q.label};provider=${q.providerId ?? 'all'};${patientSetKey(rows.map((r) => r.a.patientId))}`;
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'schedule.viewed', entity: 'schedule', entityId: key }, 5);
       return rows;
     });
     return this.entries(clinicId, rows);
