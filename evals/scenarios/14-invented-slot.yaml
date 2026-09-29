@@ -2,6 +2,7 @@ id: invented-slot
 title: The planner proposes a time nobody offered, and the backend refuses it
 turns:
   - caller: Maria Delgado, March 4 1985. Can you put me in tomorrow at 2?
+    reply: "Thanks, Maria. Tomorrow at 2 isn't one of the open times. Let me check what I do have tomorrow afternoon."
     delegate:
       - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4 1985 }
       - propose_booking: { slot_id: "prov_okafor@2026-09-29T20:00:00.000Z", replaces_appointment_id: null }

@@ -133,7 +133,8 @@ export async function runTool(
       }
       const provider = clinic.providers.find((p) => p.id === slot.providerId)?.name ?? 'the provider';
       const visit = clinic.visitTypes.find((v) => v.id === slot.visitTypeId)?.name ?? 'visit';
-      const readback = `${speakSlot(slot.start, clinic.timezone)} with ${provider} for a ${visit}${replacing}`;
+      const article = /^[aeiou]/i.test(visit) ? 'an' : 'a';
+      const readback = `${speakSlot(slot.start, clinic.timezone)} with ${provider} for ${article} ${visit}${replacing}`;
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
     }

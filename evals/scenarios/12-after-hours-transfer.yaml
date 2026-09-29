@@ -2,6 +2,7 @@ id: after-hours-front-desk
 title: Asking for the front desk after hours offers a callback instead of ringing an empty office
 turns:
   - caller: Can I just speak to a person at the front desk?
+    reply: "The front desk is closed right now. I've asked them to call you back when the office opens. Is there anything else I can help with tonight?"
     delegate:
       - transfer_call: { target: front_desk }
       - create_callback: { reason: wants to speak to the front desk, callback_number: "+13035550147" }

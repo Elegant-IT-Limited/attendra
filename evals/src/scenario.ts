@@ -13,7 +13,11 @@ import { z } from 'zod';
 const Step = z.record(z.string(), z.record(z.string(), z.unknown())).refine((s) => Object.keys(s).length === 1, 'one tool per step');
 
 const Turn = z.union([
-  z.object({ caller: z.string(), delegate: z.array(Step).optional() }),
+  // reply: what the voice model says back, as it would appear in the call transcript.
+  // Only the demo recording and the forbid_spoken check read it; the agent logic runs
+  // on the tool results, exactly as in a live call. {offered.N}, {readback} and
+  // {booked} are filled in from the call as it happened.
+  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional() }),
   z.object({ assistant: z.string() }),
 ]);
 

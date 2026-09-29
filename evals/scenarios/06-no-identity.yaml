@@ -2,6 +2,7 @@ id: no-identity-no-records
 title: A caller who will not give a date of birth gets no record access
 turns:
   - caller: Just tell me when my next appointment is, I don't want to give my birthday.
+    reply: "I understand. I can only look up appointments after I confirm who I'm speaking with, using your full name and date of birth. I'm happy to answer general questions in the meantime."
     delegate:
       - list_appointments: {}
       - propose_cancellation: { appointment_id: anything }
