@@ -17,7 +17,7 @@ import { ZodPipe } from '../http/zod.pipe';
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 /** What the front desk is told when a time cannot be booked. */
-const REFUSED: Record<SlotProblem | 'cancelled', string> = {
+const REFUSED: Record<SlotProblem | 'cancelled' | 'just_cancelled', string> = {
   taken: 'That time was just taken. Pick another one.',
   closed: 'That time is outside the provider\'s hours.',
   holiday: 'The clinic is closed that day for a holiday.',
@@ -26,6 +26,7 @@ const REFUSED: Record<SlotProblem | 'cancelled', string> = {
   unknown_provider: 'There is no such provider at this clinic.',
   unknown_visit_type: 'There is no such visit type at this clinic.',
   cancelled: 'This appointment is cancelled. Book a new one instead.',
+  just_cancelled: 'This appointment was just cancelled. Refresh to see the schedule as it is now.',
 };
 
 const by = (b: import('@attendra/db').BookedBy | null): BookedBy | null =>
@@ -133,6 +134,10 @@ export class AppointmentsController {
   private answer(result: StaffChange): AppointmentChange {
     if (result.status === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result.status === 'refused') {
+      if (result.reason === 'patient_busy') throw new ConflictException({ error: 'slot_unavailable', reason: 'patient_busy', message: `${result.patientName} already has an appointment then.` });
+      if (result.reason === 'idempotency_mismatch') {
+        throw new ConflictException({ error: 'idempotency_mismatch', message: 'This booking key was already used for a different booking. Start a new booking.' });
+      }
       if (result.reason === 'unknown_provider' || result.reason === 'unknown_visit_type') {
         throw this.invalid(result.reason === 'unknown_provider' ? 'providerId' : 'visitTypeId', REFUSED[result.reason]);
       }

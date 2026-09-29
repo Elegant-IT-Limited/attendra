@@ -7,8 +7,8 @@ import type { StaffRole } from '@attendra/db';
  *
  * viewer  reads the call list and the settings, never a transcript, a task, a patient or the schedule
  * staff   works the front desk: transcripts, the task queue, patients, the schedule, test calls from the browser
- * admin   also edits clinic settings
- * owner   everything, including members (members are managed from the CLI in v0.2)
+ * admin   also edits clinic settings, reassigns requests and manages members, except owners
+ * owner   everything, including other owners
  */
 export const PERMISSIONS = {
   'calls:list': ['owner', 'admin', 'staff', 'viewer'],
@@ -24,6 +24,7 @@ export const PERMISSIONS = {
   'settings:read': ['owner', 'admin', 'staff', 'viewer'],
   'settings:write': ['owner', 'admin'],
   'audit:read': ['owner', 'admin'],
+  'members:manage': ['owner', 'admin'],
 } as const satisfies Record<string, readonly StaffRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -2,12 +2,13 @@
 'use client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { renderSVG } from 'uqr';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
+import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 
 /**
@@ -22,6 +23,9 @@ export default function SetupTwoFactor() {
   const [setup, setSetup] = useState<{ totpURI: string; backupCodes: string[] } | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // two-step setup waits until a temporary password has been replaced; the API refuses it before then
+  const me = useMe();
+  useEffect(() => { if (me.data?.user.mustChangePassword) router.replace('/change-password'); }, [me.data, router]);
   const qr = useMemo(() => (setup ? renderSVG(setup.totpURI, { border: 1 }) : null), [setup]);
   const secret = setup ? new URL(setup.totpURI).searchParams.get('secret') : null;
 

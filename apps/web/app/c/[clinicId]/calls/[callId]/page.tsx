@@ -140,10 +140,10 @@ export default function CallPage() {
           </Card>
           {c.tasks.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Left for staff</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Requests for the team</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
-                  <Link key={t.id} href={`/c/${clinicId}/tasks`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">
+                  <Link key={t.id} href={`/c/${clinicId}/requests`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">
                     <span>{TASK_TYPES[t.type] ?? t.type}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>

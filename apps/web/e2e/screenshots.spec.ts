@@ -36,12 +36,12 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('call-detail'), fullPage: true });
 
     await page.getByRole('link', { name: 'All calls' }).click();
-    await page.getByText('Emergency', { exact: true }).first().click();
+    await page.locator('tbody').getByText('Emergency', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Emergency language on this call')).toBeVisible();
     await page.screenshot({ path: out('call-emergency') });
 
-    await page.getByRole('link', { name: /Tasks/ }).click();
+    await page.getByRole('link', { name: /^Requests/ }).click();
     await expect(page.getByTestId('task').first()).toBeVisible();
     await page.screenshot({ path: out('tasks') });
 

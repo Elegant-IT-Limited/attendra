@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, createPhiCipher, FrontDeskRepository, phiContext, saveClinic, ScheduleRepository, schema, seedDemo, seedDemoSchedule, withClinic } from '../src';
+import { CallRepository, createPhiCipher, FrontDeskRepository, patientSetKey, phiContext, saveClinic, ScheduleRepository, schema, seedDemo, seedDemoSchedule, withClinic } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -55,12 +55,30 @@ describe('the schedule', () => {
     expect(cancelled!.cancelledBy).toEqual({ kind: 'staff', userId: 'u_otto', name: null });
   });
 
-  it('writes one audit row for a range, and one per 5 minutes when the same screen refreshes', async () => {
-    expect(await audit('schedule.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: '2026-09-29+1' }]);
-    await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-30'), label: '2026-09-30+1' }, 'u_ana');
+  it('writes one audit row for a view, and the same view refreshed within 5 minutes is covered by it', async () => {
+    const key = `2026-09-29+1;provider=all;${patientSetKey([ids.maria!, ids.james!])}`;
+    expect(await audit('schedule.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: key }]);
+    await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), label: '2026-09-29+1' }, 'u_ana'); // an identical refresh
+    expect(await audit('schedule.viewed')).toHaveLength(1);
     await t.db.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'schedule.viewed'`);
     await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), label: '2026-09-29+1' }, 'u_ana');
-    expect((await audit('schedule.viewed')).map((r) => r.entity_id)).toEqual(['2026-09-29+1', '2026-09-30+1', '2026-09-29+1']);
+    expect((await audit('schedule.viewed')).map((r) => r.entity_id)).toEqual([key, key]);
+  });
+
+  it('writes a new row when anything that changes what is shown changes: the provider filter, the range, or who is on it', async () => {
+    const before = (await audit('schedule.viewed')).length;
+    await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), providerId: 'prov_okafor', label: '2026-09-29+1' }, 'u_ana');
+    await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-30'), label: '2026-09-30+1' }, 'u_ana');
+    expect((await audit('schedule.viewed')).length).toBe(before + 2);
+    // a new appointment appears on the same day, within the window: a new patient on screen, a new row
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
+      clinicId: DEMO_CLINIC.id, patientId: ids.sam_a!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', createdByUserId: 'u_ana', idempotencyKey: 'new-in-window',
+      startsAt: zonedInstant('2026-09-29', '11:00', tz), endsAt: zonedInstant('2026-09-29', '11:20', tz),
+    }));
+    await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), label: '2026-09-29+1' }, 'u_ana');
+    const rows = await audit('schedule.viewed');
+    expect(rows.length).toBe(before + 3);
+    expect(rows.at(-1)!.entity_id).toBe(`2026-09-29+1;provider=all;${patientSetKey([ids.maria!, ids.james!, ids.sam_a!])}`);
   });
 
   it('opens one appointment with contact details and the decrypted note, audited', async () => {

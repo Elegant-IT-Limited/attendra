@@ -20,7 +20,8 @@ Inbound calls over direct SIP, identity check, built-in scheduler, two-step writ
 - Patients: search, add and edit, a record with appointments, verified calls and requests, and calls linked to the verified patient (done).
 - Live calls in the dashboard, and staff take-over.
 - `apps/worker`: post-call summaries, retention purge, SMS status; voicemail with transcription.
-- Member management in the dashboard.
+- Member management in the dashboard (done).
+- Requests with notes, outcomes and assignment, and calls with filters, patient search and caller names (done).
 - Clinic sign-up, billing and cost per call, for hosted deployments.
 
 ## v0.4: reach
