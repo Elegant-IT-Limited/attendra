@@ -45,17 +45,33 @@ describe('reading a search box', () => {
 
 describe('search across clinics', () => {
   it('never returns another clinic\'s patients, by name or by phone', async () => {
-    expect(await records.search(OTHER.id, 'delgado', 'u_otto')).toEqual([]);
-    expect(await records.search(OTHER.id, '303 555 0147', 'u_otto')).toEqual([]);
-    expect((await records.search(DEMO_CLINIC.id, 'delgado', 'u_ana'))!.map((p) => p.lastName)).toEqual(['Delgado']);
+    expect(await records.search(OTHER.id, 'delgado', 'u_otto')).toEqual({ patients: [], truncated: false });
+    expect(await records.search(OTHER.id, '303 555 0147', 'u_otto')).toEqual({ patients: [], truncated: false });
+    expect((await records.search(DEMO_CLINIC.id, 'delgado', 'u_ana'))!.patients.map((p) => p.lastName)).toEqual(['Delgado']);
   });
 
   it('audits every search in the clinic that ran it, with the count only', async () => {
     const rows = (await t.db.execute(sql`select clinic_id, entity_id from audit_logs where action = 'patient.searched' order by id`)).rows;
+    const results = (await t.db.execute(sql`select clinic_id, actor, entity from audit_logs where action = 'patient.search.result'`)).rows;
+    expect(results).toEqual([{ clinic_id: DEMO_CLINIC.id, actor: 'user:u_ana', entity: 'patient' }]); // one row per patient shown
     expect(rows).toEqual([
       { clinic_id: OTHER.id, entity_id: 'matches:0' },
       { clinic_id: OTHER.id, entity_id: 'matches:0' },
       { clinic_id: DEMO_CLINIC.id, entity_id: 'matches:1' },
     ]);
+  });
+});
+
+describe('the scan cap', () => {
+  it('reads patients in a fixed order and says when it stopped at the cap', async () => {
+    const capped = new PatientRecords(t.db, cipher, 2);
+    const first = await capped.search(DEMO_CLINIC.id, 'a', 'u_ana').catch(() => null); // one letter is refused
+    expect(first).toBeNull();
+    const ids = ((await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} order by id limit 2`)).rows as { id: string }[]).map((r) => r.id);
+    const runs = await Promise.all([capped.search(DEMO_CLINIC.id, '1985-03-04', 'u_ana'), capped.search(DEMO_CLINIC.id, '1985-03-04', 'u_ana')]);
+    expect(runs.map((r) => r!.truncated)).toEqual([true, true]);
+    expect(runs[0]).toEqual(runs[1]);
+    expect(runs[0]!.patients.every((p) => ids.includes(p.id))).toBe(true); // only the first two by id were read
+    expect((await new PatientRecords(t.db, cipher).search(DEMO_CLINIC.id, '1985-03-04', 'u_ana'))!.truncated).toBe(false);
   });
 });

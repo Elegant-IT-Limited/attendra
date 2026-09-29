@@ -99,8 +99,9 @@ describe('calls', () => {
     const staffView = (await api.request('GET', `${C}/calls`, { cookie: as.staff })).json().calls;
     await api.request('GET', `${C}/calls`, { cookie: as.staff });
     expect(staffView.find((c: { id: string }) => c.id === api.callId).patientName).toBe('Maria Delgado');
-    // the filter test above listed calls too, a moment ago: one row covers all of it
-    expect(await audit('calls.listed')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: null }]);
+    // the same list twice is one row; its key names every filter and who was on it
+    const listed = (await audit('calls.listed')).filter((r) => r.entity_id.startsWith('from=;to=;outcome=;channel=;emergency=;before=;limit=50;p:'));
+    expect(listed).toEqual([{ actor: `user:${api.users.staff}`, entity_id: expect.stringMatching(/;p:[0-9a-f]{16}$/) }]);
     const n = await count();
     const viewerView = await api.request('GET', `${C}/calls`, { cookie: as.viewer });
     expect(viewerView.body).not.toContain('Maria');
@@ -108,11 +109,30 @@ describe('calls', () => {
     expect(await count()).toBe(n);
   });
 
+  it('writes a new row for a different filter or page, and none for an identical refresh', async () => {
+    const n = async () => (await audit('calls.listed')).length;
+    const start = await n();
+    await api.request('GET', `${C}/calls?outcome=task_created`, { cookie: as.staff });
+    expect(await n()).toBe(start + 1);
+    await api.request('GET', `${C}/calls?outcome=task_created`, { cookie: as.staff });
+    expect(await n()).toBe(start + 1);
+    await api.request('GET', `${C}/calls?outcome=task_created&channel=phone`, { cookie: as.staff });
+    expect(await n()).toBe(start + 2);
+    const first = (await api.request('GET', `${C}/calls?limit=1`, { cookie: as.staff })).json(); // page one: a browser test, nobody named, no row
+    const afterFirst = await n();
+    await api.request('GET', `${C}/calls?limit=1&before=${first.next}`, { cookie: as.staff }); // page two names Maria
+    await api.request('GET', `${C}/calls?limit=1&before=${first.next}`, { cookie: as.staff }); // the same page again
+    expect(await n()).toBe(afterFirst + 1);
+    await api.request('GET', `${C}/calls?limit=2`, { cookie: as.staff }); // Maria again, on a different page
+    expect(await n()).toBe(afterFirst + 2);
+  });
+
   it('searches by patient name as a POST, audited with the count, and not for a viewer', async () => {
     const res = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg' } });
     expect(res.json().calls.map((c: { id: string; patientName: string }) => [c.id, c.patientName])).toEqual([[api.callId, 'Maria Delgado']]);
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'nobody here' } })).json().calls).toEqual([]);
     expect((await audit('calls.searched')).map((r) => r.entity_id)).toEqual(['matches:1', 'matches:0']);
+    expect(await audit('patient.search.result')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria }]); // one row per patient shown
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.viewer, body: { query: 'delg' } })).statusCode).toBe(403);
     expect((await api.request('POST', `${O}/calls/search`, { cookie: as.owner, body: { query: 'delg' } })).statusCode).toBe(404);
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'd' } })).json().error).toBe('invalid_request');

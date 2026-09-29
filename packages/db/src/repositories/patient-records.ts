@@ -4,7 +4,8 @@ import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
-import { recordView } from './audit';
+import { patientSetKey, recordView } from './audit';
+import { auditResults } from './front-desk';
 import { patientLookupKey, phoneKey } from './patients';
 
 /** The most patients one search will read. Decision 7 says why, and what replaces it. */
@@ -42,21 +43,28 @@ export function nameMatches(typed: string[], p: { firstName: string; lastName: s
  * that shows a patient writes its audit row in the same transaction.
  */
 export class PatientRecords {
-  constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
+  constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly scanLimit = PATIENT_SCAN_LIMIT) {}
 
-  /** At most 25 matches, by last name. The audit row records how many matched, never what was typed. */
-  async search(clinicId: string, query: string, userId: string, today = new Date()): Promise<PatientCard[] | null> {
+  /**
+   * At most 25 matches, by last name. Every patient shown gets a patient.search.result
+   * row, and the search one row with how many matched; what was typed is never
+   * written. The scan reads in a fixed order and says when it stopped at the cap,
+   * so the same search always sees the same patients and the screen can say so.
+   */
+  async search(clinicId: string, query: string, userId: string, today = new Date()): Promise<{ patients: PatientCard[]; truncated: boolean } | null> {
     const q = readQuery(query, today);
     if (!q) return null;
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = q.kind === 'phone'
-        ? await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, q.digits)))))
-        : await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).limit(PATIENT_SCAN_LIMIT);
+        ? await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, q.digits))))).orderBy(asc(patients.id))
+        : await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(asc(patients.id)).limit(this.scanLimit);
       const cards = rows.map((r) => this.card(clinicId, r));
       const matched = cards.filter((c) => q.kind === 'phone' || (q.kind === 'dob' ? c.dob === q.dob : nameMatches(q.words, c)))
         .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName) || a.dob.localeCompare(b.dob));
+      const shown = matched.slice(0, SEARCH_RESULTS);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.searched', entity: 'patient', entityId: `matches:${matched.length}` });
-      return matched.slice(0, SEARCH_RESULTS);
+      await auditResults(tx, clinicId, userId, shown.map((p) => p.id));
+      return { patients: shown, truncated: q.kind !== 'phone' && rows.length >= this.scanLimit };
     });
   }
 
@@ -92,7 +100,7 @@ export class PatientRecords {
       const ids = opened.map((o) => o.id!).filter((id) => /^[0-9a-f-]{36}$/.test(id));
       if (!ids.length) return [];
       const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), inArray(patients.id, ids)));
-      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.recent.viewed', entity: 'patient', entityId: null }, 5);
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.recent.viewed', entity: 'patient', entityId: patientSetKey(rows.map((r) => r.id)) }, 5);
       const byId = new Map(rows.map((r) => [r.id, this.card(clinicId, r)]));
       return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
     });
