@@ -10,7 +10,7 @@ const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
 function harness(planner: Planner) {
   const sent: unknown[] = [];
-  const engine = { name: 'fake', accept: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
+  const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
   const sideband: Sideband = { send: (e) => sent.push(e), onEvent: () => {}, onError: () => {}, onClose: () => {}, close: vi.fn() };
   const segments: { speaker: string; text: string }[] = [];
   const closes: unknown[] = [];
@@ -74,6 +74,17 @@ describe('the GPT-Live call runner', () => {
     expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false }]);
     expect(h.sideband.close).toHaveBeenCalled();
   });
+});
+
+it('counts the call as over when the socket drops and the final write fails', async () => {
+  const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
+  let drop: (code: number) => void = () => {};
+  const sideband: Sideband = { send: vi.fn(), onEvent: () => {}, onError: () => {}, onClose: (h) => { drop = h; }, close: vi.fn() };
+  const agent = new CallAgent(new CallState(), { clinic: DEMO_CLINIC, callId: 'call_1', callerNumber: null, now: () => NOW }, {} as never, new ScriptedPlanner([]), log);
+  const runner = new CallRunner('live_1', engine, sideband, agent, { appendSegment: async () => {}, close: async () => { throw new Error('db down'); } }, log);
+  const done = runner.start();
+  drop(1006);
+  await expect(done).resolves.toBeUndefined();
 });
 
 describe('the conversation prompt', () => {

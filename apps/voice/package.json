@@ -25,5 +25,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.16"
+  },
+  "exports": {
+    "./runtime": "./src/runtime.ts"
   }
 }
