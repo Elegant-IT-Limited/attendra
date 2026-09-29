@@ -75,10 +75,18 @@ export class FrontDeskRepository {
         .where(and(eq(appointments.clinicId, clinicId), or(eq(appointments.createdByCallId, callId), eq(appointments.cancelledByCallId, callId))))
         .orderBy(appointments.startsAt);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId });
+      // who the caller was, when the agent verified them: part of the same view
+      const [caller] = call.patientId
+        ? await tx.select({ id: patients.id, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, call.patientId)))
+        : [];
       const ctx = phiContext(clinicId, 'call_segments.text');
       return {
         id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag,
         closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds), channel: call.channel,
+        patient: caller ? {
+          id: caller.id,
+          name: `${this.cipher.decrypt(caller.firstNameEnc, phiContext(clinicId, 'patients.first_name'))} ${this.cipher.decrypt(caller.lastNameEnc, phiContext(clinicId, 'patients.last_name'))}`,
+        } : null,
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx), startMs: s.startMs, endMs: s.endMs })),
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
         tasks: callTasks,
