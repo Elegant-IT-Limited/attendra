@@ -7,7 +7,7 @@ interface PendingBase {
   readback: string;
   seq: number; // one per proposal, so rebooking the same slot later in a call gets a fresh idempotency key
   proposedAtMs: number;
-  /** Start of the first assistant turn after the proposal: the read-back itself. Null until it is spoken. */
+  /** When the assistant first spoke after the proposal: the read-back itself. Null until it is spoken. */
   readbackAtMs: number | null;
 }
 
@@ -38,9 +38,11 @@ export class CallState {
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
   addTranscript(speaker: Turn['speaker'], delta: string, startMs: number, endMs: number) {
     const last = this.turns.at(-1);
-    const startsTurn = !last || last.speaker !== speaker;
-    if (startsTurn && speaker === 'agent' && this.pending && this.pending.readbackAtMs === null && startMs >= this.pending.proposedAtMs) {
-      this.pending.readbackAtMs = startMs;
+    // The assistant often starts talking ("Sure, let me book that") before the proposal
+    // is back and reads it out in the same breath, so any assistant speech after the
+    // proposal counts as the read-back, not only a new turn.
+    if (speaker === 'agent' && this.pending && this.pending.readbackAtMs === null && endMs > this.pending.proposedAtMs) {
+      this.pending.readbackAtMs = Math.max(startMs, this.pending.proposedAtMs);
     }
     if (last && last.speaker === speaker) {
       last.text = `${last.text}${delta.startsWith(' ') || last.text.endsWith(' ') ? '' : ' '}${delta}`.replace(/\s+/g, ' ');
@@ -51,14 +53,19 @@ export class CallState {
   }
 
   /**
-   * The caller's latest turn after the read-back began, for the confirmation check.
+   * The caller's latest words after the read-back began, for the confirmation check.
    * Only the latest: "hmm, maybe" followed later by a clear "yes" is a yes, and a
-   * "yeah" said before the read-back never counts.
+   * "yeah" said before the read-back never counts. Sounds the transcriber marks in
+   * brackets ([breath], [clear throat]) are not words, so they change nothing.
    */
   answerToReadback(): string {
     const at = this.pending?.readbackAtMs;
     if (at === null || at === undefined) return '';
-    return this.turns.filter((t) => t.speaker === 'caller' && t.startMs > at).at(-1)?.text ?? '';
+    const said = this.turns
+      .filter((t) => t.speaker === 'caller' && t.startMs > at)
+      .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return said.at(-1) ?? '';
   }
 
   /** The last stretch of caller speech, for the emergency guardrail's rolling window. */

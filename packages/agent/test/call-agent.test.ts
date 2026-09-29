@@ -1,4 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
 import { world } from './support';
@@ -11,6 +12,27 @@ const firstSlot = (results: ToolResult[]) => (results.find((r) => Array.isArray(
 type Out = Awaited<ReturnType<CallAgent['onDelegation']>>;
 const spoken = (out: Out) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
 const bookings = () => w.backend.scheduler.upcoming(DEMO_CLINIC.id, w.patientIds.maria!, new Date('2026-09-28T00:00:00Z'));
+
+describe('the call record', () => {
+  const patientOf = async (callId: string) => ((await w.t.db.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+
+  it('links a call to the patient once, and only once, the caller is verified', async () => {
+    const c = await w.call('+13035550147', { record: true });
+    c.caller('Hi, this is Maria Delgado, born March 5th 1985.');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 5th 1985' } }]);
+    expect(await patientOf(c.callId)).toBeNull(); // the wrong date of birth, and a matching phone number, prove nothing
+    c.caller('Sorry, March 4th 1985.');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } }]);
+    expect(await patientOf(c.callId)).toBe(w.patientIds.maria);
+  });
+
+  it('leaves a call with nobody verified unlinked', async () => {
+    const c = await w.call('+13035550147', { record: true });
+    c.caller('What time do you open tomorrow?');
+    await c.delegate([{ tool: 'get_clinic_info', args: { question: 'opening hours' } }]);
+    expect(await patientOf(c.callId)).toBeNull();
+  });
+});
 
 describe('booking over the phone', () => {
   it('verifies, offers real slots, reads back, and books only after a clear yes, then texts once', async () => {
@@ -152,6 +174,38 @@ describe('review fixes', () => {
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['no_clear_yes']);
     c.assistant('Would you like me to book it?');
     c.caller('Yes please.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('counts a read-back spoken in the same breath as "let me book that", as on the first live test call', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, new patient visit, afternoon');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_new', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+    ]);
+    c.assistant('I have 1, 2 or 3 PM. Which time would you like?');
+    c.caller('3');
+    c.assistant('Sure, I will go ahead and book that.'); // already speaking while the proposal runs
+    await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) }]);
+    c.assistant('Tuesday at 3 PM with Dr. Okafor for a new patient visit. Would you like me to book it?'); // same turn
+    c.caller('Yeah');
+    c.assistant('Alright, booking that now.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('ignores a cough or a breath after the yes', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.caller('Yes. I said yes');
+    c.assistant('Thanks, I will book it.');
+    c.caller('[clear throat');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
   });
 

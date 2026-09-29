@@ -68,13 +68,17 @@ No keys are needed for either. The scenarios run the real backend against a real
 pnpm demo        # then open http://localhost:3000
 ```
 
-This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls, and starts the dashboard. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk); the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
+This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, the team, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk); the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
 
 | The week's calls | One call: transcript and every tool step |
 |---|---|
 | ![The call list with outcomes, emergency flags and what the assistant did](docs/images/calls.png) | ![A booking call: the read-back, the clear yes and the confirmed change](docs/images/call-detail.png) |
 | **Refills and callbacks for the front desk** | **Clinic settings, validated before they save** |
 | ![The task queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
+
+### Talk to it
+
+Put an OpenAI key in `.env` at the repo root (`OPENAI_API_KEY=sk-...`) and run `pnpm demo` again. The dashboard's **Test call** page then talks to the demo clinic's receptionist through your microphone, about $0.05 a minute. No phone number needed: [docs/test-calls.md](docs/test-calls.md).
 
 ### Take a real call
 
@@ -84,12 +88,12 @@ This starts the API on an in-memory Postgres, plays every call scenario through 
 
 ```
 apps/voice/            the webhook and the per-call runner (Fastify)
-apps/api/              the dashboard API: Better Auth, roles, calls, tasks, settings, audit (NestJS)
+apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, requests, team, settings, audit (NestJS)
 apps/web/              the staff dashboard (Next.js, Tailwind, TanStack Query), Playwright specs in e2e/
 packages/core/         clinic config, hours, slots, routing, identity, emergency and confirmation rules, the ports
 packages/agent/        CallState, the tools and their guards, the delegation loop, the Responses API planner
 packages/voice-engine/ the VoiceEngine interface and the GPT-Live implementation; prompt; CallRunner
-packages/scheduling/   the SchedulerAdapter that ships in the box (EHR adapters implement the same interface)
+packages/scheduling/   the booking rules and the one write both the assistant and the front desk use; the built-in SchedulerAdapter (EHR adapters implement the same interface)
 packages/telephony/    SIP header parsing, templated SMS through Twilio
 packages/db/           SQL migrations with RLS, Drizzle schema, PHI encryption, repositories, synthetic seed
 packages/observability the redacting logger

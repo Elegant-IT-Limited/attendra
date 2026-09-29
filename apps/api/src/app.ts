@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
-import { type Database, FrontDeskRepository, type PhiCipher } from '@attendra/db';
+import { clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { StaffScheduler } from '@attendra/scheduling';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
 import { Module, type DynamicModule } from '@nestjs/common';
@@ -10,12 +11,17 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
 import { CallsController } from './calls/calls.controller';
+import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, DB, FRONT_DESK, LOGGER } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
+import { OverviewController } from './overview/overview.controller';
+import { PatientsController } from './patients/patients.controller';
+import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
+import { TeamController } from './team/team.controller';
 import pkg from '../package.json' with { type: 'json' };
 
 const { version } = pkg;
@@ -26,18 +32,23 @@ export interface ApiDeps {
   auth: Auth;
   log: Logger;
   options: ApiOptions;
+  /** The voice service, for browser test calls. Without it the endpoint answers 503. */
+  voice?: VoiceClient | null;
   /** Requests per address per minute on /api/v1. Behind the web proxy, set trustProxy. */
   rateLimit?: number;
   /** Proxy hops in front of the API whose X-Forwarded-For is trusted (1 behind the dashboard). */
   trustProxy?: number;
+  /** The clock for booking rules ("no past times"). Tests set it; the default is the real time. */
+  now?: () => Date;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
 // (organization and member admin, account changes) stays closed: those routes sit
 // outside StaffGuard, so they would skip the two-factor rule. Members are managed
-// with `pnpm add-member` in v0.2.
+// through /api/v1/clinics/:clinicId/members, which is behind the guard, and with
+// `pnpm add-member`.
 const AUTH_ROUTES = new Set([
-  'POST /sign-in/email', 'POST /sign-out', 'GET /get-session',
+  'POST /sign-in/email', 'POST /sign-out', 'GET /get-session', 'POST /change-password',
   'POST /two-factor/enable', 'POST /two-factor/verify-totp', 'POST /two-factor/verify-backup-code',
 ]);
 
@@ -46,13 +57,18 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, CallsController, TasksController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: AUTH, useValue: deps.auth },
         { provide: LOGGER, useValue: deps.log },
         { provide: API_OPTIONS, useValue: deps.options },
+        { provide: VOICE, useValue: deps.voice ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
+        { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
+        { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
+        { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },
+        { provide: CLOCK, useValue: deps.now ?? (() => new Date()) },
         { provide: APP_GUARD, useClass: StaffGuard },
       ],
     };
@@ -85,9 +101,11 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
     catch(err: unknown, host: import('@nestjs/common').ArgumentsHost) {
       const reply = host.switchToHttp().getResponse<import('fastify').FastifyReply>();
       const req = host.switchToHttp().getRequest<import('fastify').FastifyRequest>();
-      const status = typeof (err as { getStatus?: () => number }).getStatus === 'function' ? (err as { getStatus: () => number }).getStatus() : 500;
+      // an HttpException was thrown on purpose and says what went wrong; anything else is a bug
+      const known = typeof (err as { getStatus?: () => number }).getStatus === 'function';
+      const status = known ? (err as { getStatus: () => number }).getStatus() : 500;
       if (status >= 500) deps.log.error({ route: req.routeOptions.url, name: (err as Error).name, code: (err as { code?: string }).code }, 'request failed');
-      const body = status < 500 ? (err as { getResponse: () => unknown }).getResponse() : { error: 'server_error' };
+      const body = known ? (err as { getResponse: () => unknown }).getResponse() : { error: 'server_error' };
       void reply.status(status).send(typeof body === 'string' ? { error: body } : body);
     },
   });
@@ -101,11 +119,39 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
     url: '/api/auth/*',
     handler: async (req, reply) => {
       const url = new URL(req.url, deps.options.publicUrl);
-      if (!AUTH_ROUTES.has(`${req.method} ${url.pathname.replace(/^\/api\/auth/, '')}`)) return reply.status(404).send({ error: 'not_found' });
-      const body = req.method === 'POST' && req.body !== undefined ? JSON.stringify(req.body) : undefined;
+      const route = `${req.method} ${url.pathname.replace(/^\/api\/auth/, '')}`;
+      if (!AUTH_ROUTES.has(route)) return reply.status(404).send({ error: 'not_found' });
+      let input = (req.body ?? {}) as Record<string, unknown>;
       const headers = toHeaders(req.headers);
       headers.set('x-forwarded-for', req.ip);
+      const now = deps.now?.() ?? new Date();
+
+      // A temporary password works once, and only for 72 hours.
+      if (route === 'POST /sign-in/email' && typeof input.email === 'string') {
+        const state = await passwordState(deps.db, { email: input.email });
+        if (state?.mustChange && state.expiresAt && state.expiresAt < now) {
+          return reply.status(401).send({ error: 'temporary_password_expired', message: 'This temporary password has expired. Ask your practice manager to reset it.' });
+        }
+      }
+      // Whoever typed a temporary password must not be able to set up the second step for its owner.
+      let changing: string | null = null;
+      if (route === 'POST /two-factor/enable' || route === 'POST /change-password') {
+        const session = await deps.auth.api.getSession({ headers });
+        if (!session) return reply.status(401).send({ error: 'signed_out' });
+        const state = await passwordState(deps.db, { userId: session.user.id });
+        if (route === 'POST /two-factor/enable' && state?.mustChange) return reply.status(403).send({ error: 'password_change_required', message: 'Choose your own password first.' });
+        if (route === 'POST /change-password') {
+          if (typeof input.newPassword === 'string' && input.newPassword === input.currentPassword) {
+            return reply.status(400).send({ error: 'same_password', message: 'Choose a new password, not the one you were given.' });
+          }
+          // every other session ends: the one the manager may have opened with the temporary password too
+          input = { ...input, revokeOtherSessions: true };
+          changing = session.user.id;
+        }
+      }
+      const body = req.method === 'POST' ? JSON.stringify(input) : undefined;
       const res = await deps.auth.handler(new Request(url, { method: req.method, headers, body }));
+      if (changing && res.ok) await clearTemporaryPassword(deps.db, changing);
       reply.status(res.status);
       res.headers.forEach((value, key) => { if (key !== 'set-cookie') reply.header(key, value); });
       const cookies = res.headers.getSetCookie();

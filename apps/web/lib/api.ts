@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { ClinicConfig } from '@attendra/core';
 import type { ApiError, Me } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 
@@ -25,6 +26,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export function redirectFor(error: unknown): string | null {
   if (!(error instanceof ApiFailure)) return null;
   if (error.status === 401) return '/sign-in';
+  if (error.status === 403 && error.body.error === 'password_change_required') return '/change-password';
   if (error.status === 403 && error.body.error === 'two_factor_required') return '/setup-two-factor';
   return null;
 }
@@ -36,3 +38,11 @@ export function useClinic(clinicId: string) {
   const clinic = me.data?.clinics.find((c) => c.id === clinicId);
   return { ...me, clinic, can: (p: string) => !!clinic?.permissions.includes(p) };
 }
+
+/** The clinic's configuration: providers, visit types, hours and holidays. No patient data. */
+export function useClinicConfig(clinicId: string) {
+  return useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`), staleTime: 5 * 60_000 });
+}
+
+/** A fresh key for one write attempt. A retry of the same attempt reuses it, so it is applied once. */
+export const newKey = () => crypto.randomUUID();

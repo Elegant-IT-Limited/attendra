@@ -25,6 +25,7 @@ test.describe('screenshots', () => {
     await signedOut.screenshot({ path: out('sign-in') });
     const page = await openAs(browser, 'manager', hideDevBadge);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.locator('tbody tr')).toHaveCount(15);
     await page.screenshot({ path: out('calls') });
 
@@ -35,12 +36,12 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('call-detail'), fullPage: true });
 
     await page.getByRole('link', { name: 'All calls' }).click();
-    await page.getByText('Emergency', { exact: true }).first().click();
+    await page.locator('tbody').getByText('Emergency', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Emergency language on this call')).toBeVisible();
     await page.screenshot({ path: out('call-emergency') });
 
-    await page.getByRole('link', { name: /Tasks/ }).click();
+    await page.getByRole('link', { name: /^Requests/ }).click();
     await expect(page.getByTestId('task').first()).toBeVisible();
     await page.screenshot({ path: out('tasks') });
 

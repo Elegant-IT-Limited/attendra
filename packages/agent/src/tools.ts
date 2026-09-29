@@ -2,7 +2,7 @@
 import {
   addDays, type AuditLog, type ClinicConfig, findSlots, isClearYes, localDateOf, type Messenger, parseDob,
   type PatientDirectory, resolveTransfer, type SchedulerAdapter, speakSlot, type TaskQueue,
-  ToolArgs, type ToolName, todaysHoursLine, zonedInstant,
+  ToolArgs, type ToolName, todaysHoursLine, weekHours, zonedInstant,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -91,7 +91,7 @@ export async function runTool(
     case 'get_clinic_info': {
       const hours = todaysHoursLine(clinic, ctx.now());
       const answer = answerFromFaqs(clinic.faqs, String(args.question));
-      return { ok: true, data: { today: hours, answer: answer?.answer ?? null, source: answer?.id ?? null } };
+      return { ok: true, data: { today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null } };
     }
 
     case 'find_slots': {

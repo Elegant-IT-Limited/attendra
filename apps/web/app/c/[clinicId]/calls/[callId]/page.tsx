@@ -2,15 +2,16 @@
 'use client';
 import type { CallDetail } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Bot, Check, Lock, User, X } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, UserCheck, X } from 'lucide-react';
+import { localDateOf } from '@attendra/core';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Outcome } from '@/components/calls/outcome';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
-import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, clock, duration, REFUSALS, TASK_TYPES, TOOLS } from '@/lib/format';
+import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
+import { clinicTime, clock, duration, REFUSALS, shortWhen, TASK_TYPES, TOOLS } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const CLOSE_REASONS: Record<string, string> = {
@@ -19,7 +20,8 @@ const CLOSE_REASONS: Record<string, string> = {
 
 export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
-  const { clinic } = useClinic(clinicId);
+  const { clinic, can } = useClinic(clinicId);
+  const config = useClinicConfig(clinicId);
   const call = useQuery({ queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`) });
   const tz = clinic?.timezone ?? 'UTC';
 
@@ -42,10 +44,29 @@ export default function CallPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
+          {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
           {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
         </div>
       </div>
+      {c.appointments.length > 0 && (
+        <ul className="mb-6 space-y-2">
+          {c.appointments.map((a) => {
+            const Icon = a.change === 'booked' ? CalendarCheck : CalendarX;
+            const provider = config.data?.providers.find((p) => p.id === a.providerId)?.name ?? 'the provider';
+            const line = `${a.change === 'booked' ? 'Booked' : 'Cancelled'}: ${shortWhen(a.startsAt, tz)} with ${provider}`;
+            return (
+              <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <Icon className="size-4 text-primary" aria-hidden />
+                {can('schedule:read')
+                  ? <Link href={`/c/${clinicId}/schedule?date=${localDateOf(new Date(a.startsAt), tz)}&appointment=${a.id}`} className="font-medium hover:underline">{line}</Link>
+                  : <span className="font-medium">{line}</span>}
+                {a.change === 'booked' && a.status === 'cancelled' && <Badge>Since cancelled</Badge>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {c.emergency && (
         <Alert tone="danger" title="Emergency language on this call" className="mb-6">
           The assistant stopped what it was doing and gave the emergency script. Review the call and follow up as your protocol says.
@@ -77,6 +98,19 @@ export default function CallPage() {
         </Card>
         <div className="space-y-6">
           <Card>
+            <CardHeader><CardTitle>Who&apos;s calling</CardTitle></CardHeader>
+            <CardContent className="text-sm">
+              {c.patient ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2"><UserCheck className="size-4 text-primary" aria-hidden />
+                    {can('patients:read') ? <Link href={`/c/${clinicId}/patients/${c.patient.id}`} className="font-medium hover:underline">{c.patient.name}</Link> : <span className="font-medium">{c.patient.name}</span>}
+                  </span>
+                  <Badge tone="ok">Verified</Badge>
+                </div>
+              ) : <p className="text-muted-foreground">Not verified. The assistant links a call to a patient only after checking their name and date of birth.</p>}
+            </CardContent>
+          </Card>
+          <Card>
             <CardHeader><CardTitle>What the assistant did</CardTitle></CardHeader>
             <CardContent>
               {c.actions.length === 0 ? <p className="text-sm text-muted-foreground">It answered without using any tools.</p> : (
@@ -106,10 +140,10 @@ export default function CallPage() {
           </Card>
           {c.tasks.length > 0 && (
             <Card>
-              <CardHeader><CardTitle>Left for staff</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Requests for the team</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
-                  <Link key={t.id} href={`/c/${clinicId}/tasks`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">
+                  <Link key={t.id} href={`/c/${clinicId}/requests`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">
                     <span>{TASK_TYPES[t.type] ?? t.type}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>
