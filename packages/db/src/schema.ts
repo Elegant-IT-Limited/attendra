@@ -68,6 +68,7 @@ export const calls = pgTable('calls', {
   emergencyFlag: boolean('emergency_flag').notNull().default(false),
   voiceSeconds: numeric('voice_seconds', { precision: 10, scale: 2 }),
   closeReason: text('close_reason'),
+  channel: text('channel', { enum: ['phone', 'web'] }).notNull().default('phone'),
 });
 
 export const callSegments = pgTable('call_segments', {
