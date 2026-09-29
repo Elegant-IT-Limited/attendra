@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck, Users } from 'lucide-react';
+import { CalendarDays, House, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect } from 'react';
@@ -12,6 +12,7 @@ import { authClient } from '@/lib/auth-client';
 import { cn } from '@/lib/utils';
 
 const NAV = [
+  { href: '', label: 'Today', icon: House, permission: 'calls:list' },
   { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list' },
   { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read' },
   { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read' },
@@ -70,10 +71,10 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
           {NAV.filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls)).map((n) => {
-            const active = pathname.startsWith(`/c/${clinicId}/${n.href}`);
+            const active = n.href ? pathname.startsWith(`/c/${clinicId}/${n.href}`) : pathname === `/c/${clinicId}`;
             const count = n.href === 'tasks' ? openTasks.data?.open : undefined;
             return (
-              <Link key={n.href} href={`/c/${clinicId}/${n.href}`} aria-current={active ? 'page' : undefined}
+              <Link key={n.href || 'today'} href={n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`} aria-current={active ? 'page' : undefined}
                 className={cn('flex items-center gap-2.5 rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors',
                   active ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
                 <n.icon className="size-4" />

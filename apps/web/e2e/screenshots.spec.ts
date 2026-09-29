@@ -25,6 +25,7 @@ test.describe('screenshots', () => {
     await signedOut.screenshot({ path: out('sign-in') });
     const page = await openAs(browser, 'manager', hideDevBadge);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.locator('tbody tr')).toHaveCount(15);
     await page.screenshot({ path: out('calls') });
 

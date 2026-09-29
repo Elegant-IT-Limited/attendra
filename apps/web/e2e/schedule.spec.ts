@@ -16,9 +16,10 @@ async function findInWeek(page: Page, name: RegExp) {
 }
 
 test.describe.serial('the schedule', () => {
-  test('front desk opens a booking the assistant made, follows it to the call, then to the patient', async ({ browser }) => {
+  test('front desk opens Today, then the Schedule; follows a booking the assistant made to its call, then to the patient', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    await page.getByRole('link', { name: 'Schedule' }).click();
+    await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Schedule', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
     await expect(page.getByText(/Times are .*America\/Denver/)).toBeVisible();
     const block = await findInWeek(page, /booked by the assistant/);

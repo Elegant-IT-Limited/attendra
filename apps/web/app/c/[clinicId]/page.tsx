@@ -1,0 +1,272 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+'use client';
+import type { CallList, Overview, Schedule, WaitingTasks } from '@attendra/api/contracts';
+import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowRight, PhoneCall, PhoneOff, Pill, Siren } from 'lucide-react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Outcome } from '@/components/calls/outcome';
+import { capital } from '@/components/schedule/booking-dialog';
+import { PageHeader } from '@/components/shell';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
+import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
+import { dayTitle, TASK_TYPES, timeOf, TOOLS, zoneLabel } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+const REFRESH = 30_000;
+const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+
+/** "2 days", "3 hours", "12 minutes": how long something has waited. */
+function waited(iso: string, now: number) {
+  const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'}`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'}`;
+}
+
+/** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
+export default function Today() {
+  const { clinicId } = useParams<{ clinicId: string }>();
+  const { can } = useClinic(clinicId);
+  const config = useClinicConfig(clinicId);
+  const clinic = config.data;
+  const tz = clinic?.timezone ?? 'UTC';
+  // a clock for the ages and the "next" marker, moving with the refresh
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), REFRESH); return () => clearInterval(t); }, []);
+  const today = localDateOf(new Date(now), tz);
+  const live = { refetchInterval: REFRESH, placeholderData: keepPreviousData };
+
+  const overview = useQuery({ queryKey: ['overview', clinicId], queryFn: () => api<Overview>(`/clinics/${clinicId}/overview?days=7`), ...live });
+  const calls = useQuery({ queryKey: ['calls', clinicId, 'recent'], queryFn: () => api<CallList>(`/clinics/${clinicId}/calls?limit=50`), ...live });
+  const waiting = useQuery({ queryKey: ['tasks', clinicId, 'waiting'], queryFn: () => api<WaitingTasks>(`/clinics/${clinicId}/tasks/waiting`), enabled: can('tasks:read'), ...live });
+  const schedule = useQuery({
+    queryKey: ['schedule', clinicId, today, 1, ''],
+    queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?from=${today}&days=1`),
+    enabled: !!clinic && can('schedule:read'), ...live,
+  });
+
+  if (!clinic) return <><PageHeader title="Today" /><Skeleton className="h-96" /></>;
+  const hour = localParts(new Date(now), tz).minutes / 60;
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  return (
+    <>
+      <PageHeader title="Today" description={<>{greeting}. {dayTitle(today)}, times are {zoneLabel(tz)}.</>} />
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={calls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')} />
+          <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
+        </div>
+        <div className="space-y-6">
+          <AssistantDid overview={overview} />
+          <RecentCalls clinicId={clinicId} tz={tz} calls={calls} canOpen={can('calls:read')} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+type Q<T> = { data?: T; isPending: boolean; isError: boolean };
+
+function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, canOpenCalls }: {
+  clinicId: string; tz: string; now: number; calls: Q<CallList>; waiting: Q<WaitingTasks>; canTasks: boolean; canWork: boolean; canOpenCalls: boolean;
+}) {
+  const router = useRouter();
+  const queries = useQueryClient();
+  const [taken, setTaken] = useState<string | null>(null);
+  const claim = useMutation({
+    mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
+    onMutate: () => setTaken(null),
+    onSuccess: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); router.push(`/c/${clinicId}/tasks`); },
+    onError: (e) => { setTaken(e instanceof ApiFailure && e.status === 409 ? 'Someone else claimed that one first.' : 'That did not work. Try again.'); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
+  });
+  const day = now - 86_400_000;
+  const recent = (calls.data?.calls ?? []).filter((c) => Date.parse(c.startedAt) >= day);
+  const emergencies = recent.filter((c) => c.emergency);
+  const unresolved = recent.filter((c) => !c.emergency && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
+  const requests = canTasks ? waiting.data?.tasks ?? [] : [];
+  const items: { key: string; icon: ReactNode; title: string; detail: string; action: ReactNode; tone?: 'danger' }[] = [
+    ...emergencies.map((c) => ({
+      key: c.id, icon: <Siren className="size-4 text-danger" />, tone: 'danger' as const, title: 'Emergency language on a call', detail: `${timeOf(c.startedAt, tz)}, ${waited(c.startedAt, now)} ago`,
+      action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
+    })),
+    ...requests.map((t) => ({
+      key: t.id, icon: t.type === 'refill' ? <Pill className="size-4 text-primary" /> : <PhoneCall className="size-4 text-primary" />, title: TASK_TYPES[t.type] ?? t.type, detail: `Waiting ${waited(t.createdAt, now)}, nobody has it yet`,
+      action: canWork
+        ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
+        : <Link href={`/c/${clinicId}/tasks`} className={LINK}>Open</Link>,
+    })),
+    ...unresolved.map((c) => ({
+      key: c.id, icon: <PhoneOff className="size-4 text-muted-foreground" />, title: c.outcome === 'transferred' ? 'A call went to a person' : 'A call ended with nothing done',
+      detail: `${timeOf(c.startedAt, tz)}, ${waited(c.startedAt, now)} ago. Check whether the caller needs a call back.`,
+      action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Open the call</Link> : null,
+    })),
+  ];
+  const loading = calls.isPending || (canTasks && waiting.isPending);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Needs attention</CardTitle>
+        {!loading && <span className="text-sm text-muted-foreground">{items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : 'All clear'}</span>}
+      </CardHeader>
+      {taken && <Alert tone="warn" className="mx-5 mt-4">{taken}</Alert>}
+      {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every 30 seconds.</Alert>}
+      {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
+        : items.length === 0 ? (
+          <Empty title="Nothing needs you right now">Emergencies from the last day, requests nobody has claimed, and calls that ended without an outcome appear here.</Empty>
+        ) : (
+          <ul className="divide-y divide-border" aria-label="Needs attention">
+            {items.map((i) => (
+              <li key={i.key} className={cn('flex items-center gap-3 px-5 py-3', i.tone === 'danger' && 'bg-danger-soft/50')}>
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted" aria-hidden>{i.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{i.title}</p>
+                  <p className="text-xs text-muted-foreground">{i.detail}</p>
+                </div>
+                {i.action}
+              </li>
+            ))}
+          </ul>
+        )}
+    </Card>
+  );
+}
+
+function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { clinicId: string; clinic: ClinicConfig; now: number; today: string; schedule: Q<Schedule>; allowed: boolean }) {
+  const tz = clinic.timezone;
+  const holiday = clinic.holidays.includes(today);
+  const nowMin = localParts(new Date(now), tz).minutes;
+  const visit = (id: string) => capital(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
+  const clock = (m: number) => timeOf(new Date(Date.UTC(2000, 0, 1, Math.floor(m / 60), m % 60)), 'UTC');
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Today&apos;s schedule</CardTitle>
+        {allowed && <Link href={`/c/${clinicId}/schedule`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">Full schedule <ArrowRight className="size-3.5" /></Link>}
+      </CardHeader>
+      {!allowed ? <CardContent><p className="text-sm text-muted-foreground">Your role does not show the schedule, because it names patients.</p></CardContent>
+        : holiday ? <Empty title="Closed today">The clinic is closed for a holiday. The assistant still answers and takes requests.</Empty>
+          : schedule.isPending ? <div className="space-y-3 p-5"><Skeleton className="h-24" /></div>
+            : schedule.isError ? <Alert tone="danger" className="m-5">Today&apos;s schedule did not load. It tries again every 30 seconds.</Alert> : (
+              <div className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
+                {clinic.providers.map((p) => {
+                  const windows = windowsOn(p.hours ?? clinic.hours, weekdayOf(today)).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
+                  const mine = (schedule.data?.appointments ?? []).filter((a) => a.providerId === p.id && a.status === 'booked');
+                  const span = mine.map((a) => ({ a, s: localParts(new Date(a.startsAt), tz).minutes, e: localParts(new Date(a.endsAt), tz).minutes }));
+                  const next = span.find((x) => x.e > nowMin);
+                  // open stretches of 20 minutes or more inside the provider's hours, from now on
+                  const rows: { kind: 'visit' | 'gap'; s: number; e: number; a?: (typeof span)[number]['a'] }[] = [];
+                  for (const [o, c] of windows) {
+                    let cursor = o;
+                    for (const x of span.filter((x) => x.s >= o && x.s < c)) {
+                      if (x.s - Math.max(cursor, nowMin) >= 20) rows.push({ kind: 'gap', s: Math.max(cursor, nowMin), e: x.s });
+                      rows.push({ kind: 'visit', s: x.s, e: x.e, a: x.a });
+                      cursor = Math.max(cursor, x.e);
+                    }
+                    if (c - Math.max(cursor, nowMin) >= 20) rows.push({ kind: 'gap', s: Math.max(cursor, nowMin), e: c });
+                  }
+                  return (
+                    <section key={p.id} className="px-5 py-4" aria-label={p.name}>
+                      <h3 className="mb-2 flex items-baseline justify-between text-sm font-semibold">
+                        {p.name}
+                        <span className="text-xs font-normal text-muted-foreground">{windows.length ? `${mine.length} booked` : ''}</span>
+                      </h3>
+                      {!windows.length ? <p className="text-sm text-muted-foreground">Not working today.</p> : !rows.length ? <p className="text-sm text-muted-foreground">Nothing left today.</p> : (
+                        <ul className="space-y-1">
+                          {rows.slice(0, 9).map((r) => r.kind === 'gap' ? (
+                            <li key={`gap-${r.s}`} className="rounded-md border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground">Open {clock(r.s)} to {clock(r.e)}</li>
+                          ) : (
+                            <li key={r.a!.id}>
+                              <Link href={`/c/${clinicId}/schedule?appointment=${r.a!.id}`}
+                                className={cn('flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-muted', r.e <= nowMin && 'opacity-50', next?.a.id === r.a!.id && 'bg-accent font-medium ring-1 ring-primary/40')}>
+                                <span className="w-[4.5rem] shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">{clock(r.s)}</span>
+                                <span className="min-w-0 flex-1 truncate">{r.a!.patientName}</span>
+                                <span className="shrink-0 text-xs text-muted-foreground">{next?.a.id === r.a!.id ? (r.s <= nowMin ? 'Now' : 'Next') : visit(r.a!.visitTypeId)}</span>
+                              </Link>
+                            </li>
+                          ))}
+                          {rows.length > 9 && <li className="px-2.5 text-xs text-muted-foreground">and {rows.length - 9} more on the full schedule</li>}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+    </Card>
+  );
+}
+
+function AssistantDid({ overview }: { overview: Q<Overview> }) {
+  const o = overview.data;
+  const rows: [string, (a: Overview['today']) => string][] = [
+    ['Calls answered', (a) => String(a.callsAnswered)],
+    ['Bookings made', (a) => String(a.booked)],
+    ['Moved or cancelled', (a) => String(a.rescheduled + a.cancelled)],
+    ['Requests taken', (a) => String(a.requestsTaken)],
+    ['Handed to staff', (a) => String(a.handedToStaff)],
+    ['After hours', (a) => String(a.afterHours)],
+    ['Talk time', (a) => `${a.talkMinutes} min`],
+    ['Estimated cost', (a) => `$${a.estimatedCost.toFixed(2)}`],
+  ];
+  return (
+    <Card>
+      <CardHeader><CardTitle>What the assistant did</CardTitle></CardHeader>
+      {overview.isError ? <Alert tone="danger" className="m-5">These numbers did not load. They try again every 30 seconds.</Alert> : !o ? <div className="p-5"><Skeleton className="h-48" /></div> : (
+        <CardContent className="pt-2">
+          <table className="w-full text-sm">
+            <thead><tr className="text-xs text-muted-foreground"><th className="py-1.5 text-left font-medium"><span className="sr-only">Measure</span></th><th className="py-1.5 text-right font-medium">Today</th><th className="py-1.5 text-right font-medium">Last {o.days} days</th></tr></thead>
+            <tbody>
+              {rows.map(([label, value]) => (
+                <tr key={label} className="border-t border-border">
+                  <td className="py-1.5 text-muted-foreground">{label}</td>
+                  <td className="py-1.5 text-right font-medium tabular-nums">{value(o.today)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{value(o.period)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-muted-foreground">Phone calls only; browser tests are not counted. Cost is talk time at ${o.costPerMinute.toFixed(2)} a minute.</p>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
+function RecentCalls({ clinicId, tz, calls, canOpen }: { clinicId: string; tz: string; calls: Q<CallList>; canOpen: boolean }) {
+  const last = (calls.data?.calls ?? []).slice(0, 5);
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Recent calls</CardTitle>
+        <Link href={`/c/${clinicId}/calls`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">All calls <ArrowRight className="size-3.5" /></Link>
+      </CardHeader>
+      {calls.isPending ? <div className="space-y-2 p-5"><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
+        : !last.length ? <Empty title="No calls yet">Calls appear here as soon as the assistant answers one.</Empty> : (
+          <ul className="divide-y divide-border" aria-label="Recent calls">
+            {last.map((c) => {
+              const body = (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(c.startedAt))}</p>
+                    <p className="truncate text-xs text-muted-foreground">{c.tools.map((t) => TOOLS[t] ?? t).join(', ') || 'Talked only'}</p>
+                  </div>
+                  <Outcome outcome={c.outcome} emergency={c.emergency} />
+                </>
+              );
+              return <li key={c.id}>{canOpen ? <Link href={`/c/${clinicId}/calls/${c.id}`} className="flex items-center gap-3 px-5 py-2.5 hover:bg-muted">{body}</Link> : <div className="flex items-center gap-3 px-5 py-2.5">{body}</div>}</li>;
+            })}
+          </ul>
+        )}
+    </Card>
+  );
+}
