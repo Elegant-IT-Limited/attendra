@@ -153,6 +153,7 @@ export default function Calls() {
           </Table>
         )}
       </Card>
+      {searching && found.data?.truncated && <p className="mt-3 text-xs text-muted-foreground">Showing the first matches; type more of the name.</p>}
       {!searching && calls.hasNextPage && (
         <div className="mt-4 flex justify-center">
           <Button variant="outline" onClick={() => calls.fetchNextPage()} disabled={calls.isFetchingNextPage}>{calls.isFetchingNextPage ? 'Loading…' : 'Older calls'}</Button>
