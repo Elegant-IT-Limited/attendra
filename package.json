@@ -17,7 +17,8 @@
     "eval": "pnpm --filter @attendra/evals run eval",
     "db:migrate": "pnpm --filter @attendra/db run migrate",
     "db:seed": "pnpm --filter @attendra/db run seed",
-    "db:add-number": "pnpm --filter @attendra/db run add-number"
+    "db:add-number": "pnpm --filter @attendra/db run add-number",
+    "add-member": "pnpm --filter @attendra/api add-member"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
