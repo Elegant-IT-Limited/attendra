@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { DEMO_CLINIC, localDateOf } from '@attendra/core';
+import { addDays, DEMO_CLINIC, fromMinutes, localDateOf, localParts, zonedInstant } from '@attendra/core';
 import { type Database, type PhiCipher, schema, withClinic } from '@attendra/db';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { loadScenarios } from './scenario';
@@ -51,24 +51,36 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
 /**
  * Puts the demo calls' own bookings back on the calendar, so "booked by the
  * assistant" links to the call that did it. A scenario books a fixed date; one that
- * has passed moves forward by whole weeks, so the day and time still match what the
- * transcript says. The appointment a reschedule or cancel scenario started from was
+ * has passed moves forward by whole weeks of the clinic's calendar, so the day and
+ * local time still match what the transcript says. The appointment a reschedule or cancel scenario started from was
  * set up before its call, so it is shown as booked by staff (`bookedBy`), or left out.
  */
+/**
+ * The same local day and time `weeks` weeks later. Weeks are counted on the clinic's
+ * calendar, not in milliseconds, so 8:00 stays 8:00 across a daylight saving change.
+ */
+export function shiftByWeeks(instant: Date, weeks: number, timeZone: string): Date {
+  const local = localParts(instant, timeZone);
+  return zonedInstant(addDays(local.date, 7 * weeks), fromMinutes(local.minutes), timeZone);
+}
+
 async function keepAssistantBookings(db: Database, rows: (typeof schema.appointments.$inferSelect)[], setupCalls: Set<string>, now: Date, bookedBy?: string) {
   const week = 7 * 86_400_000;
+  const tz = DEMO_CLINIC.timezone;
   const used = new Set<string>(); // cancelled rows can share a slot in the database, but not on screen
   for (const row of rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())) {
     const fromSetup = !!row.createdByCallId && setupCalls.has(row.createdByCallId);
     if (fromSetup && !bookedBy) continue;
-    let shift = row.startsAt < now ? Math.ceil((now.getTime() - row.startsAt.getTime()) / week) * week : 0;
-    for (let attempt = 0; attempt < 4; attempt++, shift += week) {
-      const startsAt = new Date(row.startsAt.getTime() + shift);
+    const minutes = row.endsAt.getTime() - row.startsAt.getTime();
+    let weeks = row.startsAt < now ? Math.ceil((now.getTime() - row.startsAt.getTime()) / week) : 0;
+    for (let attempt = 0; attempt < 4; attempt++, weeks++) {
+      const startsAt = shiftByWeeks(row.startsAt, weeks, tz);
+      if (startsAt < now) continue; // a clock change can leave the first try an hour short
       const slot = `${row.providerId}@${startsAt.toISOString()}`;
-      if (used.has(slot) || DEMO_CLINIC.holidays.includes(localDateOf(startsAt, DEMO_CLINIC.timezone))) continue;
+      if (used.has(slot) || DEMO_CLINIC.holidays.includes(localDateOf(startsAt, tz))) continue;
       try {
         await withClinic(db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
-          ...row, startsAt, endsAt: new Date(row.endsAt.getTime() + shift),
+          ...row, startsAt, endsAt: new Date(startsAt.getTime() + minutes),
           ...(fromSetup ? { createdByCallId: null, createdByUserId: bookedBy } : {}),
         }));
         used.add(slot);
