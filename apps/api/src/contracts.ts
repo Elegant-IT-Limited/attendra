@@ -53,6 +53,11 @@ export const CallSummary = z.object({
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
   verified: z.boolean(),
+  /** From the call's summary, once the worker has written it: codes only. */
+  intent: z.enum(['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other']).nullable(),
+  sentiment: z.enum(['calm', 'frustrated', 'distressed']).nullable(),
+  /** Flagged for review and nobody has reviewed it yet. */
+  needsReview: z.boolean(),
 });
 export const CallList = z.object({
   calls: z.array(CallSummary), next: z.string().nullable(),
@@ -67,6 +72,7 @@ const CallFilters = z.object({
   outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']).optional(),
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
+  review: z.literal('needed').optional(),
 });
 /** The call list's filters, in clinic-time days (`to` is inclusive). */
 export const CallQuery = Page.extend(CallFilters.shape);
@@ -75,9 +81,25 @@ export const CallSearch = z.object({
   query: z.string().trim().min(2, 'type at least two characters').max(100),
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
   emergency: z.boolean().optional(),
+  review: z.literal('needed').optional(),
 });
 
-export const CallDetail = CallSummary.omit({ tools: true, verified: true, patientName: true }).extend({
+/** The worker's summary of a call, for staff. Written from the transcript; never medical advice. */
+export const CallSummaryCard = z.object({
+  summary: z.string(),
+  intent: CallSummary.shape.intent.unwrap(),
+  sentiment: CallSummary.shape.sentiment.unwrap(),
+  needsReview: z.boolean(),
+  reviewReason: z.string().nullable(),
+  followUp: z.string().nullable(),
+  /** The model that wrote it, or "local" for a summary written from the call's facts alone. */
+  model: z.string(),
+  createdAt: z.iso.datetime(),
+  reviewedAt: z.iso.datetime().nullable(),
+  reviewedBy: z.string().nullable(),
+});
+
+export const CallDetail = CallSummary.omit({ tools: true, verified: true, patientName: true, intent: true, sentiment: true, needsReview: true }).extend({
   /** The patient the agent verified on this call, if it verified anyone. */
   patient: z.object({ id: z.string(), name: z.string() }).nullable(),
   /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
@@ -88,6 +110,9 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
   tasks: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  summary: CallSummaryCard.nullable(),
+  /** While there is no summary: whether the worker is on it, or gave up. */
+  summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
 });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
@@ -117,6 +142,8 @@ export const Task = z.object({
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
   assigneeName: z.string().nullable(),
+  /** What the call's summary suggests staff do, for a request the assistant created. */
+  followUp: z.string().nullable(),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
@@ -266,6 +293,7 @@ export type Me = z.infer<typeof Me>;
 export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
+export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
 export type TestCall = z.infer<typeof TestCall>;

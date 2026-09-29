@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { DHANMONDI_CLINIC } from '@attendra/core';
-import { type Database, DHANMONDI_SCHEDULE_PATIENTS, type PhiCipher, seedDemo, seedDemoSchedule, seedDhanmondi } from '@attendra/db';
+import { type Database, DHANMONDI_SCHEDULE_PATIENTS, type PhiCipher, schema, seedDemo, seedDemoSchedule, seedDhanmondi } from '@attendra/db';
+import { createLogger } from '@attendra/observability';
+import { handlers } from '@attendra/worker/runtime';
+import { LocalSummariser } from '@attendra/worker/summarise';
+import { isNotNull } from 'drizzle-orm';
+import { Writable } from 'node:stream';
 import { recordDemoCalls } from '@attendra/evals/demo';
 import type { Auth } from '../src/auth';
 import { addMember } from '../src/members';
@@ -30,5 +35,20 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   await seedDemoSchedule(db, cipher, { patientIds: maple.patientIds, staffUserIds: staff.org_demo!, now });
   results.push(...await recordDemoCalls(db, cipher, dhanmondi.patientIds, now, { bookedBy: staff.org_dhanmondi![0], clinic: DHANMONDI_CLINIC }));
   await seedDemoSchedule(db, cipher, { patientIds: dhanmondi.patientIds, staffUserIds: staff.org_dhanmondi!, now, clinic: DHANMONDI_CLINIC, extraPatients: DHANMONDI_SCHEDULE_PATIENTS, notes: DHANMONDI_NOTES });
+  await summariseDemoCalls(db, cipher);
   return results;
+}
+
+/**
+ * Every recorded demo call gets its summary now, written from the call's facts by
+ * the local summariser, so the demo starts the same every time and never spends
+ * OpenAI credit on calls nobody made. Calls made later go through the worker.
+ */
+export async function summariseDemoCalls(db: Database, cipher: PhiCipher) {
+  const quiet = createLogger({ name: 'demo', destination: new Writable({ write: (_c, _e, done) => done() }) });
+  const h = handlers({ boss: { send: async () => null }, db, cipher, summariser: new LocalSummariser(), log: quiet });
+  // owner connection, like the rest of the seed: which calls exist, ids only
+  for (const c of await db.select({ id: schema.calls.id, clinicId: schema.calls.clinicId }).from(schema.calls).where(isNotNull(schema.calls.endedAt))) {
+    await h.summariseCall({ clinicId: c.clinicId, callId: c.id });
+  }
 }

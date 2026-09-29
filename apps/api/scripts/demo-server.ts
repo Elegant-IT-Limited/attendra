@@ -12,6 +12,9 @@ import { createPhiCipher } from '@attendra/db';
 import { openTestDatabase } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { createVoiceApp } from '@attendra/voice/runtime';
+import { bossQueue, createBoss } from '@attendra/worker/queue';
+import { startWorker, summariserFromEnv } from '@attendra/worker/runtime';
+import { LocalSummariser } from '@attendra/worker/summarise';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -26,7 +29,7 @@ import { DEMO_LOGINS, LOCAL_DEMO_PASSWORD, seedDemoWorkspace } from './demo-data
 const envFile = fileURLToPath(new URL('../../../.env', import.meta.url));
 if (existsSync(envFile)) {
   const file = parseEnv(readFileSync(envFile, 'utf8'));
-  for (const key of ['OPENAI_API_KEY', 'GPT_LIVE_MODEL', 'ATTENDRA_BACKEND_MODEL', 'BROWSER_CALL_MAX_SECONDS'] as const) {
+  for (const key of ['OPENAI_API_KEY', 'GPT_LIVE_MODEL', 'ATTENDRA_BACKEND_MODEL', 'ATTENDRA_SUMMARY_MODEL', 'BROWSER_CALL_MAX_SECONDS'] as const) {
     if (!process.env[key] && file[key]) process.env[key] = file[key];
   }
 }
@@ -35,11 +38,20 @@ const port = Number(process.env.API_PORT ?? 8081);
 const publicUrl = process.env.PUBLIC_URL ?? 'http://localhost:3000';
 const log = createLogger({ name: 'api', level: process.env.LOG_LEVEL ?? 'info' });
 
-const { db } = await openTestDatabase();
+const { db, client } = await openTestDatabase();
 // fresh keys each run: nothing outlives the process, so nothing needs to be kept
 const cipher = createPhiCipher(randomBytes(32).toString('base64'));
 const auth = createAuth(db, { publicUrl, secret: randomBytes(32).toString('base64'), log });
 const results = await seedDemoWorkspace(db, cipher, auth, LOCAL_DEMO_PASSWORD);
+// The worker, in this process, on the same in-memory Postgres. Test calls made from
+// the browser are summarised by the model when there is a key; with test calls off
+// (the e2e suite), or no key, by the local summariser, which never calls OpenAI.
+const boss = createBoss({ pglite: client });
+boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
+await boss.start();
+const summariser = process.env.ATTENDRA_TEST_CALLS === 'off' ? new LocalSummariser() : summariserFromEnv(process.env);
+await startWorker({ boss, db, cipher, summariser, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false });
+
 const failed = results.filter((r) => !r.passed);
 if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo calls did not play as their scenario expects');
 
@@ -58,6 +70,7 @@ if (process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off') {
     backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
     internalToken,
     browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300,
+    jobs: bossQueue(boss),
   });
   try {
     await voiceApp.listen({ port: voicePort, host: '127.0.0.1' });

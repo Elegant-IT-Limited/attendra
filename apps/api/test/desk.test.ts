@@ -100,7 +100,7 @@ describe('calls', () => {
     await api.request('GET', `${C}/calls`, { cookie: as.staff });
     expect(staffView.find((c: { id: string }) => c.id === api.callId).patientName).toBe('Maria Delgado');
     // the same list twice is one row; its key names every filter and who was on it
-    const listed = (await audit('calls.listed')).filter((r) => r.entity_id.startsWith('from=;to=;outcome=;channel=;emergency=;before=;limit=50;p:'));
+    const listed = (await audit('calls.listed')).filter((r) => r.entity_id.startsWith('from=;to=;outcome=;channel=;emergency=;review=;before=;limit=50;p:'));
     expect(listed).toEqual([{ actor: `user:${api.users.staff}`, entity_id: expect.stringMatching(/;p:[0-9a-f]{16}$/) }]);
     const n = await count();
     const viewerView = await api.request('GET', `${C}/calls`, { cookie: as.viewer });

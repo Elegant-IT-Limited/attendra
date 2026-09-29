@@ -14,7 +14,7 @@ import { CallsController } from './calls/calls.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
@@ -60,6 +60,7 @@ class ApiModule {
       controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
+        { provide: CIPHER, useValue: deps.cipher },
         { provide: AUTH, useValue: deps.auth },
         { provide: LOGGER, useValue: deps.log },
         { provide: API_OPTIONS, useValue: deps.options },
