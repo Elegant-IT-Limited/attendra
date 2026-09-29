@@ -40,8 +40,11 @@ Self-hosters are responsible for their own BAAs and operations.
 - SMS messages are fixed templates with the time and the clinic, never the reason for the visit.
 - The voice model receives clinic facts and short verified results only, never full records.
 - Recording is off by default. Turning it on requires a recording notice, because several US states require all-party consent.
-- Every call starts with an AI-assistant disclosure: a clinic greeting that does not say so is rejected when the configuration loads.
+- Every call starts with an AI-assistant disclosure: a clinic greeting that does not say so is rejected when the configuration loads. A name for the assistant never counts as the disclosure.
+- Call summaries are encrypted like transcripts. The summary model is called with `store: false`, a timeout and a cap on input and output, and is told to summarise only what was said, never to add advice or a diagnosis. The worker's read of a transcript and its write of a summary are both audited (`call.transcript.read`, `call.summary.written`), and so is a staff member marking a flagged call reviewed (`call.summary.reviewed`).
+- Background jobs carry ids only. A failed job keeps an error code, never text from the call.
+- Transcripts and summaries are deleted after each clinic's retention period (`retentionDays`, 2555 days by default). The purge is audited with counts only (`retention.purged`).
 
-## Not yet in v0.1
+## Not yet
 
-A retention purge job (transcripts default 90 days), staff access through a dashboard with 2FA, and KMS envelope encryption for the hosted service are on the [roadmap](roadmap.md). Until the retention job ships, purge on a schedule of your own. v0.1 stores no call audio; if you enable recording, the recordings live with your telephony provider under its retention settings.
+KMS envelope encryption for the hosted service is on the [roadmap](roadmap.md). Attendra stores no call audio; if you enable recording, the recordings live with your telephony provider under its retention settings, which the retention purge does not reach.

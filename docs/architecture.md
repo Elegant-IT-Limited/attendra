@@ -21,6 +21,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `packages/db` | SQL migrations, RLS, PHI encryption, repositories implementing the ports. |
 | `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
 | `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
+| `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, the nightly retention purge, and (behind a flag) text delivery statuses. |
 
 ## A delegation, in detail
 
@@ -30,6 +31,16 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 4. If a newer delegation started meanwhile, this result is dropped. Otherwise the result goes back as `session.commentary.append` for the model to say, capped well below the 500-token limit per append.
 
 The emergency guardrail is not a delegation. It runs on every `session.input_transcript.delta`, over a rolling window of the caller's recent words, and appends a fixed `session.instructions.append` with `delegation_id: null` the moment it matches.
+
+## After a call
+
+When a call closes, the voice service enqueues a `call.completed` job. The job's id is derived from the call id, so a second close, a retried webhook or a restart is still one job. The worker picks it up and queues the work every closed call needs; today that is `summarise-call`.
+
+`summarise-call` reads the transcript and what the tools did (an audited PHI read), and asks the Responses API for a structured summary: two or three sentences for staff, the caller's intent, their sentiment, whether the call needs review and why, and a suggested follow-up. The output must match a strict JSON schema and is checked again with zod; an emergency call is always flagged, whatever the model says. The summary is encrypted into `call_summaries`, once per call, and the write is audited. Without an OpenAI key the worker writes the same shape from the call's facts alone, with no model.
+
+A job that fails is retried with exponential backoff (15 seconds up to an hour, five times) and then moved to a dead-letter queue, where nothing retries it. Job data holds ids only, never patient data, and a failure is kept as a code (`summary_model_http_503`), never a message that could echo the transcript. The `worker_jobs` view shows each clinic its own jobs, and the call page says when a summary is still coming or could not be written.
+
+`purge-retention` runs at 03:00 UTC. For each clinic it deletes transcripts and summaries of calls older than the clinic's `retentionDays` (2555 by default, about 7 years) and audits how many it deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
 
 ## The dashboard
 
