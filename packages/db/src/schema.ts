@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { bigserial, boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-// Typed views of migrations/0001_init.sql. The SQL file is the source of truth;
+// Typed views of the SQL migrations. The SQL file is the source of truth;
 // constraints and policies live there, not here.
 
 export const organizations = pgTable('organizations', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  plan: text('plan').notNull(),
+  slug: text('slug').notNull().unique(),
+  logo: text('logo'),
+  metadata: text('metadata'),
+  plan: text('plan').notNull().default('self_hosted'),
   baaSignedAt: timestamp('baa_signed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const clinics = pgTable('clinics', {
@@ -85,6 +89,7 @@ export const callActions = pgTable('call_actions', {
   result: jsonb('result').notNull(),
   idempotencyKey: text('idempotency_key'),
   taskRevision: integer('task_revision').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const tasks = pgTable('tasks', {
@@ -96,6 +101,11 @@ export const tasks = pgTable('tasks', {
   patientId: uuid('patient_id'),
   detailsEnc: text('details_enc').notNull(),
   idempotencyKey: text('idempotency_key').notNull(),
+  assigneeUserId: text('assignee_user_id'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  doneAt: timestamp('done_at', { withTimezone: true }),
+  doneByUserId: text('done_by_user_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const auditLogs = pgTable('audit_logs', {
