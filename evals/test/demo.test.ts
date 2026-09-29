@@ -1,6 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { createPhiCipher, FrontDeskRepository, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
+import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordDemoCalls, shiftByWeeks } from '../src/demo';
@@ -14,6 +15,7 @@ const NOW = new Date('2026-09-28T18:00:00Z');
 beforeAll(async () => {
   t = await openTestDatabase();
   const { patientIds } = await seedDemo(t.db, cipher);
+  await seedDemoKnowledge(t.db, new LocalEmbedder());
   results = await recordDemoCalls(t.db, cipher, patientIds, NOW);
 }, 60_000);
 afterAll(() => t.close());

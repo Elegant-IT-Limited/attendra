@@ -12,6 +12,7 @@
     "@attendra/agent": "workspace:*",
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
     "@electric-sql/pglite": "0.3.16",
