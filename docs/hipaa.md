@@ -18,6 +18,11 @@ Self-hosters are responsible for their own BAAs and operations.
 - PHI columns (names, dates of birth, phone numbers, transcripts, task details) are encrypted in the application with AES-256-GCM. Lookups use keyed hashes.
 - Row Level Security isolates clinics inside Postgres, as a second wall behind the application's own filters.
 - Every identification, booking, cancellation, task, transfer and text message is recorded in an append-only audit log.
+- The dashboard audits every screen that shows patient data, in the same transaction as the read. The schedule adds these actions:
+  - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes every 30 seconds; the same person viewing the same range again within 5 minutes is covered by the row already written.
+  - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
+  - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
+- Appointment notes typed by staff are encrypted like the other PHI columns. Cancel reasons are a fixed list, never free text, so they cannot carry PHI.
 - The logger redacts PHI by field name and by pattern, and a test proves it.
 - SMS messages are fixed templates with the time and the clinic, never the reason for the visit.
 - The voice model receives clinic facts and short verified results only, never full records.
