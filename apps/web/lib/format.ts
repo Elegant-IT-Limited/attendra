@@ -57,7 +57,31 @@ export const REFUSALS: Record<string, string> = {
   closed: 'office closed',
 };
 
-export const TASK_TYPES: Record<string, string> = { refill: 'Refill request', callback: 'Callback', voicemail: 'Voicemail', review: 'Needs review' };
+/** Requests, in the words a front desk uses. The API still calls them tasks. */
+export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'Needs review' };
+
+export const TASK_EXPLAINED: Record<string, string> = {
+  refill: 'The patient asked for a refill. Check with the care team, then call them back.',
+  callback: 'Someone asked for a person to call them back.',
+  voicemail: 'A message the caller left for the team.',
+};
+
+export const TASK_OUTCOMES: Record<string, string> = {
+  called_back: 'Called back',
+  left_message: 'No answer, left a message',
+  refill_sent: 'Refill sent to the pharmacy',
+  not_needed: 'Not needed',
+};
+
+/** "2 days", "3 hours", "12 minutes": how long something has waited. */
+export function waited(iso: string, now = Date.now()) {
+  const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'}`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'}`;
+}
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
