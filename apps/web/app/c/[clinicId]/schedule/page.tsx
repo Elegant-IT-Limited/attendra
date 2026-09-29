@@ -119,7 +119,8 @@ function ScheduleScreen() {
         </label>
       </div>
 
-      <Card className="overflow-hidden">
+      {/* busy while the grid still shows the previous range: screen readers and tests wait for it */}
+      <Card className="overflow-hidden" data-testid="schedule" aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
