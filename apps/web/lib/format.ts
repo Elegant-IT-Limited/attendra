@@ -113,3 +113,11 @@ export const VISIT_TONES = [
   'border-l-[var(--visit-4)] bg-[var(--visit-4-soft)]',
 ];
 export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]'];
+
+/** Whole years since a YYYY-MM-DD date of birth, today. */
+export function age(dateOfBirth: string, today = new Date()) {
+  const [y, m, d] = dateOfBirth.split('-').map(Number) as [number, number, number];
+  let years = today.getFullYear() - y;
+  if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) years--;
+  return years;
+}

@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck } from 'lucide-react';
+import { CalendarDays, ListChecks, LogOut, Mic, Phone, PhoneCall, Settings, ShieldCheck, Users } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect } from 'react';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 const NAV = [
   { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list' },
   { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read' },
+  { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read' },
   { href: 'tasks', label: 'Tasks', icon: ListChecks, permission: 'tasks:read' },
   { href: 'test-call', label: 'Test call', icon: Mic, permission: 'calls:test' },
   { href: 'settings', label: 'Settings', icon: Settings, permission: 'settings:read' },

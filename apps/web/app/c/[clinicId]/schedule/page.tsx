@@ -7,9 +7,9 @@ import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useMemo, useState } from 'react';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
-import { BookingDialog, capital, type PatientChoice } from '@/components/schedule/booking-dialog';
+import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, ScheduleList } from '@/components/schedule/calendar';
-import { RecentPatients } from '@/components/schedule/recent-patients';
+import { PatientPicker } from '@/components/patients/patient-picker';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -70,12 +70,6 @@ function ScheduleScreen() {
   });
 
   const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked'), [schedule.data, showCancelled]);
-  // until patient search exists, the people on this screen are the ones to book for
-  const recent = useMemo(() => {
-    const seen = new Map<string, PatientChoice>();
-    for (const a of schedule.data?.appointments ?? []) if (!seen.has(a.patientId)) seen.set(a.patientId, { id: a.patientId, name: a.patientName });
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [schedule.data]);
 
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
@@ -145,10 +139,11 @@ function ScheduleScreen() {
         )}
       </Card>
 
-      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={open} onClose={() => set({ appointment: null })} canWrite={writable} />
+      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={open} onClose={() => set({ appointment: null })} canWrite={writable}
+        patientHref={can('patients:read') ? (id) => `/c/${clinicId}/patients/${id}` : undefined} />
       {writable && (
         <BookingDialog clinicId={clinicId} clinic={clinic} open={booking} onOpenChange={setBooking}
-          findPatient={(pick) => <RecentPatients patients={recent} onPick={pick} />}
+          findPatient={(pick) => <PatientPicker clinicId={clinicId} onPick={pick} canAdd={can('patients:write')} />}
           onBooked={(id, startsAt) => set({ date: localDateOf(new Date(startsAt), tz), appointment: id })} />
       )}
     </>
