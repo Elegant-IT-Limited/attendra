@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { DEMO_CLINIC, type Messenger, speakSlot, type ToolName, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, type Database, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedDemo, withClinic } from '@attendra/db';
+import { type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, type Messenger, speakSlot, type ToolName, zonedInstant } from '@attendra/core';
+import { CallRepository, createPhiCipher, type Database, DEMO_PATIENTS, DHANMONDI_PATIENTS, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedDemo, seedDhanmondi, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -9,8 +9,12 @@ import { BuiltinScheduler } from '@attendra/scheduling';
 import { Writable } from 'node:stream';
 import type { Scenario } from './scenario';
 
-// Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver: after hours.
+// Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver: after hours
+// at Maple Street, and 8 am on Tuesday in Dhaka, as Dhanmondi opens.
 export const SIM_NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
+
+export const clinicOf = (scenario: Scenario): ClinicConfig => DEMO_CLINICS[scenario.clinic];
+const defaultCaller = (scenario: Scenario) => (scenario.clinic === 'dhanmondi' ? DHANMONDI_PATIENTS[0].phone : DEMO_PATIENTS[0].phone);
 
 export interface ScenarioResult {
   id: string;
@@ -28,12 +32,14 @@ export interface ScenarioResult {
 class Observed implements Planner {
   readonly tools: string[] = [];
   readonly refusals: string[] = [];
+  readonly sources: string[] = [];
   constructor(private readonly inner: Planner) {}
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
     return this.inner.plan(input, async (name, args) => {
       const r = await execute(name, args);
       this.tools.push(name);
       if (typeof r.data.error === 'string') this.refusals.push(r.data.error);
+      if (typeof r.data.source === 'string') this.sources.push(r.data.source);
       return r;
     });
   }
@@ -53,10 +59,10 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
 }
 
 /** Fills {offered.N}, {readback} and {booked} in a scripted reply from the call as it happened. */
-function render(reply: string, state: CallState, lastReadback: string | null): string {
+function render(reply: string, state: CallState, lastReadback: string | null, clinic: ClinicConfig): string {
   const offered = [...state.offered.values()];
   return reply
-    .replace(/\{offered\.(\d+)\}/g, (_, i: string) => { const slot = offered[Number(i)]; return slot ? speakSlot(slot.start, DEMO_CLINIC.timezone) : 'another time'; })
+    .replace(/\{offered\.(\d+)\}/g, (_, i: string) => { const slot = offered[Number(i)]; return slot ? speakSlot(slot.start, clinic.timezone, state.language) : 'another time'; })
     .replace(/\{readback\}/g, () => state.pending?.readback ?? lastReadback ?? 'that')
     .replace(/\{booked\}/g, () => lastReadback ?? 'that time');
 }
@@ -75,6 +81,8 @@ export interface PlayOptions {
  */
 export async function playScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, opts: PlayOptions = {}): Promise<ScenarioResult> {
   const started = performance.now();
+  const clinic = clinicOf(scenario);
+  const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
   const scheduler = new BuiltinScheduler(db);
   const sms: string[] = [];
@@ -84,23 +92,23 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
 
   // an existing appointment for Maria, for the reschedule and cancel scenarios
   if (scenario.tags.includes('has-appointment')) {
-    const setupCall = await calls.open(DEMO_CLINIC.id, `setup_${scenario.id}`, null);
-    const existing = zonedInstant('2026-10-01', '09:00', DEMO_CLINIC.timezone);
-    await scheduler.book(DEMO_CLINIC.id, { patientId: patientIds.maria!, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
+    const setupCall = await calls.open(clinic.id, `setup_${scenario.id}`, null);
+    const existing = zonedInstant('2026-10-01', '09:00', clinic.timezone);
+    await scheduler.book(clinic.id, { patientId: patientIds.maria!, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
       slot: { id: 'setup', providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: existing, end: new Date(existing.getTime() + 20 * 60_000) } });
   }
-  const callId = await calls.open(DEMO_CLINIC.id, opts.sessionId ?? `live_${scenario.id}`, scenario.caller_number);
+  const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   const state = new CallState();
   const results: ToolResult[] = [];
   const queue: Planner[] = [];
   const observed = new Observed({ plan: (input, execute) => queue.shift()!.plan(input, execute) });
   const log = createLogger({ name: 'eval', destination: new Writable({ write: (_c, _e, done) => done() }) });
   const actions: ActionRecorder | undefined = opts.record
-    ? { record: (a) => calls.recordAction(DEMO_CLINIC.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
+    ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
-  const agent = new CallAgent(state, { clinic: DEMO_CLINIC, callId, callerNumber: scenario.caller_number, now: () => SIM_NOW }, backend, observed, log, actions);
+  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => SIM_NOW }, backend, observed, log, actions);
   const segment = async (speaker: 'caller' | 'agent', text: string, startMs: number) => {
-    if (opts.record) await calls.appendSegment(DEMO_CLINIC.id, callId, { speaker, text, startMs, endMs: startMs + 1200 });
+    if (opts.record) await calls.appendSegment(clinic.id, callId, { speaker, text, startMs, endMs: startMs + 1200 });
   };
 
   const outbound: Outbound[] = [];
@@ -108,7 +116,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let clock = 0;
   let delegations = 0;
   let lastReadback: string | null = null;
-  await segment('agent', DEMO_CLINIC.greeting, clock);
+  await segment('agent', clinic.greeting, clock);
   for (const turn of scenario.turns) {
     clock += 1500;
     if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); await segment('agent', turn.assistant, clock); continue; }
@@ -116,7 +124,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     await segment('caller', turn.caller, clock);
     const say = async () => {
       if (!turn.reply) return;
-      const text = render(turn.reply, state, lastReadback);
+      const text = render(turn.reply, state, lastReadback, clinic);
       replies.push(text);
       clock += 2500;
       await segment('agent', text, clock);
@@ -141,14 +149,14 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
 
   if (opts.record) {
     const transfer = outbound.find((o) => o.type === 'transfer');
-    await calls.close(DEMO_CLINIC.id, callId, {
+    await calls.close(clinic.id, callId, {
       // the simulator's clock counts turns, not speech; scale it to a believable call length
       reason: transfer ? 'transferred' : 'caller_hangup', voiceSeconds: Math.round(8 + clock * 0.0032),
       outcome: state.outcome, emergency: state.emergency !== null,
     });
   }
 
-  const created = (await withClinic(db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)))).length;
+  const created = (await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)))).length;
   const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' || o.type === 'instructions' ? [o.content] : [])), ...replies];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
@@ -162,6 +170,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
   check(outbound.some((o) => o.type === 'instructions') === e.emergency_instruction, `emergency instruction ${outbound.some((o) => o.type === 'instructions')}, expected ${e.emergency_instruction}`);
+  if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
+  if (e.language) check(state.language === e.language, `answered in ${state.language}, expected ${e.language}`);
+  for (const phrase of e.spoken_contains) {
+    check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `never said "${phrase}"`);
+  }
   for (const phrase of scenario.forbid_spoken) {
     check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
@@ -173,7 +186,7 @@ export async function runScenario(scenario: Scenario, livePlanner?: Planner): Pr
   const t = await openTestDatabase();
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
-    const { patientIds } = await seedDemo(t.db, cipher);
+    const { patientIds } = await (scenario.clinic === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
     return await playScenario(t.db, cipher, patientIds, scenario, { livePlanner });
   } finally {
     await t.close();

@@ -1,0 +1,14 @@
+id: es-refill
+title: A refill asked for in Spanish becomes a staff task, with no promise it is approved
+tags: [language, es]
+turns:
+  - caller: Hola, soy James Whitaker, 9/9/1962. Ya casi no me queda lisinopril.
+    reply: "Gracias, señor Whitaker. Mandé su pedido de lisinopril al equipo médico, con la farmacia Walgreens de Colfax. Ellos lo van a revisar y le llaman si tienen preguntas."
+    delegate:
+      - verify_caller: { full_name: James Whitaker, date_of_birth: 9/9/1962 }
+      - create_refill_request: { medication: lisinopril 10 mg, pharmacy: Walgreens on Colfax, callback_number: "+13035550163" }
+expect:
+  outcome: task_created
+  verified: true
+  language: es
+forbid_spoken: ["aprobad", "estará lista"]

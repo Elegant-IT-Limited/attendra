@@ -25,7 +25,7 @@ describe('demo calls', () => {
 
   it('writes one call per scenario, spread over the past week, newest first', async () => {
     const calls = await new FrontDeskRepository(t.db, cipher).listCalls(DEMO_CLINIC.id, { limit: 100 });
-    expect(calls).toHaveLength(loadScenarios().length);
+    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple').length);
     expect(calls[0]!.startedAt.getTime()).toBeLessThan(NOW.getTime());
     expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(7 * 24 * 3_600_000);
   });
