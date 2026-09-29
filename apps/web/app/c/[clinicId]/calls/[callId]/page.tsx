@@ -42,6 +42,7 @@ export default function CallPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
+          {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
           {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
         </div>
