@@ -17,6 +17,7 @@
     "@attendra/scheduling": "workspace:*",
     "@attendra/telephony": "workspace:*",
     "@attendra/voice-engine": "workspace:*",
+    "@attendra/worker": "workspace:*",
     "@fastify/rate-limit": "11.2.0",
     "fastify": "5.12.5",
     "openai": "7.23.0",
