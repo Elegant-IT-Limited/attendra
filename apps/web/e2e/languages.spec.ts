@@ -1,7 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { openAs, signInAgain } from './session';
 
 test.describe.serial('languages and a second clinic', () => {
+  // one manager sign-in for the whole spec: sign-in is rate limited
+  let manager: Page;
+  test.beforeAll(async ({ browser }) => { manager = await signInAgain(browser, 'Practice manager'); });
+
   test('the Dhanmondi front desk sees only its own clinic, in English, with Bangla calls', async ({ browser }) => {
     const page = await openAs(browser, 'dhanmondi');
     await expect(page.getByText('Dhanmondi Diagnostic Centre').first()).toBeVisible();
@@ -25,14 +29,13 @@ test.describe.serial('languages and a second clinic', () => {
     await expect(page.getByText('Maria Delgado')).toHaveCount(0);
   });
 
-  test('Maple Street\'s manager cannot open Dhanmondi', async ({ browser }) => {
-    const page = await signInAgain(browser, 'Practice manager');
-    const res = await page.request.get('/api/v1/clinics/clinic_demo_dhanmondi/settings');
+  test('Maple Street\'s manager cannot open Dhanmondi', async () => {
+    const res = await manager.request.get('/api/v1/clinics/clinic_demo_dhanmondi/settings');
     expect([403, 404]).toContain(res.status());
   });
 
-  test('the assistant\'s name and languages, with a greeting preview in each', async ({ browser }) => {
-    const page = await signInAgain(browser, 'Practice manager');
+  test('the assistant\'s name and languages, with a greeting preview in each', async () => {
+    const page = manager;
     await page.getByRole('link', { name: 'Settings' }).click();
     const name = page.getByLabel('Assistant name');
     await expect(name).toHaveValue('Maya');

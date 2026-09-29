@@ -23,6 +23,6 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
 
   // claiming from Today takes the request and opens the queue
   await attention.getByRole('button', { name: 'Claim' }).first().click();
-  await expect(page).toHaveURL(/\/requests$/);
+  await expect(page).toHaveURL(/\/requests$/, { timeout: 20_000 }); // next dev may still be compiling the page
   await expect(page.getByText('You have it').first()).toBeVisible();
 });

@@ -3,7 +3,7 @@
 import type { CallList, Overview, Schedule, WaitingTasks } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, PhoneCall, PhoneOff, Pill, Siren } from 'lucide-react';
+import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -87,7 +87,9 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const day = now - 86_400_000;
   const recent = (calls.data?.calls ?? []).filter((c) => Date.parse(c.startedAt) >= day);
   const emergencies = recent.filter((c) => c.emergency);
-  const unresolved = recent.filter((c) => !c.emergency && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
+  // flagged by the summary and not yet looked at, from the last week; emergencies are already listed above them
+  const flagged = (calls.data?.calls ?? []).filter((c) => c.needsReview && !c.emergency && Date.parse(c.startedAt) >= now - 7 * 86_400_000);
+  const unresolved = recent.filter((c) => !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
   const items: { key: string; icon: ReactNode; title: string; detail: ReactNode; action: ReactNode; tone?: 'danger' }[] = [
     ...emergencies.map((c) => ({
@@ -99,6 +101,11 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       action: canWork
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
         : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
+    })),
+    ...flagged.map((c) => ({
+      key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
+      detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. The summary says why.</>,
+      action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
     ...unresolved.map((c) => ({
       key: c.id, icon: <PhoneOff className="size-4 text-text-muted" />, title: c.outcome === 'transferred' ? 'A call went to a person' : 'A call ended with nothing done',
@@ -118,7 +125,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every 30 seconds.</Alert>}
       {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
         : items.length === 0 ? (
-          <Empty title="Nothing needs you right now" action={<Link href={`/c/${clinicId}/calls`} className="text-sm text-primary hover:underline">See the latest calls</Link>}>Emergencies from the last day, requests nobody has claimed, and calls that ended without an outcome appear here.</Empty>
+          <Empty title="Nothing needs you right now" action={<Link href={`/c/${clinicId}/calls`} className="text-sm text-primary hover:underline">See the latest calls</Link>}>Emergencies from the last day, requests nobody has claimed, calls flagged for review, and calls that ended without an outcome appear here.</Empty>
         ) : (
           <ul className="divide-y divide-border" aria-label="Needs attention">
             {items.map((i) => (

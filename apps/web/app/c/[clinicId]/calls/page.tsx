@@ -23,6 +23,8 @@ const FILTERS = {
   all: { label: 'All calls', test: () => true },
   attention: { label: 'Needs attention', test: (c: CallSummary) => c.emergency || c.outcome === 'task_created' },
   changes: { label: 'Bookings and changes', test: (c: CallSummary) => ['booked', 'rescheduled', 'cancelled'].includes(c.outcome ?? '') },
+  // asked of the server, so a flagged call further back than the first page is found too
+  review: { label: 'Needs review', test: (c: CallSummary) => c.needsReview },
 } as const;
 
 export default function Calls() {
@@ -38,7 +40,10 @@ export default function Calls() {
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
   useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 300); return () => clearTimeout(t); }, [text]);
-  const filters = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(outcome ? { outcome } : {}), ...(channel ? { channel } : {}), ...(emergencyOnly ? { emergency: 'true' } : {}) };
+  const filters = {
+    ...(from ? { from } : {}), ...(to ? { to } : {}), ...(outcome ? { outcome } : {}), ...(channel ? { channel } : {}), ...(emergencyOnly ? { emergency: 'true' } : {}),
+    ...(filter === 'review' ? { review: 'needed' } : {}),
+  };
   const searching = query.length >= 2 && can('calls:read');
   const calls = useInfiniteQuery({
     queryKey: ['calls', clinicId, filters],
@@ -132,6 +137,7 @@ export default function Calls() {
                     <span className="inline-flex flex-wrap items-center gap-1.5">
                       <Outcome outcome={c.outcome} emergency={c.emergency} />
                       {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
+                      {c.needsReview && <Badge tone="warn">Needs review</Badge>}
                     </span>
                   </TD>
                   <TD className="whitespace-nowrap text-text-muted">
