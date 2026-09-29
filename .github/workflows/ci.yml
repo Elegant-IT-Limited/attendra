@@ -20,6 +20,25 @@ jobs:
       - name: eval report
         run: pnpm eval
         env: { FORCE_COLOR: '1' }
+      - name: dashboard builds
+        run: pnpm --filter @attendra/web build
+        env: { NEXT_TELEMETRY_DISABLED: '1' }
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @attendra/web exec playwright install --with-deps chromium
+      - name: dashboard end to end (demo API on an in-memory Postgres)
+        run: pnpm test:e2e
+        env: { NEXT_TELEMETRY_DISABLED: '1' }
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with: { name: playwright-report, path: apps/web/playwright-report, retention-days: 7 }
 
   secrets:
     runs-on: ubuntu-latest

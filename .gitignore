@@ -8,3 +8,9 @@ coverage/
 *.log
 .DS_Store
 .turbo
+.next/
+next-env.d.ts
+playwright-report/
+test-results/
+*.tsbuildinfo
+apps/web/e2e/.auth/

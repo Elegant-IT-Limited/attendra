@@ -18,7 +18,9 @@
     "db:migrate": "pnpm --filter @attendra/db run migrate",
     "db:seed": "pnpm --filter @attendra/db run seed",
     "db:add-number": "pnpm --filter @attendra/db run add-number",
-    "add-member": "pnpm --filter @attendra/api add-member"
+    "add-member": "pnpm --filter @attendra/api add-member",
+    "demo": "turbo run demo",
+    "test:e2e": "pnpm --filter @attendra/web test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
