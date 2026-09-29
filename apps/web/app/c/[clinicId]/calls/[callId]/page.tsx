@@ -26,7 +26,7 @@ export default function CallPage() {
   const tz = clinic?.timezone ?? 'UTC';
 
   const back = (
-    <Link href={`/c/${clinicId}/calls`} className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+    <Link href={`/c/${clinicId}/calls`} className="mb-4 inline-flex items-center gap-1 text-sm text-text-muted hover:text-text">
       <ArrowLeft className="size-4" /> All calls
     </Link>
   );
@@ -41,8 +41,8 @@ export default function CallPage() {
     <>
       {back}
       <div className="mb-6 space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+        <h1 className="text-xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
           {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
@@ -76,20 +76,20 @@ export default function CallPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Transcript</CardTitle>
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Lock className="size-3" /> Your view is in the audit log</span>
+            <span className="inline-flex items-center gap-1 text-xs text-text-muted"><Lock className="size-3" /> Your view is in the audit log</span>
           </CardHeader>
           <CardContent className="space-y-4">
-            {c.transcript.length === 0 && <p className="text-sm text-muted-foreground">No speech was recorded on this call.</p>}
+            {c.transcript.length === 0 && <p className="text-sm text-text-muted">No speech was recorded on this call.</p>}
             {c.transcript.map((s, i) => {
               const agent = s.speaker === 'agent';
               return (
                 <div key={i} className={cn('flex gap-3', !agent && 'flex-row-reverse')}>
-                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', agent ? 'bg-accent text-primary' : 'bg-muted text-muted-foreground')}>
+                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', agent ? 'bg-primary-soft text-primary' : 'bg-surface-sunken text-text-muted')}>
                     {agent ? <Bot className="size-4" /> : <User className="size-4" />}
                   </div>
                   <div className={cn('max-w-[80%] space-y-1', !agent && 'text-right')}>
-                    <p className="text-xs text-muted-foreground">{agent ? 'Assistant' : 'Caller'} · {clock(s.startMs)}</p>
-                    <p className={cn('inline-block rounded-lg px-3.5 py-2 text-left text-sm leading-relaxed', agent ? 'bg-muted' : 'bg-primary text-primary-foreground')}>{s.text}</p>
+                    <p className="text-xs text-text-muted">{agent ? 'Assistant' : 'Caller'} · {clock(s.startMs)}</p>
+                    <p className={cn('inline-block rounded-lg px-3.5 py-2 text-left text-sm leading-relaxed', agent ? 'bg-surface-sunken' : 'bg-primary text-on-primary')}>{s.text}</p>
                   </div>
                 </div>
               );
@@ -107,24 +107,24 @@ export default function CallPage() {
                   </span>
                   <Badge tone="ok">Verified</Badge>
                 </div>
-              ) : <p className="text-muted-foreground">Not verified. The assistant links a call to a patient only after checking their name and date of birth.</p>}
+              ) : <p className="text-text-muted">Not verified. The assistant links a call to a patient only after checking their name and date of birth.</p>}
             </CardContent>
           </Card>
           <Card>
             <CardHeader><CardTitle>What the assistant did</CardTitle></CardHeader>
             <CardContent>
-              {c.actions.length === 0 ? <p className="text-sm text-muted-foreground">It answered without using any tools.</p> : (
+              {c.actions.length === 0 ? <p className="text-sm text-text-muted">It answered without using any tools.</p> : (
                 <ol className="space-y-3">
                   {c.actions.map((a, i) => {
                     const error = typeof a.result.error === 'string' ? a.result.error : null;
                     return (
                       <li key={i} className="flex gap-3 text-sm">
-                        <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full', error ? 'bg-warn-soft' : 'bg-ok-soft')}>
+                        <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full', error ? 'bg-warning-soft' : 'bg-success-soft')}>
                           {error ? <X className="size-3" /> : <Check className="size-3" />}
                         </span>
                         <div>
                           <p className="font-medium">{TOOLS[a.tool] ?? a.tool}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-text-muted">
                             {error ? (REFUSALS[error] ?? error) : a.result.booked ? 'booked' : a.result.cancelled ? 'cancelled' : a.result.verified ? 'verified' : 'done'}
                           </p>
                         </div>
@@ -133,7 +133,7 @@ export default function CallPage() {
                   })}
                 </ol>
               )}
-              <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+              <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
                 Only argument names are stored here, never the values a caller said. The transcript holds what was said.
               </p>
             </CardContent>
@@ -143,7 +143,7 @@ export default function CallPage() {
               <CardHeader><CardTitle>Requests for the team</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
-                  <Link key={t.id} href={`/c/${clinicId}/requests`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted">
+                  <Link key={t.id} href={`/c/${clinicId}/requests`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-sunken">
                     <span>{TASK_TYPES[t.type] ?? t.type}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>

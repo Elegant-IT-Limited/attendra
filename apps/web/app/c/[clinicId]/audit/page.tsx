@@ -64,9 +64,9 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
   if (a.startsWith('user:')) {
     const id = a.slice(5);
     if (id === meId) return <span>You</span>;
-    return names.has(id) ? <span>{names.get(id)}</span> : <span>A former team member <span className="font-mono text-xs text-muted-foreground">{id.slice(0, 8)}</span></span>;
+    return names.has(id) ? <span>{names.get(id)}</span> : <span>A former team member <span className="font-mono text-xs text-text-muted">{id.slice(0, 8)}</span></span>;
   }
-  return <span className="text-muted-foreground">{a}</span>;
+  return <span className="text-text-muted">{a}</span>;
 }
 
 // "matches:3" on a search: how many were found, never what was typed
@@ -106,7 +106,7 @@ export default function Audit() {
                       <TD className="whitespace-nowrap">{clinicTime(e.at, tz)}</TD>
                       <TD>{actor(e.actor, me?.user.id, names)}</TD>
                       <TD>{describe(e.action)}</TD>
-                      <TD className="hidden text-muted-foreground md:table-cell">
+                      <TD className="hidden text-text-muted md:table-cell">
                         {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">call</Link> : e.entity}
                         {record(e) ? <span className="ml-2 text-xs">{record(e)}</span> : e.entityId && <span className="ml-2 font-mono text-xs">{e.entityId.slice(0, 8)}</span>}
                       </TD>

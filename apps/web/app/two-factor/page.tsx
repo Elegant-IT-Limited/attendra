@@ -31,7 +31,7 @@ export default function TwoFactor() {
         </div>
         {error && <Alert tone="danger">{error}</Alert>}
         <Button type="submit" className="w-full">Continue</Button>
-        <button type="button" className="text-sm text-muted-foreground underline-offset-4 hover:underline" onClick={() => { setBackup(!backup); setCode(''); }}>
+        <button type="button" className="text-sm text-text-muted underline-offset-4 hover:underline" onClick={() => { setBackup(!backup); setCode(''); }}>
           {backup ? 'Use the authenticator app instead' : 'Lost your phone? Use a backup code'}
         </button>
       </form>
