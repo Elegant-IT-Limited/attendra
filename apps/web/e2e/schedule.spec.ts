@@ -16,7 +16,7 @@ async function findInWeek(page: Page, name: RegExp) {
 }
 
 test.describe.serial('the schedule', () => {
-  test('front desk opens a booking the assistant made and follows it to the call', async ({ browser }) => {
+  test('front desk opens a booking the assistant made, follows it to the call, then to the patient', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: 'Schedule' }).click();
     await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
@@ -28,6 +28,11 @@ test.describe.serial('the schedule', () => {
     await panel.getByRole('link', { name: 'Open the call and its transcript' }).click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
+    await page.getByRole('link', { name: 'Maria Delgado' }).click(); // who was calling, verified
+    await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
+    await expect(page.getByText(/^Age \d+, born 4 March 1985$/)).toBeVisible();
+    await page.getByRole('tab', { name: /Calls/ }).click();
+    await expect(page.getByRole('link', { name: /Transcript/ }).first()).toBeVisible();
   });
 
   test('front desk books, sees it on the schedule, moves it, then cancels it', async ({ browser }) => {
@@ -36,11 +41,9 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByTestId('lane').first()).toBeVisible();
     await page.getByRole('button', { name: 'New booking' }).click();
     const dialog = page.getByRole('dialog', { name: 'New booking' });
-    // until patient search exists, the picker offers the people already on the schedule
-    const first = dialog.getByRole('listitem').first().getByRole('button');
-    const name = (await first.textContent())!;
-    await dialog.getByRole('textbox', { name: 'Patient' }).fill(name.split(' ')[1]!.toLowerCase());
-    await dialog.getByRole('button', { name, exact: true }).click();
+    const name = 'James Whitaker';
+    await dialog.getByLabel('Find a patient').fill('whit');
+    await dialog.getByRole('button', { name: /James Whitaker/ }).click();
     await dialog.getByLabel('Visit type').selectOption({ label: 'Annual physical (40 min)' });
     await dialog.getByLabel('Provider').selectOption({ label: 'Dr. Nkem Okafor' });
     await dialog.getByRole('button', { name: 'Later week' }).click(); // next week has room whatever the time now

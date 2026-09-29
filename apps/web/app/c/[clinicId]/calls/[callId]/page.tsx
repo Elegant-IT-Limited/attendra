@@ -2,7 +2,7 @@
 'use client';
 import type { CallDetail } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, X } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, UserCheck, X } from 'lucide-react';
 import { localDateOf } from '@attendra/core';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -97,6 +97,19 @@ export default function CallPage() {
           </CardContent>
         </Card>
         <div className="space-y-6">
+          <Card>
+            <CardHeader><CardTitle>Who&apos;s calling</CardTitle></CardHeader>
+            <CardContent className="text-sm">
+              {c.patient ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-2"><UserCheck className="size-4 text-primary" aria-hidden />
+                    {can('patients:read') ? <Link href={`/c/${clinicId}/patients/${c.patient.id}`} className="font-medium hover:underline">{c.patient.name}</Link> : <span className="font-medium">{c.patient.name}</span>}
+                  </span>
+                  <Badge tone="ok">Verified</Badge>
+                </div>
+              ) : <p className="text-muted-foreground">Not verified. The assistant links a call to a patient only after checking their name and date of birth.</p>}
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader><CardTitle>What the assistant did</CardTitle></CardHeader>
             <CardContent>
