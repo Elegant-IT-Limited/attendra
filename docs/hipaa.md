@@ -28,7 +28,12 @@ Self-hosters are responsible for their own BAAs and operations.
   - `patient.viewed`: a patient's record, with their appointments, verified calls and requests.
   - `patient.recent.viewed`: the list of patients a person opened recently, once per 5 minutes.
   - `patient.created`, `patient.updated`: changes made at the front desk.
-- Appointment notes typed by staff are encrypted like the other PHI columns. Cancel reasons are a fixed list, never free text, so they cannot carry PHI.
+- Requests, calls and the team add these actions:
+  - `task.note.added`, `task.assigned`: a note on a request, and a request handed to a teammate. `task.done` now records an outcome code with the request.
+  - `calls.listed`: the call list with verified callers' names, once per person per 5 minutes. A viewer's list has no names and writes nothing.
+  - `calls.searched`: a search of calls by patient name, with the number of matches and never the name typed.
+  - `member.added`, `member.role.changed`, `member.removed`: team changes, written to every clinic of the organization.
+- Appointment notes and request notes typed by staff are encrypted like the other PHI columns. Cancel reasons are a fixed list, never free text, so they cannot carry PHI.
 - The logger redacts PHI by field name and by pattern, and a test proves it.
 - SMS messages are fixed templates with the time and the clinic, never the reason for the visit.
 - The voice model receives clinic facts and short verified results only, never full records.

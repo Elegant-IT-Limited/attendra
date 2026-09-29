@@ -37,7 +37,7 @@ A request from the browser goes to the dashboard's own origin; Next forwards `/a
 
 `StaffGuard` then checks, in order: the session is valid; the person has two-factor on (skipped only in demo mode); on a clinic route, the person belongs to the clinic's organization and their role has the route's permission (the table is in `apps/api/src/access.ts`). A clinic someone does not belong to answers 404, so ids cannot be probed. After the guard, everything runs as `attendra_app` inside `withClinic`, like the voice path.
 
-Reading a transcript or a task is a PHI access and writes an audit row in the same transaction as the read. The call list carries no patient data at all.
+Reading a transcript or a task is a PHI access and writes an audit row in the same transaction as the read. A viewer's call list carries no patient data at all; for roles that may read calls it adds the verified caller's name, and that view is audited.
 
 The schedule (`/clinics/:clinicId/appointments`) reads through `ScheduleRepository` in `packages/db` and writes through `StaffScheduler` in `packages/scheduling`. A staff booking is checked by `slotProblem`, which asks the same slot search the assistant's `find_slots` runs whether it would offer that time, and is written by `insertAppointment`, the function `BuiltinScheduler` uses for the assistant's bookings. The exclusion constraint on `appointments` is the last word on double booking for both. `GET /appointments/slots` returns open times with no patient data; every other schedule route shows names and is audited.
 
