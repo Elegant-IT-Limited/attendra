@@ -41,6 +41,8 @@ Reading a transcript or a task is a PHI access and writes an audit row in the sa
 
 The schedule (`/clinics/:clinicId/appointments`) reads through `ScheduleRepository` in `packages/db` and writes through `StaffScheduler` in `packages/scheduling`. A staff booking is checked by `slotProblem`, which asks the same slot search the assistant's `find_slots` runs whether it would offer that time, and is written by `insertAppointment`, the function `BuiltinScheduler` uses for the assistant's bookings. The exclusion constraint on `appointments` is the last word on double booking for both. `GET /appointments/slots` returns open times with no patient data; every other schedule route shows names and is audited.
 
+Patients (`/clinics/:clinicId/patients`) go through `PatientRecords`. Search is a `POST` with the query in the body; names and dates of birth are decrypted and matched in the API, a full phone number goes through its keyed hash ([decision 7](decisions/0007-patient-search.md)). Adding or editing a patient writes the same `lookup_hash` and `phone_hash` the voice agent looks callers up by. When the agent verifies a caller, the tool action that did it also sets `calls.patient_id` in the same transaction; that link is what lists a patient's calls.
+
 ## Data
 
 Postgres 16 is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, dates of birth, phone numbers, transcript text, task details and appointment notes are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).

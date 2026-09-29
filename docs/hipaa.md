@@ -22,6 +22,11 @@ Self-hosters are responsible for their own BAAs and operations.
   - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes every 30 seconds; the same person viewing the same range again within 5 minutes is covered by the row already written.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
+- Patients add these actions:
+  - `patient.searched`: a search, with the number of matches (`matches:3`) and never the query. The query is sent in a request body, not a URL, so it does not reach access logs or browser history.
+  - `patient.viewed`: a patient's record, with their appointments, verified calls and requests.
+  - `patient.recent.viewed`: the list of patients a person opened recently, once per 5 minutes.
+  - `patient.created`, `patient.updated`: changes made at the front desk.
 - Appointment notes typed by staff are encrypted like the other PHI columns. Cancel reasons are a fixed list, never free text, so they cannot carry PHI.
 - The logger redacts PHI by field name and by pattern, and a test proves it.
 - SMS messages are fixed templates with the time and the clinic, never the reason for the visit.
