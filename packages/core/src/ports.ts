@@ -9,6 +9,14 @@ import type { Slot } from './slots';
  * no call can forget which tenant it acts for.
  */
 
+/** A passage from one of the clinic's own documents: policies, directions, preparation, provider bios. Never patient data. */
+export interface KnowledgePassage { documentId: string; title: string; text: string }
+
+export interface KnowledgeBase {
+  /** The best passages for a question, at most four, or none. */
+  search(clinicId: string, question: string): Promise<KnowledgePassage[]>;
+}
+
 export type PatientLookup =
   | { status: 'found'; patient: { id: string; firstName: string; phone: string | null } } // phone on file, for confirmations
   | { status: 'not_found' }
