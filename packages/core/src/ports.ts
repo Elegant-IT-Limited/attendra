@@ -9,6 +9,22 @@ import type { Slot } from './slots';
  * no call can forget which tenant it acts for.
  */
 
+/**
+ * Something that happened, for the clinic's webhooks. `key` makes it one event however
+ * often it is emitted (a retried booking is the same booking). Data is ids, times,
+ * codes and counts only: never a name, a number, a date of birth or free text.
+ */
+export interface DomainEvent {
+  type: 'call.completed' | 'call.summary.ready' | 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled' | 'request.created' | 'request.done';
+  key: string;
+  occurredAt?: Date;
+  data: Record<string, string | number | boolean | null>;
+}
+
+export interface EventSink {
+  emit(clinicId: string, event: DomainEvent): Promise<void>;
+}
+
 /** A passage from one of the clinic's own documents: policies, directions, preparation, provider bios. Never patient data. */
 export interface KnowledgePassage { documentId: string; title: string; text: string }
 
