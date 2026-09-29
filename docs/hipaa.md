@@ -22,6 +22,7 @@ Self-hosters are responsible for their own BAAs and operations.
   - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes every 30 seconds; the same person viewing the same range again within 5 minutes is covered by the row already written.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
+- The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
 - Patients add these actions:
   - `patient.searched`: a search, with the number of matches (`matches:3`) and never the query. The query is sent in a request body, not a URL, so it does not reach access logs or browser history.
   - `patient.viewed`: a patient's record, with their appointments, verified calls and requests.
