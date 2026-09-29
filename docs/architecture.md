@@ -22,6 +22,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
 | `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
 | `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, the nightly retention purge, and (behind a flag) text delivery statuses. |
+| `apps/mcp` | MCP for other AI agents, over stdio and Streamable HTTP: find open times, today's schedule, the request queue, closing a request, the quality numbers. Per-clinic API keys with scopes and an expiry; no tool books or cancels. [docs/mcp.md](mcp.md). |
 | `packages/webhooks` | Standard Webhooks signing, the SSRF guard (public HTTPS only, checked after DNS and pinned to the checked address), and one delivery. [docs/webhooks.md](webhooks.md). |
 | `packages/knowledge` | The clinic's documents: text extraction (unpdf), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
 
@@ -33,6 +34,26 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 4. If a newer delegation started meanwhile, this result is dropped. Otherwise the result goes back as `session.commentary.append` for the model to say, capped well below the 500-token limit per append.
 
 The emergency guardrail is not a delegation. It runs on every `session.input_transcript.delta`, over a rolling window of the caller's recent words, and appends a fixed `session.instructions.append` with `delegation_id: null` the moment it matches.
+
+## The services
+
+```mermaid
+flowchart LR
+  caller([Caller]) -->|PSTN, SIP| openai[OpenAI GPT-Live]
+  openai <-->|webhook, sideband| voice[apps/voice]
+  staff([Staff]) --> web[apps/web] -->|/api| api[apps/api]
+  api -->|internal token| voice
+  agent([Another AI agent]) -->|MCP, API key| mcp[apps/mcp]
+  voice --> pg[(Postgres 16 + pgvector)]
+  api --> pg
+  mcp --> pg
+  worker[apps/worker] --> pg
+  pg -->|pg-boss jobs| worker
+  worker -->|summaries, embeddings| models[OpenAI Responses and embeddings]
+  worker -->|signed webhooks| receivers([n8n, Zapier, Make])
+```
+
+Postgres is the only store and the only queue: pg-boss keeps its jobs next to the calls they are about. The voice service, the API and the MCP server send jobs; only the worker runs them.
 
 ## Live calls
 

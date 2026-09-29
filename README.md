@@ -1,10 +1,10 @@
 # Attendra
 
-**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, verifies the caller, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ, and hands anything clinical or urgent to a person.
+**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English, Spanish and Bangla, verifies the caller, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
 
 Twilio carries the call over SIP to OpenAI GPT-Live, which holds the conversation. Every decision that matters (who the caller is, which times are really free, whether the caller said yes, what gets written, who is told) runs in this repository's TypeScript backend, where it can be tested, audited and self-hosted.
 
-> **Status: v0.2, pre-pilot.** The call path, the backend brain, the scheduler, the eval suite and the staff dashboard work and are tested. Live call take-over and the background worker are next (see the [roadmap](docs/roadmap.md)). Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
+> **Status: v0.4, pre-pilot.** The call path, the backend brain, the scheduler, the dashboard, live calls, summaries, the clinic's knowledge, webhooks, quality tracking and MCP work and are tested. Reminders and the waitlist come next, once Twilio is live (see the [roadmap](docs/roadmap.md)). Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
 
 ## One call, end to end
 
@@ -31,6 +31,30 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
                               scheduling      identity      tasks, SMS     audit
                                      └────────── Postgres 16, RLS, encrypted PHI ──┘
 ```
+
+## What it does
+
+- **Answers calls** over Twilio SIP and GPT-Live, or from the browser for testing, with the clinic's hours, providers, visit types, routing and greeting.
+- **Speaks the caller's language**: English, Spanish, and Bangla (experimental), with a name for the assistant and the AI disclosure checked in every language. [docs/languages.md](docs/languages.md)
+- **Books, moves and cancels** only after a read-back and a clear yes; takes refills and callbacks as requests for staff.
+- **Answers from the clinic's own documents**, with citations, and refuses medical questions in code. [Decision 8](docs/decisions/0008-clinic-knowledge.md)
+- **Live calls**: staff see captions and every tool step as they happen, send the assistant a note, take the call or end it.
+- **Summarises every call** for staff, flags the ones that need a look, and deletes old records on the clinic's retention period.
+- **Webhooks** for n8n, Zapier and Make, signed per Standard Webhooks, with no patient data in them. [docs/webhooks.md](docs/webhooks.md)
+- **Quality**: a weekly page of containment, bookings, refusals and cost, a judge for live evals, and simulated callers. [docs/quality.md](docs/quality.md)
+- **MCP**: other AI agents, such as Claude Desktop, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)
+- **The front desk dashboard**: Today, the schedule, patients, requests, calls, team, settings and the audit log, in light and dark, with a command palette. [docs/design.md](docs/design.md)
+
+## How the AI works
+
+Four models do four jobs, and none of them decides anything that matters on its own.
+
+1. **GPT-Live holds the conversation.** It hears the caller, speaks, and decides when it needs help. When it does, it delegates to our backend. It sees clinic facts and short results, never records.
+2. **The planner picks the tools.** For each delegation, a Responses API model reads the conversation and calls our tools: verify the caller, find slots, propose a booking, search the clinic's documents. Every tool call goes through `runTool`, where the rules live in code: identity first, only offered slots, a read-back and a clear yes before any write, no medical advice, nothing after an emergency. A tool can refuse, and the planner is told why.
+3. **Guardrails run without a model.** The emergency phrase list, the yes check and the medical-question check are code, in every language, on every caller turn. No prompt, coaching note or document can turn them off.
+4. **After the call, a model summarises it** for staff, from the transcript, with its output checked against a schema. Documents are embedded for search; judges and simulated callers test the whole thing offline and in the manual quality workflow.
+
+Every model call is made with `store: false`, a model name from the environment, a timeout and a ceiling on output, and every one is replaced by a fixed stand-in in the tests, so CI never calls OpenAI.
 
 ## What is enforced in code, not in a prompt
 
@@ -60,7 +84,7 @@ pnpm test        # unit, Postgres integration (in-process) and the call scenario
 pnpm eval        # the call scenarios as a readable report
 ```
 
-No keys are needed for either. The scenarios run the real backend against a real Postgres, with a scripted planner standing in for the model; the scripts deliberately try things the backend must refuse. `pnpm eval --live` runs the same calls with the real planner model (needs `OPENAI_API_KEY`).
+No keys are needed for either. The scenarios run the real backend against a real Postgres, with a scripted planner standing in for the model; the scripts deliberately try things the backend must refuse. `pnpm eval --live` runs the same calls with the real planner model, and `--judge` scores them (both need `OPENAI_API_KEY` and cost credit).
 
 ### See the dashboard
 
@@ -76,6 +100,8 @@ This starts the API on an in-memory Postgres, plays every call scenario through 
 | **Refills and callbacks for the front desk** | **Clinic settings, validated before they save** |
 | ![The task queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
 
+With no key at all, **Test call > Play a simulated call** runs a scripted booking call through the real assistant and opens it live, so you can watch the captions and the tool steps, coach the assistant and end the call.
+
 ### Talk to it
 
 Put an OpenAI key in `.env` at the repo root (`OPENAI_API_KEY=sk-...`) and run `pnpm demo` again. The dashboard's **Test call** page then talks to the demo clinic's receptionist through your microphone, about $0.05 a minute. No phone number needed: [docs/test-calls.md](docs/test-calls.md).
@@ -90,14 +116,18 @@ Put an OpenAI key in `.env` at the repo root (`OPENAI_API_KEY=sk-...`) and run `
 apps/voice/            the webhook and the per-call runner (Fastify)
 apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, requests, team, settings, audit (NestJS)
 apps/web/              the staff dashboard (Next.js, Tailwind, TanStack Query), Playwright specs in e2e/
+apps/worker/           background jobs on pg-boss: summaries, document indexing, webhook delivery, the retention purge
+apps/mcp/              the MCP server, over stdio and Streamable HTTP, with per-clinic API keys
 packages/core/         clinic config, hours, slots, routing, identity, emergency and confirmation rules, the ports
 packages/agent/        CallState, the tools and their guards, the delegation loop, the Responses API planner
 packages/voice-engine/ the VoiceEngine interface and the GPT-Live implementation; prompt; CallRunner
 packages/scheduling/   the booking rules and the one write both the assistant and the front desk use; the built-in SchedulerAdapter (EHR adapters implement the same interface)
 packages/telephony/    SIP header parsing, templated SMS through Twilio
 packages/db/           SQL migrations with RLS, Drizzle schema, PHI encryption, repositories, synthetic seed
+packages/knowledge/    the clinic's documents: extraction, chunking, embeddings, hybrid search, grounded answers
+packages/webhooks/     Standard Webhooks signing, the SSRF guard, delivery
 packages/observability the redacting logger
-evals/                 call scenarios (YAML) and the simulator that runs them
+evals/                 call scenarios (YAML), the simulator that runs them, the judge, and simulated callers (evals/sim)
 infra/                 Docker Compose and the images
 docs/                  architecture, safety, HIPAA, self-hosting, roadmap, decision records
 ```
