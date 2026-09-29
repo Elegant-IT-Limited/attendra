@@ -2,7 +2,9 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-29
+
+The front desk: a staff dashboard, its API, and demo mode.
 
 ### Added
 
@@ -20,6 +22,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - Read-backs said "a annual physical"; they now use "an" before a vowel.
 - `pnpm db:seed` could create a second copy of each demo patient when run twice, and reset the clinic's settings on every start.
+- CI's sign-off check read the merge commit GitHub builds for a pull request, which is never signed, so it failed on every pull request.
 
 ## [0.1.1] - 2026-09-28
 
