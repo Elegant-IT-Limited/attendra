@@ -5,6 +5,7 @@ import {
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
+import { type JobQueue, noJobs } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { type SmsSender, twilioSender, TwilioMessenger } from '@attendra/telephony';
 import { GptLiveEngine } from '@attendra/voice-engine';
@@ -25,6 +26,8 @@ export interface VoiceRuntime {
   twilio?: { accountSid: string; authToken: string };
   internalToken?: string;
   browserCallMaxSeconds?: number;
+  /** Where a closed call is announced, so the worker summarises it. */
+  jobs?: JobQueue;
 }
 
 const noSms: SmsSender = { send: async () => { throw new Error('SMS is not configured'); } };
@@ -52,7 +55,12 @@ export function createVoiceApp(rt: VoiceRuntime) {
     }),
     recorderFor: (clinicId, callId) => ({
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),
-      close: (c) => calls.close(clinicId, callId, c),
+      close: async (c) => {
+        await calls.close(clinicId, callId, c);
+        // the call record stands whatever happens to the queue; the summary can be redone
+        await (rt.jobs ?? noJobs).callCompleted({ clinicId, callId }).catch((err: unknown) =>
+          rt.log.warn({ call_id: callId, err: { message: (err as Error).message } }, 'could not queue the closed call for the worker'));
+      },
     }),
     engine: new GptLiveEngine(openai, rt.liveModel),
     planner: new ResponsesPlanner(openai, rt.backendModel),
