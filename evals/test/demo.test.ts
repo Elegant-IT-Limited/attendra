@@ -40,6 +40,14 @@ describe('demo calls', () => {
     expect(hedge!.transcript.map((s) => s.text).join(' ')).toContain('for an annual physical');
   });
 
+  it('links each call to the patient the agent verified, and leaves the rest unlinked', async () => {
+    const patientOf = async (id: string) => ((await t.db.execute(sql`select patient_id from calls where id = ${results.find((r) => r.id === id)!.callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+    const { patientIds } = await seedDemo(t.db, cipher);
+    expect(await patientOf('booking-happy-path')).toBe(patientIds.maria);
+    expect(await patientOf('no-identity-no-records')).toBeNull();
+    expect(await patientOf('shared-name-and-dob')).toBeNull(); // two records match: nobody is verified
+  });
+
   it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
