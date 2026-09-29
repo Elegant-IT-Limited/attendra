@@ -50,6 +50,9 @@ importers:
       '@attendra/scheduling':
         specifier: workspace:*
         version: link:../../packages/scheduling
+      '@attendra/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/webhooks
       '@attendra/worker':
         specifier: workspace:*
         version: link:../worker
@@ -233,6 +236,9 @@ importers:
       '@attendra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@attendra/webhooks':
+        specifier: workspace:*
+        version: link:../../packages/webhooks
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@electric-sql/pglite@0.3.16)(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.0)
@@ -418,6 +424,12 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+
+  packages/webhooks:
+    dependencies:
+      '@attendra/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 
