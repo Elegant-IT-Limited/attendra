@@ -12,6 +12,7 @@ import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_GUARD, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ApiKeysController } from './api-keys/api-keys.controller';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
 import { CallsController } from './calls/calls.controller';
@@ -71,7 +72,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

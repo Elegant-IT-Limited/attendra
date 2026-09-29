@@ -188,6 +188,21 @@ export const QualityWeek = z.object({
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
 
+export const API_KEY_SCOPES = ['schedule:read', 'requests:read', 'requests:write'] as const;
+export const ApiKeyView = z.object({
+  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_KEY_SCOPES)), expiresAt: z.iso.datetime(),
+  createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
+  status: z.enum(['active', 'expired', 'revoked']),
+});
+export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
+export const ApiKeyInput = z.object({
+  name: z.string().trim().min(1, 'give the key a name').max(100),
+  scopes: z.array(z.enum(API_KEY_SCOPES)).min(1, 'choose at least one scope'),
+  expiresInDays: z.number().int().min(1).max(365).default(90),
+});
+/** The only time a key is shown. */
+export const ApiKeyCreated = z.object({ apiKey: ApiKeyView, key: z.string() });
+
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 
@@ -368,6 +383,9 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type LiveCall = z.infer<typeof LiveCall>;
+export type ApiKeyView = z.infer<typeof ApiKeyView>;
+export type ApiKeys = z.infer<typeof ApiKeys>;
+export type ApiKeyCreated = z.infer<typeof ApiKeyCreated>;
 export type Quality = z.infer<typeof Quality>;
 export type QualityWeek = z.infer<typeof QualityWeek>;
 export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
