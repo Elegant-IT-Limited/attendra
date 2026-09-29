@@ -242,7 +242,11 @@ const Activity = z.object({
   estimatedCost: z.number(),
 });
 /** Counts only, for the home screen. No patient data, so a viewer sees it too. */
-export const Overview = z.object({ days: z.number(), costPerMinute: z.number(), today: Activity, period: Activity });
+export const Overview = z.object({
+  days: z.number(), costPerMinute: z.number(), today: Activity, period: Activity,
+  /** Per clinic-time day, oldest first: for the trend lines. Counts only. */
+  daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
+});
 export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })) });
 
 export const AuditEntry = z.object({
