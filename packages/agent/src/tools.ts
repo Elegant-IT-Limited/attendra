@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, type AuditLog, type ClinicConfig, emergencyNumberFor, findSlots, isClearYes, localDateOf, localName, type Messenger, PACKS, parseDob,
+  addDays, type AuditLog, type ClinicConfig, emergencyNumberFor, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  type Messenger, NO_INFORMATION, PACKS, parseDob,
   type PatientDirectory, resolveTransfer, type SchedulerAdapter, speakSlot, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, weekHours, zonedInstant,
 } from '@attendra/core';
@@ -15,6 +16,8 @@ export interface Backend {
   tasks: TaskQueue;
   audit: AuditLog;
   messenger: Messenger;
+  /** The clinic's own documents. Without it, the assistant answers from the FAQ alone. */
+  knowledge?: KnowledgeBase;
 }
 
 export interface CallContext {
@@ -38,6 +41,7 @@ const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking',
 const WRITE_TOOLS = new Set<ToolName>(['propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'transfer_call', 'end_call']);
 // after an emergency the only things left to do are to hand the caller to a person
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info']);
+const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
 const key = (...parts: (string | number)[]) => createHash('sha256').update(parts.join('|')).digest('base64url').slice(0, 32);
@@ -95,9 +99,33 @@ export async function runTool(
     }
 
     case 'get_clinic_info': {
+      const question = String(args.question);
+      // the medical-advice rule wins over anything the FAQ or a document says
+      if (isMedicalQuestion(question)) return MEDICAL();
       const hours = todaysHoursLine(clinic, ctx.now());
-      const answer = answerFromFaqs(clinic.faqs, String(args.question));
-      return { ok: true, data: { today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null } };
+      const answer = answerFromFaqs(clinic.faqs, question);
+      const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      return {
+        ok: true,
+        data: {
+          today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
+          ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
+        },
+      };
+    }
+
+    case 'search_knowledge': {
+      const question = String(args.question);
+      if (isMedicalQuestion(question)) return MEDICAL();
+      const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      return {
+        ok: true,
+        data: {
+          passages: passages.map((p) => ({ title: p.title, text: p.text })),
+          say: 'Answer only from these passages, in a sentence or two, in the caller\'s language. If they do not answer the question, say you do not have that information and offer a callback. Never add advice of your own.',
+        },
+      };
     }
 
     case 'find_slots': {

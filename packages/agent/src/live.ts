@@ -18,6 +18,7 @@ export type LiveEvent =
 export const DOING: Record<ToolName, string> = {
   verify_caller: 'checking who is calling',
   get_clinic_info: 'looking up clinic information',
+  search_knowledge: 'searching the clinic\'s documents',
   find_slots: 'finding open times',
   list_appointments: 'looking up appointments',
   propose_booking: 'reading back a booking',
