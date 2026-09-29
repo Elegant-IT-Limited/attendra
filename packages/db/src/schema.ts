@@ -114,6 +114,17 @@ export const tasks = pgTable('tasks', {
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   doneAt: timestamp('done_at', { withTimezone: true }),
   doneByUserId: text('done_by_user_id'),
+  outcome: text('outcome', { enum: ['called_back', 'left_message', 'refill_sent', 'not_needed'] }),
+  assignedByUserId: text('assigned_by_user_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const taskNotes = pgTable('task_notes', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  clinicId: text('clinic_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  authorUserId: text('author_user_id').notNull(),
+  bodyEnc: text('body_enc').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
