@@ -20,7 +20,7 @@ beforeAll(async () => {
   api = await startApi({
     demoMode: false,
     // the worker's job, run straight away
-    jobs: { callCompleted: async () => {}, indexDocument: async (j) => { queued.push(j); await indexDocument(new KnowledgeRepository(api.t.db), embedder, j.clinicId, j.documentId); } },
+    jobs: { callCompleted: async () => {}, webhookEvent: async () => {}, indexDocument: async (j) => { queued.push(j); await indexDocument(new KnowledgeRepository(api.t.db), embedder, j.clinicId, j.documentId); } },
     // the database exists once the API has started, and searches only happen after that
     knowledge: { base: { search: (clinicId, q) => new HybridKnowledgeBase(new KnowledgeRepository(api.t.db), embedder).search(clinicId, q) }, answerer: new LocalAnswerer() },
   });

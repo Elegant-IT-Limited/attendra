@@ -27,6 +27,8 @@ export const PERMISSIONS = {
   'settings:write': ['owner', 'admin'],
   'audit:read': ['owner', 'admin'],
   'members:manage': ['owner', 'admin'],
+  // webhooks: where the clinic's events go, and their secrets
+  'integrations:manage': ['owner', 'admin'],
 } as const satisfies Record<string, readonly StaffRole[]>;
 
 export type Permission = keyof typeof PERMISSIONS;
