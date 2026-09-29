@@ -2,6 +2,7 @@
 import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
+import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
 import type { Planner } from './planner';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
@@ -35,6 +36,11 @@ export interface ActionRecorder {
  * text-mode simulator.
  */
 export class CallAgent {
+  /** Receives every live event for staff watching the call. Set by the voice service. */
+  observer: ((e: LiveEvent) => void) | null = null;
+  private verified: string | null = null;
+  private doing: string | null = null;
+
   constructor(
     readonly state: CallState,
     private readonly ctx: CallContext,
@@ -54,6 +60,7 @@ export class CallAgent {
    */
   onCallerTranscript(delta: string, startMs: number, endMs: number): Outbound[] {
     this.state.addTranscript('caller', delta, startMs, endMs);
+    this.emit({ type: 'caption', speaker: 'caller', text: delta, atMs: startMs });
     const { clinic } = this.ctx;
     if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
     const fresh = detectEmergencies(this.state.recentCallerText()).filter((m) => !this.state.emergencyKinds.has(m.kind));
@@ -67,6 +74,8 @@ export class CallAgent {
     this.state.pending = null; // nothing half-booked survives an emergency
     this.state.revision++; // and any request already in flight is dropped, not spoken over the script
     this.log.warn({ call_id: this.ctx.callId, emergency_kind: match.kind }, 'emergency guardrail triggered');
+    this.emit({ type: 'emergency', kind: match.kind });
+    this.emitState();
 
     // The script is said in the language the emergency was said in, when the clinic
     // offers it, and otherwise in the language of the call. The number is the clinic's.
@@ -83,6 +92,50 @@ export class CallAgent {
 
   onAgentTranscript(delta: string, startMs: number, endMs: number) {
     this.state.addTranscript('agent', delta, startMs, endMs);
+    this.emit({ type: 'caption', speaker: 'agent', text: delta, atMs: startMs });
+  }
+
+  /**
+   * A staff member's note for the assistant. It goes to the voice model as an
+   * instruction marked as staff's, and changes nothing in code: every rule in runTool
+   * still applies to whatever the model does with it.
+   */
+  coach(note: string): Outbound[] {
+    this.emit({ type: 'staff', action: 'coached' });
+    return [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
+  }
+
+  /** A person takes the call: the assistant says so, then the call is transferred. Work in flight is dropped. */
+  takeOver(uri: string): Outbound[] {
+    this.state.revision++;
+    this.state.pending = null;
+    if (!this.state.emergency) this.state.outcome = 'transferred';
+    this.emit({ type: 'staff', action: 'taken_over' });
+    this.emitState();
+    return [
+      { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
+      { type: 'transfer', uri, afterMs: AFTER_SPEECH_MS },
+    ];
+  }
+
+  /** Staff end the call: the assistant says goodbye, then hangs up. */
+  endByStaff(): Outbound[] {
+    this.state.revision++;
+    this.state.pending = null;
+    this.emit({ type: 'staff', action: 'ended' });
+    this.emitState();
+    return [
+      { type: 'instructions', delegationId: null, content: 'Stop the current task. Thank the caller and say goodbye warmly, in one short sentence. Then say nothing more.' },
+      { type: 'hangup', afterMs: AFTER_SPEECH_MS },
+    ];
+  }
+
+  private emit(e: LiveEvent) {
+    try { this.observer?.(e); } catch (err) { this.log.warn({ call_id: this.ctx.callId, err }, 'live observer failed'); }
+  }
+
+  private emitState() {
+    this.emit({ type: 'state', verified: this.verified, pending: this.state.pending?.readback ?? null, doing: this.doing });
   }
 
   /**
@@ -99,7 +152,16 @@ export class CallAgent {
 
     const controls: Outbound[] = [];
     const execute = async (name: ToolName, args: unknown): Promise<ToolResult> => {
+      this.doing = DOING[name] ?? null;
+      this.emit({ type: 'tool', tool: name, status: 'started', code: null });
+      this.emitState();
       const result = await runTool(name, args, this.state, this.ctx, this.backend, revision);
+      const code = typeof result.data.error === 'string' ? result.data.error : null;
+      this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
+      if (name === 'verify_caller' && result.data.verified === true && !this.verified) {
+        this.verified = shortName(String((args as { full_name?: unknown })?.full_name ?? '')) ?? String(result.data.first_name ?? 'Verified');
+      }
+      this.emitState();
       await this.actions?.record({
         tool: name,
         argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
@@ -123,6 +185,9 @@ export class CallAgent {
       this.log.error({ call_id: this.ctx.callId, err }, 'delegation failed');
       // never claim success on failure; hand the caller to a person instead
       out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.' });
+    } finally {
+      this.doing = this.state.pending ? 'waiting for a yes' : null;
+      this.emitState();
     }
     return out;
   }
