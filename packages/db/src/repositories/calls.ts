@@ -2,18 +2,25 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
+import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
 
 /** The call record: transcript segments, every tool action, and the close-out. */
 export class CallRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
   /** One row per OpenAI session. A second accept for the same session returns the first call. */
-  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null): Promise<string> {
+  /**
+   * `startedBy` is the staff member behind a browser test call: the audit row is
+   * written in the same transaction, so no test call exists without one.
+   */
+  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
       const fromHash = fromNumber ? this.cipher.hash(`${clinicId}|${fromNumber.replace(/\D/g, '').slice(-10)}`) : null;
-      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash }).onConflictDoNothing().returning({ id: calls.id });
-      if (row) return row.id;
+      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, channel }).onConflictDoNothing().returning({ id: calls.id });
+      if (row) {
+        if (startedBy) await tx.insert(auditLogs).values({ clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id });
+        return row.id;
+      }
       const [existing] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.openaiSessionId, openaiSessionId));
       // RLS hides a session that belongs to another clinic; that is a routing bug, not a retry
       if (!existing) throw new Error('session id already used by another clinic');
@@ -55,6 +62,12 @@ export async function clinicForNumber(db: Database, e164: string): Promise<unkno
   const [row] = await db.select({ config: clinics.config }).from(phoneNumbers)
     .innerJoin(clinics, eq(clinics.id, phoneNumbers.clinicId))
     .where(and(eq(phoneNumbers.e164, e164), eq(phoneNumbers.status, 'active')));
+  return row?.config ?? null;
+}
+
+/** A clinic's stored config by id, for a test call started from the dashboard. Owner connection; no PHI. */
+export async function clinicById(db: Database, clinicId: string): Promise<unknown | null> {
+  const [row] = await db.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId));
   return row?.config ?? null;
 }
 

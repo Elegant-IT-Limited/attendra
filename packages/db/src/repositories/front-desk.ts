@@ -50,7 +50,7 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({
         id: calls.id, startedAt: calls.startedAt, cursor: sql<string>`${calls.startedAt}::text`, endedAt: calls.endedAt, outcome: calls.outcome,
-        emergency: calls.emergencyFlag, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds,
+        emergency: calls.emergencyFlag, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, channel: calls.channel,
         tools: sql<string[]>`coalesce(array_agg(distinct ${callActions.tool}) filter (where ${callActions.tool} is not null), '{}')`,
         verified: sql<boolean>`coalesce(bool_or((${callActions.result}->>'verified')::boolean), false)`,
       }).from(calls).leftJoin(callActions, eq(callActions.callId, calls.id))
@@ -73,7 +73,7 @@ export class FrontDeskRepository {
       const ctx = phiContext(clinicId, 'call_segments.text');
       return {
         id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag,
-        closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds),
+        closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds), channel: call.channel,
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx), startMs: s.startMs, endMs: s.endMs })),
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
         tasks: callTasks,
