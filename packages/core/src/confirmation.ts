@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { LANGUAGES, normalise, PACKS } from './locales';
 
 /**
  * Did the caller clearly agree? Used by the agent before any write, on the caller's
  * own words since the read-back, never on the model's summary of them. Anything
- * hedged or mixed ("yes, actually no", "I think so?") is not a yes.
+ * hedged or mixed ("yes, actually no", "I think so?", "sí, pero espere", "ji, pore")
+ * is not a yes.
+ *
+ * Every language's yes counts, and every language's hedge blocks: callers switch
+ * languages mid-sentence, and a hedge in any of them means wait.
  */
-const YES = /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|sounds good|perfect|please do|go ahead|book it|do it|sure)\b/;
-const NO_OR_HEDGE = /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other)\b|\?/;
-
 export function isClearYes(callerTextSinceReadback: string): boolean {
-  const t = callerTextSinceReadback.toLowerCase().replace(/[’]/g, "'").trim();
+  const t = normalise(callerTextSinceReadback).trim();
   if (!t) return false;
-  return YES.test(t) && !NO_OR_HEDGE.test(t);
+  const yes = LANGUAGES.some((l) => PACKS[l].yes.test(t));
+  const hedge = LANGUAGES.some((l) => PACKS[l].hedge.test(t));
+  return yes && !hedge;
 }

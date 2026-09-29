@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { Language } from './locales';
 import type { Slot } from './slots';
 
 /**
@@ -52,5 +53,5 @@ export interface AuditLog {
 
 export interface Messenger {
   // templates only: free text could carry PHI to a carrier that has no BAA
-  sendTemplate(clinicId: string, input: { to: string; template: 'booking_confirmed' | 'booking_cancelled'; vars: Record<string, string>; idempotencyKey: string }): Promise<void>;
+  sendTemplate(clinicId: string, input: { to: string; template: 'booking_confirmed' | 'booking_cancelled'; vars: Record<string, string>; idempotencyKey: string; language?: Language }): Promise<void>;
 }
