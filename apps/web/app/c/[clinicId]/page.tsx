@@ -3,7 +3,7 @@
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, Webhook } from 'lucide-react';
+import { ArrowRight, Flag, MessageSquare, PhoneCall, PhoneOff, Pill, Siren, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -79,6 +79,13 @@ export default function Today() {
 
 type Q<T> = { data?: T; isPending: boolean; isError: boolean };
 
+// the same icon per request type as the Requests page
+const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
+function RequestIcon({ type }: { type: keyof typeof REQUEST_ICONS }) {
+  const Icon = REQUEST_ICONS[type] ?? PhoneCall;
+  return <Icon className="size-4 text-primary" />;
+}
+
 function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, canOpenCalls, turnedOff }: {
   clinicId: string; tz: string; now: number; calls: Q<CallList>; waiting: Q<WaitingTasks>; canTasks: boolean; canWork: boolean; canOpenCalls: boolean;
   turnedOff: WebhookEndpoints['endpoints'];
@@ -106,7 +113,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
     ...requests.map((t) => ({
-      key: t.id, icon: t.type === 'refill' ? <Pill className="size-4 text-primary" /> : <PhoneCall className="size-4 text-primary" />, title: TASK_TYPES[t.type] ?? t.type, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+      key: t.id, icon: <RequestIcon type={t.type} />, title: TASK_TYPES[t.type] ?? t.type, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
       action: canWork
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
         : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,

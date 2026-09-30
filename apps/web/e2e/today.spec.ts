@@ -51,3 +51,18 @@ test('the start page says so when the server fails, instead of loading for ever'
   await expect(page.getByText('Attendra did not load')).toBeVisible({ timeout: 20_000 }); // after the query's own retries
   await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
 });
+
+test('Today marks each kind of waiting request with its own icon, as Requests does', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const at = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  const tasks = [
+    { id: '00000000-0000-4000-8000-00000000a001', type: 'refill', createdAt: at(4), callId: null },
+    { id: '00000000-0000-4000-8000-00000000a002', type: 'callback', createdAt: at(3), callId: null },
+    { id: '00000000-0000-4000-8000-00000000a003', type: 'voicemail', createdAt: at(2), callId: null },
+    { id: '00000000-0000-4000-8000-00000000a004', type: 'review', createdAt: at(1), callId: null },
+  ];
+  await page.route('**/tasks/waiting', (route) => route.fulfill({ json: { tasks, total: 4 } }));
+  await page.reload();
+  const attention = page.getByRole('list', { name: 'Needs attention' });
+  for (const icon of ['pill', 'phone-call', 'voicemail', 'message-square']) await expect(attention.locator(`svg.lucide-${icon}`).first()).toBeVisible();
+});
