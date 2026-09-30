@@ -101,7 +101,7 @@ If an endpoint fails three events in a row, each after its day of retries, Atten
 
 ## Which addresses are allowed
 
-Only public `https://` addresses. Attendra refuses this machine, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, IPv6 unique local and link-local), cloud metadata addresses (`169.254.169.254`, `metadata.google.internal`), and names like `localhost` or `*.internal`. The address is checked when you save the endpoint and again at every delivery, after DNS resolution, and the delivery connects to the address that was checked, so a name whose answer changes in between still cannot reach an internal service. A URL with a user name or password in it is refused; put credentials in your receiver's own settings instead.
+Only public `https://` addresses. Attendra refuses this machine, private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, IPv6 unique local, link-local and site-local, 6to4, local-use NAT64 and IPv4-translated addresses), cloud metadata addresses (`169.254.169.254`, `metadata.google.internal`), and names like `localhost` or `*.internal`. The address is checked when you save the endpoint and again at every delivery, after DNS resolution, and the delivery connects to the address that was checked, so a name whose answer changes in between still cannot reach an internal service. A URL with a user name or password in it is refused; put credentials in your receiver's own settings instead.
 
 For trying n8n on your own computer, the local demo can deliver to this machine over plain HTTP: `ATTENDRA_WEBHOOKS_ALLOW_LOCAL=on pnpm demo`. Never set it on a deployment.
 
