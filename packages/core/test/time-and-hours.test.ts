@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
+import { DEMO_CLINIC, demoHolidays, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 describe('clinic-local time', () => {
   it('turns a Denver wall-clock time into the right UTC instant, on both sides of DST', () => {
@@ -20,6 +20,12 @@ describe('clinic-local time', () => {
     expect(zonedInstant('2026-11-01', '01:30', 'America/Denver').toISOString()).toBe('2026-11-01T07:30:00.000Z');
   });
 
+  it('gives the demo this year\'s and next year\'s Thanksgiving and Christmas, whatever the year', () => {
+    expect(demoHolidays(2026)).toEqual(['2026-11-26', '2026-12-25', '2027-11-25', '2027-12-25']);
+    expect(demoHolidays(2030)).toEqual(['2030-11-28', '2030-12-25', '2031-11-27', '2031-12-25']);
+    expect(DEMO_CLINIC.holidays).toEqual(demoHolidays(new Date().getUTCFullYear()));
+  });
+
   it('reads the local date, not the UTC one, late in the evening', () => {
     // 9:30 pm in Denver on Tuesday is already Wednesday in UTC
     expect(localParts(new Date('2026-09-30T03:30:00Z'), 'America/Denver')).toMatchObject({ date: '2026-09-29', weekday: 2 });
@@ -34,9 +40,10 @@ describe('opening hours', () => {
   });
 
   it('treats a holiday as closed all day and says so', () => {
+    const clinic = { ...DEMO_CLINIC, holidays: ['2026-11-26'] };
     const thanksgiving = zonedInstant('2026-11-26', '10:00', 'America/Denver');
-    expect(isOpen(DEMO_CLINIC, thanksgiving)).toBe(false);
-    expect(todaysHoursLine(DEMO_CLINIC, thanksgiving)).toBe('The clinic is closed today for a holiday.');
+    expect(isOpen(clinic, thanksgiving)).toBe(false);
+    expect(todaysHoursLine(clinic, thanksgiving)).toBe('The clinic is closed today for a holiday.');
   });
 
   it('describes a split day in one line', () => {
