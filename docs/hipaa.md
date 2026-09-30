@@ -55,6 +55,77 @@ Self-hosters are responsible for their own BAAs and operations.
 - Transcripts, summaries, call actions (each call's tool steps) and webhook events, with their delivery attempts, are deleted after each clinic's retention period (`retentionDays`, 2555 days by default), in batches of 500 calls or events. The purge is audited with counts only (`retention.purged`), one row per batch, written in the same transaction as that batch's deletes.
 - The purge keeps, on purpose: the call rows themselves (times, outcome, the emergency flag and the linked patient, for the audit trail and the Quality numbers); requests, with their encrypted details and notes, which are the clinic's own work records and go when the clinic deletes them; and text records, which hold a hash of the number, the template and the delivery status, never the number or the message. Delete them by hand, or ask for them in the purge, if your records policy says otherwise.
 
+## Every audit action
+
+Each row in the audit log has an action code. The audit page shows it in plain words; this is the full list. Actors are shown the same way: a staff member by name, `voice-agent` as the Assistant, `worker` as Attendra in the background, `system` as Attendra, and `api_key:<id>` as an API key with the start of its id.
+
+| Action | Shown on the audit page as |
+|---|---|
+| `api_key.created` | Made an API key |
+| `api_key.revoked` | Revoked an API key |
+| `appointment.booked` | Booked an appointment |
+| `appointment.booked.staff` | Booked an appointment at the desk |
+| `appointment.cancelled` | Cancelled an appointment |
+| `appointment.cancelled.staff` | Cancelled an appointment at the desk |
+| `appointment.rescheduled.staff` | Moved an appointment |
+| `appointment.viewed` | Opened an appointment |
+| `call.action.recorded` | Recorded a step the assistant took |
+| `call.closed` | Finished a call |
+| `call.coached` | Sent the assistant a note |
+| `call.ended_by_staff` | Ended a live call |
+| `call.live.watched` | Watched a live call |
+| `call.opened` | Answered a call |
+| `call.summary.reviewed` | Marked a call summary reviewed |
+| `call.summary.written` | Wrote a call summary |
+| `call.taken_over` | Took over a live call |
+| `call.test.started` | Started a browser test call |
+| `call.transcript.read` | Read a call transcript to summarise it |
+| `call.transcript.viewed` | Read a call transcript |
+| `call.transcript.written` | Wrote a line of a call transcript |
+| `call.transferred.<target>` | Transferred the call (<target>) |
+| `calls.listed` | Looked at the call list with names |
+| `calls.live.listed` | Looked at live calls with names |
+| `calls.searched` | Searched calls by patient |
+| `clinic.settings.updated` | Changed clinic settings |
+| `knowledge.document.deleted` | Deleted a document |
+| `knowledge.document.uploaded` | Uploaded a document for the assistant |
+| `mcp.<tool>, .refused, .failed` | An agent used a tool through an API key; refused when the key lacks the scope, or failed |
+| `member.added:<role>` | Added a person to the team, as <role> |
+| `member.password.reset` | Issued a new temporary password |
+| `member.removed` | Removed a person from the team |
+| `member.role.changed:<role>` | Changed someone's role to <role> |
+| `member.transfer_number.cleared` | Cleared their number for take-overs |
+| `member.transfer_number.set` | Set their number for take-overs |
+| `patient.busy.shown` | Saw that a patient was already booked then |
+| `patient.created` | Added a patient |
+| `patient.identified` | Verified a caller |
+| `patient.lookups.rehashed` | Updated how patient names are matched |
+| `patient.recent.viewed` | Looked at recent patients |
+| `patient.search.result` | Saw a patient in search results |
+| `patient.searched` | Searched for a patient |
+| `patient.updated` | Changed a patient's details |
+| `patient.viewed` | Opened a patient's record |
+| `retention.purged` | Deleted old call records |
+| `schedule.viewed` | Looked at the schedule |
+| `sms.sent.<template>` | Sent a text confirmation |
+| `sms.status.<status>` | A text confirmation was delivered, not delivered, failed and so on |
+| `task.assigned` | Handed a request to a teammate |
+| `task.claimed` | Claimed a request |
+| `task.created.callback` | Took a callback request |
+| `task.created.refill` | Took a refill request |
+| `task.created.voicemail` | Took a voicemail |
+| `task.done` | Closed a request |
+| `task.note.added` | Added a note to a request |
+| `task.released` | Released a request |
+| `task.released.override` | Released someone else's request |
+| `task.viewed` | Viewed a request |
+| `webhook.endpoint.created` | Added a webhook endpoint |
+| `webhook.endpoint.deleted` | Removed a webhook endpoint |
+| `webhook.endpoint.disabled` | Turned off a webhook endpoint that kept failing |
+| `webhook.endpoint.secret_rotated` | Rotated a webhook signing secret |
+| `webhook.endpoint.updated` | Changed a webhook endpoint |
+| `webhook.test` | Sent a test event to a webhook endpoint |
+
 ## Not yet
 
 KMS envelope encryption for the hosted service is on the [roadmap](roadmap.md). Attendra stores no call audio; if you enable recording, the recordings live with your telephony provider under its retention settings, which the retention purge does not reach.
