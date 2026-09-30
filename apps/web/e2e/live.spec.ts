@@ -5,6 +5,8 @@ import { openAs } from './session';
 // A simulated call: scripted, through the real assistant and the demo database, with
 // no audio and no OpenAI. The demo server runs with ATTENDRA_SIMULATED_CALLS=on.
 test('watch a live call, coach the assistant, and end it; the page becomes the call record', async ({ browser }) => {
+  // a whole simulated call, axe in two themes, Today twice and the record: a long journey
+  test.slow();
   const page = await openAs(browser, 'frontdesk');
   const clinic = new URL(page.url()).pathname.split('/')[2];
   await page.goto(`/c/${clinic}/test-call`);
