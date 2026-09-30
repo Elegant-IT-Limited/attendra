@@ -137,6 +137,14 @@ describe('calls', () => {
     expect((await api.request('POST', `${O}/calls/search`, { cookie: as.owner, body: { query: 'delg' } })).statusCode).toBe(404);
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'd' } })).json().error).toBe('invalid_request');
   });
+  it('keeps the refusal filter on a name search', async () => {
+    const all = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg' } });
+    expect(all.json().calls).toHaveLength(1);
+    const refused = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'no_clear_yes' } });
+    expect(refused.json().calls).toEqual([]); // Maria's call refused nothing
+    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'NOT-A-CODE' } })).statusCode).toBe(400);
+  });
+
 });
 
 describe('the team', () => {
