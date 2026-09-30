@@ -95,7 +95,8 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const emergencies = recent.filter((c) => c.emergency);
   // flagged by the summary and not yet looked at, from the last week; emergencies are already listed above them
   const flagged = (calls.data?.calls ?? []).filter((c) => c.needsReview && !c.emergency && Date.parse(c.startedAt) >= now - 7 * 86_400_000);
-  const unresolved = recent.filter((c) => !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
+  // only calls that are over: one still going has no outcome yet, and is under Live now
+  const unresolved = recent.filter((c) => c.endedAt && !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
   const items: { key: string; icon: ReactNode; title: string; detail: ReactNode; action: ReactNode; tone?: 'danger' }[] = [
     ...emergencies.map((c) => ({
