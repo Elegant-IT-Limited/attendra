@@ -150,6 +150,16 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect((await kb.search(DEMO_CLINIC.id, 'do you take Cigna')).length).toBeLessThanOrEqual(4);
   });
 
+  it('answers from the full text alone when the embedding is late or fails, without keeping the caller waiting', async () => {
+    const hanging = { model: embedder.model, maxDistance: embedder.maxDistance, embed: () => new Promise<number[][]>(() => {}) };
+    const started = Date.now();
+    const found = await new HybridKnowledgeBase(repo, hanging, 4, 100).search(DEMO_CLINIC.id, 'do you take Cigna');
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(found[0]?.title).toBe('Insurance we accept');
+    const failing = { ...hanging, embed: async () => { throw new Error('embedding_unreachable'); } };
+    expect((await new HybridKnowledgeBase(repo, failing).search(DEMO_CLINIC.id, 'do you take Cigna'))[0]?.title).toBe('Insurance we accept');
+  });
+
   it('finds nothing for a question the documents do not answer', async () => {
     expect(await kb.search(DEMO_CLINIC.id, 'do you do tattoo removal?')).toEqual([]);
     expect(await kb.search(DEMO_CLINIC.id, 'what is it?')).toEqual([]);
