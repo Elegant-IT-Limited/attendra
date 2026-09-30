@@ -11,7 +11,7 @@ export type LiveEvent =
   | { type: 'tool'; tool: string; status: 'started' | 'ok' | 'refused'; code: string | null }
   | { type: 'state'; verified: string | null; pending: string | null; doing: string | null }
   | { type: 'emergency'; kind: string }
-  | { type: 'staff'; action: 'coached' | 'taken_over' | 'ended' }
+  | { type: 'staff'; action: 'coached' | 'taken_over' | 'ended' | 'transfer_failed' | 'end_failed' }
   | { type: 'ended'; outcome: string };
 
 /** What the assistant is doing, in the words the dashboard shows: "finding open times". */

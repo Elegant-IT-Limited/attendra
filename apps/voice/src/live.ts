@@ -6,6 +6,8 @@ export interface LiveControl {
   coach(note: string): Promise<void>;
   takeOver(uri: string): Promise<void>;
   end(): Promise<void>;
+  /** False while the caller has not yet heard the emergency script. */
+  canEnd(): boolean;
 }
 
 export interface LiveSummary {
@@ -35,7 +37,7 @@ interface Entry {
   ended: boolean;
 }
 
-export type ActionResult = { ok: true; repeat: boolean } | { ok: false; error: 'not_live' | 'already_taken' | 'web_call'; by?: string };
+export type ActionResult = { ok: true; repeat: boolean } | { ok: false; error: 'not_live' | 'already_taken' | 'web_call' | 'emergency_script'; by?: string };
 
 /**
  * The calls this voice service is running now, and what has happened on each, for
@@ -67,6 +69,8 @@ export class LiveRegistry {
       e.summary.waitingForYes = !!event.pending;
       e.pending = event.pending;
     } else if (event.type === 'emergency') e.summary.emergency = true;
+    // a take-over or an end that did not go through gives the call back: anyone may act again
+    else if (event.type === 'staff' && (event.action === 'transfer_failed' || event.action === 'end_failed')) e.claimed = null;
     const numbered = { id: e.next++, event };
     e.events.push(numbered);
     if (e.events.length > this.buffer) e.events.splice(0, e.events.length - this.buffer);
@@ -126,6 +130,7 @@ export class LiveRegistry {
     if (!e) return { ok: false, error: 'not_live' };
     if (e.claimed) return e.claimed.key === key ? { ok: true, repeat: true } : { ok: false, error: 'already_taken', by: e.claimed.by };
     if (action === 'take_over' && e.summary.channel === 'web') return { ok: false, error: 'web_call' };
+    if (action === 'end' && !e.control.canEnd()) return { ok: false, error: 'emergency_script' };
     e.claimed = { key, action, by };
     await run(e.control);
     return { ok: true, repeat: false };
