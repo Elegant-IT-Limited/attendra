@@ -47,7 +47,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 
 ## How the AI works
 
-Four models do four jobs, and none of them decides anything that matters on its own.
+Three models do the work, and code guards them. None of the models decides anything that matters on its own.
 
 1. **GPT-Live holds the conversation.** It hears the caller, speaks, and decides when it needs help. When it does, it delegates to our backend. It sees clinic facts and short results, never records.
 2. **The planner picks the tools.** For each delegation, a Responses API model reads the conversation and calls our tools: verify the caller, find slots, propose a booking, search the clinic's documents. Every tool call goes through `runTool`, where the rules live in code: identity first, only offered slots, a read-back and a clear yes before any write, no medical advice, nothing after an emergency. A tool can refuse, and the planner is told why.
