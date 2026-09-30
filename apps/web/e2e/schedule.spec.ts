@@ -89,6 +89,16 @@ test.describe.serial('the schedule', () => {
     await expect(panel).toBeHidden();
   });
 
+  test('a visit too short for two lines shows its time on the first', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+    // a 20 minute sick visit is one line high
+    const block = page.locator('[data-testid=appointment][aria-label*="sick visit"]').first();
+    const [time, name] = (await block.getAttribute('aria-label'))!.split(', ');
+    await expect(block).toContainText(`${name} · ${time}`);
+  });
+
   test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.goto(`/c/${clinicOf(page)}/schedule`);
