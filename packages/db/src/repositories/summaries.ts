@@ -113,6 +113,8 @@ export const PURGE_BATCH = 500;
 /**
  * Deletes the transcripts, summaries and tool steps (call actions) of calls that
  * started before `before`, in batches of calls, and records how many, never what.
+ * Each batch writes its own counts row in the same transaction as its deletes, so
+ * a purge that stops part way still has an audit row for everything it deleted.
  * The call rows stay, with their outcome and times, and so do requests, their notes
  * and text records: docs/hipaa.md says why. Runs as the connecting (owner) role,
  * like the migrations: the application role cannot delete call records. Row Level
@@ -121,21 +123,30 @@ export const PURGE_BATCH = 500;
 export async function purgeCallRecords(db: Database, clinicId: string, before: Date, batch = PURGE_BATCH): Promise<{ transcriptLines: number; summaries: number; callActions: number }> {
   const counts = { transcriptLines: 0, summaries: 0, callActions: 0 };
   let after = '00000000-0000-0000-0000-000000000000';
+  let batches = 0;
   for (;;) {
     const ids = await db.transaction(async (tx) => {
       await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
       const old = (await tx.select({ id: calls.id }).from(calls)
         .where(and(eq(calls.clinicId, clinicId), lt(calls.startedAt, before), gt(calls.id, after))).orderBy(asc(calls.id)).limit(batch)).map((c) => c.id);
-      if (!old.length) return old;
-      counts.transcriptLines += (await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id })).length;
-      counts.summaries += (await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId })).length;
-      counts.callActions += (await tx.delete(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, old))).returning({ id: callActions.id })).length;
+      // a run with nothing to delete is still audited, once
+      if (!old.length && batches > 0) return old;
+      const these = { transcriptLines: 0, summaries: 0, callActions: 0 };
+      if (old.length) {
+        these.transcriptLines = (await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id })).length;
+        these.summaries = (await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId })).length;
+        these.callActions = (await tx.delete(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, old))).returning({ id: callActions.id })).length;
+      }
+      await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: these });
+      counts.transcriptLines += these.transcriptLines;
+      counts.summaries += these.summaries;
+      counts.callActions += these.callActions;
       return old;
     });
+    batches++;
     if (ids.length < batch) break;
     after = ids.at(-1)!;
   }
-  await withClinic(db, clinicId, (tx) => tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts }));
   return counts;
 }
 

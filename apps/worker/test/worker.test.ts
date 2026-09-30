@@ -115,9 +115,13 @@ describe('the retention purge', () => {
   it('works through old calls in batches, each its own transaction', async () => {
     const ids = [await closedCall(OTHER.id), await closedCall(OTHER.id), await closedCall(OTHER.id)];
     await t.db.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
     const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
     expect(counts.transcriptLines).toBe(3);
     for (const id of ids) expect(await calls.transcript(OTHER.id, id)).toEqual([]);
+    // one counts row per batch, written with that batch's deletes
+    const rows = (await audits(OTHER.id, 'retention.purged')).filter((r) => !seen.has(r.id));
+    expect(rows.map((r) => (r.counts as { transcriptLines: number }).transcriptLines).sort()).toEqual([1, 2]);
   });
 });
 
