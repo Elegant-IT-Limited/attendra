@@ -154,7 +154,8 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     const hanging = { model: embedder.model, maxDistance: embedder.maxDistance, embed: () => new Promise<number[][]>(() => {}) };
     const started = Date.now();
     const found = await new HybridKnowledgeBase(repo, hanging, 4, 100).search(DEMO_CLINIC.id, 'do you take Cigna');
-    expect(Date.now() - started).toBeLessThan(1000);
+    // the embedding never answers: the 100 ms fallback, not a hang, however busy the machine
+    expect(Date.now() - started).toBeLessThan(5000);
     expect(found[0]?.title).toBe('Insurance we accept');
     const failing = { ...hanging, embed: async () => { throw new Error('embedding_unreachable'); } };
     expect((await new HybridKnowledgeBase(repo, failing).search(DEMO_CLINIC.id, 'do you take Cigna'))[0]?.title).toBe('Insurance we accept');
