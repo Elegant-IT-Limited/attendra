@@ -77,9 +77,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(voice.locator('option:checked')).toHaveText('Marin (the default)');
     await expect(page.getByTestId('time-zone-value')).toContainText(/^America\/Denver, now \d{1,2}:\d{2} [AP]M$/);
     await page.getByRole('combobox', { name: 'Time zone' }).click();
-    await page.getByPlaceholder('Search, like Dhaka or New York').fill('dhaka');
-    await page.getByRole('option', { name: /Asia\/Dhaka/ }).click();
-    await expect(page.getByTestId('time-zone-value')).toContainText(/^Asia\/Dhaka, now /);
+    await page.getByPlaceholder('Search, like Madrid or New York').fill('madrid');
+    await page.getByRole('option', { name: /Europe\/Madrid/ }).click();
+    await expect(page.getByTestId('time-zone-value')).toContainText(/^Europe\/Madrid, now /);
     await page.close(); // not saved: the demo clinic keeps its zone
   });
 
