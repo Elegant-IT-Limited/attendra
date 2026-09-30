@@ -60,6 +60,9 @@ export default function CallPage() {
     return <>{back}<Empty title={missing ? 'Call not found' : 'This call did not load'}>{missing ? 'It may belong to another clinic.' : 'Try again in a moment.'}</Empty></>;
   }
   const c = call.data;
+  // what the call booked may have changed since: the header says so when none of it stands
+  const bookedHere = c.appointments.filter((a) => a.change === 'booked');
+  const allCancelled = bookedHere.length > 0 && bookedHere.every((a) => a.status === 'cancelled');
 
   return (
     <>
@@ -68,6 +71,7 @@ export default function CallPage() {
         <h1 className="text-xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
+          {allCancelled && <Badge tone="warn">Booking since cancelled</Badge>}
           {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
           {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
@@ -86,6 +90,7 @@ export default function CallPage() {
                   ? <Link href={`/c/${clinicId}/schedule?date=${localDateOf(new Date(a.startsAt), tz)}&appointment=${a.id}`} className="font-medium hover:underline">{line}</Link>
                   : <span className="font-medium">{line}</span>}
                 {a.change === 'booked' && a.status === 'cancelled' && <Badge>Since cancelled</Badge>}
+                {a.change === 'booked' && a.status === 'booked' && a.moved && <Badge>Since moved</Badge>}
               </li>
             );
           })}
