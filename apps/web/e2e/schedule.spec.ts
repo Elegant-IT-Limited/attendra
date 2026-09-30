@@ -87,6 +87,20 @@ test.describe.serial('the schedule', () => {
     await expect(panel).toBeHidden();
   });
 
+  test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.goto(`/c/${clinicOf(page)}/schedule`);
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+    const dialog = page.getByRole('dialog', { name: 'New booking' });
+    for (let i = 0; i < 2; i++) {
+      await page.keyboard.press('n');
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await expect(page).not.toHaveURL(/new=1/); // closing clears it, so the next N is a change again
+    }
+  });
+
   test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     const block = await findInWeek(page, /booked by the assistant/);

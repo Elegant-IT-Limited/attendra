@@ -5,7 +5,7 @@ import { addDays, type ClinicConfig, localDateOf, weekdayOf, windowsOn } from '@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, ScheduleList } from '@/components/schedule/calendar';
@@ -55,6 +55,9 @@ function ScheduleScreen() {
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
+  // and so does it again while this page is already open: the page stays mounted when only the query changes
+  const wantsNew = params.get('new') === '1';
+  useEffect(() => { if (wantsNew) setBookingState(true); }, [wantsNew]);
 
   const set = (next: Record<string, string | null>) => {
     const q = new URLSearchParams(params.toString());
