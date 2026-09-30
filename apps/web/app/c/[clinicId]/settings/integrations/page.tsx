@@ -92,13 +92,14 @@ export default function Integrations() {
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
   const [events, setEvents] = useState<WebhookEndpoint['events']>(['appointment.booked', 'request.created']);
+  const [omitPatientIds, setOmitPatientIds] = useState(true);
   const [problem, setProblem] = useState<string | null>(null);
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'rotate' | 'delete'; endpoint: WebhookEndpoint } | null>(null);
   const refresh = () => void queries.invalidateQueries({ queryKey: ['webhooks', clinicId] });
 
   const create = useMutation({
-    mutationFn: () => api<WebhookSecret>(`/clinics/${clinicId}/webhooks`, { method: 'POST', body: JSON.stringify({ url: url.trim(), description, events }) }),
+    mutationFn: () => api<WebhookSecret>(`/clinics/${clinicId}/webhooks`, { method: 'POST', body: JSON.stringify({ url: url.trim(), description, events, omitPatientIds }) }),
     onMutate: () => setProblem(null),
     onSuccess: (s) => { setSecret(s); setUrl(''); setDescription(''); refresh(); },
     onError: (e) => setProblem(e instanceof ApiFailure ? e.body.issues?.[0]?.message ?? 'That did not save.' : 'That did not save.'),
@@ -108,7 +109,7 @@ export default function Integrations() {
     onSuccess: (a, e) => { refresh(); void queries.invalidateQueries({ queryKey: ['webhook-attempts', clinicId, e.id] }); toast({ tone: a.error ? 'error' : 'success', message: a.error ? `The test event failed: ${outcome(a)}.` : `Test event delivered: ${outcome(a)}.` }); },
   });
   const update = useMutation({
-    mutationFn: ({ e, patch }: { e: WebhookEndpoint; patch: Partial<Pick<WebhookEndpoint, 'enabled' | 'events'>> }) => api<WebhookEndpoint>(`/clinics/${clinicId}/webhooks/${e.id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    mutationFn: ({ e, patch }: { e: WebhookEndpoint; patch: Partial<Pick<WebhookEndpoint, 'enabled' | 'events' | 'omitPatientIds'>> }) => api<WebhookEndpoint>(`/clinics/${clinicId}/webhooks/${e.id}`, { method: 'PUT', body: JSON.stringify(patch) }),
     onSuccess: refresh,
   });
   const act = useMutation({
@@ -126,7 +127,7 @@ export default function Integrations() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never patient details." />
+      <PageHeader title="Settings" description="Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never names or what was said, and no patient ids unless you turn that on for an endpoint." />
       <SettingsNav clinicId={clinicId} />
       {failed.map((e) => (
         <Alert key={e.id} tone="danger" title="An endpoint was turned off" className="mb-6">
@@ -149,6 +150,8 @@ export default function Integrations() {
                     onCheckedChange={(on) => setEvents((xs) => (on ? [...xs, ev.type] : xs.filter((x) => x !== ev.type)))} />
                 ))}
               </fieldset>
+              <Checkbox id="omit-patient-ids" checked={omitPatientIds} onCheckedChange={setOmitPatientIds}
+                label="Leave out patient ids" hint="A patient id with appointment times is patient data. Turn this off only for a receiver covered by a BAA." />
               {problem && <Alert tone="danger">{problem}</Alert>}
               <Button type="submit" loading={create.isPending} disabled={!url.trim() || !events.length}><Plus /> Add endpoint</Button>
             </form>
@@ -165,6 +168,7 @@ export default function Integrations() {
                       {e.description && <p className="text-sm text-text-muted">{e.description}</p>}
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <Badge tone={e.enabled ? 'ok' : 'danger'}>{e.enabled ? 'Active' : e.disabledReason === 'repeated_failures' ? 'Turned off after failures' : 'Turned off'}</Badge>
+                        {!e.omitPatientIds && <Badge tone="warn">Sends patient ids</Badge>}
                         {e.rotating && <Badge tone="info"><KeyRound aria-hidden /> Signing with two secrets for a day</Badge>}
                         {e.events.map((x) => <Badge key={x} className="font-mono">{x}</Badge>)}
                       </div>
@@ -175,6 +179,7 @@ export default function Integrations() {
                     <Button size="sm" variant="outline" loading={test.isPending && test.variables?.id === e.id} onClick={() => test.mutate(e)}><Send /> Send test event</Button>
                     <Button size="sm" variant="outline" onClick={() => setConfirm({ kind: 'rotate', endpoint: e })}><KeyRound /> Rotate secret</Button>
                     <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'delete', endpoint: e })}><Trash2 /> Delete</Button>
+                    <Checkbox id={`omit-${e.id}`} checked={e.omitPatientIds} label="Leave out patient ids" onCheckedChange={(on) => update.mutate({ e, patch: { omitPatientIds: on } })} />
                   </div>
                   <DeliveryLog clinicId={clinicId} endpoint={e} tz={tz} />
                 </Card>

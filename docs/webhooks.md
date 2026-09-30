@@ -12,7 +12,7 @@ Every delivery is a POST with a JSON body and three headers, following the [Stan
 | `webhook-timestamp` | When this delivery was signed, in Unix seconds. |
 | `webhook-signature` | `v1,` and a base64 HMAC-SHA256 of `id.timestamp.body` with your endpoint's secret. During a secret rotation there are two, separated by a space. |
 
-The body is always the same shape:
+The body is always the same shape. This endpoint leaves patient ids out, as endpoints do by default:
 
 ```json
 {
@@ -21,7 +21,6 @@ The body is always the same shape:
   "data": {
     "clinicId": "clinic_demo_maple",
     "appointmentId": "7b1f4c9e-2d7a-4f1e-9a53-0c1f8e2b6d10",
-    "patientId": "0e5c2a8b-4c1d-4b0e-8f3a-6d2e9b7c1a44",
     "providerId": "prov_okafor",
     "visitTypeId": "vt_sick",
     "startsAt": "2026-10-06T15:00:00.000Z",
@@ -32,9 +31,11 @@ The body is always the same shape:
 }
 ```
 
-## No patient data, by design
+## As little patient data as possible
 
 Payloads carry **ids, times, types, outcomes and counts, and nothing else**: never a name, a phone number, a date of birth, what was said on a call, a summary, or a note. A webhook goes to a system Attendra cannot audit, over the internet, so it gets only what it needs to know that something happened. When a receiver needs the details, it fetches them through the Attendra API, as someone allowed to see them, and that read is audited like any other.
+
+That is not the same as no PHI. A patient id with an appointment's times says who is seen when, and HIPAA treats it as PHI. So each endpoint has **Leave out patient ids**, on by default: `patientId` is dropped from every delivery to it. Turn it off only for a receiver that needs to tell patients apart and is covered by a BAA. Even with patient ids left out, a delivery tells the receiver that the clinic booked someone at a given time, so whoever runs the receiver, and any automation service in between (n8n cloud, Zapier, Make), needs a BAA before the endpoint is used with real patients ([hipaa.md](hipaa.md)).
 
 ## Events
 
@@ -42,10 +43,10 @@ Payloads carry **ids, times, types, outcomes and counts, and nothing else**: nev
 |---|---|---|
 | `call.completed` | A call ends. | `callId`, `channel` (`phone` or `web` for a browser test), `startedAt`, `endedAt`, `durationSeconds`, `outcome` (`booked`, `rescheduled`, `cancelled`, `task_created`, `transferred`, `emergency`, `abandoned`), `emergency`, `verified` |
 | `call.summary.ready` | The worker has summarised a call. | `callId`, `intent`, `sentiment`, `needsReview`. The summary itself stays in Attendra. |
-| `appointment.booked` | The assistant or the front desk books. | `appointmentId`, `patientId`, `providerId`, `visitTypeId`, `startsAt`, `endsAt`, `by` (`assistant` or `staff`), `callId` |
+| `appointment.booked` | The assistant or the front desk books. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `providerId`, `visitTypeId`, `startsAt`, `endsAt`, `by` (`assistant` or `staff`), `callId` |
 | `appointment.rescheduled` | An appointment moves. | As booked, plus `previousAppointmentId` when the assistant booked a new one in its place (the front desk moves it in place, so that is `null`). |
-| `appointment.cancelled` | An appointment is cancelled. | `appointmentId`, `patientId`, `by`, `callId`, `reason` (a code, like `patient_asked`) |
-| `request.created` | The assistant takes a refill or callback request. | `requestId`, `type` (`refill`, `callback`), `patientId` or `null`, `callId` |
+| `appointment.cancelled` | An appointment is cancelled. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `by`, `callId`, `reason` (a code, like `patient_asked`) |
+| `request.created` | The assistant takes a refill or callback request. | `requestId`, `type` (`refill`, `callback`), `patientId` or `null` (left out when the endpoint leaves patient ids out), `callId` |
 | `request.done` | Staff close a request. | `requestId`, `type`, `outcome` (`called_back`, `left_message`, `refill_sent`, `not_needed`), `callId` |
 
 **Send test event** delivers a `webhook.test` event with `endpointId` and `test: true`, so you can build and check a receiver before anything real happens.

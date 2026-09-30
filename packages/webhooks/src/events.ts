@@ -19,5 +19,13 @@ export interface WebhookEvent { id: string; clinicId: string; type: EventType | 
 /** The same thing happening twice (a retried booking, a job run again) is one event. */
 export const eventId = (type: string, key: string) => `evt_${createHash('sha256').update(`${type}|${key}`).digest('hex').slice(0, 24)}`;
 
-/** The body every receiver gets, in the Standard Webhooks shape: type, timestamp, data. */
-export const payloadOf = (e: WebhookEvent) => JSON.stringify({ type: e.type, timestamp: e.occurredAt, data: { clinicId: e.clinicId, ...e.data } });
+/**
+ * The body every receiver gets, in the Standard Webhooks shape: type, timestamp, data.
+ * With `omitPatientIds` (each endpoint's default), patientId is left out: a patient id
+ * with an appointment's times is PHI.
+ */
+export const payloadOf = (e: WebhookEvent, opts: { omitPatientIds?: boolean } = {}) => {
+  const data: EventData = { clinicId: e.clinicId, ...e.data };
+  if (opts.omitPatientIds) delete data.patientId;
+  return JSON.stringify({ type: e.type, timestamp: e.occurredAt, data });
+};

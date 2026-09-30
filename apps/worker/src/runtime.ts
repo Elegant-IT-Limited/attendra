@@ -120,7 +120,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       if (!target || !target.enabled) return 'skipped'; // deleted or turned off since
       const event = await hooks.event(clinicId, eventId);
       if (!event) return 'skipped';
-      const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }) }, d.webhooks);
+      const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }, { omitPatientIds: target.omitPatientIds }) }, d.webhooks);
       await hooks.logAttempt(clinicId, { endpointId, eventId, kind: 'automatic', attempt: meta.retryCount + 1, statusCode: result.status, durationMs: result.ms, error: result.error });
       if (result.ok) { await hooks.delivered(clinicId, endpointId); return 'delivered'; }
       if (meta.retryCount >= (meta.retryLimit ?? WEBHOOK_RETRY.retryLimit)) {
