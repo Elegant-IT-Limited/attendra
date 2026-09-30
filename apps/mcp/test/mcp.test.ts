@@ -5,7 +5,7 @@ import { createLogger } from '@attendra/observability';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { sql } from 'drizzle-orm';
+import { getTableName, sql } from 'drizzle-orm';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
@@ -22,6 +22,7 @@ let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let deps: McpDeps;
 let keys: ApiKeyRepository;
 let taskId: string;
+let setupCallId: string;
 const done: Record<string, string | null>[] = [];
 
 const make = (scopes: ('schedule:read' | 'requests:read' | 'requests:write' | 'quality:read')[], clinicId = DEMO_CLINIC.id, days = 30) =>
@@ -47,9 +48,9 @@ beforeAll(async () => {
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
   await seedDemoSchedule(t.db, cipher, { patientIds, staffUserIds: ['u_jordan'], now: new Date() });
-  const callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'live_mcp_1', '+13035550163');
+  setupCallId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'live_mcp_1', '+13035550163');
   ({ id: taskId } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, {
-    type: 'refill', callId, patientId: patientIds.james!, idempotencyKey: 'mcp-refill', details: { medication: 'lisinopril', pharmacy: 'Walgreens', callback_number: '+13035550163' },
+    type: 'refill', callId: setupCallId, patientId: patientIds.james!, idempotencyKey: 'mcp-refill', details: { medication: 'lisinopril', pharmacy: 'Walgreens', callback_number: '+13035550163' },
   }));
   // the people who make keys: a key works only while its maker is an owner or practice manager
   for (const [id, org, role] of [['u_olga', 'org_demo', 'admin'], ['u_olga', 'org_other', 'admin'], ['u_owen', 'org_demo', 'owner'], ['u_mia', 'org_demo', 'admin'], ['u_max', 'org_demo', 'admin']] as const) {
@@ -146,6 +147,50 @@ describe('the tools', () => {
     expect(done.at(-1)).toMatchObject({ requestId: taskId, type: 'refill', outcome: 'refill_sent' });
     expect((await call(writer, 'mark_request_done', { requestId: '00000000-0000-4000-8000-000000000000', outcome: 'not_needed' })).data.status).toBe('not_found');
     expect((await call(reader, 'list_open_requests')).data.requests).toEqual([]);
+  });
+
+  it('audits a request list under the key, the schedule in the read\'s own transaction, and does not call closing a request idempotent', async () => {
+    const { id: keyId, key } = await make(['requests:read', 'requests:write', 'schedule:read']);
+    const { id: open } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, {
+      type: 'callback', callId: setupCallId, patientId: null, idempotencyKey: 'mcp-audit-callback', details: { reason: 'question', callback_number: '+13035550163' },
+    });
+    const client = await clientFor(key);
+    await call(client, 'list_open_requests');
+    expect((await audits('task.viewed')).filter((r) => r.entity_id === open)).toEqual([expect.objectContaining({ actor: `api_key:${keyId}` })]);
+
+    // every statement of every transaction, as the server runs them
+    const txs: string[][] = [];
+    const text = (q: unknown) => JSON.stringify((q as { queryChunks?: unknown }).queryChunks ?? q);
+    const traced = new Proxy(t.db, { get(db, p) {
+      if (p !== 'transaction') return Reflect.get(db, p);
+      return (fn: (tx: unknown) => unknown, ...rest: unknown[]) => (db.transaction as (...a: unknown[]) => unknown)(async (tx: object) => {
+        const log: string[] = [];
+        txs.push(log);
+        return fn(new Proxy(tx, { get(inner, q) {
+          const v = Reflect.get(inner, q) as (...a: unknown[]) => unknown;
+          if (q === 'execute') return (s: unknown) => { log.push(text(s)); return v.call(inner, s); };
+          if (q === 'select') return (...a: unknown[]) => new Proxy(v.apply(inner, a) as object, { get(b, k) {
+            const w = Reflect.get(b, k) as (...x: unknown[]) => unknown;
+            if (k === 'from') return (tbl: object, ...x: unknown[]) => { log.push(`from ${getTableName(tbl as never)}`); return w.call(b, tbl, ...x); };
+            return typeof w === 'function' ? w.bind(b) : w;
+          } });
+          return typeof v === 'function' ? v.bind(inner) : v;
+        } }));
+      }, ...rest);
+    } });
+    const caller = (await authenticateApiKey(t.db, key))!;
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const tracedClient = new Client({ name: 'test', version: '1' });
+    await Promise.all([createMcpServer(caller, { ...deps, db: traced as typeof t.db }).connect(a), tracedClient.connect(b)]);
+    expect((await call(tracedClient, 'list_todays_schedule')).error).toBe(false);
+    const read = txs.filter((log) => log.includes('from appointments'));
+    expect(read).toHaveLength(1);
+    expect(read[0]!.some((s) => s.includes('insert into audit_logs'))).toBe(true);
+
+    const tool = (await client.listTools()).tools.find((x) => x.name === 'mark_request_done')!;
+    expect(tool.annotations?.idempotentHint).toBe(false);
+    expect((await call(client, 'mark_request_done', { requestId: open, outcome: 'called_back' })).data.status).toBe('done');
+    expect((await call(client, 'mark_request_done', { requestId: open, outcome: 'called_back' })).data.status).not.toBe('done');
   });
 
   it('get_quality_summary needs quality:read, and holds counts only', async () => {
