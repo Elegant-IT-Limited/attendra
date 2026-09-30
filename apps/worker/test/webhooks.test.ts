@@ -75,6 +75,17 @@ describe('webhook deliveries', () => {
     expect(attempts).toEqual([expect.objectContaining({ kind: 'automatic', attempt: 1, statusCode: 200, error: null, eventType: 'request.done' })]);
   });
 
+  it('leaves out patient ids unless the endpoint was set to send them', async () => {
+    const plain = await hooks().create(DEMO_CLINIC.id, { url: `${base}/no-ids`, description: 'default', events: ['appointment.booked'], secret: newSecret(), userId: 'u_olga' });
+    await hooks().create(DEMO_CLINIC.id, { url: `${base}/with-ids`, description: 'under a BAA', events: ['appointment.booked'], secret: newSecret(), userId: 'u_olga', omitPatientIds: false });
+    expect((await hooks().get(DEMO_CLINIC.id, plain))!.omitPatientIds).toBe(true);
+    await eventSink(bossQueue(boss)).emit(DEMO_CLINIC.id, { type: 'appointment.booked', key: 'appt_ids', data: { appointmentId: 'appt_ids', patientId: 'patient_1', startsAt: '2026-10-06T15:00:00.000Z', by: 'staff' } });
+    const got = await until(async () => { const a = received.find((r) => r.path === '/no-ids'); const b = received.find((r) => r.path === '/with-ids'); return a && b ? [a, b] : null; });
+    expect(JSON.parse(got[0].body).data).not.toHaveProperty('patientId');
+    expect(JSON.parse(got[0].body).data).toMatchObject({ appointmentId: 'appt_ids', startsAt: '2026-10-06T15:00:00.000Z' });
+    expect(JSON.parse(got[1].body).data).toMatchObject({ patientId: 'patient_1' });
+  }, 30_000);
+
   it('retries a failing endpoint, and turns it off after it has failed three events in a row, audited', async () => {
     const id = await hooks().create(DEMO_CLINIC.id, { url: `${base}/broken`, description: 'down', events: ['appointment.cancelled'], secret: newSecret(), userId: 'u_olga' });
     const sink = eventSink(bossQueue(boss));

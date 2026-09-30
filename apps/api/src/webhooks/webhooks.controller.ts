@@ -52,7 +52,7 @@ export class WebhooksController {
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(WebhookEndpointInput)) body: z.infer<typeof WebhookEndpointInput>, @CurrentStaff() staff: Staff): Promise<WebhookSecret> {
     await this.checkUrl(body.url);
     const secret = newSecret();
-    const id = await this.repo.create(clinicId, { url: body.url, description: body.description, events: body.events, secret, userId: staff.userId });
+    const id = await this.repo.create(clinicId, { url: body.url, description: body.description, events: body.events, secret, userId: staff.userId, omitPatientIds: body.omitPatientIds });
     return { endpoint: view((await this.repo.get(clinicId, id))!), secret };
   }
 
@@ -121,7 +121,7 @@ export class WebhooksController {
     const target = isUuid(endpointId) ? await this.repo.secrets(clinicId, endpointId) : null;
     const event = await this.repo.event(clinicId, evtId);
     if (!target || !event) throw new NotFoundException({ error: 'not_found' });
-    const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }) }, this.guard);
+    const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }, { omitPatientIds: target.omitPatientIds }) }, this.guard);
     const logged = await this.repo.logAttempt(clinicId, { endpointId, eventId: event.id, kind, attempt: 1, statusCode: result.status, durationMs: result.ms, error: result.error });
     if (result.ok) await this.repo.delivered(clinicId, endpointId);
     return attemptView((await this.repo.attempt(clinicId, logged))!);
@@ -135,7 +135,7 @@ export class WebhooksController {
 
 const view = (e: Endpoint): WebhookEndpoint => ({
   id: e.id, url: e.url, description: e.description, events: e.events as WebhookEndpoint['events'], enabled: e.enabled, disabledReason: e.disabledReason,
-  disabledAt: e.disabledAt?.toISOString() ?? null, consecutiveFailures: e.consecutiveFailures, createdAt: e.createdAt.toISOString(), rotating: e.rotating,
+  disabledAt: e.disabledAt?.toISOString() ?? null, consecutiveFailures: e.consecutiveFailures, createdAt: e.createdAt.toISOString(), rotating: e.rotating, omitPatientIds: e.omitPatientIds,
   lastAttempt: e.lastAttempt ? { at: e.lastAttempt.at.toISOString(), statusCode: e.lastAttempt.statusCode, error: e.lastAttempt.error } : null,
 });
 const attemptView = ({ endpointId: _e, ...a }: Attempt): WebhookAttempt => ({ ...a, at: a.at.toISOString() });

@@ -155,6 +155,8 @@ export const WebhookEndpoint = z.object({
   disabledReason: z.string().nullable(), disabledAt: z.iso.datetime().nullable(), consecutiveFailures: z.number(), createdAt: z.iso.datetime(),
   /** A new secret was made in the last 24 hours, and deliveries carry both signatures. */
   rotating: z.boolean(),
+  /** Deliveries leave out patientId. On by default: a patient id with appointment times is PHI. */
+  omitPatientIds: z.boolean(),
   lastAttempt: z.object({ at: z.iso.datetime(), statusCode: z.number().nullable(), error: z.string().nullable() }).nullable(),
 });
 export const WebhookEndpoints = z.object({ endpoints: z.array(WebhookEndpoint) });
@@ -162,8 +164,9 @@ export const WebhookEndpointInput = z.object({
   url: z.string().trim().max(2000),
   description: z.string().trim().max(200).default(''),
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
+  omitPatientIds: z.boolean().default(true),
 });
-export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional() });
+export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional(), omitPatientIds: z.boolean().optional() });
 /** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
 export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
 export const WebhookAttempt = z.object({

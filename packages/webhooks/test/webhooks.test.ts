@@ -34,6 +34,12 @@ describe('Standard Webhooks signatures', () => {
     expect(JSON.parse(payloadOf({ id: 'evt_1', clinicId: 'c', type: 'request.done', occurredAt: '2026-09-30T10:00:00.000Z', data: { requestId: 'r' } })))
       .toEqual({ type: 'request.done', timestamp: '2026-09-30T10:00:00.000Z', data: { clinicId: 'c', requestId: 'r' } });
   });
+
+  it('leaves the patient id out when the endpoint asks, as endpoints do by default', () => {
+    const booked = { id: 'evt_2', clinicId: 'c', type: 'appointment.booked' as const, occurredAt: '2026-09-30T10:00:00.000Z', data: { appointmentId: 'a', patientId: 'p', startsAt: '2026-10-06T15:00:00.000Z' } };
+    expect(JSON.parse(payloadOf(booked, { omitPatientIds: true })).data).toEqual({ clinicId: 'c', appointmentId: 'a', startsAt: '2026-10-06T15:00:00.000Z' });
+    expect(JSON.parse(payloadOf(booked)).data.patientId).toBe('p');
+  });
 });
 
 describe('the SSRF guard', () => {
