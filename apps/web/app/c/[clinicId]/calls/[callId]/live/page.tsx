@@ -268,7 +268,7 @@ export default function LiveCallPage() {
               <Button type="submit" variant="outline" loading={saveNumber.isPending}>Save</Button>
             </form>
           )}
-          {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like +13035550123.</p>}
+          {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like +13035550123. It must be in the clinic's country.</p>}
         </div>
       </Panel>
       <Panel open={confirm === 'end'} onOpenChange={(o) => setConfirm(o ? 'end' : null)} title="End this call?"

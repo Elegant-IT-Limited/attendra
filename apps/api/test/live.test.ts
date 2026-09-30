@@ -126,6 +126,19 @@ describe('staff actions', () => {
     expect((await audits('call.taken_over')).map((a) => a.actor)).toEqual([`user:${api.users.staff}`, `user:${api.users.admin}`]);
   });
 
+  it('keeps own numbers in the clinic\'s country, audits a change, and records a take-over\'s destination by its last four digits', async () => {
+    const foreign = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+8801711000123' } });
+    expect(foreign.statusCode).toBe(422);
+    expect(foreign.json().issues[0]).toMatchObject({ path: 'number', message: expect.stringContaining('+1') });
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550987' } })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: null } })).statusCode).toBe(200);
+    expect((await audits('member.transfer_number.set')).length).toBeGreaterThanOrEqual(2);
+    expect(await audits('member.transfer_number.cleared')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.users.admin, counts: null }]);
+    const rows = await audits('call.taken_over');
+    expect(rows.map((r) => r.counts)).toEqual([{ ownNumber: 0, destinationLast4: 101 }, { ownNumber: 1, destinationLast4: 123 }]);
+    expect(JSON.stringify(await api.t.db.execute(sql`select * from audit_logs where action like 'call.%' or action like 'member.transfer%'`))).not.toMatch(/3035550(123|987|101)/);
+  });
+
   it('tells the second person who already has the call, and why a browser call cannot be transferred', async () => {
     voice.endCall.mockResolvedValueOnce({ ok: false, status: 409, error: 'already_taken', by: api.users.staff });
     const taken = await act('end', as.admin, { key: 'end-key-1' });
