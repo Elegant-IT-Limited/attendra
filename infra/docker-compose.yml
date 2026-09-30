@@ -48,6 +48,7 @@ services:
       DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
       TRUST_PROXY: "true"
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
   # background jobs: call summaries, indexing the clinic's documents, webhook delivery and
   # the nightly retention purge. Without OPENAI_API_KEY it writes summaries from each call's
@@ -65,11 +66,13 @@ services:
     command: ["pnpm", "--filter", "@attendra/mcp", "start"]
     ports: ["127.0.0.1:8082:8082"]
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
   web:
     build: { context: .., dockerfile: infra/web.Dockerfile, args: { API_URL: "http://api:8081" } }
     ports: ["127.0.0.1:3000:3000"]
     depends_on: [api]
+    restart: unless-stopped
 
   voice:
     <<: *node
@@ -77,6 +80,7 @@ services:
     command: ["pnpm", "--filter", "@attendra/voice", "start"]
     ports: ["127.0.0.1:8080:8080"]
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
 volumes:
   pgdata:
