@@ -45,3 +45,11 @@ test('an old /tasks link lands on Requests with its filter', async ({ browser })
   await expect(page).toHaveURL(new RegExp(`/c/${clinic}/requests\\?status=done$`), { timeout: 20_000 });
   await expect(page.getByRole('tab', { name: 'Done' })).toHaveAttribute('aria-selected', 'true');
 });
+
+test('a claim someone else won says so once', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  await page.getByRole('link', { name: /^Requests/ }).click();
+  await page.route((u) => u.pathname.endsWith('/claim'), (route) => route.fulfill({ status: 409, json: { error: 'task_taken', message: 'Someone else holds this request, or it is already done.' } }));
+  await page.getByTestId('task').first().getByRole('button', { name: 'Claim' }).click();
+  await expect(page.getByText('Someone else holds this request, or it is already done.')).toHaveCount(1);
+});
