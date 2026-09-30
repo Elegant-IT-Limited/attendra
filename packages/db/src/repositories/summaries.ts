@@ -150,6 +150,37 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
   return counts;
 }
 
+/**
+ * Deletes the webhook events stored before `before`, with every delivery attempt of
+ * each, in batches of events, on the same retention period as transcripts. Like the
+ * call purge, each batch writes its counts in the same transaction as its deletes.
+ * Owner connection: the application role cannot delete webhook records.
+ */
+export async function purgeWebhookRecords(db: Database, clinicId: string, before: Date, batch = PURGE_BATCH): Promise<{ webhookEvents: number; webhookAttempts: number }> {
+  const counts = { webhookEvents: 0, webhookAttempts: 0 };
+  let after = '';
+  for (;;) {
+    const ids = await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      const old = ((await tx.execute(sql`select id from webhook_events where clinic_id = ${clinicId} and created_at < ${before.toISOString()}::timestamptz and id > ${after}
+        order by id limit ${batch}`)).rows as { id: string }[]).map((r) => r.id);
+      if (!old.length) return old;
+      const list = sql.join(old.map((id) => sql`${id}`), sql`, `);
+      const these = {
+        webhookAttempts: (await tx.execute(sql`delete from webhook_attempts where clinic_id = ${clinicId} and event_id in (${list}) returning id`)).rows.length,
+        webhookEvents: (await tx.execute(sql`delete from webhook_events where clinic_id = ${clinicId} and id in (${list}) returning id`)).rows.length,
+      };
+      await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: these });
+      counts.webhookEvents += these.webhookEvents;
+      counts.webhookAttempts += these.webhookAttempts;
+      return old;
+    });
+    if (ids.length < batch) break;
+    after = ids.at(-1)!;
+  }
+  return counts;
+}
+
 /** Every clinic's id and stored config, for jobs that run across clinics. Owner connection; no PHI. */
 export async function allClinics(db: Database): Promise<{ id: string; config: unknown }[]> {
   return db.select({ id: clinics.id, config: clinics.config }).from(clinics);
