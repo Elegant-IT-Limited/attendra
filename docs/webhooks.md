@@ -95,7 +95,7 @@ Both check the Standard Webhooks reference example, and the Standard Webhooks li
 
 ## Retries, and turning an endpoint off
 
-A delivery succeeds on any `2xx` answer within 10 seconds. Anything else is retried, backing off from a minute to four hours, twelve times: about a day of trying. Redirects are not followed. Every attempt is in the endpoint's delivery log with its status code and how long it took, and any of them can be sent again from there with **Redeliver**.
+A delivery succeeds on any `2xx` answer within 10 seconds. That is one deadline for the whole delivery, from looking up the address to the last byte of the answer, so a receiver that trickles its answer is cut off like one that never answers; answer at once and do the work afterwards. Anything else is retried, backing off from a minute to four hours, twelve times: about a day of trying. Redirects are not followed. Every attempt is in the endpoint's delivery log with its status code and how long it took, and any of them can be sent again from there with **Redeliver**. **Send test event** and **Redeliver** together allow 10 sends a minute per clinic.
 
 If an endpoint fails three events in a row, each after its day of retries, Attendra turns it off, records that in the audit log, and tells owners and managers on **Today** and on the Integrations page. Fix the receiver and turn it back on; its failure count starts again.
 
