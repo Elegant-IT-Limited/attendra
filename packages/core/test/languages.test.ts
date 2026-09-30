@@ -80,6 +80,24 @@ describe('the emergency guardrail in every language', () => {
     ['আমি আত্মহত্যা করতে চাই', 'self_harm', 'bn'],
     ['ami ar bachte chai na', 'self_harm', 'bn'],
     ['এটা জরুরি', 'general', 'bn'],
+    ['ছেলে বিষ খেয়েছে', 'overdose', 'bn'],
+    ['chele bish kheyeche', 'overdose', 'bn'],
+    ['বাবা স্ট্রোক করেছে', 'stroke', 'bn'],
+    ['মার মুখ বেঁকে গেছে', 'stroke', 'bn'],
+    ['mukh beke geche', 'stroke', 'bn'],
+    ['hat pa obosh hoye geche', 'stroke', 'bn'],
+    ['গলা ফুলে যাচ্ছে', 'allergic', 'bn'],
+    ['gola fule jacche', 'allergic', 'bn'],
+    ['শ্বাস নিতে কষ্ট হচ্ছে', 'breathing', 'bn'],
+    ['shash nite kosto hocche', 'breathing', 'bn'],
+    ['রক্ত পড়ছে থামছে না', 'bleeding', 'bn'],
+    ['rokto porche thamche na', 'bleeding', 'bn'],
+    ['mi padre no puede hablar bien', 'stroke', 'es'],
+    ['tiene la cara caída', 'stroke', 'es'],
+    ['se tomó todas las pastillas', 'overdose', 'es'],
+    ['mi hijo se tomó algo del garaje', 'overdose', 'es'],
+    ['creo que tomó veneno', 'overdose', 'es'],
+    ['se me está cerrando la garganta', 'allergic', 'es'],
   ];
   for (const [text, kind, language] of cases) {
     it(`"${text}" is ${kind}, heard as ${language}`, () => {
@@ -104,7 +122,7 @@ describe('the emergency guardrail in every language', () => {
   });
 
   it('does not fire on ordinary words that look like a phrase', () => {
-    for (const t of ['quiero un examen de pecho la próxima semana', 'report kobe pabo', 'I need a blood test', 'the sample was given']) {
+    for (const t of ['quiero un examen de pecho la próxima semana', 'report kobe pabo', 'I need a blood test', 'the sample was given', 'se tomó el día libre', 'amar gola betha']) {
       expect(detectEmergency(t), t).toBeNull();
     }
   });
