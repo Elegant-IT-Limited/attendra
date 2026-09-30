@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, type FrontDeskRepository, setTransferNumber, staffNames, transferNumber } from '@attendra/db';
+import { type Database, type FrontDeskRepository, setTransferNumber, staffNames, staffRole, transferNumber } from '@attendra/db';
 import { callingCode, ClinicConfig, inClinicCountry, lastFour } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Req, Res, UnprocessableEntityException } from '@nestjs/common';
@@ -9,8 +9,9 @@ import { z } from 'zod';
 import { can } from '../access';
 import { LiveCalls, LiveCoach, LiveEnd, LiveTakeOver, TransferNumber } from '../contracts';
 import { schemaOf } from '../http/openapi';
-import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { DB, FRONT_DESK, LOGGER, type LiveActionResult, VOICE, type VoiceClient } from '../http/tokens';
+import type { Auth } from '../auth';
+import { CurrentStaff, Requires, type Staff, toHeaders } from '../http/staff.guard';
+import { API_OPTIONS, type ApiOptions, AUTH, DB, FRONT_DESK, LOGGER, type LiveActionResult, VOICE, type VoiceClient } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -29,6 +30,7 @@ export class LiveController {
   constructor(
     @Inject(VOICE) private readonly voice: VoiceClient | null, @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
     @Inject(DB) private readonly db: Database, @Inject(LOGGER) private readonly log: Logger,
+    @Inject(AUTH) private readonly auth: Auth, @Inject(API_OPTIONS) private readonly options: ApiOptions,
   ) {}
 
   @Get('live')
@@ -55,7 +57,9 @@ export class LiveController {
    * The live call as Server-Sent Events: captions, tool steps, the verified caller,
    * the read-back waiting for a yes, an emergency, staff actions, and the end. The
    * browser reconnects with Last-Event-ID and misses nothing; heartbeats every 15
-   * seconds keep proxies from closing it.
+   * seconds keep proxies from closing it. A stream ends when the call does, or after
+   * 60 minutes (the browser then reconnects through the sign-in check), and every 5
+   * minutes it checks that the watcher is still signed in and may still read calls.
    */
   @Get('calls/:callId/live')
   @Requires('calls:read')
@@ -75,6 +79,17 @@ export class LiveController {
     res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.on('close', () => abort.abort());
     const reader = body.getReader();
+    const limits = { maxMs: 60 * 60_000, recheckMs: 5 * 60_000, ...this.options.liveStream };
+    const headers = toHeaders(req.headers);
+    const stillAllowed = async () => {
+      const session = await this.auth.api.getSession({ headers }).catch(() => null);
+      if (session?.user.id !== staff.userId) return false;
+      const role = await staffRole(this.db, staff.userId, clinicId);
+      return !!role && can(role, 'calls:read');
+    };
+    const cap = setTimeout(() => abort.abort(), limits.maxMs);
+    const recheck = setInterval(() => { void stillAllowed().then((ok) => { if (!ok) abort.abort(); }); }, limits.recheckMs);
+    abort.signal.addEventListener('abort', () => { clearTimeout(cap); clearInterval(recheck); void reader.cancel().catch(() => {}); }, { once: true });
     try {
       for (;;) {
         const { value, done } = await reader.read();
@@ -84,6 +99,8 @@ export class LiveController {
     } catch {
       // the watcher left, or the voice service went away; either way the stream is over
     } finally {
+      clearTimeout(cap);
+      clearInterval(recheck);
       res.end();
     }
   }

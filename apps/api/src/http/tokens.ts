@@ -47,4 +47,6 @@ export interface ApiOptions {
   demoMode: boolean;
   /** Printed on the sign-in page. Only `pnpm demo` sets it: a deployed demo keeps its password private. */
   demoSignIn?: { password: string; logins: { email: string; label: string }[] };
+  /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
+  liveStream?: { maxMs?: number; recheckMs?: number };
 }
