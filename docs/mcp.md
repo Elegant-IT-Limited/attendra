@@ -14,7 +14,7 @@ An owner or practice manager makes a key under **Settings > API keys**. A key be
 
 The key is shown once, when it is made. Attendra keeps only its SHA-256 hash, so a copy of the database holds nothing that works. Revoke a key and it stops at once. Every use is written to the audit log as `mcp.<tool>` with the key's id, including uses a scope refused, and the key shows when it was last used.
 
-A key acts in the name of the person who made it: a request it closes is closed by them, and requests it reads are audited as their views. Give each agent its own key, with only the scopes it needs.
+A key acts in the name of the person who made it: a request it closes is closed by them, and requests it reads are audited as their views. So a key works only while that person is still an owner or practice manager at the clinic: remove them from the team, or change their role to anything else, and every key they made is revoked, with an `api_key.revoked` row in the audit log. Give each agent its own key, with only the scopes it needs.
 
 ## Tools
 

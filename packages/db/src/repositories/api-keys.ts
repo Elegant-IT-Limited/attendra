@@ -10,6 +10,11 @@ export interface ApiKey { id: string; name: string; prefix: string; scopes: ApiS
 /** A key that checked out: who it is, for which clinic, and what it may do. */
 export interface ApiCaller { keyId: string; clinicId: string; scopes: ApiScope[]; createdByUserId: string }
 
+/** The roles that may hold a key: a key works only while the person who made it is still one of these at the clinic. */
+export const KEY_HOLDER_ROLES = ['owner', 'admin'] as const;
+const holder = sql`exists (select 1 from memberships m join clinics c on c.org_id = m.organization_id
+  where c.id = api_keys.clinic_id and m.user_id = api_keys.created_by_user_id and m.role in ('owner', 'admin'))`;
+
 const hashOf = (key: string) => createHash('sha256').update(key).digest('hex');
 const rows = <T>(r: { rows: unknown[] }) => r.rows as T[];
 const toKey = (r: Record<string, unknown>): ApiKey => ({
@@ -48,12 +53,13 @@ export class ApiKeyRepository {
 
 /**
  * Finds the key a request carries, by its hash, before the clinic is known (owner
- * connection). Null for anything that is not a live key: unknown, revoked, expired.
+ * connection). Null for anything that is not a live key: unknown, revoked, expired,
+ * or made by someone who is no longer an owner or practice manager at the clinic.
  */
 export async function authenticateApiKey(db: Database, key: string, now = new Date()): Promise<ApiCaller | null> {
   if (!/^atk_[A-Za-z0-9_-]{43}$/.test(key)) return null;
   const [r] = rows<{ id: string; clinic_id: string; scopes: ApiScope[]; created_by_user_id: string; expires_at: string | Date; revoked_at: string | null }>(
-    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id, expires_at, revoked_at from api_keys where key_hash = ${hashOf(key)}`));
+    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id, expires_at, revoked_at from api_keys where key_hash = ${hashOf(key)} and ${holder}`));
   if (!r || r.revoked_at || new Date(r.expires_at) <= now) return null;
   return { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
 }
@@ -64,7 +70,7 @@ export async function authenticateApiKey(db: Database, key: string, now = new Da
  */
 export async function apiKeyIsLive(db: Database, caller: ApiCaller, now = new Date()): Promise<boolean> {
   const [r] = rows<{ expires_at: string | Date; revoked_at: string | null }>(
-    await db.execute(sql`select expires_at, revoked_at from api_keys where id = ${caller.keyId} and clinic_id = ${caller.clinicId}`));
+    await db.execute(sql`select expires_at, revoked_at from api_keys where id = ${caller.keyId} and clinic_id = ${caller.clinicId} and ${holder}`));
   return !!r && !r.revoked_at && new Date(r.expires_at) > now;
 }
 
