@@ -177,7 +177,7 @@ export default function Settings() {
 
         <Section title="Routing" description="Where transfers go. The assistant transfers only to these numbers."
           action={<Button type="button" size="sm" variant="outline" onClick={() => set({ routing: [...c.routing, { target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }] })}><Plus /> Rule</Button>}>
-          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback task.</p>}
+          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback request.</p>}
           {c.routing.map((r, i) => {
             const upd = (patch: Partial<typeof r>) => set({ routing: c.routing.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
             return (
