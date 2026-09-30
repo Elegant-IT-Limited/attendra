@@ -114,4 +114,13 @@ describe('the demo schedule', () => {
     expect(stats.cancelled).toBeGreaterThan(2);
     expect((await seedDemoSchedule(t.db, cipher, { patientIds: ids, staffUserIds: ['u_ana'], now })).created).toBe(0);
   });
+
+  it('gives nobody more than two upcoming visits, the demo patients included', async () => {
+    const now = zonedInstant('2026-09-29', '10:00', tz);
+    const most = (await t.db.execute(sql`select patient_id, count(*)::int as n from appointments
+      where clinic_id = ${DEMO_CLINIC.id} and status = 'booked' and starts_at > ${now.toISOString()}::timestamptz group by patient_id order by n desc limit 1`)).rows[0] as { n: number };
+    expect(most.n).toBeLessThanOrEqual(2);
+    const upcoming = (await t.db.execute(sql`select count(*)::int as n from appointments where clinic_id = ${DEMO_CLINIC.id} and idempotency_key like 'seed:%' and starts_at > ${now.toISOString()}::timestamptz`)).rows[0] as { n: number };
+    expect(upcoming.n).toBeGreaterThan(100); // still a busy calendar
+  });
 });

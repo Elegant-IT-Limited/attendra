@@ -77,3 +77,21 @@ describe('the clinic\'s knowledge', () => {
     expect((await api.t.db.execute(sql`select actor from audit_logs where action = 'knowledge.document.deleted'`)).rows).toEqual([{ actor: `user:${api.users.admin}` }]);
   });
 });
+
+describe('body limits', () => {
+  it('takes a large body only on the upload route: every other route, sign-in included, keeps 512 KB', async () => {
+    const big = Buffer.alloc(1024 * 1024, 97);
+    const inject = (method: 'POST' | 'PUT', url: string, type: string, payload: Buffer | string) =>
+      api.app.getHttpAdapter().getInstance().inject({ method, url, headers: { cookie: as.admin, origin: ORIGIN, 'content-type': type }, payload });
+    const doc = await upload(as.admin, 'A megabyte', big);
+    expect(doc.statusCode).toBe(201);
+    expect((await api.request('DELETE', `${C}/knowledge/documents/${doc.json().id}`, { cookie: as.admin })).statusCode).toBe(204);
+    for (const type of ['text/plain', 'application/pdf', 'application/octet-stream', 'text/markdown']) {
+      expect((await inject('PUT', `${C}/settings`, type, big)).statusCode, type).toBe(413);
+      expect((await inject('POST', `${C}/knowledge/ask`, type, big)).statusCode, type).toBe(413);
+      expect((await inject('POST', '/api/auth/sign-in/email', type, big)).statusCode, type).toBe(413);
+    }
+    const json = JSON.stringify({ email: 'olga@maple.example', password: 'x'.repeat(1024 * 1024) });
+    expect((await inject('POST', '/api/auth/sign-in/email', 'application/json', json)).statusCode).toBe(413);
+  });
+});

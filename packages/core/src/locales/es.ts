@@ -46,17 +46,19 @@ export const es: LanguagePack = {
   emergencyPhrases: [
     ['cardiac', words('(me )?duele (mucho )?el pecho|dolor (fuerte )?(en el|de|del) pecho|(presion|opresion) en el pecho|ataque al corazon|infarto')],
     ['breathing', words('no (puedo|puede|podemos) respirar|me (estoy )?ahog(o|ando)|se (esta )?ahog(a|ando)|falta de aire|(dificultad|me cuesta|le cuesta) (para )?respirar|no respira')],
-    ['stroke', words('derrame( cerebral)?|ictus|embolia|(la )?cara (se le )?(cayo|esta caida|torcida)|habla (arrastrada|rara)|no (puede|puedo) mover (el|la|mi|su) (brazo|pierna|cara)')],
+    ['stroke', words('derrame( cerebral)?|ictus|embolia|(la )?cara (se le )?(cayo|esta caida|torcida)|(tiene )?la cara caida|habla (arrastrada|rara)|no (puede|puedo) hablar bien|no (puede|puedo) mover (el|la|mi|su) (brazo|pierna|cara)')],
     ['bleeding', words('no (para|deja) de sangrar|sangr(a|ando) mucho|mucha sangre|sangrado (abundante|fuerte)|(vomit|tos)(a|iendo|e) sangre')],
     ['unresponsive', words('inconsciente|se desmayo|(esta )?desmayad[oa]|no (responde|reacciona|despierta)|convulsi(on|ones|onando)')],
     ['self_harm', words('suicid(io|arme|arse|a)|matarme|quitarme la vida|no quiero (vivir|seguir viviendo)|hacerme dano|mejor (estaria )?muert[oa]')],
-    ['overdose', words('sobredosis|(tome|se tomo) (demasiad[oa]s?|todas las pastillas|el frasco)')],
+    // "se tomó" only with what was taken: "se tomó el día libre" is not an emergency
+    ['overdose', words('sobredosis|veneno|envenenad[oa]|(me tome|tome|se tomo) (demasiad[oa]s?|tod[oa]s?|todas las pastillas|las pastillas|el frasco|un frasco|una botella|veneno|lejia|cloro|algo)')],
     ['allergic', words('se me (esta )?cerrando la garganta|(se me )?cierra la garganta|anafilaxia|lengua hinchada')],
     ['general', words('emergencia|(llame|llamen|necesito) una ambulancia|ambulancia')],
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),
-  // "si" without an accent is also "if", so only at the start of what they said
-  yes: new RegExp(`^(si)(?![\\p{L}])|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|vale|reservela|por favor( hagalo)?|asi es').source}`, 'u'),
-  hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo').source}|[?¿]`, 'u'),
+  // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
+  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es').source}`, 'u'),
+  yesAlone: /^(vale|por favor|si por favor)$/,
+  hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
 };

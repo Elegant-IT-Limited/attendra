@@ -155,6 +155,8 @@ export const WebhookEndpoint = z.object({
   disabledReason: z.string().nullable(), disabledAt: z.iso.datetime().nullable(), consecutiveFailures: z.number(), createdAt: z.iso.datetime(),
   /** A new secret was made in the last 24 hours, and deliveries carry both signatures. */
   rotating: z.boolean(),
+  /** Deliveries leave out patientId. On by default: a patient id with appointment times is PHI. */
+  omitPatientIds: z.boolean(),
   lastAttempt: z.object({ at: z.iso.datetime(), statusCode: z.number().nullable(), error: z.string().nullable() }).nullable(),
 });
 export const WebhookEndpoints = z.object({ endpoints: z.array(WebhookEndpoint) });
@@ -162,8 +164,9 @@ export const WebhookEndpointInput = z.object({
   url: z.string().trim().max(2000),
   description: z.string().trim().max(200).default(''),
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
+  omitPatientIds: z.boolean().default(true),
 });
-export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional() });
+export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional(), omitPatientIds: z.boolean().optional() });
 /** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
 export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
 export const WebhookAttempt = z.object({
@@ -187,6 +190,22 @@ export const QualityWeek = z.object({
 });
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
+
+export const API_KEY_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
+export const ApiKeyView = z.object({
+  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_KEY_SCOPES)), expiresAt: z.iso.datetime(),
+  createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
+  status: z.enum(['active', 'expired', 'revoked']),
+});
+export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
+export const ApiKeyInput = z.object({
+  name: z.string().trim().min(1, 'give the key a name').max(100),
+  scopes: z.array(z.enum(API_KEY_SCOPES)).min(1, 'choose at least one scope'),
+  // what Settings offers: 7 days to a year
+  expiresInDays: z.number().int().min(7, 'a key lasts at least 7 days').max(365, 'a key lasts at most a year').default(90),
+});
+/** The only time a key is shown. */
+export const ApiKeyCreated = z.object({ apiKey: ApiKeyView, key: z.string() });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
@@ -352,6 +371,8 @@ export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(),
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
+  /** How much, never what: { characters: 24 }, { transcriptLines: 412 }. */
+  counts: z.record(z.string(), z.number()).nullable(),
 });
 export const AuditPage = z.object({
   before: z.coerce.number().int().positive().optional(),
@@ -368,6 +389,9 @@ export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
 export type LiveCall = z.infer<typeof LiveCall>;
+export type ApiKeyView = z.infer<typeof ApiKeyView>;
+export type ApiKeys = z.infer<typeof ApiKeys>;
+export type ApiKeyCreated = z.infer<typeof ApiKeyCreated>;
 export type Quality = z.infer<typeof Quality>;
 export type QualityWeek = z.infer<typeof QualityWeek>;
 export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
