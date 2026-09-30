@@ -39,6 +39,29 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - A command palette (Cmd+K or Ctrl+K) to jump to a page, find a patient, start a booking or a test call, or switch the theme, and keyboard shortcuts (G then T, S, P, R or C; N; ?).
 - Request actions update at once and roll back if the server refuses, with a toast, and Undo after a claim. Today opens with four stat cards and seven-day trends; `/overview` returns per-day counts for them.
 - The sidebar collapses to icons from 1024 px, and a phone gets a bottom bar. Every main page is checked with axe in light and dark in the e2e suite.
+
+### Changed
+
+- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
+- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
+- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
+- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
+- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
+- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
+- The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
+- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
+- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
+- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
+- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
+- `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
+- The demo clinic's assistant is called Maya and speaks English and Spanish.
+
+## [0.3.0] - 2026-09-30
+
+The working front desk: test calls from the browser, the schedule, patients, the Today screen, requests and the team.
+
+### Added
+
 - Test calls from the browser: a Test call page in the dashboard talks to the clinic's receptionist through the microphone over WebRTC, with the live settings and the same tools and guardrails as a phone call. Only an OpenAI key is needed; `pnpm demo` turns it on when it finds one. See [docs/test-calls.md](docs/test-calls.md).
 - Calls record where they came from (`phone` or `web`). Browser tests are marked in the call list and on the call page, and each one is audited with the person who started it, in the same transaction as the call row.
 - Test calls end on their own after `BROWSER_CALL_MAX_SECONDS` (300 by default), a clinic can have two open at once, and they never send texts.
@@ -57,22 +80,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - The front desk cannot book a patient into a time that overlaps another of their appointments, with any provider, and a booking key sent again for a different booking is refused (`idempotency_mismatch`).
 - The menu is grouped the way a front desk works: Today; Front desk (Schedule, Patients, Requests, Calls); Assistant (Test call, Settings); Admin (Team, Audit log). The audit log has plain words for every action and names people for owners and managers.
 - `pnpm demo` fills three weeks of the demo calendar around today: the demo calls' own bookings, linked to their calls, and about 60 percent of the rest booked by staff, with a few cancellations.
+- `/api/v1/me` says whether the deployment has test calls (`testCalls`).
 
 ### Changed
 
-- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
-- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
-- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
-- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
-- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
-- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
-- The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
-- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
-- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
-- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
-- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
-- `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
-- The demo clinic's assistant is called Maya and speaks English and Spanish.
+- Migration `0005_call_patient.sql` adds `calls.patient_id`, set in the same transaction as the tool action that verified the caller.
+- The redacting logger also replaces `query` and `search` fields.
+- Migration `0004_staff_scheduling.sql`: appointments record the staff member who booked or cancelled them, a cancel reason, an encrypted note and an update time, and a booking must come from a call or a person.
+- A screen that refreshes a patient-data view on a timer (the schedule) writes one audit row per person per view every 5 minutes, instead of one every 30 seconds.
+- The voice service starts without Twilio or a webhook secret. Without Twilio, texts are recorded as not sent; without the secret, phone calls are refused.
+- An empty line in `.env` counts as not set for the voice service's settings and for `VOICE_URL` and `VOICE_INTERNAL_TOKEN`.
+- The dashboard allows its own pages to use the microphone (`Permissions-Policy: microphone=(self)`); camera and location stay off.
 - Signing in now opens Today instead of the call list.
 - "Tasks" are "Requests" everywhere in the dashboard, and `/tasks` pages move to `/requests`. The API keeps the name `tasks`.
 - Migration `0006_request_notes.sql` adds `task_notes` (encrypted, insert-only for the application role, with Row Level Security) and a request's outcome and who assigned it.
@@ -88,19 +106,6 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - The demo moved its own bookings forward in milliseconds, so after a clock change a visit shifted by an hour. It now moves them by whole weeks of local time.
 - The week view's provider headers showed initials; they show the short name, with the full name on hover.
-- Migration `0005_call_patient.sql` adds `calls.patient_id`, set in the same transaction as the tool action that verified the caller.
-- The redacting logger also replaces `query` and `search` fields.
-- Migration `0004_staff_scheduling.sql`: appointments record the staff member who booked or cancelled them, a cancel reason, an encrypted note and an update time, and a booking must come from a call or a person.
-- A screen that refreshes a patient-data view on a timer (the schedule) writes one audit row per person per view every 5 minutes, instead of one every 30 seconds.
-- The voice service starts without Twilio or a webhook secret. Without Twilio, texts are recorded as not sent; without the secret, phone calls are refused.
-- An empty line in `.env` counts as not set for the voice service's settings and for `VOICE_URL` and `VOICE_INTERNAL_TOKEN`.
-- `/api/v1/me` says whether the deployment has test calls (`testCalls`).
-- The dashboard allows its own pages to use the microphone (`Permissions-Policy: microphone=(self)`); camera and location stay off.
-
-### Fixed
-
-Found on the first live test call:
-
 - A clear "yeah" to a read-back was refused when the assistant began speaking before the proposal was back and read it out in the same breath. Any assistant speech after the proposal now counts as the read-back.
 - A cough or breath the transcriber marks in brackets ("[clear throat]") after the caller's yes made the yes not count. Bracketed sounds are now ignored.
 - The assistant could not answer "are you open tomorrow?": clinic info now carries the next seven days of hours.
@@ -139,17 +144,6 @@ Security and CI fixes after the first release.
 
 ### Changed
 
-- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
-- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
-- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
-- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
-- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
-- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
-- The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
-- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
-- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
-- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
-- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - CI runs the gitleaks CLI, pinned and checksum-verified, and the current major versions of the GitHub actions.
 
 ## [0.1.0] - 2026-09-28
