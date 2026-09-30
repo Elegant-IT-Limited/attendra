@@ -57,7 +57,7 @@ export default function Today() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
         <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Last 7 days" />
         <StatCard label="Booked this week" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
-        <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.tasks.length ?? null) : null} hint="Nobody has them yet" />
+        <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
         <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered this week" />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">

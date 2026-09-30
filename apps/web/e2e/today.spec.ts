@@ -27,3 +27,13 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
   await expect(page).toHaveURL(/\/requests$/, { timeout: 20_000 }); // next dev may still be compiling the page
   await expect(page.getByText('You have it').first()).toBeVisible();
 });
+
+test('Requests waiting counts every waiting request, not only the 20 listed', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  // more waiting than the list holds: the route lists the oldest 20 and says how many in all
+  const tasks = Array.from({ length: 20 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, type: 'callback', createdAt: new Date(Date.now() - (i + 1) * 60_000).toISOString(), callId: null }));
+  await page.route('**/tasks/waiting', (route) => route.fulfill({ json: { tasks, total: 23 } }));
+  await page.reload();
+  const card = page.locator('div').filter({ has: page.getByText('Requests waiting', { exact: true }) }).filter({ hasText: 'Nobody has them yet' }).last();
+  await expect(card).toContainText('23');
+});
