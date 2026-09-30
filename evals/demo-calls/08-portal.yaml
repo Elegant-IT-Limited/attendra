@@ -1,0 +1,11 @@
+id: demo-portal
+title: A caller asks how to get their test results
+caller_number: "+17205550192"
+turns:
+  - caller: Hi, how do I see my blood test results?
+    reply: "Results go to the patient portal. The front desk can text you a portal invite."
+    delegate:
+      - get_clinic_info: { question: how do I get my test results }
+expect:
+  outcome: info
+  answered_from: faq_portal
