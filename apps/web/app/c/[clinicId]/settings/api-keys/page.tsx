@@ -24,6 +24,7 @@ const SCOPES: { scope: ApiKeyView['scopes'][number]; label: string; hint: string
   { scope: 'schedule:read', label: 'Read the schedule', hint: 'Open times, and today\'s appointments with patient names.' },
   { scope: 'requests:read', label: 'Read requests', hint: 'The open refill and callback requests, with their details.' },
   { scope: 'requests:write', label: 'Close requests', hint: 'Mark a request done, with its outcome.' },
+  { scope: 'quality:read', label: 'Read quality numbers', hint: 'The last 7 days from the Quality page. Counts only.' },
 ];
 const STATUS: Record<ApiKeyView['status'], { label: string; tone: 'ok' | 'neutral' | 'danger' }> = { active: { label: 'Active', tone: 'ok' }, expired: { label: 'Expired', tone: 'neutral' }, revoked: { label: 'Revoked', tone: 'danger' } };
 

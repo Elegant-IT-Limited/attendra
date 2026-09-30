@@ -24,7 +24,7 @@ let keys: ApiKeyRepository;
 let taskId: string;
 const done: Record<string, string | null>[] = [];
 
-const make = (scopes: ('schedule:read' | 'requests:read' | 'requests:write')[], clinicId = DEMO_CLINIC.id, days = 30) =>
+const make = (scopes: ('schedule:read' | 'requests:read' | 'requests:write' | 'quality:read')[], clinicId = DEMO_CLINIC.id, days = 30) =>
   keys.create(clinicId, { name: `test ${scopes.join(' ')}`, scopes, expiresAt: new Date(Date.now() + days * 86_400_000), userId: 'u_olga' });
 
 /** A client talking to a server made for this key, in memory. */
@@ -124,17 +124,16 @@ describe('the tools', () => {
     expect(refused).toMatchObject({ error: true, text: expect.stringContaining('schedule:read') });
   });
 
-  it('list_todays_schedule names patients only with schedule:read, and audits how many it showed', async () => {
+  it('list_todays_schedule needs schedule:read, names patients, and audits how many it showed', async () => {
     const named = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
-    const bare = await call(await clientFor((await make(['requests:read'])).key), 'list_todays_schedule');
     const appts = named.data.appointments as { patient?: string }[];
-    expect(appts.length).toBe((bare.data.appointments as unknown[]).length);
-    if (appts.length) expect(appts[0]!.patient).toBeTruthy();
-    expect((bare.data.appointments as { patient?: string }[]).every((a) => a.patient === undefined)).toBe(true);
+    if (appts.length) expect(appts.every((a) => !!a.patient)).toBe(true);
     const rows = await audits('mcp.list_todays_schedule');
-    expect(rows.at(-2)!.counts).toEqual({ appointments: appts.length, names: appts.length });
-    expect(rows.at(-1)!.counts).toEqual({ appointments: appts.length, names: 0 });
+    expect(rows.at(-1)!.counts).toEqual({ appointments: appts.length, names: appts.length });
     expect(rows.every((r) => r.actor.startsWith('api_key:'))).toBe(true);
+    const bare = await call(await clientFor((await make(['requests:read'])).key), 'list_todays_schedule');
+    expect(bare).toMatchObject({ error: true, text: expect.stringContaining('schedule:read') });
+    expect((await audits('mcp.list_todays_schedule.refused')).length).toBeGreaterThan(0);
   });
 
   it('list_open_requests needs requests:read; mark_request_done needs requests:write and announces the change', async () => {
@@ -149,10 +148,11 @@ describe('the tools', () => {
     expect((await call(reader, 'list_open_requests')).data.requests).toEqual([]);
   });
 
-  it('get_quality_summary works with any key, and holds counts only', async () => {
-    const r = await call(await clientFor((await make(['requests:read'])).key), 'get_quality_summary');
+  it('get_quality_summary needs quality:read, and holds counts only', async () => {
+    const r = await call(await clientFor((await make(['quality:read'])).key), 'get_quality_summary');
     expect(r.data).toMatchObject({ days: 7, calls: 1, containmentRate: 0, bookingSuccess: null });
     expect(r.text).not.toMatch(/Whitaker|lisinopril/);
+    expect(await call(await clientFor((await make(['requests:read'])).key), 'get_quality_summary')).toMatchObject({ error: true, text: expect.stringContaining('quality:read') });
   });
 
   it('audits every use, refused ones too, with the key\'s id; a key sees only its own clinic', async () => {
@@ -193,6 +193,24 @@ describe('Streamable HTTP', () => {
     const r = await client.callTool({ name: 'find_open_slots', arguments: { visitTypeId: 'vt_annual', days: 5 } }) as { isError?: boolean };
     expect(r.isError).toBeFalsy();
     await client.close();
+  });
+});
+
+describe('rate limits', () => {
+  it('refuse a key over its allowance, and an address that keeps failing to authenticate', async () => {
+    const handle = mcpHttpHandler({ ...deps, rateLimit: { failuresPerAddress: 3, perKey: 4 } });
+    const server = createServer((req, res) => void handle(req, res));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+    const post = (auth: string) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: auth }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' }).then((r) => r.status);
+    const { key } = await make(['schedule:read']);
+    const statuses = [];
+    for (let i = 0; i < 5; i++) statuses.push(await post(`Bearer ${key}`));
+    expect(statuses).toEqual([200, 200, 200, 200, 429]);
+    expect([await post('Bearer atk_x'), await post('Bearer atk_y'), await post('Bearer atk_z'), await post('Bearer atk_w')]).toEqual([401, 401, 401, 429]);
+    // while the address is held back, even a working key from it waits the minute out
+    expect(await post(`Bearer ${(await make(['schedule:read'])).key}`)).toBe(429);
+    server.close();
   });
 });
 
