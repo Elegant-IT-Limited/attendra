@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
-import { ResponsesPlanner } from '../src';
+import { type Outbound, ResponsesPlanner } from '../src';
+
+const commentary = (out: Outbound[]) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
 import { world } from './support';
 
 describe('the production planner', () => {
@@ -23,12 +25,12 @@ describe('the production planner', () => {
     const w = await world();
     const withNumber = await w.call('+13035550147');
     const said = await withNumber.delegate([], planner);
-    expect(said.find((o) => o.type === 'commentary')?.content).toContain('asked someone from the clinic to call you back');
+    expect(commentary(said)).toContain('asked someone from the clinic to call you back');
     const tasks = (await w.t.db.execute(sql`select type from tasks where call_id = ${withNumber.callId}`)).rows;
     expect(tasks).toEqual([{ type: 'callback' }]);
     const noNumber = await w.call(null);
     const asked = await noNumber.delegate([], planner);
-    expect(asked.find((o) => o.type === 'commentary')?.content).toContain('tell me the best number');
+    expect(commentary(asked)).toContain('tell me the best number');
     expect((await w.t.db.execute(sql`select type from tasks where call_id = ${noNumber.callId}`)).rows).toEqual([]);
     await w.t.close();
   });
