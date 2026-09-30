@@ -226,7 +226,7 @@ export default function Settings() {
       </fieldset>
 
       {writable && dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-[232px]">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
             <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
