@@ -20,7 +20,7 @@ Everything is in `apps/web/app/globals.css`, as Tailwind `@theme` variables. Pag
 
 Every text and background pair passes WCAG 2.2 AA in both themes. The e2e suite runs axe on every main page, in light and dark, and fails on a serious or critical issue.
 
-**Type.** Inter, self-hosted with `next/font/local`, with Noto Sans Bengali next in the stack so a line that mixes Bangla and English renders each script properly. One scale: `text-xs` 12, `text-sm` 13, `text-base` 14 (body), `text-md` 16, `text-lg` 20, `text-xl` 24 (page titles), `text-2xl` 30. Figures, times and counts are tabular everywhere.
+**Type.** Inter, self-hosted with `next/font/local`. One scale: `text-xs` 12, `text-sm` 13, `text-base` 14 (body), `text-md` 16, `text-lg` 20, `text-xl` 24 (page titles), `text-2xl` 30. Figures, times and counts are tabular everywhere.
 
 **Shape.** A 4 px grid (Tailwind's spacing). Three radii: `rounded-sm` 6, `rounded-md` 8, `rounded-lg` 12. Two shadows: `shadow-xs` for things on the page, `shadow-lg` for things above it.
 

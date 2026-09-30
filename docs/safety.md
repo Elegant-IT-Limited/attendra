@@ -12,7 +12,7 @@ The conversation prompt says so, and so does the planner prompt, but the real gu
 
 On a match, the backend immediately:
 
-1. sends a fixed instruction to stop the task and say "If this is a medical emergency, please hang up and call 911 right away" (for self-harm language, the 988 Suicide and Crisis Lifeline script). The script is in the language the emergency was said in when the clinic offers it, otherwise in the call's language, and gives the clinic's emergency number: 911 by default in the United States, 999 in Bangladesh. 988 is named only at United States clinics;
+1. sends a fixed instruction to stop the task and say "If this is a medical emergency, please hang up and call 911 right away" (for self-harm language, the 988 Suicide and Crisis Lifeline script). The script is in the language the emergency was said in when the clinic offers it, otherwise in the call's language, and gives the clinic's emergency number: 911 by default in the United States, and the country's own elsewhere (999, 112, 000). 988 is named only at United States clinics;
 2. drops any change waiting for confirmation, refuses every further write for the rest of the call, and discards any request already in flight;
 3. marks the call as an emergency for staff review;
 4. if the clinic enabled it and the match is a specific medical kind (not just the word "emergency"), transfers to the on-call line after a short delay, so the caller hears the emergency number first.
@@ -23,22 +23,22 @@ No clinic setting turns the guardrail off.
 
 ### Before any release
 
-The phrase list and both scripts must be reviewed by a licensed clinician, and the review recorded in the pull request that changes them. The Spanish and Bangla lists need a clinician who works in that language.
+The phrase list and both scripts must be reviewed by a licensed clinician, and the review recorded in the pull request that changes them. The Spanish list needs a clinician who works in Spanish.
 
-What the lists catch is what their tests show, and no more: a phrase list catches the phrases on it and the spellings written into it, and a caller who says it another way is not caught. The tests are in `packages/core/test/safety-rules.test.ts` (English) and `packages/core/test/languages.test.ts` (Spanish and Bangla).
+What the lists catch is what their tests show, and no more: a phrase list catches the phrases on it and the spellings written into it, and a caller who says it another way is not caught. The tests are in `packages/core/test/safety-rules.test.ts` (English) and `packages/core/test/languages.test.ts` (Spanish).
 
-| Kind | English | Spanish | Bangla (both scripts) |
-|---|---|---|---|
-| Cardiac | chest pain, heart attack | me duele el pecho | বুকে ব্যথা, buke betha |
-| Breathing | can't breathe | no puedo respirar | শ্বাস নিতে পারছি না, শ্বাস নিতে কষ্ট হচ্ছে, shash nite kosto |
-| Stroke | face drooping, slurred speech | no puede hablar bien, tiene la cara caída | স্ট্রোক করেছে, মুখ বেঁকে গেছে, hat pa obosh |
-| Bleeding | won't stop bleeding | sangrando mucho | রক্ত পড়ছে থামছে না, onek rokto |
-| Unresponsive | passed out, not waking up | inconsciente | অজ্ঞান, oggan |
-| Self-harm | don't want to be alive | quitarme la vida | আত্মহত্যা, bachte chai na |
-| Overdose or poison | took too many, took a whole bottle, overdose, poison, swallowed bleach | se tomó todas las pastillas, veneno | বিষ খেয়েছে, bish kheyeche |
-| Severe allergic reaction | throat is swelling | se me está cerrando la garganta | গলা ফুলে যাচ্ছে, gola fule jacche |
+| Kind | English | Spanish |
+|---|---|---|
+| Cardiac | chest pain, heart attack | me duele el pecho |
+| Breathing | can't breathe | no puedo respirar |
+| Stroke | face drooping, slurred speech | no puede hablar bien, tiene la cara caída |
+| Bleeding | won't stop bleeding | sangrando mucho |
+| Unresponsive | passed out, not waking up | inconsciente |
+| Self-harm | don't want to be alive | quitarme la vida |
+| Overdose or poison | took too many, took a whole bottle, overdose, poison, swallowed bleach | se tomó todas las pastillas, veneno |
+| Severe allergic reaction | throat is swelling | se me está cerrando la garganta |
 
-Every pack's phrases are checked on every call, whichever languages the clinic offers. Bangla is experimental and off by default (a clinic offers English only until someone switches another language on), and stays experimental until a Bangladeshi clinician has reviewed its list.
+Every pack's phrases are checked on every call, whichever languages the clinic offers.
 
 ## Identity
 

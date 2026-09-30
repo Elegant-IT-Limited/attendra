@@ -36,7 +36,7 @@ const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '
 export function allowedEmergencyNumbers(phoneNumbers: readonly string[]): string[] {
   const first = phoneNumbers[0] ?? '';
   if (first.startsWith('+1')) return ['911']; // the United States and Canada
-  if (first.startsWith('+880')) return ['999']; // Bangladesh
+  if (first.startsWith('+880')) return ['999'];
   if (first.startsWith('+44')) return ['999', '112']; // the United Kingdom
   if (first.startsWith('+61')) return ['000', '112']; // Australia
   if (EU.some((c) => first.startsWith(c))) return ['112'];
