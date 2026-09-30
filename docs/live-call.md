@@ -77,7 +77,7 @@ The second command points your Twilio number at the demo clinic and makes it the
 1. Open `https://attendra-demo.example.com` and sign in as `manager@maple-demo.test` with your `ATTENDRA_DEMO_PASSWORD`. You see the week of recorded demo calls.
 2. Call your Twilio number. The assistant greets you as Maple Street Family Medicine and says it is an AI assistant.
 3. Try it as Maria Delgado, born March 4, 1985: ask for a sick visit, pick a time, say yes. Or ask whether they take Cigna. Or say you have chest pain.
-4. Hang up. The call is at the top of **Calls** with its transcript, and any refill or callback is under **Tasks**.
+4. Hang up. The call is at the top of **Calls** with its transcript, and any refill or callback is under **Requests**.
 
 ## When something is off
 
