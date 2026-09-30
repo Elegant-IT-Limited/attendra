@@ -202,6 +202,20 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false);
   });
 
+  it('counts a document being indexed as current only with the same model, and only for 15 minutes', async () => {
+    const doc = { title: 'Late fees', sourceType: 'text' as const, content: Buffer.from('A missed visit without a day\'s notice may be charged.'), userId: 'u_olga' };
+    const first = await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model });
+    await repo.forIndexing(DEMO_CLINIC.id, first.id, embedder.model); // a job picks it up, and is still at it
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false);
+    // being indexed with the old model is not current once the model changes
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: 'text-embedding-4' })).changed).toBe(true);
+    // a job that died mid-way: 16 minutes in indexing, and the same bytes queue it again
+    await repo.forIndexing(DEMO_CLINIC.id, first.id, embedder.model);
+    await t.db.execute(sql`update knowledge_documents set updated_at = now() - interval '16 minutes' where id = ${first.id}`);
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(true);
+    expect((await repo.get(DEMO_CLINIC.id, first.id))?.status).toBe('queued');
+  });
+
   it('indexes an unchanged upload once, replaces the chunks of a changed one, and audits both', async () => {
     const first = await repo.save(DEMO_CLINIC.id, { title: 'Parking and directions', sourceType: 'markdown', content: Buffer.from(DEMO_DOCUMENTS[0].text), userId: 'u_ana' });
     expect(first.changed).toBe(false);
