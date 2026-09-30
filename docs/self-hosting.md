@@ -51,7 +51,33 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`.
 
-**Upgrading to v0.4.1.** Patient names are now compared with letters such as ø, ł, æ and ß spelled with their base letters, so a patient's lookup hash has to be recomputed once, with the same `ATTENDRA_DATA_KEY` the services use: `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups`. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
+**Upgrading to v0.4.1.**
+
+1. **Back up first**, while the old version is still running:
+
+   ```bash
+   docker compose -f infra/docker-compose.yml exec postgres pg_dump -U attendra attendra > attendra.sql
+   ```
+
+2. **Pull and start the new version.** The `migrate` service runs migrations 0017 to 0019 on its own.
+
+3. **Recompute the patient lookups once.** Patient names are now compared with letters such as ø, ł, æ and ß spelled with their base letters, so each patient's lookup hash is recomputed, with the same `ATTENDRA_DATA_KEY` the services use:
+
+   ```bash
+   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups
+   ```
+
+   Outside Compose, the same is `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups`. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
+
+**If migration 0017 stops with counts.** 0017 makes every link between clinic rows (an appointment's patient and calls, a request's patient and call, a transcript line's or call action's call, a webhook attempt's event) stay inside one clinic. Before it changes anything it counts the rows that would break that, and if there are any it stops with a line per kind, such as `3 requests whose patient is in another clinic`, and changes nothing. Such a row points at a record in a different clinic, or at one that no longer exists; it cannot be made by Attendra's own code, so it comes from a manual edit or an import. Find the rows with the same test the migration uses, for example for requests:
+
+```sql
+select t.id, t.clinic_id, t.patient_id from tasks t
+where t.patient_id is not null
+  and not exists (select 1 from patients p where p.id = t.patient_id and p.clinic_id = t.clinic_id);
+```
+
+The other kinds follow the same shape; the checks are at the top of `packages/db/migrations/0017_same_clinic_links_2.sql`. Fix or clear each link (for a request, `update tasks set patient_id = null where id = ...`), then start again: the migration runs from the beginning.
 
 Using your own Postgres instead of Compose? It needs the pgvector extension installed (the `postgresql-16-pgvector` package on Debian and Ubuntu, or your provider's pgvector option); the migration enables it. Run the migrations as the database owner, and let the service's login role switch into the application role the RLS policies are written for:
 
