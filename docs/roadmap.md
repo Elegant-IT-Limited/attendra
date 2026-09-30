@@ -20,7 +20,7 @@ Test calls from the browser over WebRTC; the Schedule with staff booking; Today;
 
 - One design system across the dashboard: tokens, dark mode, a component kit, a command palette and keyboard shortcuts, axe checks on every page.
 - The clinic's own assistant: a name, and English and Spanish, with the guardrails and the yes check in every language.
-- `apps/worker` on pg-boss: a summary of every call, the retention purge, text delivery statuses.
+- `apps/worker` on pg-boss: a summary of every call, the retention purge. Text delivery statuses have a worker handler, but nothing sends it jobs yet: Twilio's status callback is not wired.
 - Live calls: watch, coach the assistant, take over or end, with simulated calls for the demo.
 - The clinic's knowledge: documents, hybrid search with pgvector, grounded and cited answers, medical questions refused in code.
 - Webhooks for n8n, Zapier and Make, signed per Standard Webhooks.
