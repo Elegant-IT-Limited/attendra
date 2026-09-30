@@ -178,3 +178,13 @@ export function age(dateOfBirth: string, today: string) {
   if (tm < m || (tm === m && td < d)) years--;
   return years;
 }
+
+/** "just now", "1 minute ago", "7 hours ago", "11 days ago": the one way the dashboard says how long ago something was. */
+export function ago(ms: number) {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'} ago`;
+  if (m < 1) return 'just now';
+  if (m < 60) return unit(m, 'minute');
+  if (m < 24 * 60) return unit(Math.round(m / 60), 'hour');
+  return unit(Math.round(m / 1440), 'day');
+}
