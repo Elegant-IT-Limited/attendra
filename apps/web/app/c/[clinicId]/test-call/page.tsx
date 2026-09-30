@@ -206,7 +206,7 @@ export default function TestCallPage() {
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>
             )}
             <p className="text-xs text-text-muted">
-              What the assistant does here is real for this clinic: bookings, cancellations and tasks. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
+              What the assistant does here is real for this clinic: bookings, cancellations and requests. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
             </p>
           </CardContent>
         </Card>
