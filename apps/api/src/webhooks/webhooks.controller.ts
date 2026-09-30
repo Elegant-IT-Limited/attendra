@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Attempt, type Database, type Endpoint, type PhiCipher, WebhookRepository } from '@attendra/db';
 import { deliver, eventId, type GuardOptions, newSecret, payloadOf, type Resolver, resolveEndpoint } from '@attendra/webhooks';
-import { Body, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { WebhookAttempt, WebhookAttempts, WebhookEndpoint, WebhookEndpointInput, WebhookEndpointPatch, WebhookEndpoints, WebhookSecret } from '../contracts';
@@ -11,6 +11,7 @@ import { CIPHER, DB, WEBHOOK_GUARD } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
+const SENDS_PER_MINUTE = 10;
 const URL_PROBLEMS: Record<string, string> = {
   invalid_url: 'That is not a web address.',
   https_only: 'Use an https:// address.',
@@ -29,6 +30,9 @@ const URL_PROBLEMS: Record<string, string> = {
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/webhooks')
 export class WebhooksController {
+  /** Sends staff start (test events, redeliveries) per clinic in the last minute: each can hold a worker for up to 10 seconds. */
+  private readonly sends = new Map<string, number[]>();
+
   private readonly repo: WebhookRepository;
 
   constructor(@Inject(DB) db: Database, @Inject(CIPHER) cipher: PhiCipher, @Inject(WEBHOOK_GUARD) private readonly guard: GuardOptions & { resolve?: Resolver }) {
@@ -52,7 +56,7 @@ export class WebhooksController {
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(WebhookEndpointInput)) body: z.infer<typeof WebhookEndpointInput>, @CurrentStaff() staff: Staff): Promise<WebhookSecret> {
     await this.checkUrl(body.url);
     const secret = newSecret();
-    const id = await this.repo.create(clinicId, { url: body.url, description: body.description, events: body.events, secret, userId: staff.userId });
+    const id = await this.repo.create(clinicId, { url: body.url, description: body.description, events: body.events, secret, userId: staff.userId, omitPatientIds: body.omitPatientIds });
     return { endpoint: view((await this.repo.get(clinicId, id))!), secret };
   }
 
@@ -91,8 +95,11 @@ export class WebhooksController {
   @ApiOperation({ summary: 'Send a test event to the endpoint now, and see the response' })
   @ApiOkResponse({ schema: schemaOf(WebhookAttempt) })
   async test(@Param('clinicId') clinicId: string, @Param('endpointId') id: string) {
+    // the endpoint must exist and be this clinic's before anything is recorded
+    if (!isUuid(id) || !(await this.repo.get(clinicId, id))) throw new NotFoundException({ error: 'not_found' });
     const now = new Date();
     const event = { id: eventId('webhook.test', `${id}|${now.toISOString()}`), clinicId, type: 'webhook.test' as const, occurredAt: now.toISOString(), data: { endpointId: id, test: true } };
+    this.throttle(clinicId);
     await this.repo.record(event);
     return this.send(clinicId, id, event.id, 'test');
   }
@@ -114,14 +121,23 @@ export class WebhooksController {
   async redeliver(@Param('clinicId') clinicId: string, @Param('endpointId') id: string, @Param('attemptId') attemptId: string) {
     const previous = /^\d+$/.test(attemptId) ? await this.repo.attempt(clinicId, Number(attemptId)) : null;
     if (!previous || previous.endpointId !== id) throw new NotFoundException({ error: 'not_found' });
+    this.throttle(clinicId);
     return this.send(clinicId, id, previous.eventId, 'redelivery');
+  }
+
+  /** At most SENDS_PER_MINUTE test events and redeliveries a minute, per clinic. */
+  private throttle(clinicId: string, now = Date.now()) {
+    const recent = (this.sends.get(clinicId) ?? []).filter((t) => t > now - 60_000);
+    if (recent.length >= SENDS_PER_MINUTE) throw new HttpException({ error: 'rate_limited', message: 'Too many test events and redeliveries. Wait a minute.' }, 429);
+    recent.push(now);
+    this.sends.set(clinicId, recent);
   }
 
   private async send(clinicId: string, endpointId: string, evtId: string, kind: 'test' | 'redelivery') {
     const target = isUuid(endpointId) ? await this.repo.secrets(clinicId, endpointId) : null;
     const event = await this.repo.event(clinicId, evtId);
     if (!target || !event) throw new NotFoundException({ error: 'not_found' });
-    const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }) }, this.guard);
+    const result = await deliver({ url: target.url, secrets: target.secrets }, { id: event.id, body: payloadOf({ ...event, type: event.type as never }, { omitPatientIds: target.omitPatientIds }) }, this.guard);
     const logged = await this.repo.logAttempt(clinicId, { endpointId, eventId: event.id, kind, attempt: 1, statusCode: result.status, durationMs: result.ms, error: result.error });
     if (result.ok) await this.repo.delivered(clinicId, endpointId);
     return attemptView((await this.repo.attempt(clinicId, logged))!);
@@ -135,7 +151,7 @@ export class WebhooksController {
 
 const view = (e: Endpoint): WebhookEndpoint => ({
   id: e.id, url: e.url, description: e.description, events: e.events as WebhookEndpoint['events'], enabled: e.enabled, disabledReason: e.disabledReason,
-  disabledAt: e.disabledAt?.toISOString() ?? null, consecutiveFailures: e.consecutiveFailures, createdAt: e.createdAt.toISOString(), rotating: e.rotating,
+  disabledAt: e.disabledAt?.toISOString() ?? null, consecutiveFailures: e.consecutiveFailures, createdAt: e.createdAt.toISOString(), rotating: e.rotating, omitPatientIds: e.omitPatientIds,
   lastAttempt: e.lastAttempt ? { at: e.lastAttempt.at.toISOString(), statusCode: e.lastAttempt.statusCode, error: e.lastAttempt.error } : null,
 });
 const attemptView = ({ endpointId: _e, ...a }: Attempt): WebhookAttempt => ({ ...a, at: a.at.toISOString() });

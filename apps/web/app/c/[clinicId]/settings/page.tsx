@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, emergencyNumberFor } from '@attendra/core';
+import { type ClinicConfig, clinicWarnings, emergencyNumberFor } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -65,6 +65,7 @@ export default function Settings() {
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
           </Field>
+          {clinicWarnings(c).map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Voice" htmlFor="voice" hint="A GPT-Live voice name."><Input id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })} /></Field>
             <Field label="Time zone" htmlFor="tz" hint="IANA name, like America/Denver."><Input id="tz" value={c.timezone} onChange={(e) => set({ timezone: e.target.value })} /></Field>

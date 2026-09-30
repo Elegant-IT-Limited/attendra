@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, PACKS } from '@attendra/core';
+import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, PACKS } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ export function Spoken({ language, children }: { language: Language; children: s
 export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (patch: Partial<ClinicConfig>) => void; disabled: boolean }) {
   const name = c.assistantName?.trim() || null;
   const defaultNumber = emergencyNumberFor({ phoneNumbers: c.phoneNumbers });
+  const allowed = allowedEmergencyNumbers(c.phoneNumbers);
   const toggle = (l: Language, on: boolean) => set({ languages: on ? LANGUAGES.filter((x) => x === l || c.languages.includes(x)) : c.languages.filter((x) => x !== l) });
 
   return (
@@ -31,7 +32,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
           <Input id="assistant-name" value={c.assistantName ?? ''} placeholder="Maya" maxLength={24}
             onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
-        <Field label="Emergency number" htmlFor="emergency-number" hint={`What the emergency script tells callers to ring. Leave empty for ${defaultNumber}, from the clinic's country.`}>
+        <Field label="Emergency number" htmlFor="emergency-number" hint={`What the emergency script tells callers to ring. Leave empty for ${defaultNumber}, from the clinic's country${allowed.length > 1 ? `; ${allowed.join(' or ')} are allowed` : ''}.`}>
           <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={defaultNumber} maxLength={4}
             onChange={(e) => set({ emergencyNumber: e.target.value.trim() || undefined })} />
         </Field>

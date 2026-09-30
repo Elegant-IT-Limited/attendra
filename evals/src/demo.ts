@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, type ClinicConfig, DEMO_CLINICS, fromMinutes, localDateOf, localParts, zonedInstant } from '@attendra/core';
-import { type Database, type PhiCipher, schema, withClinic } from '@attendra/db';
+import { type Database, MAX_UPCOMING, type PhiCipher, schema, withClinic } from '@attendra/db';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { loadScenarios } from './scenario';
 import { clinicOf, playScenario, type ScenarioResult } from './simulator';
@@ -58,6 +58,8 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
  * has passed moves forward by whole weeks of the clinic's calendar, so the day and
  * local time still match what the transcript says. The appointment a reschedule or cancel scenario started from was
  * set up before its call, so it is shown as booked by staff (`bookedBy`), or left out.
+ * Many scenarios book for the same few patients; like the rest of the demo, nobody
+ * keeps more than two upcoming visits, so the rest are left off the calendar.
  */
 /**
  * The same local day and time `weeks` weeks later. Weeks are counted on the clinic's
@@ -72,9 +74,11 @@ async function keepAssistantBookings(db: Database, clinic: ClinicConfig, rows: (
   const week = 7 * 86_400_000;
   const tz = clinic.timezone;
   const used = new Set<string>(); // cancelled rows can share a slot in the database, but not on screen
+  const upcoming = new Map<string, number>();
   for (const row of rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())) {
     const fromSetup = !!row.createdByCallId && setupCalls.has(row.createdByCallId);
     if (fromSetup && !bookedBy) continue;
+    if (row.status === 'booked' && (upcoming.get(row.patientId) ?? 0) >= MAX_UPCOMING) continue;
     const minutes = row.endsAt.getTime() - row.startsAt.getTime();
     let weeks = row.startsAt < now ? Math.ceil((now.getTime() - row.startsAt.getTime()) / week) : 0;
     for (let attempt = 0; attempt < 4; attempt++, weeks++) {
@@ -88,6 +92,7 @@ async function keepAssistantBookings(db: Database, clinic: ClinicConfig, rows: (
           ...(fromSetup ? { createdByCallId: null, createdByUserId: bookedBy } : {}),
         }));
         used.add(slot);
+        if (row.status === 'booked') upcoming.set(row.patientId, (upcoming.get(row.patientId) ?? 0) + 1);
         break;
       } catch (err) {
         const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code;

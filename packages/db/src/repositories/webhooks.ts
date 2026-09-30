@@ -6,6 +6,8 @@ import { type PhiCipher, phiContext } from '../crypto';
 export interface Endpoint {
   id: string; url: string; description: string; events: string[]; enabled: boolean; disabledReason: string | null; disabledAt: Date | null;
   consecutiveFailures: number; createdAt: Date; rotating: boolean;
+  /** Deliveries leave out patientId: on unless the clinic turned it off for this endpoint. */
+  omitPatientIds: boolean;
   lastAttempt: { at: Date; statusCode: number | null; error: string | null } | null;
 }
 /** Event names are fixed identifiers with no commas; the list travels as one bound parameter. */
@@ -29,12 +31,12 @@ export class WebhookRepository {
     return tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${clinicId}, ${actor(userId)}, ${action}, 'webhook_endpoint', ${endpointId})`);
   }
 
-  async create(clinicId: string, e: { url: string; description: string; events: string[]; secret: string; userId: string }): Promise<string> {
+  async create(clinicId: string, e: { url: string; description: string; events: string[]; secret: string; userId: string; omitPatientIds?: boolean }): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = rows<{ id: string }>(await tx.execute(sql`
-        insert into webhook_endpoints (clinic_id, url, description, events, secret_enc, created_by_user_id)
+        insert into webhook_endpoints (clinic_id, url, description, events, secret_enc, created_by_user_id, omit_patient_ids)
         values (${clinicId}, ${e.url}, ${e.description}, string_to_array(${e.events.join(',')}, ','),
-          ${this.cipher.encrypt(e.secret, phiContext(clinicId, SECRET))}, ${e.userId}) returning id`));
+          ${this.cipher.encrypt(e.secret, phiContext(clinicId, SECRET))}, ${e.userId}, ${e.omitPatientIds ?? true}) returning id`));
       await this.audit(tx, clinicId, e.userId, 'webhook.endpoint.created', row!.id);
       return row!.id;
     });
@@ -53,20 +55,20 @@ export class WebhookRepository {
   }
 
   /** The secrets a delivery is signed with: the current one, and the previous one until its grace period ends. */
-  async secrets(clinicId: string, id: string, now = new Date()): Promise<{ url: string; enabled: boolean; secrets: string[] } | null> {
+  async secrets(clinicId: string, id: string, now = new Date()): Promise<{ url: string; enabled: boolean; secrets: string[]; omitPatientIds: boolean } | null> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [r] = rows<{ url: string; enabled: boolean; secret_enc: string; previous_secret_enc: string | null; previous_expires_at: string | null }>(await tx.execute(sql`
-        select url, enabled, secret_enc, previous_secret_enc, previous_expires_at from webhook_endpoints where clinic_id = ${clinicId} and id = ${id}`));
+      const [r] = rows<{ url: string; enabled: boolean; secret_enc: string; previous_secret_enc: string | null; previous_expires_at: string | null; omit_patient_ids: boolean }>(await tx.execute(sql`
+        select url, enabled, secret_enc, previous_secret_enc, previous_expires_at, omit_patient_ids from webhook_endpoints where clinic_id = ${clinicId} and id = ${id}`));
       if (!r) return null;
       const ctx = phiContext(clinicId, SECRET);
       const secrets = [this.cipher.decrypt(r.secret_enc, ctx)];
       if (r.previous_secret_enc && r.previous_expires_at && new Date(r.previous_expires_at) > now) secrets.push(this.cipher.decrypt(r.previous_secret_enc, ctx));
-      return { url: r.url, enabled: r.enabled, secrets };
+      return { url: r.url, enabled: r.enabled, secrets, omitPatientIds: r.omit_patient_ids };
     });
   }
 
   /** Changes what an endpoint gets or where it goes. Turning it back on clears its failures. */
-  async update(clinicId: string, id: string, patch: { url?: string; description?: string; events?: string[]; enabled?: boolean }, userId: string): Promise<boolean> {
+  async update(clinicId: string, id: string, patch: { url?: string; description?: string; events?: string[]; enabled?: boolean; omitPatientIds?: boolean }, userId: string): Promise<boolean> {
     return withClinic(this.db, clinicId, async (tx) => {
       const sets = [
         patch.url !== undefined ? sql`url = ${patch.url}` : null,
@@ -74,6 +76,7 @@ export class WebhookRepository {
         patch.events !== undefined ? sql`events = string_to_array(${patch.events.join(',')}, ',')` : null,
         patch.enabled === true ? sql`enabled = true, disabled_reason = null, disabled_at = null, consecutive_failures = 0` : null,
         patch.enabled === false ? sql`enabled = false, disabled_reason = 'turned_off', disabled_at = now()` : null,
+        patch.omitPatientIds !== undefined ? sql`omit_patient_ids = ${patch.omitPatientIds}` : null,
       ].filter((x) => x !== null);
       if (!sets.length) return true;
       const done = rows<{ id: string }>(await tx.execute(sql`update webhook_endpoints set ${sql.join(sets, sql`, `)}, updated_at = now() where clinic_id = ${clinicId} and id = ${id} returning id`));
@@ -170,6 +173,7 @@ function toEndpoint(r: Record<string, unknown>): Endpoint {
     disabledReason: (r.disabled_reason as string | null) ?? null, disabledAt: r.disabled_at ? new Date(r.disabled_at as string) : null,
     consecutiveFailures: Number(r.consecutive_failures), createdAt: new Date(r.created_at as string),
     rotating: !!r.previous_expires_at && new Date(r.previous_expires_at as string) > new Date(),
+    omitPatientIds: r.omit_patient_ids !== false,
     lastAttempt: r.last_at ? { at: new Date(r.last_at as string), statusCode: (r.last_status as number | null) ?? null, error: (r.last_error as string | null) ?? null } : null,
   };
 }

@@ -54,10 +54,29 @@ function callText(call: CallForSummary, maxChars: number): string {
   return `${facts}\n\nTranscript:\n${transcript}`;
 }
 
-/** Emergency calls are always flagged, whatever the model decided. */
+const said = (call: CallForSummary, code: string) => call.actions.some((a) => a.result.error === code);
+const ran = (call: CallForSummary, tool: string) => call.actions.some((a) => a.tool === tool);
+const endedOnError = (call: CallForSummary) => call.closeReason === 'error' || call.closeReason === 'connection_lost' || !!call.closeReason?.startsWith('socket closed');
+
+/**
+ * The calls staff must look at, decided from the call's facts and never by the
+ * model: a caller cannot talk it out of a flag. The first reason that applies, or null.
+ */
+export function requiredReview(call: CallForSummary): { reason: string; followUp: string } | null {
+  if (call.emergency) return { reason: 'Emergency language on the call.', followUp: 'Check the call and whether anyone should contact the caller.' };
+  if (said(call, 'needs_staff')) return { reason: 'Two patient records share the caller\'s name and date of birth.', followUp: 'Confirm which patient called and call them back.' };
+  if (said(call, 'too_many_attempts')) return { reason: 'The caller could not be verified after three tries.', followUp: 'Call the caller back to confirm who they are.' };
+  if (ran(call, 'verify_caller') && !call.actions.some((a) => a.result.verified === true)) return { reason: 'The caller could not be verified.', followUp: 'Call the caller back to confirm who they are.' };
+  if (endedOnError(call)) return { reason: 'The call ended on an error.', followUp: 'Check whether the caller needs a call back.' };
+  return null;
+}
+
+/** The model's flag, combined with the fixed rules: a rule that applies always flags the call. */
 function enforce(call: CallForSummary, s: CallSummary): CallSummary {
-  if (!call.emergency) return s;
-  return { ...s, intent: 'emergency', needsReview: true, reviewReason: s.reviewReason ?? 'Emergency language on the call.' };
+  const rule = requiredReview(call);
+  const out = call.emergency ? { ...s, intent: 'emergency' as const } : s;
+  if (!rule) return out;
+  return { ...out, needsReview: true, reviewReason: s.needsReview && s.reviewReason ? s.reviewReason : rule.reason, followUp: s.followUp ?? rule.followUp };
 }
 
 /**
@@ -94,9 +113,6 @@ export class ModelSummariser implements Summariser {
     return enforce(call, parsed.data);
   }
 }
-
-const said = (call: CallForSummary, code: string) => call.actions.some((a) => a.result.error === code);
-const ran = (call: CallForSummary, tool: string) => call.actions.some((a) => a.tool === tool);
 
 /**
  * A summary written from the call's facts, with no model: what the tools did, the
@@ -138,14 +154,12 @@ export class LocalSummariser implements Summariser {
     else sentences.push('The call ended with nothing booked or requested.');
     if (!call.emergency && said(call, 'no_clear_yes')) sentences.push('The caller did not clearly confirm a change, so nothing was changed at that point.');
 
+    const rule = requiredReview(call);
     const [needsReview, reviewReason, followUp]: [boolean, string | null, string | null] =
-      call.emergency ? [true, 'Emergency language on the call.', 'Check the call and whether anyone should contact the caller.']
-        : said(call, 'needs_staff') ? [true, 'Two patient records share the caller\'s name and date of birth.', 'Confirm which patient called and call them back.']
-          : said(call, 'too_many_attempts') ? [true, 'The caller could not be verified after three tries.', 'Call the caller back to confirm who they are.']
-            : call.closeReason === 'error' ? [true, 'The call ended on an error.', 'Check whether the caller needs a call back.']
-              : task === 'refill' ? [false, null, 'Review the refill request and call the patient if anything is unclear.']
-                : task === 'callback' ? [false, null, 'Call the caller back.']
-                  : [false, null, null];
+      rule ? [true, rule.reason, rule.followUp]
+        : task === 'refill' ? [false, null, 'Review the refill request and call the patient if anything is unclear.']
+          : task === 'callback' ? [false, null, 'Call the caller back.']
+            : [false, null, null];
     return { summary: sentences.slice(0, 3).join(' '), intent, sentiment, needsReview, reviewReason, followUp };
   }
 }

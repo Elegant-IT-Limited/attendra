@@ -57,6 +57,14 @@ services:
     depends_on: { seed: { condition: service_completed_successfully } }
     restart: unless-stopped
 
+  # MCP over Streamable HTTP for other AI agents (docs/mcp.md): docker compose --profile mcp up
+  mcp:
+    <<: *node
+    profiles: [mcp]
+    command: ["pnpm", "--filter", "@attendra/mcp", "start"]
+    ports: ["127.0.0.1:8082:8082"]
+    depends_on: { seed: { condition: service_completed_successfully } }
+
   web:
     build: { context: .., dockerfile: infra/web.Dockerfile, args: { API_URL: "http://api:8081" } }
     ports: ["127.0.0.1:3000:3000"]

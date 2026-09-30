@@ -14,6 +14,7 @@ export * from './repositories/summaries';
 export * from './repositories/knowledge';
 export * from './repositories/webhooks';
 export * from './repositories/quality';
+export * from './repositories/api-keys';
 export * from './demo-schedule';
 export * from './seed';
 export * as schema from './schema';
