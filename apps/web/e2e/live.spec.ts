@@ -41,6 +41,10 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   const strip = today.getByRole('list', { name: 'Live calls' });
   await expect(strip).toContainText('Verified: Maria D.', { timeout: 20_000 });
   await expect(strip).toContainText('Waiting for a yes');
+  // and not as a call that ended with nothing done: it has not ended
+  const callId = new URL(page.url()).pathname.split('/')[4];
+  await expect(today.getByRole('list', { name: 'Needs attention' })).toBeVisible(); // shown once the calls have loaded
+  await expect(today.locator(`a[href$="/calls/${callId}"]`).filter({ hasText: 'Open the call' })).toHaveCount(0);
   await today.close();
 
   await page.getByLabel('Note for the assistant').fill('she is a new patient, offer Thursday afternoon');
