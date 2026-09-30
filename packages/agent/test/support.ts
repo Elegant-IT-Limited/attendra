@@ -1,4 +1,4 @@
-import { type ClinicConfig, DEMO_CLINIC, type Messenger, zonedInstant } from '@attendra/core';
+import { type ClinicConfig, DEMO_CLINIC, type DomainEvent, type Messenger, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo, seedDhanmondi } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -27,7 +27,9 @@ export async function world(which: 'maple' | 'dhanmondi' = 'maple') {
   const { patientIds, clinic } = await (which === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
   const sms: { to: string; template: string; language?: string; when?: string }[] = [];
   const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); } };
+  const events: DomainEvent[] = [];
   const backend = {
+    events: { emit: async (_clinicId: string, e: DomainEvent) => { events.push(e); } },
     patients: new PostgresPatientDirectory(t.db, cipher),
     scheduler: new BuiltinScheduler(t.db),
     tasks: new PostgresTaskQueue(t.db, cipher),
@@ -63,5 +65,5 @@ export async function world(which: 'maple' | 'dhanmondi' = 'maple') {
       },
     };
   }
-  return { t, backend, patientIds, call, sms };
+  return { t, backend, patientIds, call, sms, events };
 }

@@ -172,6 +172,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             <dd>{k === 'callback_number' ? <a className="hover:underline" href={`tel:${v}`}>{phone(v)}</a> : v}</dd>
           </div>
         ))}
+        {open && t.followUp && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
       </dl>

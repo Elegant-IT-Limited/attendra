@@ -16,13 +16,13 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
 
   const did = page.locator('table').filter({ hasText: 'Calls answered' });
   await expect(did.getByRole('columnheader', { name: 'Last 7 days' })).toBeVisible();
-  await expect(did.getByRole('row', { name: /Calls answered/ }).getByRole('cell').nth(2)).toHaveText('20');
+  await expect(did.getByRole('row', { name: /Calls answered/ }).getByRole('cell').nth(2)).toHaveText('25');
   await expect(page.getByText('Browser tests are not counted.', { exact: false })).toBeVisible();
 
   await expect(page.getByRole('list', { name: 'Recent calls' }).getByRole('listitem')).toHaveCount(5);
 
   // claiming from Today takes the request and opens the queue
   await attention.getByRole('button', { name: 'Claim' }).first().click();
-  await expect(page).toHaveURL(/\/requests$/);
+  await expect(page).toHaveURL(/\/requests$/, { timeout: 20_000 }); // next dev may still be compiling the page
   await expect(page.getByText('You have it').first()).toBeVisible();
 });

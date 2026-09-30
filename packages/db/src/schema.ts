@@ -137,6 +137,21 @@ export const auditLogs = pgTable('audit_logs', {
   entityId: text('entity_id'),
   callId: uuid('call_id'),
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+  // how much, never what: { transcriptLines: 412, summaries: 9 }
+  counts: jsonb('counts').$type<Record<string, number>>(),
+});
+
+export const callSummaries = pgTable('call_summaries', {
+  callId: uuid('call_id').primaryKey(),
+  clinicId: text('clinic_id').notNull(),
+  bodyEnc: text('body_enc').notNull(),
+  intent: text('intent', { enum: ['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other'] }).notNull(),
+  sentiment: text('sentiment', { enum: ['calm', 'frustrated', 'distressed'] }).notNull(),
+  needsReview: boolean('needs_review').notNull(),
+  model: text('model').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  reviewedByUserId: text('reviewed_by_user_id'),
 });
 
 export const webhookDeliveries = pgTable('webhook_deliveries', {
@@ -151,4 +166,5 @@ export const smsMessages = pgTable('sms_messages', {
   toHash: text('to_hash').notNull(),
   status: text('status').notNull().default('queued'),
   idempotencyKey: text('idempotency_key').notNull(),
+  providerSid: text('provider_sid'),
 });
