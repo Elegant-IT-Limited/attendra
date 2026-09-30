@@ -73,7 +73,7 @@ describe('requests', () => {
   it('closes with an outcome, and refuses one that is not on the list', async () => {
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'emailed them' } })).json().error).toBe('invalid_request');
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'left_message' } })).statusCode).toBe(204);
-    expect((await list('?status=done&type=callback'))[0]!.outcome).toBe('left_message');
+    expect((await list('?status=done&type=callback'))[0]).toMatchObject({ outcome: 'left_message', doneAt: expect.any(String), doneByName: 'Ana Front' });
   });
 });
 

@@ -28,11 +28,12 @@ export class TasksController {
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(TaskQuery)) q: z.infer<typeof TaskQuery>, @CurrentStaff() staff: Staff): Promise<TaskList> {
     const assignee = q.assignee === 'me' ? { userId: staff.userId } : q.assignee;
     const tasks = await this.desk.listTasks(clinicId, { status: q.status, type: q.type, assignee, limit: 100 }, staff.userId);
-    const names = await staffNames(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
+    const names = await staffNames(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, t.doneByUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
     return {
       tasks: tasks.map(({ assignedByUserId: _by, notes, ...t }) => ({
         ...t, createdAt: t.createdAt.toISOString(), claimedAt: iso(t.claimedAt), doneAt: iso(t.doneAt),
         assigneeName: t.assigneeUserId ? names.get(t.assigneeUserId) ?? null : null,
+        doneByName: t.doneByUserId ? names.get(t.doneByUserId) ?? null : null,
         notes: notes.map((n) => ({ id: n.id, author: names.get(n.authorUserId) ?? null, at: n.at.toISOString(), body: n.body })),
       })),
     };
