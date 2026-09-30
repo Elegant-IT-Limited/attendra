@@ -13,7 +13,7 @@ export interface SimulatedCaller {
   next(call: Line[]): Promise<{ text: string; hangup: boolean }>;
 }
 
-export interface Persona { id: string; clinic: 'maple' | 'dhanmondi'; caller_number: string | null; persona: string; goal: string; expect: string[] }
+export interface Persona { id: string; clinic: 'maple' | 'cedar_park'; caller_number: string | null; persona: string; goal: string; expect: string[] }
 
 const HANGUP = '[HANGUP]';
 

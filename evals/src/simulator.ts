@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
 import { type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, type Messenger, speakSlot, type ToolName, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, type Database, DEMO_PATIENTS, DHANMONDI_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedDemo, seedDhanmondi, withClinic } from '@attendra/db';
+import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedCedarPark, seedDemo, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -10,12 +10,11 @@ import { BuiltinScheduler } from '@attendra/scheduling';
 import { Writable } from 'node:stream';
 import type { Scenario } from './scenario';
 
-// Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver: after hours
-// at Maple Street, and 8 am on Tuesday in Dhaka, as Dhanmondi opens.
+// Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver, after hours.
 export const SIM_NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
 export const clinicOf = (scenario: Scenario): ClinicConfig => DEMO_CLINICS[scenario.clinic];
-const defaultCaller = (scenario: Scenario) => (scenario.clinic === 'dhanmondi' ? DHANMONDI_PATIENTS[0].phone : DEMO_PATIENTS[0].phone);
+const defaultCaller = (scenario: Scenario) => (scenario.clinic === 'cedar_park' ? CEDAR_PARK_PATIENTS[0].phone : DEMO_PATIENTS[0].phone);
 
 export interface ScenarioResult {
   id: string;
@@ -208,7 +207,7 @@ export async function runScenario(scenario: Scenario, livePlanner?: Planner): Pr
   const t = await openTestDatabase();
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
-    const { patientIds } = await (scenario.clinic === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
+    const { patientIds } = await (scenario.clinic === 'cedar_park' ? seedCedarPark : seedDemo)(t.db, cipher);
     if (scenario.tags.includes('knowledge')) await seedDemoKnowledge(t.db, new LocalEmbedder());
     return await playScenario(t.db, cipher, patientIds, scenario, { livePlanner });
   } finally {

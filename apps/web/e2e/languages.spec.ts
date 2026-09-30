@@ -6,6 +6,21 @@ test.describe.serial('languages and a second clinic', () => {
   let manager: Page;
   test.beforeAll(async ({ browser }) => { manager = await openAs(browser, 'manager'); });
 
+  test('the Cedar Park front desk sees only its own clinic, even by address', async ({ browser }) => {
+    const page = await openAs(browser, 'cedarpark');
+    await expect(page.getByText('Cedar Park Clinic').first()).toBeVisible();
+    await expect(page.getByText('Maple Street Family Medicine')).toHaveCount(0);
+    const other = await page.request.get('/api/v1/clinics/clinic_demo_maple/settings');
+    expect([403, 404]).toContain(other.status());
+    await page.goto('/c/clinic_demo_maple');
+    await expect(page.getByText('Maria Delgado')).toHaveCount(0);
+  });
+
+  test('Maple Street\'s manager cannot open Cedar Park', async () => {
+    const res = await manager.request.get('/api/v1/clinics/clinic_demo_cedar_park/settings');
+    expect([403, 404]).toContain(res.status());
+  });
+
   test('the assistant\'s name and languages, with a greeting preview in each', async () => {
     const page = manager;
     await page.getByRole('link', { name: 'Settings' }).click();
@@ -37,9 +52,9 @@ test.describe.serial('languages and a second clinic', () => {
     await expect(page.getByText('Saved. The next call uses these settings.')).toBeVisible();
   });
 
-  // last, since it ends the stored Dhanmondi session, which no spec after this one uses
+  // last, since it ends the stored Cedar Park session, which no spec after this one uses
   test('signing out clears the screen', async ({ browser }) => {
-    const page = await openAs(browser, 'dhanmondi');
+    const page = await openAs(browser, 'cedarpark');
     await page.getByRole('button', { name: /account and theme/ }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page).toHaveURL(/\/sign-in$/);
