@@ -72,7 +72,7 @@ export const DHANMONDI_CLINIC = ClinicConfig.parse({
     { id: 'prov_kamal', name: 'Dr. Kamal Hossain', names: { bn: 'ডা. কামাল হোসেন' }, visitTypeIds: ['vt_consult', 'vt_ecg'],
       hours: { '6': [{ open: '16:00', close: '20:00' }], '0': [{ open: '16:00', close: '20:00' }], '2': [{ open: '16:00', close: '20:00' }], '4': [{ open: '16:00', close: '20:00' }] } },
     // not a person: the collection room's time, booked like a provider's
-    { id: 'prov_collection', name: 'the sample collection room', names: { bn: 'নমুনা সংগ্রহ কক্ষ' }, visitTypeIds: ['vt_blood', 'vt_home'],
+    { id: 'prov_collection', name: 'Sample collection room', kind: 'room', names: { bn: 'নমুনা সংগ্রহ কক্ষ' }, visitTypeIds: ['vt_blood', 'vt_home'],
       hours: { '6': MORNINGS, '0': MORNINGS, '1': MORNINGS, '2': MORNINGS, '3': MORNINGS, '4': MORNINGS } },
   ],
   visitTypes: [

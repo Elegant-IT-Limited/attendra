@@ -16,6 +16,20 @@ const DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবা
 // in Dhaka the months of a date are said in English
 export const BN_MONTHS = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
 
+/** A Bengali word ends in a consonant (with its inherent vowel), not a vowel sign or vowel. */
+const endsInConsonant = (word: string) => /[\u0995-\u09B9\u09CE\u09DC-\u09DF]$/u.test(word);
+const bengali = (word: string) => /[\u0980-\u09FF]$/u.test(word);
+/** "রহমান" -> "রহমানের", "দিদি" -> "দিদির". A name in English letters gets "এর" as its own word. */
+export function genitive(name: string) {
+  if (!bengali(name)) return `${name} এর`;
+  return endsInConsonant(name) ? `${name}ের` : `${name}র`;
+}
+/** "কক্ষ" -> "কক্ষে", "ল্যাবরেটরি" -> "ল্যাবরেটরিতে": in or at a place. */
+export function locative(place: string) {
+  if (!bengali(place)) return `${place} এ`;
+  return endsInConsonant(place) ? `${place}ে` : `${place}তে`;
+}
+
 export const bnDigits = (s: string | number) => String(s).replace(/\d/g, (d) => BN_DIGITS[Number(d)]!);
 /** Bengali digits back to ASCII, for anything a caller says that code must read. */
 export const asciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d)));
@@ -58,7 +72,9 @@ export const bn: LanguagePack = {
   disclosure: words('(এআই|এ আই|কৃত্রিম বুদ্ধিমত্তা|ভার্চুয়াল) ?(সহকারী|অ্যাসিস্ট্যান্ট|রিসেপশনিস্ট)|ai (assistant|shohokari|sohokari)'),
   speakWhen: when,
   speakPhone: (e164) => e164.replace(/\D/g, '').replace(/^880/, '0').split('').map((d) => DIGIT_WORDS[Number(d)]).join(' '),
-  readbackBooking: ({ when: w, provider, visit, replacing }) => `${w}, ${provider}-এর কাছে, ${visit}${replacing ? `, আগের ${replacing}-এর বদলে` : ''}`,
+  // "ডা. ফারহানা রহমানের কাছে" for a person, "নমুনা সংগ্রহ কক্ষে" for a room: the case ending joins the word
+  readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) =>
+    `${w}, ${providerKind === 'room' ? locative(provider) : `${genitive(provider)} কাছে`}, ${visit}${replacing ? `, আগের ${genitive(replacing)} বদলে` : ''}`,
   readbackCancel: ({ when: w }) => `${w}-এর অ্যাপয়েন্টমেন্ট বাতিল করা`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: আপনার অ্যাপয়েন্টমেন্ট ${v.when}। বদলাতে বা বাতিল করতে ${v.clinicPhone} নম্বরে ফোন করুন।`,

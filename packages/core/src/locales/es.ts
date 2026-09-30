@@ -26,7 +26,7 @@ export const es: LanguagePack = {
   disclosure: /\b(asistente (virtual|de ia|con inteligencia artificial|automatizad[oa])|inteligencia artificial)\b/i,
   speakWhen: when,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
-  readbackBooking: ({ when: w, provider, visit, replacing }) => `${w} con ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
+  readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) => `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}.`,
