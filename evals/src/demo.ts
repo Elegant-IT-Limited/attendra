@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, type ClinicConfig, DEMO_CLINICS, fromMinutes, localDateOf, localParts, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, type ClinicConfig, DEMO_CLINICS, fromMinutes, isOpen, localDateOf, localParts, weekdayOf, zonedInstant } from '@attendra/core';
 import { type Database, DEMO_SCHEDULE_PATIENTS, MAX_UPCOMING, type PhiCipher, phoneKey, PostgresPatientDirectory, schema, withClinic } from '@attendra/db';
 import { join } from 'node:path';
 import { and, eq, or, sql } from 'drizzle-orm';
@@ -56,7 +56,12 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
     const weekStart = zonedInstant(addDays(today, -((weekdayOf(today) + 6) % 7)), '00:00', clinic.timezone).getTime();
     const end = now.getTime() - Math.min(hour, (now.getTime() - weekStart) / 10);
     spread(results.slice(0, evals.length), weekStart - 14 * 24 * hour, weekStart - hour);
-    spread(results.slice(evals.length), weekStart + Math.min(hour, (end - weekStart) / 20), end);
+    // an ordinary week's calls come in while the clinic is open, every half hour it was open so far
+    const open: number[] = [];
+    for (let at = weekStart; at < end; at += hour / 2) if (isOpen(clinic, new Date(at + 10 * 60_000))) open.push(at + 10 * 60_000);
+    const ordinary = results.slice(evals.length);
+    if (open.length >= ordinary.length) ordinary.forEach((r, i) => times.set(r.callId, new Date(open[Math.floor(((i + 0.5) * open.length) / ordinary.length)]!)));
+    else spread(ordinary, weekStart + Math.min(hour, (end - weekStart) / 20), end); // a week only hours old
   } else {
     // newest first on screen: the last scenario is about an hour ago, the first about six days ago
     const step = Math.min(9.5, 140 / Math.max(1, results.length - 1));
