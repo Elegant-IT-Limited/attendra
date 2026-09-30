@@ -49,7 +49,7 @@ export function createAuth(db: Database, opts: AuthOptions) {
     // A front-desk shift, not a month: a session ends 12 hours after sign-in, however
     // busy it is. The dashboard also signs out after 15 idle minutes.
     session: { modelName: 'auth_sessions', expiresIn: 60 * 60 * 12, disableSessionRefresh: true },
-    // People are added by an owner (scripts/add-member.ts in v0.2), never by sign-up.
+    // People are added on the Team page or with scripts/add-member.ts, never by sign-up.
     emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
     rateLimit: { enabled: opts.rateLimit ?? true, window: 60, max: 30 },
     plugins: [
