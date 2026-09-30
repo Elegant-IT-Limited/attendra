@@ -100,6 +100,9 @@ class ApiModule {
  * StaffGuard, except /api/v1/health), Better Auth serves /api/auth, and the
  * OpenAPI document is at /api/docs.
  */
+/** The one route that takes a large body. */
+export const KNOWLEDGE_UPLOAD_ROUTE = '/api/v1/clinics/:clinicId/knowledge/documents';
+
 export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> {
   const hops = deps.trustProxy ?? 0;
   // trust exactly `hops` proxies (the dashboard), so a client-sent X-Forwarded-For entry never becomes the address
@@ -108,10 +111,14 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   app.setGlobalPrefix('api/v1');
   const fastify = app.getHttpAdapter().getInstance();
 
-  // Documents for the clinic's knowledge arrive as raw bytes, up to 5 MB; everything else stays under the 512 KB limit.
+  // Documents for the clinic's knowledge arrive as raw bytes, up to 5 MB, on that one
+  // route. The parser keeps the server's 512 KB limit, so every other route, Better
+  // Auth's included, refuses a large body whatever its content type says.
   fastify.removeContentTypeParser('text/plain');
-  fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer', bodyLimit: 5 * 1024 * 1024 + 1024 },
-    (_req, body, done) => done(null, body));
+  fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  fastify.addHook('onRoute', (route) => {
+    if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
+  });
 
   // every route, Better Auth's included: sign-in is where guessing happens
   await fastify.register(rateLimit, { max: deps.rateLimit ?? 600, timeWindow: 60_000 });
