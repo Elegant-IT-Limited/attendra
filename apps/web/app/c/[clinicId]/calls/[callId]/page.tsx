@@ -46,8 +46,14 @@ export default function CallPage() {
       return Date.now() - opened < SUMMARY_WAIT_MS ? SUMMARY_POLL_MS : false;
     },
   });
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS); return () => clearInterval(t); }, []);
-  const slowSummary = !!call.data && summaryPending(call.data) && now - opened >= SUMMARY_WAIT_MS;
+  const pending = !!call.data && summaryPending(call.data);
+  // the clock is only for telling a slow summary apart, so it runs only while one is pending
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS);
+    return () => clearInterval(t);
+  }, [pending]);
+  const slowSummary = pending && now - opened >= SUMMARY_WAIT_MS;
   const tz = clinic?.timezone ?? 'UTC';
 
   const back = (
