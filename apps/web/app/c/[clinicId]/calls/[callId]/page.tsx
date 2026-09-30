@@ -17,7 +17,7 @@ import { clinicTime, clock, duration, REFUSALS, shortWhen, TASK_TYPES, TOOLS } f
 import { cn } from '@/lib/utils';
 
 const CLOSE_REASONS: Record<string, string> = {
-  caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', connection_lost: 'Connection dropped',
+  caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', ended_by_staff: 'Ended by staff', connection_lost: 'Connection dropped',
 };
 
 const SUMMARY_POLL_MS = 5_000;

@@ -75,6 +75,19 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('records a call staff ended as ended_by_staff, not as the assistant hanging up', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.act((h.runner as unknown as { agent: CallAgent }).agent.endByStaff());
+    await h.runner.handle({ type: 'session.closed', event_id: 'e9', reason: 'agent_hangup', usage: { seconds: 30 } } as SidebandEvent);
+    expect(h.closes.at(-1)).toMatchObject({ reason: 'ended_by_staff' });
+  });
+
+  it('keeps agent_hangup for a call the assistant ended itself', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle({ type: 'session.closed', event_id: 'e9', reason: 'agent_hangup', usage: { seconds: 30 } } as SidebandEvent);
+    expect(h.closes.at(-1)).toMatchObject({ reason: 'agent_hangup' });
+  });
+
   it('stores whole turns and closes the call with final usage and outcome', async () => {
     const h = harness(new ScriptedPlanner([]));
     await h.runner.handle(delta('out', 'o1', 'Thanks for calling Maple Street.', 0));
