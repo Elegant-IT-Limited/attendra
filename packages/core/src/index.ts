@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+export * from './api-scopes';
 export * from './clinic';
 export * from './confirmation';
 export * from './locales';
