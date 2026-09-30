@@ -23,6 +23,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(did(page.locator('tbody tr').filter({ hasText: 'Daniel Okonkwo' }))).toHaveText('Identity check, Searched openings, Proposed a time, No clear yes');
     const booked = page.locator('tbody tr').filter({ has: page.getByText('Booked', { exact: true }) }).first();
     await expect(did(booked)).toHaveText(/^Identity check, .*, Booked$/);
+    // a confirm sent again after the cancellation changed nothing, so the list leaves it out
+    await expect(did(page.locator('tbody tr').filter({ hasText: 'Proposed a cancellation, Cancelled' }))).toHaveText('Identity check, Looked up appointments, Proposed a cancellation, Cancelled');
   });
 
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
