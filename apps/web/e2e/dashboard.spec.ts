@@ -7,9 +7,10 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
-    await expect(page.locator('tbody tr')).toHaveCount(25);
+    // 25 eval scenarios in the weeks before, and 11 ordinary calls this week
+    await expect(page.locator('tbody tr')).toHaveCount(36);
     await page.getByRole('tab', { name: 'Needs attention' }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(7); // 4 requests for staff, 3 emergencies
+    await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
@@ -36,7 +37,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
-    await expect(tasks).toHaveCount(4);
+    await expect(tasks).toHaveCount(6); // 4 from the eval calls, a refill and a callback from this week's
     const first = tasks.first();
     await expect(first.getByText('James Whitaker')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
@@ -47,7 +48,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Mark done' }).click();
     await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await expect(tasks).toHaveCount(3);
+    await expect(tasks).toHaveCount(5);
     await page.getByRole('tab', { name: 'Done' }).click();
     await expect(tasks).toHaveCount(1);
   });
@@ -58,6 +59,14 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByText('A practice manager or owner can change them.')).toBeVisible();
     await expect(page.getByLabel('Greeting')).toBeDisabled();
+  });
+
+  test('the date filters on Calls say whose dates they are', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
+    await expect(page.getByLabel('From')).toHaveAttribute('type', 'date');
+    await expect(page.getByText('Times and dates are the clinic’s.')).toBeVisible();
+    await page.close();
   });
 
   test('the voice and the time zone are choices, and the zone shows its time now', async ({ browser }) => {
