@@ -116,7 +116,7 @@ describe('adding and editing', () => {
 
   it('adds a patient the assistant can then verify on a call', async () => {
     const res = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Nora', lastName: 'Quinlan', dob: '1971-06-18', phone: '(303) 555-0188' } });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(201);
     id = res.json().id;
     expect(await directory().findByNameAndDob(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0188' } });
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
@@ -146,7 +146,7 @@ describe('adding and editing', () => {
     const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29' } });
     expect(tomorrowThere.statusCode).toBe(422);
     expect(tomorrowThere.json().issues[0]).toMatchObject({ path: 'dob', message: 'a date of birth cannot be in the future' });
-    expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28' } })).statusCode).toBe(200);
+    expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28' } })).statusCode).toBe(201);
   });
 
   it('validates the details', async () => {

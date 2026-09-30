@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { changeTeam, type Database, listMembers, orgOfClinic, type TeamChange, type TeamResult, TEMPORARY_PASSWORD_HOURS } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
 import type { Auth } from '../auth';
 import { AddedMember, AddMember, ChangeRole, MemberList } from '../contracts';
@@ -49,11 +49,11 @@ export class TeamController {
   }
 
   @Post()
-  @HttpCode(200)
+  @HttpCode(201)
   @Requires('members:manage')
   @ApiOperation({ summary: 'Add a person with a role. Returns a temporary password once: it must be changed at first sign-in and expires after 72 hours. Audited.' })
   @ApiBody({ schema: schemaOf(AddMember) })
-  @ApiOkResponse({ schema: schemaOf(AddedMember) })
+  @ApiCreatedResponse({ schema: schemaOf(AddedMember) })
   @ApiConflictResponse({ description: 'Already on the team (already_member), or already has an Attendra account with another practice (account_exists)' })
   async add(@Param('clinicId') clinicId: string, @Body(new ZodPipe(AddMember)) body: z.infer<typeof AddMember>, @CurrentStaff() staff: Staff): Promise<AddedMember> {
     const orgId = await this.org(clinicId);
