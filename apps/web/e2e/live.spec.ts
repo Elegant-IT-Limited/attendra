@@ -55,4 +55,6 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   await expect(page.getByText('Browser test').first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Transcript' })).toBeVisible();
   await expect(page.getByText('she is a new patient')).toHaveCount(0); // the note is never in the record
+  // the summary appears when the worker has written it, with no reload
+  await expect(page.getByTestId('call-summary')).toBeVisible({ timeout: 30_000 });
 });
