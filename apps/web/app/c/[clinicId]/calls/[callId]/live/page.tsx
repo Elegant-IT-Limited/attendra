@@ -126,7 +126,12 @@ export default function LiveCallPage() {
   const list = useLiveCalls(clinicId, true, 10_000);
   const listed = list.data?.calls.find((c) => c.callId === callId);
   // when the call ends the page becomes its record, without a reload
-  const toRecord = () => { void queries.invalidateQueries({ queryKey: ['calls', clinicId] }); router.replace(`/c/${clinicId}/calls/${callId}`); };
+  // the record starts looking for its summary at once: nothing cached from before the end is kept
+  const toRecord = () => {
+    void queries.invalidateQueries({ queryKey: ['calls', clinicId] });
+    queries.removeQueries({ queryKey: ['call', clinicId, callId] });
+    router.replace(`/c/${clinicId}/calls/${callId}`);
+  };
   const live = useLiveCall(clinicId, callId, toRecord);
   const length = useTicking(live.snapshot?.startedAt ?? listed?.startedAt);
   const [note, setNote] = useState('');
