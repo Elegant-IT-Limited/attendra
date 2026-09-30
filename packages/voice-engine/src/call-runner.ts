@@ -126,6 +126,8 @@ export class CallRunner {
     for (const t of this.timers) clearTimeout(t);
     await this.flushFinishedTurns(true);
     const state = this.agent.state;
+    // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
+    if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';
     await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome: state.outcome, emergency: !!state.emergency });
     this.log.info({ session_id: this.sessionId, reason, outcome: state.outcome, voice_seconds: voiceSeconds }, 'call finished');
     this.sideband.close();

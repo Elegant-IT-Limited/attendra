@@ -1,0 +1,22 @@
+id: demo-afternoon-sick-visit
+title: A caller books an afternoon sick visit with Dr. Lindqvist
+caller_number: "+17205550113"
+turns:
+  - caller: Hi, it's Omar Haddad, August 30th 1983. I twisted my ankle. Does Dr. Lindqvist have anything in the afternoon?
+    reply: "Thanks, Omar. Dr. Lindqvist has {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Omar Haddad, date_of_birth: August 30th 1983 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_lindqvist, from_date: null, part_of_day: afternoon }
+  - caller: The first one.
+    reply: "To confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, go ahead.
+    reply: "Booked for {booked}. You'll get a text confirmation."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

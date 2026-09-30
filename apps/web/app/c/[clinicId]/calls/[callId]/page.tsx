@@ -2,6 +2,7 @@
 'use client';
 import type { CallDetail } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, UserCheck, X } from 'lucide-react';
 import { localDateOf } from '@attendra/core';
 import Link from 'next/link';
@@ -16,18 +17,36 @@ import { clinicTime, clock, duration, REFUSALS, shortWhen, TASK_TYPES, TOOLS } f
 import { cn } from '@/lib/utils';
 
 const CLOSE_REASONS: Record<string, string> = {
-  caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', connection_lost: 'Connection dropped',
+  caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', ended_by_staff: 'Ended by staff', connection_lost: 'Connection dropped',
 };
+
+const SUMMARY_POLL_MS = 5_000;
+const SUMMARY_WAIT_MS = 120_000;
+/** A summary is on its way: the call has no summary yet, its job has not failed, and it is not an old call that never had one. */
+function summaryPending(c: CallDetail) {
+  if (c.summary || c.summaryJob?.state === 'failed') return false;
+  if (!c.endedAt) return true; // just ended: the record catches up in a moment
+  return !!c.summaryJob || Date.now() - Date.parse(c.endedAt) < 10 * 60_000;
+}
 
 export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
   const { clinic, can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
+  // until the worker has written the summary, look again every 5 seconds, for up to 2 minutes
+  const [opened] = useState(() => Date.now());
+  const [now, setNow] = useState(opened);
   const call = useQuery({
     queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`),
-    // until the worker has written the summary, look again every few seconds
-    refetchInterval: (q) => (q.state.data && !q.state.data.summary && q.state.data.summaryJob?.state !== 'failed' && q.state.data.endedAt ? 4000 : false),
+    refetchOnMount: 'always',
+    refetchInterval: (q) => {
+      const c = q.state.data;
+      if (!c || !summaryPending(c)) return false;
+      return Date.now() - opened < SUMMARY_WAIT_MS ? SUMMARY_POLL_MS : false;
+    },
   });
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS); return () => clearInterval(t); }, []);
+  const slowSummary = !!call.data && summaryPending(call.data) && now - opened >= SUMMARY_WAIT_MS;
   const tz = clinic?.timezone ?? 'UTC';
 
   const back = (
@@ -102,7 +121,7 @@ export default function CallPage() {
           </CardContent>
         </Card>
         <div className="space-y-6">
-          <SummaryCard clinicId={clinicId} call={c} canReview={can('calls:read')} />
+          <SummaryCard clinicId={clinicId} call={c} canReview={can('calls:read')} slow={slowSummary} />
           <Card>
             <CardHeader><CardTitle>Who&apos;s calling</CardTitle></CardHeader>
             <CardContent className="text-sm">

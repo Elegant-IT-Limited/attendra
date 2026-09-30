@@ -13,3 +13,4 @@ export * from './routing';
 export * from './slots';
 export * from './time';
 export * from './tools';
+export * from './voices';

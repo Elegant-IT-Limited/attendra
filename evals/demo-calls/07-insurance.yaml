@@ -1,0 +1,10 @@
+id: demo-insurance
+title: An insurance question is answered from the clinic's documents
+caller_number: "+17205550191"
+turns:
+  - caller: Hello, do you take Aetna? I just changed jobs.
+    reply: "Yes, the clinic accepts Aetna. Please bring your card to the visit."
+    delegate:
+      - search_knowledge: { question: do you accept Aetna insurance }
+expect:
+  outcome: info

@@ -21,7 +21,7 @@ const SENTIMENT: Record<string, { label: string; tone: BadgeTone }> = {
  * wanted and how they came across, and whether someone should look at the call. It is
  * written from the transcript, so it is shown beside it, never instead of it.
  */
-export function SummaryCard({ clinicId, call, canReview }: { clinicId: string; call: CallDetail; canReview: boolean }) {
+export function SummaryCard({ clinicId, call, canReview, slow = false }: { clinicId: string; call: CallDetail; canReview: boolean; slow?: boolean }) {
   const queries = useQueryClient();
   const toast = useToast();
   const review = useMutation({
@@ -37,14 +37,15 @@ export function SummaryCard({ clinicId, call, canReview }: { clinicId: string; c
 
   if (!s) {
     const job = call.summaryJob;
-    const text = !call.endedAt ? 'The summary is written when the call ends.'
-      : job?.state === 'failed' ? 'The summary could not be written. The transcript is complete.'
-        : job ? 'The summary is being written. It appears here in a moment.'
+    const recent = !call.endedAt || Date.now() - Date.parse(call.endedAt) < 10 * 60_000;
+    const text = job?.state === 'failed' ? 'The summary could not be written. The transcript is complete.'
+      : slow ? 'The summary is taking longer than usual. Refresh to check again.'
+        : job || recent ? 'The summary is being written. It appears here in a moment.'
           : 'No summary for this call.';
     return (
       <Card>
         <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
-        <CardContent><p className="text-sm text-text-muted">{text}</p></CardContent>
+        <CardContent><p className="text-sm text-text-muted" data-testid="summary-pending">{text}</p></CardContent>
       </Card>
     );
   }

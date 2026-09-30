@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, clinicWarnings, emergencyNumberFor } from '@attendra/core';
+import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -9,11 +9,12 @@ import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { Field, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
+import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { Switch } from '@/components/ui/controls';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
-import { Input, Textarea } from '@/components/ui/input';
+import { Input, Select, Textarea } from '@/components/ui/input';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
 
@@ -67,13 +68,21 @@ export default function Settings() {
           </Field>
           {clinicWarnings(c).map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Voice" htmlFor="voice" hint="A GPT-Live voice name."><Input id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })} /></Field>
-            <Field label="Time zone" htmlFor="tz" hint="IANA name, like America/Denver."><Input id="tz" value={c.timezone} onChange={(e) => set({ timezone: e.target.value })} /></Field>
+            <Field label="Voice" htmlFor="voice" hint="How the assistant sounds on the phone.">
+              <Select id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })}>
+                {/* a voice saved before this list keeps working, and stays selected */}
+                {!(BUILT_IN_VOICES as readonly string[]).includes(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)}</option>}
+                {BUILT_IN_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
+              <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
+            </Field>
           </div>
           <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
             hint={`After the ${emergencyNumberFor(c)} script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
           <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
-            hint="Off by default. Several US states require every party to consent, so a notice plays first." disabled={!writable || save.isPending} />
+            hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
           {c.recording.enabled && (
             <Field label="Recording notice" htmlFor="notice"><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
           )}
@@ -131,12 +140,18 @@ export default function Settings() {
         </Section>
 
         <Section title="Providers" description="Who can be booked, and for which visit types. A provider without their own hours uses the clinic's."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', kind: 'person', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
           {c.providers.map((p, i) => (
             <div key={p.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="flex flex-wrap items-end gap-3">
                 <Field label="Name"><Input className="w-64" value={p.name} onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
                 <LocalNames thing={p} languages={c.languages} what="Provider" onChange={(names) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, names } : x)) })} />
+                <Field label="A person or a room" hint="Read-backs say &ldquo;with Dr. Rahman&rdquo; or &ldquo;in the sample collection room&rdquo;.">
+                  <Select className="w-44" value={p.kind} aria-label={`${p.name}: a person or a room`}
+                    onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, kind: e.target.value as 'person' | 'room' } : x)) })}>
+                    <option value="person">A person</option><option value="room">A room</option>
+                  </Select>
+                </Field>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => set({ providers: c.providers.filter((_, j) => j !== i) })}><Trash2 /></Button>
               </div>
               <div className="flex flex-wrap gap-4 text-sm">

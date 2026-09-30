@@ -106,7 +106,7 @@ describe('staff actions', () => {
     expect((await act('coach', as.viewer, { note: 'offer Thursday', key: 'coach-key-1' })).statusCode).toBe(403);
     expect((await act('coach', as.staff, { note: 'x'.repeat(301), key: 'coach-key-2' })).statusCode).toBe(400);
     expect((await act('coach', as.staff, { note: 'offer Thursday afternoon', key: 'coach-key-3' })).statusCode).toBe(202);
-    expect(voice.coach).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.staff, key: 'coach-key-3', note: 'offer Thursday afternoon' });
+    expect(voice.coach).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.staff, byName: 'Ana Front', key: 'coach-key-3', note: 'offer Thursday afternoon' });
     voice.coach.mockResolvedValueOnce({ ok: true, repeat: true });
     await act('coach', as.staff, { note: 'offer Thursday afternoon', key: 'coach-key-3' });
     const rows = await audits('call.coached');
@@ -116,13 +116,13 @@ describe('staff actions', () => {
 
   it('taking over goes to the front desk, or to your own number once you have given one', async () => {
     expect((await act('take-over', as.staff, { target: 'front_desk', key: 'take-key-1' })).statusCode).toBe(202);
-    expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.staff, key: 'take-key-1', target: { kind: 'front_desk' } });
+    expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.staff, byName: 'Ana Front', key: 'take-key-1', target: { kind: 'front_desk' } });
     expect((await act('take-over', as.admin, { target: 'me', key: 'take-key-2' })).json()).toEqual({ error: 'no_number' });
     expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '3035550123' } })).statusCode).toBe(400);
     expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550123' } })).statusCode).toBe(200);
     expect((await api.request('GET', `${C}/my-transfer-number`, { cookie: as.admin })).json()).toEqual({ number: '+13035550123' });
     await act('take-over', as.admin, { target: 'me', key: 'take-key-3' });
-    expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.admin, key: 'take-key-3', target: { kind: 'number', number: '+13035550123' } });
+    expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.admin, byName: 'Olga Admin', key: 'take-key-3', target: { kind: 'number', number: '+13035550123' } });
     expect((await audits('call.taken_over')).map((a) => a.actor)).toEqual([`user:${api.users.staff}`, `user:${api.users.admin}`]);
   });
 

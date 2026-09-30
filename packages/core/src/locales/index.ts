@@ -67,3 +67,26 @@ export const isLanguage = (s: string): s is Language => (LANGUAGES as readonly s
 
 /** What the assistant is called when the clinic has not named it. */
 export const DEFAULT_ASSISTANT_NAME = "the clinic's assistant";
+
+/**
+ * Wording that depends on the clinic's country: example numbers from ranges kept for
+ * fiction, the order dates are written in, and the recording note. North America keeps
+ * its own; everyone else gets the country's, or wording that assumes no country.
+ */
+export function countryCopy(clinic: { phoneNumbers: string[] }) {
+  const first = clinic.phoneNumbers[0] ?? '';
+  const us = first.startsWith('+1');
+  const phone = us ? { e164: '+13035550123', local: '(303) 555-0100' }
+    : first.startsWith('+880') ? { e164: '+8801000000123', local: '01000-000123' } // +880 10 is issued to no operator
+      : first.startsWith('+44') ? { e164: '+442079460123', local: '020 7946 0123' } // Ofcom's range for drama
+        : first.startsWith('+61') ? { e164: '+61491570123', local: '0491 570 123' } // ACMA's range for fiction
+          : { e164: '+<country code><number>', local: '' };
+  return {
+    us,
+    phone,
+    exampleDob: us ? '03/04/1985' : '04/03/1985',
+    recordingHint: us
+      ? 'Off by default. Several US states require every party to consent, so a notice plays first.'
+      : 'Off by default. Check the law where you are before recording calls. A notice plays first.',
+  };
+}

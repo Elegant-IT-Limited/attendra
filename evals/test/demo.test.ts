@@ -1,10 +1,10 @@
-import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
-import { createPhiCipher, FrontDeskRepository, seedDemo } from '@attendra/db';
+import { DEMO_CLINIC, isOpen, qualityOf, zonedInstant } from '@attendra/core';
+import { createPhiCipher, FrontDeskRepository, qualityRows, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { recordDemoCalls, shiftByWeeks } from '../src/demo';
+import { DEMO_CALL_DIR, recordDemoCalls, shiftByWeeks } from '../src/demo';
 import { loadScenarios } from '../src/scenario';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -25,11 +25,25 @@ describe('demo calls', () => {
     expect(results.filter((r) => !r.passed).map((r) => `${r.id}: ${r.failures.join('; ')}`)).toEqual([]);
   });
 
-  it('writes one call per scenario, spread over the past week, newest first', async () => {
+  it('writes one call per scenario and per ordinary demo call, all in the past, over about two weeks', async () => {
     const calls = await new FrontDeskRepository(t.db, cipher).listCalls(DEMO_CLINIC.id, { limit: 100 });
-    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple').length);
+    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple').length + loadScenarios(DEMO_CALL_DIR).length);
     expect(calls[0]!.startedAt.getTime()).toBeLessThan(NOW.getTime());
-    expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(7 * 24 * 3_600_000);
+    expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(15 * 24 * 3_600_000);
+  });
+
+  it('gives the current week a working clinic\'s numbers, from calls that really went through the assistant', async () => {
+    const weekStart = zonedInstant('2026-09-28', '00:00', DEMO_CLINIC.timezone); // NOW is Monday midday in Denver
+    const q = async (from: Date, to: Date) => qualityOf((await qualityRows(t.db, DEMO_CLINIC.id, from, to)).map((r) => ({ ...r, afterHours: !isOpen(DEMO_CLINIC, r.startedAt) })), 0.05);
+    const week = await q(weekStart, NOW);
+    expect(week.containmentRate).toBeGreaterThanOrEqual(0.7);
+    expect(week.containmentRate).toBeLessThanOrEqual(0.85);
+    expect(week.bookingAttempts).toBeGreaterThanOrEqual(4);
+    expect(week.bookingSuccess).toBeGreaterThanOrEqual(0.75);
+    expect(week.refusals.length).toBeGreaterThanOrEqual(3); // a few, of different kinds
+    // the weeks before hold the hard cases, so the trend goes up
+    const before = await q(new Date(weekStart.getTime() - 14 * 86_400_000), weekStart);
+    expect(before.containmentRate!).toBeLessThan(week.containmentRate!);
   });
 
   it('records a readable transcript with the greeting, the caller and the agent', async () => {
@@ -56,7 +70,20 @@ describe('demo calls', () => {
     expect(most?.n ?? 0).toBeLessThanOrEqual(2);
   });
 
-  it('keeps transcripts encrypted at rest', async () => {
+  it('puts this week\'s ordinary calls in opening hours once the week has enough of them', async () => {
+    const fresh = await openTestDatabase();
+    try {
+      const { patientIds } = await seedDemo(fresh.db, cipher);
+      await seedDemoKnowledge(fresh.db, new LocalEmbedder());
+      const wednesday = new Date('2026-09-30T21:00:00Z'); // 3 pm in Denver
+      await recordDemoCalls(fresh.db, cipher, patientIds, wednesday);
+      const rows = (await fresh.db.execute(sql`select started_at from calls where openai_session_id like 'demo_demo-%'`)).rows as { started_at: string }[];
+      expect(rows).toHaveLength(loadScenarios(DEMO_CALL_DIR).length);
+      expect(rows.every((r) => isOpen(DEMO_CLINIC, new Date(r.started_at)))).toBe(true);
+    } finally { await fresh.close(); }
+  }, 60_000);
+
+    it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
   });

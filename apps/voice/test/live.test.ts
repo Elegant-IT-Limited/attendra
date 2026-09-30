@@ -180,7 +180,7 @@ describe('a simulated live call, over HTTP', () => {
     const { events } = await ending;
     expect(events[0]!.event).toBe('snapshot');
     expect(events.filter((e) => e.id).every((e) => Number(e.id) > Number(lastId))).toBe(true);
-    expect(events).toContainEqual(expect.objectContaining({ event: 'staff', data: { type: 'staff', action: 'ended' } }));
+    expect(events).toContainEqual(expect.objectContaining({ event: 'staff', data: { type: 'staff', action: 'ended', by: null } }));
     expect(events.at(-1)).toMatchObject({ event: 'ended' });
     const after = await (await fetch(`${base}/internal/live?clinicId=${DEMO_CLINIC.id}`, { headers: auth })).json() as { calls: unknown[] };
     expect(after.calls).toEqual([]);

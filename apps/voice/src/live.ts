@@ -3,9 +3,10 @@ import type { LiveEvent } from '@attendra/agent';
 
 /** What staff can do to a live call, provided by the code running it. */
 export interface LiveControl {
-  coach(note: string): Promise<void>;
-  takeOver(uri: string): Promise<void>;
-  end(): Promise<void>;
+  /** `by` is the staff member's name, shown to everyone watching; null when the API did not send one. */
+  coach(note: string, by: string | null): Promise<void>;
+  takeOver(uri: string, by: string | null): Promise<void>;
+  end(by: string | null): Promise<void>;
   /** False while the caller has not yet heard the emergency script. */
   canEnd(): boolean;
 }
@@ -112,12 +113,12 @@ export class LiveRegistry {
   }
 
   /** A staff note. The same key twice is one note. */
-  async coach(clinicId: string, callId: string, key: string, note: string): Promise<ActionResult> {
+  async coach(clinicId: string, callId: string, key: string, note: string, by: string | null = null): Promise<ActionResult> {
     const e = this.live(clinicId, callId);
     if (!e) return { ok: false, error: 'not_live' };
     if (e.coachKeys.has(key)) return { ok: true, repeat: true };
     e.coachKeys.add(key);
-    await e.control.coach(note);
+    await e.control.coach(note, by);
     return { ok: true, repeat: false };
   }
 

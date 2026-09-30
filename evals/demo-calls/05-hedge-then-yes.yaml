@@ -1,0 +1,28 @@
+id: demo-hedge-then-yes
+title: A caller hesitates, hears the time again, and then says yes
+caller_number: "+17205550114"
+turns:
+  - caller: Hi, Hannah Brooks, 12/09/2001. I need to see someone about a rash.
+    reply: "Thanks, Hannah. The first opening is {readback}. Does that work?"
+    delegate:
+      - verify_caller: { full_name: Hannah Brooks, date_of_birth: December 9th 2001 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Hmm, maybe, let me think.
+    reply: "No problem, I haven't booked anything yet. Would you like me to hold that time for you?"
+    delegate:
+      - commit_pending: {}
+  - caller: Sorry, can you say the time again?
+    reply: "Of course: {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, book it.
+    reply: "You're booked for {booked}. A text confirmation is on its way."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  refusals: [no_clear_yes]
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

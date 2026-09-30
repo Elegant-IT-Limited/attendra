@@ -1,0 +1,27 @@
+id: demo-dob-retry-booking
+title: A caller gets their date of birth wrong once, then books a sick visit
+caller_number: "+17205550111"
+turns:
+  - caller: Hi, Tomás Herrera, May 12th 1994. I've had a sore throat for three days.
+    reply: "I couldn't find a match. Could you spell your last name and give your date of birth again?"
+    delegate:
+      - verify_caller: { full_name: Tomas Herrera, date_of_birth: May 12th 1994 }
+  - caller: Sorry, H-E-R-R-E-R-A, and it's May 21st 1994.
+    reply: "Thanks, Tomás, found you. For a sick visit I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Tomas Herrera, date_of_birth: May 21st 1994 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "To confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, please.
+    reply: "Done, you're booked for {booked}. A text confirmation is on its way."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  refusals: [not_verified]
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
