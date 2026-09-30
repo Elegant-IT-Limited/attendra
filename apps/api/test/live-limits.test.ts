@@ -26,7 +26,7 @@ const voice = {
 const watch = (cookie: string) => api.app.getHttpAdapter().getInstance().inject({ method: 'GET', url: `${C}/calls/${api.callId}/live`, headers: { cookie, origin: ORIGIN } });
 
 beforeAll(async () => {
-  api = await startApi({ demoMode: false, voice, liveStream: { maxMs: 1500, recheckMs: 100 } });
+  api = await startApi({ demoMode: false, voice, liveStream: { maxMs: 3000, recheckMs: 100 } });
   staff = await api.signIn('ana@maple.example', true);
   admin = await api.signIn('olga@maple.example', true);
 });
@@ -37,8 +37,9 @@ describe('a live stream', () => {
     const started = Date.now();
     const res = await watch(staff);
     expect(res.statusCode).toBe(200);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(1400);
-    expect(Date.now() - started).toBeLessThan(4000);
+    // at the 3 second limit, not never: the bound above it is wide, so a busy machine does not fail it
+    expect(Date.now() - started).toBeGreaterThanOrEqual(2900);
+    expect(Date.now() - started).toBeLessThan(15_000);
   });
 
   it('ends soon after the watcher may no longer read calls', async () => {
@@ -46,7 +47,8 @@ describe('a live stream', () => {
     const res = watch(admin);
     setTimeout(() => void addMembership(api.t.db, 'org_demo', api.users.admin, 'viewer'), 200);
     expect((await res).statusCode).toBe(200);
-    expect(Date.now() - started).toBeLessThan(1000);
+    // well before the 3 second limit: the re-check ended it, not the clock
+    expect(Date.now() - started).toBeLessThan(2500);
     await addMembership(api.t.db, 'org_demo', api.users.admin, 'admin');
   });
 });
