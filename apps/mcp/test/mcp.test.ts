@@ -10,6 +10,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { bridge } from '../src/bridge';
+import { loadBridgeEnv } from '../src/config';
 import { mcpHttpHandler } from '../src/http-handler';
 import { createMcpServer, type McpDeps } from '../src/server';
 
@@ -165,5 +167,53 @@ describe('Streamable HTTP', () => {
     const r = await client.callTool({ name: 'find_open_slots', arguments: { visitTypeId: 'vt_annual', days: 5 } }) as { isError?: boolean };
     expect(r.isError).toBeFalsy();
     await client.close();
+  });
+});
+
+describe('the stdio bridge', () => {
+  let server: Server;
+  let url: string;
+  beforeAll(async () => {
+    const handle = mcpHttpHandler(deps);
+    server = createServer((req, res) => void handle(req, res));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+  });
+  afterAll(() => server.close());
+
+  /** A desktop MCP client on one side of the bridge, the HTTP server on the other. */
+  async function bridged(key: string) {
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await bridge(a, new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { authorization: `Bearer ${key}` } } }));
+    const client = new Client({ name: 'desktop', version: '1' });
+    await client.connect(b);
+    return client;
+  }
+
+  it('needs only the server\'s address and a key: no database, no data key', () => {
+    const env = loadBridgeEnv({ ATTENDRA_MCP_URL: 'https://mcp.clinic.example/mcp', ATTENDRA_API_KEY: `atk_${'a'.repeat(43)}` });
+    expect(Object.keys(env).sort()).toEqual(['ATTENDRA_API_KEY', 'ATTENDRA_MCP_URL', 'LOG_LEVEL']);
+    expect(() => loadBridgeEnv({ ATTENDRA_MCP_URL: 'http://mcp.clinic.example/mcp', ATTENDRA_API_KEY: `atk_${'a'.repeat(43)}` })).toThrow(/https/);
+    expect(() => loadBridgeEnv({ ATTENDRA_MCP_URL: 'https://mcp.clinic.example/mcp' })).toThrow(/ATTENDRA_API_KEY/);
+  });
+
+  it('relays the tools, and a key revoked while connected fails on the very next call', async () => {
+    const { id, key } = await make(['schedule:read']);
+    const client = await bridged(key);
+    expect((await client.listTools()).tools).toHaveLength(5);
+    expect((await call(client, 'find_open_slots', { visitTypeId: 'vt_sick', days: 3 })).error).toBe(false);
+    await keys.revoke(DEMO_CLINIC.id, id, 'u_olga');
+    await expect(client.callTool({ name: 'find_open_slots', arguments: { visitTypeId: 'vt_sick', days: 3 } })).rejects.toThrow(/revoked or expired/);
+    await client.close();
+  });
+});
+
+describe('a connected server', () => {
+  it('checks the key again before every tool call', async () => {
+    const { id, key } = await make(['schedule:read']);
+    const client = await clientFor(key);
+    expect((await call(client, 'find_open_slots', { visitTypeId: 'vt_sick', days: 3 })).error).toBe(false);
+    await keys.revoke(DEMO_CLINIC.id, id, 'u_olga');
+    expect(await call(client, 'find_open_slots', { visitTypeId: 'vt_sick', days: 3 })).toMatchObject({ error: true, text: expect.stringContaining('revoked') });
   });
 });

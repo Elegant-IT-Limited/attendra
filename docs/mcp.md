@@ -26,9 +26,9 @@ A key acts in the name of the person who made it: a request it closes is closed 
 | `mark_request_done` | `requests:write` | Close a request with `called_back`, `left_message`, `refill_sent` or `not_needed`. It tells the clinic's webhooks, as the dashboard does. |
 | `get_quality_summary` | any | The last 7 days of the Quality page's numbers. Counts only. |
 
-## Connecting Claude Desktop
+## Connecting a desktop MCP client over stdio
 
-Claude Desktop starts a local server over stdio. Add this to its `claude_desktop_config.json` (Settings > Developer > Edit Config), with the path to your Attendra checkout, your database and your key:
+A desktop MCP client, such as Claude Desktop, starts a local server over stdio. Attendra's stdio server is a thin bridge to your HTTP `/mcp` server (below): it needs only that address and a key, and never the database or the data key, so the computer it runs on holds nothing that can read patient data. Every message goes through unchanged, and the HTTP server checks the key on every call, so a key revoked while the client is open fails on the next call. Add this to the client's config (for Claude Desktop, `claude_desktop_config.json`, under Settings > Developer > Edit Config):
 
 ```json
 {
@@ -37,8 +37,7 @@ Claude Desktop starts a local server over stdio. Add this to its `claude_desktop
       "command": "pnpm",
       "args": ["--dir", "/path/to/attendra", "--filter", "@attendra/mcp", "stdio"],
       "env": {
-        "DATABASE_URL": "postgres://attendra:...@your-db:5432/attendra",
-        "ATTENDRA_DATA_KEY": "the same data key the other services use",
+        "ATTENDRA_MCP_URL": "https://mcp.your-clinic.example/mcp",
         "ATTENDRA_API_KEY": "atk_..."
       }
     }
@@ -46,7 +45,7 @@ Claude Desktop starts a local server over stdio. Add this to its `claude_desktop
 }
 ```
 
-The stdio server needs the database and the data key because it runs as part of your Attendra install. For an agent anywhere else, use HTTP.
+`ATTENDRA_MCP_URL` must be `https://`, except `http://localhost` for trying it on one machine. A client that can connect to a URL itself does not need the bridge: give it the address and the key directly, as below.
 
 ## Connecting over HTTP
 

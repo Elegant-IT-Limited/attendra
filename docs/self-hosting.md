@@ -28,7 +28,7 @@ Compose starts Postgres, applies the migrations, loads the demo clinic ("Maple S
 
 Optional services, each off until you want it: `--profile voice` for calls, `--profile mcp` for other AI agents over MCP ([mcp.md](mcp.md)). The worker always runs.
 
-**New in v0.4, in `.env`:** `ATTENDRA_SUMMARY_MODEL` (call summaries), `ATTENDRA_EMBEDDING_MODEL` (the clinic's documents, the same value for the worker, voice and API), `ATTENDRA_SMS_STATUS` (off until Twilio sends statuses), `ATTENDRA_JUDGE_MODEL` and `ATTENDRA_SIM_MODEL` (quality tools you run by hand), and `MCP_PORT` and `ATTENDRA_API_KEY` (MCP). `.env.example` explains each one. Without `OPENAI_API_KEY` the worker still runs: summaries are written from each call's facts, and documents are embedded locally.
+**New in v0.4, in `.env`:** `ATTENDRA_SUMMARY_MODEL` (call summaries), `ATTENDRA_EMBEDDING_MODEL` (the clinic's documents, the same value for the worker, voice and API), `ATTENDRA_SMS_STATUS` (off until Twilio sends statuses), `ATTENDRA_JUDGE_MODEL` and `ATTENDRA_SIM_MODEL` (quality tools you run by hand), and `MCP_PORT` (MCP; the stdio bridge takes its URL and key in the desktop client's config). `.env.example` explains each one. Without `OPENAI_API_KEY` the worker still runs: summaries are written from each call's facts, and documents are embedded locally.
 
 Then add yourself and point your number at the clinic:
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, zonedInstant } from '@attendra/core';
-import { type ApiCaller, type ApiScope, auditKeyUse, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, taskFacts, withClinic } from '@attendra/db';
+import { apiKeyIsLive, type ApiCaller, type ApiScope, auditKeyUse, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, taskFacts, withClinic } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -38,6 +38,8 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   const clinic = async () => ClinicConfig.parse(await desk.settings(caller.clinicId));
   /** Checks the scope, runs the tool, and audits the use, whatever the answer. */
   const tool = <T>(name: string, scope: ApiScope | null, fn: (args: T) => Promise<{ result: unknown; counts?: Record<string, number> }>) => async (args: T) => {
+    // the key again, on every call: one revoked while a client is connected stops here
+    if (!(await apiKeyIsLive(d.db, caller, now()))) return refused('This API key has been revoked or has expired. Ask the clinic\'s owner or practice manager for a new one.');
     if (scope && !has(scope)) {
       await auditKeyUse(d.db, caller, `${name}.refused`);
       return refused(`This key does not have the ${scope} scope. Ask the clinic's owner or practice manager for a key that does.`);
