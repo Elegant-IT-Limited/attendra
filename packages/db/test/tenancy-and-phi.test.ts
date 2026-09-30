@@ -33,6 +33,13 @@ describe('tenant isolation', () => {
     })))).toMatch(/row-level security/);
   });
 
+  it('the application role cannot list organizations or phone numbers, which have no policy', async () => {
+    expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select id from organizations`)))).toMatch(/permission denied/);
+    expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select e164 from phone_numbers`)))).toMatch(/permission denied/);
+    const own = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select id from clinics`));
+    expect(own.rows).toEqual([{ id: DEMO_CLINIC.id }]);
+  });
+
   it('the same name and DOB in two clinics resolves to each clinic\'s own record', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const here = await dir.findByNameAndDob(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04');
