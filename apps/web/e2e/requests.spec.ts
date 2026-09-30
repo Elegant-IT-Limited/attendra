@@ -26,4 +26,12 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await page.getByRole('tab', { name: 'Done' }).click();
   const done = page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' });
   await expect(done.getByText('Refill sent to the pharmacy')).toBeVisible();
+
+  // from its call, the closed request opens on the Done tab
+  await done.getByRole('link', { name: /^The call, / }).click();
+  await expect(page).toHaveURL(/\/calls\/[^/]+$/);
+  await page.getByRole('link', { name: /Prescription refill\s*Done/ }).click();
+  await expect(page).toHaveURL(/\/requests\?status=done$/);
+  await expect(page.getByRole('tab', { name: 'Done' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toBeVisible();
 });
