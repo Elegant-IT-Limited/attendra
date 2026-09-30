@@ -124,6 +124,13 @@ describe('webhook endpoints', () => {
     const actions = (await api.t.db.execute(sql`select action from audit_logs where entity = 'webhook_endpoint' order by id`)).rows.map((r: unknown) => (r as { action: string }).action);
     expect(actions).toEqual(['webhook.endpoint.created', 'webhook.endpoint.secret_rotated', 'webhook.endpoint.updated', 'webhook.endpoint.deleted']);
   });
+  it('turning an endpoint off and on keeps its description and patient-id choice', async () => {
+    const made = await api.request('POST', `${C}/webhooks`, { cookie: as.admin, body: { url: 'https://hooks.example.com/keep', description: 'n8n: keep me', events: ['request.done'], omitPatientIds: false } });
+    const id = made.json().endpoint.id as string;
+    expect((await api.request('PUT', `${C}/webhooks/${id}`, { cookie: as.admin, body: { enabled: false } })).json()).toMatchObject({ enabled: false, description: 'n8n: keep me', omitPatientIds: false });
+    expect((await api.request('PUT', `${C}/webhooks/${id}`, { cookie: as.admin, body: { enabled: true } })).json()).toMatchObject({ enabled: true, description: 'n8n: keep me', omitPatientIds: false });
+    await api.request('DELETE', `${C}/webhooks/${id}`, { cookie: as.admin });
+  });
 });
 
 describe('events from the front desk', () => {
