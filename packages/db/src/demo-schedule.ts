@@ -20,14 +20,16 @@ function crossed(first: string[], last: string[], phone: (i: number) => string, 
   });
 }
 const MAPLE_MORE = crossed(
-  ['Ava', 'Noah', 'Mia', 'Ethan', 'Zoe', 'Lucas', 'Chloe', 'Samuel', 'Layla', 'Gabriel', 'Nora', 'Julian'],
-  ['Brennan', 'Castillo', 'Duarte', 'Ellison', 'Foster', 'Guerrero', 'Holloway', 'Iverson', 'Kowalski', 'Mendez'],
+  ['Ava', 'Noah', 'Mia', 'Ethan', 'Zoe', 'Lucas', 'Chloe', 'Samuel', 'Layla', 'Gabriel', 'Nora', 'Julian',
+    'Amara', 'Diego', 'Freya', 'Hamza', 'Ingrid', 'Jonah', 'Keiko', 'Luis', 'Margot', 'Nikhil', 'Olive', 'Reuben'],
+  ['Brennan', 'Castillo', 'Duarte', 'Ellison', 'Kowalski'],
   // 555-0100 to 555-0199 in two more Colorado area codes: the range kept for fiction
   (i) => `+1${i < 100 ? '719' : '970'}555${String(100 + (i % 100)).padStart(4, '0')}`, 7,
 );
 const DHANMONDI_MORE = crossed(
-  ['Ayesha', 'Rakib', 'Nusrat', 'Shakil', 'Mim', 'Tareq', 'Jannat', 'Fahim', 'Lamia', 'Sohel'],
-  ['Sarker', 'Talukder', 'Bhuiyan', 'Mollah', 'Sheikh', 'Karim', 'Siddique', 'Rana'],
+  ['Ayesha', 'Rakib', 'Nusrat', 'Shakil', 'Mim', 'Tareq', 'Jannat', 'Fahim', 'Lamia', 'Sohel',
+    'Anika', 'Rubel', 'Tania', 'Masud', 'Priya', 'Zahid', 'Keya', 'Nayeem', 'Ritu', 'Shafiq'],
+  ['Sarker', 'Talukder', 'Bhuiyan', 'Mollah'],
   (i) => `+8801000003${String(i).padStart(2, '0')}`, 11,
 );
 
