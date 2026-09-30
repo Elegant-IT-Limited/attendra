@@ -49,8 +49,9 @@ services:
       TRUST_PROXY: "true"
     depends_on: { seed: { condition: service_completed_successfully } }
 
-  # background jobs: call summaries, the nightly retention purge. Without OPENAI_API_KEY
-  # it writes summaries from each call's facts, with no model.
+  # background jobs: call summaries, indexing the clinic's documents, webhook delivery and
+  # the nightly retention purge. Without OPENAI_API_KEY it writes summaries from each call's
+  # facts and embeds documents locally, with no model.
   worker:
     <<: *node
     command: ["pnpm", "--filter", "@attendra/worker", "start"]
