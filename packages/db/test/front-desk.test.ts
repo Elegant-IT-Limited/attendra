@@ -131,3 +131,23 @@ describe('auth tables', () => {
     expect(r).toMatch(/permission denied/);
   });
 });
+
+describe('what a call booked, since', () => {
+  it('says when a booking made on the call was moved later, with when it was made and changed', async () => {
+    const repo = new CallRepository(t.db, cipher);
+    const booker = await repo.open(DEMO_CLINIC.id, 'live_fd_moved', '+13035550147');
+    const [maria] = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select({ id: schema.patients.id }).from(schema.patients).limit(1)));
+    const at = (h: number) => new Date(Date.UTC(2026, 10, 3, h));
+    const insert = (key: string, h: number) => withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
+      clinicId: DEMO_CLINIC.id, patientId: maria!.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: at(h), endsAt: new Date(at(h).getTime() + 20 * 60_000),
+      idempotencyKey: key, createdByCallId: booker, createdAt: new Date('2026-09-28T10:00:00Z'), updatedAt: new Date('2026-09-28T10:00:00Z'),
+    }).returning({ id: schema.appointments.id }));
+    const [kept] = await insert('fd-kept', 15);
+    const [moved] = await insert('fd-moved', 16);
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.appointments).set({ startsAt: at(17), endsAt: new Date(at(17).getTime() + 20 * 60_000), updatedAt: new Date('2026-09-29T09:00:00Z') }).where(eq(schema.appointments.id, moved!.id)));
+    const call = await desk.getCall(DEMO_CLINIC.id, booker, 'u_ana');
+    const byId = new Map(call!.appointments.map((a) => [a.id, a]));
+    expect(byId.get(kept!.id)).toMatchObject({ change: 'booked', status: 'booked', moved: false });
+    expect(byId.get(moved!.id)).toMatchObject({ change: 'booked', status: 'booked', moved: true, createdAt: new Date('2026-09-28T10:00:00Z'), updatedAt: new Date('2026-09-29T09:00:00Z') });
+  });
+});

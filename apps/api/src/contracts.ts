@@ -109,6 +109,9 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   appointments: z.array(z.object({
     id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
     status: z.enum(['booked', 'cancelled']), change: z.enum(['booked', 'cancelled']),
+    createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+    /** Booked on this call, and moved to another time since. */
+    moved: z.boolean(),
   })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
