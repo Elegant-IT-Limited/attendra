@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { ApiScope } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { type Database, type Tx, withClinic } from '../client';
 
-export const API_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
-export type ApiScope = (typeof API_SCOPES)[number];
+export { API_SCOPES, type ApiScope } from '@attendra/core';
 
 export interface ApiKey { id: string; name: string; prefix: string; scopes: ApiScope[]; expiresAt: Date; createdByUserId: string; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }
 /** A key that checked out: who it is, for which clinic, and what it may do. */

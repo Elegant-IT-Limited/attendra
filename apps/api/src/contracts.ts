@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { API_SCOPES } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -202,16 +203,15 @@ export const QualityWeek = z.object({
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
 
-export const API_KEY_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
 export const ApiKeyView = z.object({
-  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_KEY_SCOPES)), expiresAt: z.iso.datetime(),
+  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_SCOPES)), expiresAt: z.iso.datetime(),
   createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
   status: z.enum(['active', 'expired', 'revoked']),
 });
 export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
 export const ApiKeyInput = z.object({
   name: z.string().trim().min(1, 'give the key a name').max(100),
-  scopes: z.array(z.enum(API_KEY_SCOPES)).min(1, 'choose at least one scope'),
+  scopes: z.array(z.enum(API_SCOPES)).min(1, 'choose at least one scope'),
   // what Settings offers: 7 days to a year
   expiresInDays: z.number().int().min(7, 'a key lasts at least 7 days').max(365, 'a key lasts at most a year').default(90),
 });
