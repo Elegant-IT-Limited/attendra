@@ -45,11 +45,14 @@ describe('API keys', () => {
     expect(await bad({ name: '', scopes: ['schedule:read'] })).toBe(400);
     expect(await bad({ name: 'x', scopes: [] })).toBe(400);
     expect(await bad({ name: 'x', scopes: ['schedule:write'] })).toBe(400);
+    // what Settings offers, 7 days to a year, is what the API takes
     expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 400 })).toBe(400);
+    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 1 })).toBe(400);
+    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 6 })).toBe(400);
   });
 
   it('revoking stops the key at once, audited; a second revoke is 404', async () => {
-    const { key, apiKey } = (await api.request('POST', `${C}/api-keys`, { cookie: as.owner, body: { name: 'Temporary', scopes: ['requests:write'], expiresInDays: 1 } })).json();
+    const { key, apiKey } = (await api.request('POST', `${C}/api-keys`, { cookie: as.owner, body: { name: 'Temporary', scopes: ['requests:write'], expiresInDays: 7 } })).json();
     expect((await api.request('DELETE', `${C}/api-keys/${apiKey.id}`, { cookie: as.owner })).statusCode).toBe(204);
     expect(await authenticateApiKey(api.t.db, key)).toBeNull();
     expect((await api.request('DELETE', `${C}/api-keys/${apiKey.id}`, { cookie: as.owner })).statusCode).toBe(404);

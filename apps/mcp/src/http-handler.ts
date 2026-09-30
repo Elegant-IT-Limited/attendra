@@ -6,6 +6,27 @@ import { createMcpServer, type McpDeps } from './server';
 
 const MAX_BODY = 1024 * 1024;
 
+/**
+ * A minute's allowance: requests per key, and requests without a working key per
+ * address (someone guessing keys). Failures are counted by address, and a working key
+ * by its id, so clients behind one proxy do not share an allowance.
+ */
+export interface McpRateLimit { failuresPerAddress: number; perKey: number }
+const DEFAULT_LIMIT: McpRateLimit = { failuresPerAddress: 30, perKey: 120 };
+
+/** A sliding one-minute window per name. In memory: one MCP server process, as deployed. */
+function windowCounter(limit: number) {
+  const hits = new Map<string, number[]>();
+  const recent = (name: string, now: number) => (hits.get(name) ?? []).filter((t) => t > now - 60_000);
+  return {
+    full: (name: string, now = Date.now()) => recent(name, now).length >= limit,
+    add: (name: string, now = Date.now()) => {
+      hits.set(name, [...recent(name, now), now]);
+      if (hits.size > 10_000) for (const [k, v] of hits) if (!v.some((t) => t > now - 60_000)) hits.delete(k);
+    },
+  };
+}
+
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -17,7 +38,7 @@ function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 const deny = (res: ServerResponse, status: number, message: string) => {
-  res.writeHead(status, { 'content-type': 'application/json', ...(status === 401 ? { 'www-authenticate': 'Bearer realm="attendra"' } : {}) });
+  res.writeHead(status, { 'content-type': 'application/json', ...(status === 401 ? { 'www-authenticate': 'Bearer realm="attendra"' } : {}), ...(status === 429 ? { 'retry-after': '60' } : {}) });
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message }, id: null }));
 };
 
@@ -26,13 +47,21 @@ const deny = (res: ServerResponse, status: number, message: string) => {
  * token and gets a server of its own for that key, so nothing about one caller
  * outlives its request. Only POST /mcp is served.
  */
-export function mcpHttpHandler(d: McpDeps) {
+export function mcpHttpHandler(d: McpDeps & { rateLimit?: McpRateLimit; addressOf?: (req: IncomingMessage) => string }) {
+  const limit = d.rateLimit ?? DEFAULT_LIMIT;
+  const failures = windowCounter(limit.failuresPerAddress);
+  const byKey = windowCounter(limit.perKey);
+  const addressOf = d.addressOf ?? ((req: IncomingMessage) => req.socket.remoteAddress ?? 'unknown');
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (new URL(req.url ?? '/', 'http://x').pathname !== '/mcp') return deny(res, 404, 'not found');
     if (req.method !== 'POST') return deny(res, 405, 'this server is stateless: POST only');
+    const address = addressOf(req);
+    if (failures.full(address)) return deny(res, 429, 'too many requests without a working key: wait a minute');
     const auth = req.headers.authorization ?? '';
     const caller = auth.startsWith('Bearer ') ? await authenticateApiKey(d.db, auth.slice(7).trim(), (d.now ?? (() => new Date()))()) : null;
-    if (!caller) return deny(res, 401, 'a valid, unexpired Attendra API key is required as a bearer token');
+    if (!caller) { failures.add(address); return deny(res, 401, 'a valid, unexpired Attendra API key is required as a bearer token'); }
+    if (byKey.full(caller.keyId)) return deny(res, 429, 'too many requests for this key: wait a minute');
+    byKey.add(caller.keyId);
     let body: unknown;
     try { body = await readBody(req); } catch (err) { return deny(res, (err as Error).message === 'too_large' ? 413 : 400, (err as Error).message); }
     const server = createMcpServer(caller, d);

@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { type Database, withClinic } from '../client';
 
-export const API_SCOPES = ['schedule:read', 'requests:read', 'requests:write'] as const;
+export const API_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
 export type ApiScope = (typeof API_SCOPES)[number];
 
 export interface ApiKey { id: string; name: string; prefix: string; scopes: ApiScope[]; expiresAt: Date; createdByUserId: string; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }

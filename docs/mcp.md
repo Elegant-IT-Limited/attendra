@@ -4,13 +4,14 @@ Attendra runs a [Model Context Protocol](https://modelcontextprotocol.io) server
 
 ## Keys
 
-An owner or practice manager makes a key under **Settings > API keys**. A key belongs to one clinic, has an expiry (7 days to a year) and one or more scopes:
+An owner or practice manager makes a key under **Settings > API keys**. A key belongs to one clinic, has an expiry (7 days to a year: `expiresInDays` from 7 to 365 in the API) and one or more scopes:
 
 | Scope | What it allows |
 |---|---|
 | `schedule:read` | Open times, and today's appointments with patient names |
 | `requests:read` | The open refill and callback requests, with the patient and the details |
 | `requests:write` | Closing a request, with its outcome |
+| `quality:read` | The Quality page's numbers for the last 7 days. Counts only |
 
 The key is shown once, when it is made. Attendra keeps only its SHA-256 hash, so a copy of the database holds nothing that works. Revoke a key and it stops at once. Every use is written to the audit log as `mcp.<tool>` with the key's id, including uses a scope refused, and the key shows when it was last used.
 
@@ -21,10 +22,10 @@ A key acts in the name of the person who made it: a request it closes is closed 
 | Tool | Scope | What it does |
 |---|---|---|
 | `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider. No patient data. |
-| `list_todays_schedule` | any | Today's appointments. Patient names only with `schedule:read`; the audit row records how many were shown. |
+| `list_todays_schedule` | `schedule:read` | Today's appointments, with patient names; the audit row records how many were shown. |
 | `list_open_requests` | `requests:read` | Open requests, oldest first, with the patient, the details and the suggested follow-up. |
 | `mark_request_done` | `requests:write` | Close a request with `called_back`, `left_message`, `refill_sent` or `not_needed`. It tells the clinic's webhooks, as the dashboard does. |
-| `get_quality_summary` | any | The last 7 days of the Quality page's numbers. Counts only. |
+| `get_quality_summary` | `quality:read` | The last 7 days of the Quality page's numbers. Counts only. |
 
 ## Connecting a desktop MCP client over stdio
 
@@ -72,4 +73,4 @@ curl -s https://mcp.your-clinic.example/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-A request with no key, or with a revoked or expired one, gets `401`.
+A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`.

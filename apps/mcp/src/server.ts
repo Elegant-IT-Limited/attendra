@@ -37,10 +37,10 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   const has = (s: ApiScope) => caller.scopes.includes(s);
   const clinic = async () => ClinicConfig.parse(await desk.settings(caller.clinicId));
   /** Checks the scope, runs the tool, and audits the use, whatever the answer. */
-  const tool = <T>(name: string, scope: ApiScope | null, fn: (args: T) => Promise<{ result: unknown; counts?: Record<string, number> }>) => async (args: T) => {
+  const tool = <T>(name: string, scope: ApiScope, fn: (args: T) => Promise<{ result: unknown; counts?: Record<string, number> }>) => async (args: T) => {
     // the key again, on every call: one revoked while a client is connected stops here
     if (!(await apiKeyIsLive(d.db, caller, now()))) return refused('This API key has been revoked or has expired. Ask the clinic\'s owner or practice manager for a new one.');
-    if (scope && !has(scope)) {
+    if (!has(scope)) {
       await auditKeyUse(d.db, caller, `${name}.refused`);
       return refused(`This key does not have the ${scope} scope. Ask the clinic's owner or practice manager for a key that does.`);
     }
@@ -80,13 +80,12 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('list_todays_schedule', {
     title: 'Today\'s schedule',
-    description: 'Today\'s appointments, by provider, in the clinic\'s time zone. Patient names are shown only to a key with schedule:read, and that view is audited.',
+    description: 'Today\'s appointments, by provider, in the clinic\'s time zone, with patient names. Needs schedule:read, and each view is audited with how many were shown.',
     inputSchema: { providerId: z.string().optional() },
     annotations: { readOnlyHint: true },
-  }, tool('list_todays_schedule', null, async (a: { providerId?: string }) => {
+  }, tool('list_todays_schedule', 'schedule:read', async (a: { providerId?: string }) => {
     const c = await clinic();
     const today = localDateOf(now(), c.timezone);
-    const names = has('schedule:read');
     const rows = await withClinic(d.db, c.id, (tx) => tx.select({ a: schema.appointments, first: schema.patients.firstNameEnc, last: schema.patients.lastNameEnc })
       .from(schema.appointments).innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
       .where(and(eq(schema.appointments.clinicId, c.id), eq(schema.appointments.status, 'booked'), gt(schema.appointments.startsAt, zonedInstant(today, '00:00', c.timezone)),
@@ -98,10 +97,10 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
         date: today, timezone: c.timezone,
         appointments: rows.map(({ a: x, first, last }) => ({
           appointmentId: x.id, providerId: x.providerId, visitTypeId: x.visitTypeId, startsAt: x.startsAt.toISOString(), endsAt: x.endsAt.toISOString(),
-          ...(names ? { patient: `${d.cipher.decrypt(first, ctx('patients.first_name'))} ${d.cipher.decrypt(last, ctx('patients.last_name'))}` } : {}),
+          patient: `${d.cipher.decrypt(first, ctx('patients.first_name'))} ${d.cipher.decrypt(last, ctx('patients.last_name'))}`,
         })),
       },
-      counts: { appointments: rows.length, names: names ? rows.length : 0 },
+      counts: { appointments: rows.length, names: rows.length },
     };
   }));
 
@@ -136,10 +135,10 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('get_quality_summary', {
     title: 'How the assistant is doing',
-    description: 'The last 7 days: calls handled without staff, booking success, refusals, transfers, calls flagged for review, after-hours calls and cost. Counts only.',
+    description: 'The last 7 days: calls handled without staff, booking success, refusals, transfers, calls flagged for review, after-hours calls and cost. Counts only. Needs quality:read.',
     inputSchema: {},
     annotations: { readOnlyHint: true },
-  }, tool('get_quality_summary', null, async () => {
+  }, tool('get_quality_summary', 'quality:read', async () => {
     const c = await clinic();
     const to = now();
     const rows = await qualityRows(d.db, c.id, new Date(to.getTime() - 7 * 86_400_000), to);
