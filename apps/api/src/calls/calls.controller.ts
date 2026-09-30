@@ -44,7 +44,7 @@ export class CallsController {
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(CallSearch)) body: z.infer<typeof CallSearch>, @CurrentStaff() staff: Staff): Promise<CallList> {
     const patientIds = await this.patients.idsMatching(clinicId, body.query);
     const calls = await this.desk.listCalls(clinicId, {
-      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, needsReview: body.review === 'needed' || undefined, patientIds, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
+      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, needsReview: body.review === 'needed' || undefined, refusal: body.refusal, patientIds, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
     });
     return { ...this.page(calls, Number.POSITIVE_INFINITY), truncated: calls.length >= 100 };
   }
@@ -95,7 +95,7 @@ export class CallsController {
       startedAt: call.startedAt.toISOString(),
       endedAt: call.endedAt?.toISOString() ?? null,
       actions: call.actions.map((a) => ({ ...a, at: a.at.toISOString() })),
-      appointments: call.appointments.map((a) => ({ ...a, startsAt: a.startsAt.toISOString() })),
+      appointments: call.appointments.map((a) => ({ ...a, startsAt: a.startsAt.toISOString(), createdAt: a.createdAt.toISOString(), updatedAt: a.updatedAt.toISOString() })),
     };
   }
 

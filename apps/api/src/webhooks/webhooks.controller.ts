@@ -2,7 +2,7 @@
 import { type Attempt, type Database, type Endpoint, type PhiCipher, WebhookRepository } from '@attendra/db';
 import { deliver, eventId, type GuardOptions, newSecret, payloadOf, type Resolver, resolveEndpoint } from '@attendra/webhooks';
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { WebhookAttempt, WebhookAttempts, WebhookEndpoint, WebhookEndpointInput, WebhookEndpointPatch, WebhookEndpoints, WebhookSecret } from '../contracts';
 import { schemaOf } from '../http/openapi';
@@ -52,7 +52,7 @@ export class WebhooksController {
   @Requires('integrations:manage')
   @ApiOperation({ summary: 'Add an endpoint. The response is the only time its secret is shown. Audited.' })
   @ApiBody({ schema: schemaOf(WebhookEndpointInput) })
-  @ApiOkResponse({ schema: schemaOf(WebhookSecret) })
+  @ApiCreatedResponse({ schema: schemaOf(WebhookSecret) })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(WebhookEndpointInput)) body: z.infer<typeof WebhookEndpointInput>, @CurrentStaff() staff: Staff): Promise<WebhookSecret> {
     await this.checkUrl(body.url);
     const secret = newSecret();

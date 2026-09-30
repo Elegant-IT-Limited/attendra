@@ -64,6 +64,6 @@ describe('the quality page', () => {
   it('links to the calls behind a refusal', async () => {
     const res = await api.request('GET', `${C}/calls?refusal=no_clear_yes&from=2026-09-28&to=2026-10-04`, { cookie: as.admin });
     expect(res.json().calls).toHaveLength(2);
-    expect((await api.request('GET', `${C}/calls?refusal=NOT-A-CODE`, { cookie: as.admin })).statusCode).toBe(400);
+    expect((await api.request('GET', `${C}/calls?refusal=NOT-A-CODE`, { cookie: as.admin })).statusCode).toBe(422);
   });
 });

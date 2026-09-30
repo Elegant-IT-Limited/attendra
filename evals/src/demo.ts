@@ -72,7 +72,7 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
     await db.execute(sql`update calls set started_at = ${startedAt}::timestamptz, ended_at = ${startedAt}::timestamptz + make_interval(secs => coalesce(voice_seconds, 60)::double precision) where id = ${r.callId}`);
     await db.execute(sql`update call_actions set created_at = ${startedAt}::timestamptz + interval '20 seconds' where call_id = ${r.callId}`);
     await db.execute(sql`update tasks set created_at = ${startedAt}::timestamptz + interval '40 seconds' where call_id = ${r.callId}`);
-    await db.execute(sql`update appointments set created_at = ${startedAt}::timestamptz + interval '50 seconds' where created_by_call_id = ${r.callId}`);
+    await db.execute(sql`update appointments set created_at = ${startedAt}::timestamptz + interval '50 seconds', updated_at = ${startedAt}::timestamptz + interval '50 seconds' where created_by_call_id = ${r.callId}`);
   }
   return results;
 }

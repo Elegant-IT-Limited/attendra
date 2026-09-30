@@ -49,7 +49,10 @@ export class StaffScheduler {
       const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now());
       if (problem) return { kind: 'problem', problem } as const;
       const end = new Date(input.start.getTime() + (visitType?.minutes ?? 0) * 60_000);
-      if (await this.patientBusy(tx, clinic.id, input.patientId, input.start, end)) return { kind: 'busy', name: this.nameOf(clinic.id, patient) } as const;
+      if (await this.patientBusy(tx, clinic.id, input.patientId, input.start, end)) {
+        await this.auditBusy(tx, clinic.id, input.patientId, userId);
+        return { kind: 'busy', name: this.nameOf(clinic.id, patient) } as const;
+      }
       return null;
     });
     if (check?.kind === 'no_patient') return { status: 'not_found' };
@@ -82,6 +85,7 @@ export class StaffScheduler {
         const end = new Date(input.start.getTime() + minutes * 60_000);
         if (await this.patientBusy(tx, clinic.id, row.patientId, input.start, end, row.id)) {
           const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, row.patientId)));
+          await this.auditBusy(tx, clinic.id, row.patientId, userId);
           return { status: 'refused', reason: 'patient_busy', patientName: this.nameOf(clinic.id, patient!) } as const;
         }
         // only a row that is still booked: someone may have cancelled it since it was read
@@ -125,6 +129,11 @@ export class StaffScheduler {
       lt(appointments.startsAt, end), gt(appointments.endsAt, start), except ? ne(appointments.id, except) : undefined,
     )).limit(1);
     return !!clash;
+  }
+
+  /** A patient_busy refusal shows the patient's name, which is decrypted for it: a PHI read. */
+  private async auditBusy(tx: Tx, clinicId: string, patientId: string, userId: string) {
+    await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.busy.shown', entity: 'patient', entityId: patientId });
   }
 
   private nameOf(clinicId: string, p: typeof patients.$inferSelect) {

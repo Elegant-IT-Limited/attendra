@@ -27,7 +27,7 @@ describe('a temporary password', () => {
 
   it('is issued once when a manager adds someone, with a 72-hour expiry', async () => {
     const res = await api.request('POST', `${C}/members`, { cookie: admin, body: { name: 'Nia New', email: 'nia@maple.example', role: 'staff' } });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(201);
     ({ userId, temporaryPassword: password } = res.json());
     issued.push(password);
     expect(res.json().expiresInHours).toBe(72);

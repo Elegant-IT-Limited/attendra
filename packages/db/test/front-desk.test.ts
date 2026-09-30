@@ -25,7 +25,7 @@ beforeAll(async () => {
   const repo = new CallRepository(t.db, cipher);
   callId = await repo.open(DEMO_CLINIC.id, 'live_fd_1', '+13035550147');
   await repo.appendSegment(DEMO_CLINIC.id, callId, { speaker: 'caller', text: 'This is Maria Delgado, I need my lisinopril refilled.', startMs: 0, endMs: 900 });
-  await repo.recordAction(DEMO_CLINIC.id, callId, { tool: 'verify_identity', argsRedacted: ['full_name', 'dob'], result: { ok: true, verified: true }, idempotencyKey: null, taskRevision: 1 });
+  await repo.recordAction(DEMO_CLINIC.id, callId, { tool: 'verify_identity', argsRedacted: ['full_name', 'dob'], result: { ok: true, verified: true }, taskRevision: 1 });
   await repo.close(DEMO_CLINIC.id, callId, { reason: 'caller_hangup', voiceSeconds: 61.5, outcome: 'task_created', emergency: false });
   otherCallId = await repo.open(OTHER.id, 'live_fd_2', null);
   ({ id: refillId } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, {
@@ -56,6 +56,12 @@ describe('calls', () => {
     expect(call?.transcript[0]?.text).toContain('lisinopril');
     expect(call?.tasks).toEqual([{ id: refillId, type: 'refill', status: 'open' }]);
     expect(await audit('call.transcript.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: callId }]);
+    // the page refreshing is the same view: one row per person and call per five minutes
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');
+    expect(await audit('call.transcript.viewed')).toHaveLength(1);
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_olga');
+    expect(await audit('call.transcript.viewed')).toHaveLength(2);
   });
 
   it('cannot open another clinic\'s call, even by id', async () => {
@@ -69,6 +75,8 @@ describe('task queue', () => {
     const [task] = await desk.listTasks(DEMO_CLINIC.id, { status: 'open', limit: 50 }, 'u_ana');
     expect(task).toMatchObject({ id: refillId, type: 'refill', patientName: 'Maria Delgado', details: { medication: 'lisinopril' } });
     expect((await audit('task.viewed')).map((r) => r.entity_id)).toEqual([refillId]);
+    await desk.listTasks(DEMO_CLINIC.id, { status: 'open', limit: 50 }, 'u_ana'); // the page refreshing
+    expect(await audit('task.viewed')).toHaveLength(1);
   });
 
   it('lets one person hold a task; a second claim or close by someone else is refused', async () => {
@@ -121,5 +129,25 @@ describe('auth tables', () => {
       return tx.execute(sql`select * from auth_users`).then(() => 'read', (e: { cause?: { message?: string } }) => e.cause?.message ?? 'failed');
     });
     expect(r).toMatch(/permission denied/);
+  });
+});
+
+describe('what a call booked, since', () => {
+  it('says when a booking made on the call was moved later, with when it was made and changed', async () => {
+    const repo = new CallRepository(t.db, cipher);
+    const booker = await repo.open(DEMO_CLINIC.id, 'live_fd_moved', '+13035550147');
+    const [maria] = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select({ id: schema.patients.id }).from(schema.patients).limit(1)));
+    const at = (h: number) => new Date(Date.UTC(2026, 10, 3, h));
+    const insert = (key: string, h: number) => withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
+      clinicId: DEMO_CLINIC.id, patientId: maria!.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: at(h), endsAt: new Date(at(h).getTime() + 20 * 60_000),
+      idempotencyKey: key, createdByCallId: booker, createdAt: new Date('2026-09-28T10:00:00Z'), updatedAt: new Date('2026-09-28T10:00:00Z'),
+    }).returning({ id: schema.appointments.id }));
+    const [kept] = await insert('fd-kept', 15);
+    const [moved] = await insert('fd-moved', 16);
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.appointments).set({ startsAt: at(17), endsAt: new Date(at(17).getTime() + 20 * 60_000), updatedAt: new Date('2026-09-29T09:00:00Z') }).where(eq(schema.appointments.id, moved!.id)));
+    const call = await desk.getCall(DEMO_CLINIC.id, booker, 'u_ana');
+    const byId = new Map(call!.appointments.map((a) => [a.id, a]));
+    expect(byId.get(kept!.id)).toMatchObject({ change: 'booked', status: 'booked', moved: false });
+    expect(byId.get(moved!.id)).toMatchObject({ change: 'booked', status: 'booked', moved: true, createdAt: new Date('2026-09-28T10:00:00Z'), updatedAt: new Date('2026-09-29T09:00:00Z') });
   });
 });

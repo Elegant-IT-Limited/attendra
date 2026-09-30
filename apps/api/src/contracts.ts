@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { API_SCOPES } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -85,6 +86,7 @@ export const CallSearch = z.object({
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
   emergency: z.boolean().optional(),
   review: z.literal('needed').optional(),
+  refusal: CallFilters.shape.refusal,
 });
 
 /** The worker's summary of a call, for staff. Written from the transcript; never medical advice. */
@@ -109,6 +111,9 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   appointments: z.array(z.object({
     id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
     status: z.enum(['booked', 'cancelled']), change: z.enum(['booked', 'cancelled']),
+    createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
+    /** Booked on this call, and moved to another time since. */
+    moved: z.boolean(),
   })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
@@ -166,7 +171,14 @@ export const WebhookEndpointInput = z.object({
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
   omitPatientIds: z.boolean().default(true),
 });
-export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional(), omitPatientIds: z.boolean().optional() });
+// every field optional and none defaulted: a field left out of a change is left as it is
+export const WebhookEndpointPatch = z.object({
+  url: z.string().trim().max(2000).optional(),
+  description: z.string().trim().max(200).optional(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length).optional(),
+  omitPatientIds: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
 /** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
 export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
 export const WebhookAttempt = z.object({
@@ -191,16 +203,15 @@ export const QualityWeek = z.object({
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
 
-export const API_KEY_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
 export const ApiKeyView = z.object({
-  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_KEY_SCOPES)), expiresAt: z.iso.datetime(),
+  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_SCOPES)), expiresAt: z.iso.datetime(),
   createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
   status: z.enum(['active', 'expired', 'revoked']),
 });
 export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
 export const ApiKeyInput = z.object({
   name: z.string().trim().min(1, 'give the key a name').max(100),
-  scopes: z.array(z.enum(API_KEY_SCOPES)).min(1, 'choose at least one scope'),
+  scopes: z.array(z.enum(API_SCOPES)).min(1, 'choose at least one scope'),
   // what Settings offers: 7 days to a year
   expiresInDays: z.number().int().min(7, 'a key lasts at least 7 days').max(365, 'a key lasts at most a year').default(90),
 });
@@ -234,6 +245,8 @@ export const Task = z.object({
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
   assigneeName: z.string().nullable(),
+  /** Who closed a done request, by name; null while it is open, or for someone no longer on the team. */
+  doneByName: z.string().nullable(),
   /** What the call's summary suggests staff do, for a request the assistant created. */
   followUp: z.string().nullable(),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
@@ -366,7 +379,8 @@ export const Overview = z.object({
   /** Per clinic-time day, oldest first: for the trend lines. Counts only. */
   daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
 });
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })) });
+// the oldest 20, and how many are waiting in all
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int() });
 
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),

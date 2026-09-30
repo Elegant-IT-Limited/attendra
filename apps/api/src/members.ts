@@ -15,6 +15,13 @@ export async function createAccount(auth: Auth, m: { email: string; name: string
   return user.id;
 }
 
+/** Deletes an account made a moment ago whose membership could not be added, so adding the person again works. */
+export async function deleteNewAccount(auth: Auth, userId: string) {
+  const ctx = await auth.$context;
+  await ctx.internalAdapter.deleteAccounts(userId);
+  await ctx.internalAdapter.deleteUser(userId);
+}
+
 export async function findAccount(auth: Auth, email: string) {
   const ctx = await auth.$context;
   return (await ctx.internalAdapter.findUserByEmail(email.trim().toLowerCase()))?.user ?? null;

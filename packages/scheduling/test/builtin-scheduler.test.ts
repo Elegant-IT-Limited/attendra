@@ -1,6 +1,7 @@
 import { DEMO_CLINIC, findSlots, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BuiltinScheduler } from '../src';
 
@@ -32,6 +33,27 @@ describe('the built-in scheduler', () => {
     const again = await scheduler.book(DEMO_CLINIC.id, input);
     if (first.status !== 'booked' || again.status !== 'already_done') throw new Error(`unexpected ${first.status} / ${again.status}`);
     expect(again.appointment.id).toBe(first.appointment.id);
+  });
+
+  it('refuses a patient who already has a visit then, with any provider, but not the visit being moved', async () => {
+    const first = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: slotAt('14:00'), callId, idempotencyKey: 'k-busy-1' });
+    if (first.status !== 'booked') throw new Error(first.status);
+    const start = zonedInstant('2026-09-29', '14:10', tz);
+    const withLindqvist = { id: `prov_lindqvist@${start.toISOString()}`, providerId: 'prov_lindqvist', visitTypeId: 'vt_sick', start, end: new Date(start.getTime() + 20 * 60_000) };
+    expect(await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: withLindqvist, callId, idempotencyKey: 'k-busy-2' })).toEqual({ status: 'patient_busy' });
+    // moving that same visit to an overlapping time is not a clash with itself
+    const moved = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: withLindqvist, callId, idempotencyKey: 'k-busy-3', replacesAppointmentId: first.appointment.id });
+    expect(moved.status).toBe('booked');
+  });
+
+  it('two cancels at the same time give one success and one not_found, and one audit row', async () => {
+    const booked = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.maria!, slot: slotAt('11:00'), callId, idempotencyKey: 'k-race-book' });
+    if (booked.status !== 'booked') throw new Error(booked.status);
+    const id = booked.appointment.id;
+    const results = await Promise.all(['k-race-a', 'k-race-b'].map((key) => scheduler.cancel(DEMO_CLINIC.id, { patientId: ids.maria!, appointmentId: id, callId, idempotencyKey: key })));
+    expect(results.map((r) => r.status).sort()).toEqual(['cancelled', 'not_found']);
+    const audits = (await t.db.execute(sql`select count(*)::int as n from audit_logs where action = 'appointment.cancelled' and entity_id = ${id}`)).rows[0] as { n: number };
+    expect(audits.n).toBe(1);
   });
 
   it('never double books: an overlapping slot for the same provider is refused by the database', async () => {

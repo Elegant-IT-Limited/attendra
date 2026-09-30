@@ -4,7 +4,10 @@ import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
 
-/** The call record: transcript segments, every tool action, and the close-out. */
+/** Actor on the audit rows the call record writes: the voice service, not a person. */
+const SYSTEM = 'system';
+
+/** The call record: transcript segments, every tool action, and the close-out. Each write is audited in its own transaction. */
 export class CallRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
@@ -18,7 +21,9 @@ export class CallRepository {
       const fromHash = fromNumber ? this.cipher.hash(`${clinicId}|${fromNumber.replace(/\D/g, '').slice(-10)}`) : null;
       const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, channel }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
-        if (startedBy) await tx.insert(auditLogs).values({ clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id });
+        await tx.insert(auditLogs).values(startedBy
+          ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
+          : { clinicId, actor: SYSTEM, action: 'call.opened', entity: 'call', entityId: row.id, callId: row.id });
         return row.id;
       }
       const [existing] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.openaiSessionId, openaiSessionId));
@@ -29,9 +34,12 @@ export class CallRepository {
   }
 
   async appendSegment(clinicId: string, callId: string, s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }) {
-    await withClinic(this.db, clinicId, (tx) => tx.insert(callSegments).values({
-      clinicId, callId, speaker: s.speaker, textEnc: this.cipher.encrypt(s.text, phiContext(clinicId, 'call_segments.text')), startMs: s.startMs, endMs: s.endMs,
-    }));
+    await withClinic(this.db, clinicId, async (tx) => {
+      await tx.insert(callSegments).values({
+        clinicId, callId, speaker: s.speaker, textEnc: this.cipher.encrypt(s.text, phiContext(clinicId, 'call_segments.text')), startMs: s.startMs, endMs: s.endMs,
+      });
+      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.transcript.written', entity: 'call', entityId: callId, callId });
+    });
   }
 
   /**
@@ -39,25 +47,22 @@ export class CallRepository {
    * date of birth, when it has; it links the call to that patient in the same
    * transaction, so a patient's calls can be listed. A link is never replaced.
    */
-  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; idempotencyKey: string | null; taskRevision: number; patientId?: string | null }) {
+  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; taskRevision: number; patientId?: string | null }) {
     const { patientId, ...action } = a;
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.insert(callActions).values({ clinicId, callId, ...action });
+      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.action.recorded', entity: 'call', entityId: callId, callId });
       if (patientId) await tx.update(calls).set({ patientId }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId), isNull(calls.patientId)));
     });
   }
 
   async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean }) {
-    await withClinic(this.db, clinicId, (tx) => tx.update(calls).set({
-      endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
-      outcome: c.outcome, emergencyFlag: c.emergency,
-    }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId))));
-  }
-
-  async transcript(clinicId: string, callId: string) {
-    return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
-      return rows.map((r) => ({ speaker: r.speaker, text: this.cipher.decrypt(r.textEnc, phiContext(clinicId, 'call_segments.text')), startMs: r.startMs }));
+    await withClinic(this.db, clinicId, async (tx) => {
+      await tx.update(calls).set({
+        endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
+        outcome: c.outcome, emergencyFlag: c.emergency,
+      }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
+      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.closed', entity: 'call', entityId: callId, callId });
     });
   }
 }

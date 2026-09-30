@@ -73,7 +73,7 @@ describe('requests', () => {
   it('closes with an outcome, and refuses one that is not on the list', async () => {
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'emailed them' } })).json().error).toBe('invalid_request');
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'left_message' } })).statusCode).toBe(204);
-    expect((await list('?status=done&type=callback'))[0]!.outcome).toBe('left_message');
+    expect((await list('?status=done&type=callback'))[0]).toMatchObject({ outcome: 'left_message', doneAt: expect.any(String), doneByName: 'Ana Front' });
   });
 });
 
@@ -137,6 +137,14 @@ describe('calls', () => {
     expect((await api.request('POST', `${O}/calls/search`, { cookie: as.owner, body: { query: 'delg' } })).statusCode).toBe(404);
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'd' } })).json().error).toBe('invalid_request');
   });
+  it('keeps the refusal filter on a name search', async () => {
+    const all = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg' } });
+    expect(all.json().calls).toHaveLength(1);
+    const refused = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'no_clear_yes' } });
+    expect(refused.json().calls).toEqual([]); // Maria's call refused nothing
+    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'NOT-A-CODE' } })).statusCode).toBe(422);
+  });
+
 });
 
 describe('the team', () => {
@@ -155,12 +163,28 @@ describe('the team', () => {
 
   it('adds someone with a temporary password shown once, audited with the role', async () => {
     const res = await api.request('POST', M, { cookie: as.admin, body: { name: 'Nia New', email: 'Nia@Maple.example', role: 'staff' } });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(201);
     const { userId, temporaryPassword } = res.json();
     expect(temporaryPassword).toMatch(/^[\w-]{16}$/);
     expect((await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'nia@maple.example', password: temporaryPassword } })).statusCode).toBe(200);
     expect(await audit('member.added:staff')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: userId }]);
     expect((await api.request('POST', M, { cookie: as.admin, body: { name: 'Nia Again', email: 'nia@maple.example', role: 'staff' } })).json().error).toBe('already_member');
+  });
+
+  it('removes the new account when adding the membership fails, so adding the person again works', async () => {
+    await api.t.db.execute(sql`create function refuse_membership() returns trigger language plpgsql as $$ begin raise exception 'membership refused'; end $$`);
+    await api.t.db.execute(sql`create trigger refuse_membership before insert on memberships for each row execute function refuse_membership()`);
+    const body = { name: 'Rhea Retry', email: 'rhea@maple.example', role: 'staff' };
+    try {
+      expect((await api.request('POST', M, { cookie: as.admin, body })).statusCode).toBe(500);
+    } finally {
+      await api.t.db.execute(sql`drop trigger refuse_membership on memberships`);
+      await api.t.db.execute(sql`drop function refuse_membership()`);
+    }
+    expect((await api.t.db.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
+    const again = await api.request('POST', M, { cookie: as.admin, body });
+    expect(again.statusCode).toBe(201);
+    expect((await members()).map((m) => m.email)).toContain('rhea@maple.example');
   });
 
   it('keeps managers away from owners, and nobody changes or removes themselves', async () => {

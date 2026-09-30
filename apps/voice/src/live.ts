@@ -118,7 +118,13 @@ export class LiveRegistry {
     if (!e) return { ok: false, error: 'not_live' };
     if (e.coachKeys.has(key)) return { ok: true, repeat: true };
     e.coachKeys.add(key);
-    await e.control.coach(note, by);
+    try {
+      await e.control.coach(note, by);
+    } catch (err) {
+      // not sent: the same key sent again is a new try, not a repeat
+      e.coachKeys.delete(key);
+      throw err;
+    }
     return { ok: true, repeat: false };
   }
 
@@ -132,8 +138,15 @@ export class LiveRegistry {
     if (e.claimed) return e.claimed.key === key ? { ok: true, repeat: true } : { ok: false, error: 'already_taken', by: e.claimed.by };
     if (action === 'take_over' && e.summary.channel === 'web') return { ok: false, error: 'web_call' };
     if (action === 'end' && !e.control.canEnd()) return { ok: false, error: 'emergency_script' };
-    e.claimed = { key, action, by };
-    await run(e.control);
+    const claim = { key, action, by };
+    e.claimed = claim;
+    try {
+      await run(e.control);
+    } catch (err) {
+      // it did not happen: the call is free again, for this person or anyone else
+      if (e.claimed === claim) e.claimed = null;
+      throw err;
+    }
     return { ok: true, repeat: false };
   }
 

@@ -30,7 +30,13 @@
         "ATTENDRA_BACKEND_MODEL",
         "BROWSER_CALL_MAX_SECONDS",
         "VOICE_PORT",
-        "ATTENDRA_TEST_CALLS"
+        "ATTENDRA_TEST_CALLS",
+        "ATTENDRA_SIMULATED_CALLS",
+        "ATTENDRA_WEBHOOKS_ALLOW_LOCAL",
+        "ATTENDRA_SUMMARY_MODEL",
+        "API_PORT",
+        "PUBLIC_URL",
+        "LOG_LEVEL"
       ]
     }
   }

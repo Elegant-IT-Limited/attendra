@@ -28,9 +28,10 @@ export interface SlotQuery {
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 
 /**
- * Free slots in clinic-local time, walking days in order and providers in the order
- * given, so results are deterministic and the earliest options come first. The step
- * is the visit length: a 30-minute visit offers 9:00, 9:30, 10:00.
+ * Free slots in clinic-local time, earliest first: day by day, and within a day by
+ * start time across every provider, with the providers' given order breaking a tie,
+ * so results are deterministic. The step is the visit length: a 30-minute visit
+ * offers 9:00, 9:30, 10:00.
  */
 export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'>, busy: BusyInterval[], q: SlotQuery): Slot[] {
   const limit = q.limit ?? 3;
@@ -40,22 +41,25 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     const date = addDays(q.from, i);
     if (clinic.holidays.includes(date)) continue;
     const weekday = weekdayOf(date);
-    for (const provider of q.providers) {
-      if (!provider.visitTypeIds.includes(q.visitType.id)) continue;
-      const windows = windowsOn(provider.hours ?? clinic.hours, weekday);
-      for (const w of windows) {
+    const day: { slot: Slot; order: number }[] = [];
+    q.providers.forEach((provider, order) => {
+      if (!provider.visitTypeIds.includes(q.visitType.id)) return;
+      for (const w of windowsOn(provider.hours ?? clinic.hours, weekday)) {
         for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += q.visitType.minutes) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;
           if (q.partOfDay === 'afternoon' && m < 12 * 60) continue;
           const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
           const end = new Date(start.getTime() + q.visitType.minutes * 60_000);
           if (start.getTime() < earliest) continue;
-          const clash = busy.some((b) => b.providerId === provider.id && b.start < end && start < b.end);
-          if (clash) continue;
-          out.push({ id: slotId(provider.id, start), providerId: provider.id, visitTypeId: q.visitType.id, start, end });
-          if (out.length >= limit) return out;
+          if (busy.some((b) => b.providerId === provider.id && b.start < end && start < b.end)) continue;
+          day.push({ slot: { id: slotId(provider.id, start), providerId: provider.id, visitTypeId: q.visitType.id, start, end }, order });
         }
       }
+    });
+    day.sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime() || a.order - b.order);
+    for (const { slot } of day) {
+      out.push(slot);
+      if (out.length >= limit) return out;
     }
   }
   return out;

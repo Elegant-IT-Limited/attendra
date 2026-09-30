@@ -165,6 +165,12 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await kb.search(DEMO_CLINIC.id, 'what is it?')).toEqual([]);
   });
 
+  it('answers locally from the passage\'s opening, past its heading, not its last paragraph', async () => {
+    const text = 'Parking and directions\nParking is free in the lot behind the clinic. Enter from Elm Street.\n\nThe garage on 5th Avenue is also close.';
+    expect(await new LocalAnswerer().answer('where do I park?', [{ documentId: 'd', title: 'Parking and directions', text }]))
+      .toBe('Parking is free in the lot behind the clinic. Enter from Elm Street.');
+  });
+
   it('answers with citations, refuses a medical question before searching, and says so when it does not know', async () => {
     const ok = await answerQuestion(kb, new LocalAnswerer(), DEMO_CLINIC.id, 'where do I park?');
     expect(ok).toMatchObject({ refusal: null, answer: expect.stringContaining('Parking is free') });
@@ -181,11 +187,25 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await withClinic(t.db, OTHER.id, (tx) => tx.execute(sql`select count(*)::int as n from knowledge_chunks`))).toMatchObject({ rows: [{ n: 0 }] });
   });
 
+  it('re-indexes the same bytes after the embedding model changes, and a document stuck waiting', async () => {
+    const doc = { title: 'Insurance we accept', sourceType: 'markdown' as const, content: Buffer.from(DEMO_DOCUMENTS[1].text), userId: 'u_olga' };
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false); // indexed with this model
+    const moved = await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: 'text-embedding-4' });
+    expect(moved.changed).toBe(true);
+    expect((await repo.get(DEMO_CLINIC.id, moved.id))?.status).toBe('queued');
+    // still waiting (its job lost): the same bytes queue it again, as a new version
+    const again = await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: 'text-embedding-4' });
+    expect(again.changed).toBe(true);
+    expect(again.version).not.toBe(moved.version);
+    expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, moved.id)).toBe('indexed');
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false);
+  });
+
   it('indexes an unchanged upload once, replaces the chunks of a changed one, and audits both', async () => {
     const first = await repo.save(DEMO_CLINIC.id, { title: 'Parking and directions', sourceType: 'markdown', content: Buffer.from(DEMO_DOCUMENTS[0].text), userId: 'u_ana' });
     expect(first.changed).toBe(false);
     const changed = await repo.save(DEMO_CLINIC.id, { title: 'Parking and directions', sourceType: 'markdown', content: Buffer.from('# Parking\nThe lot is now under the building, entrance on Oak Street.'), userId: 'u_ana' });
-    expect(changed).toEqual({ id: first.id, changed: true, hash: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(changed).toEqual({ id: first.id, changed: true, hash: expect.stringMatching(/^[0-9a-f]{64}$/), version: expect.any(String) });
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, changed.id)).toBe('indexed');
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, changed.id)).toBe('current');
     expect((await kb.search(DEMO_CLINIC.id, 'where can I park'))[0]?.text).toContain('Oak Street');

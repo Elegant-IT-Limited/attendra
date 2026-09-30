@@ -200,10 +200,11 @@ export class FrontDeskRepository {
       const [summary] = await tx.select().from(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), eq(callSummaries.callId, callId)));
       // what the call booked or cancelled, so the call page can link to it on the schedule
       const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
-        status: appointments.status, createdByCallId: appointments.createdByCallId }).from(appointments)
+        status: appointments.status, createdByCallId: appointments.createdByCallId, createdAt: appointments.createdAt, updatedAt: appointments.updatedAt }).from(appointments)
         .where(and(eq(appointments.clinicId, clinicId), or(eq(appointments.createdByCallId, callId), eq(appointments.cancelledByCallId, callId))))
         .orderBy(appointments.startsAt);
-      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId });
+      // the call page refreshes while a summary is written: one row per person and call per five minutes
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId }, 5);
       // who the caller was, when the agent verified them: part of the same view
       const [caller] = call.patientId
         ? await tx.select({ id: patients.id, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, call.patientId)))
@@ -224,6 +225,9 @@ export class FrontDeskRepository {
         appointments: changed.map((a) => ({
           id: a.id, startsAt: a.startsAt, providerId: a.providerId, visitTypeId: a.visitTypeId, status: a.status,
           change: a.createdByCallId === callId ? 'booked' as const : 'cancelled' as const,
+          createdAt: a.createdAt, updatedAt: a.updatedAt,
+          // still booked, but changed after the call made it: the front desk moved it
+          moved: a.createdByCallId === callId && a.status === 'booked' && a.updatedAt.getTime() - a.createdAt.getTime() > 1000,
         })),
       };
     });
@@ -233,7 +237,9 @@ export class FrontDeskRepository {
    * The queue with its details and notes decrypted; one audit row per task shown.
    * Filters run in the database, so a task that is not shown is not read or audited.
    */
-  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, userId: string) {
+  /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
+  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, viewer: string | { apiKeyId: string }) {
+    const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, summary: callSummaries })
         .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
@@ -243,9 +249,8 @@ export class FrontDeskRepository {
       const notes = rows.length
         ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
         : [];
-      if (rows.length) {
-        await tx.insert(auditLogs).values(rows.map(({ task }) => ({ clinicId, actor: actorOf(userId), action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId })));
-      }
+      // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
+      for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
       const ctx = (col: string) => phiContext(clinicId, col);
       return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
         id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
@@ -361,11 +366,19 @@ export class FrontDeskRepository {
     });
   }
 
-  /** Open requests nobody has claimed, oldest first: type and age only, so the home screen shows them without reading patient data. */
+  /**
+   * Open requests nobody has claimed, oldest first: type and age only, so the home
+   * screen shows them without reading patient data. `total` counts them all, past the
+   * first `limit`.
+   */
   async waitingTasks(clinicId: string, limit = 20) {
-    return withClinic(this.db, clinicId, (tx) => tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
-      .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId)))
-      .orderBy(tasks.createdAt).limit(limit));
+    return withClinic(this.db, clinicId, async (tx) => {
+      const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
+      const rows = await tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
+        .where(waiting).orderBy(tasks.createdAt).limit(limit);
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(tasks).where(waiting) as [{ n: number }];
+      return { tasks: rows, total: n };
+    });
   }
 
   /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */

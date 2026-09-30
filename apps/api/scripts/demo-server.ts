@@ -100,7 +100,7 @@ if (realCalls || simulated) {
 
 // Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
-const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
+const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

@@ -31,6 +31,8 @@ export class CallState {
   /** Bumped on every delegation. Work finishing under an old revision is discarded. */
   revision = 0;
   emergency: { kind: string; atMs: number } | null = null;
+  /** The on-call transfer an emergency asks for has been queued: it rings once per call. */
+  emergencyTransferSent = false;
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
   /** Every emergency kind already answered, so a new kind (bleeding after chest pain) is answered too. */

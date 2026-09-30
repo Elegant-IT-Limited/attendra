@@ -15,7 +15,7 @@ An owner or practice manager makes a key under **Settings > API keys**. A key be
 
 The key is shown once, when it is made. Attendra keeps only its SHA-256 hash, so a copy of the database holds nothing that works. Revoke a key and it stops at once. Every use is written to the audit log as `mcp.<tool>` with the key's id, including uses a scope refused, and the key shows when it was last used.
 
-A key acts in the name of the person who made it: a request it closes is closed by them, and requests it reads are audited as their views. So a key works only while that person is still an owner or practice manager at the clinic: remove them from the team, or change their role to anything else, and every key they made is revoked, with an `api_key.revoked` row in the audit log. Give each agent its own key, with only the scopes it needs. What a key reads is PHI, and it goes to the MCP client and to the model behind it: whoever runs them needs a BAA before a key is used with real patients ([hipaa.md](hipaa.md)).
+A key acts in the name of the person who made it: a request it closes is closed by them. What it reads is audited under the key itself (`api_key:<id>`), so a key's views can be told apart from the person's own, and a schedule read is audited in the same transaction as the read. So a key works only while that person is still an owner or practice manager at the clinic: remove them from the team, or change their role to anything else, and every key they made is revoked, with an `api_key.revoked` row in the audit log. Give each agent its own key, with only the scopes it needs. What a key reads is PHI, and it goes to the MCP client and to the model behind it: whoever runs them needs a BAA before a key is used with real patients ([hipaa.md](hipaa.md)).
 
 ## Tools
 
@@ -36,7 +36,7 @@ A desktop MCP client, such as Claude Desktop, starts a local server over stdio. 
   "mcpServers": {
     "attendra": {
       "command": "pnpm",
-      "args": ["--dir", "/path/to/attendra", "--filter", "@attendra/mcp", "stdio"],
+      "args": ["--silent", "--dir", "/path/to/attendra", "--filter", "@attendra/mcp", "stdio"],
       "env": {
         "ATTENDRA_MCP_URL": "https://mcp.your-clinic.example/mcp",
         "ATTENDRA_API_KEY": "atk_..."
@@ -46,7 +46,7 @@ A desktop MCP client, such as Claude Desktop, starts a local server over stdio. 
 }
 ```
 
-`ATTENDRA_MCP_URL` must be `https://`, except `http://localhost` for trying it on one machine. A client that can connect to a URL itself does not need the bridge: give it the address and the key directly, as below.
+`--silent` matters: stdout carries the protocol, and without it pnpm prints its script banner there first, which the client cannot read. `ATTENDRA_MCP_URL` must be `https://`, except `http://localhost` for trying it on one machine. A client that can connect to a URL itself does not need the bridge: give it the address and the key directly, as below.
 
 ## Connecting over HTTP
 
@@ -73,4 +73,4 @@ curl -s https://mcp.your-clinic.example/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`.
+A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`. The key is checked first, so a working key is still served from an address that is held back, and one client guessing behind a shared proxy does not lock out the others.

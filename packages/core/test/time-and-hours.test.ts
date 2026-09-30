@@ -7,6 +7,19 @@ describe('clinic-local time', () => {
     expect(zonedInstant('2026-12-01', '09:00', 'America/Denver').toISOString()).toBe('2026-12-01T16:00:00.000Z'); // MST, UTC-7
   });
 
+  it('starts Havana\'s day at 01:00 on its DST switch day, when midnight does not exist', () => {
+    // 2026-03-08: clocks go from 23:59 on the 7th straight to 01:00
+    const start = zonedInstant('2026-03-08', '00:00', 'America/Havana');
+    expect(start.toISOString()).toBe('2026-03-08T05:00:00.000Z');
+    expect(localParts(start, 'America/Havana')).toMatchObject({ date: '2026-03-08', minutes: 60 });
+    expect(zonedInstant('2026-03-08', '09:00', 'America/Havana').toISOString()).toBe('2026-03-08T13:00:00.000Z');
+    // 2026-11-01: midnight happens twice, and the day starts at the first
+    expect(zonedInstant('2026-11-01', '00:00', 'America/Havana').toISOString()).toBe('2026-11-01T04:00:00.000Z');
+    // the same rules away from midnight: a skipped time moves past the gap, a repeated one is the earlier
+    expect(zonedInstant('2026-03-08', '02:30', 'America/Denver').toISOString()).toBe('2026-03-08T09:30:00.000Z');
+    expect(zonedInstant('2026-11-01', '01:30', 'America/Denver').toISOString()).toBe('2026-11-01T07:30:00.000Z');
+  });
+
   it('reads the local date, not the UTC one, late in the evening', () => {
     // 9:30 pm in Denver on Tuesday is already Wednesday in UTC
     expect(localParts(new Date('2026-09-30T03:30:00Z'), 'America/Denver')).toMatchObject({ date: '2026-09-29', weekday: 2 });

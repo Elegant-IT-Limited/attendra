@@ -54,7 +54,7 @@ describe('browser test calls', () => {
     expect((await api.request('POST', `${C}/test-calls`, { cookie: viewer, body: { sdp: 'v=0' } })).statusCode).toBe(403);
     expect((await api.request('POST', `/api/v1/clinics/${OTHER.id}/test-calls`, { cookie: staff, body: { sdp: 'v=0' } })).statusCode).toBe(404);
     expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0' }, origin: 'https://evil.example' })).statusCode).toBe(403);
-    expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: '' } })).statusCode).toBe(400);
+    expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: '' } })).statusCode).toBe(422);
     expect((await api.request('POST', `${C}/test-calls/call_1/end`, { cookie: viewer })).statusCode).toBe(403);
   });
 

@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -21,7 +21,7 @@ let n = 0;
 async function closedCall(clinicId = DEMO_CLINIC.id, opts: { closed?: boolean; emergency?: boolean } = {}) {
   const callId = await calls.open(clinicId, `live_worker_${++n}`, '+13035550147');
   await calls.appendSegment(clinicId, callId, { speaker: 'caller', text: 'Hi, this is Maria Delgado, born March 4th 1985.', startMs: 0, endMs: 900 });
-  await calls.recordAction(clinicId, callId, { tool: 'verify_caller', argsRedacted: ['full_name', 'date_of_birth'], result: { ok: true, verified: true }, idempotencyKey: null, taskRevision: 1 });
+  await calls.recordAction(clinicId, callId, { tool: 'verify_caller', argsRedacted: ['full_name', 'date_of_birth'], result: { ok: true, verified: true }, taskRevision: 1 });
   if (opts.closed !== false) await calls.close(clinicId, callId, { reason: 'caller_hangup', voiceSeconds: 42, outcome: opts.emergency ? 'emergency' : 'info', emergency: !!opts.emergency });
   return callId;
 }
@@ -39,6 +39,8 @@ const summaryOf = (clinicId: string, callId: string) =>
   withClinic(t.db, clinicId, async (tx) => (await tx.select().from(schema.callSummaries).where(eq(schema.callSummaries.callId, callId)))[0] ?? null);
 const audits = (clinicId: string, action: string) =>
   withClinic(t.db, clinicId, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.clinicId, clinicId), eq(schema.auditLogs.action, action))));
+
+const lines = async (callId: string) => ((await t.db.execute(sql`select count(*)::int as n from call_segments where call_id = ${callId}`)).rows[0] as { n: number }).n;
 
 beforeAll(async () => {
   t = await openTestDatabase();
@@ -58,7 +60,7 @@ describe('summarising a call', () => {
     expect(row).toMatchObject({ intent: 'other', sentiment: 'calm', needsReview: false, model: 'local' });
     expect(row!.bodyEnc).not.toContain('verified'); // encrypted, not JSON in clear
     expect(await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId })).toBe('exists');
-    const actions = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.auditLogs).where(eq(schema.auditLogs.callId, callId)))).map((a) => `${a.actor} ${a.action}`);
+    const actions = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.callId, callId), eq(schema.auditLogs.actor, 'worker'))))).map((a) => `${a.actor} ${a.action}`);
     expect(actions).toEqual(['worker call.transcript.read', 'worker call.summary.written']);
   });
 
@@ -94,30 +96,59 @@ describe('the retention purge', () => {
     await h.summariseCall({ clinicId: OTHER.id, callId: old });
     await t.db.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
 
-    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
-    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
 
     const actionsOf = async (id: string) => ((await t.db.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
     const oldActions = await actionsOf(old);
     const recentActions = await actionsOf(recent);
 
     const results = await h.purgeRetention();
-    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
+    expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
     expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
     expect(await actionsOf(old)).toBe(0);
     expect(await actionsOf(recent)).toBe(recentActions);
-    expect(await calls.transcript(OTHER.id, old)).toEqual([]);
-    expect(await calls.transcript(OTHER.id, recent)).toHaveLength(1);
-    const [audit] = await audits(OTHER.id, 'retention.purged');
+    expect(await lines(old)).toBe(0);
+    expect(await lines(recent)).toBe(1);
+    const audit = (await audits(OTHER.id, 'retention.purged')).find((r) => 'transcriptLines' in (r.counts as object));
     expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1, callActions: oldActions } });
+  });
+
+  it('deletes webhook events and their delivery attempts on the same retention, in batches', async () => {
+    await saveClinic(t.db, 'org_other', { ...OTHER, retentionDays: 30 } as typeof OTHER);
+    const hooks = new WebhookRepository(t.db, cipher);
+    const endpoint = await hooks.create(OTHER.id, { url: 'https://example.com/hook', description: '', events: ['call.completed'], secret: 'whsec_test', userId: 'u_otto' });
+    const event = async (id: string, days: number) => {
+      await hooks.record({ id, clinicId: OTHER.id, type: 'call.completed', data: {}, occurredAt: new Date().toISOString() });
+      await hooks.logAttempt(OTHER.id, { endpointId: endpoint, eventId: id, kind: 'automatic', attempt: 1, statusCode: 200, durationMs: 5, error: null });
+      await t.db.execute(sql`update webhook_events set created_at = now() - make_interval(days => ${days}) where id = ${id}`);
+    };
+    for (const id of ['evt_old_1', 'evt_old_2', 'evt_old_3']) await event(id, 40);
+    await event('evt_recent', 5);
+    const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
+
+    expect(await purgeWebhookRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2)).toEqual({ webhookEvents: 3, webhookAttempts: 3 });
+    expect(await hooks.event(OTHER.id, 'evt_old_1')).toBeNull();
+    expect(await hooks.event(OTHER.id, 'evt_recent')).not.toBeNull();
+    expect(await hooks.attempts(OTHER.id, endpoint)).toHaveLength(1);
+    const rows = (await audits(OTHER.id, 'retention.purged')).filter((r) => !seen.has(r.id));
+    expect(rows.map((r) => (r.counts as { webhookEvents: number }).webhookEvents).sort()).toEqual([1, 2]);
+
+    await event('evt_old_4', 40);
+    const results = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => new Date() }).purgeRetention();
+    expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ webhookEvents: 1, webhookAttempts: 1 });
   });
 
   it('works through old calls in batches, each its own transaction', async () => {
     const ids = [await closedCall(OTHER.id), await closedCall(OTHER.id), await closedCall(OTHER.id)];
     await t.db.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
     const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
     expect(counts.transcriptLines).toBe(3);
-    for (const id of ids) expect(await calls.transcript(OTHER.id, id)).toEqual([]);
+    for (const id of ids) expect(await lines(id)).toBe(0);
+    // one counts row per batch, written with that batch's deletes
+    const rows = (await audits(OTHER.id, 'retention.purged')).filter((r) => !seen.has(r.id));
+    expect(rows.map((r) => (r.counts as { transcriptLines: number }).transcriptLines).sort()).toEqual([1, 2]);
   });
 });
 
@@ -127,6 +158,10 @@ describe('text delivery status', () => {
     await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.smsMessages).values({ clinicId: DEMO_CLINIC.id, template: 'booking_confirmed', toHash: 'h', idempotencyKey: 'k-sms', status: 'sent', providerSid: sid }));
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
     expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'delivered' })).toBe('updated');
+    // every status Twilio sends for an outbound message, not only the common five
+    for (const status of ['accepted', 'scheduled', 'sending', 'canceled', 'partially_delivered', 'read'] as const) {
+      expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status })).toBe('updated');
+    }
     expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: `SM${'b'.repeat(32)}`, status: 'delivered' })).toBe('unknown');
     await expect(h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: 'not-a-sid', status: 'delivered' })).rejects.toThrow();
   });

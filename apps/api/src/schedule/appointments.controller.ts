@@ -3,7 +3,7 @@ import { addDays, ClinicConfig, type EventSink, localDateOf, zonedInstant } from
 import { appointmentFacts, type Database, type FrontDeskRepository, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, RescheduleAppointment, Schedule,
@@ -97,11 +97,11 @@ export class AppointmentsController {
   }
 
   @Post()
-  @HttpCode(200)
+  @HttpCode(201)
   @Requires('schedule:write')
   @ApiOperation({ summary: 'Book an appointment for a patient. Idempotent by key. Audited.' })
   @ApiBody({ schema: schemaOf(BookAppointment) })
-  @ApiOkResponse({ schema: schemaOf(AppointmentChange) })
+  @ApiCreatedResponse({ schema: schemaOf(AppointmentChange) })
   @ApiConflictResponse({ description: 'The time cannot be booked; `reason` says why' })
   async book(@Param('clinicId') clinicId: string, @Body(new ZodPipe(BookAppointment)) body: z.infer<typeof BookAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     const clinic = await this.clinic(clinicId);
@@ -143,7 +143,8 @@ export class AppointmentsController {
       : { appointmentId: a.appointmentId, patientId: a.patientId, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, by: 'staff', callId: null };
     // a staff move keeps the appointment, so there is no previous one
     if (type === 'appointment.rescheduled') data.previousAppointmentId = null;
-    await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}` : a.appointmentId, data });
+    // each move is its own event, even back to a time the appointment had before
+    await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}|${a.updatedAt}` : a.appointmentId, data });
     return change;
   }
 

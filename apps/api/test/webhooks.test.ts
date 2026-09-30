@@ -55,7 +55,7 @@ describe('webhook endpoints', () => {
       expect(res.statusCode, url).toBe(422);
       expect(res.json().problem, url).toBe(problem);
     }
-    expect((await create(as.admin, { url: 'https://hooks.example.com/x', events: [] })).statusCode).toBe(400);
+    expect((await create(as.admin, { url: 'https://hooks.example.com/x', events: [] })).statusCode).toBe(422);
   });
 
   it('show the secret once, when the endpoint is made, and never again', async () => {
@@ -124,15 +124,35 @@ describe('webhook endpoints', () => {
     const actions = (await api.t.db.execute(sql`select action from audit_logs where entity = 'webhook_endpoint' order by id`)).rows.map((r: unknown) => (r as { action: string }).action);
     expect(actions).toEqual(['webhook.endpoint.created', 'webhook.endpoint.secret_rotated', 'webhook.endpoint.updated', 'webhook.endpoint.deleted']);
   });
+  it('turning an endpoint off and on keeps its description and patient-id choice', async () => {
+    const made = await api.request('POST', `${C}/webhooks`, { cookie: as.admin, body: { url: 'https://hooks.example.com/keep', description: 'n8n: keep me', events: ['request.done'], omitPatientIds: false } });
+    const id = made.json().endpoint.id as string;
+    expect((await api.request('PUT', `${C}/webhooks/${id}`, { cookie: as.admin, body: { enabled: false } })).json()).toMatchObject({ enabled: false, description: 'n8n: keep me', omitPatientIds: false });
+    expect((await api.request('PUT', `${C}/webhooks/${id}`, { cookie: as.admin, body: { enabled: true } })).json()).toMatchObject({ enabled: true, description: 'n8n: keep me', omitPatientIds: false });
+    await api.request('DELETE', `${C}/webhooks/${id}`, { cookie: as.admin });
+  });
 });
 
 describe('events from the front desk', () => {
+  it('a move back to a time the appointment had before is still its own event', async () => {
+    const from = new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10);
+    const slots = (await api.request('GET', `${C}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=${from}&days=7`, { cookie: as.staff })).json();
+    const [a, b] = slots.slots as { startsAt: string }[];
+    const booked = await api.request('POST', `${C}/appointments`, { cookie: as.staff, body: { patientId: api.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: a!.startsAt, idempotencyKey: 'hook-back-and-forth' } });
+    const id = booked.json().appointmentId as string;
+    for (const to of [b!, a!, b!]) await api.request('POST', `${C}/appointments/${id}/reschedule`, { cookie: as.staff, body: { startsAt: to.startsAt } });
+    const moves = events.filter((e) => e.data.appointmentId === id && e.type === 'appointment.rescheduled');
+    expect(moves).toHaveLength(3);
+    expect(new Set(moves.map((e) => e.id)).size).toBe(3); // A to B, back to A, and to B again: three events
+    await api.request('POST', `${C}/appointments/${id}/cancel`, { cookie: as.staff, body: { reason: 'patient_asked' } });
+  });
+
   it('a staff booking, a move and a cancellation become events with ids and times, and no names', async () => {
     const from = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10); // a week out, whatever today is
     const slots = (await api.request('GET', `${C}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=${from}&days=7`, { cookie: as.staff })).json();
     const [first, second] = slots.slots as { startsAt: string }[];
     const booked = await api.request('POST', `${C}/appointments`, { cookie: as.staff, body: { patientId: api.patientIds.james, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: first!.startsAt, idempotencyKey: 'hook-book-1' } });
-    expect(booked.statusCode).toBe(200);
+    expect(booked.statusCode).toBe(201);
     const id = booked.json().appointmentId as string;
     await api.request('POST', `${C}/appointments/${id}/reschedule`, { cookie: as.staff, body: { startsAt: second!.startsAt } });
     await api.request('POST', `${C}/appointments/${id}/cancel`, { cookie: as.staff, body: { reason: 'patient_asked' } });

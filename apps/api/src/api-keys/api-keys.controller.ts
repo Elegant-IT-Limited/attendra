@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ApiKey, ApiKeyRepository, type Database, staffNames } from '@attendra/db';
 import { Body, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post } from '@nestjs/common';
-import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ApiKeyCreated, ApiKeyInput, ApiKeys, type ApiKeyView } from '../contracts';
 import { schemaOf } from '../http/openapi';
@@ -41,7 +41,7 @@ export class ApiKeysController {
   @Requires('integrations:manage')
   @ApiOperation({ summary: 'Make a key with scopes and an expiry. The response is the only time it is shown. Audited.' })
   @ApiBody({ schema: schemaOf(ApiKeyInput) })
-  @ApiOkResponse({ schema: schemaOf(ApiKeyCreated) })
+  @ApiCreatedResponse({ schema: schemaOf(ApiKeyCreated) })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(ApiKeyInput)) body: z.infer<typeof ApiKeyInput>, @CurrentStaff() staff: Staff): Promise<ApiKeyCreated> {
     const expiresAt = new Date(this.now().getTime() + body.expiresInDays * 86_400_000);
     const { id, key } = await this.repo.create(clinicId, { name: body.name, scopes: [...new Set(body.scopes)], expiresAt, userId: staff.userId });
