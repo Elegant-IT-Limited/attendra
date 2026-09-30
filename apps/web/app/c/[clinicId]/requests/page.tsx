@@ -4,8 +4,8 @@ import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Hand, MessageSquare, Phone, PhoneCall, Pill, Voicemail } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,10 +22,23 @@ const DETAIL_LABELS: Record<string, string> = { medication: 'Medication', pharma
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 
-export default function Requests() {
+export default function RequestsPage() {
+  return <Suspense fallback={<Skeleton className="h-64" />}><Requests /></Suspense>;
+}
+
+function Requests() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { clinic, data: me, can, isPending } = useClinic(clinicId);
-  const [status, setStatus] = useState<'open' | 'done'>('open');
+  // the tab is in the address, so a link can open a closed request (?status=done)
+  const search = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
+  const setStatus = (s: 'open' | 'done') => {
+    const q = new URLSearchParams(search.toString());
+    if (s === 'done') q.set('status', 'done'); else q.delete('status');
+    router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
+  };
   const [type, setType] = useState('');
   const [who, setWho] = useState<Who>('everyone');
   const [problem, setProblem] = useState<string | null>(null);
