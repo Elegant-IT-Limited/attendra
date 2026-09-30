@@ -19,12 +19,14 @@ pnpm install
 pnpm test                 # vitest: unit, Postgres (PGlite) integration, eval scenarios
 pnpm eval                 # scenario report; --live uses the real planner model
 pnpm lint && pnpm typecheck
-pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; synthetic data only
+pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; the seed also needs ATTENDRA_DATA_KEY; synthetic data only
+pnpm db:rehash-lookups    # once after upgrading to v0.4.1, with DATABASE_URL and ATTENDRA_DATA_KEY
 pnpm demo                 # API on an in-memory Postgres with demo calls, plus the dashboard on :3000
 pnpm test:e2e             # Playwright against the demo (starts both servers)
+pnpm sim                  # simulated callers against the real planner (needs OPENAI_API_KEY, costs credit)
 pnpm add-member --email <e> --name <n> --org <org> --role owner|admin|staff|viewer   # password in ATTENDRA_NEW_PASSWORD
 pnpm db:add-number --clinic <clinic id> --number <E.164>
-docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service
+docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service, --profile mcp for MCP
 ```
 
 Keep these working. If you add a command, add it here and in the README.
