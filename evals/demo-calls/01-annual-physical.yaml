@@ -1,0 +1,22 @@
+id: demo-annual-physical
+title: An established patient books an annual physical
+caller_number: "+17205550110"
+turns:
+  - caller: Hi, this is Aisha Bello, born November 2nd 1978. I'm due for my yearly physical.
+    reply: "Thanks, Aisha, I have your record. For an annual physical I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Aisha Bello, date_of_birth: November 2nd 1978 }
+      - find_slots: { visit_type_id: vt_annual, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The second one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes, that's right.
+    reply: "You're booked for {booked}. I've sent a text confirmation."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

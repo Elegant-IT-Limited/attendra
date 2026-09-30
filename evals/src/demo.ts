@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, type ClinicConfig, DEMO_CLINICS, fromMinutes, localDateOf, localParts, zonedInstant } from '@attendra/core';
-import { type Database, MAX_UPCOMING, type PhiCipher, schema, withClinic } from '@attendra/db';
+import { addDays, type ClinicConfig, DEMO_CLINICS, fromMinutes, localDateOf, localParts, weekdayOf, zonedInstant } from '@attendra/core';
+import { type Database, DEMO_SCHEDULE_PATIENTS, MAX_UPCOMING, type PhiCipher, phoneKey, PostgresPatientDirectory, schema, withClinic } from '@attendra/db';
+import { join } from 'node:path';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { loadScenarios } from './scenario';
 import { clinicOf, playScenario, type ScenarioResult } from './simulator';
@@ -25,7 +26,11 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   const results: ScenarioResult[] = [];
   const booked: (typeof schema.appointments.$inferSelect)[] = [];
   // each clinic's own scenarios, so a Bangla call is recorded at the Dhaka clinic
-  for (const scenario of loadScenarios().filter((s) => clinicOf(s).id === clinic.id)) {
+  const evals = loadScenarios().filter((s) => clinicOf(s).id === clinic.id);
+  // and a working week of ordinary calls, played the same way, for the clinic's current week
+  const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
+  if (week.length) await ensurePatients(db, cipher, clinic);
+  for (const scenario of [...evals, ...week]) {
     // each scenario starts from an empty calendar, as it does in the eval
     await db.execute(sql`delete from appointments where clinic_id = ${clinic.id}`);
     const result = await playScenario(db, cipher, patientIds, scenario, { record: true, sessionId: `demo_${scenario.id}` });
@@ -39,17 +44,45 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   await db.execute(sql`delete from calls where clinic_id = ${clinic.id} and openai_session_id like 'setup_%'`);
   await keepAssistantBookings(db, clinic, booked, setupCalls, now, opts.bookedBy);
 
-  // Newest first on screen: the last scenario is about an hour ago, the first about six days ago.
+  // Where each call goes in time. The eval scenarios are mostly the hard cases (hedges,
+  // wrong dates of birth, emergencies), so with a working week of ordinary calls they
+  // go in the two weeks before it, and the Quality page's trend reads like a clinic
+  // getting better at this. A clinic with no ordinary calls keeps them in the last six days.
   const hour = 3_600_000;
-  const step = Math.min(9.5, 140 / Math.max(1, results.length - 1));
-  for (const [i, r] of [...results].reverse().entries()) {
-    const startedAt = new Date(now.getTime() - hour - i * step * hour).toISOString();
+  const times = new Map<string, Date>();
+  const spread = (rs: ScenarioResult[], from: number, to: number) => rs.forEach((r, i) => times.set(r.callId, new Date(from + ((i + 0.5) * (to - from)) / rs.length)));
+  if (week.length) {
+    const today = localDateOf(now, clinic.timezone);
+    const weekStart = zonedInstant(addDays(today, -((weekdayOf(today) + 6) % 7)), '00:00', clinic.timezone).getTime();
+    const end = now.getTime() - Math.min(hour, (now.getTime() - weekStart) / 10);
+    spread(results.slice(0, evals.length), weekStart - 14 * 24 * hour, weekStart - hour);
+    spread(results.slice(evals.length), weekStart + Math.min(hour, (end - weekStart) / 20), end);
+  } else {
+    // newest first on screen: the last scenario is about an hour ago, the first about six days ago
+    const step = Math.min(9.5, 140 / Math.max(1, results.length - 1));
+    [...results].reverse().forEach((r, i) => times.set(r.callId, new Date(now.getTime() - hour - i * step * hour)));
+  }
+  for (const r of results) {
+    const startedAt = times.get(r.callId)!.toISOString();
     await db.execute(sql`update calls set started_at = ${startedAt}::timestamptz, ended_at = ${startedAt}::timestamptz + make_interval(secs => coalesce(voice_seconds, 60)::double precision) where id = ${r.callId}`);
     await db.execute(sql`update call_actions set created_at = ${startedAt}::timestamptz + interval '20 seconds' where call_id = ${r.callId}`);
     await db.execute(sql`update tasks set created_at = ${startedAt}::timestamptz + interval '40 seconds' where call_id = ${r.callId}`);
     await db.execute(sql`update appointments set created_at = ${startedAt}::timestamptz + interval '50 seconds' where created_by_call_id = ${r.callId}`);
   }
   return results;
+}
+
+/** Ordinary calls for the demo's current week: played through the real agent, never run as evals. */
+export const DEMO_CALL_DIR = join(import.meta.dirname, '../demo-calls');
+
+/** The demo schedule's patients who call during the week, created now (the schedule finds them by number later). */
+async function ensurePatients(db: Database, cipher: PhiCipher, clinic: ClinicConfig) {
+  const directory = new PostgresPatientDirectory(db, cipher, 'seed');
+  for (const p of DEMO_SCHEDULE_PATIENTS.slice(0, 8)) {
+    const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: schema.patients.id }).from(schema.patients)
+      .where(and(eq(schema.patients.clinicId, clinic.id), eq(schema.patients.phoneHash, cipher.hash(phoneKey(clinic.id, p.phone))))));
+    if (!existing) await directory.create(clinic.id, p);
+  }
 }
 
 /**
