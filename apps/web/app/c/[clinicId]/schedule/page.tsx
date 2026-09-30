@@ -74,7 +74,9 @@ function ScheduleScreen() {
 
   const showCancelled = cancelledShown[view];
   const setShowCancelled = (v: boolean) => setCancelledShown((c) => ({ ...c, [view]: v }));
-  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked'), [schedule.data, showCancelled]);
+  // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
+  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open), [schedule.data, showCancelled, open]);
+  const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
@@ -124,7 +126,7 @@ function ScheduleScreen() {
           <div>
             <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
-              {schedule.isPending ? 'Loading…' : `${booked} booked${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
+              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
             </p>
           </div>
           <Legend clinic={clinic} />
