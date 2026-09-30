@@ -19,7 +19,10 @@ import { useLiveCalls } from '@/lib/live';
 import { cn } from '@/lib/utils';
 
 type Caption = { speaker: 'caller' | 'agent'; text: string };
-type Step = { tool: string; status: 'started' | 'ok' | 'refused'; code: string | null; at: number };
+type Step =
+  | { kind?: 'tool'; tool: string; status: 'started' | 'ok' | 'refused'; code: string | null; at: number }
+  // a staff action, with the note's words: from the live stream only, never stored
+  | { kind: 'staff'; action: string; by: string | null; note: string | null; at: number };
 type Snapshot = { channel: 'phone' | 'web'; startedAt: string; verified: string | null; doing: string | null; pending: string | null; emergency: boolean };
 
 /** Everything the page knows about the call, built from the stream. */
@@ -54,14 +57,19 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
       return [...cs, { speaker, text: text.trim() }];
     }));
     on('tool', (d) => setSteps((ss) => {
-      const step = { tool: String(d.tool), status: d.status as Step['status'], code: (d.code as string | null) ?? null, at: Date.now() };
+      const step = { tool: String(d.tool), status: d.status as 'started' | 'ok' | 'refused', code: (d.code as string | null) ?? null, at: Date.now() };
       // a finished step replaces the one that started it
-      const open = step.status !== 'started' ? ss.findLastIndex((s) => s.tool === step.tool && s.status === 'started') : -1;
+      const open = step.status !== 'started' ? ss.findLastIndex((s) => s.kind !== 'staff' && s.tool === step.tool && s.status === 'started') : -1;
       return open >= 0 ? ss.map((s, i) => (i === open ? step : s)) : [...ss, step];
     }));
     on('state', (d) => setState({ verified: (d.verified as string | null) ?? null, pending: (d.pending as string | null) ?? null, doing: (d.doing as string | null) ?? null }));
     on('emergency', (d) => setEmergency(String(d.kind)));
-    on('staff', (d) => setStaff(String(d.action)));
+    on('staff', (d) => {
+      setStaff(String(d.action));
+      if (['coached', 'taken_over', 'ended'].includes(String(d.action))) {
+        setSteps((ss) => [...ss, { kind: 'staff', action: String(d.action), by: (d.by as string | null) ?? null, note: (d.note as string | undefined) ?? null, at: Date.now() }]);
+      }
+    });
     on('ended', () => { source.close(); ended.current(); });
     source.onerror = () => { if (source.readyState === EventSource.CLOSED) setLost(true); };
     return () => source.close();
@@ -112,6 +120,14 @@ function useTicking(startedAt: string | undefined) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   return startedAt ? clock(Math.max(0, now - Date.parse(startedAt))) : '0:00';
+}
+
+/** "Note from Jordan (front desk)", "Jordan (front desk) ended the call". */
+function staffLine(action: string, by: string | null) {
+  const who = by ?? 'Someone on the team';
+  if (action === 'coached') return `Note from ${by ?? 'the team'}`;
+  if (action === 'taken_over') return `${who} took over the call`;
+  return `${who} ended the call`;
 }
 
 const TAKEN = (e: unknown) => (e instanceof ApiFailure && e.status === 409 && e.body.error === 'already_taken'
@@ -242,7 +258,15 @@ export default function LiveCallPage() {
           <CardContent>
             {live.steps.length === 0 ? <p className="text-sm text-text-muted">No tools used yet.</p> : (
               <ol className="space-y-3" aria-label="Tool steps">
-                {live.steps.map((s, i) => (
+                {live.steps.map((s, i) => s.kind === 'staff' ? (
+                  <li key={i} className="flex gap-3 text-sm" data-testid="staff-step">
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary"><Hand className="size-3" /></span>
+                    <div className="min-w-0">
+                      <p className="font-medium">{staffLine(s.action, s.by)}</p>
+                      {s.note && <p className="break-words text-xs text-text-muted">&ldquo;{s.note}&rdquo;</p>}
+                    </div>
+                  </li>
+                ) : (
                   <li key={i} className="flex gap-3 text-sm">
                     <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full', s.status === 'refused' ? 'bg-warning-soft' : s.status === 'ok' ? 'bg-success-soft' : 'bg-surface-sunken')}>
                       {s.status === 'started' ? <Loader2 className="size-3 animate-spin" /> : s.status === 'ok' ? <Check className="size-3" /> : <X className="size-3" />}

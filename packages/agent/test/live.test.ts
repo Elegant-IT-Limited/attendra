@@ -32,6 +32,16 @@ describe('coaching', () => {
     expect(out.errors).toEqual(['identity_required']);
   });
 
+  it('shows the note and who sent it to everyone watching, in the live stream only', async () => {
+    const c = await w.call();
+    const events: LiveEvent[] = [];
+    c.agent.observer = (e) => events.push(e);
+    c.agent.coach('offer Thursday', 'Jordan (front desk)');
+    c.agent.endByStaff('Jordan (front desk)');
+    expect(events).toContainEqual({ type: 'staff', action: 'coached', by: 'Jordan (front desk)', note: 'offer Thursday' });
+    expect(events).toContainEqual({ type: 'staff', action: 'ended', by: 'Jordan (front desk)' });
+  });
+
   it('is marked as the staff\'s, for the model only, and quotes the note safely', () => {
     const text = coachingInstruction('offer "Thursday" afternoon');
     expect(text).toContain('A member of the clinic\'s staff');
