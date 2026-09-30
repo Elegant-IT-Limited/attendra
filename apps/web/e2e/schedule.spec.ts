@@ -30,6 +30,8 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
     await expect(page.getByText(/Times are .*America\/Denver/)).toBeVisible();
     const block = await findInWeek(page, /booked by the assistant/);
+    // whoever the call was from: each demo call books where it put the visit, for its own caller
+    const name = (await block.getAttribute('aria-label'))!.split(', ')[1]!;
     await block.click();
     const panel = page.getByRole('dialog');
     await expect(panel.getByText('By the assistant, on a call', { exact: false })).toBeVisible();
@@ -38,9 +40,9 @@ test.describe.serial('the schedule', () => {
     // one date format across the dashboard, day first: the call's heading and its booking line alike
     await expect(page.getByRole('heading', { level: 1, name: /^\w+day \d{1,2} \w+ \d{4}, \d{1,2}:\d{2} [AP]M M[DS]T$/ })).toBeVisible();
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
-    await page.getByRole('link', { name: 'Maria Delgado' }).click(); // who was calling, verified
-    await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
-    await expect(page.getByText(/^Age \d+, born 4 March 1985$/)).toBeVisible();
+    await page.getByRole('link', { name, exact: true }).click(); // who was calling, verified
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page.getByText(/^Age \d+, born \d{1,2} [A-Z][a-z]+ \d{4}$/)).toBeVisible();
     await page.getByRole('tab', { name: /Calls/ }).click();
     await expect(page.getByRole('link', { name: /Transcript/ }).first()).toBeVisible();
   });
