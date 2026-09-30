@@ -237,7 +237,9 @@ export class FrontDeskRepository {
    * The queue with its details and notes decrypted; one audit row per task shown.
    * Filters run in the database, so a task that is not shown is not read or audited.
    */
-  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, userId: string) {
+  /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
+  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, viewer: string | { apiKeyId: string }) {
+    const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, summary: callSummaries })
         .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
@@ -248,7 +250,7 @@ export class FrontDeskRepository {
         ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
         : [];
       // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
-      for (const { task } of rows) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
+      for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
       const ctx = (col: string) => phiContext(clinicId, col);
       return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
         id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
