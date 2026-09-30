@@ -87,3 +87,33 @@ test('a live page whose stream closes for good, for a call no longer live, becom
   await page.goto(`/c/${clinic}/calls/${callId}/live`);
   await expect(page).toHaveURL(new RegExp(`/calls/${callId}$`), { timeout: 20_000 });
 });
+
+test('your own number for take-overs can be changed and cleared from the take-over dialog', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  const callId = '00000000-0000-4000-8000-00000000beef';
+  const summary = { callId, channel: 'phone', startedAt: new Date(Date.now() - 60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false };
+  // a phone call, live: a browser test call cannot be taken over, so this one is stubbed
+  await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/calls/${callId}/live`, (route) => route.fulfill({
+    status: 200, contentType: 'text/event-stream', body: `retry: 60000\nid: 0\nevent: snapshot\ndata: ${JSON.stringify({ state: { ...summary, pending: null } })}\n\n`,
+  }));
+  await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/live`, (route) => route.fulfill({ json: { calls: [summary], counts: { live: 1, emergencies: 0 } } }));
+  let number: string | null = '+13035550123';
+  const sent: unknown[] = [];
+  await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/my-transfer-number`, async (route) => {
+    if (route.request().method() === 'PUT') { const body = route.request().postDataJSON() as { number: string | null }; sent.push(body); number = body.number; }
+    await route.fulfill({ json: { number } });
+  });
+  await page.goto(`/c/${clinic}/calls/${callId}/live`);
+  await page.getByRole('button', { name: 'Take over' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Take over this call?' });
+  await dialog.getByRole('radio', { name: /My own number/ }).click();
+  await expect(dialog.getByText('+13035550123')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Change my number' }).click();
+  await dialog.getByLabel('Your number').fill('+17205550188');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog.getByText('+17205550188')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Clear it' }).click();
+  await expect(dialog.getByText('Not set yet.')).toBeVisible();
+  expect(sent).toEqual([{ number: '+17205550188' }, { number: null }]);
+});
