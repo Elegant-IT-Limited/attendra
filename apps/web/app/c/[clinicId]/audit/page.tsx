@@ -95,7 +95,7 @@ function describe(action: string) {
   }
   if (action.startsWith('member.added:')) return `Added a person to the team, as ${ROLE_WORDS[action.slice(13)] ?? action.slice(13)}`;
   if (action.startsWith('member.role.changed:')) return `Changed someone's role to ${ROLE_WORDS[action.slice(20)] ?? action.slice(20)}`;
-  if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replace('_', ' ')})`;
+  if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replaceAll('_', ' ')})`;
   return action;
 }
 

@@ -115,7 +115,7 @@ export function dayTitle(date: string, style: 'long' | 'short' = 'long') {
 /** "Mountain Time (America/Denver)": shown once per page, so every time on it has a zone. */
 export function zoneLabel(timeZone: string) {
   const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
-  return name ? `${name} (${timeZone.replace('_', ' ')})` : timeZone;
+  return name ? `${name} (${timeZone.replaceAll('_', ' ')})` : timeZone;
 }
 
 export function phone(e164: string | null | undefined) {

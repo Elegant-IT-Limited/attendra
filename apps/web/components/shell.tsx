@@ -94,7 +94,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         </div>
         <div className="px-5 pb-3 max-xl:hidden">
           <p className="truncate text-base font-medium">{clinic.name}</p>
-          <p className="text-xs text-text-muted">{clinic.timezone.replace('_', ' ')}</p>
+          <p className="text-xs text-text-muted">{clinic.timezone.replaceAll('_', ' ')}</p>
         </div>
         <div className="px-3 pb-3 max-xl:px-2">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search and jump"
