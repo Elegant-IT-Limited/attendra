@@ -60,6 +60,12 @@ export const TOOLS: Record<string, string> = {
   propose_booking: 'Proposed a time',
   propose_cancellation: 'Proposed a cancellation',
   commit_pending: 'Confirmed change',
+  // a confirmation, by how it ended (the call list sends these)
+  'commit_pending:booked': 'Booked',
+  'commit_pending:rescheduled': 'Rescheduled',
+  'commit_pending:cancelled': 'Cancelled',
+  'commit_pending:no_clear_yes': 'No clear yes',
+  'commit_pending:refused': 'Not changed',
   create_refill_request: 'Refill request',
   create_callback: 'Callback request',
   transfer_call: 'Transfer',
