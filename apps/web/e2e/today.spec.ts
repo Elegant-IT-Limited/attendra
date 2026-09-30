@@ -11,6 +11,12 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
   await expect(attention.getByText(/Prescription refill|Callback/).first()).toBeVisible();
   await expect(attention.getByRole('button', { name: 'Claim' }).first()).toBeVisible();
 
+  // the cards say the period they count
+  const glance = page.getByLabel('At a glance');
+  for (const label of ['Calls today', 'Booked, last 7 days', 'Requests waiting', 'After-hours calls']) await expect(glance.getByText(label, { exact: true })).toBeVisible();
+  await expect(glance.getByText('Trend over the last 7 days')).toBeVisible();
+  await expect(glance.getByText('Answered in the last 7 days')).toBeVisible();
+
   await expect(page.getByRole('heading', { name: 'Today\'s schedule' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Dr. Nkem Okafor' })).toBeVisible();
 
