@@ -22,7 +22,8 @@ import { cn } from '@/lib/utils';
 
 const FILTERS = {
   all: { label: 'All calls', test: () => true },
-  attention: { label: 'Needs attention', test: (c: CallSummary) => c.emergency || c.outcome === 'task_created' },
+  // not Today's "Needs attention", which also lists flagged calls and calls that went nowhere: this is what the calls left
+  attention: { label: 'Emergencies and requests', test: (c: CallSummary) => c.emergency || c.outcome === 'task_created' },
   changes: { label: 'Bookings and changes', test: (c: CallSummary) => ['booked', 'rescheduled', 'cancelled'].includes(c.outcome ?? '') },
   // asked of the server, so a flagged call further back than the first page is found too
   review: { label: 'Needs review', test: (c: CallSummary) => c.needsReview },
@@ -125,12 +126,12 @@ function Calls() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map((s) => <StatCard key={s.label} label={s.label} value={pending ? null : s.value} tone={s.danger ? 'danger' : undefined} />)}
       </div>
-      <div className="mb-3 flex flex-wrap gap-2" role="tablist">
+      <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Which calls">
         {(Object.keys(FILTERS) as (keyof typeof FILTERS)[]).map((f) => (
-          <Button key={f} size="sm" variant={filter === f ? 'primary' : 'outline'} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{FILTERS[f].label}</Button>
+          <Button key={f} id={`calls-tab-${f}`} aria-controls="calls-panel" size="sm" variant={filter === f ? 'primary' : 'outline'} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)}>{FILTERS[f].label}</Button>
         ))}
       </div>
-      <Card>
+      <Card role="tabpanel" id="calls-panel" aria-labelledby={`calls-tab-${filter}`}>
         {(searching ? found.isError : calls.isError) && <Alert tone="danger" className="m-4">The call list did not load. It retries on its own; refresh if it keeps failing.</Alert>}
         {pending ? (
           <div className="space-y-3 p-5">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8" />)}</div>

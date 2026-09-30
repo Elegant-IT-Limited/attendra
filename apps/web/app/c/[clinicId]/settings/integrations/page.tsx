@@ -57,6 +57,7 @@ function DeliveryLog({ clinicId, endpoint, tz }: { clinicId: string; endpoint: W
   const redeliver = useMutation({
     mutationFn: (a: WebhookAttempt) => api<WebhookAttempt>(`/clinics/${clinicId}/webhooks/${endpoint.id}/attempts/${a.id}/redeliver`, { method: 'POST' }),
     onSuccess: (a) => { void queries.invalidateQueries({ queryKey: ['webhook-attempts', clinicId, endpoint.id] }); void queries.invalidateQueries({ queryKey: ['webhooks', clinicId] }); toast({ tone: a.error ? 'error' : 'success', message: `Redelivered: ${outcome(a)}.` }); },
+    onError: () => toast({ tone: 'error', message: 'The redelivery did not go out. Try again.' }),
   });
   if (log.isPending) return <Skeleton className="m-5 h-16" />;
   if (!log.data?.attempts.length) return <p className="px-5 py-4 text-sm text-text-muted">Nothing sent yet. Send a test event to try it.</p>;

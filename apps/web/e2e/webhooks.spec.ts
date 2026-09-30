@@ -49,6 +49,12 @@ test('a manager adds an endpoint, sends a signed test event to a receiver, and r
     expect(received).toHaveLength(2);
     expect(received[1]!.headers['webhook-id']).toBe(received[0]!.headers['webhook-id']);
     await expect(endpoint.getByTestId('webhook-attempt')).toHaveCount(2);
+
+    // a redelivery the server refuses says so, instead of nothing
+    await page.route((u) => u.pathname.endsWith('/redeliver'), (route) => route.fulfill({ status: 500, json: { error: 'internal' } }));
+    await endpoint.getByTestId('webhook-attempt').first().getByRole('button', { name: 'Redeliver' }).click();
+    await expect(page.getByText('The redelivery did not go out. Try again.')).toBeVisible();
+    await page.unrouteAll();
   } finally {
     receiver.close();
   }

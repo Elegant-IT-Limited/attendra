@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientCard, PatientList } from '@attendra/api/contracts';
-import { countryCopy } from '@attendra/core';
+import { countryCopy, localDateOf } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
+import { useParams } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
-import { age, dob, phone } from '@/lib/format';
+import { age, dob, phone, tenDigitPhones } from '@/lib/format';
 
 /** Waits until typing pauses, so each keystroke is not a request. */
 function useSettled(value: string, ms = 300) {
@@ -58,7 +59,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
         <p className="text-xs text-text-muted">{hint}</p>
       </div>
       {!ready ? empty : results.isPending ? <Skeleton className="h-24" /> : unreadable ? (
-        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or all ten digits of a phone number.</p>
+        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or {tenDigitPhones() ? 'all ten digits of a phone number' : 'a whole phone number'}.</p>
       ) : results.isError ? (
         <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
       ) : !results.data?.patients.length ? (
@@ -82,11 +83,14 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
 }
 
 export function PatientLine({ p }: { p: PatientCard }) {
+  // always shown inside a clinic's pages: its age is counted on the clinic's date
+  const { clinicId } = useParams<{ clinicId: string }>();
+  const config = useClinicConfig(clinicId);
   return (
     <>
       <span className="min-w-0">
         <span className="block truncate font-medium">{p.name}</span>
-        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob)}</span>
+        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}</span>
       </span>
       {p.phone && <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span>}
     </>

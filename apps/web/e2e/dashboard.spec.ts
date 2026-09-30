@@ -9,7 +9,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByText('Demo mode.')).toBeVisible();
     // 25 eval scenarios in the weeks before, and 11 ordinary calls this week
     await expect(page.locator('tbody tr')).toHaveCount(36);
-    await page.getByRole('tab', { name: 'Needs attention' }).click();
+    // named for what it holds; Today's Needs attention is a different, wider list
+    await expect(page.getByRole('tab', { name: 'Needs attention' })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Emergencies and requests' }).click();
     await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
@@ -53,6 +55,27 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(tasks).toHaveCount(1);
   });
 
+  test('the audit log says every action and every actor in words, not codes', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.goto(`/c/${new URL(page.url()).pathname.split('/')[2]}/audit`);
+    const rows = page.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    const what = await rows.locator('td:nth-child(3)').allTextContents();
+    const who = await rows.locator('td:nth-child(2)').allTextContents();
+    expect(what.filter((w) => /^[a-z_]+(\.[a-z_:]+)+$/.test(w))).toEqual([]);
+    expect(who.filter((w) => /^(worker|system|seed|api_key:)/.test(w))).toEqual([]);
+  });
+
+  test('every tab list has a name, and its panel is named by the selected tab', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    const clinic = new URL(page.url()).pathname.split('/')[2];
+    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['requests', 'Status', 'Open'], ['schedule', 'View', 'Day']] as const) {
+      await page.goto(`/c/${clinic}/${path}`);
+      await expect(page.getByRole('tablist', { name: list })).toBeVisible();
+      await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible();
+    }
+  });
+
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await expect(page.getByRole('link', { name: 'Audit log' })).toHaveCount(0);
@@ -83,6 +106,38 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.close(); // not saved: the demo clinic keeps its zone
   });
 
+  test('the unsaved-changes bar starts where the sidebar ends', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByLabel('Holiday date').fill('2027-01-01'); // a change, not saved
+    await page.getByRole('button', { name: 'Add holiday' }).click();
+    for (const width of [1440, 900]) { // the full sidebar, then the narrow one
+      await page.setViewportSize({ width, height: 800 });
+      const aside = (await page.locator('aside').boundingBox())!;
+      const bar = page.getByText('You have unsaved changes.').locator('xpath=../..');
+      await expect.poll(async () => (await bar.boundingBox())?.x).toBe(aside.x + aside.width);
+    }
+    await page.close();
+  });
+
+  test('a saved time zone shows everywhere at once, without a reload', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    const sidebar = page.getByRole('complementary');
+    await expect(sidebar.getByText('America/Denver', { exact: true })).toBeVisible();
+    const pick = async (search: string, zone: RegExp) => {
+      await page.getByRole('combobox', { name: 'Time zone' }).click();
+      await page.getByPlaceholder('Search, like Madrid or New York').fill(search);
+      await page.getByRole('option', { name: zone }).click();
+      await page.getByRole('button', { name: 'Save changes' }).click();
+      await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
+    };
+    await pick('madrid', /Europe\/Madrid/);
+    await expect(sidebar.getByText('Europe/Madrid', { exact: true })).toBeVisible();
+    await pick('denver', /America\/Denver/); // and back, for the specs after this one
+    await expect(sidebar.getByText('America/Denver', { exact: true })).toBeVisible();
+  });
+
     test('a greeting that hides the AI is refused; a holiday saves and is audited', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Settings' }).click();
@@ -95,7 +150,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByLabel('Holiday date').fill('2026-12-31');
     await page.getByRole('button', { name: 'Add holiday' }).click();
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('Saved. The next call uses these settings.')).toBeVisible();
+    // said in the page's toast, the live region with a surface of its own, so it can be read
+    await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
     await page.getByRole('link', { name: 'Audit log' }).click();
     await expect(page.getByText('Changed clinic settings').first()).toBeVisible();
     await expect(page.getByText('Read a call transcript').first()).toBeVisible();

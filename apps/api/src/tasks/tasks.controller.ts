@@ -115,6 +115,6 @@ export class TasksController {
 
   private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'taken' | 'not_found') {
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
-    if (result === 'taken') throw new ConflictException({ error: 'task_taken', message: 'Someone else holds this task, or it is already done.' });
+    if (result === 'taken') throw new ConflictException({ error: 'task_taken', message: 'Someone else holds this request, or it is already done.' });
   }
 }

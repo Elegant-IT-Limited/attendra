@@ -15,6 +15,7 @@ import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
 
@@ -27,6 +28,7 @@ export default function Settings() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { can } = useClinic(clinicId);
   const queries = useQueryClient();
+  const toast = useToast();
   const saved = useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`) });
   const [draft, setDraft] = useState<ClinicConfig | null>(null);
   const [issues, setIssues] = useState<ApiError['issues']>([]);
@@ -36,7 +38,13 @@ export default function Settings() {
   const save = useMutation({
     mutationFn: (config: ClinicConfig) => api<ClinicConfig>(`/clinics/${clinicId}/settings`, { method: 'PUT', body: JSON.stringify(config) }),
     onMutate: () => setIssues([]),
-    onSuccess: (config) => { queries.setQueryData(['settings', clinicId], config); setDraft(config); },
+    onSuccess: (config) => {
+      queries.setQueryData(['settings', clinicId], config);
+      // the clinic's name and time zone also come with who you are, for every other page
+      void queries.invalidateQueries({ queryKey: ['me'] });
+      setDraft(config);
+      toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
+    },
     onError: (e) => { if (e instanceof ApiFailure) setIssues(e.body.issues ?? [{ path: '', message: e.message }]); },
   });
 
@@ -171,7 +179,7 @@ export default function Settings() {
 
         <Section title="Routing" description="Where transfers go. The assistant transfers only to these numbers."
           action={<Button type="button" size="sm" variant="outline" onClick={() => set({ routing: [...c.routing, { target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }] })}><Plus /> Rule</Button>}>
-          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback task.</p>}
+          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback request.</p>}
           {c.routing.map((r, i) => {
             const upd = (patch: Partial<typeof r>) => set({ routing: c.routing.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
             return (
@@ -218,7 +226,7 @@ export default function Settings() {
       </fieldset>
 
       {writable && dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-[232px]">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
             <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
@@ -228,7 +236,6 @@ export default function Settings() {
           </div>
         </div>
       )}
-      {save.isSuccess && !dirty && <p role="status" className="fixed right-6 bottom-6 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">Saved. The next call uses these settings.</p>}
     </>
   );
 }

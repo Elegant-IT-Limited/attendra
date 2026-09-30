@@ -1,11 +1,34 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/**
+ * What depends on the clinic's country, from its first number: a 12-hour clock in
+ * North America and Australia and a 24-hour one elsewhere, and whether a dollar needs
+ * saying as US dollars (the model's cost is billed in them). The shell sets it once the
+ * clinic's settings arrive; until then the dashboard reads as a US clinic.
+ */
+const country = { hour12: true, us: true };
+export function setClinicCountry(phoneNumbers: readonly string[]) {
+  const first = phoneNumbers[0] ?? '';
+  country.us = first.startsWith('+1');
+  country.hour12 = country.us || first.startsWith('+61');
+}
+/** "$0.05" at a US clinic, "US$0.05" anywhere else. */
+export const usd = (n: number) => `${country.us ? '$' : 'US$'}${n.toFixed(2)}`;
+/** Whether phone numbers are ten digits, as in North America. */
+export const tenDigitPhones = () => country.us;
+const hours = (): Intl.DateTimeFormatOptions => ({ hour: 'numeric', minute: '2-digit', hour12: country.hour12 });
+
 /** A timestamp in the clinic's own time zone: staff think in clinic time, not browser time. */
+/**
+ * A moment in the clinic's zone, day first like every other date in the dashboard:
+ * "Tue 29 Sep 3:00 PM", or "Tuesday 29 September 2026, 3:00 PM MDT".
+ */
 export function clinicTime(iso: string, timeZone: string, style: 'short' | 'long' = 'short') {
+  if (style === 'short') return shortWhen(iso, timeZone);
   const d = new Date(iso);
-  return new Intl.DateTimeFormat('en-US', style === 'short'
-    ? { timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
-    : { timeZone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d);
+  const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone, ...o }).format(d);
+  const zone = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value;
+  return `${part({ weekday: 'long' })} ${part({ day: 'numeric' })} ${part({ month: 'long' })} ${part({ year: 'numeric' })}, ${part(hours())}${zone ? ` ${zone}` : ''}`;
 }
 
 export function duration(seconds: number | null) {
@@ -92,12 +115,12 @@ export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fr
 export function shortWhen(iso: string, timeZone: string) {
   const d = new Date(iso);
   const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone, ...o }).format(d);
-  return `${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part({ hour: 'numeric', minute: '2-digit' })}`;
+  return `${part({ weekday: 'short' })} ${part({ day: 'numeric' })} ${part({ month: 'short' })} ${part(hours())}`;
 }
 
 /** "3:00 PM" in the clinic's zone. */
 export const timeOf = (iso: string | Date, timeZone: string) =>
-  new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+  new Intl.DateTimeFormat('en-US', { timeZone, ...hours() }).format(new Date(iso));
 
 /** "Tuesday 29 September" for a local YYYY-MM-DD, with no time zone arithmetic. */
 export function dayTitle(date: string, style: 'long' | 'short' = 'long') {
@@ -110,7 +133,7 @@ export function dayTitle(date: string, style: 'long' | 'short' = 'long') {
 /** "Mountain Time (America/Denver)": shown once per page, so every time on it has a zone. */
 export function zoneLabel(timeZone: string) {
   const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longGeneric' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value;
-  return name ? `${name} (${timeZone.replace('_', ' ')})` : timeZone;
+  return name ? `${name} (${timeZone.replaceAll('_', ' ')})` : timeZone;
 }
 
 export function phone(e164: string | null | undefined) {
@@ -141,10 +164,11 @@ export const VISIT_TONES = [
 ];
 export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]'];
 
-/** Whole years since a YYYY-MM-DD date of birth, today. */
-export function age(dateOfBirth: string, today = new Date()) {
+/** Whole years on `today`, the clinic's date (YYYY-MM-DD), not the browser's: a birthday turns over at the clinic's midnight. */
+export function age(dateOfBirth: string, today: string) {
   const [y, m, d] = dateOfBirth.split('-').map(Number) as [number, number, number];
-  let years = today.getFullYear() - y;
-  if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) years--;
+  const [ty, tm, td] = today.split('-').map(Number) as [number, number, number];
+  let years = ty - y;
+  if (tm < m || (tm === m && td < d)) years--;
   return years;
 }

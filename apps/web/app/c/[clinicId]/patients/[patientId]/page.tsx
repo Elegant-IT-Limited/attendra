@@ -30,7 +30,7 @@ type Tab = (typeof TABS)[number]['id'];
 
 export default function PatientPage() {
   const { clinicId, patientId } = useParams<{ clinicId: string; patientId: string }>();
-  const { can } = useClinic(clinicId);
+  const { can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const [tab, setTab] = useState<Tab>('appointments');
   const [open, setOpen] = useState<string | null>(null);
@@ -48,6 +48,9 @@ export default function PatientPage() {
     </Link>
   );
   const clinic = config.data;
+  if (!meLoading && !can('patients:read')) {
+    return <>{back}<Card><Empty title="Patients are for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (patient.isPending || !clinic) return <>{back}<Skeleton className="h-10 w-72" /><Skeleton className="mt-6 h-72" /></>;
   if (patient.isError || !patient.data) {
     const missing = patient.error instanceof ApiFailure && patient.error.status === 404;
@@ -69,7 +72,7 @@ export default function PatientPage() {
         <div className="space-y-1">
           <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-            <span>Age {age(p.dob)}, born {dob(p.dob)}</span>
+            <span>Age {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
             {p.phone && <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
           </p>
@@ -91,7 +94,7 @@ export default function PatientPage() {
                   const past = Date.parse(a.startsAt) <= now;
                   const Icon = a.bookedBy.kind === 'assistant' ? Bot : User;
                   return (
-                    <li key={a.id} className={cn('flex flex-wrap items-center gap-3 px-5 py-3 text-sm', i === upcoming.length && upcoming.length > 0 && 'border-t-4 border-t-muted')}>
+                    <li key={a.id} className={cn('flex flex-wrap items-center gap-3 px-5 py-3 text-sm', i === upcoming.length && upcoming.length > 0 && 'border-t-4 border-t-border-strong')}>
                       <div className="min-w-0 flex-1">
                         <p className={cn('font-medium', a.status === 'cancelled' && 'line-through text-text-muted')}>
                           {dayTitle(localDateOf(new Date(a.startsAt), tz))} at {timeOf(a.startsAt, tz)}

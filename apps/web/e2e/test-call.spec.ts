@@ -11,4 +11,9 @@ test('front desk is told plainly when test calls are not set up', async ({ brows
   await expect(start.or(page.getByText('Test calls are off'))).toBeVisible();
   if (await start.isVisible()) await start.click();
   await expect(page.getByText('Test calls are not set up on this server.')).toBeVisible();
+  // a link to the guide, not a path in the repository to go and find
+  await expect(page.getByText('docs/test-calls.md', { exact: false })).toHaveCount(0);
+  if (!(await start.isVisible())) {
+    await expect(page.getByRole('link', { name: 'How to set up test calls' })).toHaveAttribute('href', 'https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/test-calls.md');
+  }
 });

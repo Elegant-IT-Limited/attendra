@@ -31,7 +31,7 @@ function summaryPending(c: CallDetail) {
 
 export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
-  const { clinic, can } = useClinic(clinicId);
+  const { clinic, can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   // until the worker has written the summary, look again every 5 seconds, for up to 2 minutes
   const [opened] = useState(() => Date.now());
@@ -39,14 +39,21 @@ export default function CallPage() {
   const call = useQuery({
     queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`),
     refetchOnMount: 'always',
+    enabled: can('calls:read'),
     refetchInterval: (q) => {
       const c = q.state.data;
       if (!c || !summaryPending(c)) return false;
       return Date.now() - opened < SUMMARY_WAIT_MS ? SUMMARY_POLL_MS : false;
     },
   });
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS); return () => clearInterval(t); }, []);
-  const slowSummary = !!call.data && summaryPending(call.data) && now - opened >= SUMMARY_WAIT_MS;
+  const pending = !!call.data && summaryPending(call.data);
+  // the clock is only for telling a slow summary apart, so it runs only while one is pending
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS);
+    return () => clearInterval(t);
+  }, [pending]);
+  const slowSummary = pending && now - opened >= SUMMARY_WAIT_MS;
   const tz = clinic?.timezone ?? 'UTC';
 
   const back = (
@@ -54,12 +61,18 @@ export default function CallPage() {
       <ArrowLeft className="size-4" /> All calls
     </Link>
   );
+  if (!meLoading && !can('calls:read')) {
+    return <>{back}<Card><Empty title="Call records are for the front desk">Your role sees the call list, not what was said on a call. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (call.isPending) return <>{back}<Skeleton className="h-8 w-72" /><Skeleton className="mt-6 h-96" /></>;
   if (call.isError || !call.data) {
     const missing = call.error instanceof ApiFailure && call.error.status === 404;
     return <>{back}<Empty title={missing ? 'Call not found' : 'This call did not load'}>{missing ? 'It may belong to another clinic.' : 'Try again in a moment.'}</Empty></>;
   }
   const c = call.data;
+  // what the call booked may have changed since: the header says so when none of it stands
+  const bookedHere = c.appointments.filter((a) => a.change === 'booked');
+  const allCancelled = bookedHere.length > 0 && bookedHere.every((a) => a.status === 'cancelled');
 
   return (
     <>
@@ -68,6 +81,7 @@ export default function CallPage() {
         <h1 className="text-xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
+          {allCancelled && <Badge tone="warn">Booking since cancelled</Badge>}
           {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
           {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
@@ -86,6 +100,7 @@ export default function CallPage() {
                   ? <Link href={`/c/${clinicId}/schedule?date=${localDateOf(new Date(a.startsAt), tz)}&appointment=${a.id}`} className="font-medium hover:underline">{line}</Link>
                   : <span className="font-medium">{line}</span>}
                 {a.change === 'booked' && a.status === 'cancelled' && <Badge>Since cancelled</Badge>}
+                {a.change === 'booked' && a.status === 'booked' && a.moved && <Badge>Since moved</Badge>}
               </li>
             );
           })}
@@ -168,7 +183,7 @@ export default function CallPage() {
               <CardHeader><CardTitle>Requests for the team</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
-                  <Link key={t.id} href={`/c/${clinicId}/requests`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-sunken">
+                  <Link key={t.id} href={`/c/${clinicId}/requests${t.status === 'open' ? '' : '?status=done'}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-sunken">
                     <span>{TASK_TYPES[t.type] ?? t.type}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>

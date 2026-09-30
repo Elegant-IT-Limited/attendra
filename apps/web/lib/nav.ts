@@ -32,5 +32,5 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
   },
 ];
 
-/** The four a phone keeps in its bottom bar; the rest live under More. */
+/** The three pages a phone keeps in its bottom bar, beside More, where the rest live. */
 export const PHONE_BAR = ['', 'schedule', 'requests'];

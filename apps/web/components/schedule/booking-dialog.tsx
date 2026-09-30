@@ -70,6 +70,9 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
         setError(e.body.message ?? 'That time was just taken. Pick another one.');
         setSlot(null); setStep(1); setKey(newKey());
         void queries.invalidateQueries({ queryKey: ['slots', clinicId] });
+      } else if (e instanceof ApiFailure) {
+        // the server answered and refused it: say why, not that the network failed
+        setError(`The booking was not saved: ${e.body.issues?.[0]?.message ?? e.body.message ?? 'it was refused'}.`);
       } else setError('The booking was not saved. Check your connection and try again.');
     },
   });

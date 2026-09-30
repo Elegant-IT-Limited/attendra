@@ -18,9 +18,11 @@ import { cn } from '@/lib/utils';
 type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
 type Caption = { speaker: 'caller' | 'agent'; text: string };
 
+const TEST_CALLS_DOC = 'https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/test-calls.md';
+
 const FAILURES: Record<string, string> = {
   microphone: 'The browser did not give Attendra the microphone. Allow it for this site and try again.',
-  voice_not_configured: 'Test calls are not set up on this server. The voice service needs an OpenAI API key; docs/test-calls.md explains it.',
+  voice_not_configured: 'Test calls are not set up on this server. The voice service needs an OpenAI API key.',
   voice_unavailable: 'The voice service could not start the call. Check the OpenAI API key and its credit, then try again.',
   test_call_limit: 'This clinic already has two test calls open. End one, or wait for it to finish.',
   connection: 'The audio connection dropped.',
@@ -178,7 +180,7 @@ export default function TestCallPage() {
   }, [release]);
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
-  if (me && !me.testCalls) return <><Empty title="Test calls are off">{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
+  if (me && !me.testCalls) return <><Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
   const busy = phase === 'connecting' || phase === 'live' || phase === 'ending';
 
   return (
@@ -206,7 +208,7 @@ export default function TestCallPage() {
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>
             )}
             <p className="text-xs text-text-muted">
-              What the assistant does here is real for this clinic: bookings, cancellations and tasks. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
+              What the assistant does here is real for this clinic: bookings, cancellations and requests. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
             </p>
           </CardContent>
         </Card>

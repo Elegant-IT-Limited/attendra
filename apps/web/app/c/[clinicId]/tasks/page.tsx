@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/feedback';
 export default function TasksMoved() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const router = useRouter();
-  useEffect(() => { router.replace(`/c/${clinicId}/requests`); }, [clinicId, router]);
+  // with the query, so a filter in an old link (?status=done) still applies
+  useEffect(() => { router.replace(`/c/${clinicId}/requests${window.location.search}`); }, [clinicId, router]);
   return <Skeleton className="h-64" />;
 }
