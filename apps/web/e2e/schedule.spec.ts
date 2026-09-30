@@ -86,4 +86,22 @@ test.describe.serial('the schedule', () => {
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
   });
+
+  test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    const block = await findInWeek(page, /booked by the assistant/);
+    const label = (await block.getAttribute('aria-label'))!;
+    await block.click();
+    const panel = page.getByRole('dialog');
+    await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await panel.getByLabel('Why is it cancelled?').selectOption({ label: 'The patient asked' });
+    await panel.getByRole('button', { name: 'Cancel appointment' }).click();
+    await expect(panel.getByText('Cancelled. The time is free again.')).toBeVisible();
+    // the week hides cancelled visits, but not the one open in the panel
+    const cancelled = page.locator(`[data-testid=appointment][aria-label="${label.replace(', booked by', ', cancelled, booked by')}"]`);
+    await expect(cancelled).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(cancelled).toHaveCount(0);
+    await expect(page.getByText(/\d+ booked, \d+ cancelled hidden/)).toBeVisible();
+  });
 });
