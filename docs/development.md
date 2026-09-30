@@ -29,6 +29,8 @@ pnpm db:add-number --clinic <clinic id> --number <E.164>
 docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service, --profile mcp for MCP
 ```
 
+The demo alone reads `ATTENDRA_TEST_CALLS`, `ATTENDRA_SIMULATED_CALLS`, `VOICE_PORT` and `ATTENDRA_WEBHOOKS_ALLOW_LOCAL` from the shell; `.env.example` says what each does.
+
 There is no root `pnpm dev`: turbo's strict environment mode hands the services none of your variables and nothing loads a `.env`. Use `pnpm demo`, or a service's own `dev` script (`pnpm --filter @attendra/api dev`) with its environment set in the shell.
 
 Keep these working. If you add a command, add it here and in the README.
