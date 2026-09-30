@@ -8,6 +8,7 @@ RUN corepack enable && corepack install -g pnpm@10.34.5 && chmod -R a+rX /corepa
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
+COPY apps/mcp/package.json apps/mcp/
 COPY apps/voice/package.json apps/voice/
 COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/

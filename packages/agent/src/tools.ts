@@ -104,11 +104,14 @@ export async function runTool(
 
     case 'get_clinic_info': {
       const question = String(args.question);
-      // the medical-advice rule wins over anything the FAQ or a document says
-      if (isMedicalQuestion(question)) return MEDICAL();
+      // the medical-advice rule wins over anything the FAQ or a document says. It checks
+      // what the caller said too: the model may pass on a question it has softened
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
       const hours = todaysHoursLine(clinic, ctx.now());
       const answer = answerFromFaqs(clinic.faqs, question);
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      // a question answered from the clinic's own words is a call the assistant handled
+      if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
       return {
         ok: true,
         data: {
@@ -120,9 +123,10 @@ export async function runTool(
 
     case 'search_knowledge': {
       const question = String(args.question);
-      if (isMedicalQuestion(question)) return MEDICAL();
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
       const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
       if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      if (state.outcome === 'abandoned') state.outcome = 'info';
       return {
         ok: true,
         data: {
@@ -190,7 +194,7 @@ export async function runTool(
       const pending = state.pending;
       if (!pending) return refuse('nothing_pending', 'There is nothing to confirm. Propose the change first.');
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
-      if (!isClearYes(state.answerToReadback())) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
+      if (!isClearYes(state.answerToReadback(), clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
       const patient = state.verifiedPatient!;
 
       if (pending.kind === 'cancel') {

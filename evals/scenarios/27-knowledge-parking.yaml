@@ -7,5 +7,5 @@ turns:
     delegate:
       - search_knowledge: { question: parking }
 expect:
-  outcome: abandoned
+  outcome: info
   cites: [Parking and directions]

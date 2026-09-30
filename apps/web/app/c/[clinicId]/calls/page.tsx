@@ -4,8 +4,8 @@ import type { CallList, CallSummary } from '@attendra/api/contracts';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { CheckCircle2, CircleDashed, Search } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
 import { PageHeader } from '@/components/shell';
@@ -17,7 +17,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
-import { clinicTime, duration, OUTCOMES, TOOLS, zoneLabel } from '@/lib/format';
+import { clinicTime, duration, OUTCOMES, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const FILTERS = {
@@ -28,14 +28,22 @@ const FILTERS = {
   review: { label: 'Needs review', test: (c: CallSummary) => c.needsReview },
 } as const;
 
-export default function Calls() {
+// the filters come from the address, and reading it needs a Suspense boundary
+export default function CallsPage() {
+  return <Suspense fallback={<Skeleton className="h-96" />}><Calls /></Suspense>;
+}
+
+function Calls() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const router = useRouter();
   const { clinic, can } = useClinic(clinicId);
-  const [filter, setFilter] = useState<keyof typeof FILTERS>('all');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [outcome, setOutcome] = useState('');
+  // the quality page links here with its filters in the address: dates, outcome, a refusal code, the review flag
+  const params = useSearchParams();
+  const [filter, setFilter] = useState<keyof typeof FILTERS>(params.get('review') === 'needed' ? 'review' : 'all');
+  const [from, setFrom] = useState(params.get('from') ?? '');
+  const [to, setTo] = useState(params.get('to') ?? '');
+  const [outcome, setOutcome] = useState(params.get('outcome') ?? '');
+  const [refusal, setRefusal] = useState(params.get('refusal') ?? '');
   const [channel, setChannel] = useState('');
   const [emergencyOnly, setEmergencyOnly] = useState(false);
   const [text, setText] = useState('');
@@ -43,7 +51,7 @@ export default function Calls() {
   useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 300); return () => clearTimeout(t); }, [text]);
   const filters = {
     ...(from ? { from } : {}), ...(to ? { to } : {}), ...(outcome ? { outcome } : {}), ...(channel ? { channel } : {}), ...(emergencyOnly ? { emergency: 'true' } : {}),
-    ...(filter === 'review' ? { review: 'needed' } : {}),
+    ...(filter === 'review' ? { review: 'needed' } : {}), ...(refusal ? { refusal } : {}),
   };
   const searching = query.length >= 2 && can('calls:read');
   const calls = useInfiniteQuery({
@@ -64,7 +72,7 @@ export default function Calls() {
   });
   const all = searching ? found.data?.calls ?? [] : calls.data?.pages.flatMap((p) => p.calls) ?? [];
   const pending = searching ? found.isPending : calls.isPending;
-  const filtered = !!(from || to || outcome || channel || emergencyOnly || searching);
+  const filtered = !!(from || to || outcome || channel || emergencyOnly || searching || refusal);
   const shown = all.filter(FILTERS[filter].test);
   const tz = clinic?.timezone ?? 'UTC';
   const openable = can('calls:read');
@@ -109,7 +117,8 @@ export default function Calls() {
             </Select>
           </div>
           <label className="flex h-8 items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={emergencyOnly} onChange={(e) => setEmergencyOnly(e.target.checked)} /> Emergencies only</label>
-          {filtered && <Button size="sm" variant="ghost" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setText(''); }}>Clear</Button>}
+          {refusal && <Badge tone="warn" className="h-8 px-2 text-sm">Refused: {REFUSALS[refusal] ?? refusal}</Badge>}
+          {filtered && <Button size="sm" variant="ghost" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setText(''); setRefusal(''); }}>Clear</Button>}
         </div>
       </Card>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

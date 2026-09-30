@@ -50,6 +50,12 @@ describe('demo calls', () => {
     expect(await patientOf('shared-name-and-dob')).toBeNull(); // two records match: nobody is verified
   });
 
+  it('puts back no more than two upcoming visits per patient, however many calls booked for them', async () => {
+    const most = (await t.db.execute(sql`select count(*)::int as n from appointments where clinic_id = ${DEMO_CLINIC.id} and status = 'booked'
+      and starts_at > ${NOW.toISOString()}::timestamptz group by patient_id order by n desc limit 1`)).rows[0] as { n: number } | undefined;
+    expect(most?.n ?? 0).toBeLessThanOrEqual(2);
+  });
+
   it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
