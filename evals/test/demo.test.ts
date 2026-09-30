@@ -116,6 +116,14 @@ describe('demo calls', () => {
     expect(problems).toEqual([]);
   });
 
+  it('leaves no patient with two open requests of the same kind, and keeps them all', async () => {
+    const open = (await t.db.execute(sql`select type, patient_id from tasks where clinic_id = ${DEMO_CLINIC.id} and status = 'open' and patient_id is not null`)).rows as { type: string; patient_id: string }[];
+    const kinds = open.map((r) => `${r.patient_id}|${r.type}`);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    // every call that made a request still made it
+    expect((await t.db.execute(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`)).rows[0]).toEqual({ n: 6 });
+  });
+
   it('refuses to run on a database that already has real calls', async () => {
     await t.db.execute(sql`insert into calls (clinic_id, openai_session_id) values (${DEMO_CLINIC.id}, 'live_real_call')`);
     await expect(recordDemoCalls(t.db, cipher, {})).rejects.toThrow(/real calls/);

@@ -3,7 +3,7 @@ import { addDays, type ClinicConfig, DEMO_CLINICS, isOpen, localDateOf, weekdayO
 import { type Database, DEMO_SCHEDULE_PATIENTS, type PhiCipher, phoneKey, PostgresPatientDirectory, schema, withClinic } from '@attendra/db';
 import { join } from 'node:path';
 import { and, eq, sql } from 'drizzle-orm';
-import { loadScenarios } from './scenario';
+import { loadScenarios, type Scenario } from './scenario';
 import { clinicOf, playScenario, type ScenarioResult } from './simulator';
 
 /**
@@ -29,7 +29,7 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
   if (week.length) await ensurePatients(db, cipher, clinic);
   const times = callTimes(clinic, now, evals.length, week.length);
-  const scenarios = [...evals, ...week].map((scenario, i) => ({ scenario, at: times[i]! }));
+  const scenarios = [...evals, ...week].map((scenario, i) => ({ scenario: voiced(scenario), at: times[i]! }));
 
   // Every call runs at the time it is dated, in order, on one calendar: what the assistant
   // offers and reads back is what that caller would have heard then, and a booking stays
@@ -81,6 +81,26 @@ function callTimes(clinic: ClinicConfig, now: Date, evals: number, ordinary: num
     ? Array.from({ length: ordinary }, (_, i) => new Date(open[Math.floor(((i + 0.5) * open.length) / ordinary)]!))
     : spread(ordinary, weekStart + Math.min(hour, (end - weekStart) / 20), end); // a week only hours old
   return [...before, ...thisWeek];
+}
+
+/**
+ * Three eval scenarios are James Whitaker's lisinopril refill, which would leave him
+ * three open refills on the demo's Requests page. In the demo only, two of them are
+ * voiced by other patients the seed creates; the evals keep theirs.
+ */
+const VOICED_AS: Record<string, number> = { 'not-an-emergency': 5, 'es-refill': 1 }; // Wei Chen, Tomás Herrera
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function voiced(scenario: Scenario): Scenario {
+  const index = VOICED_AS[scenario.id];
+  if (index === undefined) return scenario;
+  const p = DEMO_SCHEDULE_PATIENTS[index]!;
+  const [y, m, d] = p.dob.split('-').map(Number) as [number, number, number];
+  const text = JSON.stringify(scenario)
+    .replaceAll('James Whitaker', `${p.firstName} ${p.lastName}`).replaceAll('Whitaker', p.lastName).replaceAll('James', p.firstName)
+    .replaceAll('9/9/1962', `${m}/${d}/${y}`).replaceAll('September 9 1962', `${MONTHS[m - 1]} ${d} ${y}`)
+    .replaceAll('+13035550163', p.phone);
+  return { ...JSON.parse(text) as Scenario, caller_number: p.phone };
 }
 
 /** Ordinary calls for the demo's current week: played through the real agent, never run as evals. */
