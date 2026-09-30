@@ -13,7 +13,7 @@ import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { DB, JOBS, KNOWLEDGE } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
-type Knowledge = { base: KnowledgeBase; answerer: Answerer };
+type Knowledge = { base: KnowledgeBase; answerer: Answerer; embeddingModel?: string };
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 /**
@@ -62,8 +62,8 @@ export class KnowledgeController {
     const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
     if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);
-    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId });
-    if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash });
+    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId, embeddingModel: this.knowledge?.embeddingModel });
+    if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash, version: saved.version });
     const doc = await this.repo.get(clinicId, saved.id);
     return this.view(doc!, await staffNames(this.db, clinicId, [doc!.uploadedByUserId]));
   }
