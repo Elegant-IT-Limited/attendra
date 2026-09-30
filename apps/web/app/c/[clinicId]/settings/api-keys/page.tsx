@@ -63,7 +63,8 @@ export default function ApiKeysPage() {
   if (!isPending && !allowed) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Empty title="Not available">Only owners and practice managers manage API keys.</Empty></>;
   return (
     <>
-      <PageHeader title="Settings" description="Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel. docs/mcp.md shows how to connect one." />
+      <PageHeader title="Settings" description={<>Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel.{' '}
+        <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a></>} />
       <SettingsNav clinicId={clinicId} />
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <Card className="self-start">
