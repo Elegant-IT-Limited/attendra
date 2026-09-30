@@ -66,6 +66,11 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   await expect(page.getByText('she is a new patient')).toHaveCount(0); // the note is never in the record
   // the summary appears when the worker has written it, with no reload
   await expect(page.getByTestId('call-summary')).toBeVisible({ timeout: 30_000 });
+  // a browser test is not counted on Today, and not listed there either
+  const record = new URL(page.url()).pathname;
+  await page.goto(record.split('/calls/')[0]!);
+  await expect(page.getByRole('list', { name: 'Recent calls' })).toBeVisible();
+  await expect(page.locator(`a[href="${record}"]`)).toHaveCount(0);
 });
 
 test('a live page whose stream closes for good, for a call no longer live, becomes the call record', async ({ browser }) => {

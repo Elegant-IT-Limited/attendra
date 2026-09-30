@@ -47,6 +47,8 @@ export default function Today() {
   });
 
   if (!clinic) return <><PageHeader title="Today" /><Skeleton className="h-96" /></>;
+  // browser tests are left out of the counts, so they are left out of the lists too; Live now still shows one going on
+  const phoneCalls = { ...calls, data: calls.data && { ...calls.data, calls: calls.data.calls.filter((c) => c.channel === 'phone') } };
   const hour = localParts(new Date(now), tz).minutes / 60;
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -55,20 +57,20 @@ export default function Today() {
       <PageHeader title="Today" description={<>{greeting}. {dayTitle(today)}, times are {zoneLabel(tz)}.</>} />
       <LiveNow clinicId={clinicId} canWatch={can('calls:read')} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
-        <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Last 7 days" />
-        <StatCard label="Booked this week" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
+        <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Trend over the last 7 days" />
+        <StatCard label="Booked, last 7 days" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
         <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
-        <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered this week" />
+        <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered in the last 7 days" />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={calls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
+          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={phoneCalls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
             turnedOff={(hooks.data?.endpoints ?? []).filter((e) => e.disabledReason === 'repeated_failures')} />
           <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
         </div>
         <div className="space-y-6">
           <AssistantDid overview={overview} />
-          <RecentCalls clinicId={clinicId} tz={tz} calls={calls} canOpen={can('calls:read')} />
+          <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} />
         </div>
       </div>
     </>
