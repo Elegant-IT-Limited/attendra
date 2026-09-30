@@ -25,7 +25,7 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
 
   const results: ScenarioResult[] = [];
   const booked: (typeof schema.appointments.$inferSelect)[] = [];
-  // each clinic's own scenarios, so a Bangla call is recorded at the Dhaka clinic
+  // each clinic's own scenarios
   const evals = loadScenarios().filter((s) => clinicOf(s).id === clinic.id);
   // and a working week of ordinary calls, played the same way, for the clinic's current week
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
