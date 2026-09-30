@@ -36,7 +36,6 @@ const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '
 export function allowedEmergencyNumbers(phoneNumbers: readonly string[]): string[] {
   const first = phoneNumbers[0] ?? '';
   if (first.startsWith('+1')) return ['911']; // the United States and Canada
-  if (first.startsWith('+880')) return ['999'];
   if (first.startsWith('+44')) return ['999', '112']; // the United Kingdom
   if (first.startsWith('+61')) return ['000', '112']; // Australia
   if (EU.some((c) => first.startsWith(c))) return ['112'];
@@ -75,8 +74,7 @@ export function countryCopy(clinic: { phoneNumbers: string[] }) {
   const first = clinic.phoneNumbers[0] ?? '';
   const us = first.startsWith('+1');
   const phone = us ? { e164: '+13035550123', local: '(303) 555-0100' }
-    : first.startsWith('+880') ? { e164: '+8801000000123', local: '01000-000123' } // +880 10 is issued to no operator
-      : first.startsWith('+44') ? { e164: '+442079460123', local: '020 7946 0123' } // Ofcom's range for drama
+    : first.startsWith('+44') ? { e164: '+442079460123', local: '020 7946 0123' } // Ofcom's range for drama
         : first.startsWith('+61') ? { e164: '+61491570123', local: '0491 570 123' } // ACMA's range for fiction
           : { e164: '+<country code><number>', local: '' };
   return {

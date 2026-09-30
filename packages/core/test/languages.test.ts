@@ -86,7 +86,6 @@ describe('the emergency guardrail in every language', () => {
 
   it('uses the clinic\'s emergency number, or the country\'s', () => {
     expect(emergencyNumberFor(DEMO_CLINIC)).toBe('911');
-    expect(emergencyNumberFor({ phoneNumbers: ['+8801000000100'] })).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'] })).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'], emergencyNumber: '112' })).toBe('112');
     expect(emergencyNumberFor({ phoneNumbers: ['+61291234567'] })).toBe('000');
@@ -96,11 +95,11 @@ describe('the emergency guardrail in every language', () => {
 
   it('takes an emergency number only from the country\'s list, so a typo is never spoken', () => {
     expect(allowedEmergencyNumbers(['+13035550100'])).toEqual(['911']);
-    expect(allowedEmergencyNumbers(['+8801000000100'])).toEqual(['999']);
+    expect(allowedEmergencyNumbers(['+442071234567'])).toEqual(['999', '112']);
     expect(allowedEmergencyNumbers(['+61291234567'])).toEqual(['000', '112']);
     expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toMatch(/911/);
     expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '112' })).toMatch(/911/);
-    expect(emergencyNumberProblem({ phoneNumbers: ['+8801000000100'], emergencyNumber: '911' })).toMatch(/999/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+442071234567'], emergencyNumber: '911' })).toMatch(/999/);
     expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '911' })).toBeNull();
     // a number saved before the rule is not spoken: the country's is
     expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toBe('911');
@@ -257,6 +256,7 @@ describe('clinic languages and the assistant\'s name', () => {
     expect(ClinicConfig.safeParse({ ...base, languages: ['en', 'en'] }).success).toBe(false);
   });
 
+  // 'bn' was a language pack once and no longer ships; this test stays because configurations saved with it exist
   it('a configuration saved with a language Attendra no longer ships still loads, without it', () => {
     const saved = {
       ...base, languages: ['bn', 'en'], primaryLanguage: 'bn',
