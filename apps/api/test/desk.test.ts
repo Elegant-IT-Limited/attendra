@@ -171,6 +171,22 @@ describe('the team', () => {
     expect((await api.request('POST', M, { cookie: as.admin, body: { name: 'Nia Again', email: 'nia@maple.example', role: 'staff' } })).json().error).toBe('already_member');
   });
 
+  it('removes the new account when adding the membership fails, so adding the person again works', async () => {
+    await api.t.db.execute(sql`create function refuse_membership() returns trigger language plpgsql as $$ begin raise exception 'membership refused'; end $$`);
+    await api.t.db.execute(sql`create trigger refuse_membership before insert on memberships for each row execute function refuse_membership()`);
+    const body = { name: 'Rhea Retry', email: 'rhea@maple.example', role: 'staff' };
+    try {
+      expect((await api.request('POST', M, { cookie: as.admin, body })).statusCode).toBe(500);
+    } finally {
+      await api.t.db.execute(sql`drop trigger refuse_membership on memberships`);
+      await api.t.db.execute(sql`drop function refuse_membership()`);
+    }
+    expect((await api.t.db.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
+    const again = await api.request('POST', M, { cookie: as.admin, body });
+    expect(again.statusCode).toBe(200);
+    expect((await members()).map((m) => m.email)).toContain('rhea@maple.example');
+  });
+
   it('keeps managers away from owners, and nobody changes or removes themselves', async () => {
     expect((await api.request('POST', M, { cookie: as.admin, body: { name: 'Big Boss', email: 'boss@maple.example', role: 'owner' } })).statusCode).toBe(403);
     expect((await api.request('PATCH', `${M}/${api.users.owner}`, { cookie: as.admin, body: { role: 'staff' } })).statusCode).toBe(403);

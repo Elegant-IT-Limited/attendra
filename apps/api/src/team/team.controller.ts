@@ -9,7 +9,7 @@ import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { AUTH, CLOCK, DB } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
-import { createAccount, findAccount, hashPassword, temporaryPassword } from '../members';
+import { createAccount, deleteNewAccount, findAccount, hashPassword, temporaryPassword } from '../members';
 
 const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Error> = {
   not_found: () => new NotFoundException({ error: 'not_found' }),
@@ -65,7 +65,17 @@ export class TeamController {
     }
     const password = temporaryPassword();
     const userId = await createAccount(this.auth, { email: body.email, name: body.name, password });
-    this.check(await this.change(orgId, staff, { type: 'add', userId, role: body.role, temporary: true }));
+    // the account and the membership are not one transaction: an account left with no
+    // membership would answer account_exists to every later try, so it is removed
+    let result: TeamResult;
+    try {
+      result = await this.change(orgId, staff, { type: 'add', userId, role: body.role, temporary: true });
+    } catch (err) {
+      await deleteNewAccount(this.auth, userId);
+      throw err;
+    }
+    if (result !== 'done') await deleteNewAccount(this.auth, userId);
+    this.check(result);
     return { userId, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
   }
 
