@@ -15,6 +15,16 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
+  test('the call list says what the assistant did in call order, and how each confirmation ended', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
+    const did = (row: import('@playwright/test').Locator) => row.locator('td').nth(3);
+    // the caller who was not sure yet: a time was proposed, and nothing was booked
+    await expect(did(page.locator('tbody tr').filter({ hasText: 'Daniel Okonkwo' }))).toHaveText('Identity check, Searched openings, Proposed a time, No clear yes');
+    const booked = page.locator('tbody tr').filter({ has: page.getByText('Booked', { exact: true }) }).first();
+    await expect(did(booked)).toHaveText(/^Identity check, .*, Booked$/);
+  });
+
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
