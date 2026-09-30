@@ -95,7 +95,7 @@ docs/                  architecture, safety, HIPAA, self-hosting, roadmap, decis
 - Zod schemas in `packages/core` for every external payload and tool argument.
 - Business rules are pure functions in `packages/core` with unit tests.
 - Adapters implement the ports in `packages/core/src/ports.ts`; no vendor SDK calls outside their package.
-- New source files start with `// SPDX-License-Identifier: AGPL-3.0-only`.
+- New source files under `src/` and `scripts/` start with `// SPDX-License-Identifier: AGPL-3.0-only`.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`) with a DCO sign-off (`git commit -s`).
 
 ## Definition of done

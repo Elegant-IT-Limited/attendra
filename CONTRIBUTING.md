@@ -25,7 +25,7 @@ Every command, the repository layout, and the rules every change must keep (PHI,
 1. For anything bigger than a fix, open an issue first so we can agree on the shape.
 2. Branch from `main`; keep one change per pull request.
 3. Add tests. New PHI fields need an encryption path and a line in the redaction test. New tables need a Row Level Security policy and a cross-tenant test.
-4. Start new source files with `// SPDX-License-Identifier: AGPL-3.0-only`.
+4. Start new source files under `src/` and `scripts/` with `// SPDX-License-Identifier: AGPL-3.0-only`. Tests, configs and docs do not carry the header.
 5. Write commits as `type: summary` (`feat:`, `fix:`, `docs:`, `test:`, `chore:`), with a body that says why.
 6. Sign off every commit: `git commit -s`. CI checks it.
 
