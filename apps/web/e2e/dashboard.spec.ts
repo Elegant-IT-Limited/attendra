@@ -9,7 +9,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByText('Demo mode.')).toBeVisible();
     // 25 eval scenarios in the weeks before, and 11 ordinary calls this week
     await expect(page.locator('tbody tr')).toHaveCount(36);
-    await page.getByRole('tab', { name: 'Needs attention' }).click();
+    // named for what it holds; Today's Needs attention is a different, wider list
+    await expect(page.getByRole('tab', { name: 'Needs attention' })).toHaveCount(0);
+    await page.getByRole('tab', { name: 'Emergencies and requests' }).click();
     await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
