@@ -126,9 +126,17 @@ describe('the tools', () => {
   });
 
   it('list_todays_schedule needs schedule:read, names patients, and audits how many it showed', async () => {
+    // one visit known to be today, whatever the demo schedule has around it
+    const tz = DEMO_CLINIC.timezone;
+    const noon = zonedInstant(localDateOf(new Date(), tz), '12:00', tz);
+    const [p] = (await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
+    const [row] = (await t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+      values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_lindqvist', 'vt_sick', ${noon.toISOString()}::timestamptz, ${new Date(noon.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-today-fixed', 'u_olga') returning id`)).rows as { id: string }[];
     const named = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
-    const appts = named.data.appointments as { patient?: string }[];
-    if (appts.length) expect(appts.every((a) => !!a.patient)).toBe(true);
+    await t.db.execute(sql`delete from appointments where id = ${row!.id}`);
+    const appts = named.data.appointments as { appointmentId: string; patient?: string }[];
+    expect(appts.map((a) => a.appointmentId)).toContain(row!.id);
+    expect(appts.every((a) => !!a.patient)).toBe(true);
     const rows = await audits('mcp.list_todays_schedule');
     expect(rows.at(-1)!.counts).toEqual({ appointments: appts.length, names: appts.length });
     expect(rows.every((r) => r.actor.startsWith('api_key:'))).toBe(true);
