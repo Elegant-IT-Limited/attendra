@@ -75,6 +75,9 @@ export async function setTransferNumber(db: Database, userId: string, clinicId: 
   return true;
 }
 
+/** Rolls back a live action's audit row when the action did not happen. */
+class NotKept extends Error {}
+
 export class FrontDeskRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
@@ -156,9 +159,28 @@ export class FrontDeskRepository {
     });
   }
 
-  /** A staff action on a live call, audited under the person who took it. Counts only: a coaching note's length, never its words. */
-  async recordLiveAction(clinicId: string, callId: string, userId: string, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff', counts?: Record<string, number>) {
-    await withClinic(this.db, clinicId, (tx) => tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'call', entityId: callId, callId, counts: counts ?? null }));
+  /**
+   * A staff action on a live call, audited under the person who took it. Counts only:
+   * a coaching note's length, never its words. The audit row is written first, in a
+   * transaction, and `run` (the voice action) happens only once it is in: an action
+   * whose row cannot be written never runs. When `keep` says the action did not
+   * happen (someone else had the call) or was a repeat of the same click, the row is
+   * rolled back, so the log holds the actions that happened, once each.
+   */
+  async auditedLiveAction<T>(clinicId: string, callId: string, userId: string, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff',
+    counts: Record<string, number> | undefined, run: () => Promise<T>, keep: (r: T) => boolean): Promise<T> {
+    let result: { r: T } | null = null;
+    try {
+      return await withClinic(this.db, clinicId, async (tx) => {
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'call', entityId: callId, callId, counts: counts ?? null });
+        result = { r: await run() };
+        if (!keep(result.r)) throw new NotKept();
+        return result.r;
+      });
+    } catch (err) {
+      if (err instanceof NotKept && result) return (result as { r: T }).r;
+      throw err;
+    }
   }
 
   /** The live call list with verified callers' short names, recorded once per five minutes for the same calls. */

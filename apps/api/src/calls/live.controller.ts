@@ -111,8 +111,7 @@ export class LiveController {
   @ApiOperation({ summary: 'Send the assistant a short note on a live call. It never overrides the rules. Audited with the note\'s length, never its words.' })
   @ApiBody({ schema: schemaOf(LiveCoach) })
   async coach(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @Body(new ZodPipe(LiveCoach)) body: z.infer<typeof LiveCoach>, @CurrentStaff() staff: Staff) {
-    const r = await this.live().coach(clinicId, callId, { userId: staff.userId, key: body.key, note: body.note });
-    return this.settle(clinicId, callId, staff, r, 'call.coached', { characters: body.note.length });
+    return this.act(clinicId, callId, staff, 'call.coached', { characters: body.note.length }, () => this.live().coach(clinicId, callId, { userId: staff.userId, key: body.key, note: body.note }));
   }
 
   @Post('calls/:callId/live/take-over')
@@ -132,11 +131,10 @@ export class LiveController {
       const clinic = ClinicConfig.parse(await this.desk.settings(clinicId));
       destination = clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null;
     }
-    const r = await this.live().takeOver(clinicId, callId, { userId: staff.userId, key: body.key, target });
     // the audit row names the destination by its last four digits only
-    return this.settle(clinicId, callId, staff, r, 'call.taken_over', {
+    return this.act(clinicId, callId, staff, 'call.taken_over', {
       ownNumber: target.kind === 'number' ? 1 : 0, ...(destination ? { destinationLast4: Number(lastFour(destination)) } : {}),
-    });
+    }, () => this.live().takeOver(clinicId, callId, { userId: staff.userId, key: body.key, target }));
   }
 
   @Post('calls/:callId/live/end')
@@ -145,8 +143,7 @@ export class LiveController {
   @ApiOperation({ summary: 'End a live call: the assistant says goodbye, then hangs up. Audited.' })
   @ApiBody({ schema: schemaOf(LiveEnd) })
   async end(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @Body(new ZodPipe(LiveEnd)) body: z.infer<typeof LiveEnd>, @CurrentStaff() staff: Staff) {
-    const r = await this.live().endCall(clinicId, callId, { userId: staff.userId, key: body.key });
-    return this.settle(clinicId, callId, staff, r, 'call.ended_by_staff');
+    return this.act(clinicId, callId, staff, 'call.ended_by_staff', undefined, () => this.live().endCall(clinicId, callId, { userId: staff.userId, key: body.key }));
   }
 
   @Get('my-transfer-number')
@@ -176,12 +173,13 @@ export class LiveController {
     return this.voice;
   }
 
-  /** Audits a staff action the first time it is done; names who got there first when someone else did. */
-  private async settle(clinicId: string, callId: string, staff: Staff, r: LiveActionResult, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff', counts?: Record<string, number>) {
-    if (r.ok) {
-      if (!r.repeat && isUuid(callId)) await this.desk.recordLiveAction(clinicId, callId, staff.userId, action, counts);
-      return { ok: true };
-    }
+  /**
+   * Runs a staff action with its audit row written first; the row stays only when the
+   * action happened, the first time. Names who got there first when someone else did.
+   */
+  private async act(clinicId: string, callId: string, staff: Staff, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff', counts: Record<string, number> | undefined, run: () => Promise<LiveActionResult>) {
+    const r = isUuid(callId) ? await this.desk.auditedLiveAction(clinicId, callId, staff.userId, action, counts, run, (x) => x.ok && !x.repeat) : await run();
+    if (r.ok) return { ok: true };
     if (r.error === 'already_taken') {
       const by = r.by ? (await staffNames(this.db, clinicId, [r.by])).get(r.by) ?? null : null;
       throw new HttpException({ error: 'already_taken', by }, 409);

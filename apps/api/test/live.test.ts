@@ -153,6 +153,18 @@ describe('staff actions', () => {
     expect((await audits('call.ended_by_staff')).map((a) => a.actor)).toEqual([`user:${api.users.staff}`]);
   });
 
+  it('writes the audit row before the action: when the row cannot be written, the assistant is never told', async () => {
+    const calls = voice.coach.mock.calls.length;
+    await api.t.db.execute(sql`revoke insert on audit_logs from attendra_app`);
+    try {
+      const res = await act('coach', as.staff, { note: 'offer Friday', key: 'coach-key-9' });
+      expect(res.statusCode).toBe(500);
+    } finally {
+      await api.t.db.execute(sql`grant insert on audit_logs to attendra_app`);
+    }
+    expect(voice.coach.mock.calls.length).toBe(calls);
+  });
+
   it('a simulated call starts only where the voice service offers them', async () => {
     const res = await api.request('POST', `${C}/test-calls/simulated`, { cookie: as.staff });
     expect(res.statusCode).toBe(201);
