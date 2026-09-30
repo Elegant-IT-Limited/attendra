@@ -12,6 +12,12 @@ describe('voice service environment', () => {
     expect(env.GPT_LIVE_MODEL).toBe('gpt-live-1');
   });
 
+  it('takes a port from 1 to 65535, and a blank one as the default', () => {
+    expect(loadEnv({ ...base, PORT: '' }).PORT).toBe(8080);
+    expect(() => loadEnv({ ...base, PORT: '0' })).toThrow('PORT');
+    expect(() => loadEnv({ ...base, PORT: '99999' })).toThrow('PORT');
+  });
+
   it('refuses half a Twilio setup and a short internal token', () => {
     expect(() => loadEnv({ ...base, TWILIO_ACCOUNT_SID: 'AC0123456789' })).toThrow('TWILIO');
     expect(() => loadEnv({ ...base, VOICE_INTERNAL_TOKEN: 'short' })).toThrow('VOICE_INTERNAL_TOKEN');
