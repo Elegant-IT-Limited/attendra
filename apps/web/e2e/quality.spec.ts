@@ -9,6 +9,8 @@ test('a manager sees how the assistant is doing, and opens the calls behind a nu
   await expect(booking).toContainText('Booking success');
   await expect(page.getByTestId('quality-containment')).toContainText('%');
   await expect(page.getByRole('heading', { name: 'Week by week' })).toBeVisible();
+  // each week starts on a date written day first, as everywhere else
+  await expect(page.locator('tbody tr').first().locator('td').first()).toHaveText(/^\d{1,2} [A-Z][a-z]{2}$/);
   await booking.click();
   await expect(page).toHaveURL(/\/calls\?.*outcome=booked/, { timeout: 20_000 });
   await expect(page.getByLabel('Outcome')).toHaveValue('booked');

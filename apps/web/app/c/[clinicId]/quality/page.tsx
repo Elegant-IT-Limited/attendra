@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
-import { REFUSALS, usd } from '@/lib/format';
+import { dayTitle, REFUSALS, usd } from '@/lib/format';
 
 const pct = (n: number | null) => (n === null ? 'no calls' : `${Math.round(n * 100)}%`);
 const money = (n: number | null) => (n === null ? 'none' : usd(n));
-const short = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+// "29 Sep", day first like every other date in the dashboard
+const short = (d: string) => dayTitle(d, 'short').replace(/^\w+ /, '');
 
 type Metric = { key: string; label: string; explain: string; value: (w: QualityWeek) => string; trend: (w: QualityWeek) => number | null; href: (w: QualityWeek) => string };
 
