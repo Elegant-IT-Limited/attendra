@@ -6,6 +6,7 @@ import { openSlots } from '@attendra/scheduling';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { z } from 'zod';
+import pkg from '../package.json' with { type: 'json' };
 
 export interface McpDeps {
   db: Database;
@@ -29,7 +30,7 @@ const refused = (message: string) => ({ content: [{ type: 'text' as const, text:
  * assistant. Every call is audited as mcp.<tool> with the key's id.
  */
 export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
-  const server = new McpServer({ name: 'attendra', version: '0.4.0' }, {
+  const server = new McpServer({ name: 'attendra', version: pkg.version }, {
     instructions: 'Attendra is a medical clinic\'s front desk. You can find open appointment times, read today\'s schedule and the request queue, close a request, and read quality numbers. You cannot book or cancel.',
   });
   const now = d.now ?? (() => new Date());
