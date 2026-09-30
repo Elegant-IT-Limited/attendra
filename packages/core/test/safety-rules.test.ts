@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectEmergency, isClearYes, namesMatch, parseDob } from '../src';
+import { detectEmergency, isClearYes, isMedicalQuestion, namesMatch, parseDob } from '../src';
 
 describe('emergency guardrail', () => {
   it.each([
@@ -63,5 +63,28 @@ describe('confirmation', () => {
 
   it('does not take a hedge, a question or a change of mind as yes', () => {
     for (const t of ['yes, actually no', 'hmm, maybe', 'yes? wait, Thursday or Friday', 'not that one', '']) expect(isClearYes(t, ['en'])).toBe(false);
+  });
+});
+
+describe('medical questions', () => {
+  it.each([
+    'can I take ibuprofen for my headache',
+    'is it ok to have advil with my lisinopril',
+    'should he take his insulin before surgery',
+    'insulin before surgery',
+    'ibuprofen dosing',
+    'what is the tylenol dosage',
+    'how much tylenol for a child',
+    'how much should I give for my 2 year old daughter',
+    'how many pills for a toddler',
+    'metformin with alcohol',
+  ])('refuses "%s"', (text) => {
+    expect(isMedicalQuestion(text)).toBe(true);
+  });
+
+  it('lets ordinary questions through', () => {
+    for (const t of ['how much is a visit', 'how much does a physical cost for a new patient', 'what are your hours', 'do you take my insurance', 'is there parking']) {
+      expect(isMedicalQuestion(t), t).toBe(false);
+    }
   });
 });
