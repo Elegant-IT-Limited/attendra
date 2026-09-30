@@ -7,7 +7,7 @@ import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, web
 /** Actor on the audit rows the call record writes: the voice service, not a person. */
 const SYSTEM = 'system';
 
-/** The call record: transcript segments, every tool action, and the close-out. Each write is audited in its own transaction. */
+/** The call record: transcript segments, every tool action, and the close-out. Opening and closing are audited; the close records how many lines and steps the call wrote. */
 export class CallRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
@@ -38,7 +38,6 @@ export class CallRepository {
       await tx.insert(callSegments).values({
         clinicId, callId, speaker: s.speaker, textEnc: this.cipher.encrypt(s.text, phiContext(clinicId, 'call_segments.text')), startMs: s.startMs, endMs: s.endMs,
       });
-      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.transcript.written', entity: 'call', entityId: callId, callId });
     });
   }
 
@@ -51,7 +50,6 @@ export class CallRepository {
     const { patientId, ...action } = a;
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.insert(callActions).values({ clinicId, callId, ...action });
-      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.action.recorded', entity: 'call', entityId: callId, callId });
       if (patientId) await tx.update(calls).set({ patientId }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId), isNull(calls.patientId)));
     });
   }
@@ -62,7 +60,10 @@ export class CallRepository {
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
         outcome: c.outcome, emergencyFlag: c.emergency,
       }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
-      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.closed', entity: 'call', entityId: callId, callId });
+      // what the call wrote, as counts on one row: a row per line or step would bury staff access in the log
+      const [lines] = await tx.select({ n: sql<number>`count(*)::int` }).from(callSegments).where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId)));
+      const [actions] = await tx.select({ n: sql<number>`count(*)::int` }).from(callActions).where(and(eq(callActions.clinicId, clinicId), eq(callActions.callId, callId)));
+      await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.closed', entity: 'call', entityId: callId, callId, counts: { lines: lines!.n, actions: actions!.n } });
     });
   }
 }
