@@ -95,6 +95,8 @@ export class WebhooksController {
   @ApiOperation({ summary: 'Send a test event to the endpoint now, and see the response' })
   @ApiOkResponse({ schema: schemaOf(WebhookAttempt) })
   async test(@Param('clinicId') clinicId: string, @Param('endpointId') id: string) {
+    // the endpoint must exist and be this clinic's before anything is recorded
+    if (!isUuid(id) || !(await this.repo.get(clinicId, id))) throw new NotFoundException({ error: 'not_found' });
     const now = new Date();
     const event = { id: eventId('webhook.test', `${id}|${now.toISOString()}`), clinicId, type: 'webhook.test' as const, occurredAt: now.toISOString(), data: { endpointId: id, test: true } };
     this.throttle(clinicId);

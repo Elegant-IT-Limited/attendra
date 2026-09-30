@@ -104,8 +104,15 @@ describe('webhook endpoints', () => {
     expect(limited).not.toBeNull();
     const last = (await api.request('GET', `${C}/webhooks/${endpointId}/attempts`, { cookie: as.admin })).json().attempts[0];
     expect((await api.request('POST', `${C}/webhooks/${endpointId}/attempts/${last.id}/redeliver`, { cookie: as.admin })).json()).toMatchObject({ error: 'rate_limited' });
-    // another clinic has its own allowance
+  });
+
+  it('records no test event for an endpoint that is not the clinic\'s own', async () => {
+    const events = async () => Number(((await api.t.db.execute(sql`select count(*)::int as n from webhook_events where type = 'webhook.test'`)).rows[0] as { n: number }).n);
+    const before = await events();
+    expect((await api.request('POST', `/api/v1/clinics/${OTHER.id}/webhooks/${endpointId}/test`, { cookie: as.outsider })).statusCode).toBe(404);
     expect((await api.request('POST', `/api/v1/clinics/${OTHER.id}/webhooks/00000000-0000-4000-8000-000000000000/test`, { cookie: as.outsider })).statusCode).toBe(404);
+    expect((await api.request('POST', `${C}/webhooks/not-a-uuid/test`, { cookie: as.admin })).statusCode).toBe(404);
+    expect(await events()).toBe(before);
   });
 
   it('change, turn off and delete, all audited; another clinic cannot touch them', async () => {
