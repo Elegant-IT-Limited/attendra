@@ -41,7 +41,7 @@ That is not the same as no PHI. A patient id with an appointment's times says wh
 
 | Event | When | Data |
 |---|---|---|
-| `call.completed` | A call ends. | `callId`, `channel` (`phone` or `web` for a browser test), `startedAt`, `endedAt`, `durationSeconds`, `outcome` (`booked`, `rescheduled`, `cancelled`, `task_created`, `transferred`, `emergency`, `abandoned`), `emergency`, `verified` |
+| `call.completed` | A call ends. | `callId`, `channel` (`phone` or `web` for a browser test), `startedAt`, `endedAt`, `durationSeconds`, `outcome` (`booked`, `rescheduled`, `cancelled`, `info`, `task_created`, `transferred`, `emergency`, `abandoned`), `emergency`, `verified` |
 | `call.summary.ready` | The worker has summarised a call. | `callId`, `intent`, `sentiment`, `needsReview`. The summary itself stays in Attendra. |
 | `appointment.booked` | The assistant or the front desk books. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `providerId`, `visitTypeId`, `startsAt`, `endsAt`, `by` (`assistant` or `staff`), `callId` |
 | `appointment.rescheduled` | An appointment moves. | As booked, plus `previousAppointmentId` when the assistant booked a new one in its place (the front desk moves it in place, so that is `null`). |
