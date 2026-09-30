@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  allowedEmergencyNumbers, ClinicConfig, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
+  allowedEmergencyNumbers, ClinicConfig, clinicWarnings, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
   isClearYes, type Language, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
 } from '../src';
 
@@ -160,6 +160,15 @@ describe('the emergency guardrail in every language', () => {
   });
 });
 
+describe('the software\'s name', () => {
+  it('in a greeting or as the assistant\'s name is a warning in Settings, never a configuration that fails to load', () => {
+    const named = { ...DEMO_CLINIC, greeting: 'Thanks for calling, this is the Attendra AI assistant.', assistantName: 'Attendra' };
+    expect(ClinicConfig.safeParse(named).success).toBe(true);
+    expect(clinicWarnings(named).map((w) => w.path)).toEqual(['greeting', 'assistantName']);
+    expect(clinicWarnings(DEMO_CLINIC)).toEqual([]);
+  });
+});
+
 describe('a clear yes in every language', () => {
   const ALL = LANGUAGES;
   it('accepts a plain yes in Spanish and Bangla, in both scripts', () => {
@@ -284,9 +293,11 @@ describe('clinic languages and the assistant\'s name', () => {
     expect(ClinicConfig.safeParse({ ...base, languages: ['en'], greeting: PACKS.bn.greeting({ assistantName: null, clinicName: base.name }) }).success).toBe(false);
   });
 
-  it('never lets the software\'s name reach a caller', () => {
-    expect(ClinicConfig.safeParse({ ...base, greeting: 'Thanks for calling. I am the Attendra AI assistant.' }).error?.issues[0]?.path).toEqual(['greeting']);
-    expect(ClinicConfig.safeParse({ ...base, assistantName: 'Attendra' }).error?.issues[0]?.path).toEqual(['assistantName']);
+  it('warns when the software\'s name would reach a caller, and still loads the configuration', () => {
+    const greeting = { ...base, greeting: 'Thanks for calling. I am the Attendra AI assistant.' };
+    expect(ClinicConfig.safeParse(greeting).success).toBe(true);
+    expect(clinicWarnings(greeting).map((w) => w.path)).toEqual(['greeting']);
+    expect(clinicWarnings({ ...base, assistantName: 'Attendra' }).map((w) => w.path)).toEqual(['assistantName']);
   });
 
   it('names are one word of 2 to 24 letters, in any script', () => {
