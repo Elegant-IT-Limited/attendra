@@ -3,9 +3,13 @@ import { openAs } from './session';
 
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
 
-/** The week view, moved on a week at a time until a block matching `name` shows. */
-async function findInWeek(page: Page, name: RegExp) {
-  await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+/**
+ * The week view, moved on a week at a time until a block matching `name` shows. With
+ * `upcoming`, it starts next week, where every visit is still ahead and can be changed.
+ */
+async function findInWeek(page: Page, name: RegExp, upcoming = false) {
+  const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  await page.goto(`/c/${clinicOf(page)}/schedule?view=week${upcoming ? `&date=${nextWeek}` : ''}`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   const heading = page.getByRole('heading', { level: 2, name: /^Week of / });
   for (let week = 0; week < 3; week++) {
@@ -155,7 +159,7 @@ test.describe.serial('the schedule', () => {
 
   test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    const block = await findInWeek(page, /booked by the assistant/);
+    const block = await findInWeek(page, /booked by the assistant/, true);
     const label = (await block.getAttribute('aria-label'))!;
     await block.click();
     const panel = page.getByRole('dialog');
@@ -173,7 +177,7 @@ test.describe.serial('the schedule', () => {
 
   test('the call behind a booking staff cancelled says so, in its header and on the booking', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    const block = await findInWeek(page, /booked by the assistant/);
+    const block = await findInWeek(page, /booked by the assistant/, true);
     await block.click();
     const panel = page.getByRole('dialog');
     await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
