@@ -31,7 +31,8 @@ const PATTERNS: [RegExp, string | ((m: string) => string)][] = [
   [/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[email]'],
   [/(\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, '[phone]'],
   [/\+\d[\d\s().-]{6,20}\d/g, phoneLike],
-  [/\b0\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/g, phoneLike],
+  // not inside an id: a UUID (01234567-1234-...) or call_0123456789 is not a number to hide
+  [/(?<![\w-])0\d{2,4}[\s.-]?\d{3,4}[\s.-]?\d{3,4}(?![\w-])/g, phoneLike],
   [/\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b/g, '[date]'],
   [/\b\d{4}-\d{2}-\d{2}\b/g, '[date]'],
   [new RegExp(`\\b${MONTHS_EN}\\.? \\d{1,2}(st|nd|rd|th)?,? \\d{4}\\b`, 'gi'), '[date]'],
@@ -43,7 +44,7 @@ const PATTERNS: [RegExp, string | ((m: string) => string)][] = [
 ];
 
 export function scrubText(s: string): string {
-  return PATTERNS.reduce((acc, [re, label]) => acc.replace(re, label as string), s);
+  return PATTERNS.reduce((acc, [re, label]) => (typeof label === 'string' ? acc.replace(re, label) : acc.replace(re, label)), s);
 }
 
 export function redact<T>(value: T, depth = 0): T {
