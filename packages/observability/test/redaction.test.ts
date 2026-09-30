@@ -39,6 +39,15 @@ describe('the redacting logger', () => {
       .toEqual({ turns: [{ speaker: 'caller', text: '[redacted]' }], meta: { phone: '[redacted]', ms: 1200 } });
   });
 
+  it('scrubs numbers from outside North America and dates written day first or in Spanish', () => {
+    for (const value of ['+44 20 7946 0958', '+442079460958', '020 7946 0958', '07700 900123', '+61 2 9374 4000', '+34 612 345 678',
+      '4 March 1985', '4th of March, 1985', '4 de marzo de 1985', '29 de septiembre']) {
+      expect(scrubText(`caller said ${value} earlier`), value).not.toContain(value);
+    }
+    // a count, a duration and an id stay readable
+    expect(scrubText('3 retries after 1500 ms for job 42 of 2026')).toBe('3 retries after 1500 ms for job 42 of 2026');
+  });
+
   it('leaves ordinary ids and durations readable', () => {
     expect(scrubText('session live_123 took 842 ms')).toBe('session live_123 took 842 ms');
   });
