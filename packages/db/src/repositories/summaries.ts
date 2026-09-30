@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, callSummaries, clinics, tasks } from '../schema';
@@ -107,22 +107,36 @@ export class CallSummaryRepository {
   }
 }
 
+/** Calls handled per transaction by the retention purge, so a first purge of years of calls never holds one huge transaction. */
+export const PURGE_BATCH = 500;
+
 /**
- * Deletes transcripts and summaries of calls that started before `before`, and
- * records how many, never what. Runs as the connecting (owner) role, like the
- * migrations: the application role cannot delete call records. Row Level Security
- * still applies, so the clinic is set for the transaction.
+ * Deletes the transcripts, summaries and tool steps (call actions) of calls that
+ * started before `before`, in batches of calls, and records how many, never what.
+ * The call rows stay, with their outcome and times, and so do requests, their notes
+ * and text records: docs/hipaa.md says why. Runs as the connecting (owner) role,
+ * like the migrations: the application role cannot delete call records. Row Level
+ * Security still applies, so the clinic is set for each transaction.
  */
-export async function purgeCallRecords(db: Database, clinicId: string, before: Date): Promise<{ transcriptLines: number; summaries: number }> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
-    const old = tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), lt(calls.startedAt, before)));
-    const lines = await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id });
-    const summaries = await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId });
-    const counts = { transcriptLines: lines.length, summaries: summaries.length };
-    await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts });
-    return counts;
-  });
+export async function purgeCallRecords(db: Database, clinicId: string, before: Date, batch = PURGE_BATCH): Promise<{ transcriptLines: number; summaries: number; callActions: number }> {
+  const counts = { transcriptLines: 0, summaries: 0, callActions: 0 };
+  let after = '00000000-0000-0000-0000-000000000000';
+  for (;;) {
+    const ids = await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      const old = (await tx.select({ id: calls.id }).from(calls)
+        .where(and(eq(calls.clinicId, clinicId), lt(calls.startedAt, before), gt(calls.id, after))).orderBy(asc(calls.id)).limit(batch)).map((c) => c.id);
+      if (!old.length) return old;
+      counts.transcriptLines += (await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id })).length;
+      counts.summaries += (await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId })).length;
+      counts.callActions += (await tx.delete(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, old))).returning({ id: callActions.id })).length;
+      return old;
+    });
+    if (ids.length < batch) break;
+    after = ids.at(-1)!;
+  }
+  await withClinic(db, clinicId, (tx) => tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts }));
+  return counts;
 }
 
 /** Every clinic's id and stored config, for jobs that run across clinics. Owner connection; no PHI. */
@@ -141,7 +155,11 @@ export async function ensureWorkerJobsView(db: Database, schema = 'pgboss') {
   await db.execute(sql.raw(`
     create or replace view worker_jobs with (security_barrier) as
       select id, name, state::text as state, retry_count, retry_limit, data->>'clinicId' as clinic_id, data->>'callId' as call_id,
-             created_on, started_on, completed_on, case when state::text = 'failed' then left(output->>'message', 80) end as failure
+             created_on, started_on, completed_on,
+             -- a JobError's message is a code; any other error's message could quote a row, so it shows as a code too
+             case when state::text <> 'failed' then null
+                  when output->>'message' ~ '^[a-z][a-z0-9_]{0,79}$' then output->>'message'
+                  else 'unexpected_error' end as failure
       from ${schema}.job
       where data->>'clinicId' = current_setting('app.clinic_id', true)`));
   await db.execute(sql.raw('grant select on worker_jobs to attendra_app'));

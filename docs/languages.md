@@ -9,7 +9,7 @@ Settings > Assistant and languages:
 - **Assistant name.** One word of 2 to 24 letters, such as Maya. Without one the assistant is "the clinic's assistant". A name never counts as the AI disclosure: "Hi, I'm Maya" sounds like a person, so the greeting still has to say AI assistant (or the same in one of the clinic's languages), and a greeting without it is refused when it is saved. The software's own name never reaches a caller.
 - **Languages.** Which of English, Spanish and Bangla the assistant may speak on this clinic's calls.
 - **Primary language.** Every call starts in it. The assistant switches when a caller speaks another language from the list, and switches back if they do.
-- **Emergency number.** The number the emergency script gives. Leave it empty for the clinic's country: 911 for a +1 number, 999 for +880 (Bangladesh) and +44, 000 for +61.
+- **Emergency number.** The number the emergency script gives. Leave it empty for the clinic's country: 911 for a +1 number, 999 for +880 (Bangladesh) and +44, 000 for +61 (Australia), 112 in the European Union and anywhere else. A clinic may choose only from its country's list (the United Kingdom and Australia also allow 112), so a typo like "91" is refused when settings are saved, and a number saved before this rule is replaced by the country's when a call runs.
 - **Names in other languages.** A visit type or provider can have a name for each other language ("রক্ত পরীক্ষা" for blood test), used in read-backs and offers. Without one the clinic's own name is said.
 
 The greeting preview shows what a caller hears first, in the primary language, and what the assistant says when a caller switches to each other language.

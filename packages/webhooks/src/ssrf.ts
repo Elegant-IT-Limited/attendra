@@ -18,6 +18,8 @@ for (const [net, bits] of [
   // IPv4 mapped into IPv6 (::ffff:0:0/96, 64:ff9b::/96) is judged as the IPv4 inside it, below:
   // a BlockList rule for those ranges would also match every plain IPv4 address
   ['::', 128], ['::1', 128], ['100::', 64], ['2001::', 32], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
+  // 6to4 (an IPv4 address inside), local-use NAT64, and the deprecated site-local range
+  ['2002::', 16], ['64:ff9b:1::', 48], ['fec0::', 10],
 ] as const) blocked.addSubnet(net, bits, 'ipv6');
 
 const BLOCKED_NAMES = /^(localhost|metadata\.google\.internal|metadata)$|\.(localhost|local|internal|intranet|lan|home\.arpa)$/i;
@@ -50,8 +52,8 @@ export function isPublicAddress(address: string): boolean {
   const inner = embeddedIPv4(address);
   if (inner) return !blocked.check(inner, 'ipv4');
   const six = canonical6(address);
-  // any other IPv4-compatible or mapped form that slipped past is refused rather than guessed at
-  if (/^::(ffff:)?[0-9a-f]{1,4}:[0-9a-f]{1,4}$/i.test(six) || /^64:ff9b::/i.test(six)) return false;
+  // any other IPv4-compatible, mapped or translated form (::ffff:0:0:0/96) that slipped past is refused rather than guessed at
+  if (/^::(ffff:)?[0-9a-f]{1,4}:[0-9a-f]{1,4}$/i.test(six) || /^::ffff:0:[0-9a-f]{1,4}:[0-9a-f]{1,4}$/i.test(six) || /^64:ff9b::/i.test(six)) return false;
   return !blocked.check(six, 'ipv6');
 }
 

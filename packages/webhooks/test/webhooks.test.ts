@@ -34,6 +34,12 @@ describe('Standard Webhooks signatures', () => {
     expect(JSON.parse(payloadOf({ id: 'evt_1', clinicId: 'c', type: 'request.done', occurredAt: '2026-09-30T10:00:00.000Z', data: { requestId: 'r' } })))
       .toEqual({ type: 'request.done', timestamp: '2026-09-30T10:00:00.000Z', data: { clinicId: 'c', requestId: 'r' } });
   });
+
+  it('leaves the patient id out when the endpoint asks, as endpoints do by default', () => {
+    const booked = { id: 'evt_2', clinicId: 'c', type: 'appointment.booked' as const, occurredAt: '2026-09-30T10:00:00.000Z', data: { appointmentId: 'a', patientId: 'p', startsAt: '2026-10-06T15:00:00.000Z' } };
+    expect(JSON.parse(payloadOf(booked, { omitPatientIds: true })).data).toEqual({ clinicId: 'c', appointmentId: 'a', startsAt: '2026-10-06T15:00:00.000Z' });
+    expect(JSON.parse(payloadOf(booked)).data.patientId).toBe('p');
+  });
 });
 
 describe('the SSRF guard', () => {
@@ -57,6 +63,11 @@ describe('the SSRF guard', () => {
     expect(isPublicAddress('::ffff:8.8.8.8')).toBe(true);
     expect(isPublicAddress('::ffff:10.0.0.1')).toBe(false);
     expect(isPublicAddress('64:ff9b::a9fe:a9fe')).toBe(false);
+    // 6to4, local-use NAT64, site-local and IPv4-translated addresses are refused
+    for (const address of ['2002:a00:1::1', '2002:808:808::1', '64:ff9b:1::a00:1', 'fec0::1', 'feff::1', '::ffff:0:a00:1', '::ffff:0:808:808', '0:0:0:0:ffff:0:7f00:1']) {
+      expect(isPublicAddress(address), address).toBe(false);
+    }
+    expect(isPublicAddress('1.1.1.1')).toBe(true); // and plain IPv4 is judged on its own
     expect(isPublicAddress('not-an-ip')).toBe(false);
     expect(isPublicAddress('0:0:0:0:0:ffff:7f00:1')).toBe(false); // 127.0.0.1, written out in full
     expect(isPublicAddress('::1')).toBe(false);
@@ -90,6 +101,13 @@ describe('delivering', () => {
       req.on('end', () => {
         got.push({ url: req.url ?? '', headers: req.headers, body });
         if (req.url === '/slow') return void setTimeout(() => res.end(), 2000);
+        // headers at once, then a byte every 100 ms, never ending: the socket is never idle
+        if (req.url === '/trickle') {
+          res.writeHead(200);
+          const t = setInterval(() => res.write('.'), 100);
+          res.on('close', () => clearInterval(t));
+          return;
+        }
         if (req.url === '/moved') { res.writeHead(302, { location: 'http://169.254.169.254/' }); return void res.end(); }
         res.statusCode = respond;
         res.end('ok');
@@ -118,6 +136,21 @@ describe('delivering', () => {
     expect(await deliver({ url: `http://127.0.0.1:${port}/moved`, secrets: [newSecret()] }, { id: 'evt_c', body: '{}' }, { allowLoopback: true })).toMatchObject({ ok: false, status: 302 });
     expect(got.length).toBe(before + 1); // the redirect was not followed
     expect(await deliver({ url: `http://127.0.0.1:${port}/slow`, secrets: [newSecret()] }, { id: 'evt_d', body: '{}' }, { allowLoopback: true, timeoutMs: 300 })).toMatchObject({ ok: false, error: 'timeout' });
+  });
+
+  it('cuts off a receiver that trickles its answer, at the total deadline, however busy the socket is', async () => {
+    const started = Date.now();
+    const r = await deliver({ url: `http://127.0.0.1:${port}/trickle`, secrets: [newSecret()] }, { id: 'evt_t', body: '{}' }, { allowLoopback: true, timeoutMs: 800 });
+    expect(r).toMatchObject({ ok: false, status: null, error: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(r.ms).toBeGreaterThanOrEqual(750);
+  });
+
+  it('counts DNS against the same deadline', async () => {
+    const hang = () => new Promise<never>(() => {});
+    const r = await deliver({ url: 'https://hooks.example.com/x', secrets: [newSecret()] }, { id: 'evt_u', body: '{}' }, { resolve: hang, timeoutMs: 300 });
+    expect(r).toMatchObject({ ok: false, error: 'timeout' });
+    expect(r.ms).toBeLessThan(1000);
   });
 
   it('never connects to a private address, and connects to the address it checked, not a second DNS answer', async () => {

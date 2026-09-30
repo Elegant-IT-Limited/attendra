@@ -8,6 +8,6 @@ turns:
     delegate:
       - get_clinic_info: { question: CBC test er dam koto taka }
 expect:
-  outcome: abandoned
+  outcome: info
   answered_from: faq_prices
   language: bn
