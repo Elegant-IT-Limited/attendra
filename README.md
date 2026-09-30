@@ -43,7 +43,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 - **Webhooks** for n8n, Zapier and Make, signed per Standard Webhooks, with no patient data in them. [docs/webhooks.md](docs/webhooks.md)
 - **Quality**: a weekly page of containment, bookings, refusals and cost, a judge for live evals, and simulated callers. [docs/quality.md](docs/quality.md)
 - **MCP**: other AI agents, such as a desktop MCP client, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)
-- **The front desk dashboard**: Today, the schedule, patients, requests, calls, team, settings and the audit log, in light and dark, with a command palette. [docs/design.md](docs/design.md)
+- **The front desk dashboard**: Today, the schedule, patients, requests, calls and live calls, test calls, quality, team, settings (with knowledge, integrations and API keys) and the audit log, in light and dark, with a command palette. [docs/design.md](docs/design.md)
 
 ## How the AI works
 
@@ -68,11 +68,11 @@ Prompts guide the voice. The rules below live in [`packages/agent/src/tools.ts`]
 | Every write is idempotent; the database refuses overlapping bookings | idempotency keys, a Postgres exclusion constraint | scheduler tests |
 | An outdated request can neither write nor speak | task revisions in `CallAgent` and `runTool` | "discards a slow result" and "refuses the writes" tests |
 | The emergency guardrail runs on every caller fragment, keeps listening after the first match, and cannot be turned off | `detectEmergencies`, `CallAgent.onCallerTranscript` | `emergency-chest-pain`, `self-harm-language`, `not-an-emergency` |
-| Refills and callbacks become staff tasks, never decisions | `create_refill_request` | `refill-request` scenario |
+| Refills and callbacks become staff requests, never decisions | `create_refill_request` | `refill-request` scenario |
 | Clinics cannot see each other's data, even through a query with no filter | Postgres Row Level Security | `tenancy-and-phi.test.ts` |
 | Names, dates of birth, phone numbers and transcripts are encrypted at rest and never logged | `createPhiCipher`, the redacting logger | `redaction.test.ts`, the ciphertext test |
 | Staff need two-factor before any clinic data; a viewer never sees a transcript; another clinic's data is a 404 | `StaffGuard`, `apps/api/src/access.ts` | `apps/api/test/api.test.ts` |
-| Every transcript and task view is audited in the same transaction as the read | `FrontDeskRepository` | `front-desk.test.ts` |
+| Every transcript and request view is audited in the same transaction as the read | `FrontDeskRepository` | `front-desk.test.ts` |
 
 ## Quick start
 
@@ -92,13 +92,13 @@ No keys are needed for either. The scenarios run the real backend against a real
 pnpm demo        # then open http://localhost:3000
 ```
 
-This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it, with a working week of ordinary calls this week and the eval scenarios in the two before, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, the team, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk) at Maple Street Family Medicine, whose assistant speaks English and Spanish, or as `frontdesk@cedarpark-demo.test` at Cedar Park Clinic, a small second clinic that sees none of Maple Street's data; the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
+This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it, with a working week of ordinary calls this week and the eval scenarios in the two before, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, live calls, test calls, quality, the team, settings (with knowledge, integrations and API keys) and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk) at Maple Street Family Medicine, whose assistant speaks English and Spanish, or as `frontdesk@cedarpark-demo.test` at Cedar Park Clinic, a small second clinic that sees none of Maple Street's data; the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
 
 | The week's calls | One call: transcript and every tool step |
 |---|---|
 | ![The call list with outcomes, emergency flags and what the assistant did](docs/images/calls.png) | ![A booking call: the read-back, the clear yes and the confirmed change](docs/images/call-detail.png) |
 | **Refills and callbacks for the front desk** | **Clinic settings, validated before they save** |
-| ![The task queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
+| ![The request queue with claim and done](docs/images/tasks.png) | ![Greeting, hours, providers and routing](docs/images/settings.png) |
 
 With no key at all, **Test call > Play a simulated call** runs a scripted booking call through the real assistant and opens it live, so you can watch the captions and the tool steps, coach the assistant and end the call.
 
