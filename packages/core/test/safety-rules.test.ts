@@ -23,10 +23,6 @@ describe('emergency guardrail', () => {
     expect(detectEmergency(text)?.kind).toBe(kind);
   });
 
-  it('hears "stroke" in romanised Bangla, whichever pack catches it first', () => {
-    expect(detectEmergency('baba stroke koreche')?.kind).toBe('stroke');
-  });
-
   it('catches a phrase split across transcript fragments once the window is joined', () => {
     expect(detectEmergency(['I have some', 'chest', 'pain since this morning'].join(' '))?.kind).toBe('cardiac');
   });

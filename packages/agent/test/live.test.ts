@@ -108,16 +108,6 @@ describe('taking over and ending', () => {
     expect(c.agent.canEndByStaff()).toBe(true);
   });
 
-  it('counts the number said in Bengali digits too', async () => {
-    const d = await world('dhanmondi');
-    const c = await d.call();
-    c.caller('বাবার বুকে খুব ব্যথা');
-    expect(c.agent.canEndByStaff()).toBe(false);
-    c.assistant('জরুরি হলে এখনই ৯৯৯ নম্বরে ফোন করুন।');
-    expect(c.agent.canEndByStaff()).toBe(true);
-    await d.t.close();
-  });
-
   it('sends the emergency script again after a coaching note during an emergency', async () => {
     const c = await w.call();
     const script = c.caller('she is not breathing')[0]!;

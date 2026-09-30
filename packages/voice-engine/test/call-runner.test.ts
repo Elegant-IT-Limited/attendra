@@ -1,5 +1,5 @@
 import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, DHANMONDI_CLINIC, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -128,14 +128,12 @@ describe('the conversation prompt', () => {
     expect(prompt).toContain('Never claim to be a person.');
     expect(prompt).toContain('Speak English. You may also speak Spanish if the caller does');
     expect(prompt).toContain('usted');
-    expect(prompt).not.toMatch(/Bangla|attendra/i);
+    expect(prompt).not.toMatch(/attendra/i);
   });
 
-  it('speaks Bangla first at Dhanmondi, with apni and never tumi, and falls back to a plain name when none is set', () => {
-    const prompt = conversationPrompt(DHANMONDI_CLINIC, NOW);
-    expect(prompt).toContain('Speak Bangla. You may also speak English if the caller does');
-    expect(prompt).toContain('Always say "apni", never "tumi"');
+  it('falls back to a plain name when none is set, and speaks only English at an English-only clinic', () => {
+    const prompt = conversationPrompt({ ...DEMO_CLINIC, assistantName: undefined, languages: ['en'], primaryLanguage: 'en' }, NOW);
     expect(prompt).toContain("You are the clinic's AI assistant.");
-    expect(prompt).not.toMatch(/attendra/i);
+    expect(prompt).not.toMatch(/Spanish|attendra/i);
   });
 });

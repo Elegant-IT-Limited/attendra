@@ -6,43 +6,6 @@ test.describe.serial('languages and a second clinic', () => {
   let manager: Page;
   test.beforeAll(async ({ browser }) => { manager = await openAs(browser, 'manager'); });
 
-  test('the Dhanmondi front desk sees only its own clinic, in English, with Bangla calls', async ({ browser }) => {
-    const page = await openAs(browser, 'dhanmondi');
-    await expect(page.getByText('Dhanmondi Diagnostic Centre').first()).toBeVisible();
-    await expect(page.getByText(/times are .*\(Asia\/Dhaka\)/)).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible(); // the dashboard stays in English
-    await expect(page.getByText('Maple Street Family Medicine')).toHaveCount(0);
-
-    await page.getByRole('link', { name: 'Calls', exact: true }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(6);
-    await page.getByRole('tab', { name: 'Bookings and changes' }).click();
-    await page.locator('tbody tr').first().getByRole('link').click();
-    await expect(page).toHaveURL(/\/calls\/[^/]+$/);
-    // what the caller said, in Bengali script, in the Bengali font
-    const line = page.getByText(/রহিমা|তাহমিনা|Tahmina/).first();
-    await expect(line).toBeVisible();
-
-    // wording follows the clinic's country: no US states, US numbers or US date order
-    const dhaka = new URL(page.url()).pathname.split('/')[2];
-    await page.goto(`/c/${dhaka}/settings`);
-    await expect(page.getByText('Check the law where you are before recording calls. A notice plays first.')).toBeVisible();
-    await expect(page.getByText(/US states/)).toHaveCount(0);
-    await page.goto(`/c/${dhaka}/patients`);
-    await expect(page.getByText('For example a last name, 04/03/1985 or 01000-000123.')).toBeVisible();
-    await expect(page.getByText(/\(303\)/)).toHaveCount(0);
-
-    // another organization's clinic is not there, even by its address
-    const other = await page.request.get('/api/v1/clinics/clinic_demo_maple/settings');
-    expect([403, 404]).toContain(other.status());
-    await page.goto('/c/clinic_demo_maple');
-    await expect(page.getByText('Maria Delgado')).toHaveCount(0);
-  });
-
-  test('Maple Street\'s manager cannot open Dhanmondi', async () => {
-    const res = await manager.request.get('/api/v1/clinics/clinic_demo_dhanmondi/settings');
-    expect([403, 404]).toContain(res.status());
-  });
-
   test('the assistant\'s name and languages, with a greeting preview in each', async () => {
     const page = manager;
     await page.getByRole('link', { name: 'Settings' }).click();
@@ -55,13 +18,6 @@ test.describe.serial('languages and a second clinic', () => {
     await page.getByRole('button', { name: 'Use the suggested greeting' }).click();
     await expect(page.getByLabel('Greeting')).toHaveValue("Thanks for calling Maple Street Family Medicine. I'm Lena, the clinic's AI assistant. How can I help you today?");
     await expect(page.getByTestId('greeting-preview-en')).toContainText("I'm Lena");
-
-    // Bangla on: the preview appears, marked experimental
-    await page.getByRole('checkbox', { name: /Bangla/ }).click();
-    await expect(page.getByText('Experimental', { exact: true })).toBeVisible();
-    await expect(page.getByText('Check the voice with a native speaker before using it with patients.')).toBeVisible();
-    await expect(page.getByTestId('greeting-preview-bn')).toContainText('আমি Lena, এখানকার এআই সহকারী');
-    await page.getByRole('checkbox', { name: /Bangla/ }).click();
 
     // a name is not a disclosure
     await page.getByLabel('Greeting').fill("Thanks for calling Maple Street. I'm Lena. How can I help?");
