@@ -163,7 +163,7 @@ describe('the team', () => {
 
   it('adds someone with a temporary password shown once, audited with the role', async () => {
     const res = await api.request('POST', M, { cookie: as.admin, body: { name: 'Nia New', email: 'Nia@Maple.example', role: 'staff' } });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(201);
     const { userId, temporaryPassword } = res.json();
     expect(temporaryPassword).toMatch(/^[\w-]{16}$/);
     expect((await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'nia@maple.example', password: temporaryPassword } })).statusCode).toBe(200);
@@ -183,7 +183,7 @@ describe('the team', () => {
     }
     expect((await api.t.db.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
     const again = await api.request('POST', M, { cookie: as.admin, body });
-    expect(again.statusCode).toBe(200);
+    expect(again.statusCode).toBe(201);
     expect((await members()).map((m) => m.email)).toContain('rhea@maple.example');
   });
 

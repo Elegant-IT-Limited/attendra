@@ -152,7 +152,7 @@ describe('events from the front desk', () => {
     const slots = (await api.request('GET', `${C}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=${from}&days=7`, { cookie: as.staff })).json();
     const [first, second] = slots.slots as { startsAt: string }[];
     const booked = await api.request('POST', `${C}/appointments`, { cookie: as.staff, body: { patientId: api.patientIds.james, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: first!.startsAt, idempotencyKey: 'hook-book-1' } });
-    expect(booked.statusCode).toBe(200);
+    expect(booked.statusCode).toBe(201);
     const id = booked.json().appointmentId as string;
     await api.request('POST', `${C}/appointments/${id}/reschedule`, { cookie: as.staff, body: { startsAt: second!.startsAt } });
     await api.request('POST', `${C}/appointments/${id}/cancel`, { cookie: as.staff, body: { reason: 'patient_asked' } });

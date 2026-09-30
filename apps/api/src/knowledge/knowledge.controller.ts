@@ -4,7 +4,7 @@ import { type Database, KnowledgeRepository, staffNames } from '@attendra/db';
 import { type Answerer, answerQuestion, MAX_BYTES, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { KnowledgeAnswer, KnowledgeAsk, KnowledgeDocument, KnowledgeDocuments, KnowledgeUpload } from '../contracts';
@@ -53,7 +53,7 @@ export class KnowledgeController {
   @Requires('settings:write')
   @ApiOperation({ summary: 'Upload a document (application/pdf, text/plain or text/markdown). Audited.' })
   @ApiConsumes('application/pdf', 'text/plain', 'text/markdown')
-  @ApiOkResponse({ schema: schemaOf(KnowledgeDocument) })
+  @ApiCreatedResponse({ schema: schemaOf(KnowledgeDocument) })
   async upload(@Param('clinicId') clinicId: string, @Query(new ZodPipe(KnowledgeUpload)) q: z.infer<typeof KnowledgeUpload>, @Body() body: unknown, @Req() req: FastifyRequest, @CurrentStaff() staff: Staff) {
     // checked as the types they must be, whatever the parsers let through
     if (!(body instanceof Uint8Array) || body.byteLength === 0) throw new HttpException({ error: 'empty_file' }, 400);
