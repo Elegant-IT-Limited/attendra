@@ -60,7 +60,21 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByLabel('Greeting')).toBeDisabled();
   });
 
-  test('a greeting that hides the AI is refused; a holiday saves and is audited', async ({ browser }) => {
+  test('the voice and the time zone are choices, and the zone shows its time now', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    const voice = page.getByLabel('Voice');
+    await expect(voice).toHaveValue('marin');
+    await expect(voice.locator('option:checked')).toHaveText('Marin (the default)');
+    await expect(page.getByTestId('time-zone-value')).toContainText(/^America\/Denver, now \d{1,2}:\d{2} [AP]M$/);
+    await page.getByRole('combobox', { name: 'Time zone' }).click();
+    await page.getByPlaceholder('Search, like Dhaka or New York').fill('dhaka');
+    await page.getByRole('option', { name: /Asia\/Dhaka/ }).click();
+    await expect(page.getByTestId('time-zone-value')).toContainText(/^Asia\/Dhaka, now /);
+    await page.close(); // not saved: the demo clinic keeps its zone
+  });
+
+    test('a greeting that hides the AI is refused; a holiday saves and is audited', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Settings' }).click();
     const greeting = page.getByLabel('Greeting');
