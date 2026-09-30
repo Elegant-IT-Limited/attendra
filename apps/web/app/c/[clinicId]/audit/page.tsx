@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, zoneLabel } from '@/lib/format';
 
 const ACTIONS: Record<string, string> = {
   'call.transcript.viewed': 'Read a call transcript',
@@ -85,7 +85,8 @@ const ENTITIES: Record<string, string> = {
   api_key: 'API key', webhook_endpoint: 'Webhook endpoint', schedule: 'Schedule', knowledge_document: 'Document',
 };
 const LISTS: Record<string, string> = { 'calls.listed': 'Call list', 'calls.live.listed': 'Live calls', 'patient.recent.viewed': 'Recent patients', 'calls.searched': 'Call search', 'patient.searched': 'Patient search' };
-const day = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : iso);
+// "29 Sep", the dashboard's own day-first format, whatever the browser's locale
+const day = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? dayTitle(iso, 'short').replace(/^\w+ /, '') : iso);
 
 /**
  * The Record column in plain words: "Schedule, 29 Sep, all providers", "Call list",
