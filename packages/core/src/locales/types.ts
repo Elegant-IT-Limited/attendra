@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { EmergencyKind } from '../emergency';
 
-export const LANGUAGES = ['en', 'es', 'bn'] as const;
+export const LANGUAGES = ['en', 'es'] as const;
 export type Language = (typeof LANGUAGES)[number];
 
 /**
  * Everything one language needs for a call, as data. Adding a language means adding
  * one of these (and its evals); nothing else in the code should hold a sentence a
- * caller hears. docs/languages.md says what a pack must reach before it stops being
- * experimental.
+ * caller hears. docs/languages.md explains how.
  */
 export interface LanguagePack {
   code: Language;
@@ -16,7 +15,6 @@ export interface LanguagePack {
   name: string;
   /** Its own name for itself. */
   nativeName: string;
-  experimental: boolean;
   /** For Intl, when a pack formats with it. */
   locale: string;
 
@@ -69,14 +67,13 @@ export interface LanguagePack {
 /** Word edges that work for any script: JavaScript's \b only knows ASCII letters. */
 export const B = String.raw`(?<![\p{L}\p{M}\p{N}])`;
 export const E = String.raw`(?![\p{L}\p{M}\p{N}])`;
-/** Canonical form: NFC, with accents on Latin letters dropped (so "sí" and "si" meet). Bengali is left whole. */
+/** Canonical form: NFC, with accents on Latin letters dropped (so "sí" and "si" meet). Other scripts are left whole. */
 export const fold = (text: string) => text.normalize('NFD').replace(/(\p{Script=Latin})[\u0300-\u036f]+/gu, '$1').normalize('NFC');
 
 /**
  * A regular expression from alternatives, matched as whole words in any script.
- * The alternatives are folded like the text they meet: some Bengali letters (ড়, ঢ়, য়)
- * have no composed canonical form, so a pattern typed with the composed letter would
- * otherwise never match.
+ * The alternatives are folded like the text they meet, so a pattern typed with an
+ * accent matches the text however it was composed.
  */
 export const words = (alternatives: string, flags = 'u') => new RegExp(`${B}(?:${fold(alternatives)})${E}`, flags);
 

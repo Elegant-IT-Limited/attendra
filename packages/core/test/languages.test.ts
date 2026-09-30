@@ -257,7 +257,23 @@ describe('clinic languages and the assistant\'s name', () => {
     expect(ClinicConfig.safeParse({ ...base, languages: ['en', 'en'] }).success).toBe(false);
   });
 
-  it('older configurations keep working: English only, no name', () => {
+  it('a configuration saved with a language Attendra no longer ships still loads, without it', () => {
+    const saved = {
+      ...base, languages: ['bn', 'en'], primaryLanguage: 'bn',
+      greeting: 'A greeting in a language no longer offered.',
+      visitTypes: base.visitTypes.map((v) => ({ ...v, names: { ...v.names, bn: 'a name in it' } })),
+    };
+    const parsed = ClinicConfig.parse(saved);
+    expect(parsed).toMatchObject({ languages: ['en'], primaryLanguage: 'en' });
+    expect(parsed.greeting).toBe(PACKS.en.greeting({ assistantName: 'Maya', clinicName: base.name }));
+    expect(parsed.visitTypes.every((v) => !Object.keys(v.names ?? {}).includes('bn'))).toBe(true);
+    // a greeting that still discloses the AI in a language offered is kept as it was
+    const spanish = PACKS.es.greeting({ assistantName: 'Maya', clinicName: base.name });
+    expect(ClinicConfig.parse({ ...saved, languages: ['es', 'bn'], greeting: spanish, primaryLanguage: 'bn' })).toMatchObject({ languages: ['es'], primaryLanguage: 'es', greeting: spanish });
+    expect(ClinicConfig.parse({ ...saved, languages: ['bn'] }).languages).toEqual(['en']);
+  });
+
+    it('older configurations keep working: English only, no name', () => {
     const old: Record<string, unknown> = { ...base, greeting: 'Thanks for calling. I am the clinic\'s AI assistant.' };
     for (const key of ['assistantName', 'languages', 'primaryLanguage']) delete old[key];
     const parsed = ClinicConfig.parse(old);
