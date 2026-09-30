@@ -134,10 +134,15 @@ describe('text delivery status', () => {
 
 describe('the worker on pg-boss', () => {
   let boss: PgBoss;
-  let failing = false;
+  let failing: false | 'code' | 'raw' = false;
   const flaky: Summariser = {
     model: 'local',
-    summarise: async (call) => { if (failing) throw new JobError('summary_model_http_500'); return new LocalSummariser().summarise(call); },
+    summarise: async (call) => {
+      if (failing === 'code') throw new JobError('summary_model_http_500');
+      // an error from a library, whose message quotes patient data
+      if (failing === 'raw') throw new Error('duplicate key value violates unique constraint: (Maria Delgado, 1985-03-04)');
+      return new LocalSummariser().summarise(call);
+    },
   };
 
   beforeAll(async () => {
@@ -160,13 +165,23 @@ describe('the worker on pg-boss', () => {
   });
 
   it('retries a failing summary, then dead-letters it, with a code the dashboard can show', async () => {
-    failing = true;
+    failing = 'code';
     const callId = await closedCall();
     await bossQueue(boss).callCompleted({ clinicId: DEMO_CLINIC.id, callId });
     const failed = await until(async () => (await workerJobs(t.db, DEMO_CLINIC.id, { callId })).find((j) => j.name === QUEUES.summariseCall && j.state === 'failed'), 30_000);
     expect(failed).toMatchObject({ retryCount: 1, retryLimit: 1, failure: 'summary_model_http_500' });
     await until(async () => (await workerJobs(t.db, DEMO_CLINIC.id, { callId })).find((j) => j.name === QUEUES.deadLetter));
     expect(await summaryOf(DEMO_CLINIC.id, callId)).toBeNull();
+    failing = false;
+  }, 45_000);
+
+  it('shows a code for an unexpected error, never its message', async () => {
+    failing = 'raw';
+    const callId = await closedCall();
+    await bossQueue(boss).callCompleted({ clinicId: DEMO_CLINIC.id, callId });
+    const failed = await until(async () => (await workerJobs(t.db, DEMO_CLINIC.id, { callId })).find((j) => j.name === QUEUES.summariseCall && j.state === 'failed'), 30_000);
+    expect(failed.failure).toBe('unexpected_error');
+    expect(JSON.stringify(await workerJobs(t.db, DEMO_CLINIC.id))).not.toContain('Delgado');
     failing = false;
   }, 45_000);
 
