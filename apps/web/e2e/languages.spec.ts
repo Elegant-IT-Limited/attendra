@@ -22,6 +22,15 @@ test.describe.serial('languages and a second clinic', () => {
     const line = page.getByText(/রহিমা|তাহমিনা|Tahmina/).first();
     await expect(line).toBeVisible();
 
+    // wording follows the clinic's country: no US states, US numbers or US date order
+    const dhaka = new URL(page.url()).pathname.split('/')[2];
+    await page.goto(`/c/${dhaka}/settings`);
+    await expect(page.getByText('Check the law where you are before recording calls. A notice plays first.')).toBeVisible();
+    await expect(page.getByText(/US states/)).toHaveCount(0);
+    await page.goto(`/c/${dhaka}/patients`);
+    await expect(page.getByText('For example a last name, 04/03/1985 or 01000-000123.')).toBeVisible();
+    await expect(page.getByText(/\(303\)/)).toHaveCount(0);
+
     // another organization's clinic is not there, even by its address
     const other = await page.request.get('/api/v1/clinics/clinic_demo_maple/settings');
     expect([403, 404]).toContain(other.status());

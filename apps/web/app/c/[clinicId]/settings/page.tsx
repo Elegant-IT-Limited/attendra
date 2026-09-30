@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -82,7 +82,7 @@ export default function Settings() {
           <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
             hint={`After the ${emergencyNumberFor(c)} script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
           <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
-            hint="Off by default. Several US states require every party to consent, so a notice plays first." disabled={!writable || save.isPending} />
+            hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
           {c.recording.enabled && (
             <Field label="Recording notice" htmlFor="notice"><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
           )}

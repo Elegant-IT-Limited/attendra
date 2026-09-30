@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientCard, PatientList } from '@attendra/api/contracts';
+import { countryCopy } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
-import { api, ApiFailure } from '@/lib/api';
+import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 import { age, dob, phone } from '@/lib/format';
 
 /** Waits until typing pauses, so each keystroke is not a request. */
@@ -30,6 +31,9 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
   empty?: ReactNode;
 }) {
   const [text, setText] = useState('');
+  const config = useClinicConfig(clinicId);
+  const copy = countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] });
+  const hint = `For example a last name, ${copy.exampleDob}${copy.phone.local ? ` or ${copy.phone.local}` : ''}.`;
   const query = useSettled(text.trim());
   const ready = query.length >= 2;
   const results = useQuery({
@@ -51,7 +55,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
           <Input id="patient-search" type="search" autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
             onChange={(e) => setText(e.target.value)} placeholder="Name, date of birth, or phone number" />
         </div>
-        <p className="text-xs text-text-muted">For example Delgado, 03/04/1985 or (303) 555-0147.</p>
+        <p className="text-xs text-text-muted">{hint}</p>
       </div>
       {!ready ? empty : results.isPending ? <Skeleton className="h-24" /> : unreadable ? (
         <p className="text-sm text-text-muted">Type a name, a whole date of birth, or all ten digits of a phone number.</p>
