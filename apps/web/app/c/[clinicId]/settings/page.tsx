@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, clinicWarnings, emergencyNumberFor } from '@attendra/core';
+import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
@@ -9,11 +9,12 @@ import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { Field, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
+import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { Switch } from '@/components/ui/controls';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
-import { Input, Textarea } from '@/components/ui/input';
+import { Input, Select, Textarea } from '@/components/ui/input';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
 
@@ -67,8 +68,16 @@ export default function Settings() {
           </Field>
           {clinicWarnings(c).map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Voice" htmlFor="voice" hint="A GPT-Live voice name."><Input id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })} /></Field>
-            <Field label="Time zone" htmlFor="tz" hint="IANA name, like America/Denver."><Input id="tz" value={c.timezone} onChange={(e) => set({ timezone: e.target.value })} /></Field>
+            <Field label="Voice" htmlFor="voice" hint="How the assistant sounds on the phone.">
+              <Select id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })}>
+                {/* a voice saved before this list keeps working, and stays selected */}
+                {!(BUILT_IN_VOICES as readonly string[]).includes(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)}</option>}
+                {BUILT_IN_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
+              <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
+            </Field>
           </div>
           <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
             hint={`After the ${emergencyNumberFor(c)} script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
