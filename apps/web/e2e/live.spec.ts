@@ -53,6 +53,7 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   // the stream ends, and the page turns into the call record without a reload
   await expect(page).toHaveURL(/\/calls\/[^/]+$/, { timeout: 20_000 });
   await expect(page.getByText('Browser test').first()).toBeVisible();
+  await expect(page.getByText('Ended by staff')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Transcript' })).toBeVisible();
   await expect(page.getByText('she is a new patient')).toHaveCount(0); // the note is never in the record
   // the summary appears when the worker has written it, with no reload

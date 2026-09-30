@@ -165,6 +165,7 @@ export class CallAgent {
 
   /** Staff end the call: the assistant says goodbye, then hangs up. */
   endByStaff(): Outbound[] {
+    this.state.endedByStaff = true;
     this.state.revision++;
     this.state.pending = null;
     this.emit({ type: 'staff', action: 'ended' });
