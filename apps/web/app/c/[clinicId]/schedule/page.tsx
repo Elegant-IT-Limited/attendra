@@ -41,7 +41,7 @@ function ScheduleScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const { can } = useClinic(clinicId);
+  const { can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
@@ -70,7 +70,7 @@ function ScheduleScreen() {
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
-    enabled: !!clinic,
+    enabled: !!clinic && can('schedule:read'),
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
@@ -81,6 +81,9 @@ function ScheduleScreen() {
   const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open), [schedule.data, showCancelled, open]);
   const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
+  if (!meLoading && !can('schedule:read')) {
+    return <><PageHeader title="Schedule" /><Card><Empty title="The schedule is for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
   const dates = view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];

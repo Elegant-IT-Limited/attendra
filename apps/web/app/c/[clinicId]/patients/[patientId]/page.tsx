@@ -30,7 +30,7 @@ type Tab = (typeof TABS)[number]['id'];
 
 export default function PatientPage() {
   const { clinicId, patientId } = useParams<{ clinicId: string; patientId: string }>();
-  const { can } = useClinic(clinicId);
+  const { can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const [tab, setTab] = useState<Tab>('appointments');
   const [open, setOpen] = useState<string | null>(null);
@@ -48,6 +48,9 @@ export default function PatientPage() {
     </Link>
   );
   const clinic = config.data;
+  if (!meLoading && !can('patients:read')) {
+    return <>{back}<Card><Empty title="Patients are for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (patient.isPending || !clinic) return <>{back}<Skeleton className="h-10 w-72" /><Skeleton className="mt-6 h-72" /></>;
   if (patient.isError || !patient.data) {
     const missing = patient.error instanceof ApiFailure && patient.error.status === 404;

@@ -31,7 +31,7 @@ function summaryPending(c: CallDetail) {
 
 export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
-  const { clinic, can } = useClinic(clinicId);
+  const { clinic, can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   // until the worker has written the summary, look again every 5 seconds, for up to 2 minutes
   const [opened] = useState(() => Date.now());
@@ -39,6 +39,7 @@ export default function CallPage() {
   const call = useQuery({
     queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`),
     refetchOnMount: 'always',
+    enabled: can('calls:read'),
     refetchInterval: (q) => {
       const c = q.state.data;
       if (!c || !summaryPending(c)) return false;
@@ -54,6 +55,9 @@ export default function CallPage() {
       <ArrowLeft className="size-4" /> All calls
     </Link>
   );
+  if (!meLoading && !can('calls:read')) {
+    return <>{back}<Card><Empty title="Call records are for the front desk">Your role sees the call list, not what was said on a call. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (call.isPending) return <>{back}<Skeleton className="h-8 w-72" /><Skeleton className="mt-6 h-96" /></>;
   if (call.isError || !call.data) {
     const missing = call.error instanceof ApiFailure && call.error.status === 404;
