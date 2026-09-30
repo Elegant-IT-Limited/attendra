@@ -111,7 +111,8 @@ function record(e: { action: string; entity: string; entityId: string | null; co
 
 export default function Audit() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { clinic, data: me, can } = useClinic(clinicId);
+  const { clinic, data: me, can, isPending: meLoading } = useClinic(clinicId);
+  const allowed = can('audit:read');
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
   const names = new Map((team.data?.members ?? []).map((m) => [m.userId, m.name]));
   const config = useClinicConfig(clinicId);
@@ -121,9 +122,14 @@ export default function Audit() {
     queryFn: ({ pageParam }) => api<AuditList>(`/clinics/${clinicId}/audit?limit=100${pageParam ? `&before=${pageParam}` : ''}`),
     initialPageParam: null as number | null,
     getNextPageParam: (last) => last.next,
+    enabled: allowed,
   });
   const rows = entries.data?.pages.flatMap((p) => p.entries) ?? [];
   const tz = clinic?.timezone ?? 'UTC';
+
+  if (!meLoading && !allowed) {
+    return <><PageHeader title="Audit log" /><Card><Empty title="Not available">Only owners and practice managers read the audit log.</Empty></Card></>;
+  }
 
   return (
     <>
