@@ -25,4 +25,4 @@ COPY evals/package.json evals/
 RUN pnpm install --frozen-lockfile
 COPY . .
 USER node
-EXPOSE 8080 8081
+EXPOSE 8080 8081 8082

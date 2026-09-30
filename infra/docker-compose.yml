@@ -64,6 +64,11 @@ services:
     <<: *node
     profiles: [mcp]
     command: ["pnpm", "--filter", "@attendra/mcp", "start"]
+    # the port inside the container is fixed, so it always matches the mapping; an MCP_PORT
+    # in .env would otherwise move the server away from it
+    environment:
+      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+      MCP_PORT: "8082"
     ports: ["127.0.0.1:8082:8082"]
     depends_on: { seed: { condition: service_completed_successfully } }
     restart: unless-stopped
