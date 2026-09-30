@@ -36,7 +36,7 @@ A desktop MCP client, such as Claude Desktop, starts a local server over stdio. 
   "mcpServers": {
     "attendra": {
       "command": "pnpm",
-      "args": ["--dir", "/path/to/attendra", "--filter", "@attendra/mcp", "stdio"],
+      "args": ["--silent", "--dir", "/path/to/attendra", "--filter", "@attendra/mcp", "stdio"],
       "env": {
         "ATTENDRA_MCP_URL": "https://mcp.your-clinic.example/mcp",
         "ATTENDRA_API_KEY": "atk_..."
@@ -46,7 +46,7 @@ A desktop MCP client, such as Claude Desktop, starts a local server over stdio. 
 }
 ```
 
-`ATTENDRA_MCP_URL` must be `https://`, except `http://localhost` for trying it on one machine. A client that can connect to a URL itself does not need the bridge: give it the address and the key directly, as below.
+`--silent` matters: stdout carries the protocol, and without it pnpm prints its script banner there first, which the client cannot read. `ATTENDRA_MCP_URL` must be `https://`, except `http://localhost` for trying it on one machine. A client that can connect to a URL itself does not need the bridge: give it the address and the key directly, as below.
 
 ## Connecting over HTTP
 
