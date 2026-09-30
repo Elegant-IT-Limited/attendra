@@ -108,14 +108,18 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
     : new PgBoss({ connectionString: target.connectionString, max: 4, ...producer });
 }
 
-/** Creates the queues with their retry policy. Safe to run on every start. Tests pass a faster policy. */
-export async function ensureQueues(boss: PgBoss, retry: Partial<RetryPolicy> = RETRY) {
+/**
+ * Creates the queues with their retry policy, or brings an existing queue's policy up
+ * to date. Safe to run on every start. Each queue keeps its own policy (webhook
+ * deliveries retry for about a day); `retry`, which the tests pass, overrides it.
+ */
+export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
-  const create = async (name: string, options: Parameters<PgBoss['createQueue']>[1]) => { if (!existing.has(name)) await boss.createQueue(name, options); };
-  await create(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
+  if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
   for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook]) {
-    const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...retry };
+    const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
-    await create(name, { ...policy, deadLetter: QUEUES.deadLetter });
+    if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
+    else await boss.createQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
   }
 }
