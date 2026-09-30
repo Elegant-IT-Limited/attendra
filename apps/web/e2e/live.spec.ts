@@ -67,3 +67,18 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   // the summary appears when the worker has written it, with no reload
   await expect(page.getByTestId('call-summary')).toBeVisible({ timeout: 30_000 });
 });
+
+test('a live page whose stream closes for good, for a call no longer live, becomes the call record', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  const callId = '00000000-0000-4000-8000-00000000c0de';
+  const snapshot = { callId, channel: 'phone', startedAt: new Date(Date.now() - 60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false, pending: null };
+  let streams = 0;
+  // the stream answers once, then refuses, so EventSource gives up; the call is not in the live list
+  await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/calls/${callId}/live`, (route) => (streams++ === 0
+    ? route.fulfill({ status: 200, contentType: 'text/event-stream', body: `id: 0\nevent: snapshot\ndata: ${JSON.stringify({ state: snapshot })}\n\n` })
+    : route.fulfill({ status: 500, body: 'gone' })));
+  await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/live`, (route) => route.fulfill({ json: { calls: [], counts: { live: 0, emergencies: 0 } } }));
+  await page.goto(`/c/${clinic}/calls/${callId}/live`);
+  await expect(page).toHaveURL(new RegExp(`/calls/${callId}$`), { timeout: 20_000 });
+});

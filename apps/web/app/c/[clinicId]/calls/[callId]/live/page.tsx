@@ -152,6 +152,9 @@ export default function LiveCallPage() {
     router.replace(`/c/${clinicId}/calls/${callId}`);
   };
   const live = useLiveCall(clinicId, callId, toRecord);
+  // a stream that closed for good, for a call no longer live here, ended while the page could not hear it
+  const gone = live.lost && list.isSuccess && !listed;
+  useEffect(() => { if (gone) toRecord(); }, [gone]);
   const length = useTicking(live.snapshot?.startedAt ?? listed?.startedAt);
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<'take' | 'end' | null>(null);
@@ -226,7 +229,7 @@ export default function LiveCallPage() {
       {live.staff === 'transfer_failed' && <Alert tone="warn" className="mb-6" title="The transfer did not go through">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {live.staff === 'end_failed' && <Alert tone="warn" className="mb-6" title="The call did not end">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {handedOff && <Alert className="mb-6">{live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
-      {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. It reconnects on its own.</Alert>}
+      {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. Reload the page to reconnect.</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
