@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       # passed as a variable, not written into the script, so an input cannot become a command
       SCENARIOS: ${{ inputs.scenarios }}
       FORCE_COLOR: '1'
@@ -27,11 +26,16 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - name: simulated callers against the real assistant
+        # the key goes only to the two steps that call OpenAI, never to install or upload
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -o pipefail
           mkdir -p evals/reports
           pnpm sim --scenarios "${SCENARIOS:-20}" | tee "evals/reports/sim-$(date -u +%F).txt"
       - name: live evals, scored by the judge
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: pnpm eval --live --judge
       - uses: actions/upload-artifact@v7
         if: always()
