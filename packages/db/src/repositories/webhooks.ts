@@ -186,11 +186,12 @@ const toAttempt = (r: Record<string, unknown>): Attempt => ({
 /** An appointment's facts for an event: ids, times and status. Nothing about the patient but their id. */
 export async function appointmentFacts(db: Database, clinicId: string, id: string) {
   return withClinic(db, clinicId, async (tx) => {
-    const [r] = rows<{ id: string; patient_id: string; provider_id: string; visit_type_id: string; starts_at: string | Date; ends_at: string | Date; status: string; created_by_call_id: string | null; cancel_reason: string | null }>(
-      await tx.execute(sql`select id, patient_id, provider_id, visit_type_id, starts_at, ends_at, status, created_by_call_id, cancel_reason from appointments where clinic_id = ${clinicId} and id = ${id}`));
+    const [r] = rows<{ id: string; patient_id: string; provider_id: string; visit_type_id: string; starts_at: string | Date; ends_at: string | Date; status: string; created_by_call_id: string | null; cancel_reason: string | null; updated_at: string | Date }>(
+      await tx.execute(sql`select id, patient_id, provider_id, visit_type_id, starts_at, ends_at, status, created_by_call_id, cancel_reason, updated_at from appointments where clinic_id = ${clinicId} and id = ${id}`));
     return r ? {
       appointmentId: r.id, patientId: r.patient_id, providerId: r.provider_id, visitTypeId: r.visit_type_id,
       startsAt: new Date(r.starts_at).toISOString(), endsAt: new Date(r.ends_at).toISOString(), status: r.status, cancelReason: r.cancel_reason,
+      updatedAt: new Date(r.updated_at).toISOString(),
     } : null;
   });
 }

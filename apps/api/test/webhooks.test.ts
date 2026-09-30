@@ -134,6 +134,19 @@ describe('webhook endpoints', () => {
 });
 
 describe('events from the front desk', () => {
+  it('a move back to a time the appointment had before is still its own event', async () => {
+    const from = new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10);
+    const slots = (await api.request('GET', `${C}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=${from}&days=7`, { cookie: as.staff })).json();
+    const [a, b] = slots.slots as { startsAt: string }[];
+    const booked = await api.request('POST', `${C}/appointments`, { cookie: as.staff, body: { patientId: api.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: a!.startsAt, idempotencyKey: 'hook-back-and-forth' } });
+    const id = booked.json().appointmentId as string;
+    for (const to of [b!, a!, b!]) await api.request('POST', `${C}/appointments/${id}/reschedule`, { cookie: as.staff, body: { startsAt: to.startsAt } });
+    const moves = events.filter((e) => e.data.appointmentId === id && e.type === 'appointment.rescheduled');
+    expect(moves).toHaveLength(3);
+    expect(new Set(moves.map((e) => e.id)).size).toBe(3); // A to B, back to A, and to B again: three events
+    await api.request('POST', `${C}/appointments/${id}/cancel`, { cookie: as.staff, body: { reason: 'patient_asked' } });
+  });
+
   it('a staff booking, a move and a cancellation become events with ids and times, and no names', async () => {
     const from = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10); // a week out, whatever today is
     const slots = (await api.request('GET', `${C}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=${from}&days=7`, { cookie: as.staff })).json();

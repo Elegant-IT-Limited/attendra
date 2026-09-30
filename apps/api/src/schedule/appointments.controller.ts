@@ -143,7 +143,8 @@ export class AppointmentsController {
       : { appointmentId: a.appointmentId, patientId: a.patientId, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, by: 'staff', callId: null };
     // a staff move keeps the appointment, so there is no previous one
     if (type === 'appointment.rescheduled') data.previousAppointmentId = null;
-    await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}` : a.appointmentId, data });
+    // each move is its own event, even back to a time the appointment had before
+    await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}|${a.updatedAt}` : a.appointmentId, data });
     return change;
   }
 
