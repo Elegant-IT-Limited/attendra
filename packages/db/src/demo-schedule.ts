@@ -26,12 +26,6 @@ const MAPLE_MORE = crossed(
   // 555-0100 to 555-0199 in two more Colorado area codes: the range kept for fiction
   (i) => `+1${i < 100 ? '719' : '970'}555${String(100 + (i % 100)).padStart(4, '0')}`, 7,
 );
-const DHANMONDI_MORE = crossed(
-  ['Ayesha', 'Rakib', 'Nusrat', 'Shakil', 'Mim', 'Tareq', 'Jannat', 'Fahim', 'Lamia', 'Sohel',
-    'Anika', 'Rubel', 'Tania', 'Masud', 'Priya', 'Zahid', 'Keya', 'Nayeem', 'Ritu', 'Shafiq'],
-  ['Sarker', 'Talukder', 'Bhuiyan', 'Mollah'],
-  (i) => `+8801000003${String(i).padStart(2, '0')}`, 11,
-);
 
 /**
  * More synthetic patients, so the demo schedule reads like a practice rather than
@@ -47,14 +41,6 @@ export const DEMO_SCHEDULE_PATIENTS = [
   ['Clara', 'Jensen', '1968-10-30'], ['Bilal', 'Qureshi', '1981-03-16'], ['June', 'Park', '1996-09-04'], ['Frank', 'Delaney', '1949-12-12'],
   ['Maya', 'Singh', '1987-07-29'], ['Isaac', 'Feldman', '1977-02-08'], ['Rosa', 'Ibáñez', '1963-05-18'], ['Leo', 'Marchetti', '2008-11-26'],
 ].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+1720555${String(110 + i).padStart(4, '0')}` })).concat(MAPLE_MORE);
-
-/** The Dhaka demo clinic's walk-in register: invented names, +880 10 numbers no operator issues. */
-export const DHANMONDI_SCHEDULE_PATIENTS = [
-  ['Nasima', 'Begum', '1963-04-11'], ['Rafiq', 'Islam', '1975-09-02'], ['Shirin', 'Sultana', '1990-01-19'], ['Mahbub', 'Alam', '1984-06-27'],
-  ['Farzana', 'Haque', '1997-03-08'], ['Jamal', 'Uddin', '1958-12-30'], ['Laila', 'Chowdhury', '1981-07-14'], ['Arif', 'Hasan', '2002-10-05'],
-  ['Sumaiya', 'Noor', '1995-05-23'], ['Kamrul', 'Ahsan', '1970-02-16'], ['Rokeya', 'Parvin', '1966-08-09'], ['Tanvir', 'Ahmed', '1989-11-21'],
-  ['Moushumi', 'Das', '1987-04-30'], ['Imran', 'Kabir', '1979-01-07'], ['Sadia', 'Islam', '2000-09-12'], ['Habib', 'Mia', '1955-06-18'],
-].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+88010000002${String(10 + i).padStart(2, '0')}` })).concat(DHANMONDI_MORE);
 
 /** A small, seeded generator: the same demo every time it starts, so screenshots and specs are stable. */
 function random(seed: number) {

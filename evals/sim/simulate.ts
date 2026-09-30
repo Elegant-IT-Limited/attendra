@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Planner } from '@attendra/agent';
 import { DEMO_CLINICS, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, seedDemo, seedDhanmondi } from '@attendra/db';
+import { CallRepository, createPhiCipher, seedCedarPark, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { readFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { TextAssistant } from './assistant';
 import type { Line, Persona, SimulatedCaller } from './caller';
 
 const PersonaSchema = z.object({
-  id: z.string(), clinic: z.enum(['maple', 'dhanmondi']), caller_number: z.string().nullable(), persona: z.string(), goal: z.string(), expect: z.array(z.string()).min(1),
+  id: z.string(), clinic: z.enum(['maple', 'cedar_park']), caller_number: z.string().nullable(), persona: z.string(), goal: z.string(), expect: z.array(z.string()).min(1),
 });
 export const loadPersonas = (file = join(import.meta.dirname, 'personas.yaml')): Persona[] => z.array(PersonaSchema).parse(parse(readFileSync(file, 'utf8')));
 
@@ -35,7 +35,7 @@ export async function simulate(persona: Persona, caller: SimulatedCaller, planne
   const t = await openTestDatabase();
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
-    await (persona.clinic === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
+    await (persona.clinic === 'cedar_park' ? seedCedarPark : seedDemo)(t.db, cipher);
     if (persona.clinic === 'maple') await seedDemoKnowledge(t.db, new LocalEmbedder());
     const clinic = DEMO_CLINICS[persona.clinic];
     const callId = await new CallRepository(t.db, cipher).open(clinic.id, `sim_${persona.id}_${Date.now()}`, persona.caller_number);

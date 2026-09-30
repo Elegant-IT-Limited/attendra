@@ -1,6 +1,6 @@
 # Attendra
 
-**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English, Spanish and Bangla, verifies the caller, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
+**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English and Spanish, verifies the caller, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
 
 Twilio carries the call over SIP to OpenAI GPT-Live, which holds the conversation. Every decision that matters (who the caller is, which times are really free, whether the caller said yes, what gets written, who is told) runs in this repository's TypeScript backend, where it can be tested, audited and self-hosted.
 
@@ -35,7 +35,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 ## What it does
 
 - **Answers calls** over Twilio SIP and GPT-Live, or from the browser for testing, with the clinic's hours, providers, visit types, routing and greeting.
-- **Speaks the caller's language**: English, Spanish, and Bangla (experimental), with a name for the assistant and the AI disclosure checked in every language. [docs/languages.md](docs/languages.md)
+- **Speaks the caller's language**: English and Spanish, with a name for the assistant and the AI disclosure checked in every language. [docs/languages.md](docs/languages.md)
 - **Books, moves and cancels** only after a read-back and a clear yes; takes refills and callbacks as requests for staff.
 - **Answers from the clinic's own documents**, with citations, and refuses medical questions in code. [Decision 8](docs/decisions/0008-clinic-knowledge.md)
 - **Live calls**: staff see captions and every tool step as they happen, send the assistant a note, take the call or end it.
@@ -92,7 +92,7 @@ No keys are needed for either. The scenarios run the real backend against a real
 pnpm demo        # then open http://localhost:3000
 ```
 
-This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it as a week of calls at each demo clinic, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, the team, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk) at Maple Street Family Medicine, whose assistant speaks English and Spanish, or as `frontdesk@dhanmondi-demo.test` at Dhanmondi Diagnostic Centre, a second clinic in Dhaka that speaks Bangla first ([experimental](docs/languages.md)) and sees none of Maple Street's data; the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
+This starts the API on an in-memory Postgres, plays every call scenario through the real agent into it, with a working week of ordinary calls this week and the eval scenarios in the two before, fills three weeks of the calendar around today, and starts the dashboard: Today (what needs someone, the day's appointments and what the assistant did), the calls, the schedule (book, move and cancel with the same rules the assistant uses), patients (search, add, and each patient's visits, calls and requests), refill and callback requests with notes and outcomes, the team, settings and the audit log. Sign in as `manager@maple-demo.test` (practice manager) or `frontdesk@maple-demo.test` (front desk) at Maple Street Family Medicine, whose assistant speaks English and Spanish, or as `frontdesk@cedarpark-demo.test` at Cedar Park Clinic, a small second clinic that sees none of Maple Street's data; the password is `attendra-demo-password`. Everything is synthetic and gone when you stop it. Demo mode skips two-step sign-in; a real deployment never does.
 
 | The week's calls | One call: transcript and every tool step |
 |---|---|
