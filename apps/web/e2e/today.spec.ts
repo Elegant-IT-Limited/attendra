@@ -43,3 +43,11 @@ test('Requests waiting counts every waiting request, not only the 20 listed', as
   const card = page.locator('div').filter({ has: page.getByText('Requests waiting', { exact: true }) }).filter({ hasText: 'Nobody has them yet' }).last();
   await expect(card).toContainText('23');
 });
+
+test('the start page says so when the server fails, instead of loading for ever', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  await page.route((u) => u.pathname === '/api/v1/me', (route) => route.fulfill({ status: 503, json: { error: 'unavailable' } }));
+  await page.goto('/');
+  await expect(page.getByText('Attendra did not load')).toBeVisible({ timeout: 20_000 }); // after the query's own retries
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+});
