@@ -24,6 +24,10 @@ let base: string;
 const received: { path: string; headers: IncomingMessage['headers']; body: string }[] = [];
 const hooks = () => new WebhookRepository(t.db, cipher);
 
+// every webhook job has run to an end: nothing more will be delivered for what was emitted so far
+const settled = () => until(async () => ((await t.db.execute(sql`select count(*)::int as n from pgboss.job
+  where name in ('webhook-event', 'deliver-webhook') and state in ('created', 'retry', 'active')`)).rows[0] as { n: number }).n === 0, 30_000);
+
 const until = async <T>(fn: () => Promise<T | null | undefined | false>, ms = 20_000): Promise<T> => {
   const end = Date.now() + ms;
   for (;;) {
@@ -65,7 +69,7 @@ describe('webhook deliveries', () => {
     await sink.emit(DEMO_CLINIC.id, event);
     await sink.emit(DEMO_CLINIC.id, event); // the same event again
     await until(async () => received.some((r) => r.path === '/hook'));
-    await new Promise((r) => setTimeout(r, 1500));
+    await settled();
     const got = received.filter((r) => r.path === '/hook');
     expect(got).toHaveLength(1);
     expect(received.some((r) => r.path === '/other' || r.path === '/theirs')).toBe(false);
@@ -102,7 +106,7 @@ describe('webhook deliveries', () => {
     // turned off, it gets nothing more
     const before = received.filter((r) => r.path === '/broken').length;
     await sink.emit(DEMO_CLINIC.id, { type: 'appointment.cancelled', key: 'appt_4', data: { appointmentId: 'appt_4', by: 'staff' } });
-    await new Promise((r) => setTimeout(r, 2500));
+    await settled();
     expect(received.filter((r) => r.path === '/broken').length).toBe(before);
   }, 90_000);
 
