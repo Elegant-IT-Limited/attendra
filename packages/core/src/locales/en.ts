@@ -22,8 +22,8 @@ export const en: LanguagePack = {
   disclosure: /\b(ai|artificial intelligence|automated|virtual)\b.{0,20}\b(assistant|receptionist|agent)\b/i,
   speakWhen: when,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
-  readbackBooking: ({ when: w, provider, visit, replacing }) =>
-    `${w} with ${provider} for ${/^[aeiou]/i.test(visit) ? 'an' : 'a'} ${visit}${replacing ? `, moving it from ${replacing}` : ''}`,
+  readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) =>
+    `${w} ${providerKind === 'room' ? `in the ${provider.replace(/^the /i, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())}` : `with ${provider}`} for ${/^[aeiou]/i.test(visit) ? 'an' : 'a'} ${visit}${replacing ? `, moving it from ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}.`,

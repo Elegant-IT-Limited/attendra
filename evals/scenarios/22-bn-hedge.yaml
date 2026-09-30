@@ -19,3 +19,6 @@ expect:
   refusals: [no_clear_yes]
   bookings_created: 0
   language: bn
+  # a person, in the genitive joined to the name: "ডা. কামাল হোসেনের কাছে"
+  spoken_contains: ["ডা. কামাল হোসেনের কাছে"]
+forbid_spoken: ["-এর কাছে"]

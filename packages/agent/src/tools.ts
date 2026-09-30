@@ -174,9 +174,10 @@ export async function runTool(
         replacing = when(current.start);
       }
       const provider = providerName(slot.providerId) ?? 'the provider';
+      const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
-      const readback = pack.readbackBooking({ when: when(slot.start), provider, visit, replacing });
+      const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing });
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
     }

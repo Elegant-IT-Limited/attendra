@@ -21,6 +21,8 @@ export const Provider = z.object({
   id: z.string(),
   name: z.string(),
   names: LocalNames.optional(),
+  // a person ("with Dr. Rahman") or a room ("in the sample collection room"): read-backs say it properly
+  kind: z.enum(['person', 'room']).default('person'),
   // the provider's own bookable hours; falls back to the clinic's hours when absent
   hours: WeeklyHours.optional(),
   visitTypeIds: z.array(z.string()).min(1),

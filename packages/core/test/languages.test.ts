@@ -160,6 +160,32 @@ describe('the emergency guardrail in every language', () => {
   });
 });
 
+describe('read-backs name a person or a room properly', () => {
+  const v = { when: 'Tuesday at 8:00 AM', visit: 'blood test', replacing: null };
+  it.each([
+    ['en', 'person', 'Dr. Farhana Rahman', 'Tuesday at 8:00 AM with Dr. Farhana Rahman for a blood test'],
+    ['en', 'room', 'Sample collection room', 'Tuesday at 8:00 AM in the sample collection room for a blood test'],
+    ['es', 'person', 'Dra. Farhana Rahman', 'Tuesday at 8:00 AM con Dra. Farhana Rahman, para blood test'],
+    ['es', 'room', 'la sala de muestras', 'Tuesday at 8:00 AM en la sala de muestras, para blood test'],
+    ['bn', 'person', 'ডা. ফারহানা রহমান', 'Tuesday at 8:00 AM, ডা. ফারহানা রহমানের কাছে, blood test'],
+    ['bn', 'room', 'নমুনা সংগ্রহ কক্ষ', 'Tuesday at 8:00 AM, নমুনা সংগ্রহ কক্ষে, blood test'],
+  ] as const)('%s, a %s', (language, providerKind, provider, expected) => {
+    const said = PACKS[language].readbackBooking({ ...v, provider, providerKind });
+    expect(said).toBe(expected);
+    expect(said).not.toContain('-এর কাছে');
+  });
+
+  it('joins the Bangla case ending to the word, after a vowel sign too', () => {
+    expect(PACKS.bn.readbackBooking({ ...v, provider: 'ডা. তানিয়া আলী', providerKind: 'person' })).toContain('ডা. তানিয়া আলীর কাছে');
+    expect(PACKS.bn.readbackBooking({ ...v, provider: 'ল্যাবরেটরি', providerKind: 'room' })).toContain('ল্যাবরেটরিতে');
+  });
+
+  it('keeps an existing provider a person, and the Dhanmondi collection room a room', () => {
+    expect(ClinicConfig.parse({ ...DEMO_CLINIC, providers: DEMO_CLINIC.providers.map(({ kind: _k, ...p }) => p) }).providers.every((p) => p.kind === 'person')).toBe(true);
+    expect(DHANMONDI_CLINIC.providers.find((p) => p.id === 'prov_collection')).toMatchObject({ name: 'Sample collection room', kind: 'room' });
+  });
+});
+
 describe('wording that follows the clinic\'s country', () => {
   it('names US consent law only for US clinics, and gives each country its own example numbers and date order', () => {
     expect(countryCopy(DEMO_CLINIC)).toMatchObject({ us: true, exampleDob: '03/04/1985', phone: { e164: '+13035550123' } });

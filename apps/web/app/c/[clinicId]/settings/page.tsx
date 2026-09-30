@@ -140,12 +140,18 @@ export default function Settings() {
         </Section>
 
         <Section title="Providers" description="Who can be booked, and for which visit types. A provider without their own hours uses the clinic's."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', kind: 'person', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
           {c.providers.map((p, i) => (
             <div key={p.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="flex flex-wrap items-end gap-3">
                 <Field label="Name"><Input className="w-64" value={p.name} onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
                 <LocalNames thing={p} languages={c.languages} what="Provider" onChange={(names) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, names } : x)) })} />
+                <Field label="A person or a room" hint="Read-backs say &ldquo;with Dr. Rahman&rdquo; or &ldquo;in the sample collection room&rdquo;.">
+                  <Select className="w-44" value={p.kind} aria-label={`${p.name}: a person or a room`}
+                    onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, kind: e.target.value as 'person' | 'room' } : x)) })}>
+                    <option value="person">A person</option><option value="room">A room</option>
+                  </Select>
+                </Field>
                 <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => set({ providers: c.providers.filter((_, j) => j !== i) })}><Trash2 /></Button>
               </div>
               <div className="flex flex-wrap gap-4 text-sm">

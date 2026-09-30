@@ -71,7 +71,7 @@ describe('a Bangla call at Dhanmondi', () => {
     expect(c.state.verifiedPatient?.firstName).toBe('Tahmina');
     c.caller('প্রথমটা দিন');
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
-    expect(c.state.pending?.readback).toBe('মঙ্গলবার, ২৯ সেপ্টেম্বর, সকাল ১০টা, নমুনা সংগ্রহ কক্ষ-এর কাছে, রক্ত পরীক্ষা');
+    expect(c.state.pending?.readback).toBe('মঙ্গলবার, ২৯ সেপ্টেম্বর, সকাল ১০টা, নমুনা সংগ্রহ কক্ষে, রক্ত পরীক্ষা');
     c.assistant('নিশ্চিত করছি: মঙ্গলবার সকাল ১০টা, রক্ত পরীক্ষা। ঠিক আছে?');
     c.caller('জি, ঠিক আছে');
     await c.delegate([{ tool: 'commit_pending', args: {} }]);
