@@ -228,7 +228,10 @@ export class CallAgent {
     };
 
     try {
-      const plan = await this.planner.plan({ clinic: this.ctx.clinic, state: this.state, nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}` }, execute);
+      const plan = await this.planner.plan({
+        clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber,
+        nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
+      }, execute);
       if (revision !== this.state.revision) {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];

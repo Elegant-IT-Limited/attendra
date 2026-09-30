@@ -16,7 +16,8 @@ export interface Planner {
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput>;
 }
 
-export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string }
+/** `callerNumber` is the number the call came from, when there is one. */
+export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null }
 export interface PlannerOutput { say: string | null; quiet?: string }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
@@ -93,7 +94,13 @@ export class ResponsesPlanner implements Planner {
         conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
       }
     }
-    return { say: 'Let me have someone from the clinic call you back about that.' };
+    // out of rounds: a callback that is promised is one that exists, taken through the same
+    // tool the model would use, so its rules and the request for staff apply
+    if (input.callerNumber) {
+      const taken = await execute('create_callback', { reason: 'The assistant could not finish the caller\'s request', callback_number: input.callerNumber });
+      if (taken.ok) return { say: 'I wasn\'t able to finish that, so I\'ve asked someone from the clinic to call you back at the number you\'re calling from.' };
+    }
+    return { say: 'I wasn\'t able to finish that. Would you like someone from the clinic to call you back? If so, tell me the best number to reach you.' };
   }
 }
 
