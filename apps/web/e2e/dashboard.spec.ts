@@ -95,7 +95,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByLabel('Holiday date').fill('2026-12-31');
     await page.getByRole('button', { name: 'Add holiday' }).click();
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('Saved. The next call uses these settings.')).toBeVisible();
+    // said in the page's toast, the live region with a surface of its own, so it can be read
+    await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
     await page.getByRole('link', { name: 'Audit log' }).click();
     await expect(page.getByText('Changed clinic settings').first()).toBeVisible();
     await expect(page.getByText('Read a call transcript').first()).toBeVisible();
