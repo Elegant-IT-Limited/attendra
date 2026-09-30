@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, zoneLabel } from '@/lib/format';
 
 const ACTIONS: Record<string, string> = {
@@ -45,6 +45,17 @@ const ACTIONS: Record<string, string> = {
   'member.removed': 'Removed a person from the team',
   'member.password.reset': 'Issued a new temporary password',
   'patient.search.result': 'Saw a patient in search results',
+  'call.live.watched': 'Watched a live call',
+  'calls.live.listed': 'Looked at live calls with names',
+  'call.coached': 'Sent the assistant a note',
+  'call.taken_over': 'Took over a live call',
+  'call.ended_by_staff': 'Ended a live call',
+  'api_key.created': 'Made an API key',
+  'api_key.revoked': 'Revoked an API key',
+  'member.transfer_number.set': 'Set their number for take-overs',
+  'member.transfer_number.cleared': 'Cleared their number for take-overs',
+  'retention.purged': 'Deleted old call records',
+  'call.summary.reviewed': 'Marked a call summary reviewed',
 };
 
 const ROLE_WORDS: Record<string, string> = { owner: 'owner', admin: 'practice manager', staff: 'front desk', viewer: 'viewer' };
@@ -69,11 +80,33 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
   return <span className="text-text-muted">{a}</span>;
 }
 
-// "matches:3" on a search: how many were found, never what was typed
-function record(e: { entity: string; entityId: string | null }) {
-  if (e.entityId?.startsWith('matches:')) return `${e.entityId.slice(8)} found`;
-  if (e.entity === 'schedule' && e.entityId) { const [from, days] = e.entityId.split('+'); return `${days === '1' ? 'the day' : `${days} days from`} ${from}`; }
-  return null;
+const ENTITIES: Record<string, string> = {
+  call: 'Call', patient: 'Patient', task: 'Request', appointment: 'Appointment', clinic: 'Clinic', member: 'Team member',
+  api_key: 'API key', webhook_endpoint: 'Webhook endpoint', schedule: 'Schedule', knowledge_document: 'Document',
+};
+const LISTS: Record<string, string> = { 'calls.listed': 'Call list', 'calls.live.listed': 'Live calls', 'patient.recent.viewed': 'Recent patients', 'calls.searched': 'Call search', 'patient.searched': 'Patient search' };
+const day = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) : iso);
+
+/**
+ * The Record column in plain words: "Schedule, 29 Sep, all providers", "Call list",
+ * "Patient search, 3 found". The keys behind them (filters, a hash of who was on
+ * screen) are for telling views apart, not for reading.
+ */
+function record(e: { action: string; entity: string; entityId: string | null; counts?: Record<string, number> | null }, providers: Map<string, string>): string {
+  const what = LISTS[e.action] ?? ENTITIES[e.entity] ?? e.entity;
+  const id = e.entityId ?? '';
+  if (id.startsWith('matches:')) return `${what}, ${id.slice(8)} found`;
+  if (e.entity === 'schedule') {
+    const [range = '', provider = ''] = id.split(';');
+    const [from = '', days = '1'] = range.split('+');
+    const who = provider.replace(/^provider=/, '');
+    return `${what}, ${days === '1' ? day(from) : `${days} days from ${day(from)}`}, ${!who || who === 'all' ? 'all providers' : providers.get(who) ?? 'one provider'}`;
+  }
+  if (e.action === 'call.taken_over' && e.counts) {
+    const to = e.counts.ownNumber ? 'their own number' : 'the front desk';
+    return `${what}, to ${to}${e.counts.destinationLast4 !== undefined ? ` ending ${String(e.counts.destinationLast4).padStart(4, '0')}` : ''}`;
+  }
+  return what;
 }
 
 export default function Audit() {
@@ -81,6 +114,8 @@ export default function Audit() {
   const { clinic, data: me, can } = useClinic(clinicId);
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
   const names = new Map((team.data?.members ?? []).map((m) => [m.userId, m.name]));
+  const config = useClinicConfig(clinicId);
+  const providers = new Map((config.data?.providers ?? []).map((p) => [p.id, p.name]));
   const entries = useInfiniteQuery({
     queryKey: ['audit', clinicId],
     queryFn: ({ pageParam }) => api<AuditList>(`/clinics/${clinicId}/audit?limit=100${pageParam ? `&before=${pageParam}` : ''}`),
@@ -107,8 +142,7 @@ export default function Audit() {
                       <TD>{actor(e.actor, me?.user.id, names)}</TD>
                       <TD>{describe(e.action)}</TD>
                       <TD className="hidden text-text-muted md:table-cell">
-                        {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">call</Link> : e.entity}
-                        {record(e) ? <span className="ml-2 text-xs">{record(e)}</span> : e.entityId && <span className="ml-2 font-mono text-xs">{e.entityId.slice(0, 8)}</span>}
+                        {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">{record(e, providers)}</Link> : record(e, providers)}
                       </TD>
                     </TRow>
                   ))}

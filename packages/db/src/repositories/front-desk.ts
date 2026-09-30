@@ -394,7 +394,7 @@ export class FrontDeskRepository {
   async auditTrail(clinicId: string, opts: { beforeId?: number; limit: number; actions?: string[] }) {
     return withClinic(this.db, clinicId, (tx) => tx.select({
       id: auditLogs.id, at: auditLogs.at, actor: auditLogs.actor, action: auditLogs.action,
-      entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId,
+      entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId, counts: auditLogs.counts,
     }).from(auditLogs)
       .where(and(eq(auditLogs.clinicId, clinicId), opts.beforeId ? lt(auditLogs.id, opts.beforeId) : undefined,
         opts.actions?.length ? inArray(auditLogs.action, opts.actions) : undefined))
