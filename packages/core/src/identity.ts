@@ -6,7 +6,11 @@
  * family members share phones and numbers are trivially spoofed.
  */
 
+import { asciiDigits, BN_MONTHS, fold } from './locales';
+
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const MONTHS_BN = BN_MONTHS.map(fold);
 
 export function normalizeName(name: string): string {
   return name
@@ -26,17 +30,23 @@ export function namesMatch(spoken: string, onFile: string): boolean {
 
 /**
  * A spoken or typed date of birth to YYYY-MM-DD, or null when it is not certain.
- * Accepts "March 4th 1985", "4 March 1985", "03/04/1985" (US order: month first) and
- * "1985-03-04". Two-digit years are refused: "85" is a guess.
+ * Accepts "March 4th 1985", "4 March 1985", "4 de marzo de 1985", "৪ মার্চ ১৯৮৫",
+ * "03/04/1985" and "1985-03-04". A numeric date is read month first in North America
+ * and day first everywhere else (`order`). Two-digit years are refused: "85" is a guess.
  */
-export function parseDob(input: string, today = new Date()): string | null {
-  const s = input.toLowerCase().replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+export function parseDob(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): string | null {
+  const s = fold(asciiDigits(input)).toLowerCase()
+    .replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/(\d)\s*(তারিখ|ই|এ|শে|লা|রা|ঠা)(?![\p{L}\p{M}])/gu, '$1')
+    .replace(/ de(l)? /g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().replace(/^el /, '');
   let y: number | undefined, m: number | undefined, d: number | undefined;
   let r: RegExpMatchArray | null;
+  const word = String.raw`([\p{L}\p{M}]+)`;
   if ((r = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) [y, m, d] = [Number(r[1]), Number(r[2]), Number(r[3])];
-  else if ((r = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) [m, d, y] = [Number(r[1]), Number(r[2]), Number(r[3])];
-  else if ((r = s.match(/^([a-z]+) (\d{1,2}) (\d{4})$/))) [m, d, y] = [monthIndex(r[1]!) + 1, Number(r[2]), Number(r[3])];
-  else if ((r = s.match(/^(\d{1,2}) ([a-z]+) (\d{4})$/))) [d, m, y] = [Number(r[1]), monthIndex(r[2]!) + 1, Number(r[3])];
+  else if ((r = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) {
+    [m, d, y] = [Number(r[1]), Number(r[2]), Number(r[3])];
+    if (order === 'dmy') [m, d] = [d, m];
+  } else if ((r = s.match(new RegExp(`^${word} (\\d{1,2}) (\\d{4})$`, 'u')))) [m, d, y] = [monthIndex(r[1]!) + 1, Number(r[2]), Number(r[3])];
+  else if ((r = s.match(new RegExp(`^(\\d{1,2}) ${word} (\\d{4})$`, 'u')))) [d, m, y] = [Number(r[1]), monthIndex(r[2]!) + 1, Number(r[3])];
   if (!y || !m || !d || m < 1 || m > 12) return null;
   const date = new Date(Date.UTC(y, m - 1, d));
   if (date.getUTCMonth() !== m - 1 || date > today || y < today.getUTCFullYear() - 130) return null; // "Feb 30", the future, typos
@@ -44,7 +54,11 @@ export function parseDob(input: string, today = new Date()): string | null {
 }
 
 function monthIndex(word: string): number {
-  return MONTHS.findIndex((mo) => mo === word || (word.length >= 3 && mo.startsWith(word)));
+  for (const months of [MONTHS, MONTHS_ES]) {
+    const i = months.findIndex((mo) => mo === word || (word.length >= 3 && mo.startsWith(word)));
+    if (i >= 0) return i;
+  }
+  return MONTHS_BN.indexOf(word);
 }
 
 /** Phone numbers compared on their last 10 digits, so +1 (303) 555-0100 equals 3035550100. */

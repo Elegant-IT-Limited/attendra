@@ -1,0 +1,14 @@
+id: bn-report-timing
+title: A question about when reports are ready is answered from the centre's own FAQ
+tags: [language, bn]
+clinic: dhanmondi
+turns:
+  - caller: আমার রক্ত পরীক্ষার রিপোর্ট কবে পাবো?
+    reply: "রক্ত পরীক্ষার রিপোর্ট সাধারণত একই দিন সন্ধ্যা ৭টার মধ্যে পাওয়া যায়।"
+    delegate:
+      - get_clinic_info: { question: রিপোর্ট কবে পাবো }
+expect:
+  outcome: info
+  answered_from: faq_reports
+  language: bn
+forbid_spoken: ["স্বাভাবিক", "normal"]

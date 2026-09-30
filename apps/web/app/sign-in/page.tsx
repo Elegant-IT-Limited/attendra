@@ -37,11 +37,12 @@ function SignIn() {
   }
 
   return (
-    <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist.">
+    // shown once the API has said whether this is a demo, so the demo box never pushes the form down
+    <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist." pending={health.isPending}>
       {idle && <Alert>You were signed out after 15 minutes without activity.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
-          <p>Sign in with either login. The password is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
+          <p>Sign in with any of these logins. The password is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {health.data.demoSignIn.logins.map((l) => (
               <Button key={l.email} type="button" size="sm" variant="outline" onClick={() => { setEmail(l.email); setPassword(health.data!.demoSignIn!.password); }}>{l.label}</Button>

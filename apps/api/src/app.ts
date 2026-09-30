@@ -1,23 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
+import type { KnowledgeBase } from '@attendra/core';
 import { clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
+import { type GuardOptions, type Resolver } from '@attendra/webhooks';
+import { eventSink, type JobQueue, noJobs } from '@attendra/worker/queue';
 import type { Logger } from '@attendra/observability';
 import rateLimit from '@fastify/rate-limit';
 import { Module, type DynamicModule } from '@nestjs/common';
 import { APP_GUARD, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ApiKeysController } from './api-keys/api-keys.controller';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
 import { CallsController } from './calls/calls.controller';
+import { LiveController } from './calls/live.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
+import { KnowledgeController } from './knowledge/knowledge.controller';
+import { WebhooksController } from './webhooks/webhooks.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
+import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
@@ -34,6 +43,12 @@ export interface ApiDeps {
   options: ApiOptions;
   /** The voice service, for browser test calls. Without it the endpoint answers 503. */
   voice?: VoiceClient | null;
+  /** Where uploads are sent to be indexed. Without it a document stays queued. */
+  jobs?: JobQueue;
+  /** Search and answers over the clinic's documents, for the Ask a question box. */
+  knowledge?: { base: KnowledgeBase; answerer: Answerer };
+  /** Webhook URL checks. Only the local demo allows plain HTTP to this machine. */
+  webhooks?: GuardOptions & { resolve?: Resolver };
   /** Requests per address per minute on /api/v1. Behind the web proxy, set trustProxy. */
   rateLimit?: number;
   /** Proxy hops in front of the API whose X-Forwarded-For is trusted (1 behind the dashboard). */
@@ -57,13 +72,18 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, OverviewController, CallsController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
+        { provide: CIPHER, useValue: deps.cipher },
         { provide: AUTH, useValue: deps.auth },
         { provide: LOGGER, useValue: deps.log },
         { provide: API_OPTIONS, useValue: deps.options },
         { provide: VOICE, useValue: deps.voice ?? null },
+        { provide: JOBS, useValue: deps.jobs ?? noJobs },
+        { provide: KNOWLEDGE, useValue: deps.knowledge ?? null },
+        { provide: EVENTS, useValue: eventSink(deps.jobs ?? noJobs, (err) => deps.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) },
+        { provide: WEBHOOK_GUARD, useValue: deps.webhooks ?? {} },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
@@ -80,6 +100,9 @@ class ApiModule {
  * StaffGuard, except /api/v1/health), Better Auth serves /api/auth, and the
  * OpenAPI document is at /api/docs.
  */
+/** The one route that takes a large body. */
+export const KNOWLEDGE_UPLOAD_ROUTE = '/api/v1/clinics/:clinicId/knowledge/documents';
+
 export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> {
   const hops = deps.trustProxy ?? 0;
   // trust exactly `hops` proxies (the dashboard), so a client-sent X-Forwarded-For entry never becomes the address
@@ -87,6 +110,15 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   const app = await NestFactory.create<NestFastifyApplication>(ApiModule.with(deps), adapter, { logger: false });
   app.setGlobalPrefix('api/v1');
   const fastify = app.getHttpAdapter().getInstance();
+
+  // Documents for the clinic's knowledge arrive as raw bytes, up to 5 MB, on that one
+  // route. The parser keeps the server's 512 KB limit, so every other route, Better
+  // Auth's included, refuses a large body whatever its content type says.
+  fastify.removeContentTypeParser('text/plain');
+  fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  fastify.addHook('onRoute', (route) => {
+    if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
+  });
 
   // every route, Better Auth's included: sign-in is where guessing happens
   await fastify.register(rateLimit, { max: deps.rateLimit ?? 600, timeWindow: 60_000 });

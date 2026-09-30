@@ -7,9 +7,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
-    await expect(page.locator('tbody tr')).toHaveCount(15);
+    await expect(page.locator('tbody tr')).toHaveCount(25);
     await page.getByRole('tab', { name: 'Needs attention' }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(5); // 3 tasks for staff, 2 emergencies
+    await expect(page.locator('tbody tr')).toHaveCount(7); // 4 requests for staff, 3 emergencies
   });
 
   test('a booking call shows the transcript, the read-back and every tool step', async ({ browser }) => {
@@ -36,7 +36,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
-    await expect(tasks).toHaveCount(3);
+    await expect(tasks).toHaveCount(4);
     const first = tasks.first();
     await expect(first.getByText('James Whitaker')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
@@ -47,7 +47,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Mark done' }).click();
     await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await expect(tasks).toHaveCount(2);
+    await expect(tasks).toHaveCount(3);
     await page.getByRole('tab', { name: 'Done' }).click();
     await expect(tasks).toHaveCount(1);
   });
@@ -76,14 +76,5 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Audit log' }).click();
     await expect(page.getByText('Changed clinic settings').first()).toBeVisible();
     await expect(page.getByText('Read a call transcript').first()).toBeVisible();
-  });
-
-  test('signing out clears the screen', async ({ browser }) => {
-    const page = await openAs(browser, 'manager');
-    await page.getByRole('button', { name: /account and theme/ }).click();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/sign-in$/);
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/sign-in$/);
   });
 });

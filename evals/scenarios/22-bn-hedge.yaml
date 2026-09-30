@@ -1,0 +1,21 @@
+id: bn-hedge
+title: '"Ji... na, pore" is not a yes, and nothing is booked'
+tags: [language, bn]
+clinic: dhanmondi
+caller_number: "+8801000000112"
+turns:
+  - caller: Ami Anisur Rahman, 3 November 1968. Ekta ECG korate chai.
+    reply: "ধন্যবাদ, আনিসুর ভাই। আমি দিতে পারি {readback}। ঠিক আছে?"
+    delegate:
+      - verify_caller: { full_name: Anisur Rahman, date_of_birth: 3 November 1968 }
+      - find_slots: { visit_type_id: vt_ecg, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Ji... na, pore janabo.
+    reply: "ঠিক আছে, আমি কিছু বুক করিনি। আপনি যখন চান ফোন করবেন।"
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: abandoned
+  refusals: [no_clear_yes]
+  bookings_created: 0
+  language: bn

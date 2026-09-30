@@ -1,0 +1,31 @@
+{
+  "name": "@attendra/worker",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@attendra/core": "workspace:*",
+    "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
+    "@attendra/observability": "workspace:*",
+    "@attendra/webhooks": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "openai": "7.23.0",
+    "pg-boss": "12.35.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16"
+  },
+  "exports": {
+    "./queue": "./src/queue.ts",
+    "./runtime": "./src/runtime.ts",
+    "./summarise": "./src/summarise.ts"
+  }
+}

@@ -1,5 +1,5 @@
 import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, DHANMONDI_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -61,6 +61,20 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('offers a callback when a transfer fails, and says the emergency number again during an emergency', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    h.engine.transfer.mockRejectedValueOnce(new Error('sip 503'));
+    await h.runner.handle(delta('in', 'e1', 'my wife is not breathing', 100));
+    await vi.advanceTimersByTimeAsync(8000);
+    const said = h.sent.map((e) => (e as { content: string }).content);
+    expect(said).toHaveLength(3);
+    expect(said[1]).toContain('transfer did not go through');
+    expect(said[1]).toContain('create_callback');
+    expect(said[2]).toBe(said[0]); // the emergency script, again
+    vi.useRealTimers();
+  });
+
   it('stores whole turns and closes the call with final usage and outcome', async () => {
     const h = harness(new ScriptedPlanner([]));
     await h.runner.handle(delta('out', 'o1', 'Thanks for calling Maple Street.', 0));
@@ -90,8 +104,25 @@ it('counts the call as over when the socket drops and the final write fails', as
 describe('the conversation prompt', () => {
   it('carries the greeting, the AI disclosure and today\'s hours, and nothing about any patient', () => {
     const prompt = conversationPrompt(DEMO_CLINIC, NOW);
-    expect(prompt).toContain("I am the clinic's AI assistant");
+    expect(prompt).toContain("I'm Maya, the clinic's AI assistant");
     expect(prompt).toContain('The clinic is closed right now.');
     expect(prompt).toMatch(/never give medical advice/i);
+  });
+
+  it('names the assistant, says it is an AI, and lists only the clinic\'s languages', () => {
+    const prompt = conversationPrompt(DEMO_CLINIC, NOW);
+    expect(prompt).toContain("You are Maya, the clinic's AI assistant.");
+    expect(prompt).toContain('Never claim to be a person.');
+    expect(prompt).toContain('Speak English. You may also speak Spanish if the caller does');
+    expect(prompt).toContain('usted');
+    expect(prompt).not.toMatch(/Bangla|attendra/i);
+  });
+
+  it('speaks Bangla first at Dhanmondi, with apni and never tumi, and falls back to a plain name when none is set', () => {
+    const prompt = conversationPrompt(DHANMONDI_CLINIC, NOW);
+    expect(prompt).toContain('Speak Bangla. You may also speak English if the caller does');
+    expect(prompt).toContain('Always say "apni", never "tumi"');
+    expect(prompt).toContain("You are the clinic's AI assistant.");
+    expect(prompt).not.toMatch(/attendra/i);
   });
 });
