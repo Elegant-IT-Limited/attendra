@@ -19,7 +19,7 @@ export function nowIn(zone: string, at = new Date()) {
 
 /**
  * A searchable list of time zones, showing the time it is now in the chosen one:
- * "Asia/Dhaka, now 1:31 PM". It saves the IANA name, as the settings always have.
+ * "Europe/Madrid, now 9:31 PM". It saves the IANA name, as the settings always have.
  */
 export function TimeZonePicker({ id, value, onChange, disabled }: { id: string; value: string; onChange: (zone: string) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -43,7 +43,7 @@ export function TimeZonePicker({ id, value, onChange, disabled }: { id: string; 
       <P.Portal>
         <P.Content align="start" sideOffset={6} className="z-50 w-[var(--radix-popover-trigger-width)] min-w-72 rounded-md border border-border bg-surface-raised text-text shadow-lg animate-rise-in">
           <Command shouldFilter={false} label="Time zones" loop>
-            <Command.Input value={query} onValueChange={setQuery} autoFocus placeholder="Search, like Dhaka or New York"
+            <Command.Input value={query} onValueChange={setQuery} autoFocus placeholder="Search, like Madrid or New York"
               className="h-10 w-full border-b border-border bg-transparent px-3 text-base outline-none placeholder:text-text-muted" />
             <Command.List className="max-h-72 overflow-y-auto p-1">
               <Command.Empty className="px-3 py-4 text-sm text-text-muted">No time zone matches.</Command.Empty>

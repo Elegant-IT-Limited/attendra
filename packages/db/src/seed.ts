@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, DEMO_CLINIC, DHANMONDI_CLINIC } from '@attendra/core';
+import { CEDAR_PARK_CLINIC, type ClinicConfig, DEMO_CLINIC } from '@attendra/core';
 import { and, eq } from 'drizzle-orm';
 import { type Database, withClinic } from './client';
 import type { PhiCipher } from './crypto';
@@ -19,23 +19,17 @@ export const DEMO_PATIENTS = [
   { key: 'sam_b', firstName: 'Sam', lastName: 'Rivera', dob: '1990-07-15', phone: '+13035550172' },
 ] as const;
 
-/**
- * The Dhaka demo clinic's patients: invented people, in the +880 10 range no
- * Bangladeshi operator issues. Names are written in English letters, as the centre's
- * register writes them.
- */
-export const DHANMONDI_PATIENTS = [
-  { key: 'rahima', firstName: 'Rahima', lastName: 'Khatun', dob: '1979-05-12', phone: '+8801000000111' },
-  { key: 'anisur', firstName: 'Anisur', lastName: 'Rahman', dob: '1968-11-03', phone: '+8801000000112' },
-  { key: 'tahmina', firstName: 'Tahmina', lastName: 'Akter', dob: '1992-02-20', phone: '+8801000000113' },
-  { key: 'sabbir', firstName: 'Sabbir', lastName: 'Hossain', dob: '1988-08-15', phone: '+8801000000114' },
+/** The Cedar Park demo clinic's two patients: invented, like the rest. */
+export const CEDAR_PARK_PATIENTS = [
+  { key: 'ruth', firstName: 'Ruth', lastName: 'Okafor', dob: '1971-06-02', phone: '+17205550152' },
+  { key: 'leon', firstName: 'Leon', lastName: 'Marsh', dob: '1995-01-19', phone: '+17205550153' },
 ] as const;
 
 /** The Maple Street demo clinic and its patients, in the demo organization. */
 export const seedDemo = (db: Database, cipher: PhiCipher) => seedDemoClinic(db, cipher, DEMO_CLINIC, 'org_demo', DEMO_PATIENTS);
 
-/** The Dhanmondi demo clinic, in an organization of its own: nobody at Maple Street can see it. */
-export const seedDhanmondi = (db: Database, cipher: PhiCipher) => seedDemoClinic(db, cipher, DHANMONDI_CLINIC, 'org_dhanmondi', DHANMONDI_PATIENTS);
+/** The Cedar Park demo clinic, in an organization of its own: nobody at Maple Street can see it. */
+export const seedCedarPark = (db: Database, cipher: PhiCipher) => seedDemoClinic(db, cipher, CEDAR_PARK_CLINIC, 'org_cedar_park', CEDAR_PARK_PATIENTS);
 
 export async function seedDemoClinic(db: Database, cipher: PhiCipher, clinic: ClinicConfig, orgId: string, people: readonly { key: string; firstName: string; lastName: string; dob: string; phone: string }[]) {
   // Only the first time: after that the clinic belongs to whoever edits it in the dashboard.

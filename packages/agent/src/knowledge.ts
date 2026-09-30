@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asciiDigits, normalise } from '@attendra/core';
+import { normalise } from '@attendra/core';
 
 /**
  * Answers from the clinic's own FAQ, by word overlap. It is deliberately simple for
@@ -10,10 +10,9 @@ import { asciiDigits, normalise } from '@attendra/core';
 const STOP = new Set([
   'the', 'a', 'an', 'do', 'you', 'i', 'my', 'is', 'are', 'what', 'how', 'can', 'to', 'of', 'for', 'and', 'or', 'in', 'on', 'at', 'your', 'me', 'we', 'it', 'if', 'there',
   'que', 'los', 'las', 'una', 'por', 'para', 'con', 'como', 'donde', 'cuando', 'ustedes', 'tienen', 'mi', 'mis',
-  'কি', 'কী', 'আমি', 'আমার', 'আপনি', 'আপনার', 'আপনাদের', 'কবে', 'কত', 'কোথায়', 'ami', 'amar', 'apni', 'apnar', 'apnader', 'kobe', 'koto', 'kothay', 'ki', 'er',
 ].map(normalise));
 // any script: letters, marks and digits make a word; Latin accents are dropped so "cita" meets "cíta"
-const words = (s: string) => normalise(asciiDigits(s)).replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
+const words = (s: string) => normalise(s).replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
 
 export function answerFromFaqs<T extends { id: string; question: string; answer: string }>(faqs: T[], question: string, minOverlap = 1): T | null {
   const asked = new Set(words(question));

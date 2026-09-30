@@ -19,7 +19,7 @@ Test calls from the browser over WebRTC; the Schedule with staff booking; Today;
 ## v0.4: the AI layer (done)
 
 - One design system across the dashboard: tokens, dark mode, a component kit, a command palette and keyboard shortcuts, axe checks on every page.
-- The clinic's own assistant: a name, and English, Spanish and Bangla (experimental), with the guardrails and the yes check in every language; a second demo clinic in Dhaka.
+- The clinic's own assistant: a name, and English and Spanish, with the guardrails and the yes check in every language.
 - `apps/worker` on pg-boss: a summary of every call, the retention purge, text delivery statuses.
 - Live calls: watch, coach the assistant, take over or end, with simulated calls for the demo.
 - The clinic's knowledge: documents, hybrid search with pgvector, grounded and cited answers, medical questions refused in code.

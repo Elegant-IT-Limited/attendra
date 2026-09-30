@@ -1,7 +1,7 @@
 import { expect, test as setup } from '@playwright/test';
 import { STATE } from './auth-state';
 
-for (const [role, label] of [['manager', 'Practice manager'], ['frontdesk', 'Front desk'], ['dhanmondi', 'Dhanmondi front desk']] as const) {
+for (const [role, label] of [['manager', 'Practice manager'], ['frontdesk', 'Front desk'], ['cedarpark', 'Cedar Park front desk']] as const) {
   setup(`sign in as ${role}`, async ({ page }) => {
     await page.goto('/sign-in');
     // the form stays for every other login

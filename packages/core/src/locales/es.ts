@@ -16,7 +16,6 @@ export const es: LanguagePack = {
   code: 'es',
   name: 'Spanish',
   nativeName: 'Español',
-  experimental: false,
   locale: 'es-US',
   prompt: [
     'If the caller speaks Spanish, answer in Spanish for the rest of the call, using usted.',

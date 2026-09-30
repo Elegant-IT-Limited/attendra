@@ -26,8 +26,6 @@ const PATTERNS = [
   words('\\d+ ?(mg|milligrams?|ml|units?|tablets?|pills?)'),
   // Spanish, without accents: text is normalised first
   words('cuant(o|a|os|as) (debo|puedo|tengo que) tomar|que dosis|la dosis|puedo tomar|debo tomar|efectos secundarios|dejar de tomar'),
-  // Bangla, both scripts
-  words('কতটুকু খাব|কয়টা খাব|ডোজ|কত মিলিগ্রাম|খেতে পারি|ওষুধ বন্ধ|koto ta khabo|kotota khabo|koyta khabo|dose koto|khete pari'),
 ];
 
 /** What the assistant says when the clinic's documents do not answer a question. */

@@ -27,8 +27,6 @@ const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 // script counts as said once the assistant speaks the number; if its captions never
 // show it, staff may end the call this long after the script was sent.
 const EMERGENCY_SCRIPT_GRACE_MS = 20_000;
-const BENGALI_DIGITS = '০১২৩৪৫৬৭৮৯';
-const asciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BENGALI_DIGITS.indexOf(d)));
 
 export interface ActionRecorder {
   /** `patientId` is set once the caller is verified, so the call record can be linked to them. */
@@ -105,7 +103,7 @@ export class CallAgent {
     const s = this.emergencyScript;
     if (s && !s.said) {
       s.heard = (s.heard + delta).slice(-400);
-      s.said = asciiDigits(s.heard).replace(/[\s-]/g, '').includes(s.number);
+      s.said = s.heard.replace(/[\s-]/g, '').includes(s.number);
     }
   }
 

@@ -26,9 +26,9 @@ export const Scenario = z.object({
   id: z.string(),
   title: z.string(),
   tags: z.array(z.string()).default([]),
-  // which demo clinic takes the call: Maple Street (English and Spanish) or Dhanmondi (Bangla and English)
-  clinic: z.enum(['maple', 'dhanmondi']).default('maple'),
-  // defaults to the clinic's first demo patient: Maria at Maple Street, Rahima at Dhanmondi
+  // which demo clinic takes the call: Maple Street (English and Spanish) or Cedar Park (English)
+  clinic: z.enum(['maple', 'cedar_park']).default('maple'),
+  // defaults to the clinic's first demo patient: Maria at Maple Street, Ruth at Cedar Park
   caller_number: z.string().nullable().optional(),
   turns: z.array(Turn).min(1),
   expect: z.object({

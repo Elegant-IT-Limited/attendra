@@ -1,26 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { bn } from './bn';
 import { en } from './en';
 import { es } from './es';
 import { type Language, LANGUAGES, type LanguagePack, normalise } from './types';
 
 export * from './types';
-export { asciiDigits, BN_MONTHS, bnDigits } from './bn';
 
-export const PACKS: Record<Language, LanguagePack> = { en, es, bn };
+export const PACKS: Record<Language, LanguagePack> = { en, es };
 export const packFor = (code: Language | undefined): LanguagePack => PACKS[code ?? 'en'] ?? en;
 
 /**
  * Which of the clinic's languages the caller is speaking, from what they have said
- * so far. Bengali script counts double: a transcriber that returns it has heard
- * Bangla. Ties and silence go to the clinic's primary language.
+ * so far: the one whose marker words it used most. Ties and silence go to the
+ * clinic's primary language.
  */
 export function detectLanguage(callerText: string, offered: readonly Language[], primary: Language): Language {
   const text = normalise(callerText);
   let best: { code: Language; score: number } = { code: primary, score: 0 };
   for (const code of offered) {
     const matches = text.match(PACKS[code].markers) ?? [];
-    const score = matches.reduce((n, m) => n + (/[ঀ-৿]/.test(m) ? 2 * m.length : 1), 0);
+    const score = matches.length;
     if (score > best.score || (score === best.score && code === primary)) best = { code, score };
   }
   return best.code;
@@ -38,7 +36,7 @@ const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '
 export function allowedEmergencyNumbers(phoneNumbers: readonly string[]): string[] {
   const first = phoneNumbers[0] ?? '';
   if (first.startsWith('+1')) return ['911']; // the United States and Canada
-  if (first.startsWith('+880')) return ['999']; // Bangladesh
+  if (first.startsWith('+880')) return ['999'];
   if (first.startsWith('+44')) return ['999', '112']; // the United Kingdom
   if (first.startsWith('+61')) return ['000', '112']; // Australia
   if (EU.some((c) => first.startsWith(c))) return ['112'];

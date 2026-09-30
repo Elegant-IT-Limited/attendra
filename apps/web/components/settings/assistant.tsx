@@ -2,15 +2,11 @@
 'use client';
 import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, PACKS } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
-import { Alert } from '@/components/ui/feedback';
 import { Input, Select } from '@/components/ui/input';
 
-export const EXPERIMENTAL_NOTE = 'Check the voice with a native speaker before using it with patients.';
-
-/** Whatever a language pack says, marked with its language so screen readers and the Bengali font pick it up. */
+/** Whatever a language pack says, marked with its language so screen readers pick it up. */
 export function Spoken({ language, children }: { language: Language; children: string }) {
   return <p lang={PACKS[language].locale} className="rounded-md border border-border bg-surface-sunken px-3 py-2 text-base">{children}</p>;
 }
@@ -45,7 +41,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
           const primary = l === c.primaryLanguage;
           return (
             <Checkbox key={l} id={`language-${l}`} checked={c.languages.includes(l)} disabled={disabled || primary} onCheckedChange={(on) => toggle(l, on)}
-              label={<span className="inline-flex items-center gap-2">{pack.name}{pack.nativeName !== pack.name && <span lang={pack.locale} className="text-text-muted">{pack.nativeName}</span>}{pack.experimental && <Badge tone="warn">Experimental</Badge>}</span>}
+              label={<span className="inline-flex items-center gap-2">{pack.name}{pack.nativeName !== pack.name && <span lang={pack.locale} className="text-text-muted">{pack.nativeName}</span>}</span>}
               hint={primary ? 'The primary language. Choose another primary language to turn this one off.' : undefined} />
           );
         })}
@@ -56,10 +52,6 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
           {c.languages.map((l) => <option key={l} value={l}>{PACKS[l].name}</option>)}
         </Select>
       </Field>
-
-      {c.languages.some((l) => PACKS[l].experimental) && (
-        <Alert tone="warn" title="Bangla is experimental">{EXPERIMENTAL_NOTE}</Alert>
-      )}
 
       <div className="space-y-3">
         <h3 className="text-sm font-medium">Greeting preview</h3>

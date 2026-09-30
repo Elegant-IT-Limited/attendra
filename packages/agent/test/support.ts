@@ -1,5 +1,5 @@
 import { type ClinicConfig, DEMO_CLINIC, type DomainEvent, type Messenger, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo, seedDhanmondi } from '@attendra/db';
+import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { BuiltinScheduler } from '@attendra/scheduling';
@@ -20,11 +20,11 @@ class PlanQueue implements Planner {
   }
 }
 
-/** A fresh database with a demo clinic in it: Maple Street unless the test asks for Dhanmondi. */
-export async function world(which: 'maple' | 'dhanmondi' = 'maple') {
+/** A fresh database with the Maple Street demo clinic in it. */
+export async function world() {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
-  const { patientIds, clinic } = await (which === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
+  const { patientIds, clinic } = await seedDemo(t.db, cipher);
   const sms: { to: string; template: string; language?: string; when?: string }[] = [];
   const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); } };
   const events: DomainEvent[] = [];
@@ -40,7 +40,7 @@ export async function world(which: 'maple' | 'dhanmondi' = 'maple') {
   let n = 0;
 
   /** With `record`, tool actions are written to the call record the way the voice service writes them. */
-  async function call(callerNumber: string | null = which === 'dhanmondi' ? '+8801000000111' : '+13035550147', opts: { record?: boolean; clinic?: ClinicConfig } = {}) {
+  async function call(callerNumber: string | null = '+13035550147', opts: { record?: boolean; clinic?: ClinicConfig } = {}) {
     const callId = await calls.open(clinic.id, `live_test_${++n}`, callerNumber);
     const state = new CallState();
     const plans = new PlanQueue();
