@@ -6,7 +6,7 @@ const LOG_LEVEL = z.preprocess(blank, z.string().default('info'));
 const Env = z.object({
   DATABASE_URL: z.string().url(),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
-  MCP_PORT: z.preprocess(blank, z.coerce.number().int().default(8082)),
+  MCP_PORT: z.preprocess(blank, z.coerce.number().int().min(1).max(65535).default(8082)),
   LOG_LEVEL,
 });
 export type Env = z.infer<typeof Env>;
