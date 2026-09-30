@@ -242,7 +242,7 @@ describe('Streamable HTTP', () => {
 });
 
 describe('rate limits', () => {
-  it('refuse a key over its allowance, and an address that keeps failing to authenticate', async () => {
+  it('refuse a key over its allowance, and an address that keeps failing to authenticate, but not a working key from it', async () => {
     const handle = mcpHttpHandler({ ...deps, rateLimit: { failuresPerAddress: 3, perKey: 4 } });
     const server = createServer((req, res) => void handle(req, res));
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -253,8 +253,9 @@ describe('rate limits', () => {
     for (let i = 0; i < 5; i++) statuses.push(await post(`Bearer ${key}`));
     expect(statuses).toEqual([200, 200, 200, 200, 429]);
     expect([await post('Bearer atk_x'), await post('Bearer atk_y'), await post('Bearer atk_z'), await post('Bearer atk_w')]).toEqual([401, 401, 401, 429]);
-    // while the address is held back, even a working key from it waits the minute out
-    expect(await post(`Bearer ${(await make(['schedule:read'])).key}`)).toBe(429);
+    // a working key from the same address is not locked out by someone else's guesses
+    expect(await post(`Bearer ${(await make(['schedule:read'])).key}`)).toBe(200);
+    expect(await post('Bearer atk_v')).toBe(429);
     server.close();
   });
 });

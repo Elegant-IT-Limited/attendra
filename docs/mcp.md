@@ -73,4 +73,4 @@ curl -s https://mcp.your-clinic.example/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`.
+A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`. The key is checked first, so a working key is still served from an address that is held back, and one client guessing behind a shared proxy does not lock out the others.
