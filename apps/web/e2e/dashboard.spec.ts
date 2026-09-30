@@ -96,6 +96,20 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.close(); // not saved: the demo clinic keeps its zone
   });
 
+  test('the unsaved-changes bar starts where the sidebar ends', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByLabel('Holiday date').fill('2027-01-01'); // a change, not saved
+    await page.getByRole('button', { name: 'Add holiday' }).click();
+    for (const width of [1440, 900]) { // the full sidebar, then the narrow one
+      await page.setViewportSize({ width, height: 800 });
+      const aside = (await page.locator('aside').boundingBox())!;
+      const bar = page.getByText('You have unsaved changes.').locator('xpath=../..');
+      await expect.poll(async () => (await bar.boundingBox())?.x).toBe(aside.x + aside.width);
+    }
+    await page.close();
+  });
+
   test('a saved time zone shows everywhere at once, without a reload', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Settings' }).click();
