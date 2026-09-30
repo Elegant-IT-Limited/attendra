@@ -32,6 +32,8 @@ Self-hosters are responsible for their own BAAs and operations.
 - Requests, calls and the team add these actions:
   - `task.note.added`, `task.assigned`: a note on a request, and a request handed to a teammate. `task.done` now records an outcome code with the request.
   - `calls.listed`: the call list with verified callers' names, once per person per 5 minutes. A viewer's list has no names and writes nothing.
+  - `call.transcript.viewed`: a call's transcript opened on the call page, once per person and call per 5 minutes (the page refreshes while a summary is written).
+  - `task.viewed`: each request shown on the Requests page, with its details and the patient's name, once per person and request per 5 minutes (the page refreshes every 30 seconds).
   - `calls.searched`: a search of calls by patient name, with the number of matches and never the name typed.
   - `member.added:<role>`, `member.role.changed:<role>`, `member.removed`, `member.password.reset`: team changes, written to every clinic of the organization in the same transaction as the change.
 - Every person has their own password. A temporary one, issued when someone is added or reset, must be changed at first sign-in, before two-step setup, and stops working after 72 hours, so the manager who read it out never holds a working password for someone else. It never reaches a log.

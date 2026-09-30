@@ -56,6 +56,12 @@ describe('calls', () => {
     expect(call?.transcript[0]?.text).toContain('lisinopril');
     expect(call?.tasks).toEqual([{ id: refillId, type: 'refill', status: 'open' }]);
     expect(await audit('call.transcript.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: callId }]);
+    // the page refreshing is the same view: one row per person and call per five minutes
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');
+    expect(await audit('call.transcript.viewed')).toHaveLength(1);
+    await desk.getCall(DEMO_CLINIC.id, callId, 'u_olga');
+    expect(await audit('call.transcript.viewed')).toHaveLength(2);
   });
 
   it('cannot open another clinic\'s call, even by id', async () => {
@@ -69,6 +75,8 @@ describe('task queue', () => {
     const [task] = await desk.listTasks(DEMO_CLINIC.id, { status: 'open', limit: 50 }, 'u_ana');
     expect(task).toMatchObject({ id: refillId, type: 'refill', patientName: 'Maria Delgado', details: { medication: 'lisinopril' } });
     expect((await audit('task.viewed')).map((r) => r.entity_id)).toEqual([refillId]);
+    await desk.listTasks(DEMO_CLINIC.id, { status: 'open', limit: 50 }, 'u_ana'); // the page refreshing
+    expect(await audit('task.viewed')).toHaveLength(1);
   });
 
   it('lets one person hold a task; a second claim or close by someone else is refused', async () => {
