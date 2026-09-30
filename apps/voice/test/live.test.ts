@@ -232,7 +232,8 @@ describe('taking over a phone call', () => {
     expect([a.statusCode, b.statusCode].sort()).toEqual([202, 409]);
     const [winner, loser] = a.statusCode === 202 ? ['u_ana', b] as const : ['u_jo', a] as const;
     expect(loser.json()).toEqual({ error: 'already_taken', by: winner });
-    await new Promise((r) => setTimeout(r, 3800)); // the assistant says the line first
+    // the assistant says the line first, then transfers: wait for the transfer itself, not a guess at how long
+    for (const started = Date.now(); !transfers.length && Date.now() - started < 12_000;) await new Promise((r) => setTimeout(r, 50));
     expect(transfers).toEqual(['tel:+13035550101']);
     await app.close();
   }, 15_000);

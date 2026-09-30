@@ -48,6 +48,13 @@ describe('the redacting logger', () => {
     expect(scrubText('3 retries after 1500 ms for job 42 of 2026')).toBe('3 retries after 1500 ms for job 42 of 2026');
   });
 
+  it('leaves ids that hold digits alone, and still scrubs a national number beside them', () => {
+    const uuid = '01234567-1234-4abc-8def-0123456789ab';
+    expect(scrubText(`call ${uuid} ended`)).toBe(`call ${uuid} ended`);
+    expect(scrubText('call_id call_0123456789 ended')).toBe('call_id call_0123456789 ended');
+    expect(scrubText(`call ${uuid}: caller gave 020 7946 0958`)).toBe(`call ${uuid}: caller gave [phone]`);
+  });
+
   it('leaves ordinary ids and durations readable', () => {
     expect(scrubText('session live_123 took 842 ms')).toBe('session live_123 took 842 ms');
   });

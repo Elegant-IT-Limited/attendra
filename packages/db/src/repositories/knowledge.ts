@@ -34,6 +34,9 @@ const COLUMNS = sql.raw('id, title, source_type, size_bytes, status, failure, ch
  * patient data; uploads and deletes are audited like any other change to what the
  * assistant says.
  */
+/** How long a document may stay in indexing before a save of the same bytes queues it again. */
+export const INDEXING_STALE_MS = 15 * 60_000;
+
 export class KnowledgeRepository {
   constructor(private readonly db: Database) {}
 
@@ -50,8 +53,11 @@ export class KnowledgeRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const [existing] = rows<{ id: string; content_hash: string; status: string; embedding_model: string | null; updated_at: string }>(await tx.execute(sql`
         select id, content_hash, status, embedding_model, updated_at from knowledge_documents where clinic_id = ${clinicId} and title = ${d.title}`));
-      const current = existing && existing.content_hash === hash
-        && (existing.status === 'indexing' || (existing.status === 'ready' && (!d.embeddingModel || existing.embedding_model === d.embeddingModel)));
+      // indexing counts as current only with this model, and only while it is recent: a job
+      // that died mid-way leaves the document in indexing, and after 15 minutes it is queued again
+      const model = !d.embeddingModel || existing?.embedding_model === d.embeddingModel;
+      const stale = existing?.status === 'indexing' && Date.now() - new Date(existing.updated_at).getTime() > INDEXING_STALE_MS;
+      const current = existing && existing.content_hash === hash && model && (existing.status === 'ready' || (existing.status === 'indexing' && !stale));
       if (existing && current) return { id: existing.id, changed: false, hash, version: new Date(existing.updated_at).toISOString() };
       const [row] = rows<{ id: string; updated_at: string }>(await tx.execute(sql`
         insert into knowledge_documents (clinic_id, title, source_type, content, content_hash, size_bytes, uploaded_by_user_id)
@@ -92,7 +98,8 @@ export class KnowledgeRepository {
       const [r] = rows<{ content: Uint8Array; source_type: SourceType; content_hash: string; indexed_hash: string | null; embedding_model: string | null; status: string }>(
         await tx.execute(sql`select content, source_type, content_hash, indexed_hash, embedding_model, status from knowledge_documents where clinic_id = ${clinicId} and id = ${id}`));
       if (!r) return null;
-      await tx.execute(sql`update knowledge_documents set status = 'indexing' where clinic_id = ${clinicId} and id = ${id} and status <> 'ready'`);
+      // with the model it indexes with, and when it started, so a save can tell a live job from a dead one
+      await tx.execute(sql`update knowledge_documents set status = 'indexing', embedding_model = ${model}, updated_at = now() where clinic_id = ${clinicId} and id = ${id} and status <> 'ready'`);
       return { content: Buffer.from(r.content), sourceType: r.source_type, hash: r.content_hash, current: r.status === 'ready' && r.indexed_hash === r.content_hash && r.embedding_model === model };
     });
   }

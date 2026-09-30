@@ -35,7 +35,7 @@ function SignIn() {
       setBusy(false);
       setDemo(null);
       const code = (res.error as { error?: string }).error;
-      return setError(res.error.status === 429 ? 'Too many attempts. Wait a minute and try again.'
+      return setError(res.error.status === 429 ? 'Too many sign-in attempts. Wait a few seconds and try again.'
         : code === 'temporary_password_expired' ? 'This temporary password has expired. Ask your practice manager to reset it.'
           : 'That email and password do not match.');
     }

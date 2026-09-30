@@ -35,7 +35,7 @@ export function Menu({ trigger, items, align = 'end' }: { trigger: ReactNode; al
   );
 }
 
-/** A few words about a control that has no visible label, or the exact time behind "12 min ago". */
+/** A few words about a control that has no visible label, or the exact time behind "12 minutes ago". */
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }) {
   return (
     <T.Root delayDuration={300}>

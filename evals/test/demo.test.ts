@@ -1,10 +1,10 @@
-import { DEMO_CLINIC, isOpen, qualityOf, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, isOpen, localDateOf, qualityOf, speakSlot, zonedInstant } from '@attendra/core';
 import { createPhiCipher, FrontDeskRepository, qualityRows, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DEMO_CALL_DIR, recordDemoCalls, shiftByWeeks } from '../src/demo';
+import { DEMO_CALL_DIR, recordDemoCalls } from '../src/demo';
 import { loadScenarios } from '../src/scenario';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -88,14 +88,40 @@ describe('demo calls', () => {
     expect(dump).not.toContain('Maria');
   });
 
-  it('moves a booking by whole weeks of local time, keeping 8:00 at 8:00 across the 2026-11-01 clock change', () => {
+  it('says only dates on or after the day of each call, and books the very time it read back', async () => {
+    const desk = new FrontDeskRepository(t.db, cipher);
     const tz = DEMO_CLINIC.timezone;
-    const tuesday = zonedInstant('2026-10-27', '08:00', tz); // daylight time, 14:00 UTC
-    expect(tuesday.toISOString()).toBe('2026-10-27T14:00:00.000Z');
-    const moved = shiftByWeeks(tuesday, 1, tz);
-    expect(moved.toISOString()).toBe('2026-11-03T15:00:00.000Z'); // standard time: an hour later in UTC
-    expect(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', hour: 'numeric', minute: '2-digit' }).format(moved)).toBe('Tuesday 8:00 AM');
-    expect(shiftByWeeks(tuesday, 0, tz)).toEqual(tuesday);
+    const EN = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    const problems: string[] = [];
+    for (const r of results) {
+      const call = (await desk.getCall(DEMO_CLINIC.id, r.callId, 'test'))!;
+      const day = localDateOf(new Date(call.startedAt), tz);
+      const said = call.transcript.filter((x) => x.speaker === 'agent').map((x) => x.text).join(' ');
+      // "Tuesday, September 29" and "martes, 29 de septiembre": a weekday, then the date
+      const dates = [
+        ...[...said.matchAll(/\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday), (\w+) (\d{1,2})\b/gi)].map((m) => [EN.indexOf(m[1]!.toLowerCase()), Number(m[2])] as const),
+        ...[...said.matchAll(/\b(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo), (\d{1,2}) de (\w+)/gi)].map((m) => [ES.indexOf(m[2]!.toLowerCase()), Number(m[1])] as const),
+      ].filter(([month]) => month >= 0);
+      for (const [month, d] of dates) {
+        const year = Number(day.slice(0, 4)) + (month + 1 < Number(day.slice(5, 7)) - 6 ? 1 : 0);
+        const spoken = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        if (spoken < day) problems.push(`${r.id}: said ${spoken} on a call of ${day}`);
+      }
+      for (const a of call.appointments.filter((x) => x.change === 'booked')) {
+        const start = new Date(a.startsAt);
+        if (!said.includes(speakSlot(start, tz, 'en')) && !said.includes(speakSlot(start, tz, 'es'))) problems.push(`${r.id}: booked ${start.toISOString()}, never read back`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('leaves no patient with two open requests of the same kind, and keeps them all', async () => {
+    const open = (await t.db.execute(sql`select type, patient_id from tasks where clinic_id = ${DEMO_CLINIC.id} and status = 'open' and patient_id is not null`)).rows as { type: string; patient_id: string }[];
+    const kinds = open.map((r) => `${r.patient_id}|${r.type}`);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    // every call that made a request still made it
+    expect((await t.db.execute(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`)).rows[0]).toEqual({ n: 6 });
   });
 
   it('refuses to run on a database that already has real calls', async () => {

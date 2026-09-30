@@ -2,6 +2,71 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [Unreleased]
+
+### API changes for integrators
+
+- `invalid_request` is now always **422**. A request that failed its schema used to answer 400 with the same code; a client that checks for 400 should check for 422.
+- Create routes now return **201 Created**: adding a patient, booking a visit and adding a team member used to answer 200 (test calls, API keys, documents and webhook endpoints already answered 201).
+- Additions only, nothing removed: the request list gains `doneByName`, the waiting-requests route gains `total`, and a call's appointments gain `createdAt`, `updatedAt` and `moved`.
+
+### Fixed
+
+- The webhook delivery queue keeps its own retry policy (12 tries over about a day) when the worker starts with the defaults.
+- A caller who says "this is an emergency" and then describes chest pain still gets the on-call transfer, once.
+- Turning a webhook endpoint off and on keeps its description and its patient-id choice.
+- The documented MCP stdio bridge prints only JSON on stdout (`pnpm --silent`).
+- `pnpm demo` passes its switches (simulated calls, local webhooks, ports, log level) through turbo.
+- Uploading the same document after the embedding model changes indexes it again, and a document stuck waiting is picked up.
+- Blank environment values count as unset, and every port is checked to be a real port.
+- A dropped Postgres connection is logged by its code instead of ending the service.
+- A tool step that could not be recorded still gives the caller its result.
+- Open times are offered earliest first across all providers, not provider by provider.
+- Patients whose names use letters such as ø, ł, æ or ß can be verified. Existing installs run `pnpm db:rehash-lookups` once (docs/self-hosting.md).
+- A booking moved back to an earlier time sends its own webhook event.
+- The planner creates the callback it promises when it runs out of steps, to the number the caller rang from.
+- A refreshed transcript or request view is audited once per five minutes, not on every refresh.
+- The call page says when a booking was cancelled or moved since the call, and its header says Booking since cancelled.
+- A call name search keeps its refusal filter.
+- Two cancels of the same visit at once give one cancellation.
+- The phone assistant will not book a patient into two overlapping visits.
+- Rows can no longer point into another clinic: migration 0017 adds composite foreign keys, and stops with a count if existing rows would break them.
+- The application role no longer reads the organization and phone number tables, which it never needed (migration 0018).
+- The retention purge also deletes webhook events and their delivery attempts, and audits each batch in its own transaction.
+- A call's opening and closing are audited (the close with how many transcript lines and tool steps it wrote), and so are patients created outside the front desk and a patient-busy refusal.
+- MCP reads are audited under the key and in the read's own transaction; closing a request no longer claims to be idempotent; a working key is not locked out by another client's failed attempts; today's schedule includes midnight; the server reports its real version.
+- A coaching note or take-over that fails can be tried again.
+- A team member whose add failed can be added again.
+- The day starts at 01:00 where daylight saving time begins at midnight (Havana, Santiago, Asunción).
+- A failed migration file is rolled back.
+- The week view keeps a visit cancelled from the panel on screen, and says how many cancelled visits are hidden.
+- N and New booking work while the Schedule is already open.
+- The Settings saved message can be seen.
+- Today no longer lists calls still in progress as ended with nothing done, counts every waiting request, and marks each request type with its own icon.
+- A live page whose stream has closed for good opens the call record.
+- Pages a role cannot use say so on a direct link, and a viewer's browser no longer opens live streams.
+- A closed request can be opened from its call, and says when and by whom it was closed.
+- A saved time zone shows on every page at once.
+- Your take-over number can be changed or cleared.
+- The audit log shows every action and actor in words.
+- Error messages: a refused booking says why, an empty upload says so, a failed redelivery says so, request errors show once, and the start page says so when the server fails.
+- Ages and date-of-birth limits use the clinic's date; the clock and costs follow the clinic's country.
+- Documentation: the README screenshots are current, and the guides, CHANGELOG and comments match the code.
+
+### Changed
+
+- A request that fails validation now answers 422 `invalid_request`, like every other refusal, and every create route answers 201.
+- The request list returns `doneByName`, and the waiting-requests route returns `total`.
+- The Calls tab Needs attention is now Emergencies and requests; Today's labels say the last 7 days; dates are day first everywhere.
+- Staff read "request", never "task".
+- The unused `booking_cancelled` text and the always-empty `call_actions.idempotency_key` column (migration 0019) are gone.
+- The emergency number rules for a country Attendra does not ship for are removed; a clinic there uses 112, like any country not listed.
+- Text delivery statuses are marked as not wired yet.
+- The root `pnpm dev` is removed; use `pnpm demo`, or a service's own `dev` script.
+- Docker Compose restarts every long-running service, and the MCP port is fixed inside its container.
+- CI pins every action to a commit.
+- The development guide is now docs/development.md.
+
 ## [0.4.0] - 2026-09-30
 
 The AI layer: a design system, the clinic's own assistant in English and Spanish, call summaries, live calls with coaching, clinic knowledge, signed webhooks, the Quality page and an MCP server.
@@ -15,12 +80,12 @@ The AI layer: a design system, the clinic's own assistant in English and Spanish
 - `pnpm sim --scenarios 20`: a model plays the patient from personas in `evals/sim/personas.yaml`, against the real assistant as text, and the quality numbers are printed. The caller and the assistant are interfaces, ready for a voice simulation.
 - A manual `quality` workflow runs both in the `quality` environment and keeps the reports. Only the two steps that call OpenAI get the key, a run is capped at 50 simulated calls, and every action is pinned to a commit SHA.
 - Webhooks, under Settings > Integrations, for n8n, Zapier, Make or a clinic's own systems: `call.completed`, `call.summary.ready`, `appointment.booked`, `.rescheduled`, `.cancelled`, `request.created` and `request.done`, signed per the Standard Webhooks specification with a secret per endpoint that is shown once and can be rotated with a day's overlap. Payloads carry ids, times, types, outcomes and counts, never names or what was said, and each endpoint leaves patient ids out unless it is set to send them (a patient id with appointment times is PHI, so receivers need a BAA). See [docs/webhooks.md](docs/webhooks.md), with verification code in TypeScript and Python and an n8n recipe.
-- Deliveries are worker jobs, retried with backoff for about a day and logged with status codes and timings. Each delivery has a 10 second total deadline. The log has Redeliver, and Send test event tries an endpoint at once; both are limited per clinic. An endpoint that fails three events in a row is turned off, and owners and managers are told on Today.
+- Deliveries are worker jobs, retried 12 times with backoff from a minute to four hours, about a day, and logged with status codes and timings. Each delivery has a 10 second total deadline. The log has Redeliver, and Send test event tries an endpoint at once; both are limited per clinic. An endpoint that fails three events in a row is turned off, and owners and managers are told on Today.
 - Only public HTTPS addresses are allowed (no private, 6to4, NAT64 or site-local IPv6 addresses), checked when an endpoint is saved and again after DNS at every delivery, with the connection pinned to the checked address. A new permission, `integrations:manage`, is for owners and managers.
 - The clinic's knowledge: a practice manager uploads documents (PDF, text or markdown, up to 5 MB) under Settings > Knowledge, and the assistant answers from them, and only from them. Search is hybrid (pgvector and full text, fused), keeps the best four passages, and says "I don't have that information, I can have someone call you back" when nothing answers. An Ask a question box shows the answer and the passages it came from. See [decision 8](docs/decisions/0008-clinic-knowledge.md).
 - A new `search_knowledge` tool, and `get_clinic_info` adds passages from the documents when the FAQ has no answer. A medical question (dosing, side effects, whether to take something) is refused in code before anything is searched, on the model's question and the caller's own words, in English and Spanish. During a call the question's embedding gets 4 seconds before the search falls back to full text.
 - Documents are indexed by the worker, once per content: text extraction with unpdf (PDFs in a worker thread with a heap limit and a deadline, at most 200 pages and 2 MB of text), chunks of about 500 tokens by heading and paragraph, and embeddings with `ATTENDRA_EMBEDDING_MODEL` (`text-embedding-3-small` by default), or local ones with no key. Uploads and deletes are audited.
-- Five knowledge evals: parking, insurance, fasting before blood work, a question no document answers, and a dosing question that must be refused.
+- Five knowledge evals: parking, insurance, fasting before blood work, a question no document answers and a dosing question that must be refused.
 - Live calls: Today and Calls show a Live now strip with each call's length, who is calling once verified, and what the assistant is doing. Opening one shows live captions that follow the conversation (and pause while you scroll up), the tool steps as they run, the read-back waiting for a yes, and an emergency banner the moment the guardrail fires. When the call ends the page becomes the call record.
 - Staff on a live call can send the assistant a short note, take the call to the front desk line or their own number, or end it. A note never overrides the rules in code, and during an emergency it is followed by the emergency script again; End call waits until the caller has heard the emergency number. Each action is audited before it runs, sent once per click, and a second person is told who already has the call; a transfer or hang-up that fails frees the call and the assistant offers a callback. Take-over numbers must be in the clinic's country and are audited by their last four digits. Every live stream opened is audited, and a stream ends after 60 minutes and re-checks the watcher every 5. A browser test call cannot be transferred. A new permission, `calls:coach`, is for owners, managers and front desk staff.
 - An opt-in sound and notification when an emergency starts on any live call, kept per browser.
@@ -34,29 +99,33 @@ The AI layer: a design system, the clinic's own assistant in English and Spanish
 - The emergency guardrail works in every language on every call; the clear-yes check hears a yes in the clinic's languages and a hedge in any. The emergency script gives the clinic's emergency number, chosen from its country's list (911, 999, 112, 000), and names 988 only in the United States. Poisoning, stroke and throat-swelling phrases are covered in both languages.
 - A second demo clinic, Cedar Park Clinic, in an organization of its own, with its own login (`frontdesk@cedarpark-demo.test`) that sees only that clinic.
 - Settings > Assistant and languages: the assistant's name, the languages, the primary language, the emergency number, and a greeting preview in each language.
-- 5 new evals in Spanish: a booking, a hedge, chest pain, a refill, three wrong dates of birth. Scenarios can name their clinic and check the call's language, what was said and which FAQ answered.
+- Five Spanish evals: a booking, a hedge, chest pain, a refill and three wrong dates of birth. Scenarios can name their clinic and check the call's language, what was said and which FAQ answered.
 - Dates of birth can be said with Spanish month names, and a numeric date is read day first outside North America.
 - A design system for the dashboard: semantic colour tokens for light and dark, Inter self-hosted, one type scale, three radii, two shadows and one focus ring, and a component kit (buttons, fields, switches, tabs, panels, menus, tooltips, toasts, stat cards with sparklines and more). See [docs/design.md](docs/design.md).
 - Dark mode, chosen per person (system, light or dark) and applied before the first paint.
 - A command palette (Cmd+K or Ctrl+K) to jump to a page, find a patient, start a booking or a test call, or switch the theme, and keyboard shortcuts (G then T, S, P, R or C; N; ?).
 - Request actions update at once and roll back if the server refuses, with a toast, and Undo after a claim. Today opens with four stat cards and seven-day trends; `/overview` returns per-day counts for them.
 - The sidebar collapses to icons from 1024 px, and a phone gets a bottom bar. Every main page is checked with axe in light and dark in the e2e suite.
+- New tables and columns, in migration order:
+  - `0009_call_summaries.sql`: `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
+  - `0010_staff_transfer_number.sql`: an optional `transfer_number` on memberships, for taking over a live call on your own phone.
+  - `0011_knowledge.sql`: `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
+  - `0012_webhooks.sql`: `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
+  - `0013_api_keys.sql`: `api_keys`, with Row Level Security.
+  - `0014_webhook_patient_ids.sql`: `webhook_endpoints.omit_patient_ids`, on by default.
+  - `0015_api_key_update_columns.sql`: the application may change only an API key's `revoked_at` and `last_used_at`.
+  - `0016_call_summaries_same_clinic.sql`: each call summary is tied to its call's clinic with a composite key.
 
 ### Changed
 
-- Migration `0016_call_summaries_same_clinic.sql` ties each call summary to its call's clinic with a composite key. Migration `0015_api_key_update_columns.sql` lets the application change only an API key's `revoked_at` and `last_used_at`. Migration `0014_webhook_patient_ids.sql` adds `webhook_endpoints.omit_patient_ids`, on by default.
 - Request bodies over 512 KB are refused on every route but the knowledge upload, which takes up to 5 MB.
 - The demo schedule gives nobody more than two upcoming visits, with more invented patients to fill it.
-- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
 - The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
 - A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
 - The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
-- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
-- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
+- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade.
 - The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the second demo clinic's session instead.
-- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
 - `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
-- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
 - The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
 - The demo clinic's assistant is called Maya and speaks English and Spanish.

@@ -1,14 +1,12 @@
-# CLAUDE.md
+# Development
 
-Guidance for AI coding assistants (and humans) working in this repository. Read [docs/architecture.md](docs/architecture.md) and [docs/safety.md](docs/safety.md) first.
+How Attendra is built and what every change must keep true. Read [architecture.md](architecture.md) and [safety.md](safety.md) first; [CONTRIBUTING.md](../CONTRIBUTING.md) covers how to send a change.
 
-## Project in one line
-
-Attendra: an open-source (AGPL-3.0) AI phone receptionist for medical practices. Twilio SIP to OpenAI GPT-Live for voice; our TypeScript backend for identity checks, scheduling, tasks and audit.
+Attendra is an open-source (AGPL-3.0) AI phone receptionist for medical practices: Twilio SIP to OpenAI GPT-Live for voice, and a TypeScript backend for identity checks, scheduling, requests and audit.
 
 ## How to work
 
-- Before a change that touches more than one package, write a short plan (files, interfaces, tests) and get it agreed.
+- Before a change that touches more than one package, open an issue with a short plan (files, interfaces, tests) and agree it first.
 - Prefer small, reviewable changes that follow the existing patterns. No drive-by refactors.
 - Ask before adding a dependency; say what it is for and what the alternative is.
 - Check the current OpenAI and Twilio docs before touching integration code. The Live API types come from the `openai` SDK; prefer them over hand-written shapes.
@@ -21,15 +19,43 @@ pnpm install
 pnpm test                 # vitest: unit, Postgres (PGlite) integration, eval scenarios
 pnpm eval                 # scenario report; --live uses the real planner model
 pnpm lint && pnpm typecheck
-pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; synthetic data only
+pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; the seed also needs ATTENDRA_DATA_KEY; synthetic data only
+pnpm db:rehash-lookups    # once after upgrading to v0.4.1, with DATABASE_URL and ATTENDRA_DATA_KEY
 pnpm demo                 # API on an in-memory Postgres with demo calls, plus the dashboard on :3000
 pnpm test:e2e             # Playwright against the demo (starts both servers)
+pnpm sim                  # simulated callers against the real planner (needs OPENAI_API_KEY, costs credit)
 pnpm add-member --email <e> --name <n> --org <org> --role owner|admin|staff|viewer   # password in ATTENDRA_NEW_PASSWORD
 pnpm db:add-number --clinic <clinic id> --number <E.164>
-docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service
+docker compose -f infra/docker-compose.yml up            # add --profile voice for the voice service, --profile mcp for MCP
 ```
 
+The demo alone reads `ATTENDRA_TEST_CALLS`, `ATTENDRA_SIMULATED_CALLS`, `VOICE_PORT` and `ATTENDRA_WEBHOOKS_ALLOW_LOCAL` from the shell; `.env.example` says what each does.
+
+There is no root `pnpm dev`: turbo's strict environment mode hands the services none of your variables and nothing loads a `.env`. Use `pnpm demo`, or a service's own `dev` script (`pnpm --filter @attendra/api dev`) with its environment set in the shell.
+
 Keep these working. If you add a command, add it here and in the README.
+
+## Layout
+
+```
+apps/voice/            the webhook and the per-call runner (Fastify)
+apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, requests, team, settings, audit (NestJS)
+apps/web/              the staff dashboard (Next.js, Tailwind, TanStack Query), Playwright specs in e2e/
+apps/worker/           background jobs on pg-boss: summaries, document indexing, webhook delivery, the retention purge
+apps/mcp/              the MCP server, over stdio and Streamable HTTP, with per-clinic API keys
+packages/core/         clinic config, hours, slots, routing, identity, emergency and confirmation rules, the ports
+packages/agent/        CallState, the tools and their guards, the delegation loop, the Responses API planner
+packages/voice-engine/ the VoiceEngine interface and the GPT-Live implementation; prompt; CallRunner
+packages/scheduling/   the booking rules and the one write both the assistant and the front desk use; the built-in SchedulerAdapter (EHR adapters implement the same interface)
+packages/telephony/    SIP header parsing, templated SMS through Twilio
+packages/db/           SQL migrations with RLS, Drizzle schema, PHI encryption, repositories, synthetic seed
+packages/knowledge/    the clinic's documents: extraction, chunking, embeddings, hybrid search, grounded answers
+packages/webhooks/     Standard Webhooks signing, the SSRF guard, delivery
+packages/observability/ the redacting logger
+evals/                 call scenarios (YAML), the simulator that runs them, the judge, and simulated callers (evals/sim)
+infra/                 Docker Compose and the images
+docs/                  architecture, safety, HIPAA, self-hosting, roadmap, decision records
+```
 
 ## Non-negotiable rules
 
@@ -69,7 +95,7 @@ Keep these working. If you add a command, add it here and in the README.
 - Zod schemas in `packages/core` for every external payload and tool argument.
 - Business rules are pure functions in `packages/core` with unit tests.
 - Adapters implement the ports in `packages/core/src/ports.ts`; no vendor SDK calls outside their package.
-- New source files start with `// SPDX-License-Identifier: AGPL-3.0-only`.
+- New source files under `src/` and `scripts/` start with `// SPDX-License-Identifier: AGPL-3.0-only`.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`) with a DCO sign-off (`git commit -s`).
 
 ## Definition of done

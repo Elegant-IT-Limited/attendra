@@ -17,10 +17,6 @@
         "!.next/cache/**"
       ]
     },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
     "demo": {
       "cache": false,
       "persistent": true,

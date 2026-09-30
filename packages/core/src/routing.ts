@@ -28,7 +28,7 @@ const ONE_DIGIT = ['1', '7'];
 const TWO_DIGITS = new Set(['20', '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49', '51', '52', '53', '54', '55', '56', '57', '58',
   '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86', '90', '91', '92', '93', '94', '95', '98']);
 
-/** The country calling code of an E.164 number: "1" for +13035550100, "880" for +8801000000100. */
+/** The country calling code of an E.164 number: "1" for +13035550100, "44" for +442079460123. */
 export function callingCode(e164: string): string | null {
   const digits = /^\+(\d{8,15})$/.exec(e164.replace(/^tel:/, ''))?.[1];
   if (!digits) return null;

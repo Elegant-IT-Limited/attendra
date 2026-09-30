@@ -154,7 +154,8 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     const hanging = { model: embedder.model, maxDistance: embedder.maxDistance, embed: () => new Promise<number[][]>(() => {}) };
     const started = Date.now();
     const found = await new HybridKnowledgeBase(repo, hanging, 4, 100).search(DEMO_CLINIC.id, 'do you take Cigna');
-    expect(Date.now() - started).toBeLessThan(1000);
+    // the embedding never answers: the 100 ms fallback, not a hang, however busy the machine
+    expect(Date.now() - started).toBeLessThan(5000);
     expect(found[0]?.title).toBe('Insurance we accept');
     const failing = { ...hanging, embed: async () => { throw new Error('embedding_unreachable'); } };
     expect((await new HybridKnowledgeBase(repo, failing).search(DEMO_CLINIC.id, 'do you take Cigna'))[0]?.title).toBe('Insurance we accept');
@@ -199,6 +200,20 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(again.version).not.toBe(moved.version);
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, moved.id)).toBe('indexed');
     expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false);
+  });
+
+  it('counts a document being indexed as current only with the same model, and only for 15 minutes', async () => {
+    const doc = { title: 'Late fees', sourceType: 'text' as const, content: Buffer.from('A missed visit without a day\'s notice may be charged.'), userId: 'u_olga' };
+    const first = await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model });
+    await repo.forIndexing(DEMO_CLINIC.id, first.id, embedder.model); // a job picks it up, and is still at it
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(false);
+    // being indexed with the old model is not current once the model changes
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: 'text-embedding-4' })).changed).toBe(true);
+    // a job that died mid-way: 16 minutes in indexing, and the same bytes queue it again
+    await repo.forIndexing(DEMO_CLINIC.id, first.id, embedder.model);
+    await t.db.execute(sql`update knowledge_documents set updated_at = now() - interval '16 minutes' where id = ${first.id}`);
+    expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(true);
+    expect((await repo.get(DEMO_CLINIC.id, first.id))?.status).toBe('queued');
   });
 
   it('indexes an unchanged upload once, replaces the chunks of a changed one, and audits both', async () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, type Messenger, speakSlot, type ToolName, zonedInstant } from '@attendra/core';
+import { addDays, type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, type Messenger, speakSlot, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedCedarPark, seedDemo, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -49,8 +49,11 @@ class Observed implements Planner {
   }
 }
 
-/** Replaces "$offered[0]" and "$appointments[0]" with ids the call actually produced. */
-function resolve(args: Record<string, unknown>, state: CallState, results: ToolResult[]): Record<string, unknown> {
+/**
+ * Replaces "$offered[0]" and "$appointments[0]" with ids the call actually produced, and
+ * "$next_week" with the Monday after the call's day, for a caller who asks for next week.
+ */
+function resolve(args: Record<string, unknown>, state: CallState, results: ToolResult[], clinic: ClinicConfig, now: Date): Record<string, unknown> {
   const appointments = results.flatMap((r) => (Array.isArray(r.data.appointments) ? (r.data.appointments as { appointment_id: string }[]) : []));
   return Object.fromEntries(Object.entries(args).map(([k, v]) => {
     if (typeof v !== 'string') return [k, v];
@@ -58,6 +61,10 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
     if (offered) return [k, [...state.offered.keys()][Number(offered[1])] ?? v];
     const appt = v.match(/^\$appointments\[(\d+)\]$/);
     if (appt) return [k, appointments[Number(appt[1])]?.appointment_id ?? v];
+    if (v === '$next_week') {
+      const today = localDateOf(now, clinic.timezone);
+      return [k, addDays(today, 7 - ((weekdayOf(today) + 6) % 7))];
+    }
     return [k, v];
   }));
 }
@@ -76,6 +83,15 @@ export interface PlayOptions {
   /** Writes the transcript, tool actions and close-out into the database, as the voice service does. Used for demo data. */
   record?: boolean;
   sessionId?: string;
+  /** The call's own clock. The eval runs every scenario at SIM_NOW; the demo runs each call at the time it is dated. */
+  now?: Date;
+}
+
+/** The first Thursday after `now` in the clinic's calendar that is not a holiday, at 9:00: the "appointment on Thursday" the reschedule and cancel scenarios start from. */
+function nextThursday(clinic: ClinicConfig, now: Date): Date {
+  let date = addDays(localDateOf(now, clinic.timezone), 1);
+  while (weekdayOf(date) !== 4 || clinic.holidays.includes(date)) date = addDays(date, 1);
+  return zonedInstant(date, '09:00', clinic.timezone);
 }
 
 /**
@@ -86,6 +102,7 @@ export interface PlayOptions {
 export async function playScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, opts: PlayOptions = {}): Promise<ScenarioResult> {
   const started = performance.now();
   const clinic = clinicOf(scenario);
+  const now = opts.now ?? SIM_NOW;
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
   const scheduler = new BuiltinScheduler(db);
@@ -99,7 +116,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // an existing appointment for Maria, for the reschedule and cancel scenarios
   if (scenario.tags.includes('has-appointment')) {
     const setupCall = await calls.open(clinic.id, `setup_${scenario.id}`, null);
-    const existing = zonedInstant('2026-10-01', '09:00', clinic.timezone);
+    const existing = nextThursday(clinic, now);
     await scheduler.book(clinic.id, { patientId: patientIds.maria!, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
       slot: { id: 'setup', providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: existing, end: new Date(existing.getTime() + 20 * 60_000) } });
   }
@@ -112,7 +129,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const actions: ActionRecorder | undefined = opts.record
     ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
-  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => SIM_NOW }, backend, observed, log, actions);
+  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => now }, backend, observed, log, actions);
   const segment = async (speaker: 'caller' | 'agent', text: string, startMs: number) => {
     if (opts.record) await calls.appendSegment(clinic.id, callId, { speaker, text, startMs, endMs: startMs + 1200 });
   };
@@ -147,7 +164,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     else {
       const steps: ScriptedStep[] = turn.delegate!.map((step) => {
         const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
-        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar]) };
+        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
       });
       const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
       queue.push(scripted);

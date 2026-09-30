@@ -125,7 +125,10 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
             style={{ top: (s - start) * PX + 1, height: h }}>
             <span className={cn('flex items-center gap-1', h > 30 ? 'pt-1' : 'pt-0.5')}>
               <Icon className="size-3 shrink-0 text-text-muted" aria-hidden />
-              <span className={cn('truncate font-medium', cancelled && 'line-through')}>{a.patientName}</span>
+              {/* too short for a second line: the time goes on the first, and both truncate together */}
+              <span className={cn('truncate font-medium', cancelled && 'line-through')}>
+                {a.patientName}{h > 30 ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
+              </span>
             </span>
             {h > 30 && <span className={cn('block truncate text-text-muted', cancelled && 'line-through')}>{timeOf(a.startsAt, tz)}</span>}
           </button>

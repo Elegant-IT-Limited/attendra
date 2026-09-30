@@ -3,9 +3,13 @@ import { openAs } from './session';
 
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
 
-/** The week view, moved on a week at a time until a block matching `name` shows. */
-async function findInWeek(page: Page, name: RegExp) {
-  await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+/**
+ * The week view, moved on a week at a time until a block matching `name` shows. With
+ * `upcoming`, it starts next week, where every visit is still ahead and can be changed.
+ */
+async function findInWeek(page: Page, name: RegExp, upcoming = false) {
+  const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  await page.goto(`/c/${clinicOf(page)}/schedule?view=week${upcoming ? `&date=${nextWeek}` : ''}`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   const heading = page.getByRole('heading', { level: 2, name: /^Week of / });
   for (let week = 0; week < 3; week++) {
@@ -30,6 +34,8 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
     await expect(page.getByText(/Times are .*America\/Denver/)).toBeVisible();
     const block = await findInWeek(page, /booked by the assistant/);
+    // whoever the call was from: each demo call books where it put the visit, for its own caller
+    const name = (await block.getAttribute('aria-label'))!.split(', ')[1]!;
     await block.click();
     const panel = page.getByRole('dialog');
     await expect(panel.getByText('By the assistant, on a call', { exact: false })).toBeVisible();
@@ -38,9 +44,9 @@ test.describe.serial('the schedule', () => {
     // one date format across the dashboard, day first: the call's heading and its booking line alike
     await expect(page.getByRole('heading', { level: 1, name: /^\w+day \d{1,2} \w+ \d{4}, \d{1,2}:\d{2} [AP]M M[DS]T$/ })).toBeVisible();
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
-    await page.getByRole('link', { name: 'Maria Delgado' }).click(); // who was calling, verified
-    await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
-    await expect(page.getByText(/^Age \d+, born 4 March 1985$/)).toBeVisible();
+    await page.getByRole('link', { name, exact: true }).click(); // who was calling, verified
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page.getByText(/^Age \d+, born \d{1,2} [A-Z][a-z]+ \d{4}$/)).toBeVisible();
     await page.getByRole('tab', { name: /Calls/ }).click();
     await expect(page.getByRole('link', { name: /Transcript/ }).first()).toBeVisible();
   });
@@ -87,6 +93,16 @@ test.describe.serial('the schedule', () => {
     await expect(panel.getByText('The patient asked, by Jordan (front desk).')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
+  });
+
+  test('a visit too short for two lines shows its time on the first', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+    // a 20 minute sick visit is one line high
+    const block = page.locator('[data-testid=appointment][aria-label*="sick visit"]').first();
+    const [time, name] = (await block.getAttribute('aria-label'))!.split(', ');
+    await expect(block).toContainText(`${name} · ${time}`);
   });
 
   test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {
@@ -143,7 +159,7 @@ test.describe.serial('the schedule', () => {
 
   test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    const block = await findInWeek(page, /booked by the assistant/);
+    const block = await findInWeek(page, /booked by the assistant/, true);
     const label = (await block.getAttribute('aria-label'))!;
     await block.click();
     const panel = page.getByRole('dialog');
@@ -161,7 +177,7 @@ test.describe.serial('the schedule', () => {
 
   test('the call behind a booking staff cancelled says so, in its header and on the booking', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
-    const block = await findInWeek(page, /booked by the assistant/);
+    const block = await findInWeek(page, /booked by the assistant/, true);
     await block.click();
     const panel = page.getByRole('dialog');
     await panel.getByRole('button', { name: 'Cancel', exact: true }).click();

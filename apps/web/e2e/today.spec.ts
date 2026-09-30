@@ -18,7 +18,9 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
   await expect(glance.getByText('Answered in the last 7 days')).toBeVisible();
 
   await expect(page.getByRole('heading', { name: 'Today\'s schedule' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Dr. Nkem Okafor' })).toBeVisible();
+  // on one of the demo's holidays the day shows as closed instead of the providers' lanes
+  const holiday = page.getByText('closed for a holiday', { exact: false });
+  await expect(page.getByRole('region', { name: 'Dr. Nkem Okafor' }).or(holiday).first()).toBeVisible();
 
   const did = page.locator('table').filter({ hasText: 'Calls answered' });
   await expect(did.getByRole('columnheader', { name: 'Last 7 days' })).toBeVisible();

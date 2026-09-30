@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adds a person to an organization:
-//   pnpm --filter @attendra/api add-member --email ana@clinic.example --name "Ana Ruiz" --org org_maple --role staff
+//   pnpm --filter @attendra/api add-member --email ana@clinic.example --name "Ana Ruiz" --org org_demo --role staff
 // The password is read from ATTENDRA_NEW_PASSWORD so it never lands in shell history.
 import { connect } from '@attendra/db';
 import { parseArgs } from 'node:util';
