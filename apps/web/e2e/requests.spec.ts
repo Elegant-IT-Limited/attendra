@@ -37,3 +37,11 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(page.getByRole('tab', { name: 'Done' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toBeVisible();
 });
+
+test('an old /tasks link lands on Requests with its filter', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/tasks?status=done`);
+  await expect(page).toHaveURL(new RegExp(`/c/${clinic}/requests\\?status=done$`), { timeout: 20_000 });
+  await expect(page.getByRole('tab', { name: 'Done' })).toHaveAttribute('aria-selected', 'true');
+});
