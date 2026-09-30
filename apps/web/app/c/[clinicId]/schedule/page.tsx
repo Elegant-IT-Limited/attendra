@@ -146,9 +146,11 @@ function ScheduleScreen() {
             <div className="md:hidden">
               <ScheduleList clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
             </div>
-            {appointments.length === 0 && (
+            {appointments.length === 0 && (hidden > 0 ? (
+              <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Tick Show cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
+            ) : (
               <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.</Empty></div>
-            )}
+            ))}
           </>
         )}
       </Card>
