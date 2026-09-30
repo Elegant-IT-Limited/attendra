@@ -18,6 +18,8 @@ pnpm eval
 
 The test suite runs Postgres in-process (PGlite), so there is nothing else to install.
 
+Every command, the repository layout, and the rules every change must keep (PHI, agent behaviour, tenancy) are in [docs/development.md](docs/development.md).
+
 ## Making a change
 
 1. For anything bigger than a fix, open an issue first so we can agree on the shape.

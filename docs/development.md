@@ -1,14 +1,12 @@
-# CLAUDE.md
+# Development
 
-Guidance for AI coding assistants (and humans) working in this repository. Read [docs/architecture.md](docs/architecture.md) and [docs/safety.md](docs/safety.md) first.
+How Attendra is built and what every change must keep true. Read [architecture.md](architecture.md) and [safety.md](safety.md) first; [CONTRIBUTING.md](../CONTRIBUTING.md) covers how to send a change.
 
-## Project in one line
-
-Attendra: an open-source (AGPL-3.0) AI phone receptionist for medical practices. Twilio SIP to OpenAI GPT-Live for voice; our TypeScript backend for identity checks, scheduling, tasks and audit.
+Attendra is an open-source (AGPL-3.0) AI phone receptionist for medical practices: Twilio SIP to OpenAI GPT-Live for voice, and a TypeScript backend for identity checks, scheduling, requests and audit.
 
 ## How to work
 
-- Before a change that touches more than one package, write a short plan (files, interfaces, tests) and get it agreed.
+- Before a change that touches more than one package, open an issue with a short plan (files, interfaces, tests) and agree it first.
 - Prefer small, reviewable changes that follow the existing patterns. No drive-by refactors.
 - Ask before adding a dependency; say what it is for and what the alternative is.
 - Check the current OpenAI and Twilio docs before touching integration code. The Live API types come from the `openai` SDK; prefer them over hand-written shapes.
@@ -30,6 +28,28 @@ docker compose -f infra/docker-compose.yml up            # add --profile voice f
 ```
 
 Keep these working. If you add a command, add it here and in the README.
+
+## Layout
+
+```
+apps/voice/            the webhook and the per-call runner (Fastify)
+apps/api/              the dashboard API: Better Auth, roles, calls, schedule, patients, requests, team, settings, audit (NestJS)
+apps/web/              the staff dashboard (Next.js, Tailwind, TanStack Query), Playwright specs in e2e/
+apps/worker/           background jobs on pg-boss: summaries, document indexing, webhook delivery, the retention purge
+apps/mcp/              the MCP server, over stdio and Streamable HTTP, with per-clinic API keys
+packages/core/         clinic config, hours, slots, routing, identity, emergency and confirmation rules, the ports
+packages/agent/        CallState, the tools and their guards, the delegation loop, the Responses API planner
+packages/voice-engine/ the VoiceEngine interface and the GPT-Live implementation; prompt; CallRunner
+packages/scheduling/   the booking rules and the one write both the assistant and the front desk use; the built-in SchedulerAdapter (EHR adapters implement the same interface)
+packages/telephony/    SIP header parsing, templated SMS through Twilio
+packages/db/           SQL migrations with RLS, Drizzle schema, PHI encryption, repositories, synthetic seed
+packages/knowledge/    the clinic's documents: extraction, chunking, embeddings, hybrid search, grounded answers
+packages/webhooks/     Standard Webhooks signing, the SSRF guard, delivery
+packages/observability the redacting logger
+evals/                 call scenarios (YAML), the simulator that runs them, the judge, and simulated callers (evals/sim)
+infra/                 Docker Compose and the images
+docs/                  architecture, safety, HIPAA, self-hosting, roadmap, decision records
+```
 
 ## Non-negotiable rules
 
