@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
 import { ResponsesPlanner } from '../src';
 import { world } from './support';
@@ -12,6 +13,23 @@ describe('the production planner', () => {
     const [body, options] = create.mock.calls[0]! as [Record<string, unknown>, Record<string, unknown>];
     expect(body).toMatchObject({ model: 'gpt-test', store: false, max_output_tokens: 1000 });
     expect(options).toEqual({ timeout: 15_000, maxRetries: 1 });
+    await w.t.close();
+  });
+
+  it('after its last round, creates the callback it promises, or asks for a number when there is none', async () => {
+    // a model that only ever calls a tool, so the rounds run out
+    const create = vi.fn(async () => ({ output: [{ type: 'function_call', name: 'get_clinic_info', call_id: 'c1', arguments: '{"question":"hours"}' }], output_text: '' }));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-test', 2);
+    const w = await world();
+    const withNumber = await w.call('+13035550147');
+    const said = await withNumber.delegate([], planner);
+    expect(said.find((o) => o.type === 'commentary')?.content).toContain('asked someone from the clinic to call you back');
+    const tasks = (await w.t.db.execute(sql`select type from tasks where call_id = ${withNumber.callId}`)).rows;
+    expect(tasks).toEqual([{ type: 'callback' }]);
+    const noNumber = await w.call(null);
+    const asked = await noNumber.delegate([], planner);
+    expect(asked.find((o) => o.type === 'commentary')?.content).toContain('tell me the best number');
+    expect((await w.t.db.execute(sql`select type from tasks where call_id = ${noNumber.callId}`)).rows).toEqual([]);
     await w.t.close();
   });
 });
