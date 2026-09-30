@@ -9,7 +9,8 @@ const MAX_BODY = 1024 * 1024;
 /**
  * A minute's allowance: requests per key, and requests without a working key per
  * address (someone guessing keys). Failures are counted by address, and a working key
- * by its id, so clients behind one proxy do not share an allowance.
+ * by its id, so clients behind one proxy do not share an allowance, and an address
+ * held back for failures still serves a working key.
  */
 export interface McpRateLimit { failuresPerAddress: number; perKey: number }
 const DEFAULT_LIMIT: McpRateLimit = { failuresPerAddress: 30, perKey: 120 };
@@ -56,10 +57,14 @@ export function mcpHttpHandler(d: McpDeps & { rateLimit?: McpRateLimit; addressO
     if (new URL(req.url ?? '/', 'http://x').pathname !== '/mcp') return deny(res, 404, 'not found');
     if (req.method !== 'POST') return deny(res, 405, 'this server is stateless: POST only');
     const address = addressOf(req);
-    if (failures.full(address)) return deny(res, 429, 'too many requests without a working key: wait a minute');
+    // the key first: one client guessing behind a shared proxy must not lock out the working keys there
     const auth = req.headers.authorization ?? '';
     const caller = auth.startsWith('Bearer ') ? await authenticateApiKey(d.db, auth.slice(7).trim(), (d.now ?? (() => new Date()))()) : null;
-    if (!caller) { failures.add(address); return deny(res, 401, 'a valid, unexpired Attendra API key is required as a bearer token'); }
+    if (!caller) {
+      if (failures.full(address)) return deny(res, 429, 'too many requests without a working key: wait a minute');
+      failures.add(address);
+      return deny(res, 401, 'a valid, unexpired Attendra API key is required as a bearer token');
+    }
     if (byKey.full(caller.keyId)) return deny(res, 429, 'too many requests for this key: wait a minute');
     byKey.add(caller.keyId);
     let body: unknown;
