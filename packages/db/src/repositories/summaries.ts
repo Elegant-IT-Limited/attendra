@@ -155,7 +155,11 @@ export async function ensureWorkerJobsView(db: Database, schema = 'pgboss') {
   await db.execute(sql.raw(`
     create or replace view worker_jobs with (security_barrier) as
       select id, name, state::text as state, retry_count, retry_limit, data->>'clinicId' as clinic_id, data->>'callId' as call_id,
-             created_on, started_on, completed_on, case when state::text = 'failed' then left(output->>'message', 80) end as failure
+             created_on, started_on, completed_on,
+             -- a JobError's message is a code; any other error's message could quote a row, so it shows as a code too
+             case when state::text <> 'failed' then null
+                  when output->>'message' ~ '^[a-z][a-z0-9_]{0,79}$' then output->>'message'
+                  else 'unexpected_error' end as failure
       from ${schema}.job
       where data->>'clinicId' = current_setting('app.clinic_id', true)`));
   await db.execute(sql.raw('grant select on worker_jobs to attendra_app'));
