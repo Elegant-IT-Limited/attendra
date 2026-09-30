@@ -94,7 +94,7 @@ export default function PatientPage() {
                   const past = Date.parse(a.startsAt) <= now;
                   const Icon = a.bookedBy.kind === 'assistant' ? Bot : User;
                   return (
-                    <li key={a.id} className={cn('flex flex-wrap items-center gap-3 px-5 py-3 text-sm', i === upcoming.length && upcoming.length > 0 && 'border-t-4 border-t-muted')}>
+                    <li key={a.id} className={cn('flex flex-wrap items-center gap-3 px-5 py-3 text-sm', i === upcoming.length && upcoming.length > 0 && 'border-t-4 border-t-border-strong')}>
                       <div className="min-w-0 flex-1">
                         <p className={cn('font-medium', a.status === 'cancelled' && 'line-through text-text-muted')}>
                           {dayTitle(localDateOf(new Date(a.startsAt), tz))} at {timeOf(a.startsAt, tz)}
