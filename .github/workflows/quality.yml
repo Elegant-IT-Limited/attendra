@@ -14,6 +14,8 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # the key lives in this environment, so a run can require a reviewer's approval
+    environment: quality
     timeout-minutes: 60
     env:
       # passed as a variable, not written into the script, so an input cannot become a command
