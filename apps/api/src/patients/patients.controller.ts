@@ -3,7 +3,7 @@ import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/
 import { ClinicConfig, localDateOf } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { type PatientCard, PatientInput, PatientList, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
@@ -84,11 +84,11 @@ export class PatientsController {
   }
 
   @Post()
-  @HttpCode(200)
+  @HttpCode(201)
   @Requires('patients:write')
   @ApiOperation({ summary: 'Add a patient. The assistant can verify them on their next call. Audited.' })
   @ApiBody({ schema: schemaOf(PatientInput) })
-  @ApiOkResponse({ schema: schemaOf(PatientSaved) })
+  @ApiCreatedResponse({ schema: schemaOf(PatientSaved) })
   @ApiConflictResponse({ description: 'Someone with this name and date of birth is already on file; `id` is theirs' })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
     await this.checkDob(clinicId, body.dob);

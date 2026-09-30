@@ -14,6 +14,15 @@ describe('finding slots', () => {
     ]);
   });
 
+  it('is earliest-first across 2 providers, with their order breaking a tie', () => {
+    // Dr. Okafor is booked until 10:00; Dr. Lindqvist starts at 9:00 on Tuesdays
+    const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '08:00', tz), end: zonedInstant('2026-09-29', '10:00', tz) }];
+    const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: DEMO_CLINIC.providers, from: '2026-09-29', days: 5, now, limit: 6 });
+    expect(slots.map((s) => `${s.providerId} ${speakSlot(s.start, tz).replace('Tuesday, September 29 at ', '')}`)).toEqual([
+      'prov_lindqvist 9:00 AM', 'prov_lindqvist 9:20 AM', 'prov_lindqvist 9:40 AM', 'prov_okafor 10:00 AM', 'prov_lindqvist 10:00 AM', 'prov_okafor 10:20 AM',
+    ]);
+  });
+
   it('skips booked time and respects afternoon-only requests', () => {
     const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '13:00', tz), end: zonedInstant('2026-09-29', '14:00', tz) }];
     const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 5, now, partOfDay: 'afternoon' });

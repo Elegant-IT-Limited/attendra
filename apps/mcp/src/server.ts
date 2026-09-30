@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, zonedInstant } from '@attendra/core';
-import { apiKeyIsLive, type ApiCaller, type ApiScope, auditKeyUse, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, taskFacts, withClinic } from '@attendra/db';
+import { apiKeyIsLive, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, taskFacts, withClinic } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { and, asc, eq, gt, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { z } from 'zod';
+import pkg from '../package.json' with { type: 'json' };
 
 export interface McpDeps {
   db: Database;
@@ -29,7 +30,7 @@ const refused = (message: string) => ({ content: [{ type: 'text' as const, text:
  * assistant. Every call is audited as mcp.<tool> with the key's id.
  */
 export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
-  const server = new McpServer({ name: 'attendra', version: '0.4.0' }, {
+  const server = new McpServer({ name: 'attendra', version: pkg.version }, {
     instructions: 'Attendra is a medical clinic\'s front desk. You can find open appointment times, read today\'s schedule and the request queue, close a request, and read quality numbers. You cannot book or cancel.',
   });
   const now = d.now ?? (() => new Date());
@@ -37,7 +38,8 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   const has = (s: ApiScope) => caller.scopes.includes(s);
   const clinic = async () => ClinicConfig.parse(await desk.settings(caller.clinicId));
   /** Checks the scope, runs the tool, and audits the use, whatever the answer. */
-  const tool = <T>(name: string, scope: ApiScope, fn: (args: T) => Promise<{ result: unknown; counts?: Record<string, number> }>) => async (args: T) => {
+  /** A tool that reads PHI writes its own audit row in the read's transaction and says so with `audited`. */
+  const tool = <T>(name: string, scope: ApiScope, fn: (args: T) => Promise<{ result: unknown; counts?: Record<string, number>; audited?: true }>) => async (args: T) => {
     // the key again, on every call: one revoked while a client is connected stops here
     if (!(await apiKeyIsLive(d.db, caller, now()))) return refused('This API key has been revoked or has expired. Ask the clinic\'s owner or practice manager for a new one.');
     if (!has(scope)) {
@@ -45,8 +47,8 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
       return refused(`This key does not have the ${scope} scope. Ask the clinic's owner or practice manager for a key that does.`);
     }
     try {
-      const { result, counts } = await fn(args);
-      await auditKeyUse(d.db, caller, name, counts);
+      const { result, counts, audited } = await fn(args);
+      if (!audited) await auditKeyUse(d.db, caller, name, counts);
       return text(result);
     } catch (err) {
       d.log.warn({ clinic_id: caller.clinicId, tool: name, err: { name: (err as Error).name } }, 'mcp tool failed');
@@ -86,11 +88,16 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   }, tool('list_todays_schedule', 'schedule:read', async (a: { providerId?: string }) => {
     const c = await clinic();
     const today = localDateOf(now(), c.timezone);
-    const rows = await withClinic(d.db, c.id, (tx) => tx.select({ a: schema.appointments, first: schema.patients.firstNameEnc, last: schema.patients.lastNameEnc })
-      .from(schema.appointments).innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
-      .where(and(eq(schema.appointments.clinicId, c.id), eq(schema.appointments.status, 'booked'), gt(schema.appointments.startsAt, zonedInstant(today, '00:00', c.timezone)),
-        lt(schema.appointments.startsAt, zonedInstant(addDays(today, 1), '00:00', c.timezone)), a.providerId ? eq(schema.appointments.providerId, a.providerId) : undefined))
-      .orderBy(asc(schema.appointments.startsAt)));
+    // the names and their audit row commit together
+    const rows = await withClinic(d.db, c.id, async (tx) => {
+      const found = await tx.select({ a: schema.appointments, first: schema.patients.firstNameEnc, last: schema.patients.lastNameEnc })
+        .from(schema.appointments).innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
+        .where(and(eq(schema.appointments.clinicId, c.id), eq(schema.appointments.status, 'booked'), gte(schema.appointments.startsAt, zonedInstant(today, '00:00', c.timezone)),
+          lt(schema.appointments.startsAt, zonedInstant(addDays(today, 1), '00:00', c.timezone)), a.providerId ? eq(schema.appointments.providerId, a.providerId) : undefined))
+        .orderBy(asc(schema.appointments.startsAt));
+      await auditKeyUseIn(tx, caller, 'list_todays_schedule', { appointments: found.length, names: found.length });
+      return found;
+    });
     const ctx = (col: string) => phiContext(c.id, col);
     return {
       result: {
@@ -100,7 +107,7 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
           patient: `${d.cipher.decrypt(first, ctx('patients.first_name'))} ${d.cipher.decrypt(last, ctx('patients.last_name'))}`,
         })),
       },
-      counts: { appointments: rows.length, names: rows.length },
+      audited: true,
     };
   }));
 
@@ -110,8 +117,8 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
     inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review']).optional() },
     annotations: { readOnlyHint: true },
   }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' }) => {
-    // read as the key's creator, so every request shown writes its task.viewed row too
-    const tasks = await desk.listTasks(caller.clinicId, { status: 'open', type: a.type, limit: 50 }, caller.createdByUserId);
+    // every request shown writes its task.viewed row, under the key
+    const tasks = await desk.listTasks(caller.clinicId, { status: 'open', type: a.type, limit: 50 }, { apiKeyId: caller.keyId });
     return {
       result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), claimed: !!t.assigneeUserId, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
       counts: { requests: tasks.length },
@@ -122,7 +129,8 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
     title: 'Close a request',
     description: 'Mark an open request done, with what came of it. Needs requests:write. It fails if someone else holds the request.',
     inputSchema: { requestId: z.uuid(), outcome: z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed']) },
-    annotations: { destructiveHint: false, idempotentHint: true },
+    // not idempotent: a second call finds the request already closed and answers held_by_someone_else
+    annotations: { destructiveHint: false, idempotentHint: false },
   }, tool('mark_request_done', 'requests:write', async (a: { requestId: string; outcome: 'called_back' | 'left_message' | 'refill_sent' | 'not_needed' }) => {
     // closed in the name of the person who made the key: a key never acts on its own authority
     const done = await desk.completeTask(caller.clinicId, a.requestId, caller.createdByUserId, a.outcome);

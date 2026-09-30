@@ -26,7 +26,6 @@ export const en: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}.`,
-    booking_cancelled: (v) => `${v.clinic}: your appointment on ${v.when} is cancelled. Call ${v.clinicPhone} to book a new time.`,
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +

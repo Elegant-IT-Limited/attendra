@@ -38,7 +38,6 @@ export interface LanguagePack {
   /** Text messages: when and where, never why. */
   sms: {
     booking_confirmed: (v: Record<string, string>) => string;
-    booking_cancelled: (v: Record<string, string>) => string;
   };
 
   /** The fixed emergency instruction, with the clinic's emergency number. */

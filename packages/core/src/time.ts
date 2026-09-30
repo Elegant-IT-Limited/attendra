@@ -27,22 +27,26 @@ export function localParts(instant: Date, timeZone: string): LocalParts {
 }
 
 /**
- * The UTC instant for a local date and "HH:MM" in a zone. Solved by guessing the
- * offset and correcting once, which also lands correctly on either side of a DST
- * change (a time that does not exist in spring resolves to the hour after).
+ * The UTC instant for a local date and "HH:MM" in a zone. The zone's offsets a day
+ * either side give at most two candidates. A time that happens twice, when clocks go
+ * back, is the earlier one; a time that does not exist, when clocks go forward, is
+ * the same distance past the gap (02:30 becomes 03:30). Where the gap is at midnight,
+ * as in Havana, Santiago and Asuncion, a day's 00:00 is its first minute, 01:00.
  */
 export function zonedInstant(date: string, time: string, timeZone: string): Date {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];
   const [hh, mm] = time.split(':').map(Number) as [number, number];
   const wanted = Date.UTC(y, m - 1, d, hh, mm);
-  let guess = wanted;
-  for (let i = 0; i < 2; i++) {
-    const p = localParts(new Date(guess), timeZone);
+  const wall = (t: number) => {
+    const p = localParts(new Date(t), timeZone);
     const [gy, gm, gd] = p.date.split('-').map(Number) as [number, number, number];
-    const seen = Date.UTC(gy, gm - 1, gd) + p.minutes * 60_000;
-    guess += wanted - seen;
-  }
-  return new Date(guess);
+    return Date.UTC(gy, gm - 1, gd) + p.minutes * 60_000;
+  };
+  const before = wall(wanted - 86_400_000) - (wanted - 86_400_000);
+  const after = wall(wanted + 86_400_000) - (wanted + 86_400_000);
+  const exact = [wanted - before, wanted - after].filter((t) => wall(t) === wanted);
+  // in a gap neither is exact: the offset from before the change lands past it
+  return new Date(exact.length ? Math.min(...exact) : wanted - before);
 }
 
 export function addDays(date: string, days: number): string {

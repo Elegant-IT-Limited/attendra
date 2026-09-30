@@ -14,11 +14,12 @@ const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
 if (env.ATTENDRA_DEMO_MODE) log.warn({}, 'demo mode: two-factor is not required. Do not use with real patient data.');
 
-const db = connect(env.DATABASE_URL);
+const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
 // sends jobs only (document indexing); the worker runs them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
+const embedder = embedderFromEnv(env);
 const answerer = env.OPENAI_API_KEY ? new ModelAnswerer(new OpenAI({ apiKey: env.OPENAI_API_KEY }), env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
 const app = await createApi({
   db,
@@ -29,7 +30,7 @@ const app = await createApi({
   trustProxy: env.TRUST_PROXY,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
-  knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedderFromEnv(env)), answerer },
+  knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

@@ -29,7 +29,8 @@ export const QUEUES = {
 export const CallJob = z.object({ clinicId: z.string().min(1), callId: z.uuid() });
 export type CallJob = z.infer<typeof CallJob>;
 
-export const DocumentJob = z.object({ clinicId: z.string().min(1), documentId: z.uuid(), hash: z.string().regex(/^[0-9a-f]{64}$/) });
+// `version` is the save that asked for it, so the same bytes queued again (a new embedding model) are a new job
+export const DocumentJob = z.object({ clinicId: z.string().min(1), documentId: z.uuid(), hash: z.string().regex(/^[0-9a-f]{64}$/), version: z.string().max(64).optional() });
 export type DocumentJob = z.infer<typeof DocumentJob>;
 
 const Scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -38,7 +39,9 @@ export type WebhookEventJob = z.infer<typeof WebhookEventJob>;
 export const DeliveryJob = z.object({ clinicId: z.string().min(1), endpointId: z.uuid(), eventId: z.string().min(1) });
 export type DeliveryJob = z.infer<typeof DeliveryJob>;
 
-export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(['queued', 'sent', 'delivered', 'undelivered', 'failed']) });
+/** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
+export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
+export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(SMS_STATUSES) });
 export type SmsStatusJob = z.infer<typeof SmsStatusJob>;
 
 /** Retries back off from 15 seconds to an hour, five times, then the job is dead-lettered. */
@@ -91,7 +94,7 @@ export function bossQueue(boss: PgBoss): JobQueue {
       await boss.send(QUEUES.webhookEvent, WebhookEventJob.parse(job), { id: jobId(QUEUES.webhookEvent, job.id) });
     },
     async indexDocument(job) {
-      await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}`) });
+      await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}|${job.version ?? ''}`) });
     },
   };
 }
@@ -108,14 +111,18 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
     : new PgBoss({ connectionString: target.connectionString, max: 4, ...producer });
 }
 
-/** Creates the queues with their retry policy. Safe to run on every start. Tests pass a faster policy. */
-export async function ensureQueues(boss: PgBoss, retry: Partial<RetryPolicy> = RETRY) {
+/**
+ * Creates the queues with their retry policy, or brings an existing queue's policy up
+ * to date. Safe to run on every start. Each queue keeps its own policy (webhook
+ * deliveries retry for about a day); `retry`, which the tests pass, overrides it.
+ */
+export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
-  const create = async (name: string, options: Parameters<PgBoss['createQueue']>[1]) => { if (!existing.has(name)) await boss.createQueue(name, options); };
-  await create(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
+  if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
   for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook]) {
-    const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...retry };
+    const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
-    await create(name, { ...policy, deadLetter: QUEUES.deadLetter });
+    if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
+    else await boss.createQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
   }
 }

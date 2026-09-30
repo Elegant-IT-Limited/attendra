@@ -127,7 +127,7 @@ describe('calls', () => {
     }
     expect(new Set(seen).size).toBe(seen.length);
     expect(seen).toEqual(expect.arrayContaining(ids));
-    expect((await api.request('GET', `${C}/calls?before=not-a-cursor`, { cookie: staff })).statusCode).toBe(400);
+    expect((await api.request('GET', `${C}/calls?before=not-a-cursor`, { cookie: staff })).statusCode).toBe(422);
   });
 
   it('rejects a bad page size', async () => {

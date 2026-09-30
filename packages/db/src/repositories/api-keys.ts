@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { ApiScope } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
-import { type Database, withClinic } from '../client';
+import { type Database, type Tx, withClinic } from '../client';
 
-export const API_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
-export type ApiScope = (typeof API_SCOPES)[number];
+export { API_SCOPES, type ApiScope } from '@attendra/core';
 
 export interface ApiKey { id: string; name: string; prefix: string; scopes: ApiScope[]; expiresAt: Date; createdByUserId: string; createdAt: Date; lastUsedAt: Date | null; revokedAt: Date | null }
 /** A key that checked out: who it is, for which clinic, and what it may do. */
@@ -76,9 +76,12 @@ export async function apiKeyIsLive(db: Database, caller: ApiCaller, now = new Da
 
 /** Every use of a key, audited in the clinic with the key's id: mcp.<tool>. */
 export async function auditKeyUse(db: Database, caller: ApiCaller, tool: string, counts?: Record<string, number>) {
-  await withClinic(db, caller.clinicId, async (tx) => {
-    await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id, counts) values
-      (${caller.clinicId}, ${`api_key:${caller.keyId}`}, ${`mcp.${tool}`}, 'api_key', ${caller.keyId}, ${counts ? JSON.stringify(counts) : null}::jsonb)`);
-    await tx.execute(sql`update api_keys set last_used_at = now() where clinic_id = ${caller.clinicId} and id = ${caller.keyId}`);
-  });
+  await withClinic(db, caller.clinicId, (tx) => auditKeyUseIn(tx, caller, tool, counts));
+}
+
+/** The same, inside a transaction the clinic is already set on, so a read of PHI and its audit row commit together. */
+export async function auditKeyUseIn(tx: Tx, caller: ApiCaller, tool: string, counts?: Record<string, number>) {
+  await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id, counts) values
+    (${caller.clinicId}, ${`api_key:${caller.keyId}`}, ${`mcp.${tool}`}, 'api_key', ${caller.keyId}, ${counts ? JSON.stringify(counts) : null}::jsonb)`);
+  await tx.execute(sql`update api_keys set last_used_at = now() where clinic_id = ${caller.clinicId} and id = ${caller.keyId}`);
 }

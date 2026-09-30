@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
  * SMS goes out from fixed templates only. A carrier message is outside the BAA
  * perimeter of most setups, so the text says when and where, never why: no visit
  * reason, no provider specialty, no medication. Each language pack has its own
- * wording of the same two templates; English is the default.
+ * wording of the same template; English is the default.
  */
 export const TEMPLATES = PACKS.en.sms;
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, type PhiCipher, schema, seedCedarPark, seedDemo, seedDemoSchedule } from '@attendra/db';
+import { type Database, type PhiCipher, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
@@ -35,6 +35,8 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   await seedDemoKnowledge(db, new LocalEmbedder(), staff.org_demo![1]);
   const results = await recordDemoCalls(db, cipher, maple.patientIds, now, { bookedBy: staff.org_demo![0] });
   await seedDemoSchedule(db, cipher, { patientIds: maple.patientIds, staffUserIds: staff.org_demo!, now });
+  // the same one-off an upgraded deployment runs (pnpm db:rehash-lookups): on a fresh demo it changes nothing
+  await rehashPatientLookups(db, cipher);
   await summariseDemoCalls(db, cipher);
   return results;
 }

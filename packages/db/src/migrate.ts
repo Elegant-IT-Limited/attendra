@@ -22,7 +22,13 @@ export async function migrate(db: SqlRunner, dir = MIGRATIONS_DIR): Promise<stri
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
     if (done.has(file)) continue;
     const sql = readFileSync(join(dir, file), 'utf8');
-    await db.exec(`begin;\n${sql}\ninsert into schema_migrations (id) values ('${file.replace(/'/g, "''")}');\ncommit;`);
+    try {
+      await db.exec(`begin;\n${sql}\ninsert into schema_migrations (id) values ('${file.replace(/'/g, "''")}');\ncommit;`);
+    } catch (err) {
+      // a file that fails leaves nothing behind, and the connection usable
+      await db.exec('rollback').catch(() => {});
+      throw err;
+    }
     applied.push(file);
   }
   return applied;

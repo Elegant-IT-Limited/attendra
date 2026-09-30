@@ -33,6 +33,13 @@ describe('tenant isolation', () => {
     })))).toMatch(/row-level security/);
   });
 
+  it('the application role cannot list organizations or phone numbers, which have no policy', async () => {
+    expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select id from organizations`)))).toMatch(/permission denied/);
+    expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select e164 from phone_numbers`)))).toMatch(/permission denied/);
+    const own = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select id from clinics`));
+    expect(own.rows).toEqual([{ id: DEMO_CLINIC.id }]);
+  });
+
   it('the same name and DOB in two clinics resolves to each clinic\'s own record', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const here = await dir.findByNameAndDob(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04');
@@ -62,6 +69,20 @@ describe('PHI at rest', () => {
     expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'maria delgado', '1985-03-04')).toMatchObject({ status: 'found', patient: { firstName: 'Maria' } });
     expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'Maria Delgado', '1985-04-03')).toEqual({ status: 'not_found' });
     expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'Sam Rivera', '1990-07-15')).toEqual({ status: 'ambiguous' });
+  });
+
+  it('audits each write to a call record and each patient created, with the system as the actor', async () => {
+    const calls = new CallRepository(t.db, cipher);
+    const callId = await calls.open(OTHER.id, 'sess_phi_audit', '+13035550199');
+    await calls.appendSegment(OTHER.id, callId, { speaker: 'caller', text: 'I need a refill', startMs: 0, endMs: 900 });
+    await calls.recordAction(OTHER.id, callId, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
+    await calls.close(OTHER.id, callId, { reason: 'caller_hangup', voiceSeconds: 12, outcome: 'info', emergency: false });
+    const patientId = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Iris', lastName: 'Novak', dob: '1979-02-11' });
+    const rows = await withClinic(t.db, OTHER.id, (tx) => tx.select().from(schema.auditLogs).orderBy(schema.auditLogs.id));
+    expect(rows.filter((r) => r.callId === callId).map((r) => [r.actor, r.action])).toEqual([
+      ['system', 'call.opened'], ['system', 'call.transcript.written'], ['system', 'call.action.recorded'], ['system', 'call.closed'],
+    ]);
+    expect(rows.find((r) => r.action === 'patient.created' && r.entityId === patientId)?.actor).toBe('voice-agent');
   });
 
   it('audits every successful identification, and the audit log cannot be edited', async () => {

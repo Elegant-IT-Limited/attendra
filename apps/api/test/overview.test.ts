@@ -1,4 +1,6 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { createPhiCipher, PostgresTaskQueue } from '@attendra/db';
+import { TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OTHER, startApi } from './helpers';
@@ -64,7 +66,7 @@ describe('waiting requests', () => {
   it('lists open unclaimed requests oldest first, with type and age only, not audited', async () => {
     const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/tasks/waiting`, { cookie: staff });
-    expect(res.json().tasks).toEqual([{ id: api.taskId, type: 'refill', createdAt: expect.any(String), callId: api.callId }]);
+    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, type: 'refill', createdAt: expect.any(String), callId: api.callId }], total: 1 });
     expect(res.body).not.toMatch(/Maria|lisinopril|555/);
     const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
@@ -75,5 +77,15 @@ describe('waiting requests', () => {
     expect((await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json().tasks).toEqual([]);
     expect((await api.request('GET', `${C}/tasks/waiting`, { cookie: viewer })).statusCode).toBe(403);
     expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/tasks/waiting`, { cookie: admin })).statusCode).toBe(404);
+  });
+
+  it('says how many are waiting in all, past the 20 it lists', async () => {
+    const queue = new PostgresTaskQueue(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    for (let i = 0; i < 23; i++) {
+      await queue.create(DEMO_CLINIC.id, { type: 'callback', callId: api.callId, patientId: null, idempotencyKey: `waiting-${i}`, details: { reason: 'question', callback_number: '+13035550163' } });
+    }
+    const res = (await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json();
+    expect(res.tasks).toHaveLength(20);
+    expect(res.total).toBe(23);
   });
 });

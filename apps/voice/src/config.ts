@@ -7,7 +7,7 @@ const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blank, schema.
 
 /** Validated once at boot, so a missing secret stops the process instead of the first call. */
 const Env = z.object({
-  PORT: z.preprocess(blank, z.coerce.number().int().default(8080)),
+  PORT: z.preprocess(blank, z.coerce.number().int().min(1).max(65535).default(8080)),
   DATABASE_URL: z.string().url(),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   OPENAI_API_KEY: z.string().min(1),

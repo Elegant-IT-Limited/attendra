@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p .",
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
-    "add-number": "tsx scripts/add-number.ts"
+    "add-number": "tsx scripts/add-number.ts",
+    "rehash-lookups": "tsx scripts/rehash-lookups.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",

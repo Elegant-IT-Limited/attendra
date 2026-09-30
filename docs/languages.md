@@ -40,7 +40,7 @@ A language is one pack: a file in `packages/core/src/locales/` (`en.ts`, `es.ts`
 - the default greeting, and the words that count as disclosing an AI assistant;
 - how to say a date and time, and a phone number digit by digit;
 - the read-back templates for a booking, a move and a cancellation, for a provider who is a person and one that is a room;
-- the two text-message templates, which say when and where, never why;
+- the booking text message, which says when and where, never why;
 - the emergency and self-harm scripts, which take the clinic's number;
 - the emergency phrases, "not an emergency", the yes words, the words that are a yes only on their own, and the hedge words;
 - marker words for choosing the call's language.

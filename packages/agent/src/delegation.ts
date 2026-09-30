@@ -73,7 +73,6 @@ export class CallAgent {
     const match = fresh[0];
     if (!match) return [];
 
-    const first = !this.state.emergency;
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
     this.state.outcome = 'emergency';
@@ -90,9 +89,14 @@ export class CallAgent {
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic)) : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     this.emergencyScript = { content: script, number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
-    if (first && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
+    // once per call, the first time a kind serious enough is heard: "this is an emergency"
+    // on its own does not ring anyone, and must not stop the chest pain after it from doing so
+    if (!this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
-      if (onCall.ok) out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
+      if (onCall.ok) {
+        out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
+        this.state.emergencyTransferSent = true;
+      }
     }
     return out;
   }
@@ -206,19 +210,28 @@ export class CallAgent {
         this.verified = shortName(String((args as { full_name?: unknown })?.full_name ?? '')) ?? String(result.data.first_name ?? 'Verified');
       }
       this.emitState();
-      await this.actions?.record({
-        tool: name,
-        argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
-        revision,
-        patientId: this.state.verifiedPatient?.id ?? null,
-      });
+      // the step already happened (a booking is booked): a failed write of its record is
+      // logged, and never turned into "I couldn't do that" for the caller
+      try {
+        await this.actions?.record({
+          tool: name,
+          argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
+          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
+          revision,
+          patientId: this.state.verifiedPatient?.id ?? null,
+        });
+      } catch (err) {
+        this.log.error({ call_id: this.ctx.callId, tool: name, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call action not recorded');
+      }
       if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
       return result;
     };
 
     try {
-      const plan = await this.planner.plan({ clinic: this.ctx.clinic, state: this.state, nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}` }, execute);
+      const plan = await this.planner.plan({
+        clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber,
+        nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
+      }, execute);
       if (revision !== this.state.revision) {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];

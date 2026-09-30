@@ -10,9 +10,10 @@ import { mcpHttpHandler } from './http-handler';
 
 const env = loadEnv();
 const log = createLogger({ name: 'mcp', level: env.LOG_LEVEL });
-const db = connect(env.DATABASE_URL);
+const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
 // sends events only (a request closed here reaches the clinic's webhooks); the worker delivers them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
+boss.on('error', (err: Error & { code?: string }) => log.error({ code: err.code ?? 'unknown' }, 'job queue error'));
 await boss.start();
 const events = eventSink(bossQueue(boss));
 const handle = mcpHttpHandler({

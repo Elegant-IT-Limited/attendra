@@ -3,8 +3,8 @@ import type { KnowledgeBase } from '@attendra/core';
 import { type Database, KnowledgeRepository, staffNames } from '@attendra/db';
 import { type Answerer, answerQuestion, MAX_BYTES, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
-import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConsumes, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { KnowledgeAnswer, KnowledgeAsk, KnowledgeDocument, KnowledgeDocuments, KnowledgeUpload } from '../contracts';
@@ -13,7 +13,7 @@ import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { DB, JOBS, KNOWLEDGE } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
-type Knowledge = { base: KnowledgeBase; answerer: Answerer };
+type Knowledge = { base: KnowledgeBase; answerer: Answerer; embeddingModel?: string };
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 /**
@@ -53,17 +53,17 @@ export class KnowledgeController {
   @Requires('settings:write')
   @ApiOperation({ summary: 'Upload a document (application/pdf, text/plain or text/markdown). Audited.' })
   @ApiConsumes('application/pdf', 'text/plain', 'text/markdown')
-  @ApiOkResponse({ schema: schemaOf(KnowledgeDocument) })
+  @ApiCreatedResponse({ schema: schemaOf(KnowledgeDocument) })
   async upload(@Param('clinicId') clinicId: string, @Query(new ZodPipe(KnowledgeUpload)) q: z.infer<typeof KnowledgeUpload>, @Body() body: unknown, @Req() req: FastifyRequest, @CurrentStaff() staff: Staff) {
     // checked as the types they must be, whatever the parsers let through
     if (!(body instanceof Uint8Array) || body.byteLength === 0) throw new HttpException({ error: 'empty_file' }, 400);
     if (body.byteLength > MAX_BYTES) throw new HttpException({ error: 'too_large' }, 413);
-    if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new HttpException({ error: 'invalid_request' }, 400);
+    if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: typeof q.title !== 'string' ? 'title' : 'name', message: 'required' }] });
     const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
     if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);
-    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId });
-    if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash });
+    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId, embeddingModel: this.knowledge?.embeddingModel });
+    if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash, version: saved.version });
     const doc = await this.repo.get(clinicId, saved.id);
     return this.view(doc!, await staffNames(this.db, clinicId, [doc!.uploadedByUserId]));
   }
