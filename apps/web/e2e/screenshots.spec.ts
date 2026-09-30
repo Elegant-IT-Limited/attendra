@@ -26,7 +26,9 @@ test.describe('screenshots', () => {
     const page = await openAs(browser, 'manager', hideDevBadge);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(26); // the recorded calls and live.spec's simulated one
+    // the list has loaded, however many calls the demo recorded and the other specs added
+    await expect(page.locator('tbody tr').first()).toBeVisible();
+    await expect(page.getByText('Loading', { exact: false })).toHaveCount(0);
     await page.screenshot({ path: out('calls') });
 
     await page.getByRole('tab', { name: 'Bookings and changes' }).click();
