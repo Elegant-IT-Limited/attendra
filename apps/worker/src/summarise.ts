@@ -127,10 +127,12 @@ export class LocalSummariser implements Summariser {
     const triedToVerify = ran(call, 'verify_caller');
     const transferred = call.actions.some((a) => typeof a.result.transferring === 'string');
     const task = call.tasks[0]?.type;
+    // a question only a clinician may answer, refused in code: never "answered from the clinic's information"
+    const medical = !call.emergency && said(call, 'medical_question') && !['booked', 'rescheduled', 'cancelled'].includes(call.outcome ?? '') && task !== 'refill';
     const callerWords = call.transcript.filter((t) => t.speaker === 'caller').map((t) => t.text).join(' ');
     const language = detectLanguage(callerWords, LANGUAGES, 'en');
 
-    const intent: CallSummary['intent'] = call.emergency ? 'emergency'
+    const intent: CallSummary['intent'] = call.emergency ? 'emergency' : medical ? 'question'
       : call.outcome === 'booked' ? 'book' : call.outcome === 'rescheduled' ? 'reschedule' : call.outcome === 'cancelled' ? 'cancel'
         : task === 'refill' ? 'refill' : task === 'callback' ? 'callback'
           : ran(call, 'find_slots') || ran(call, 'propose_booking') ? 'book'
@@ -147,7 +149,10 @@ export class LocalSummariser implements Summariser {
     } else if (call.outcome === 'booked') sentences.push(`The assistant booked an appointment${call.actions.some((a) => a.result.booked === true) ? ' after the caller confirmed it' : ''}.`);
     else if (call.outcome === 'rescheduled') sentences.push('The assistant moved an existing appointment to a new time after the caller confirmed it.');
     else if (call.outcome === 'cancelled') sentences.push('The assistant cancelled an appointment after the caller confirmed it.');
-    else if (task === 'refill') sentences.push('The assistant took a prescription refill request for the care team to review.');
+    else if (medical) {
+      sentences.push('The caller asked a medical question. The assistant did not answer it and offered a callback from the care team.');
+      if (task === 'callback') sentences.push('The assistant took a request for the clinic to call back.');
+    } else if (task === 'refill') sentences.push('The assistant took a prescription refill request for the care team to review.');
     else if (task === 'callback') sentences.push('The assistant took a request for the clinic to call back.');
     else if (transferred) sentences.push('The call was transferred to a person.');
     else if (ran(call, 'get_clinic_info')) sentences.push('The caller asked about the clinic, and the assistant answered from the clinic\'s own information.');
@@ -157,7 +162,8 @@ export class LocalSummariser implements Summariser {
     const rule = requiredReview(call);
     const [needsReview, reviewReason, followUp]: [boolean, string | null, string | null] =
       rule ? [true, rule.reason, rule.followUp]
-        : task === 'refill' ? [false, null, 'Review the refill request and call the patient if anything is unclear.']
+        : medical && task !== 'callback' ? [true, 'Medical question: check whether the caller wants a callback', 'Call the caller back if they want the care team to answer.']
+          : task === 'refill' ? [false, null, 'Review the refill request and call the patient if anything is unclear.']
           : task === 'callback' ? [false, null, 'Call the caller back.']
             : [false, null, null];
     return { summary: sentences.slice(0, 3).join(' '), intent, sentiment, needsReview, reviewReason, followUp };
