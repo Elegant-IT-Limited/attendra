@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { ApiKeyRepository, authenticateApiKey, CallRepository, createPhiCipher, PostgresTaskQueue, saveClinic, seedDemo, seedDemoSchedule } from '@attendra/db';
+import { addMembership, ApiKeyRepository, authenticateApiKey, CallRepository, changeTeam, createPhiCipher, PostgresTaskQueue, saveClinic, seedDemo, seedDemoSchedule } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -51,6 +51,11 @@ beforeAll(async () => {
   ({ id: taskId } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, {
     type: 'refill', callId, patientId: patientIds.james!, idempotencyKey: 'mcp-refill', details: { medication: 'lisinopril', pharmacy: 'Walgreens', callback_number: '+13035550163' },
   }));
+  // the people who make keys: a key works only while its maker is an owner or practice manager
+  for (const [id, org, role] of [['u_olga', 'org_demo', 'admin'], ['u_olga', 'org_other', 'admin'], ['u_owen', 'org_demo', 'owner'], ['u_mia', 'org_demo', 'admin'], ['u_max', 'org_demo', 'admin']] as const) {
+    await t.db.execute(sql`insert into auth_users (id, name, email) values (${id}, ${id}, ${`${id}@example.test`}) on conflict do nothing`);
+    await addMembership(t.db, org, id, role);
+  }
   keys = new ApiKeyRepository(t.db);
   deps = { db: t.db, cipher, log, onRequestDone: async (_c, f) => { done.push(f); } };
 });
@@ -69,6 +74,27 @@ describe('API keys', () => {
     expect(await authenticateApiKey(t.db, key)).toBeNull();
     expect((await audits('api_key.created')).map((a) => a.entity_id)).toContain(id);
     expect((await audits('api_key.revoked')).map((a) => a.entity_id)).toEqual([id]);
+  });
+
+  it('stop working when their maker is removed or no longer an owner or manager, and are revoked with an audit row', async () => {
+    const mia = await keys.create(DEMO_CLINIC.id, { name: 'mia', scopes: ['schedule:read'], expiresAt: new Date(Date.now() + 86_400_000), userId: 'u_mia' });
+    const max = await keys.create(DEMO_CLINIC.id, { name: 'max', scopes: ['schedule:read'], expiresAt: new Date(Date.now() + 86_400_000), userId: 'u_max' });
+    const client = await clientFor(mia.key);
+    expect(await authenticateApiKey(t.db, mia.key)).not.toBeNull();
+    const owner = { userId: 'u_owen', role: 'owner' as const };
+    expect(await changeTeam(t.db, 'org_demo', owner, { type: 'role', userId: 'u_mia', role: 'staff' })).toBe('done');
+    expect(await authenticateApiKey(t.db, mia.key)).toBeNull();
+    expect(await call(client, 'find_open_slots', { visitTypeId: 'vt_sick' })).toMatchObject({ error: true, text: expect.stringContaining('revoked') });
+    expect(await changeTeam(t.db, 'org_demo', owner, { type: 'remove', userId: 'u_max' })).toBe('done');
+    expect(await authenticateApiKey(t.db, max.key)).toBeNull();
+    const revoked = (await t.db.execute(sql`select entity_id, actor from audit_logs where action = 'api_key.revoked' and entity_id in (${mia.id}, ${max.id}) order by id`)).rows;
+    expect(revoked).toEqual([{ entity_id: mia.id, actor: 'user:u_owen' }, { entity_id: max.id, actor: 'user:u_owen' }]);
+    // a role changed some other way (the member CLI) stops the key too, even before it is revoked
+    const olga = await make(['schedule:read']);
+    await addMembership(t.db, 'org_demo', 'u_olga', 'viewer');
+    expect(await authenticateApiKey(t.db, olga.key)).toBeNull();
+    await addMembership(t.db, 'org_demo', 'u_olga', 'admin');
+    expect(await authenticateApiKey(t.db, olga.key)).not.toBeNull();
   });
 
   it('stop working when they expire, and nothing else works either', async () => {
