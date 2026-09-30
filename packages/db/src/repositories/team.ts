@@ -84,6 +84,7 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
       if (target.role === 'owner' && owners <= 1) return 'last_owner';
       await tx.update(memberships).set({ role: change.role }).where(and(eq(memberships.organizationId, orgId), eq(memberships.userId, change.userId)));
       await audit(tx, orgId, actor.userId, `member.role.changed:${change.role}`, change.userId);
+      if (change.role !== 'owner' && change.role !== 'admin') await revokeKeysOf(tx, orgId, actor.userId, change.userId);
       return 'done';
     }
 
@@ -112,9 +113,21 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
     // membership on every request, so access here ends at once either way
     const [elsewhere] = await tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.userId, change.userId)).limit(1);
     if (!elsewhere) await tx.delete(authSessions).where(eq(authSessions.userId, change.userId));
+    await revokeKeysOf(tx, orgId, actor.userId, change.userId);
     await audit(tx, orgId, actor.userId, 'member.removed', change.userId);
     return 'done';
   });
+}
+
+/** A person who can no longer make keys loses the ones they made, in every clinic of the organization, audited. */
+async function revokeKeysOf(tx: Tx, orgId: string, actorId: string, memberId: string) {
+  for (const clinicId of await clinicsOf(tx, orgId)) {
+    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    const revoked = (await tx.execute(sql`update api_keys set revoked_at = now() where clinic_id = ${clinicId} and created_by_user_id = ${memberId} and revoked_at is null returning id`)).rows as { id: string }[];
+    if (revoked.length) {
+      await tx.insert(auditLogs).values(revoked.map((k) => ({ clinicId, actor: `user:${actorId}`, action: 'api_key.revoked', entity: 'api_key', entityId: k.id })));
+    }
+  }
 }
 
 async function clinicsOf(tx: Tx, orgId: string) {

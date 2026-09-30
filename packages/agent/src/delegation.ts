@@ -23,6 +23,12 @@ export const clamp = (s: string) => (s.length <= MAX_APPEND_CHARS ? s : `${s.sli
 const AFTER_SPEECH_MS = 3500;
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
+// Staff cannot end a call before the caller has heard the emergency number. The
+// script counts as said once the assistant speaks the number; if its captions never
+// show it, staff may end the call this long after the script was sent.
+const EMERGENCY_SCRIPT_GRACE_MS = 20_000;
+const BENGALI_DIGITS = '০১২৩৪৫৬৭৮৯';
+const asciiDigits = (s: string) => s.replace(/[০-৯]/g, (d) => String(BENGALI_DIGITS.indexOf(d)));
 
 export interface ActionRecorder {
   /** `patientId` is set once the caller is verified, so the call record can be linked to them. */
@@ -40,6 +46,8 @@ export class CallAgent {
   observer: ((e: LiveEvent) => void) | null = null;
   private verified: string | null = null;
   private doing: string | null = null;
+  /** The emergency script sent last, when it was sent, and whether the caller has heard the number yet. */
+  private emergencyScript: { content: string; number: string; sentAt: number; said: boolean; heard: string } | null = null;
 
   constructor(
     readonly state: CallState,
@@ -83,6 +91,7 @@ export class CallAgent {
     const number = emergencyNumberFor(clinic);
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic)) : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
+    this.emergencyScript = { content: script, number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
     if (first && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
       if (onCall.ok) out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
@@ -93,6 +102,21 @@ export class CallAgent {
   onAgentTranscript(delta: string, startMs: number, endMs: number) {
     this.state.addTranscript('agent', delta, startMs, endMs);
     this.emit({ type: 'caption', speaker: 'agent', text: delta, atMs: startMs });
+    const s = this.emergencyScript;
+    if (s && !s.said) {
+      s.heard = (s.heard + delta).slice(-400);
+      s.said = asciiDigits(s.heard).replace(/[\s-]/g, '').includes(s.number);
+    }
+  }
+
+  /**
+   * Whether staff may end the call now. During an emergency, not until the assistant
+   * has said the emergency script (its number is in the captions), or the grace period
+   * has passed: a caller must never be cut off before hearing where to get help.
+   */
+  canEndByStaff(): boolean {
+    const s = this.emergencyScript;
+    return !s || s.said || this.ctx.now().getTime() - s.sentAt >= EMERGENCY_SCRIPT_GRACE_MS;
   }
 
   /**
@@ -102,7 +126,28 @@ export class CallAgent {
    */
   coach(note: string): Outbound[] {
     this.emit({ type: 'staff', action: 'coached' });
-    return [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
+    const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
+    // a note never replaces the emergency script: it is sent again after the note
+    if (this.state.emergency && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
+    return out;
+  }
+
+  /**
+   * A transfer or a hang-up did not go through: the caller is still on the line with
+   * the assistant. Staff see it on the live page (and can act again), and the
+   * assistant offers a callback instead of leaving the caller waiting.
+   */
+  onControlFailed(kind: 'transfer' | 'hangup'): Outbound[] {
+    this.log.warn({ call_id: this.ctx.callId, kind }, 'call control failed');
+    this.emit({ type: 'staff', action: kind === 'transfer' ? 'transfer_failed' : 'end_failed' });
+    const out: Outbound[] = [{
+      type: 'instructions', delegationId: null,
+      content: kind === 'transfer'
+        ? 'The transfer did not go through: the caller is still with you. Apologise briefly, and offer to have someone from the clinic call them back. If they want that, take a callback with create_callback.'
+        : 'The call could not be ended: the caller is still with you. Ask if there is anything else, and offer to have someone from the clinic call them back.',
+    }];
+    if (this.state.emergency && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
+    return out;
   }
 
   /** A person takes the call: the assistant says so, then the call is transferred. Work in flight is dropped. */

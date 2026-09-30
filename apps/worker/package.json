@@ -1,6 +1,6 @@
 {
   "name": "@attendra/worker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -14,6 +14,7 @@
     "@attendra/db": "workspace:*",
     "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
+    "@attendra/webhooks": "workspace:*",
     "drizzle-orm": "0.45.3",
     "openai": "7.23.0",
     "pg-boss": "12.35.0",

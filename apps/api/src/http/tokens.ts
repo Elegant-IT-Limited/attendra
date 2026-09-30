@@ -15,6 +15,8 @@ export const LOGGER = Symbol('logger');
 export const VOICE = Symbol('voice');
 export const JOBS = Symbol('jobs');
 export const KNOWLEDGE = Symbol('knowledge');
+export const EVENTS = Symbol('events');
+export const WEBHOOK_GUARD = Symbol('webhook-guard');
 
 /** Starts and ends browser test calls on the voice service. Null when the deployment has none. */
 export interface LiveCallSummary {
@@ -45,4 +47,6 @@ export interface ApiOptions {
   demoMode: boolean;
   /** Printed on the sign-in page. Only `pnpm demo` sets it: a deployed demo keeps its password private. */
   demoSignIn?: { password: string; logins: { email: string; label: string }[] };
+  /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
+  liveStream?: { maxMs?: number; recheckMs?: number };
 }

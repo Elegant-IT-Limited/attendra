@@ -1,12 +1,13 @@
 {
   "name": "@attendra/evals",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
     "eval": "tsx src/run.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "sim": "tsx sim/run.ts"
   },
   "dependencies": {
     "@attendra/agent": "workspace:*",

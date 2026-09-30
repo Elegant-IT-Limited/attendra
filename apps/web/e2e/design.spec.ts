@@ -56,6 +56,10 @@ for (const theme of ['light', 'dark'] as const) {
       ['Calls', `/c/${c}/calls`, 'What the assistant did'],
       ['Team', `/c/${c}/team`, 'Add a person'],
       ['Settings', `/c/${c}/settings`, 'Greeting'],
+      ['Knowledge', `/c/${c}/settings/knowledge`, 'Add a document'],
+      ['Integrations', `/c/${c}/settings/integrations`, 'Add an endpoint'],
+      ['Quality', `/c/${c}/quality`, 'Handled without staff'],
+      ['API keys', `/c/${c}/settings/api-keys`, 'Make a key'],
       ['Audit log', `/c/${c}/audit`, 'Rows can be added'],
       ['Test call', `/c/${c}/test-call`, 'Test call'],
     ];

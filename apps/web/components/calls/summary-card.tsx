@@ -63,7 +63,7 @@ export function SummaryCard({ clinicId, call, canReview }: { clinicId: string; c
           {open && <Badge tone="warn"><Flag aria-hidden /> Needs review</Badge>}
         </div>
         <p className="leading-relaxed">{s.summary}</p>
-        {s.followUp && <p><span className="font-medium">Suggested next step:</span> {s.followUp}</p>}
+        {s.followUp && <p><span className="font-medium">Suggested by the assistant:</span> {s.followUp}</p>}
         {s.needsReview && (
           <div className="rounded-md border border-border bg-surface-sunken px-3 py-2">
             <p><span className="font-medium">Why review:</span> {s.reviewReason}</p>

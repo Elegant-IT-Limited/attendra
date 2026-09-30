@@ -61,6 +61,20 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('offers a callback when a transfer fails, and says the emergency number again during an emergency', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    h.engine.transfer.mockRejectedValueOnce(new Error('sip 503'));
+    await h.runner.handle(delta('in', 'e1', 'my wife is not breathing', 100));
+    await vi.advanceTimersByTimeAsync(8000);
+    const said = h.sent.map((e) => (e as { content: string }).content);
+    expect(said).toHaveLength(3);
+    expect(said[1]).toContain('transfer did not go through');
+    expect(said[1]).toContain('create_callback');
+    expect(said[2]).toBe(said[0]); // the emergency script, again
+    vi.useRealTimers();
+  });
+
   it('stores whole turns and closes the call with final usage and outcome', async () => {
     const h = harness(new ScriptedPlanner([]));
     await h.runner.handle(delta('out', 'o1', 'Thanks for calling Maple Street.', 0));

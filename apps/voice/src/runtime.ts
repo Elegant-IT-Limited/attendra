@@ -6,7 +6,7 @@ import {
 } from '@attendra/db';
 import type { KnowledgeBase } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { type JobQueue, noJobs } from '@attendra/worker/queue';
+import { eventSink, type JobQueue, noJobs } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { type SmsSender, twilioSender, TwilioMessenger } from '@attendra/telephony';
 import { GptLiveEngine, SimulatedEngine } from '@attendra/voice-engine';
@@ -96,6 +96,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendMode
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
       knowledge: rt.knowledge,
+      events: rt.jobs ? eventSink(rt.jobs, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) : undefined,
       messenger: new TwilioMessenger(db, cipher, rt.twilio ? twilioSender(twilio(rt.twilio.accountSid, rt.twilio.authToken)) : noSms, (clinicId) => {
         const from = clinicNumbers.get(clinicId);
         if (!from) throw new Error(`no sending number known for clinic ${clinicId}`);

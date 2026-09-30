@@ -23,7 +23,7 @@ export default defineConfig({
   ],
   webServer: [
     // test calls stay off even when a .env holds an OpenAI key: these specs never spend credit
-    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on' }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on', ATTENDRA_WEBHOOKS_ALLOW_LOCAL: 'on' }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI, timeout: 120_000 },
     { command: 'pnpm --filter @attendra/web dev', url: 'http://localhost:3000/sign-in', reuseExistingServer: !process.env.CI, timeout: 120_000 },
   ],
 });
