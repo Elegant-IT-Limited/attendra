@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { CallList, Overview, Schedule, WaitingTasks } from '@attendra/api/contracts';
+import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren } from 'lucide-react';
+import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
+import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
 import { capital } from '@/components/schedule/booking-dialog';
 import { PageHeader } from '@/components/shell';
@@ -37,6 +38,8 @@ export default function Today() {
   const overview = useQuery({ queryKey: ['overview', clinicId], queryFn: () => api<Overview>(`/clinics/${clinicId}/overview?days=7`), ...live });
   const calls = useQuery({ queryKey: ['calls', clinicId, 'recent'], queryFn: () => api<CallList>(`/clinics/${clinicId}/calls?limit=50`), ...live });
   const waiting = useQuery({ queryKey: ['tasks', clinicId, 'waiting'], queryFn: () => api<WaitingTasks>(`/clinics/${clinicId}/tasks/waiting`), enabled: can('tasks:read'), ...live });
+  // managers hear here when Attendra turned a webhook endpoint off
+  const hooks = useQuery({ queryKey: ['webhooks', clinicId], queryFn: () => api<WebhookEndpoints>(`/clinics/${clinicId}/webhooks`), enabled: can('integrations:manage'), ...live });
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, today, 1, ''],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?from=${today}&days=1`),
@@ -50,6 +53,7 @@ export default function Today() {
   return (
     <>
       <PageHeader title="Today" description={<>{greeting}. {dayTitle(today)}, times are {zoneLabel(tz)}.</>} />
+      <LiveNow clinicId={clinicId} canWatch={can('calls:read')} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
         <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Last 7 days" />
         <StatCard label="Booked this week" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
@@ -58,7 +62,8 @@ export default function Today() {
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={calls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')} />
+          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={calls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
+            turnedOff={(hooks.data?.endpoints ?? []).filter((e) => e.disabledReason === 'repeated_failures')} />
           <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
         </div>
         <div className="space-y-6">
@@ -72,8 +77,9 @@ export default function Today() {
 
 type Q<T> = { data?: T; isPending: boolean; isError: boolean };
 
-function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, canOpenCalls }: {
+function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, canOpenCalls, turnedOff }: {
   clinicId: string; tz: string; now: number; calls: Q<CallList>; waiting: Q<WaitingTasks>; canTasks: boolean; canWork: boolean; canOpenCalls: boolean;
+  turnedOff: WebhookEndpoints['endpoints'];
 }) {
   const router = useRouter();
   const queries = useQueryClient();
@@ -106,6 +112,11 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
       detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. The summary says why.</>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
+    })),
+    ...turnedOff.map((e) => ({
+      key: e.id, icon: <Webhook className="size-4 text-danger" />, title: 'A webhook endpoint was turned off',
+      detail: <>It failed {e.consecutiveFailures} events in a row. Nothing is being sent to it.</>,
+      action: <Link href={`/c/${clinicId}/settings/integrations`} className={LINK}>Open Integrations</Link>,
     })),
     ...unresolved.map((c) => ({
       key: c.id, icon: <PhoneOff className="size-4 text-text-muted" />, title: c.outcome === 'transferred' ? 'A call went to a person' : 'A call ended with nothing done',

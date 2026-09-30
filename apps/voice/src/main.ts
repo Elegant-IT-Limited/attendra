@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher } from '@attendra/db';
+import { connect, createPhiCipher, KnowledgeRepository } from '@attendra/db';
+import { HybridKnowledgeBase } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
+import { embedderFromEnv } from '@attendra/worker/runtime';
 import { loadEnv } from './config';
 import { createVoiceApp } from './runtime';
 
@@ -11,8 +13,9 @@ const log = createLogger({ name: 'voice', level: env.LOG_LEVEL });
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
+const db = connect(env.DATABASE_URL);
 const app = createVoiceApp({
-  db: connect(env.DATABASE_URL),
+  db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
   openaiApiKey: env.OPENAI_API_KEY,
   webhookSecret: env.OPENAI_WEBHOOK_SECRET,
@@ -23,6 +26,8 @@ const app = createVoiceApp({
   internalToken: env.VOICE_INTERNAL_TOKEN,
   browserCallMaxSeconds: env.BROWSER_CALL_MAX_SECONDS,
   jobs: bossQueue(boss),
+  // the same embedding model as the worker indexed with (ATTENDRA_EMBEDDING_MODEL)
+  knowledge: new HybridKnowledgeBase(new KnowledgeRepository(db), embedderFromEnv(env)),
 });
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });

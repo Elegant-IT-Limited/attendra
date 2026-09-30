@@ -1,10 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAs, signInAgain } from './session';
+import { openAs } from './session';
 
 test.describe.serial('languages and a second clinic', () => {
-  // one manager sign-in for the whole spec: sign-in is rate limited
+  // one manager page for the whole spec
   let manager: Page;
-  test.beforeAll(async ({ browser }) => { manager = await signInAgain(browser, 'Practice manager'); });
+  test.beforeAll(async ({ browser }) => { manager = await openAs(browser, 'manager'); });
 
   test('the Dhanmondi front desk sees only its own clinic, in English, with Bangla calls', async ({ browser }) => {
     const page = await openAs(browser, 'dhanmondi');
@@ -70,5 +70,15 @@ test.describe.serial('languages and a second clinic', () => {
     await page.getByRole('button', { name: 'Use the suggested greeting' }).click();
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByText('Saved. The next call uses these settings.')).toBeVisible();
+  });
+
+  // last, since it ends the stored Dhanmondi session, which no spec after this one uses
+  test('signing out clears the screen', async ({ browser }) => {
+    const page = await openAs(browser, 'dhanmondi');
+    await page.getByRole('button', { name: /account and theme/ }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/sign-in$/);
   });
 });

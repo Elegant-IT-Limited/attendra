@@ -79,7 +79,8 @@ describe('search', () => {
     expect(last).toEqual({ actor: `user:${api.users.staff}`, entity_id: 'matches:1' });
     expect((await audit('patient.search.result')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: api.patientIds.james });
     const dump = JSON.stringify((await api.t.db.execute(sql`select * from audit_logs`)).rows);
-    expect(dump).not.toMatch(/whitaker|delgado|0163/i);
+    // the phone number as it would be written; four digits alone turn up by chance in random ids
+    expect(dump).not.toMatch(/whitaker|delgado|5550163/i);
   });
 
   it('asks for more than one character, and for something it can read', async () => {

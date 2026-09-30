@@ -2,11 +2,12 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
+import { BellRing, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { EmergencyAlerts } from '@/components/calls/live-now';
 import { CommandPalette } from '@/components/command-palette';
 import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
@@ -14,6 +15,7 @@ import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
 import { api, useClinic } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
 import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { type ThemeChoice, useTheme } from '@/lib/theme';
@@ -153,6 +155,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         </div>
       </Panel>
 
+      <EmergencyAlerts clinicId={clinicId} />
       <CommandPalette clinicId={clinicId} open={palette} onOpenChange={setPalette} pages={pages}
         canSearchPatients={can('patients:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
@@ -190,6 +193,7 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
 
 function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: string; role: string }; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
   const theme = useTheme();
+  const [alerts, setAlerts] = useEmergencyAlerts();
   return (
     <M.Root>
       <M.Trigger aria-label={`${user.name}, ${user.role}: account and theme`}
@@ -209,6 +213,11 @@ function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: str
             ))}
           </M.RadioGroup>
           <M.Separator className="my-1 h-px bg-border" />
+          <M.CheckboxItem checked={alerts} onCheckedChange={(v) => setAlerts(v === true)} onSelect={(e) => e.preventDefault()}
+            className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
+            <BellRing className="size-4 text-text-muted" aria-hidden />Alert me to emergencies
+            <M.ItemIndicator className="ml-auto text-xs text-primary">On</M.ItemIndicator>
+          </M.CheckboxItem>
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
           <M.Item onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11"><LogOut className="size-4 text-text-muted" aria-hidden />Sign out</M.Item>
         </M.Content>

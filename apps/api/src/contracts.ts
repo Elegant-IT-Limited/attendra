@@ -18,6 +18,8 @@ export const Me = z.object({
   demoMode: z.boolean(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
+  /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
+  simulatedCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()) })),
 });
 
@@ -73,6 +75,7 @@ const CallFilters = z.object({
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
   review: z.literal('needed').optional(),
+  refusal: z.string().regex(/^[a-z_]{2,40}$/).optional(),
 });
 /** The call list's filters, in clinic-time days (`to` is inclusive). */
 export const CallQuery = Page.extend(CallFilters.shape);
@@ -114,6 +117,95 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
 });
+
+/** The calls going on now. Codes only; the verified caller's short name only for roles that may read calls. */
+export const LiveCall = z.object({
+  callId: z.string(), channel: z.enum(['phone', 'web']), startedAt: z.iso.datetime(),
+  verified: z.boolean(),
+  /** "Maria D.", for roles that may read calls. */
+  caller: z.string().nullable(),
+  doing: z.string().nullable(), waitingForYes: z.boolean(), emergency: z.boolean(),
+});
+export const LiveCalls = z.object({ calls: z.array(LiveCall), counts: z.object({ live: z.number(), emergencies: z.number() }) });
+const actionKey = z.string().min(8).max(100);
+export const LiveCoach = z.object({ note: z.string().trim().min(1, 'write a note first').max(300, 'keep it to 300 characters'), key: actionKey });
+export const LiveTakeOver = z.object({ target: z.enum(['front_desk', 'me']), key: actionKey });
+export const LiveEnd = z.object({ key: actionKey });
+export const TransferNumber = z.object({ number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'a full number with the country code, like +13035550123').nullable() });
+
+/** A document in the clinic's knowledge. Clinic information, never patient data. */
+export const KnowledgeDocument = z.object({
+  id: z.string(), title: z.string(), sourceType: z.enum(['text', 'markdown', 'pdf']), sizeBytes: z.number(),
+  status: z.enum(['queued', 'indexing', 'ready', 'failed']), failure: z.string().nullable(), chunkCount: z.number(),
+  uploadedBy: z.string().nullable(), updatedAt: z.iso.datetime(),
+});
+export const KnowledgeDocuments = z.object({ documents: z.array(KnowledgeDocument) });
+export const KnowledgeUpload = z.object({ title: z.string().trim().min(1, 'give the document a title').max(200), name: z.string().max(200).default('') });
+export const KnowledgeAsk = z.object({ question: z.string().trim().min(2, 'ask a question').max(300) });
+export const KnowledgeAnswer = z.object({
+  answer: z.string(),
+  citations: z.array(z.object({ documentId: z.string(), title: z.string(), text: z.string() })),
+  refusal: z.enum(['medical', 'no_information']).nullable(),
+});
+
+export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'request.created', 'request.done'] as const;
+export const WebhookEndpoint = z.object({
+  id: z.string(), url: z.string(), description: z.string(), events: z.array(z.enum(WEBHOOK_EVENTS)), enabled: z.boolean(),
+  /** repeated_failures when Attendra turned it off, turned_off when someone did. */
+  disabledReason: z.string().nullable(), disabledAt: z.iso.datetime().nullable(), consecutiveFailures: z.number(), createdAt: z.iso.datetime(),
+  /** A new secret was made in the last 24 hours, and deliveries carry both signatures. */
+  rotating: z.boolean(),
+  /** Deliveries leave out patientId. On by default: a patient id with appointment times is PHI. */
+  omitPatientIds: z.boolean(),
+  lastAttempt: z.object({ at: z.iso.datetime(), statusCode: z.number().nullable(), error: z.string().nullable() }).nullable(),
+});
+export const WebhookEndpoints = z.object({ endpoints: z.array(WebhookEndpoint) });
+export const WebhookEndpointInput = z.object({
+  url: z.string().trim().max(2000),
+  description: z.string().trim().max(200).default(''),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
+  omitPatientIds: z.boolean().default(true),
+});
+export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional(), omitPatientIds: z.boolean().optional() });
+/** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
+export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
+export const WebhookAttempt = z.object({
+  id: z.number(), eventId: z.string(), eventType: z.string(), kind: z.enum(['automatic', 'test', 'redelivery']), attempt: z.number(),
+  statusCode: z.number().nullable(), durationMs: z.number(), error: z.string().nullable(), at: z.iso.datetime(),
+});
+export const WebhookAttempts = z.object({ attempts: z.array(WebhookAttempt) });
+
+/** One week of how the assistant did, counted in the database. Codes and counts only. */
+export const QualityWeek = z.object({
+  start: z.string(), end: z.string(), calls: z.number(),
+  /** Calls the assistant finished without staff: booked, moved, cancelled, or answered. */
+  contained: z.number(), containmentRate: z.number().nullable(),
+  bookingAttempts: z.number(), bookings: z.number(), bookingSuccess: z.number().nullable(),
+  avgTurnsToBooking: z.number().nullable(),
+  refusals: z.array(z.object({ code: z.string(), count: z.number() })),
+  transferred: z.number(), transferredShare: z.number().nullable(),
+  flagged: z.number(), flaggedShare: z.number().nullable(),
+  afterHours: z.number(),
+  voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
+});
+export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
+export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
+
+export const API_KEY_SCOPES = ['schedule:read', 'requests:read', 'requests:write', 'quality:read'] as const;
+export const ApiKeyView = z.object({
+  id: z.string(), name: z.string(), prefix: z.string(), scopes: z.array(z.enum(API_KEY_SCOPES)), expiresAt: z.iso.datetime(),
+  createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
+  status: z.enum(['active', 'expired', 'revoked']),
+});
+export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
+export const ApiKeyInput = z.object({
+  name: z.string().trim().min(1, 'give the key a name').max(100),
+  scopes: z.array(z.enum(API_KEY_SCOPES)).min(1, 'choose at least one scope'),
+  // what Settings offers: 7 days to a year
+  expiresInDays: z.number().int().min(7, 'a key lasts at least 7 days').max(365, 'a key lasts at most a year').default(90),
+});
+/** The only time a key is shown. */
+export const ApiKeyCreated = z.object({ apiKey: ApiKeyView, key: z.string() });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
@@ -279,6 +371,8 @@ export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(),
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
+  /** How much, never what: { characters: 24 }, { transcriptLines: 412 }. */
+  counts: z.record(z.string(), z.number()).nullable(),
 });
 export const AuditPage = z.object({
   before: z.coerce.number().int().positive().optional(),
@@ -294,6 +388,21 @@ export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
 export type CallSummaryCard = z.infer<typeof CallSummaryCard>;
+export type LiveCall = z.infer<typeof LiveCall>;
+export type ApiKeyView = z.infer<typeof ApiKeyView>;
+export type ApiKeys = z.infer<typeof ApiKeys>;
+export type ApiKeyCreated = z.infer<typeof ApiKeyCreated>;
+export type Quality = z.infer<typeof Quality>;
+export type QualityWeek = z.infer<typeof QualityWeek>;
+export type KnowledgeDocument = z.infer<typeof KnowledgeDocument>;
+export type KnowledgeDocuments = z.infer<typeof KnowledgeDocuments>;
+export type KnowledgeAnswer = z.infer<typeof KnowledgeAnswer>;
+export type WebhookEndpoint = z.infer<typeof WebhookEndpoint>;
+export type WebhookEndpoints = z.infer<typeof WebhookEndpoints>;
+export type WebhookSecret = z.infer<typeof WebhookSecret>;
+export type WebhookAttempt = z.infer<typeof WebhookAttempt>;
+export type WebhookAttempts = z.infer<typeof WebhookAttempts>;
+export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
 export type TestCall = z.infer<typeof TestCall>;
