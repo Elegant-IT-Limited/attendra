@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, localDateOf, zonedInstant } from '@attendra/core';
-import type { FrontDeskRepository, ScheduleEntry, ScheduleRepository } from '@attendra/db';
+import { addDays, ClinicConfig, type EventSink, localDateOf, zonedInstant } from '@attendra/core';
+import { appointmentFacts, type Database, type FrontDeskRepository, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -11,7 +11,7 @@ import {
 } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, FRONT_DESK, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
+import { CLOCK, DB, EVENTS, FRONT_DESK, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -48,6 +48,8 @@ export class AppointmentsController {
     @Inject(SCHEDULE) private readonly schedule: ScheduleRepository,
     @Inject(STAFF_SCHEDULER) private readonly scheduler: StaffScheduler,
     @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(DB) private readonly db: Database,
+    @Inject(EVENTS) private readonly events: EventSink,
   ) {}
 
   @Get()
@@ -103,7 +105,7 @@ export class AppointmentsController {
   @ApiConflictResponse({ description: 'The time cannot be booked; `reason` says why' })
   async book(@Param('clinicId') clinicId: string, @Body(new ZodPipe(BookAppointment)) body: z.infer<typeof BookAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     const clinic = await this.clinic(clinicId);
-    return this.answer(await this.scheduler.book(clinic, { ...body, start: new Date(body.startsAt) }, staff.userId));
+    return this.announce(clinicId, 'appointment.booked', this.answer(await this.scheduler.book(clinic, { ...body, start: new Date(body.startsAt) }, staff.userId)));
   }
 
   @Post(':appointmentId/reschedule')
@@ -116,7 +118,7 @@ export class AppointmentsController {
   async reschedule(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(RescheduleAppointment)) body: z.infer<typeof RescheduleAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     const clinic = await this.clinic(clinicId);
-    return this.answer(await this.scheduler.reschedule(clinic, id, { start: new Date(body.startsAt), providerId: body.providerId }, staff.userId));
+    return this.announce(clinicId, 'appointment.rescheduled', this.answer(await this.scheduler.reschedule(clinic, id, { start: new Date(body.startsAt), providerId: body.providerId }, staff.userId)));
   }
 
   @Post(':appointmentId/cancel')
@@ -128,7 +130,21 @@ export class AppointmentsController {
   async cancel(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(CancelAppointment)) body: z.infer<typeof CancelAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     const clinic = await this.clinic(clinicId);
-    return this.answer(await this.scheduler.cancel(clinic, id, { reason: body.reason }, staff.userId));
+    return this.announce(clinicId, 'appointment.cancelled', this.answer(await this.scheduler.cancel(clinic, id, { reason: body.reason }, staff.userId)));
+  }
+
+  /** Tells the clinic's webhooks about a change that happened (not a repeat of one), with ids and times only. */
+  private async announce(clinicId: string, type: 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled', change: AppointmentChange): Promise<AppointmentChange> {
+    if (change.status !== 'done') return change;
+    const a = await appointmentFacts(this.db, clinicId, change.appointmentId);
+    if (!a) return change;
+    const data: Record<string, string | null> = type === 'appointment.cancelled'
+      ? { appointmentId: a.appointmentId, patientId: a.patientId, by: 'staff', callId: null, reason: a.cancelReason }
+      : { appointmentId: a.appointmentId, patientId: a.patientId, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, by: 'staff', callId: null };
+    // a staff move keeps the appointment, so there is no previous one
+    if (type === 'appointment.rescheduled') data.previousAppointmentId = null;
+    await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}` : a.appointmentId, data });
+    return change;
   }
 
   private answer(result: StaffChange): AppointmentChange {

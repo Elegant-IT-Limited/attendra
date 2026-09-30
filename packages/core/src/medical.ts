@@ -9,7 +9,16 @@ import { normalise, words } from './locales/types';
  * Like the emergency list, it errs toward refusing: a caller who asks "how much is a
  * visit" is not caught, but "how much should I take" is.
  */
+/** Medicines callers name, brand and generic, in the spellings transcribers return. */
+const DRUGS = 'ibuprofen|advil|motrin|tylenol|acetaminophen|paracetamol|napa|panadol|aspirin|aleve|naproxen|insulin|metformin|lisinopril|amlodipine|atorvastatin|losartan|levothyroxine|amoxicillin|azithromycin|antibiotics?|benadryl|diphenhydramine|zyrtec|claritin|prednisone|warfarin|eliquis|xarelto|ozempic|semaglutide|melatonin|nyquil|dayquil|sudafed|omeprazole|gabapentin|sertraline|zoloft|xanax|ativan|oxycodone|codeine|tramadol|pills?|tablets?|medicines?|medications?|meds|syrup|drops';
+const CHILD = 'child|kid|kids|baby|infant|toddler|son|daughter|newborn';
+
 const PATTERNS = [
+  // English: a medicine and what to do with it
+  words(`(${DRUGS}) (for|before|with|after|while|during)`),
+  words(`(${DRUGS}) (dose|doses|dosage|dosing)|dos(e|age|ing) (of|for) (${DRUGS})`),
+  words(`how (much|many) (of )?(the |my |this |that |his |her )?(${DRUGS})`),
+  words(`how (much|many) .{0,40}for (a|an|my|his|her|the|our) (\\d+ ?(year|month)s? old |little |young )?(${CHILD})`),
   // English
   words('how (much|many) (should|do|can|could) (i|we|he|she|they) (take|give|use)|what (dose|dosage|amount)|(right|correct|safe|max(imum)?|normal) (dose|dosage)|dos(e|age|ing) (of|for)'),
   words('(should|can|could|is it (ok|okay|safe) to) (i|we|he|she|they)? ?(take|stop|skip|double|mix|combine|drink)|(stop|skip|double|halve) (my|the|his|her) (dose|pill|pills|medication|medicine|tablets?)'),

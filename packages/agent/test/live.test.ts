@@ -88,6 +88,45 @@ describe('taking over and ending', () => {
     expect(c.state.outcome).toBe('transferred');
   });
 
+  it('during an emergency, End call waits until the caller has heard the emergency number', async () => {
+    const c = await w.call();
+    c.caller('my husband has chest pain');
+    expect(c.agent.canEndByStaff()).toBe(false);
+    c.assistant('If this is a medical emergency, please hang up and call');
+    expect(c.agent.canEndByStaff()).toBe(false);
+    c.assistant(' 9-1-1 right away.');
+    expect(c.agent.canEndByStaff()).toBe(true);
+  });
+
+  it('counts the number said in Bengali digits too', async () => {
+    const d = await world('dhanmondi');
+    const c = await d.call();
+    c.caller('বাবার বুকে খুব ব্যথা');
+    expect(c.agent.canEndByStaff()).toBe(false);
+    c.assistant('জরুরি হলে এখনই ৯৯৯ নম্বরে ফোন করুন।');
+    expect(c.agent.canEndByStaff()).toBe(true);
+    await d.t.close();
+  });
+
+  it('sends the emergency script again after a coaching note during an emergency', async () => {
+    const c = await w.call();
+    const script = c.caller('she is not breathing')[0]!;
+    const out = c.agent.coach('ask if she is safe');
+    expect(out).toEqual([{ type: 'instructions', delegationId: null, content: coachingInstruction('ask if she is safe') }, script]);
+    expect((await w.call()).agent.coach('offer Thursday')).toHaveLength(1);
+  });
+
+  it('when a transfer or hang-up fails, tells staff and offers the caller a callback', async () => {
+    const c = await w.call();
+    const events: LiveEvent[] = [];
+    c.agent.observer = (e) => events.push(e);
+    const out = c.agent.onControlFailed('transfer');
+    expect(events).toContainEqual({ type: 'staff', action: 'transfer_failed' });
+    expect(out).toEqual([{ type: 'instructions', delegationId: null, content: expect.stringContaining('call them back') }]);
+    c.agent.onControlFailed('hangup');
+    expect(events).toContainEqual({ type: 'staff', action: 'end_failed' });
+  });
+
   it('ending says goodbye before the line drops', async () => {
     const c = await w.call();
     const out = c.agent.endByStaff();

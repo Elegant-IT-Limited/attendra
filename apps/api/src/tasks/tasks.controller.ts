@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, type FrontDeskRepository, staffNames, staffRole } from '@attendra/db';
+import type { EventSink } from '@attendra/core';
+import { type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -7,7 +8,7 @@ import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, Wa
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { DB, FRONT_DESK } from '../http/tokens';
+import { DB, EVENTS, FRONT_DESK } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
@@ -18,7 +19,7 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/tasks')
 export class TasksController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink) {}
 
   @Get()
   @Requires('tasks:read')
@@ -72,6 +73,8 @@ export class TasksController {
   @ApiConflictResponse({ description: 'Someone else holds the task, or it is already done' })
   async done(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskDone)) body: z.infer<typeof TaskDone>, @CurrentStaff() staff: Staff) {
     this.outcome(isUuid(taskId) ? await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null) : 'not_found');
+    const facts = await taskFacts(this.db, clinicId, taskId);
+    if (facts) await this.events.emit(clinicId, { type: 'request.done', key: taskId, data: facts });
   }
 
   @Post(':taskId/notes')

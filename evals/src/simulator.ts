@@ -24,6 +24,8 @@ export interface ScenarioResult {
   refusals: string[];
   outcome: string;
   spoken: string[];
+  /** The call as a judge reads it: the greeting, each caller line, what the assistant said, and any instruction the backend sent the voice. */
+  transcript: { speaker: 'caller' | 'assistant' | 'instruction'; text: string }[];
   tools: string[];
   callId: string;
   ms: number;
@@ -121,16 +123,22 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let clock = 0;
   let delegations = 0;
   let lastReadback: string | null = null;
+  const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: clinic.greeting }];
   await segment('agent', clinic.greeting, clock);
   for (const turn of scenario.turns) {
     clock += 1500;
-    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); await segment('agent', turn.assistant, clock); continue; }
-    outbound.push(...agent.onCallerTranscript(turn.caller, clock, clock + 1000));
+    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); await segment('agent', turn.assistant, clock); continue; }
+    const heard = agent.onCallerTranscript(turn.caller, clock, clock + 1000);
+    outbound.push(...heard);
+    transcript.push({ speaker: 'caller', text: turn.caller });
+    for (const o of heard) if (o.type === 'instructions') transcript.push({ speaker: 'instruction', text: o.content });
     await segment('caller', turn.caller, clock);
     const say = async () => {
-      if (!turn.reply) return;
+      // live, the assistant's words are the model's, not the script's
+      if (!turn.reply || livePlanner) return;
       const text = render(turn.reply, state, lastReadback, clinic);
       replies.push(text);
+      transcript.push({ speaker: 'assistant', text });
       clock += 2500;
       await segment('agent', text, clock);
     };
@@ -147,7 +155,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     }
     const out = await agent.onDelegation(`item_${++delegations}`);
     outbound.push(...out);
-    for (const o of out) if (o.type === 'commentary') { clock += 1500; agent.onAgentTranscript(o.content, clock, clock + 1000); }
+    for (const o of out) if (o.type === 'commentary') {
+      clock += 1500;
+      agent.onAgentTranscript(o.content, clock, clock + 1000);
+      if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
+    }
     if (state.pending) lastReadback = state.pending.readback;
     await say();
   }
@@ -188,7 +200,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const phrase of scenario.forbid_spoken) {
     check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
-  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, tools: observed.tools, callId, ms: Math.round(performance.now() - started) };
+  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, callId, ms: Math.round(performance.now() - started) };
 }
 
 /** One scenario in its own fresh in-process Postgres, so no scenario can affect another. */

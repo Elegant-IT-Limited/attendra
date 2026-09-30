@@ -7,6 +7,6 @@ turns:
     delegate:
       - search_knowledge: { question: fasting before blood work }
 expect:
-  outcome: abandoned
+  outcome: info
   cites: [Preparing for blood work]
 forbid_spoken: ["you should take", "diagnos"]

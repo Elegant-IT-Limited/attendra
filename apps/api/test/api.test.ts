@@ -175,6 +175,15 @@ describe('settings', () => {
     expect(res.json().issues[0]).toMatchObject({ path: 'greeting' });
   });
 
+  it('refuses an emergency number that is not on the clinic country\'s list, like a typo', async () => {
+    for (const emergencyNumber of ['91', '112', '999']) {
+      const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencyNumber } });
+      expect(res.statusCode, emergencyNumber).toBe(422);
+      expect(res.json().issues[0]).toMatchObject({ path: 'emergencyNumber', message: expect.stringContaining('911') });
+    }
+    expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencyNumber: '911' } })).statusCode).toBe(200);
+  });
+
   it('refuses a change to the phone numbers, including their order', async () => {
     const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+19995550000'] } });
     expect(res.json().issues[0].path).toBe('phoneNumbers');
