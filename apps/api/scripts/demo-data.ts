@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { DHANMONDI_CLINIC } from '@attendra/core';
 import { type Database, DHANMONDI_SCHEDULE_PATIENTS, type PhiCipher, schema, seedDemo, seedDemoSchedule, seedDhanmondi } from '@attendra/db';
+import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
@@ -31,6 +32,8 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   const dhanmondi = await seedDhanmondi(db, cipher);
   const staff: Record<string, string[]> = {};
   for (const l of DEMO_LOGINS) (staff[l.orgId] ??= []).push(await addMember(auth, db, { email: l.email, name: l.name, role: l.role, password, orgId: l.orgId }));
+  // the clinic's documents, indexed with local embeddings: the demo needs no key for them
+  await seedDemoKnowledge(db, new LocalEmbedder(), staff.org_demo![1]);
   const results = await recordDemoCalls(db, cipher, maple.patientIds, now, { bookedBy: staff.org_demo![0] });
   await seedDemoSchedule(db, cipher, { patientIds: maple.patientIds, staffUserIds: staff.org_demo!, now });
   results.push(...await recordDemoCalls(db, cipher, dhanmondi.patientIds, now, { bookedBy: staff.org_dhanmondi![0], clinic: DHANMONDI_CLINIC }));

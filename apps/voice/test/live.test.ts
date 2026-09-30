@@ -14,7 +14,7 @@ import { simulatedCallFor } from '../src/simulated-calls';
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const TOKEN = 'a-long-internal-token-for-the-tests-only';
 const auth = { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' };
-const control = { coach: async () => {}, takeOver: async () => {}, end: async () => {} };
+const control = { coach: async () => {}, takeOver: async () => {}, end: async () => {}, canEnd: () => true };
 
 describe('the live registry', () => {
   it('lists a clinic\'s open calls and keeps a replay buffer for Last-Event-ID', () => {
@@ -57,6 +57,20 @@ describe('the live registry', () => {
     live.open('w1', { clinicId: 'k1', channel: 'web', startedAt: new Date() }, control);
     expect(await live.claim('k1', 'w1', 'key-cccc', 'u_ana', 'take_over', run)).toEqual({ ok: false, error: 'web_call' });
     expect(await live.claim('k2', 'c1', 'key-dddd', 'u_ana', 'end', run)).toEqual({ ok: false, error: 'not_live' });
+  });
+
+  it('refuses End call until the emergency script is said, and a failed transfer frees the call for anyone', async () => {
+    const live = new LiveRegistry();
+    let heard = false;
+    let runs = 0;
+    const run = async () => { runs++; };
+    live.open('c1', { clinicId: 'k1', channel: 'phone', startedAt: new Date() }, { ...control, canEnd: () => heard });
+    expect(await live.claim('k1', 'c1', 'key-aaaa', 'u_ana', 'end', run)).toEqual({ ok: false, error: 'emergency_script' });
+    expect(await live.claim('k1', 'c1', 'key-bbbb', 'u_ana', 'take_over', run)).toEqual({ ok: true, repeat: false });
+    live.publish('c1', { type: 'staff', action: 'transfer_failed' });
+    heard = true;
+    expect(await live.claim('k1', 'c1', 'key-cccc', 'u_jo', 'end', run)).toEqual({ ok: true, repeat: false });
+    expect(runs).toBe(2);
   });
 });
 

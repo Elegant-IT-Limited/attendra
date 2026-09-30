@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, type AuditLog, type ClinicConfig, emergencyNumberFor, findSlots, isClearYes, localDateOf, localName, type Messenger, PACKS, parseDob,
+  addDays, type AuditLog, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  type Messenger, NO_INFORMATION, PACKS, parseDob,
   type PatientDirectory, resolveTransfer, type SchedulerAdapter, speakSlot, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, weekHours, zonedInstant,
 } from '@attendra/core';
@@ -15,6 +16,10 @@ export interface Backend {
   tasks: TaskQueue;
   audit: AuditLog;
   messenger: Messenger;
+  /** The clinic's own documents. Without it, the assistant answers from the FAQ alone. */
+  knowledge?: KnowledgeBase;
+  /** The clinic's webhooks hear about bookings, cancellations and requests. */
+  events?: EventSink;
 }
 
 export interface CallContext {
@@ -38,6 +43,7 @@ const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking',
 const WRITE_TOOLS = new Set<ToolName>(['propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'transfer_call', 'end_call']);
 // after an emergency the only things left to do are to hand the caller to a person
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info']);
+const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
 const key = (...parts: (string | number)[]) => createHash('sha256').update(parts.join('|')).digest('base64url').slice(0, 32);
@@ -68,6 +74,8 @@ export async function runTool(
   }
   const { clinic } = ctx;
   const args = parsed.data as Record<string, unknown>;
+  // never let a webhook problem undo or hold up what the caller was told
+  const emit = (e: DomainEvent) => backend.events?.emit(clinic.id, e).catch((err: unknown) => ctx.log?.warn({ call_id: ctx.callId, type: e.type, err }, 'event not queued'));
   // everything said back to the caller is in the language they are speaking
   const lang = state.language;
   const pack = PACKS[lang];
@@ -95,9 +103,37 @@ export async function runTool(
     }
 
     case 'get_clinic_info': {
+      const question = String(args.question);
+      // the medical-advice rule wins over anything the FAQ or a document says. It checks
+      // what the caller said too: the model may pass on a question it has softened
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
       const hours = todaysHoursLine(clinic, ctx.now());
-      const answer = answerFromFaqs(clinic.faqs, String(args.question));
-      return { ok: true, data: { today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null } };
+      const answer = answerFromFaqs(clinic.faqs, question);
+      const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      // a question answered from the clinic's own words is a call the assistant handled
+      if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
+      return {
+        ok: true,
+        data: {
+          today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
+          ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
+        },
+      };
+    }
+
+    case 'search_knowledge': {
+      const question = String(args.question);
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
+      const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      if (state.outcome === 'abandoned') state.outcome = 'info';
+      return {
+        ok: true,
+        data: {
+          passages: passages.map((p) => ({ title: p.title, text: p.text })),
+          say: 'Answer only from these passages, in a sentence or two, in the caller\'s language. If they do not answer the question, say you do not have that information and offer a callback. Never add advice of your own.',
+        },
+      };
     }
 
     case 'find_slots': {
@@ -158,7 +194,7 @@ export async function runTool(
       const pending = state.pending;
       if (!pending) return refuse('nothing_pending', 'There is nothing to confirm. Propose the change first.');
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
-      if (!isClearYes(state.answerToReadback())) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
+      if (!isClearYes(state.answerToReadback(), clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
       const patient = state.verifiedPatient!;
 
       if (pending.kind === 'cancel') {
@@ -166,6 +202,9 @@ export async function runTool(
         state.pending = null;
         if (cancelled.status === 'not_found') return refuse('unknown_appointment', 'Say you could not find that appointment and offer a callback.');
         state.outcome = 'cancelled';
+        if (cancelled.status === 'cancelled') {
+          await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
+        }
         return { ok: true, data: { cancelled: true } };
       }
 
@@ -183,6 +222,13 @@ export async function runTool(
         oldStillActive = moved.status === 'not_found';
       }
       state.outcome = pending.replacesAppointmentId && !oldStillActive ? 'rescheduled' : 'booked';
+      if (result.status === 'booked') {
+        const a = result.appointment;
+        const facts = { appointmentId: a.id, patientId: patient.id, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.start.toISOString(), endsAt: a.end.toISOString(), by: 'assistant', callId: ctx.callId };
+        await emit(state.outcome === 'rescheduled'
+          ? { type: 'appointment.rescheduled', key: `${a.id}|${facts.startsAt}`, data: { ...facts, previousAppointmentId: pending.replacesAppointmentId } }
+          : { type: 'appointment.booked', key: a.id, data: facts });
+      }
       // the booking stands whatever happens to the text message; never report it as failed
       let smsSent = false;
       if (patient.phone) {
@@ -212,6 +258,7 @@ export async function runTool(
         details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: String(args.callback_number) },
       });
       state.outcome = 'task_created';
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id, say: 'Tell them the request is with the care team, who will review it. Do not promise approval or a time.' } };
     }
 
@@ -222,6 +269,7 @@ export async function runTool(
         details: { reason: String(args.reason), callback_number: String(args.callback_number) },
       });
       if (!state.emergency) state.outcome = 'task_created';
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
     }
 

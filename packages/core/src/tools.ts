@@ -10,6 +10,8 @@ import { TransferTarget } from './clinic';
 export const ToolArgs = {
   verify_caller: z.object({ full_name: z.string().min(3), date_of_birth: z.string().min(4) }),
   get_clinic_info: z.object({ question: z.string().min(2) }),
+  // a short topic ("parking", "fasting before blood work"), never a name or other personal detail
+  search_knowledge: z.object({ question: z.string().min(2).max(300) }),
   find_slots: z.object({
     visit_type_id: z.string(),
     provider_id: z.string().nullable(),

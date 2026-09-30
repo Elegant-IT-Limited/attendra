@@ -11,13 +11,14 @@ export type LiveEvent =
   | { type: 'tool'; tool: string; status: 'started' | 'ok' | 'refused'; code: string | null }
   | { type: 'state'; verified: string | null; pending: string | null; doing: string | null }
   | { type: 'emergency'; kind: string }
-  | { type: 'staff'; action: 'coached' | 'taken_over' | 'ended' }
+  | { type: 'staff'; action: 'coached' | 'taken_over' | 'ended' | 'transfer_failed' | 'end_failed' }
   | { type: 'ended'; outcome: string };
 
 /** What the assistant is doing, in the words the dashboard shows: "finding open times". */
 export const DOING: Record<ToolName, string> = {
   verify_caller: 'checking who is calling',
   get_clinic_info: 'looking up clinic information',
+  search_knowledge: 'searching the clinic\'s documents',
   find_slots: 'finding open times',
   list_appointments: 'looking up appointments',
   propose_booking: 'reading back a booking',
