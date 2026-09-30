@@ -46,7 +46,7 @@ export interface ApiDeps {
   /** Where uploads are sent to be indexed. Without it a document stays queued. */
   jobs?: JobQueue;
   /** Search and answers over the clinic's documents, for the Ask a question box. */
-  knowledge?: { base: KnowledgeBase; answerer: Answerer };
+  knowledge?: { base: KnowledgeBase; answerer: Answerer; embeddingModel?: string };
   /** Webhook URL checks. Only the local demo allows plain HTTP to this machine. */
   webhooks?: GuardOptions & { resolve?: Resolver };
   /** Requests per address per minute on /api/v1. Behind the web proxy, set trustProxy. */

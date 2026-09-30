@@ -29,7 +29,8 @@ export const QUEUES = {
 export const CallJob = z.object({ clinicId: z.string().min(1), callId: z.uuid() });
 export type CallJob = z.infer<typeof CallJob>;
 
-export const DocumentJob = z.object({ clinicId: z.string().min(1), documentId: z.uuid(), hash: z.string().regex(/^[0-9a-f]{64}$/) });
+// `version` is the save that asked for it, so the same bytes queued again (a new embedding model) are a new job
+export const DocumentJob = z.object({ clinicId: z.string().min(1), documentId: z.uuid(), hash: z.string().regex(/^[0-9a-f]{64}$/), version: z.string().max(64).optional() });
 export type DocumentJob = z.infer<typeof DocumentJob>;
 
 const Scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -91,7 +92,7 @@ export function bossQueue(boss: PgBoss): JobQueue {
       await boss.send(QUEUES.webhookEvent, WebhookEventJob.parse(job), { id: jobId(QUEUES.webhookEvent, job.id) });
     },
     async indexDocument(job) {
-      await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}`) });
+      await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}|${job.version ?? ''}`) });
     },
   };
 }

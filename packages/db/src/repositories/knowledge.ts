@@ -40,22 +40,28 @@ export class KnowledgeRepository {
   /**
    * Saves an upload. A document is known by its title: the same title again replaces
    * it. The same bytes again change nothing and are not indexed twice, so a retried
-   * upload is harmless.
+   * upload is harmless, but only while the document is indexed (or being indexed)
+   * with the current embedding model: after a model change, or for a document stuck
+   * waiting or failed, the same bytes queue it again. `version` names this save, so
+   * the index job for it is its own.
    */
-  async save(clinicId: string, d: { title: string; sourceType: SourceType; content: Buffer; userId: string }): Promise<{ id: string; changed: boolean; hash: string }> {
+  async save(clinicId: string, d: { title: string; sourceType: SourceType; content: Buffer; userId: string; embeddingModel?: string }): Promise<{ id: string; changed: boolean; hash: string; version: string }> {
     const hash = createHash('sha256').update(d.content).digest('hex');
     return withClinic(this.db, clinicId, async (tx) => {
-      const [existing] = rows<{ id: string; content_hash: string; status: string }>(await tx.execute(sql`select id, content_hash, status from knowledge_documents where clinic_id = ${clinicId} and title = ${d.title}`));
-      if (existing && existing.content_hash === hash && existing.status !== 'failed') return { id: existing.id, changed: false, hash };
-      const [row] = rows<{ id: string }>(await tx.execute(sql`
+      const [existing] = rows<{ id: string; content_hash: string; status: string; embedding_model: string | null; updated_at: string }>(await tx.execute(sql`
+        select id, content_hash, status, embedding_model, updated_at from knowledge_documents where clinic_id = ${clinicId} and title = ${d.title}`));
+      const current = existing && existing.content_hash === hash
+        && (existing.status === 'indexing' || (existing.status === 'ready' && (!d.embeddingModel || existing.embedding_model === d.embeddingModel)));
+      if (existing && current) return { id: existing.id, changed: false, hash, version: new Date(existing.updated_at).toISOString() };
+      const [row] = rows<{ id: string; updated_at: string }>(await tx.execute(sql`
         insert into knowledge_documents (clinic_id, title, source_type, content, content_hash, size_bytes, uploaded_by_user_id)
         values (${clinicId}, ${d.title}, ${d.sourceType}, ${d.content}, ${hash}, ${d.content.length}, ${d.userId})
         on conflict (clinic_id, title) do update set source_type = excluded.source_type, content = excluded.content, content_hash = excluded.content_hash,
           size_bytes = excluded.size_bytes, uploaded_by_user_id = excluded.uploaded_by_user_id, status = 'queued', failure = null, updated_at = now()
-        returning id`));
+        returning id, updated_at`));
       await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id, counts) values
         (${clinicId}, ${actor(d.userId)}, 'knowledge.document.uploaded', 'knowledge_document', ${row!.id}, ${JSON.stringify({ bytes: d.content.length })}::jsonb)`);
-      return { id: row!.id, changed: true, hash };
+      return { id: row!.id, changed: true, hash, version: new Date(row!.updated_at).toISOString() };
     });
   }
 
