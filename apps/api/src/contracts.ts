@@ -245,6 +245,8 @@ export const Task = z.object({
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
   assigneeName: z.string().nullable(),
+  /** Who closed a done request, by name; null while it is open, or for someone no longer on the team. */
+  doneByName: z.string().nullable(),
   /** What the call's summary suggests staff do, for a request the assistant created. */
   followUp: z.string().nullable(),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
