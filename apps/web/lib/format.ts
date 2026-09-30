@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /** A timestamp in the clinic's own time zone: staff think in clinic time, not browser time. */
+/**
+ * A moment in the clinic's zone, day first like every other date in the dashboard:
+ * "Tue 29 Sep 3:00 PM", or "Tuesday 29 September 2026, 3:00 PM MDT".
+ */
 export function clinicTime(iso: string, timeZone: string, style: 'short' | 'long' = 'short') {
+  if (style === 'short') return shortWhen(iso, timeZone);
   const d = new Date(iso);
-  return new Intl.DateTimeFormat('en-US', style === 'short'
-    ? { timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
-    : { timeZone, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d);
+  const part = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-US', { timeZone, ...o }).format(d);
+  const zone = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' }).formatToParts(d).find((p) => p.type === 'timeZoneName')?.value;
+  return `${part({ weekday: 'long' })} ${part({ day: 'numeric' })} ${part({ month: 'long' })} ${part({ year: 'numeric' })}, ${part({ hour: 'numeric', minute: '2-digit' })}${zone ? ` ${zone}` : ''}`;
 }
 
 export function duration(seconds: number | null) {

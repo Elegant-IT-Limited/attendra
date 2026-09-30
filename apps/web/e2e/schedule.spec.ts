@@ -35,6 +35,8 @@ test.describe.serial('the schedule', () => {
     await expect(panel.getByText('By the assistant, on a call', { exact: false })).toBeVisible();
     await panel.getByRole('link', { name: 'Open the call and its transcript' }).click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
+    // one date format across the dashboard, day first: the call's heading and its booking line alike
+    await expect(page.getByRole('heading', { level: 1, name: /^\w+day \d{1,2} \w+ \d{4}, \d{1,2}:\d{2} [AP]M M[DS]T$/ })).toBeVisible();
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
     await page.getByRole('link', { name: 'Maria Delgado' }).click(); // who was calling, verified
     await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
