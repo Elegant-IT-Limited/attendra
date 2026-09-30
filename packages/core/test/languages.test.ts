@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ClinicConfig, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor,
+  allowedEmergencyNumbers, ClinicConfig, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
   isClearYes, type Language, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
 } from '../src';
 
@@ -132,7 +132,22 @@ describe('the emergency guardrail in every language', () => {
     expect(emergencyNumberFor(DHANMONDI_CLINIC)).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+8801000000100'] })).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'] })).toBe('999');
-    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], emergencyNumber: '112' })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'], emergencyNumber: '112' })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+61291234567'] })).toBe('000');
+    expect(emergencyNumberFor({ phoneNumbers: ['+4930123456'] })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+33142685300'] })).toBe('112');
+  });
+
+  it('takes an emergency number only from the country\'s list, so a typo is never spoken', () => {
+    expect(allowedEmergencyNumbers(['+13035550100'])).toEqual(['911']);
+    expect(allowedEmergencyNumbers(['+8801000000100'])).toEqual(['999']);
+    expect(allowedEmergencyNumbers(['+61291234567'])).toEqual(['000', '112']);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toMatch(/911/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '112' })).toMatch(/911/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+8801000000100'], emergencyNumber: '911' })).toMatch(/999/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '911' })).toBeNull();
+    // a number saved before the rule is not spoken: the country's is
+    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toBe('911');
     expect(crisisLineFor(DEMO_CLINIC)).toBe('988');
     expect(crisisLineFor(DHANMONDI_CLINIC)).toBeNull();
   });
