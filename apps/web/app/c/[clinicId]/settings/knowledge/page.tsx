@@ -26,6 +26,8 @@ const STATUS: Record<KnowledgeDocument['status'], { label: string; tone: BadgeTo
 const FAILURES: Record<string, string> = {
   pdf_unreadable: 'The PDF could not be read. Is it a scan? Upload the text instead.', not_a_pdf: 'The file is not a PDF.', empty: 'There is no text in it.',
   too_large: 'It is over 5 MB.', too_many_chunks: 'It is too long. Split it into smaller documents.', not_text: 'It is not a text file.',
+  too_many_pages: 'It has more than 200 pages. Split it into smaller documents.', too_much_text: 'It has more than 2 MB of text. Split it into smaller documents.',
+  pdf_timeout: 'The PDF took too long to read. Try saving it again as a simpler PDF, or upload the text.', pdf_too_complex: 'The PDF is too complex to read. Upload the text instead.',
 };
 const mediaType = (f: File) => f.type || (f.name.endsWith('.md') ? 'text/markdown' : f.name.endsWith('.pdf') ? 'application/pdf' : 'text/plain');
 const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
