@@ -39,7 +39,9 @@ export type WebhookEventJob = z.infer<typeof WebhookEventJob>;
 export const DeliveryJob = z.object({ clinicId: z.string().min(1), endpointId: z.uuid(), eventId: z.string().min(1) });
 export type DeliveryJob = z.infer<typeof DeliveryJob>;
 
-export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(['queued', 'sent', 'delivered', 'undelivered', 'failed']) });
+/** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
+export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
+export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(SMS_STATUSES) });
 export type SmsStatusJob = z.infer<typeof SmsStatusJob>;
 
 /** Retries back off from 15 seconds to an hour, five times, then the job is dead-lettered. */

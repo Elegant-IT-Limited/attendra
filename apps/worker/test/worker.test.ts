@@ -158,6 +158,10 @@ describe('text delivery status', () => {
     await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.smsMessages).values({ clinicId: DEMO_CLINIC.id, template: 'booking_confirmed', toHash: 'h', idempotencyKey: 'k-sms', status: 'sent', providerSid: sid }));
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
     expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'delivered' })).toBe('updated');
+    // every status Twilio sends for an outbound message, not only the common five
+    for (const status of ['accepted', 'scheduled', 'sending', 'canceled', 'partially_delivered', 'read'] as const) {
+      expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status })).toBe('updated');
+    }
     expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: `SM${'b'.repeat(32)}`, status: 'delivered' })).toBe('unknown');
     await expect(h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: 'not-a-sid', status: 'delivered' })).rejects.toThrow();
   });
