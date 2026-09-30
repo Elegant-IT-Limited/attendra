@@ -37,9 +37,10 @@ export interface VoiceClient {
   liveCalls(clinicId: string): Promise<LiveCallSummary[]>;
   /** The call's event stream, or null when it is not live. The body is Server-Sent Events. */
   liveStream(clinicId: string, callId: string, lastEventId: string | null, signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null>;
-  coach(clinicId: string, callId: string, a: { userId: string; key: string; note: string }): Promise<LiveActionResult>;
-  takeOver(clinicId: string, callId: string, a: { userId: string; key: string; target: { kind: 'front_desk' } | { kind: 'number'; number: string } }): Promise<LiveActionResult>;
-  endCall(clinicId: string, callId: string, a: { userId: string; key: string }): Promise<LiveActionResult>;
+  // byName is shown to everyone watching the call, in the live stream only
+  coach(clinicId: string, callId: string, a: { userId: string; byName?: string; key: string; note: string }): Promise<LiveActionResult>;
+  takeOver(clinicId: string, callId: string, a: { userId: string; byName?: string; key: string; target: { kind: 'front_desk' } | { kind: 'number'; number: string } }): Promise<LiveActionResult>;
+  endCall(clinicId: string, callId: string, a: { userId: string; byName?: string; key: string }): Promise<LiveActionResult>;
 }
 
 export interface ApiOptions {
