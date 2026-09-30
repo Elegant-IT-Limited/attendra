@@ -20,7 +20,7 @@ A caller's question is embedded too, to search with. The planner is told to sear
 
 ## How the assistant refuses anything medical
 
-A question that asks for dosing, whether to take or stop a medicine, side effects, interactions or what a result means is refused in code, before anything is searched: `isMedicalQuestion` in `packages/core/src/medical.ts` is a phrase list in English, Spanish and Bangla, like the emergency guardrail, and errs toward refusing. `search_knowledge` and `get_clinic_info` both return `medical_question` for it, with the line "I can't give medical advice, but I can have someone from the care team call you back." So a document that mentions metformin can never become an answer about how much metformin to take. The planner's rules and the answer instructions say the same, but the code is what holds. An eval proves it with a document that names the medication.
+A question that asks for dosing, whether to take or stop a medicine, side effects, interactions or what a result means is refused in code, before anything is searched: `isMedicalQuestion` in `packages/core/src/medical.ts` is a phrase list in English and Spanish, like the emergency guardrail, and errs toward refusing. `search_knowledge` and `get_clinic_info` both return `medical_question` for it, with the line "I can't give medical advice, but I can have someone from the care team call you back." So a document that mentions metformin can never become an answer about how much metformin to take. The planner's rules and the answer instructions say the same, but the code is what holds. An eval proves it with a document that names the medication.
 
 ## Storage and cost
 
