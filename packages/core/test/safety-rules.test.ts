@@ -4,6 +4,7 @@ import { detectEmergency, isClearYes, namesMatch, parseDob } from '../src';
 describe('emergency guardrail', () => {
   it.each([
     ['I have really bad chest pain', 'cardiac'],
+    ['I think he is having a heart attack', 'cardiac'],
     ['my husband can’t breathe', 'breathing'],
     ['her face is drooping and her speech is slurred', 'stroke'],
     ["it won't stop bleeding", 'bleeding'],
@@ -12,9 +13,18 @@ describe('emergency guardrail', () => {
     ["I don't really want to be here anymore", 'self_harm'],
     ['I think I took too many of my pills', 'overdose'],
     ['my throat is swelling', 'allergic'],
+    ['my son swallowed bleach', 'overdose'],
+    ['I think she was poisoned', 'overdose'],
+    ['he got into the poison under the sink', 'overdose'],
+    ['she took a whole bottle of tylenol', 'overdose'],
+    ['I think it is an overdose', 'overdose'],
     ['this is an emergency', 'general'],
   ])('catches "%s" as %s', (text, kind) => {
     expect(detectEmergency(text)?.kind).toBe(kind);
+  });
+
+  it('hears "stroke" in romanised Bangla, whichever pack catches it first', () => {
+    expect(detectEmergency('baba stroke koreche')?.kind).toBe('stroke');
   });
 
   it('catches a phrase split across transcript fragments once the window is joined', () => {
