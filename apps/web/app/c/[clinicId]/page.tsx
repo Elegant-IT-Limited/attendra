@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, TASK_TYPES, timeOf, TOOLS, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, TASK_TYPES, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const REFRESH = 30_000;
@@ -235,7 +235,7 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
     ['Handed to staff', (a) => n(a.handedToStaff)],
     ['After hours', (a) => n(a.afterHours)],
     ['Talk time', (a) => n(a.talkMinutes, (x) => `${x.toFixed(1).replace(/\.0$/, '')} min`)],
-    ['Estimated cost', (a) => n(a.estimatedCost, (x) => `$${x.toFixed(2)}`)],
+    ['Estimated cost', (a) => n(a.estimatedCost, usd)],
   ];
   return (
     <Card>
@@ -276,7 +276,7 @@ function RecentCalls({ clinicId, tz, calls, canOpen, canTest }: { clinicId: stri
               const body = (
                 <>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(c.startedAt))}</p>
+                    <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date(c.startedAt))} {timeOf(c.startedAt, tz)}</p>
                     <p className="truncate text-xs text-text-muted">{c.tools.map((t) => TOOLS[t] ?? t).join(', ') || 'Talked only'}</p>
                   </div>
                   <Outcome outcome={c.outcome} emergency={c.emergency} />

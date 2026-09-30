@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
-import { age, dob, phone } from '@/lib/format';
+import { age, dob, phone, tenDigitPhones } from '@/lib/format';
 
 /** Waits until typing pauses, so each keystroke is not a request. */
 function useSettled(value: string, ms = 300) {
@@ -58,7 +58,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
         <p className="text-xs text-text-muted">{hint}</p>
       </div>
       {!ready ? empty : results.isPending ? <Skeleton className="h-24" /> : unreadable ? (
-        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or all ten digits of a phone number.</p>
+        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or {tenDigitPhones() ? 'all ten digits of a phone number' : 'a whole phone number'}.</p>
       ) : results.isError ? (
         <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
       ) : !results.data?.patients.length ? (

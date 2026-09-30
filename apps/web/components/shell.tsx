@@ -13,7 +13,8 @@ import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
@@ -37,6 +38,9 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const router = useRouter();
   const queries = useQueryClient();
   const { data: me, clinic, can, isPending } = useClinic(clinicId);
+  // the clock and money follow the clinic's country; set before the page below formats anything
+  const config = useClinicConfig(clinicId);
+  if (config.data) setClinicCountry(config.data.phoneNumbers);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
