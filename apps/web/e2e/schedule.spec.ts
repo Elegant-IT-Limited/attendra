@@ -103,6 +103,28 @@ test.describe.serial('the schedule', () => {
     }
   });
 
+  test('a booking the server refuses says why, not that the connection failed', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+    await expect(page.getByTestId('lane').first()).toBeVisible();
+    await page.route((u) => u.pathname.endsWith('/appointments'), (route) => (route.request().method() === 'POST'
+      ? route.fulfill({ status: 422, json: { error: 'invalid_request', issues: [{ path: 'startsAt', message: 'that time is outside the provider\'s hours' }] } })
+      : route.fallback()));
+    await page.getByRole('button', { name: 'New booking' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New booking' });
+    await dialog.getByLabel('Find a patient').fill('whit');
+    await dialog.getByRole('button', { name: /James Whitaker/ }).click();
+    await dialog.getByLabel('Visit type').selectOption({ label: 'Annual physical (40 min)' });
+    await dialog.getByLabel('Provider').selectOption({ label: 'Dr. Nkem Okafor' });
+    await dialog.getByRole('button', { name: 'Later week' }).click();
+    await dialog.getByRole('radio').first().click();
+    await dialog.getByRole('button', { name: 'Next', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Next', exact: true }).click(); // past the note
+    await dialog.getByRole('button', { name: 'Book appointment' }).click();
+    await expect(dialog.getByText('The booking was not saved: that time is outside the provider\'s hours.')).toBeVisible();
+    await expect(dialog.getByText(/Check your connection/)).toHaveCount(0);
+  });
+
   test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     const block = await findInWeek(page, /booked by the assistant/);
