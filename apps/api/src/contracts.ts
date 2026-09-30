@@ -166,7 +166,14 @@ export const WebhookEndpointInput = z.object({
   events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length),
   omitPatientIds: z.boolean().default(true),
 });
-export const WebhookEndpointPatch = WebhookEndpointInput.partial().extend({ enabled: z.boolean().optional(), omitPatientIds: z.boolean().optional() });
+// every field optional and none defaulted: a field left out of a change is left as it is
+export const WebhookEndpointPatch = z.object({
+  url: z.string().trim().max(2000).optional(),
+  description: z.string().trim().max(200).optional(),
+  events: z.array(z.enum(WEBHOOK_EVENTS)).min(1, 'choose at least one event').max(WEBHOOK_EVENTS.length).optional(),
+  omitPatientIds: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
 /** Returned when an endpoint is made or its secret rotated: the only time the secret is shown. */
 export const WebhookSecret = z.object({ endpoint: WebhookEndpoint, secret: z.string() });
 export const WebhookAttempt = z.object({
