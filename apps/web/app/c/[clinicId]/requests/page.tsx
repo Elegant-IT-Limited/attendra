@@ -41,7 +41,6 @@ function Requests() {
   };
   const [type, setType] = useState('');
   const [who, setWho] = useState<Who>('everyone');
-  const [problem, setProblem] = useState<string | null>(null);
   const queries = useQueryClient();
   const params = new URLSearchParams({ status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}) });
   const tasks = useQuery({
@@ -62,7 +61,6 @@ function Requests() {
     mutationFn: ({ task, action, body }: Act) =>
       api<void>(`/clinics/${clinicId}/tasks/${task.id}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
     onMutate: async ({ task, action, body }: Act) => {
-      setProblem(null);
       await queries.cancelQueries({ queryKey: key });
       const before = queries.getQueryData<TaskList>(key);
       const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
@@ -80,7 +78,7 @@ function Requests() {
     onError: (e, _v, ctx) => {
       if (ctx?.before) queries.setQueryData(key, ctx.before);
       const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
-      setProblem(text);
+      // said once, in the toast, which stays until it is read
       toast({ tone: 'error', message: text });
     },
     onSuccess: (_r, { task, action, body }) => {
@@ -131,7 +129,6 @@ function Requests() {
           <option value="unassigned">Unassigned</option>
         </Select>
       </div>
-      {problem && <Alert tone="warn" className="mb-4">{problem}</Alert>}
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
