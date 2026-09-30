@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type LanguagePack, words } from './types';
+import { fold, type LanguagePack, words } from './types';
 
 /*
  * Bangla, experimental. Standard spoken Bangla (cholito bhasha), always "apni",
@@ -83,7 +83,9 @@ export const bn: LanguagePack = {
     ['general', words('জরুরি|ইমার্জেন্সি|অ্যাম্বুলেন্স|৯৯৯|999|joruri|jaruri|emergency|ambulance')],
   ],
   notAnEmergency: words('জরুরি (না|নয়)|joruri (na|noy)|emergency na'),
-  yes: words('জি|জ্বি|হ্যাঁ|হাঁ|হ্যা|ঠিক আছে|আচ্ছা|করুন|কনফার্ম|ji|jee|ha|haa|haan|hya|hyan|thik ache|thik ase|accha|acha|achha|korun|confirm'),
-  hedge: new RegExp(`${words('না|দাঁড়ান|দাড়ান|পরে|মনে হয়|অন্য দিন|একটু|na|daran|darao|pore|mone hoy|onno din|ektu').source}|[?]`, 'u'),
+  yes: words('জি|জ্বি|হ্যাঁ|ঠিক আছে|করুন|ji|jee|hya|hyan|haan|thik ache|thik ase|korun'),
+  // short words that mean yes alone, and something else inside a sentence
+  yesAlone: new RegExp(`^(${fold('হাঁ|হ্যা|আচ্ছা|কনফার্ম|ha|haa|accha|acha|achha|confirm|ji confirm|জি কনফার্ম')})$`, 'u'),
+  hedge: new RegExp(`${words('না|দাঁড়ান|দাড়ান|পরে|মনে হয়|অন্য দিন|একটু|কিন্তু|তবে|আর একটা|তাহলে|na|daran|darao|pore|mone hoy|onno din|ektu|kintu|tobe|ar ekta|tahole').source}|[?]`, 'u'),
   markers: /[ঀ-৿]+|\b(ami|apni|apnar|amar|ki|kobe|kothay|koto|ache|nai|nei|chai|korte|pabo|diben|bolen|report er|test er|na|ji|hobe|kalke|aj|bhai|apa)\b/g,
 };

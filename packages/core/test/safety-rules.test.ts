@@ -48,10 +48,10 @@ describe('identity inputs', () => {
 
 describe('confirmation', () => {
   it('takes a plain yes', () => {
-    for (const t of ['yes', 'Yeah that works, book it', "that's perfect"]) expect(isClearYes(t)).toBe(true);
+    for (const t of ['yes', 'Yeah that works, book it', "that's perfect"]) expect(isClearYes(t, ['en'])).toBe(true);
   });
 
   it('does not take a hedge, a question or a change of mind as yes', () => {
-    for (const t of ['yes, actually no', 'hmm, maybe', 'yes? wait, Thursday or Friday', 'not that one', '']) expect(isClearYes(t)).toBe(false);
+    for (const t of ['yes, actually no', 'hmm, maybe', 'yes? wait, Thursday or Friday', 'not that one', '']) expect(isClearYes(t, ['en'])).toBe(false);
   });
 });
