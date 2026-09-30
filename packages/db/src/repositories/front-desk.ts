@@ -366,11 +366,19 @@ export class FrontDeskRepository {
     });
   }
 
-  /** Open requests nobody has claimed, oldest first: type and age only, so the home screen shows them without reading patient data. */
+  /**
+   * Open requests nobody has claimed, oldest first: type and age only, so the home
+   * screen shows them without reading patient data. `total` counts them all, past the
+   * first `limit`.
+   */
   async waitingTasks(clinicId: string, limit = 20) {
-    return withClinic(this.db, clinicId, (tx) => tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
-      .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId)))
-      .orderBy(tasks.createdAt).limit(limit));
+    return withClinic(this.db, clinicId, async (tx) => {
+      const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
+      const rows = await tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
+        .where(waiting).orderBy(tasks.createdAt).limit(limit);
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(tasks).where(waiting) as [{ n: number }];
+      return { tasks: rows, total: n };
+    });
   }
 
   /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */

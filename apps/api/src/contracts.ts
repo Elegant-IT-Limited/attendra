@@ -377,7 +377,8 @@ export const Overview = z.object({
   /** Per clinic-time day, oldest first: for the trend lines. Counts only. */
   daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
 });
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })) });
+// the oldest 20, and how many are waiting in all
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int() });
 
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
