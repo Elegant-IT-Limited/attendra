@@ -60,6 +60,12 @@ export const TOOLS: Record<string, string> = {
   propose_booking: 'Proposed a time',
   propose_cancellation: 'Proposed a cancellation',
   commit_pending: 'Confirmed change',
+  // a confirmation, by how it ended (the call list sends these)
+  'commit_pending:booked': 'Booked',
+  'commit_pending:rescheduled': 'Rescheduled',
+  'commit_pending:cancelled': 'Cancelled',
+  'commit_pending:no_clear_yes': 'No clear yes',
+  'commit_pending:refused': 'Not changed',
   create_refill_request: 'Refill request',
   create_callback: 'Callback request',
   transfer_call: 'Transfer',
@@ -171,4 +177,14 @@ export function age(dateOfBirth: string, today: string) {
   let years = ty - y;
   if (tm < m || (tm === m && td < d)) years--;
   return years;
+}
+
+/** "just now", "1 minute ago", "7 hours ago", "11 days ago": the one way the dashboard says how long ago something was. */
+export function ago(ms: number) {
+  const m = Math.max(0, Math.round(ms / 60_000));
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'} ago`;
+  if (m < 1) return 'just now';
+  if (m < 60) return unit(m, 'minute');
+  if (m < 24 * 60) return unit(Math.round(m / 60), 'hour');
+  return unit(Math.round(m / 1440), 'day');
 }

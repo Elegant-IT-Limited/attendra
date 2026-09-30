@@ -58,8 +58,6 @@ const ACTIONS: Record<string, string> = {
   'call.summary.reviewed': 'Marked a call summary reviewed',
   'call.opened': 'Answered a call',
   'call.closed': 'Finished a call',
-  'call.transcript.written': 'Wrote a line of a call transcript',
-  'call.action.recorded': 'Recorded a step the assistant took',
   'call.transcript.read': 'Read a call transcript to summarise it',
   'call.summary.written': 'Wrote a call summary',
   'patient.busy.shown': 'Saw that a patient was already booked then',

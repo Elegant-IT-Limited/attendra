@@ -21,7 +21,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `packages/db` | SQL migrations, RLS, PHI encryption, repositories implementing the ports. |
 | `apps/api` | The dashboard API (NestJS on Fastify). Better Auth handles sign-in, sessions and two-factor under `/api/auth`; every `/api/v1` route passes `StaffGuard`, then reads and writes through `FrontDeskRepository` inside the clinic's scope. OpenAPI at `/api/docs`. |
 | `apps/web` | The staff dashboard (Next.js, Tailwind, TanStack Query). It proxies `/api` to the API, so the browser only ever talks to one origin. |
-| `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, the nightly retention purge, and (behind a flag) text delivery statuses. |
+| `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, webhook delivery with its retries, the nightly retention purge, and text delivery statuses behind a flag, which are not wired yet: nothing produces those jobs. |
 | `apps/mcp` | MCP for other AI agents, over stdio and Streamable HTTP: find open times, today's schedule, the request queue, closing a request, the quality numbers. Per-clinic API keys with scopes and an expiry; no tool books or cancels. [docs/mcp.md](mcp.md). |
 | `packages/webhooks` | Standard Webhooks signing, the SSRF guard (public HTTPS only, checked after DNS and pinned to the checked address), and one delivery. [docs/webhooks.md](webhooks.md). |
 | `packages/knowledge` | The clinic's documents: text extraction (unpdf, in a worker thread with a heap limit and a 30 second deadline, at most 200 pages and 2 MB of text, with eval off), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
@@ -50,6 +50,8 @@ flowchart LR
   worker[apps/worker] --> pg
   pg -->|pg-boss jobs| worker
   worker -->|summaries, embeddings| models[OpenAI Responses and embeddings]
+  voice -->|planner, knowledge search| models
+  api -->|knowledge answers, embeddings| models
   worker -->|signed webhooks| receivers([n8n, Zapier, Make])
 ```
 
@@ -97,7 +99,7 @@ A job that fails is retried with exponential backoff (15 seconds up to an hour, 
 
 **Webhooks.** The agent, the API and the worker emit domain events (a booking, a closed request, a finished call) through an `EventSink`. Each event has an id derived from what happened, so a retried booking is one event. The `webhook-event` job stores it and queues one `deliver-webhook` job per endpoint that wants it; a delivery is retried with backoff for about a day, logged at every attempt, and an endpoint that fails three events in a row is turned off. Emitting never fails the thing that happened: a booking stands whatever the queue does.
 
-`purge-retention` runs at 03:00 UTC. For each clinic it deletes transcripts and summaries of calls older than the clinic's `retentionDays` (2555 by default, about 7 years) and audits how many it deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
+`purge-retention` runs at 03:00 UTC. For each clinic it deletes the transcripts, summaries and call actions of calls, and the webhook events with their delivery attempts, older than the clinic's `retentionDays` (2555 by default, about 7 years), in batches, and audits how many each batch deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
 
 ## The dashboard
 

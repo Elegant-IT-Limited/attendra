@@ -1,4 +1,5 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { saveClinic } from '@attendra/db';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { OTHER, startApi } from './helpers';
@@ -18,6 +19,9 @@ const bookBody = (time: string, key: string, extra: Record<string, unknown> = {}
 
 beforeAll(async () => {
   api = await startApi({ demoMode: false, now: () => NOW });
+  // the demo's holidays follow the current year; this clock is fixed in 2026, so its holiday is too
+  const clinic: typeof DEMO_CLINIC = { ...DEMO_CLINIC, holidays: ['2026-11-26'] };
+  await saveClinic(api.t.db, 'org_demo', clinic);
   as = {
     owner: await api.signIn('omar@maple.example', true),
     admin: await api.signIn('olga@maple.example', true),

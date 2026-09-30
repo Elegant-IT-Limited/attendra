@@ -48,9 +48,11 @@ services:
       DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
       TRUST_PROXY: "true"
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
-  # background jobs: call summaries, the nightly retention purge. Without OPENAI_API_KEY
-  # it writes summaries from each call's facts, with no model.
+  # background jobs: call summaries, indexing the clinic's documents, webhook delivery and
+  # the nightly retention purge. Without OPENAI_API_KEY it writes summaries from each call's
+  # facts and embeds documents locally, with no model.
   worker:
     <<: *node
     command: ["pnpm", "--filter", "@attendra/worker", "start"]
@@ -62,13 +64,20 @@ services:
     <<: *node
     profiles: [mcp]
     command: ["pnpm", "--filter", "@attendra/mcp", "start"]
+    # the port inside the container is fixed, so it always matches the mapping; an MCP_PORT
+    # in .env would otherwise move the server away from it
+    environment:
+      DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
+      MCP_PORT: "8082"
     ports: ["127.0.0.1:8082:8082"]
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
   web:
     build: { context: .., dockerfile: infra/web.Dockerfile, args: { API_URL: "http://api:8081" } }
     ports: ["127.0.0.1:3000:3000"]
     depends_on: [api]
+    restart: unless-stopped
 
   voice:
     <<: *node
@@ -76,6 +85,7 @@ services:
     command: ["pnpm", "--filter", "@attendra/voice", "start"]
     ports: ["127.0.0.1:8080:8080"]
     depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
 
 volumes:
   pgdata:

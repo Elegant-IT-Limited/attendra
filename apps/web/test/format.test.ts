@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { age, clinicTime, setClinicCountry, tenDigitPhones, timeOf, usd } from '../lib/format';
+import { age, ago, clinicTime, setClinicCountry, tenDigitPhones, timeOf, usd } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -30,5 +30,18 @@ describe('age', () => {
     expect(age('2000-09-30', '2026-09-29')).toBe(25);
     expect(age('2000-09-30', '2026-09-30')).toBe(26);
     expect(age('2000-02-29', '2026-02-28')).toBe(25);
+  });
+});
+
+describe('how long ago', () => {
+  it('writes the unit in full, singular for one', () => {
+    const min = 60_000;
+    expect(ago(20_000)).toBe('just now');
+    expect(ago(min)).toBe('1 minute ago');
+    expect(ago(12 * min)).toBe('12 minutes ago');
+    expect(ago(60 * min)).toBe('1 hour ago');
+    expect(ago(7 * 60 * min)).toBe('7 hours ago');
+    expect(ago(24 * 60 * min)).toBe('1 day ago');
+    expect(ago(11 * 24 * 60 * min)).toBe('11 days ago');
   });
 });

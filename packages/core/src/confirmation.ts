@@ -4,11 +4,11 @@ import { type Language, LANGUAGES, normalise, PACKS } from './locales';
 /**
  * Did the caller clearly agree? Used by the agent before any write, on the caller's
  * own words since the read-back, never on the model's summary of them. Anything
- * hedged or mixed ("yes, actually no", "I think so?", "sí, pero espere", "ji, pore")
+ * hedged or mixed ("yes, actually no", "I think so?", "sí, pero espere")
  * is not a yes.
  *
  * A yes counts only in the languages the clinic offers: a word that means yes in
- * another language ("ha", "confirm") is ordinary English at an English clinic. Short,
+ * another language ("sí", "vale") is ordinary text at an English clinic. Short,
  * ambiguous words count only as the whole answer. A hedge in any language blocks it,
  * because a caller who switches languages to say "wait" still means wait.
  */

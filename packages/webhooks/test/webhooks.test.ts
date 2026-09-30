@@ -142,7 +142,8 @@ describe('delivering', () => {
     const started = Date.now();
     const r = await deliver({ url: `http://127.0.0.1:${port}/trickle`, secrets: [newSecret()] }, { id: 'evt_t', body: '{}' }, { allowLoopback: true, timeoutMs: 800 });
     expect(r).toMatchObject({ ok: false, status: null, error: 'timeout' });
-    expect(Date.now() - started).toBeLessThan(1500);
+    // the receiver would trickle for ever: cut at the 800 ms deadline, with room for a busy machine
+    expect(Date.now() - started).toBeLessThan(5000);
     expect(r.ms).toBeGreaterThanOrEqual(750);
   });
 

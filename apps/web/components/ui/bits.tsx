@@ -2,6 +2,7 @@
 'use client';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Tooltip } from '@/components/ui/overlay';
+import { ago } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /** A person as initials in a circle. The colour comes from the name, so it stays the same everywhere. */
@@ -46,10 +47,9 @@ export function AnimatedNumber({ value, format = (n) => String(Math.round(n)) }:
   return <>{format(shown)}</>;
 }
 
-/** "12 min ago", with the exact time on hover and to screen readers. */
+/** "12 minutes ago", with the exact time on hover and to screen readers. */
 export function RelativeTime({ iso, exact, now = Date.now() }: { iso: string; exact: string; now?: number }) {
-  const m = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
-  const text = m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 24 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  const text = ago(now - Date.parse(iso));
   return <Tooltip content={exact}><time dateTime={iso} title={exact} className="cursor-default">{text}</time></Tooltip>;
 }
 

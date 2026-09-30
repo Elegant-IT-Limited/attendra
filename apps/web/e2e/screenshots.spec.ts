@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { openAs } from './session';
 
-// Refreshes the README screenshots from the demo clinic. Skipped unless asked for:
+// Refreshes the README screenshots from the demo clinic, and only those four. Skipped unless asked for:
 //   SCREENSHOTS=1 pnpm test:e2e --grep screenshots
 const out = (name: string) => `../../docs/images/${name}.png`;
 
@@ -18,15 +18,15 @@ test.describe('screenshots', () => {
     });
   });
 
-  test('dashboard pages', async ({ page: signedOut, browser }) => {
-    await hideDevBadge(signedOut);
-    await signedOut.goto('/sign-in');
-    await expect(signedOut.getByText('Demo clinic, synthetic patients')).toBeVisible();
-    await signedOut.screenshot({ path: out('sign-in') });
+  test('dashboard pages', async ({ browser }) => {
     const page = await openAs(browser, 'manager', hideDevBadge);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
-    await expect(page.locator('tbody tr')).toHaveCount(26); // the recorded calls and live.spec's simulated one
+    // the Calls page, loaded, however many calls the demo recorded and the other specs added
+    await expect(page).toHaveURL(/\/calls$/);
+    await expect(page.getByRole('heading', { name: 'Calls', exact: true })).toBeVisible();
+    await expect(page.getByRole('tabpanel').locator('tbody tr').first()).toBeVisible();
+    await expect(page.getByText('Loading', { exact: false })).toHaveCount(0);
     await page.screenshot({ path: out('calls') });
 
     await page.getByRole('tab', { name: 'Bookings and changes' }).click();
@@ -35,12 +35,6 @@ test.describe('screenshots', () => {
     await expect(page.getByText('Identity check', { exact: true })).toBeVisible();
     await page.screenshot({ path: out('call-detail'), fullPage: true });
 
-    await page.getByRole('link', { name: 'All calls' }).click();
-    await page.locator('tbody').getByText('Emergency', { exact: true }).first().click();
-    await expect(page).toHaveURL(/\/calls\/[^/]+$/);
-    await expect(page.getByText('Emergency language on this call')).toBeVisible();
-    await page.screenshot({ path: out('call-emergency') });
-
     await page.getByRole('link', { name: /^Requests/ }).click();
     await expect(page.getByTestId('task').first()).toBeVisible();
     await page.screenshot({ path: out('tasks') });
@@ -48,9 +42,5 @@ test.describe('screenshots', () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     await expect(page.getByLabel('Greeting')).toBeVisible();
     await page.screenshot({ path: out('settings') });
-
-    await page.getByRole('link', { name: 'Audit log' }).click();
-    await expect(page.locator('tbody tr').first()).toBeVisible();
-    await page.screenshot({ path: out('audit') });
   });
 });

@@ -215,7 +215,7 @@ export default function Settings() {
         </Section>
 
         <Section title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
-          <Field label="Keep transcripts and summaries for (days)" htmlFor="retention" hint={`${c.retentionDays} days is about ${(c.retentionDays / 365).toFixed(1)} years. The default, 2555 days, is about 7 years. Between 30 and 3650.`}>
+          <Field label="Keep transcripts, summaries, call actions and webhook events for (days)" htmlFor="retention" hint={`${c.retentionDays} days is about ${(c.retentionDays / 365).toFixed(1)} years. The default, 2555 days, is about 7 years. Between 30 and 3650.`}>
             <Input id="retention" type="number" min={30} max={3650} className="w-28" value={c.retentionDays} onChange={(e) => set({ retentionDays: Number(e.target.value) })} />
           </Field>
         </Section>

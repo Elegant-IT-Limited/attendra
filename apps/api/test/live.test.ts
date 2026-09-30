@@ -127,7 +127,7 @@ describe('staff actions', () => {
   });
 
   it('keeps own numbers in the clinic\'s country, audits a change, and records a take-over\'s destination by its last four digits', async () => {
-    const foreign = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+8801711000123' } });
+    const foreign = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+442079460123' } });
     expect(foreign.statusCode).toBe(422);
     expect(foreign.json().issues[0]).toMatchObject({ path: 'number', message: expect.stringContaining('+1') });
     expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550987' } })).statusCode).toBe(200);

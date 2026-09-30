@@ -4,7 +4,7 @@ Talk to a clinic's receptionist through your microphone, from the dashboard. It 
 
 A test call costs what a phone call costs on OpenAI's side: GPT-Live is about $0.05 a minute, plus the backend model for tool steps. Calls end on their own after 5 minutes (`BROWSER_CALL_MAX_SECONDS`), and a clinic can have two open at once.
 
-What the assistant does on a test call is real for that clinic: bookings, cancellations, refill and callback tasks all land where a phone call's would. Test calls never send texts. Try them on the demo clinic, whose patients are synthetic: say one of their names (Maria Delgado, born 4 March 1985, for example) to pass the identity check. On a live clinic, use a test patient.
+What the assistant does on a test call is real for that clinic: bookings, cancellations, refill and callback requests all land where a phone call's would. Test calls never send texts. Try them on the demo clinic, whose patients are synthetic: say one of their names (Maria Delgado, born 4 March 1985, for example) to pass the identity check. On a live clinic, use a test patient.
 
 ## On your laptop
 
@@ -15,7 +15,7 @@ pnpm demo
 
 Open http://localhost:3000, sign in as `frontdesk@maple-demo.test` (password `attendra-demo-password`), choose **Test call**, and allow the microphone. Headphones stop the assistant hearing itself.
 
-`pnpm demo` starts the voice service in the same process when it finds the key, on 127.0.0.1:8080. Without a key everything else works and the Test call page says that calls are not set up.
+`pnpm demo` starts the voice service in the same process when it finds the key, on 127.0.0.1:8080. Without a key everything else works: the Test call page says that calls are not set up, links to this guide, and offers **Play a simulated call**, a scripted booking call through the real assistant that opens live, with no audio and no OpenAI.
 
 ## On a server
 

@@ -2,11 +2,11 @@ id: demo-morning-sick-visit
 title: A caller asks for a morning sick visit and takes the first one
 caller_number: "+17205550112"
 turns:
-  - caller: Good morning, Grace Lindahl, February 14th 1951. Could I see a doctor about my cough, in the morning if possible?
-    reply: "Of course, Grace. In the morning I have {offered.0}, or {offered.1}."
+  - caller: Good morning, Grace Lindahl, February 14th 1951. Could I see a doctor about my cough next week, in the morning if possible?
+    reply: "Of course, Grace. Next week in the morning I have {offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { full_name: Grace Lindahl, date_of_birth: February 14th 1951 }
-      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: morning }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: $next_week, part_of_day: morning }
   - caller: The first one is good.
     reply: "Just to confirm: {readback}. Is that right?"
     delegate:
