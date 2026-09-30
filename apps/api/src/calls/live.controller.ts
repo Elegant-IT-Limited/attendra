@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Database, type FrontDeskRepository, setTransferNumber, staffNames, transferNumber } from '@attendra/db';
+import { callingCode, ClinicConfig, inClinicCountry, lastFour } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { Body, Controller, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Req, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiProduces, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -104,13 +105,21 @@ export class LiveController {
   @ApiBody({ schema: schemaOf(LiveTakeOver) })
   async takeOver(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @Body(new ZodPipe(LiveTakeOver)) body: z.infer<typeof LiveTakeOver>, @CurrentStaff() staff: Staff) {
     let target: { kind: 'front_desk' } | { kind: 'number'; number: string } = { kind: 'front_desk' };
+    let destination: string | null;
     if (body.target === 'me') {
       const number = await transferNumber(this.db, staff.userId, clinicId);
       if (!number) throw new HttpException({ error: 'no_number' }, 409);
       target = { kind: 'number', number };
+      destination = number;
+    } else {
+      const clinic = ClinicConfig.parse(await this.desk.settings(clinicId));
+      destination = clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null;
     }
     const r = await this.live().takeOver(clinicId, callId, { userId: staff.userId, key: body.key, target });
-    return this.settle(clinicId, callId, staff, r, 'call.taken_over');
+    // the audit row names the destination by its last four digits only
+    return this.settle(clinicId, callId, staff, r, 'call.taken_over', {
+      ownNumber: target.kind === 'number' ? 1 : 0, ...(destination ? { destinationLast4: Number(lastFour(destination)) } : {}),
+    });
   }
 
   @Post('calls/:callId/live/end')
@@ -136,6 +145,11 @@ export class LiveController {
   @ApiOperation({ summary: 'Set or clear your own number for taking over live calls' })
   @ApiBody({ schema: schemaOf(TransferNumber) })
   async setMyNumber(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TransferNumber)) body: z.infer<typeof TransferNumber>, @CurrentStaff() staff: Staff) {
+    // a take-over rings this number, so it must be in the clinic's own country
+    const clinic = ClinicConfig.parse(await this.desk.settings(clinicId));
+    if (body.number && !inClinicCountry(clinic, body.number)) {
+      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'number', message: `use a number in the clinic's country (+${callingCode(clinic.phoneNumbers[0] ?? '') ?? '?'})` }] });
+    }
     if (!(await setTransferNumber(this.db, staff.userId, clinicId, body.number))) throw new NotFoundException({ error: 'not_found' });
     return { number: body.number };
   }

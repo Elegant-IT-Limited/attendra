@@ -62,12 +62,17 @@ export async function transferNumber(db: Database, userId: string, clinicId: str
   return row?.n ?? null;
 }
 
+/** Sets or clears it, audited in the clinic: a take-over rings this number, so a change to it is a change to where calls can go. */
 export async function setTransferNumber(db: Database, userId: string, clinicId: string, number: string | null): Promise<boolean> {
   const org = await orgOfClinic(db, clinicId);
   if (!org) return false;
   const rows = await db.update(memberships).set({ transferNumber: number })
     .where(and(eq(memberships.userId, userId), eq(memberships.organizationId, org))).returning({ id: memberships.id });
-  return rows.length > 0;
+  if (!rows.length) return false;
+  await withClinic(db, clinicId, (tx) => tx.insert(auditLogs).values({
+    clinicId, actor: actorOf(userId), action: number ? 'member.transfer_number.set' : 'member.transfer_number.cleared', entity: 'member', entityId: userId,
+  }));
+  return true;
 }
 
 export class FrontDeskRepository {
