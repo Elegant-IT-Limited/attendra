@@ -4,7 +4,7 @@ import { apiKeyIsLive, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { and, asc, eq, gt, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, lt } from 'drizzle-orm';
 import { z } from 'zod';
 
 export interface McpDeps {
@@ -91,7 +91,7 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
     const rows = await withClinic(d.db, c.id, async (tx) => {
       const found = await tx.select({ a: schema.appointments, first: schema.patients.firstNameEnc, last: schema.patients.lastNameEnc })
         .from(schema.appointments).innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
-        .where(and(eq(schema.appointments.clinicId, c.id), eq(schema.appointments.status, 'booked'), gt(schema.appointments.startsAt, zonedInstant(today, '00:00', c.timezone)),
+        .where(and(eq(schema.appointments.clinicId, c.id), eq(schema.appointments.status, 'booked'), gte(schema.appointments.startsAt, zonedInstant(today, '00:00', c.timezone)),
           lt(schema.appointments.startsAt, zonedInstant(addDays(today, 1), '00:00', c.timezone)), a.providerId ? eq(schema.appointments.providerId, a.providerId) : undefined))
         .orderBy(asc(schema.appointments.startsAt));
       await auditKeyUseIn(tx, caller, 'list_todays_schedule', { appointments: found.length, names: found.length });
