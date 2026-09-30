@@ -50,6 +50,8 @@ flowchart LR
   worker[apps/worker] --> pg
   pg -->|pg-boss jobs| worker
   worker -->|summaries, embeddings| models[OpenAI Responses and embeddings]
+  voice -->|planner, knowledge search| models
+  api -->|knowledge answers, embeddings| models
   worker -->|signed webhooks| receivers([n8n, Zapier, Make])
 ```
 
