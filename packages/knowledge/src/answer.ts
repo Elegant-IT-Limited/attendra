@@ -30,7 +30,9 @@ export class ModelAnswerer implements Answerer {
 export class LocalAnswerer implements Answerer {
   readonly model = 'local';
   async answer(_question: string, passages: KnowledgePassage[]): Promise<string> {
-    const body = passages[0]!.text.split('\n').filter((l) => l.trim()).slice(-1)[0] ?? passages[0]!.text;
+    const lines = passages[0]!.text.split('\n').filter((l) => l.trim());
+    // the opening sentence line, past a heading ("Parking"), which has no sentence end
+    const body = lines.find((l) => /[.!?]/.test(l)) ?? lines[0] ?? passages[0]!.text;
     // the first two sentences; a linear split, and a bounded input, whatever the document holds
     return body.slice(0, 2000).split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').trim();
   }
