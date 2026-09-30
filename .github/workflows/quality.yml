@@ -1,0 +1,49 @@
+name: quality
+# Manual only, never on a schedule or a push: it calls OpenAI with the repository's
+# OPENAI_API_KEY secret, and each run costs credit. CI (ci.yml) runs the scripted
+# evals, which call nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: How many simulated calls to run (at most 50)
+        required: false
+        default: '20'
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    # the key lives in this environment, so a run can require a reviewer's approval
+    environment: quality
+    timeout-minutes: 60
+    env:
+      # passed as a variable, not written into the script, so an input cannot become a command
+      SCENARIOS: ${{ inputs.scenarios }}
+      FORCE_COLOR: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: simulated callers against the real assistant
+        # the key goes only to the two steps that call OpenAI, never to install or upload
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -o pipefail
+          # a whole number from 1 to 50: each call costs credit
+          n="${SCENARIOS:-20}"
+          case "$n" in ''|*[!0-9]*) echo "scenarios must be a number" >&2; exit 1 ;; esac
+          if [ "$n" -lt 1 ] || [ "$n" -gt 50 ]; then echo "scenarios must be from 1 to 50" >&2; exit 1; fi
+          mkdir -p evals/reports
+          pnpm sim --scenarios "$n" | tee "evals/reports/sim-$(date -u +%F).txt"
+      - name: live evals, scored by the judge
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pnpm eval --live --judge
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with: { name: quality-report, path: evals/reports, retention-days: 30 }

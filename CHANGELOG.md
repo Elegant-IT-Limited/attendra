@@ -6,11 +6,65 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added
 
+- `apps/mcp`: an MCP server over stdio and Streamable HTTP, so other AI agents can work with the front desk: `find_open_slots`, `list_todays_schedule`, `list_open_requests`, `mark_request_done` and `get_quality_summary`. No tool books or cancels. The stdio server is a thin bridge to the HTTP one, needing only its address and a key. See [docs/mcp.md](docs/mcp.md), with a desktop MCP client's config.
+- Settings > API keys: per-clinic keys with scopes (`schedule:read`, `requests:read`, `requests:write`, `quality:read`) and an expiry of 7 days to a year, shown once and stored only as a SHA-256 hash, revocable, and audited at every use as `mcp.<tool>`. A key works only while its maker is an owner or practice manager, is checked again at every tool call, and `/mcp` is rate limited.
+- A Quality page for owners and managers: week by week, calls handled without staff, booking success, turns to a booking, why the assistant said no, transfers, calls flagged for review, after-hours calls and cost per call and per booking. Every number opens the calls behind it. See [docs/quality.md](docs/quality.md).
+- `pnpm eval --live --judge`: a judge model scores each live transcript on outcome, no medical advice, disclosure, read-back, politeness and brevity, and writes `evals/reports/<date>.md`. The scripted evals are unchanged.
+- `pnpm sim --scenarios 20`: a model plays the patient from personas in `evals/sim/personas.yaml`, against the real assistant as text, and the quality numbers are printed. The caller and the assistant are interfaces, ready for a voice simulation.
+- A manual `quality` workflow runs both in the `quality` environment and keeps the reports. Only the two steps that call OpenAI get the key, a run is capped at 50 simulated calls, and every action is pinned to a commit SHA.
+- Webhooks, under Settings > Integrations, for n8n, Zapier, Make or a clinic's own systems: `call.completed`, `call.summary.ready`, `appointment.booked`, `.rescheduled`, `.cancelled`, `request.created` and `request.done`, signed per the Standard Webhooks specification with a secret per endpoint that is shown once and can be rotated with a day's overlap. Payloads carry ids, times, types, outcomes and counts, never names or what was said, and each endpoint leaves patient ids out unless it is set to send them (a patient id with appointment times is PHI, so receivers need a BAA). See [docs/webhooks.md](docs/webhooks.md), with verification code in TypeScript and Python and an n8n recipe.
+- Deliveries are worker jobs, retried with backoff for about a day and logged with status codes and timings. Each delivery has a 10 second total deadline. The log has Redeliver, and Send test event tries an endpoint at once; both are limited per clinic. An endpoint that fails three events in a row is turned off, and owners and managers are told on Today.
+- Only public HTTPS addresses are allowed (no private, 6to4, NAT64 or site-local IPv6 addresses), checked when an endpoint is saved and again after DNS at every delivery, with the connection pinned to the checked address. A new permission, `integrations:manage`, is for owners and managers.
+- The clinic's knowledge: a practice manager uploads documents (PDF, text or markdown, up to 5 MB) under Settings > Knowledge, and the assistant answers from them, and only from them. Search is hybrid (pgvector and full text, fused), keeps the best four passages, and says "I don't have that information, I can have someone call you back" when nothing answers. An Ask a question box shows the answer and the passages it came from. See [decision 8](docs/decisions/0008-clinic-knowledge.md).
+- A new `search_knowledge` tool, and `get_clinic_info` adds passages from the documents when the FAQ has no answer. A medical question (dosing, side effects, whether to take something) is refused in code before anything is searched, on the model's question and the caller's own words, in English, Spanish and Bangla. During a call the question's embedding gets 4 seconds before the search falls back to full text.
+- Documents are indexed by the worker, once per content: text extraction with unpdf (PDFs in a worker thread with a heap limit and a deadline, at most 200 pages and 2 MB of text), chunks of about 500 tokens by heading and paragraph, and embeddings with `ATTENDRA_EMBEDDING_MODEL` (`text-embedding-3-small` by default), or local ones with no key. Uploads and deletes are audited.
+- Five knowledge evals: parking, insurance, fasting before blood work, a question no document answers, and a dosing question that must be refused.
+- Live calls: Today and Calls show a Live now strip with each call's length, who is calling once verified, and what the assistant is doing. Opening one shows live captions that follow the conversation (and pause while you scroll up), the tool steps as they run, the read-back waiting for a yes, and an emergency banner the moment the guardrail fires. When the call ends the page becomes the call record.
+- Staff on a live call can send the assistant a short note, take the call to the front desk line or their own number, or end it. A note never overrides the rules in code, and during an emergency it is followed by the emergency script again; End call waits until the caller has heard the emergency number. Each action is audited before it runs, sent once per click, and a second person is told who already has the call; a transfer or hang-up that fails frees the call and the assistant offers a callback. Take-over numbers must be in the clinic's country and are audited by their last four digits. Every live stream opened is audited, and a stream ends after 60 minutes and re-checks the watcher every 5. A browser test call cannot be transferred. A new permission, `calls:coach`, is for owners, managers and front desk staff.
+- An opt-in sound and notification when an emergency starts on any live call, kept per browser.
+- Simulated calls in the local demo: a scripted booking call through the real assistant, with no audio and no OpenAI, from Test call. The e2e suite watches, coaches and ends one.
+- A summary of every call, written by a new worker service (`apps/worker`, on pg-boss in the same Postgres). It holds two or three sentences for staff, what the caller wanted, how they came across, whether the call needs review and why (fixed rules flag emergencies, unverified callers, records only staff can pick and calls that ended on an error, whatever the model says), and a follow-up suggested by the assistant. It is encrypted, written once per call, and audited. Without an OpenAI key it is written from the call's facts alone.
+- The call page shows the summary with intent and sentiment badges and the review flag, and a flagged call can be marked reviewed. The call list has a Needs review filter, Today lists flagged calls, and requests the assistant created show the suggested next step.
+- A retention period per clinic (`retentionDays`, 2555 days by default): a nightly job deletes older transcripts, summaries and call actions in batches and audits how many.
+- Background jobs retry with exponential backoff and then go to a dead-letter queue. The `worker_jobs` view shows each clinic its own jobs, with a failure code and never an error's message.
+- The assistant can have a name ("Maya"), which it introduces itself with. A name never counts as the AI disclosure: the greeting must still say AI assistant, and Settings warns about a greeting that names the software.
+- Spanish, and Bangla as an experimental language. Each clinic chooses the languages its assistant speaks and a primary language; calls start in the primary one and follow the caller. Offered times, read-backs, text messages and the emergency script are in the caller's language, and visit types and providers can have a name in each. See [docs/languages.md](docs/languages.md).
+- The emergency guardrail works in every language on every call; the clear-yes check hears a yes in the clinic's languages and a hedge in any. The emergency script gives the clinic's emergency number, chosen from its country's list (911, 999, 112, 000), and names 988 only in the United States. Poisoning, stroke and throat-swelling phrases are covered in all three languages.
+- A second demo clinic, Dhanmondi Diagnostic Centre in Dhaka, in Bangla first and English second, open Saturday to Thursday, with its own login (`frontdesk@dhanmondi-demo.test`) that sees only that clinic.
+- Settings > Assistant and languages: the assistant's name, the languages with an Experimental badge on Bangla, the primary language, the emergency number, and a greeting preview in each language.
+- 11 new evals: 5 in Spanish (a booking, a hedge, chest pain, a refill, three wrong dates of birth) and 6 in Bangla (a booking with "ji", the hedge "na, pore", report times, a price, an emergency with 999, and a caller mixing Bangla and English). Scenarios can name their clinic and check the call's language, what was said and which FAQ answered.
+- Dates of birth can be said with Spanish or Bengali month names and Bengali digits, and a numeric date is read day first outside North America.
 - A design system for the dashboard: semantic colour tokens for light and dark, Inter and Noto Sans Bengali self-hosted, one type scale, three radii, two shadows and one focus ring, and a component kit (buttons, fields, switches, tabs, panels, menus, tooltips, toasts, stat cards with sparklines and more). See [docs/design.md](docs/design.md).
 - Dark mode, chosen per person (system, light or dark) and applied before the first paint.
 - A command palette (Cmd+K or Ctrl+K) to jump to a page, find a patient, start a booking or a test call, or switch the theme, and keyboard shortcuts (G then T, S, P, R or C; N; ?).
 - Request actions update at once and roll back if the server refuses, with a toast, and Undo after a claim. Today opens with four stat cards and seven-day trends; `/overview` returns per-day counts for them.
 - The sidebar collapses to icons from 1024 px, and a phone gets a bottom bar. Every main page is checked with axe in light and dark in the e2e suite.
+
+### Changed
+
+- Migration `0016_call_summaries_same_clinic.sql` ties each call summary to its call's clinic with a composite key. Migration `0015_api_key_update_columns.sql` lets the application change only an API key's `revoked_at` and `last_used_at`. Migration `0014_webhook_patient_ids.sql` adds `webhook_endpoints.omit_patient_ids`, on by default.
+- Request bodies over 512 KB are refused on every route but the knowledge upload, which takes up to 5 MB.
+- The demo schedule gives nobody more than two upcoming visits, with more invented patients to fill it.
+- Migration `0013_api_keys.sql` adds `api_keys`, with Row Level Security.
+- The roadmap: v0.4 is done, and v0.5, the revenue release, is next.
+- A call where the assistant answered a question from the FAQ or the clinic's documents now ends with the outcome `info` rather than `abandoned`.
+- The call list takes `refusal=<code>`, and the Calls page reads its filters from the address.
+- Migration `0012_webhooks.sql` adds `webhook_endpoints` (secrets encrypted), `webhook_events` and `webhook_attempts`, with Row Level Security.
+- Compose runs `pgvector/pgvector:pg16` instead of `postgres:16`; `docs/self-hosting.md` has the one-step upgrade. Migration `0011_knowledge.sql` adds `knowledge_documents` and `knowledge_chunks` (with an HNSW index and a full-text index, and Row Level Security).
+- The e2e suite signs in fewer times: the stored manager session stays signed in, and the sign-out test ends the Dhanmondi session instead.
+- Migration `0010_staff_transfer_number.sql` adds an optional `transfer_number` to memberships, for taking over a live call on your own phone.
+- `GET /me` says whether simulated calls are available (`simulatedCalls`), and `testCalls` is now true only when the voice service takes real browser calls.
+- Migration `0009_call_summaries.sql` adds `call_summaries` (encrypted text, with Row Level Security), `audit_logs.counts` for audit rows that record how much was done, and `sms_messages.provider_sid`.
+- The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
+- `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
+- The demo clinic's assistant is called Maya and speaks English and Spanish.
+
+## [0.3.0] - 2026-09-30
+
+The working front desk: test calls from the browser, the schedule, patients, the Today screen, requests and the team.
+
+### Added
+
 - Test calls from the browser: a Test call page in the dashboard talks to the clinic's receptionist through the microphone over WebRTC, with the live settings and the same tools and guardrails as a phone call. Only an OpenAI key is needed; `pnpm demo` turns it on when it finds one. See [docs/test-calls.md](docs/test-calls.md).
 - Calls record where they came from (`phone` or `web`). Browser tests are marked in the call list and on the call page, and each one is audited with the person who started it, in the same transaction as the call row.
 - Test calls end on their own after `BROWSER_CALL_MAX_SECONDS` (300 by default), a clinic can have two open at once, and they never send texts.
@@ -29,9 +83,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - The front desk cannot book a patient into a time that overlaps another of their appointments, with any provider, and a booking key sent again for a different booking is refused (`idempotency_mismatch`).
 - The menu is grouped the way a front desk works: Today; Front desk (Schedule, Patients, Requests, Calls); Assistant (Test call, Settings); Admin (Team, Audit log). The audit log has plain words for every action and names people for owners and managers.
 - `pnpm demo` fills three weeks of the demo calendar around today: the demo calls' own bookings, linked to their calls, and about 60 percent of the rest booked by staff, with a few cancellations.
+- `/api/v1/me` says whether the deployment has test calls (`testCalls`).
 
 ### Changed
 
+- Migration `0005_call_patient.sql` adds `calls.patient_id`, set in the same transaction as the tool action that verified the caller.
+- The redacting logger also replaces `query` and `search` fields.
+- Migration `0004_staff_scheduling.sql`: appointments record the staff member who booked or cancelled them, a cancel reason, an encrypted note and an update time, and a booking must come from a call or a person.
+- A screen that refreshes a patient-data view on a timer (the schedule) writes one audit row per person per view every 5 minutes, instead of one every 30 seconds.
+- The voice service starts without Twilio or a webhook secret. Without Twilio, texts are recorded as not sent; without the secret, phone calls are refused.
+- An empty line in `.env` counts as not set for the voice service's settings and for `VOICE_URL` and `VOICE_INTERNAL_TOKEN`.
+- The dashboard allows its own pages to use the microphone (`Permissions-Policy: microphone=(self)`); camera and location stay off.
 - Signing in now opens Today instead of the call list.
 - "Tasks" are "Requests" everywhere in the dashboard, and `/tasks` pages move to `/requests`. The API keeps the name `tasks`.
 - Migration `0006_request_notes.sql` adds `task_notes` (encrypted, insert-only for the application role, with Row Level Security) and a request's outcome and who assigned it.
@@ -47,19 +109,6 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - The demo moved its own bookings forward in milliseconds, so after a clock change a visit shifted by an hour. It now moves them by whole weeks of local time.
 - The week view's provider headers showed initials; they show the short name, with the full name on hover.
-- Migration `0005_call_patient.sql` adds `calls.patient_id`, set in the same transaction as the tool action that verified the caller.
-- The redacting logger also replaces `query` and `search` fields.
-- Migration `0004_staff_scheduling.sql`: appointments record the staff member who booked or cancelled them, a cancel reason, an encrypted note and an update time, and a booking must come from a call or a person.
-- A screen that refreshes a patient-data view on a timer (the schedule) writes one audit row per person per view every 5 minutes, instead of one every 30 seconds.
-- The voice service starts without Twilio or a webhook secret. Without Twilio, texts are recorded as not sent; without the secret, phone calls are refused.
-- An empty line in `.env` counts as not set for the voice service's settings and for `VOICE_URL` and `VOICE_INTERNAL_TOKEN`.
-- `/api/v1/me` says whether the deployment has test calls (`testCalls`).
-- The dashboard allows its own pages to use the microphone (`Permissions-Policy: microphone=(self)`); camera and location stay off.
-
-### Fixed
-
-Found on the first live test call:
-
 - A clear "yeah" to a read-back was refused when the assistant began speaking before the proposal was back and read it out in the same breath. Any assistant speech after the proposal now counts as the read-back.
 - A cough or breath the transcriber marks in brackets ("[clear throat]") after the caller's yes made the yes not count. Bracketed sounds are now ignored.
 - The assistant could not answer "are you open tomorrow?": clinic info now carries the next seven days of hours.

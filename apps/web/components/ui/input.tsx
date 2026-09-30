@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ChevronDown } from 'lucide-react';
-import { type InputHTMLAttributes, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from 'react';
+import { type ComponentProps, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from 'react';
 import { cn } from '@/lib/utils';
 
 const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11';
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+/** A text field. It takes a ref, like the input it renders (a file field needs one to be cleared). */
+export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn(field, 'h-9', className)} {...props} />;
 }
 

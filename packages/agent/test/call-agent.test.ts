@@ -56,7 +56,7 @@ describe('booking over the phone', () => {
     const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(spoken(done)).toContain('"booked":true');
     expect(await bookings()).toHaveLength(1);
-    expect(w.sms).toEqual([{ to: '+13035550147', template: 'booking_confirmed' }]);
+    expect(w.sms).toMatchObject([{ to: '+13035550147', template: 'booking_confirmed', language: 'en' }]);
     expect(c.state.outcome).toBe('booked');
   });
 
@@ -127,6 +127,13 @@ describe('safety', () => {
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
     expect(spoken(out)).toContain('Do not promise approval');
     expect(c.state.outcome).toBe('task_created');
+  });
+
+  it('refuses a medical question the caller asked, even when the model passes on a softened one', async () => {
+    const c = await w.call();
+    c.caller('How much Tylenol for a child who is four?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'children\'s pharmacy information' } }, { tool: 'search_knowledge', args: { question: 'pediatric info' } }]);
+    expect(out.errors).toEqual(['medical_question', 'medical_question']);
   });
 });
 

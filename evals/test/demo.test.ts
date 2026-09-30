@@ -1,6 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { createPhiCipher, FrontDeskRepository, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
+import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recordDemoCalls, shiftByWeeks } from '../src/demo';
@@ -14,6 +15,7 @@ const NOW = new Date('2026-09-28T18:00:00Z');
 beforeAll(async () => {
   t = await openTestDatabase();
   const { patientIds } = await seedDemo(t.db, cipher);
+  await seedDemoKnowledge(t.db, new LocalEmbedder());
   results = await recordDemoCalls(t.db, cipher, patientIds, NOW);
 }, 60_000);
 afterAll(() => t.close());
@@ -25,7 +27,7 @@ describe('demo calls', () => {
 
   it('writes one call per scenario, spread over the past week, newest first', async () => {
     const calls = await new FrontDeskRepository(t.db, cipher).listCalls(DEMO_CLINIC.id, { limit: 100 });
-    expect(calls).toHaveLength(loadScenarios().length);
+    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple').length);
     expect(calls[0]!.startedAt.getTime()).toBeLessThan(NOW.getTime());
     expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(7 * 24 * 3_600_000);
   });
@@ -46,6 +48,12 @@ describe('demo calls', () => {
     expect(await patientOf('booking-happy-path')).toBe(patientIds.maria);
     expect(await patientOf('no-identity-no-records')).toBeNull();
     expect(await patientOf('shared-name-and-dob')).toBeNull(); // two records match: nobody is verified
+  });
+
+  it('puts back no more than two upcoming visits per patient, however many calls booked for them', async () => {
+    const most = (await t.db.execute(sql`select count(*)::int as n from appointments where clinic_id = ${DEMO_CLINIC.id} and status = 'booked'
+      and starts_at > ${NOW.toISOString()}::timestamptz group by patient_id order by n desc limit 1`)).rows[0] as { n: number } | undefined;
+    expect(most?.n ?? 0).toBeLessThanOrEqual(2);
   });
 
   it('keeps transcripts encrypted at rest', async () => {
