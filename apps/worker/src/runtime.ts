@@ -77,16 +77,16 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       return saved;
     },
 
-    /** Transcripts and summaries past each clinic's retention period. Counts are audited, never content. */
+    /** Transcripts, summaries and call actions past each clinic's retention period. Counts are audited, never content. */
     async purgeRetention() {
-      const results: { clinicId: string; transcriptLines: number; summaries: number }[] = [];
+      const results: { clinicId: string; transcriptLines: number; summaries: number; callActions: number }[] = [];
       for (const clinic of await allClinics(d.db)) {
         const parsed = ClinicConfig.safeParse(clinic.config);
         const days = parsed.success ? parsed.data.retentionDays : 2555;
         const counts = await purgeCallRecords(d.db, clinic.id, new Date(now().getTime() - days * 86_400_000));
         results.push({ clinicId: clinic.id, ...counts });
       }
-      d.log.info({ clinics: results.length, transcript_lines: results.reduce((n, r) => n + r.transcriptLines, 0), summaries: results.reduce((n, r) => n + r.summaries, 0) }, 'retention purge done');
+      d.log.info({ clinics: results.length, transcript_lines: results.reduce((n, r) => n + r.transcriptLines, 0), summaries: results.reduce((n, r) => n + r.summaries, 0), call_actions: results.reduce((n, r) => n + r.callActions, 0) }, 'retention purge done');
       return results;
     },
 
