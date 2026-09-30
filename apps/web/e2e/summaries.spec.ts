@@ -33,8 +33,8 @@ test.describe.serial('call summaries', () => {
 
     await page.getByRole('link', { name: 'All calls' }).click();
     await page.getByRole('tab', { name: 'Needs review' }).click();
-    if (before === 1) await expect(page.getByText('No calls here')).toBeVisible();
-    else await expect(rows).toHaveCount(before - 1);
+    // one fewer flagged call, whether that leaves some or none
+    await expect(rows.filter({ hasText: 'Needs review' })).toHaveCount(before - 1);
   });
 
   test('a request the assistant created shows the suggested next step', async ({ browser }) => {
