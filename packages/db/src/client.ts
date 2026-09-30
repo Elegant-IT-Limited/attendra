@@ -12,8 +12,16 @@ import * as schema from './schema';
 export type Database = PgDatabase<any, typeof schema>;
 export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
-export function connect(url: string): Database {
-  return drizzle(new Pool({ connectionString: url, max: 10 }), { schema });
+/**
+ * A pool on a Postgres URL. An idle connection the server drops emits 'error' on the
+ * pool, and an EventEmitter with no listener for it ends the process, so there is
+ * always one: it reports the error's code, never its message (which can quote a row).
+ */
+export function connect(url: string, opts: { onError?: (code: string) => void } = {}): Database {
+  const pool = new Pool({ connectionString: url, max: 10 });
+  const report = opts.onError ?? ((code: string) => process.stderr.write(`${JSON.stringify({ level: 50, msg: 'database connection error', code })}\n`));
+  pool.on('error', (err: Error & { code?: string }) => report(err.code ?? 'unknown'));
+  return drizzle(pool, { schema });
 }
 
 /**

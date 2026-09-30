@@ -13,7 +13,7 @@ const log = createLogger({ name: 'voice', level: env.LOG_LEVEL });
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
-const db = connect(env.DATABASE_URL);
+const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
 const app = createVoiceApp({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),

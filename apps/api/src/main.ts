@@ -14,7 +14,7 @@ const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
 if (env.ATTENDRA_DEMO_MODE) log.warn({}, 'demo mode: two-factor is not required. Do not use with real patient data.');
 
-const db = connect(env.DATABASE_URL);
+const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
 // sends jobs only (document indexing); the worker runs them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
