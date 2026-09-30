@@ -105,7 +105,8 @@ export class FrontDeskRepository {
         id: calls.id, startedAt: calls.startedAt, cursor: sql<string>`${calls.startedAt}::text`, endedAt: calls.endedAt, outcome: calls.outcome,
         emergency: calls.emergencyFlag, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, channel: calls.channel, patientId: calls.patientId,
         firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc,
-        // each step once, in the order the call took them; a confirmation says how it ended
+        // each step once, in the order the call took them; a confirmation says how it ended.
+        // A confirm with nothing pending changed nothing and is left out here; the call page still shows it.
         tools: sql<string[]>`coalesce((select array_agg(s.step order by s.first) from (
           select case when a.tool <> 'commit_pending' then a.tool
             when a.result->>'error' = 'no_clear_yes' then 'commit_pending:no_clear_yes'
@@ -113,7 +114,8 @@ export class FrontDeskRepository {
             when (a.result->>'cancelled')::boolean then 'commit_pending:cancelled'
             when (a.result->>'booked')::boolean then case when ${calls.outcome} = 'rescheduled' then 'commit_pending:rescheduled' else 'commit_pending:booked' end
             else 'commit_pending' end as step, min(a.id) as first
-          from call_actions a where a.clinic_id = ${calls.clinicId} and a.call_id = ${calls.id} group by 1) s), '{}')`,
+          from call_actions a where a.clinic_id = ${calls.clinicId} and a.call_id = ${calls.id}
+            and a.result->>'error' is distinct from 'nothing_pending' group by 1) s), '{}')`,
         verified: sql<boolean>`coalesce(bool_or((${callActions.result}->>'verified')::boolean), false)`,
         // the summary's codes only; its text is PHI and stays on the call page
         intent: callSummaries.intent, sentiment: callSummaries.sentiment,
