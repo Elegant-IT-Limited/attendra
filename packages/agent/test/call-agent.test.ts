@@ -121,6 +121,16 @@ describe('safety', () => {
     expect(c.state.outcome).toBe('emergency');
   });
 
+  it('queues the on-call transfer for chest pain even when "this is an emergency" came first, and only once', async () => {
+    const c = await w.call();
+    const general = c.caller('this is an emergency');
+    expect(general.some((o) => o.type === 'transfer')).toBe(false); // the bare word rings no one
+    const cardiac = c.caller('my husband has chest pain');
+    expect(cardiac).toContainEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000 });
+    const again = c.caller('and now he is not breathing');
+    expect(again.some((o) => o.type === 'transfer')).toBe(false);
+  });
+
   it('turns a refill into a staff task and never approves it', async () => {
     const c = await w.call();
     await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962' } }]);

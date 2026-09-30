@@ -73,7 +73,6 @@ export class CallAgent {
     const match = fresh[0];
     if (!match) return [];
 
-    const first = !this.state.emergency;
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
     this.state.outcome = 'emergency';
@@ -90,9 +89,14 @@ export class CallAgent {
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic)) : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     this.emergencyScript = { content: script, number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
-    if (first && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
+    // once per call, the first time a kind serious enough is heard: "this is an emergency"
+    // on its own does not ring anyone, and must not stop the chest pain after it from doing so
+    if (!this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
-      if (onCall.ok) out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
+      if (onCall.ok) {
+        out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
+        this.state.emergencyTransferSent = true;
+      }
     }
     return out;
   }
