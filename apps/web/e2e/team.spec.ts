@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAs } from './session';
+import { openAs, signInPatiently } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
   // one long journey through two people and a dozen pages, each compiled on first use by next dev
@@ -34,7 +34,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.goto('/sign-in');
   await riley.getByLabel('Email').fill('riley@maple-demo.test');
   await riley.getByLabel('Password').fill(password);
-  await riley.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await signInPatiently(riley, () => riley.getByRole('button', { name: 'Sign in', exact: true }).click());
   // a temporary password is for one sign-in: Riley picks their own before anything else
   await expect(riley).toHaveURL(/\/change-password$/, { timeout: 20_000 }); // next dev compiles the page on first use
   await riley.getByLabel('Temporary password').fill(password);
@@ -71,4 +71,14 @@ test('a manager adds a staff member and changes their role; as a viewer they can
     await riley.goto(`${home}${path}`);
     await expect(riley.getByText(title, { exact: true }), path).toBeVisible({ timeout: 20_000 }); // next dev compiles each page on first use
   }
+});
+
+test('too many sign-ins in a row are told to wait a few seconds', async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await page.route('**/api/auth/sign-in/**', (route) => route.fulfill({ status: 429, headers: { 'x-retry-after': '9' }, json: { message: 'Too many requests' } }));
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill('riley@maple-demo.test');
+  await page.getByLabel('Password').fill('not the password at all');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByText('Too many sign-in attempts. Wait a few seconds and try again.')).toBeVisible();
 });
