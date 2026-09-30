@@ -6,11 +6,10 @@
  * family members share phones and numbers are trivially spoofed.
  */
 
-import { asciiDigits, BN_MONTHS, fold } from './locales';
+import { fold } from './locales';
 
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-const MONTHS_BN = BN_MONTHS.map(fold);
 
 export function normalizeName(name: string): string {
   return name
@@ -30,13 +29,13 @@ export function namesMatch(spoken: string, onFile: string): boolean {
 
 /**
  * A spoken or typed date of birth to YYYY-MM-DD, or null when it is not certain.
- * Accepts "March 4th 1985", "4 March 1985", "4 de marzo de 1985", "৪ মার্চ ১৯৮৫",
- * "03/04/1985" and "1985-03-04". A numeric date is read month first in North America
+ * Accepts "March 4th 1985", "4 March 1985", "4 de marzo de 1985", "03/04/1985" and
+ * "1985-03-04". A numeric date is read month first in North America
  * and day first everywhere else (`order`). Two-digit years are refused: "85" is a guess.
  */
 export function parseDob(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): string | null {
-  const s = fold(asciiDigits(input)).toLowerCase()
-    .replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/(\d)\s*(তারিখ|ই|এ|শে|লা|রা|ঠা)(?![\p{L}\p{M}])/gu, '$1')
+  const s = fold(input).toLowerCase()
+    .replace(/(\d)(st|nd|rd|th)\b/g, '$1')
     .replace(/ de(l)? /g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().replace(/^el /, '');
   let y: number | undefined, m: number | undefined, d: number | undefined;
   let r: RegExpMatchArray | null;
@@ -58,7 +57,7 @@ function monthIndex(word: string): number {
     const i = months.findIndex((mo) => mo === word || (word.length >= 3 && mo.startsWith(word)));
     if (i >= 0) return i;
   }
-  return MONTHS_BN.indexOf(word);
+  return -1;
 }
 
 /** Phone numbers compared on their last 10 digits, so +1 (303) 555-0100 equals 3035550100. */

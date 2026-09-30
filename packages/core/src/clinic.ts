@@ -31,7 +31,7 @@ export const Provider = z.object({
 export const VisitType = z.object({
   id: z.string(),
   name: z.string(), // "new patient visit", said to callers as written
-  names: LocalNames.optional(), // the same, in another language: { bn: 'রক্ত পরীক্ষা' }
+  names: LocalNames.optional(), // the same, in another language: { es: 'consulta por enfermedad' }
   minutes: z.number().int().min(5).max(240),
 });
 
@@ -52,7 +52,7 @@ export const Faq = z.object({
   answer: z.string().max(600),
 });
 
-export const ClinicConfig = z.object({
+const ClinicConfigShape = z.object({
   id: z.string(),
   name: z.string(),
   timezone: z.string().refine((tz) => {
@@ -94,6 +94,38 @@ export const ClinicConfig = z.object({
     ctx.addIssue({ code: 'custom', path: ['greeting'], message: 'the greeting must disclose that the caller is speaking with an AI assistant' });
   }
 });
+
+const isLanguage = (v: unknown): v is Language => typeof v === 'string' && (LANGUAGES as readonly string[]).includes(v);
+const knownNames = (names: unknown) => (names && typeof names === 'object' ? Object.fromEntries(Object.entries(names).filter(([k]) => isLanguage(k))) : names);
+
+/**
+ * A configuration saved with a language Attendra no longer ships still loads, so its
+ * calls keep running: the language is dropped from the list and from local names,
+ * the primary language moves to one still offered, and if the greeting only
+ * disclosed the AI in the dropped language, the primary language's own greeting
+ * takes its place. Everything else is checked as usual.
+ */
+function withoutRetiredLanguages(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const c = { ...(raw as Record<string, unknown>) };
+  for (const key of ['providers', 'visitTypes'] as const) {
+    if (Array.isArray(c[key])) c[key] = (c[key] as Record<string, unknown>[]).map((x) => (x && typeof x === 'object' && 'names' in x ? { ...x, names: knownNames(x.names) } : x));
+  }
+  const listed = Array.isArray(c.languages) ? (c.languages as unknown[]) : null;
+  const retired = !!listed?.some((l) => !isLanguage(l)) || (c.primaryLanguage !== undefined && !isLanguage(c.primaryLanguage));
+  if (!retired) return c;
+  const languages = (listed ?? ['en']).filter(isLanguage);
+  c.languages = languages.length ? languages : ['en'];
+  const offered = c.languages as Language[];
+  if (!isLanguage(c.primaryLanguage) || !offered.includes(c.primaryLanguage)) c.primaryLanguage = offered[0];
+  const greeting = typeof c.greeting === 'string' ? normalise(c.greeting) : '';
+  if (!offered.some((l) => PACKS[l].disclosure.test(greeting))) {
+    c.greeting = PACKS[c.primaryLanguage as Language].greeting({ assistantName: typeof c.assistantName === 'string' ? c.assistantName : null, clinicName: String(c.name ?? '') });
+  }
+  return c;
+}
+
+export const ClinicConfig = z.preprocess(withoutRetiredLanguages, ClinicConfigShape);
 export type ClinicConfig = z.infer<typeof ClinicConfig>;
 
 /**

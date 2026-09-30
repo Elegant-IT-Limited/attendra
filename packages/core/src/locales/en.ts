@@ -13,7 +13,6 @@ export const en: LanguagePack = {
   code: 'en',
   name: 'English',
   nativeName: 'English',
-  experimental: false,
   locale: 'en-US',
   prompt: [
     'In English, say dates and times the way they are given to you.',
