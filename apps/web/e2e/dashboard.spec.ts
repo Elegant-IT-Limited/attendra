@@ -55,6 +55,17 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(tasks).toHaveCount(1);
   });
 
+  test('the audit log says every action and every actor in words, not codes', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.goto(`/c/${new URL(page.url()).pathname.split('/')[2]}/audit`);
+    const rows = page.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    const what = await rows.locator('td:nth-child(3)').allTextContents();
+    const who = await rows.locator('td:nth-child(2)').allTextContents();
+    expect(what.filter((w) => /^[a-z_]+(\.[a-z_:]+)+$/.test(w))).toEqual([]);
+    expect(who.filter((w) => /^(worker|system|seed|api_key:)/.test(w))).toEqual([]);
+  });
+
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await expect(page.getByRole('link', { name: 'Audit log' })).toHaveCount(0);
