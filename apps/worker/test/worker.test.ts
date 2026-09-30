@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -102,14 +102,39 @@ describe('the retention purge', () => {
     const recentActions = await actionsOf(recent);
 
     const results = await h.purgeRetention();
-    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
+    expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
     expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
     expect(await actionsOf(old)).toBe(0);
     expect(await actionsOf(recent)).toBe(recentActions);
     expect(await calls.transcript(OTHER.id, old)).toEqual([]);
     expect(await calls.transcript(OTHER.id, recent)).toHaveLength(1);
-    const [audit] = await audits(OTHER.id, 'retention.purged');
+    const audit = (await audits(OTHER.id, 'retention.purged')).find((r) => 'transcriptLines' in (r.counts as object));
     expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1, callActions: oldActions } });
+  });
+
+  it('deletes webhook events and their delivery attempts on the same retention, in batches', async () => {
+    await saveClinic(t.db, 'org_other', { ...OTHER, retentionDays: 30 } as typeof OTHER);
+    const hooks = new WebhookRepository(t.db, cipher);
+    const endpoint = await hooks.create(OTHER.id, { url: 'https://example.com/hook', description: '', events: ['call.completed'], secret: 'whsec_test', userId: 'u_otto' });
+    const event = async (id: string, days: number) => {
+      await hooks.record({ id, clinicId: OTHER.id, type: 'call.completed', data: {}, occurredAt: new Date().toISOString() });
+      await hooks.logAttempt(OTHER.id, { endpointId: endpoint, eventId: id, kind: 'automatic', attempt: 1, statusCode: 200, durationMs: 5, error: null });
+      await t.db.execute(sql`update webhook_events set created_at = now() - make_interval(days => ${days}) where id = ${id}`);
+    };
+    for (const id of ['evt_old_1', 'evt_old_2', 'evt_old_3']) await event(id, 40);
+    await event('evt_recent', 5);
+    const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
+
+    expect(await purgeWebhookRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2)).toEqual({ webhookEvents: 3, webhookAttempts: 3 });
+    expect(await hooks.event(OTHER.id, 'evt_old_1')).toBeNull();
+    expect(await hooks.event(OTHER.id, 'evt_recent')).not.toBeNull();
+    expect(await hooks.attempts(OTHER.id, endpoint)).toHaveLength(1);
+    const rows = (await audits(OTHER.id, 'retention.purged')).filter((r) => !seen.has(r.id));
+    expect(rows.map((r) => (r.counts as { webhookEvents: number }).webhookEvents).sort()).toEqual([1, 2]);
+
+    await event('evt_old_4', 40);
+    const results = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => new Date() }).purgeRetention();
+    expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ webhookEvents: 1, webhookAttempts: 1 });
   });
 
   it('works through old calls in batches, each its own transaction', async () => {

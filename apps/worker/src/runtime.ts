@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, purgeCallRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
@@ -77,16 +77,19 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       return saved;
     },
 
-    /** Transcripts, summaries and call actions past each clinic's retention period. Counts are audited, never content. */
+    /** Transcripts, summaries, call actions and webhook events past each clinic's retention period. Counts are audited, never content. */
     async purgeRetention() {
-      const results: { clinicId: string; transcriptLines: number; summaries: number; callActions: number }[] = [];
+      const results: { clinicId: string; transcriptLines: number; summaries: number; callActions: number; webhookEvents: number; webhookAttempts: number }[] = [];
       for (const clinic of await allClinics(d.db)) {
         const parsed = ClinicConfig.safeParse(clinic.config);
         const days = parsed.success ? parsed.data.retentionDays : 2555;
-        const counts = await purgeCallRecords(d.db, clinic.id, new Date(now().getTime() - days * 86_400_000));
-        results.push({ clinicId: clinic.id, ...counts });
+        const before = new Date(now().getTime() - days * 86_400_000);
+        const counts = await purgeCallRecords(d.db, clinic.id, before);
+        const webhooks = await purgeWebhookRecords(d.db, clinic.id, before);
+        results.push({ clinicId: clinic.id, ...counts, ...webhooks });
       }
-      d.log.info({ clinics: results.length, transcript_lines: results.reduce((n, r) => n + r.transcriptLines, 0), summaries: results.reduce((n, r) => n + r.summaries, 0), call_actions: results.reduce((n, r) => n + r.callActions, 0) }, 'retention purge done');
+      const total = (k: 'transcriptLines' | 'summaries' | 'callActions' | 'webhookEvents' | 'webhookAttempts') => results.reduce((n, r) => n + r[k], 0);
+      d.log.info({ clinics: results.length, transcript_lines: total('transcriptLines'), summaries: total('summaries'), call_actions: total('callActions'), webhook_events: total('webhookEvents'), webhook_attempts: total('webhookAttempts') }, 'retention purge done');
       return results;
     },
 
