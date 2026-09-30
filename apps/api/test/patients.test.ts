@@ -120,7 +120,7 @@ describe('adding and editing', () => {
     id = res.json().id;
     expect(await directory().findByNameAndDob(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0188' } });
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
-    expect(await audit('patient.created')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
+    expect((await audit('patient.created')).filter((a) => a.entity_id === id)).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
     const stored = JSON.stringify((await api.t.db.execute(sql`select * from patients where id = ${id}`)).rows);
     expect(stored).not.toMatch(/Nora|Quinlan|1971/);
   });

@@ -210,6 +210,8 @@ describe('races and mistakes', () => {
     const other = await book('11:00', 'sam-4', { ...sam, providerId: 'prov_lindqvist' });
     if (other.status !== 'done') throw new Error(other.status);
     expect(await staff.reschedule(DEMO_CLINIC, other.appointmentId, { start: at('2026-09-29', '10:40') }, 'u_ana')).toMatchObject({ reason: 'patient_busy', patientName: 'Sam Rivera' });
+    // each refusal showed Sam's name, which was decrypted for it
+    expect(await audit('patient.busy.shown')).toEqual(Array(3).fill({ actor: 'user:u_ana', entity_id: ids.sam_a }));
   });
 });
 
