@@ -2,7 +2,9 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-30
+
+The AI layer: a design system, the clinic's own assistant in English and Spanish, call summaries, live calls with coaching, clinic knowledge, signed webhooks, the Quality page and an MCP server.
 
 ### Added
 
@@ -58,6 +60,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - The planner's model calls now have a 15 second timeout and a cap of 1,000 output tokens per round.
 - `ClinicConfig` gains `assistantName`, `languages` (default `["en"]`), `primaryLanguage` (default `"en"`), `emergencyNumber` and, on visit types and providers, `names`. Existing configurations keep working unchanged. The greeting's disclosure check now accepts any of the clinic's languages.
 - The demo clinic's assistant is called Maya and speaks English and Spanish.
+- The call page shows the summary as soon as it is written, and a call ended from the dashboard says "Ended by staff". Staff notes and actions appear in the live timeline, while the audit log keeps only a note's length.
+- Voice and time zone are chosen from lists. Recording and example wording follows the clinic's country. A provider can be a person or a room, and read-backs say it correctly in each language.
+- The demo signs in with one click, and its current week reads like a working clinic, from real demo calls through the real agent. A refused medical question is summarised as one and flagged for a callback.
 
 ## [0.3.0] - 2026-09-30
 
