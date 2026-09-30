@@ -42,6 +42,18 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(riley.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   await expect(riley.getByRole('link', { name: 'Patients' })).toHaveCount(0);
   const home = new URL(riley.url()).pathname;
+  // the shortcuts a viewer is shown are the ones that do something for them
+  await riley.keyboard.press('?');
+  const keys = riley.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys.getByText('Go to Calls')).toBeVisible();
+  for (const label of ['Go to Schedule', 'Go to Patients', 'Go to Requests', 'New booking']) await expect(keys.getByText(label)).toHaveCount(0);
+  await riley.keyboard.press('Escape');
+  // and a clinic with no calls yet does not offer a viewer a test call
+  await riley.route((url) => url.pathname.endsWith('/calls') && url.searchParams.get('limit') === '50', (route) => route.fulfill({ json: { calls: [], next: null } }));
+  await riley.goto(home);
+  await expect(riley.getByText('No calls yet')).toBeVisible();
+  await expect(riley.getByRole('link', { name: 'Try a test call' })).toHaveCount(0);
+  await riley.unrouteAll();
   await riley.goto(`${home}/patients`);
   await expect(riley.getByText('Patients are for the front desk')).toBeVisible();
   // a direct link to a page the role cannot use says so, instead of an error or a skeleton that never ends

@@ -25,7 +25,7 @@ const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border bo
 /** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
 export default function Today() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { can } = useClinic(clinicId);
+  const { can, data: me } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
@@ -70,7 +70,7 @@ export default function Today() {
         </div>
         <div className="space-y-6">
           <AssistantDid overview={overview} />
-          <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} />
+          <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} canTest={can('calls:test') && !!me?.testCalls} />
         </div>
       </div>
     </>
@@ -261,7 +261,7 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
   );
 }
 
-function RecentCalls({ clinicId, tz, calls, canOpen }: { clinicId: string; tz: string; calls: Q<CallList>; canOpen: boolean }) {
+function RecentCalls({ clinicId, tz, calls, canOpen, canTest }: { clinicId: string; tz: string; calls: Q<CallList>; canOpen: boolean; canTest: boolean }) {
   const last = (calls.data?.calls ?? []).slice(0, 5);
   return (
     <Card>
@@ -270,7 +270,7 @@ function RecentCalls({ clinicId, tz, calls, canOpen }: { clinicId: string; tz: s
         <Link href={`/c/${clinicId}/calls`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">All calls <ArrowRight className="size-3.5" /></Link>
       </CardHeader>
       {calls.isPending ? <div className="space-y-2 p-5"><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
-        : !last.length ? <Empty title="No calls yet" action={<Link href={`/c/${clinicId}/test-call`} className="text-sm text-primary hover:underline">Try a test call</Link>}>Calls appear here as soon as the assistant answers one.</Empty> : (
+        : !last.length ? <Empty title="No calls yet" action={canTest ? <Link href={`/c/${clinicId}/test-call`} className="text-sm text-primary hover:underline">Try a test call</Link> : undefined}>Calls appear here as soon as the assistant answers one.</Empty> : (
           <ul className="divide-y divide-border" aria-label="Recent calls">
             {last.map((c) => {
               const body = (
