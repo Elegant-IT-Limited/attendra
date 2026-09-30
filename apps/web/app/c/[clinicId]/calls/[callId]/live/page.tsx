@@ -152,7 +152,12 @@ export default function LiveCallPage() {
     }),
     onMutate: () => setProblem(null),
     onSuccess: (_d, kind) => { setConfirm(null); toast({ tone: 'success', message: kind === 'take' ? 'Transferring the call to you.' : 'Ending the call.' }); },
-    onError: (e) => { setConfirm(null); setProblem(TAKEN(e) ?? (e instanceof ApiFailure && e.body.error === 'no_number' ? 'Add your number first.' : 'That did not work. Try again.')); },
+    onError: (e) => {
+      setConfirm(null);
+      const code = e instanceof ApiFailure ? e.body.error : null;
+      setProblem(TAKEN(e) ?? (code === 'no_number' ? 'Add your number first.'
+        : code === 'emergency_script' ? 'The assistant is still giving the emergency number. You can end the call once the caller has heard it.' : 'That did not work. Try again.'));
+    },
   });
 
   if (!can('calls:read') && list.isSuccess) return <Empty title="Not available">Your role cannot watch live calls, because they show what patients say.</Empty>;
@@ -194,6 +199,8 @@ export default function LiveCallPage() {
         </Alert>
       )}
       {problem && <Alert tone="warn" className="mb-6">{problem}</Alert>}
+      {live.staff === 'transfer_failed' && <Alert tone="warn" className="mb-6" title="The transfer did not go through">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
+      {live.staff === 'end_failed' && <Alert tone="warn" className="mb-6" title="The call did not end">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {handedOff && <Alert className="mb-6">{live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
       {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. It reconnects on its own.</Alert>}
 
