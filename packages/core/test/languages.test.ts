@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  allowedEmergencyNumbers, ClinicConfig, clinicWarnings, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
+  allowedEmergencyNumbers, ClinicConfig, clinicWarnings, countryCopy, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
   isClearYes, type Language, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
 } from '../src';
 
@@ -157,6 +157,17 @@ describe('the emergency guardrail in every language', () => {
     expect(script).toContain('৯৯৯');
     expect(script).not.toMatch(/911|988/);
     expect(PACKS.bn.selfHarmScript('999', null)).not.toMatch(/988/);
+  });
+});
+
+describe('wording that follows the clinic\'s country', () => {
+  it('names US consent law only for US clinics, and gives each country its own example numbers and date order', () => {
+    expect(countryCopy(DEMO_CLINIC)).toMatchObject({ us: true, exampleDob: '03/04/1985', phone: { e164: '+13035550123' } });
+    expect(countryCopy(DEMO_CLINIC).recordingHint).toContain('US states');
+    const dhaka = countryCopy(DHANMONDI_CLINIC);
+    expect(dhaka).toMatchObject({ us: false, exampleDob: '04/03/1985', phone: { e164: '+8801000000123', local: '01000-000123' } });
+    expect(dhaka.recordingHint).toBe('Off by default. Check the law where you are before recording calls. A notice plays first.');
+    expect(countryCopy({ phoneNumbers: ['+442071234567'] }).phone.e164).toBe('+442079460123');
   });
 });
 

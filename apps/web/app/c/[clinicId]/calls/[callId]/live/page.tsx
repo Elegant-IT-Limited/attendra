@@ -13,7 +13,8 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { api, ApiFailure, newKey, useClinic } from '@/lib/api';
+import { countryCopy } from '@attendra/core';
+import { api, ApiFailure, newKey, useClinic, useClinicConfig } from '@/lib/api';
 import { clock, REFUSALS, TOOLS } from '@/lib/format';
 import { useLiveCalls } from '@/lib/live';
 import { cn } from '@/lib/utils';
@@ -139,6 +140,8 @@ export default function LiveCallPage() {
   const queries = useQueryClient();
   const toast = useToast();
   const { can } = useClinic(clinicId);
+  const config = useClinicConfig(clinicId);
+  const example = countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone;
   const list = useLiveCalls(clinicId, true, 10_000);
   const listed = list.data?.calls.find((c) => c.callId === callId);
   // when the call ends the page becomes its record, without a reload
@@ -293,11 +296,11 @@ export default function LiveCallPage() {
           ]} />
           {target === 'me' && !mine.data?.number && (
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); saveNumber.mutate(number.trim()); }}>
-              <Input aria-label="Your number" placeholder="+13035550123" value={number} onChange={(e) => setNumber(e.target.value)} className="flex-1" />
+              <Input aria-label="Your number" placeholder={example.e164} value={number} onChange={(e) => setNumber(e.target.value)} className="flex-1" />
               <Button type="submit" variant="outline" loading={saveNumber.isPending}>Save</Button>
             </form>
           )}
-          {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like +13035550123. It must be in the clinic's country.</p>}
+          {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like {example.e164}. It must be in the clinic's country.</p>}
         </div>
       </Panel>
       <Panel open={confirm === 'end'} onOpenChange={(o) => setConfirm(o ? 'end' : null)} title="End this call?"
