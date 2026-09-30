@@ -70,7 +70,20 @@ describe('demo calls', () => {
     expect(most?.n ?? 0).toBeLessThanOrEqual(2);
   });
 
-  it('keeps transcripts encrypted at rest', async () => {
+  it('puts this week\'s ordinary calls in opening hours once the week has enough of them', async () => {
+    const fresh = await openTestDatabase();
+    try {
+      const { patientIds } = await seedDemo(fresh.db, cipher);
+      await seedDemoKnowledge(fresh.db, new LocalEmbedder());
+      const wednesday = new Date('2026-09-30T21:00:00Z'); // 3 pm in Denver
+      await recordDemoCalls(fresh.db, cipher, patientIds, wednesday);
+      const rows = (await fresh.db.execute(sql`select started_at from calls where openai_session_id like 'demo_demo-%'`)).rows as { started_at: string }[];
+      expect(rows).toHaveLength(loadScenarios(DEMO_CALL_DIR).length);
+      expect(rows.every((r) => isOpen(DEMO_CLINIC, new Date(r.started_at)))).toBe(true);
+    } finally { await fresh.close(); }
+  }, 60_000);
+
+    it('keeps transcripts encrypted at rest', async () => {
     const dump = JSON.stringify((await t.db.execute(sql`select text_enc from call_segments`)).rows);
     expect(dump).not.toContain('Maria');
   });
