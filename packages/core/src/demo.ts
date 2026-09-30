@@ -5,6 +5,18 @@ import { ClinicConfig } from './clinic';
  * The demo clinic. Fictional throughout: the name, the providers, the 555-01xx
  * numbers (reserved for fiction in North America) and every patient in the seed.
  */
+/**
+ * The demo clinic's holidays, US Thanksgiving (the fourth Thursday of November) and
+ * Christmas, this year and next, so the demo never runs out of them.
+ */
+export function demoHolidays(year: number): string[] {
+  const thanksgiving = (y: number) => {
+    const first = new Date(Date.UTC(y, 10, 1)).getUTCDay();
+    return `${y}-11-${String(1 + ((4 - first + 7) % 7) + 21).padStart(2, '0')}`;
+  };
+  return [year, year + 1].flatMap((y) => [thanksgiving(y), `${y}-12-25`]);
+}
+
 export const DEMO_CLINIC = ClinicConfig.parse({
   id: 'clinic_demo_maple',
   name: 'Maple Street Family Medicine',
@@ -17,7 +29,7 @@ export const DEMO_CLINIC = ClinicConfig.parse({
     '4': [{ open: '08:00', close: '12:00' }, { open: '13:00', close: '17:00' }],
     '5': [{ open: '08:00', close: '13:00' }],
   },
-  holidays: ['2026-11-26', '2026-12-25'],
+  holidays: demoHolidays(new Date().getUTCFullYear()),
   greeting: 'Thanks for calling Maple Street Family Medicine. I\'m Maya, the clinic\'s AI assistant. How can I help you today?',
   assistantName: 'Maya',
   languages: ['en', 'es'],
