@@ -203,7 +203,8 @@ export class FrontDeskRepository {
         status: appointments.status, createdByCallId: appointments.createdByCallId }).from(appointments)
         .where(and(eq(appointments.clinicId, clinicId), or(eq(appointments.createdByCallId, callId), eq(appointments.cancelledByCallId, callId))))
         .orderBy(appointments.startsAt);
-      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId });
+      // the call page refreshes while a summary is written: one row per person and call per five minutes
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'call.transcript.viewed', entity: 'call', entityId: callId, callId }, 5);
       // who the caller was, when the agent verified them: part of the same view
       const [caller] = call.patientId
         ? await tx.select({ id: patients.id, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, call.patientId)))
@@ -243,9 +244,8 @@ export class FrontDeskRepository {
       const notes = rows.length
         ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
         : [];
-      if (rows.length) {
-        await tx.insert(auditLogs).values(rows.map(({ task }) => ({ clinicId, actor: actorOf(userId), action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId })));
-      }
+      // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
+      for (const { task } of rows) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
       const ctx = (col: string) => phiContext(clinicId, col);
       return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
         id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
