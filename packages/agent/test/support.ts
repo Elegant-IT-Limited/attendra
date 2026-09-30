@@ -45,7 +45,7 @@ export async function world() {
     const state = new CallState();
     const plans = new PlanQueue();
     const actions: ActionRecorder | undefined = opts.actions ?? (opts.record
-      ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
+      ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
       : undefined);
     const agent = new CallAgent(state, { clinic: opts.clinic ?? clinic, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
     let clock = 0;

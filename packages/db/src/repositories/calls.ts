@@ -47,7 +47,7 @@ export class CallRepository {
    * date of birth, when it has; it links the call to that patient in the same
    * transaction, so a patient's calls can be listed. A link is never replaced.
    */
-  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; idempotencyKey: string | null; taskRevision: number; patientId?: string | null }) {
+  async recordAction(clinicId: string, callId: string, a: { tool: string; argsRedacted: unknown; result: unknown; taskRevision: number; patientId?: string | null }) {
     const { patientId, ...action } = a;
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.insert(callActions).values({ clinicId, callId, ...action });
