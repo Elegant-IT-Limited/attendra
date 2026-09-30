@@ -15,6 +15,8 @@ export default defineConfig({
   // next dev compiles each page the first time it is opened, which on a busy machine takes
   // longer than the default 5 seconds; a check still fails when the page is wrong, only later
   expect: { timeout: 15_000 },
+  // and a whole test the same room: its pages compile on first use, one after another
+  timeout: 60_000,
   projects: [
     { name: 'sign-in', testMatch: /auth\.setup\.ts/ },
     {
