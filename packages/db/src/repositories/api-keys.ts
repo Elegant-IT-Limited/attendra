@@ -58,6 +58,16 @@ export async function authenticateApiKey(db: Database, key: string, now = new Da
   return { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
 }
 
+/**
+ * Is a key that authenticated still live, right now? Checked again before every tool
+ * call, so a key revoked while a client is connected stops at its next call.
+ */
+export async function apiKeyIsLive(db: Database, caller: ApiCaller, now = new Date()): Promise<boolean> {
+  const [r] = rows<{ expires_at: string | Date; revoked_at: string | null }>(
+    await db.execute(sql`select expires_at, revoked_at from api_keys where id = ${caller.keyId} and clinic_id = ${caller.clinicId}`));
+  return !!r && !r.revoked_at && new Date(r.expires_at) > now;
+}
+
 /** Every use of a key, audited in the clinic with the key's id: mcp.<tool>. */
 export async function auditKeyUse(db: Database, caller: ApiCaller, tool: string, counts?: Record<string, number>) {
   await withClinic(db, caller.clinicId, async (tx) => {
