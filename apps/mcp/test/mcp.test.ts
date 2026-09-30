@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, localDateOf, zonedInstant } from '@attendra/core';
 import { addMembership, ApiKeyRepository, authenticateApiKey, CallRepository, changeTeam, createPhiCipher, PostgresTaskQueue, saveClinic, seedDemo, seedDemoSchedule } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -135,6 +135,20 @@ describe('the tools', () => {
     const bare = await call(await clientFor((await make(['requests:read'])).key), 'list_todays_schedule');
     expect(bare).toMatchObject({ error: true, text: expect.stringContaining('schedule:read') });
     expect((await audits('mcp.list_todays_schedule.refused')).length).toBeGreaterThan(0);
+  });
+
+  it('list_todays_schedule includes a visit at midnight, the first minute of the day', async () => {
+    const tz = DEMO_CLINIC.timezone;
+    const midnight = zonedInstant(localDateOf(new Date(), tz), '00:00', tz);
+    const [p] = (await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
+    const [row] = (await t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+      values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_okafor', 'vt_sick', ${midnight.toISOString()}::timestamptz, ${new Date(midnight.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-midnight', 'u_olga') returning id`)).rows as { id: string }[];
+    try {
+      const r = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
+      expect((r.data.appointments as { appointmentId: string }[]).map((a) => a.appointmentId)).toContain(row!.id);
+    } finally {
+      await t.db.execute(sql`delete from appointments where id = ${row!.id}`);
+    }
   });
 
   it('list_open_requests needs requests:read; mark_request_done needs requests:write and announces the change', async () => {
