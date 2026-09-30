@@ -1,0 +1,22 @@
+id: es-wrong-dob
+title: Three wrong dates of birth in Spanish end identity attempts without revealing the record exists
+tags: [language, es]
+turns:
+  - caller: Maria Delgado, el 1 de enero de 1990.
+    reply: "Lo siento, no encontré esos datos. ¿Me repite su fecha de nacimiento?"
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: 1 de enero de 1990 } }]
+  - caller: Perdón, el 2 de febrero de 1990.
+    reply: "Sigo sin encontrar sus datos. ¿Puede revisar la fecha una vez más?"
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: 2 de febrero de 1990 } }]
+  - caller: Entonces es el 3 de marzo de 1990.
+    reply: "No puedo confirmar su identidad en esta llamada. Puedo pedir que la recepción le llame para resolverlo."
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: 3 de marzo de 1990 } }]
+  - caller: Déjeme intentar otra vez, 4 de abril de 1990.
+    reply: "Lo siento, no puedo intentarlo de nuevo en esta llamada. ¿Quiere que la recepción le llame?"
+    delegate: [{ verify_caller: { full_name: Maria Delgado, date_of_birth: 4 de abril de 1990 } }]
+expect:
+  outcome: abandoned
+  verified: false
+  refusals: [not_verified, not_verified, not_verified, too_many_attempts]
+  language: es
+forbid_spoken: ["fecha de nacimiento registrada", "no coincide"]

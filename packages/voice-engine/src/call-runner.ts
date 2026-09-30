@@ -81,11 +81,20 @@ export class CallRunner {
     }
   }
 
+  /** Carries out what staff asked for on a live call (a note, a take-over, a goodbye) the same way as the agent's own outbound. */
+  act(outbound: Outbound[]): Promise<void> {
+    return this.dispatch(outbound);
+  }
+
   private async dispatch(outbound: Outbound[]) {
     for (const o of outbound) {
       if (o.type === 'transfer' || o.type === 'hangup') {
         const act = () => (o.type === 'transfer' ? this.engine.transfer(this.sessionId, o.uri) : this.engine.hangup(this.sessionId))
-          .catch((err) => this.log.error({ session_id: this.sessionId, err }, `${o.type} failed`));
+          .catch((err) => {
+            this.log.error({ session_id: this.sessionId, err }, `${o.type} failed`);
+            // the caller is still there: tell staff, and have the assistant offer a callback
+            if (!this.closed) return this.dispatch(this.agent.onControlFailed(o.type));
+          });
         if (!o.afterMs) { await act(); continue; }
         const t = setTimeout(() => { this.timers.delete(t); void act(); }, o.afterMs);
         this.timers.add(t);

@@ -41,10 +41,11 @@ export default function Team() {
     onSettled: refresh,
   });
   const [issued, setIssued] = useState<{ name: string; email: string; password: string } | null>(null);
+  const [resetting, setResetting] = useState<Member | null>(null);
   const reset = useMutation({
     mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
     onMutate: () => setNotice(null),
-    onSuccess: (r, m) => setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }),
+    onSuccess: (r, m) => { setResetting(null); setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }); },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
@@ -77,8 +78,8 @@ export default function Team() {
                   return (
                     <TRow key={m.userId}>
                       <TD>
-                        <p className="font-medium">{m.name}{m.you && <span className="ml-2 text-xs font-normal text-muted-foreground">You</span>}</p>
-                        <p className="text-xs text-muted-foreground">{m.email}</p>
+                        <p className="font-medium">{m.name}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
+                        <p className="text-xs text-text-muted">{m.email}</p>
                       </TD>
                       <TD>
                         {locked ? <Badge>{label(m.role)}</Badge> : (
@@ -91,12 +92,12 @@ export default function Team() {
                         )}
                       </TD>
                       <TD className="hidden md:table-cell">
-                        {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-muted-foreground"><KeyRound className="size-4" /> Has not chosen a password yet</span>
+                        {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-text-muted"><KeyRound className="size-4" /> Has not chosen a password yet</span>
                           : m.twoFactorEnabled ? <span className="inline-flex items-center gap-1 text-sm"><ShieldCheck className="size-4 text-primary" /> Two-step on</span>
-                            : <span className="inline-flex items-center gap-1 text-sm text-muted-foreground"><ShieldOff className="size-4" /> Two-step not set up yet</span>}
+                            : <span className="inline-flex items-center gap-1 text-sm text-text-muted"><ShieldOff className="size-4" /> Two-step not set up yet</span>}
                       </TD>
                       <TD className="whitespace-nowrap text-right">
-                        {!locked && <Button size="sm" variant="ghost" disabled={reset.isPending} onClick={() => reset.mutate(m)}>Reset password</Button>}
+                        {!locked && <Button size="sm" variant="ghost" disabled={reset.isPending} onClick={() => setResetting(m)}>Reset password</Button>}
                         {!locked && <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>Remove</Button>}
                       </TD>
                     </TRow>
@@ -106,9 +107,14 @@ export default function Team() {
             </Table>
           )}
       </Card>
-      <p className="mt-3 text-xs text-muted-foreground">You cannot change your own role or remove yourself, and there is always at least one owner. Every change is in the audit log.</p>
+      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Every change is in the audit log.</p>
 
       <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
+      <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}
+        description="They are signed out everywhere, their password stops working, and you get a temporary one to pass on in person."
+        footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Keep it</Button><Button variant="danger" loading={reset.isPending} onClick={() => resetting && reset.mutate(resetting)}>Reset password</Button></>}>
+        <p className="text-base">{resetting?.email}</p>
+      </Panel>
       <Panel open={!!issued} onOpenChange={(o) => !o && setIssued(null)} title={`New temporary password for ${issued?.name ?? ''}`}
         description="They were signed out everywhere. The old password no longer works." footer={<Button onClick={() => setIssued(null)}>Done</Button>}>
         {issued && <OneTimePassword email={issued.email} password={issued.password} />}
@@ -149,7 +155,7 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
               <Select id="member-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </Select>
-              <p className="text-xs text-muted-foreground">{ROLES.find((r) => r.id === form.role)?.detail}</p>
+              <p className="text-xs text-text-muted">{ROLES.find((r) => r.id === form.role)?.detail}</p>
             </div>
           </fieldset>
           <div className="flex justify-end gap-2">
@@ -170,11 +176,11 @@ function OneTimePassword({ email, password }: { email: string; password: string 
       <Alert tone="warn" title="Shown once">Pass this on in person, not by email or chat. It works for 72 hours, and they choose their own password the first time they sign in.</Alert>
       <p>Email: <span className="font-medium">{email}</span></p>
       <div className="flex items-center gap-2">
-        <KeyRound className="size-4 text-muted-foreground" aria-hidden />
-        <code className="rounded-md bg-muted px-3 py-1.5 font-mono text-base tracking-wide" data-testid="temporary-password">{password}</code>
+        <KeyRound className="size-4 text-text-muted" aria-hidden />
+        <code className="rounded-md bg-surface-sunken px-3 py-1.5 font-mono text-base tracking-wide" data-testid="temporary-password">{password}</code>
         <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard?.writeText(password); setCopied(true); }}><Copy /> {copied ? 'Copied' : 'Copy'}</Button>
       </div>
-      <p className="text-muted-foreground">After their own password, they set up two-step sign-in with an authenticator app.</p>
+      <p className="text-text-muted">After their own password, they set up two-step sign-in with an authenticator app.</p>
     </div>
   );
 }

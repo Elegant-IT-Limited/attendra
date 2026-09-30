@@ -66,7 +66,7 @@ export default function SetupTwoFactor() {
     <AuthCard title="Scan this code" subtitle="Use Google Authenticator, 1Password, Authy or any TOTP app.">
       {/* renderSVG builds the markup from our own otpauth URI; no user content goes in */}
       <div className="mx-auto w-48 rounded-lg bg-white p-2 [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qr! }} />
-      <p className="text-center text-xs text-muted-foreground">Can&apos;t scan? Enter <code className="font-mono break-all">{secret}</code></p>
+      <p className="text-center text-xs text-text-muted">Can&apos;t scan? Enter <code className="font-mono break-all">{secret}</code></p>
       <Alert tone="warn" title="Save your backup codes">
         <p>Each works once if you lose your phone. Keep them somewhere safe, not on this computer.</p>
         <ul className="grid grid-cols-2 gap-x-4 pt-1 font-mono text-xs">{setup.backupCodes.map((c) => <li key={c}>{c}</li>)}</ul>

@@ -24,6 +24,11 @@ const Env = z.object({
   // The voice service, for test calls from the dashboard. Leave both unset to turn them off.
   VOICE_URL: optional(z.string().url()),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
+  // The clinic's knowledge: Ask a question embeds the question and answers with a model.
+  // Use the same embedding model as the worker. Without a key, both use local embeddings.
+  OPENAI_API_KEY: optional(z.string().min(1)),
+  ATTENDRA_EMBEDDING_MODEL: z.preprocess((v) => (v === '' ? undefined : v), z.string().default('text-embedding-3-small')),
+  ATTENDRA_BACKEND_MODEL: z.preprocess((v) => (v === '' ? undefined : v), z.string().default('gpt-6-luna')),
   LOG_LEVEL: z.string().default('info'),
 });
 export type ApiEnv = z.infer<typeof Env>;

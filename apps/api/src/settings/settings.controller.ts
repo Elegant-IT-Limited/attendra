@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig } from '@attendra/core';
+import { ClinicConfig, emergencyNumberProblem } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
 import { Body, Controller, Get, Inject, NotFoundException, Param, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -47,6 +47,9 @@ export class SettingsController {
     if (JSON.stringify(next.phoneNumbers) !== JSON.stringify(current.phoneNumbers)) {
       throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'phone numbers are managed by your Attendra operator' }] });
     }
+    // checked here, not in the schema: a number saved before the rule must not stop calls, and the voice service falls back to the country's
+    const emergency = emergencyNumberProblem(next);
+    if (emergency) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'emergencyNumber', message: emergency }] });
     // A demo deployment can take real calls, so nobody signed in to it may send them somewhere new.
     if (this.options.demoMode && JSON.stringify(next.routing) !== JSON.stringify(current.routing)) {
       throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'routing', message: 'transfer numbers cannot be changed in demo mode' }] });

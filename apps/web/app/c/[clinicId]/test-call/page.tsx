@@ -6,6 +6,7 @@ import { Bot, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SimulatedCall } from '@/components/calls/simulated-call';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -177,7 +178,7 @@ export default function TestCallPage() {
   }, [release]);
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
-  if (me && !me.testCalls) return <Empty title="Test calls are off">{FAILURES.voice_not_configured}</Empty>;
+  if (me && !me.testCalls) return <><Empty title="Test calls are off">{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
   const busy = phase === 'connecting' || phase === 'live' || phase === 'ending';
 
   return (
@@ -189,14 +190,14 @@ export default function TestCallPage() {
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
-            <div className={cn('flex size-20 items-center justify-center rounded-full', phase === 'live' ? 'bg-primary text-primary-foreground' : 'bg-accent text-primary')}>
+            <div className={cn('flex size-20 items-center justify-center rounded-full', phase === 'live' ? 'bg-primary text-on-primary' : 'bg-primary-soft text-primary')}>
               <Mic className="size-8" />
             </div>
             <div className="space-y-1">
               <p className="font-medium">
                 {{ idle: 'Ready', connecting: 'Connecting…', live: 'Live', ending: 'Ending…', ended: 'Call ended' }[phase]}
               </p>
-              <p className="text-sm tabular-nums text-muted-foreground">{phase === 'live' || phase === 'ended' ? clock(seconds * 1000) : `Test calls end on their own after ${Math.round(maxSeconds / 60)} minutes`}</p>
+              <p className="text-sm tabular-nums text-text-muted">{phase === 'live' || phase === 'ended' ? clock(seconds * 1000) : `Test calls end on their own after ${Math.round(maxSeconds / 60)} minutes`}</p>
             </div>
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>
@@ -204,7 +205,7 @@ export default function TestCallPage() {
             {phase === 'ended' && callId && can('calls:read') && (
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>
             )}
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-text-muted">
               What the assistant does here is real for this clinic: bookings, cancellations and tasks. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
             </p>
           </CardContent>
@@ -213,21 +214,22 @@ export default function TestCallPage() {
           <CardHeader><CardTitle>Live captions</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {failure && <Alert tone="danger">{failure}</Alert>}
-            {captions.length === 0 && !failure && <p className="text-sm text-muted-foreground">What you and the assistant say appears here.</p>}
+            {captions.length === 0 && !failure && <p className="text-sm text-text-muted">What you and the assistant say appears here.</p>}
             {captions.map((c, i) => {
               const agent = c.speaker === 'agent';
               return (
                 <div key={i} className={cn('flex gap-3', !agent && 'flex-row-reverse')}>
-                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', agent ? 'bg-accent text-primary' : 'bg-muted text-muted-foreground')}>
+                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', agent ? 'bg-primary-soft text-primary' : 'bg-surface-sunken text-text-muted')}>
                     {agent ? <Bot className="size-4" /> : <User className="size-4" />}
                   </div>
-                  <p className={cn('max-w-[80%] rounded-lg px-3.5 py-2 text-sm leading-relaxed', agent ? 'bg-muted' : 'bg-primary text-primary-foreground')}>{c.text}</p>
+                  <p className={cn('max-w-[80%] rounded-lg px-3.5 py-2 text-sm leading-relaxed', agent ? 'bg-surface-sunken' : 'bg-primary text-on-primary')}>{c.text}</p>
                 </div>
               );
             })}
           </CardContent>
         </Card>
       </div>
+      {me?.simulatedCalls && <SimulatedCall clinicId={clinicId} />}
       <audio ref={audio} autoPlay className="hidden" />
     </>
   );

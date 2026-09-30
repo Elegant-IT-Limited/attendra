@@ -68,7 +68,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone (optional)</Label>
           <Input id="phone" type="tel" autoComplete="off" value={form.phone ?? ''} onChange={set('phone')} placeholder="(303) 555-0100" />
-          <p className="text-xs text-muted-foreground">Texts about bookings go to this number.</p>
+          <p className="text-xs text-text-muted">Texts about bookings go to this number.</p>
         </div>
       </fieldset>
       <div className="flex justify-end gap-2">

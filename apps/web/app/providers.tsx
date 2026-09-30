@@ -2,6 +2,8 @@
 'use client';
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
+import { TooltipProvider } from '@/components/ui/overlay';
+import { ToastProvider } from '@/components/ui/toast';
 import { ApiFailure, redirectFor } from '@/lib/api';
 
 // A signed-out or not-yet-enrolled person is sent to the right page from any screen.
@@ -21,5 +23,11 @@ export function Providers({ children }: { children: ReactNode }) {
       },
     },
   }));
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <TooltipProvider delayDuration={300}>
+        <ToastProvider>{children}</ToastProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
 }

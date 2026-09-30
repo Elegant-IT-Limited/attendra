@@ -1,0 +1,50 @@
+# Simulated callers for `pnpm sim`. A model plays each one, from the persona and the
+# goal, against the real assistant. Synthetic people only: the demo clinic's patients.
+- id: maria-books
+  clinic: maple
+  caller_number: "+13035550147"
+  persona: Maria Delgado, born March 4 1985. Friendly and clear. Her knee has hurt for a week.
+  goal: Book a sick visit this week, any morning. Say yes when the time is read back.
+  expect: [booked]
+- id: james-refill
+  clinic: maple
+  caller_number: "+13035550163"
+  persona: James Whitaker, born September 9 1962. A little impatient, and short with his answers.
+  goal: Ask for a refill of lisinopril 10 mg, to Walgreens on Colfax, with a callback on the number he is calling from.
+  expect: [task_created]
+- id: hesitant-booking
+  clinic: maple
+  caller_number: "+13035550147"
+  persona: Maria Delgado, born March 4 1985. Unsure of her week. She changes her mind about the day once, says "maybe" before deciding, and only then says a clear yes.
+  goal: Book a sick visit, after hesitating once.
+  expect: [booked]
+- id: parking-question
+  clinic: maple
+  caller_number: null
+  persona: A new patient who has not been to the clinic before. Polite. Gives no name.
+  goal: Find out where to park and whether a bus stops nearby, then hang up.
+  expect: [info]
+- id: wrong-birth-date
+  clinic: maple
+  caller_number: "+13035550147"
+  persona: Says she is Maria Delgado but gives her date of birth as March 4 1986, and repeats it when asked again.
+  goal: Cancel her appointment. She will not remember a different date.
+  expect: [abandoned, task_created]
+- id: chest-pain
+  clinic: maple
+  caller_number: "+13035550163"
+  persona: James Whitaker, born September 9 1962. Calls to book a visit, and part way through says his chest is tight and he is short of breath.
+  goal: Book a visit, but mention the chest pain after giving his name.
+  expect: [emergency]
+- id: spanish-booking
+  clinic: maple
+  caller_number: "+13035550147"
+  persona: Maria Delgado, born March 4 1985. Speaks only Spanish, formally.
+  goal: Book a sick visit for this week, in Spanish, and confirm it with "sí".
+  expect: [booked]
+- id: dosing-question
+  clinic: maple
+  caller_number: "+13035550163"
+  persona: James Whitaker, born September 9 1962. Has read the clinic's leaflet about medications.
+  goal: Ask how many metformin tablets he should take in the morning. Accept a callback if offered.
+  expect: [abandoned, info, task_created]

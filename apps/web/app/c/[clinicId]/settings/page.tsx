@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { ClinicConfig } from '@attendra/core';
+import { type ClinicConfig, clinicWarnings, emergencyNumberFor } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { Field, Section } from '@/components/settings/section';
+import { SettingsNav } from '@/components/settings/settings-nav';
+import { Switch } from '@/components/ui/controls';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -15,7 +18,7 @@ import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
 
 type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
-const select = 'h-9 rounded-md border border-input bg-card px-2 text-sm';
+const select = 'h-9 rounded-md border border-border-strong bg-surface px-2 text-sm';
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'new';
 const newId = (prefix: string, name: string) => `${prefix}_${slug(name)}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -49,6 +52,7 @@ export default function Settings() {
   return (
     <>
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
+      <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       {issues && issues.length > 0 && (
         <Alert tone="danger" title="Not saved. Fix these first:" className="mb-6">
@@ -61,32 +65,31 @@ export default function Settings() {
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
           </Field>
+          {clinicWarnings(c).map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Voice" htmlFor="voice" hint="A GPT-Live voice name."><Input id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })} /></Field>
             <Field label="Time zone" htmlFor="tz" hint="IANA name, like America/Denver."><Input id="tz" value={c.timezone} onChange={(e) => set({ timezone: e.target.value })} /></Field>
           </div>
-          <label className="flex items-start gap-3 text-sm">
-            <input type="checkbox" className="mt-1 size-4 accent-[var(--primary)]" checked={c.emergencyTransferEnabled} onChange={(e) => set({ emergencyTransferEnabled: e.target.checked })} />
-            <span><span className="font-medium">Transfer emergencies to on-call</span><br /><span className="text-muted-foreground">After the 911 script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.</span></span>
-          </label>
-          <label className="flex items-start gap-3 text-sm">
-            <input type="checkbox" className="mt-1 size-4 accent-[var(--primary)]" checked={c.recording.enabled} onChange={(e) => set({ recording: { ...c.recording, enabled: e.target.checked } })} />
-            <span><span className="font-medium">Record calls</span><br /><span className="text-muted-foreground">Off by default. Several US states require every party to consent, so a notice plays first.</span></span>
-          </label>
+          <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
+            hint={`After the ${emergencyNumberFor(c)} script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
+          <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
+            hint="Off by default. Several US states require every party to consent, so a notice plays first." disabled={!writable || save.isPending} />
           {c.recording.enabled && (
             <Field label="Recording notice" htmlFor="notice"><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
           )}
         </Section>
 
+        <AssistantSection c={c} set={set} disabled={!writable || save.isPending} />
+
         <Section title="Opening hours" description="Outside these hours the assistant still answers, takes callbacks and books, but does not transfer to the front desk.">
           {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
             <div key={d} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
               <span className="w-24 text-sm font-medium">{DAYS[Number(d)]}</span>
-              {windows(d).length === 0 && <span className="text-sm text-muted-foreground">Closed</span>}
+              {windows(d).length === 0 && <span className="text-sm text-text-muted">Closed</span>}
               {windows(d).map((w, i) => (
                 <span key={i} className="flex items-center gap-1.5">
                   <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-36" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
-                  <span className="text-muted-foreground">to</span>
+                  <span className="text-text-muted">to</span>
                   <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-36" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
                   <Button type="button" size="sm" variant="ghost" aria-label="Remove hours" onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
                 </span>
@@ -98,11 +101,11 @@ export default function Settings() {
 
         <Section title="Holidays" description="Closed all day. Nothing is offered on these dates.">
           <div className="flex flex-wrap gap-2">
-            {c.holidays.length === 0 && <span className="text-sm text-muted-foreground">None set.</span>}
+            {c.holidays.length === 0 && <span className="text-sm text-text-muted">None set.</span>}
             {c.holidays.map((h) => (
               <span key={h} className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-sm">
                 {h}
-                <button type="button" aria-label={`Remove ${h}`} className="text-muted-foreground hover:text-danger" onClick={() => set({ holidays: c.holidays.filter((x) => x !== h) })}><Trash2 className="size-3.5" /></button>
+                <button type="button" aria-label={`Remove ${h}`} className="text-text-muted hover:text-danger" onClick={() => set({ holidays: c.holidays.filter((x) => x !== h) })}><Trash2 className="size-3.5" /></button>
               </span>
             ))}
           </div>
@@ -117,6 +120,7 @@ export default function Settings() {
           {c.visitTypes.map((v, i) => (
             <div key={v.id} className="flex flex-wrap items-end gap-3">
               <Field label="Name"><Input className="w-64" value={v.name} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
+              <LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, names } : x)) })} />
               <Field label="Minutes"><Input type="number" min={5} max={240} className="w-24" value={v.minutes} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) } : x)) })} /></Field>
               <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${v.name}`} onClick={() => set({
                 visitTypes: c.visitTypes.filter((_, j) => j !== i),
@@ -130,8 +134,9 @@ export default function Settings() {
           action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
           {c.providers.map((p, i) => (
             <div key={p.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
-              <div className="flex items-end gap-3">
+              <div className="flex flex-wrap items-end gap-3">
                 <Field label="Name"><Input className="w-64" value={p.name} onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
+                <LocalNames thing={p} languages={c.languages} what="Provider" onChange={(names) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, names } : x)) })} />
                 <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => set({ providers: c.providers.filter((_, j) => j !== i) })}><Trash2 /></Button>
               </div>
               <div className="flex flex-wrap gap-4 text-sm">
@@ -144,14 +149,14 @@ export default function Settings() {
                   </label>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">{p.hours ? 'Has their own hours.' : 'Uses the clinic hours.'}</p>
+              <p className="text-xs text-text-muted">{p.hours ? 'Has their own hours.' : 'Uses the clinic hours.'}</p>
             </div>
           ))}
         </Section>
 
         <Section title="Routing" description="Where transfers go. The assistant transfers only to these numbers."
           action={<Button type="button" size="sm" variant="outline" onClick={() => set({ routing: [...c.routing, { target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }] })}><Plus /> Rule</Button>}>
-          {c.routing.length === 0 && <p className="text-sm text-muted-foreground">No transfers set up. Callers who ask for a person get a callback task.</p>}
+          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback task.</p>}
           {c.routing.map((r, i) => {
             const upd = (patch: Partial<typeof r>) => set({ routing: c.routing.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
             return (
@@ -186,15 +191,21 @@ export default function Settings() {
           ))}
         </Section>
 
+        <Section title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
+          <Field label="Keep transcripts and summaries for (days)" htmlFor="retention" hint={`${c.retentionDays} days is about ${(c.retentionDays / 365).toFixed(1)} years. The default, 2555 days, is about 7 years. Between 30 and 3650.`}>
+            <Input id="retention" type="number" min={30} max={3650} className="w-28" value={c.retentionDays} onChange={(e) => set({ retentionDays: Number(e.target.value) })} />
+          </Field>
+        </Section>
+
         <Section title="Phone numbers" description="Managed by your Attendra operator, who connects them to the SIP trunk.">
           <p className="font-mono text-sm">{c.phoneNumbers.join(', ')}</p>
         </Section>
       </fieldset>
 
       {writable && dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur md:left-[232px]">
+        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-[232px]">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
-            <p className="text-sm text-muted-foreground">You have unsaved changes.</p>
+            <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { setDraft(saved.data ?? null); setIssues([]); }}>Discard</Button>
               <Button onClick={() => save.mutate(c)} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>

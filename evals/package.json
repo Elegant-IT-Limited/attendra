@@ -6,12 +6,14 @@
   "license": "AGPL-3.0-only",
   "scripts": {
     "eval": "tsx src/run.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "sim": "tsx sim/run.ts"
   },
   "dependencies": {
     "@attendra/agent": "workspace:*",
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
     "@electric-sql/pglite": "0.3.16",

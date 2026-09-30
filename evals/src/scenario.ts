@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { LANGUAGES } from '@attendra/core';
 
 /**
  * One scenario is one phone call. Caller turns are always scripted. The backend's
@@ -25,7 +26,10 @@ export const Scenario = z.object({
   id: z.string(),
   title: z.string(),
   tags: z.array(z.string()).default([]),
-  caller_number: z.string().nullable().default('+13035550147'),
+  // which demo clinic takes the call: Maple Street (English and Spanish) or Dhanmondi (Bangla and English)
+  clinic: z.enum(['maple', 'dhanmondi']).default('maple'),
+  // defaults to the clinic's first demo patient: Maria at Maple Street, Rahima at Dhanmondi
+  caller_number: z.string().nullable().optional(),
   turns: z.array(Turn).min(1),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),
@@ -35,6 +39,10 @@ export const Scenario = z.object({
     sms_sent: z.number().int().default(0),
     transfer_to: z.string().nullable().default(null),
     emergency_instruction: z.boolean().default(false),
+    language: z.enum(LANGUAGES).optional(), // the language the call ended in
+    spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
+    answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
+    cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
 });

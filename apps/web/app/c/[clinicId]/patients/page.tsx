@@ -15,7 +15,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, useClinic } from '@/lib/api';
 
-const row = 'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none';
+const row = 'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none';
 
 export default function Patients() {
   const { clinicId } = useParams<{ clinicId: string }>();
@@ -48,7 +48,7 @@ export default function Patients() {
           <CardContent className="py-5">
             <PatientSearch clinicId={clinicId} autoFocus
               renderResult={(p) => <Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} /></Link>}
-              empty={<p className="text-sm text-muted-foreground">Results appear as you type. Searches are recorded in the audit log by how many patients matched, never by what you typed.</p>} />
+              empty={<p className="text-sm text-text-muted">Results appear as you type. Searches are recorded in the audit log by how many patients matched, never by what you typed.</p>} />
           </CardContent>
         </Card>
         <Card>
