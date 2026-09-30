@@ -76,7 +76,7 @@ Prompts guide the voice. The rules below live in [`packages/agent/src/tools.ts`]
 
 ## Quick start
 
-You need Node 22 and pnpm 10.
+You need Node 22.12 or later and pnpm 10.
 
 ```bash
 pnpm install
@@ -126,7 +126,7 @@ packages/telephony/    SIP header parsing, templated SMS through Twilio
 packages/db/           SQL migrations with RLS, Drizzle schema, PHI encryption, repositories, synthetic seed
 packages/knowledge/    the clinic's documents: extraction, chunking, embeddings, hybrid search, grounded answers
 packages/webhooks/     Standard Webhooks signing, the SSRF guard, delivery
-packages/observability the redacting logger
+packages/observability/ the redacting logger
 evals/                 call scenarios (YAML), the simulator that runs them, the judge, and simulated callers (evals/sim)
 infra/                 Docker Compose and the images
 docs/                  architecture, safety, HIPAA, self-hosting, roadmap, decision records
