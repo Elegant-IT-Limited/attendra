@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       scenarios:
-        description: How many simulated calls to run
+        description: How many simulated calls to run (at most 50)
         required: false
         default: '20'
 permissions:
@@ -33,8 +33,12 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -o pipefail
+          # a whole number from 1 to 50: each call costs credit
+          n="${SCENARIOS:-20}"
+          case "$n" in ''|*[!0-9]*) echo "scenarios must be a number" >&2; exit 1 ;; esac
+          if [ "$n" -lt 1 ] || [ "$n" -gt 50 ]; then echo "scenarios must be from 1 to 50" >&2; exit 1; fi
           mkdir -p evals/reports
-          pnpm sim --scenarios "${SCENARIOS:-20}" | tee "evals/reports/sim-$(date -u +%F).txt"
+          pnpm sim --scenarios "$n" | tee "evals/reports/sim-$(date -u +%F).txt"
       - name: live evals, scored by the judge
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
