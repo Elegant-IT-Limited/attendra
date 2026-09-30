@@ -58,7 +58,7 @@ export class LiveController {
    */
   @Get('calls/:callId/live')
   @Requires('calls:read')
-  @ApiOperation({ summary: 'One live call\'s events (text/event-stream). Audited once per watch.' })
+  @ApiOperation({ summary: 'One live call\'s events (text/event-stream). Audited once per person and call per five minutes.' })
   @ApiProduces('text/event-stream')
   async stream(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @CurrentStaff() staff: Staff, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
     const voice = this.voice;
@@ -67,8 +67,8 @@ export class LiveController {
     const abort = new AbortController();
     const body = await voice.liveStream(clinicId, callId, last, abort.signal).catch(() => null);
     if (!body) throw new NotFoundException({ error: 'not_live' });
-    // a reconnect carries the id of the last event it saw: the same watch, already audited
-    if (!last) await this.desk.watchLive(clinicId, callId, staff.userId, true);
+    // audited on the server's terms: a Last-Event-ID from the client never skips it
+    await this.desk.watchLive(clinicId, callId, staff.userId, true);
     reply.hijack();
     const res = reply.raw;
     res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });

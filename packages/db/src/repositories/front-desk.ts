@@ -145,7 +145,8 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const [call] = await tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
       if (!call) return false;
-      if (audit) await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'call.live.watched', entity: 'call', entityId: callId, callId });
+      // every stream opened is a watch, whatever the browser says it saw before; one row per person and call per five minutes
+      if (audit) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'call.live.watched', entity: 'call', entityId: callId, callId }, 5);
       return true;
     });
   }

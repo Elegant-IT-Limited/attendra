@@ -72,10 +72,19 @@ describe('watching a live call', () => {
     expect(res.headers['cache-control']).toContain('no-transform');
     expect(res.body).toBe(EVENTS.join(''));
     expect(res.body).toContain(': heartbeat');
-    // a reconnect is the same watch
+    // a reconnect within five minutes is the same watch
     await stream(as.staff, api.callId, '1');
     expect(voice.liveStream).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, '1', expect.any(AbortSignal));
     expect(await audits('call.live.watched')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.callId, counts: null }]);
+  });
+
+  it('audits a stream opened with a Last-Event-ID too: the client cannot skip the audit', async () => {
+    await stream(as.admin, api.callId, '42');
+    expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.callId, counts: null }]);
+    // after five minutes, the same person watching again is a new row
+    await api.t.db.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'call.live.watched'`);
+    await stream(as.admin, api.callId, '43');
+    expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toHaveLength(2);
   });
 
   it('needs calls:read, the clinic\'s own call, and a call that is live', async () => {
