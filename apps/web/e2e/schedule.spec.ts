@@ -103,6 +103,22 @@ test.describe.serial('the schedule', () => {
     }
   });
 
+  test('a week with only cancelled visits says they are hidden, not that nothing was booked', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.route((u) => u.pathname.endsWith('/appointments') && u.searchParams.has('from'), (route) => {
+      const from = new URL(route.request().url()).searchParams.get('from')!;
+      const at = new Date(`${from}T16:00:00Z`);
+      route.fulfill({ json: { from, days: 7, appointments: [{
+        id: 'appt_hidden', patientId: 'p1', patientName: 'Sam Rivera', providerId: 'prov_okafor', visitTypeId: 'vt_sick',
+        startsAt: at.toISOString(), endsAt: new Date(at.getTime() + 20 * 60_000).toISOString(), status: 'cancelled', cancelReason: 'patient_asked',
+        bookedBy: { kind: 'staff', name: 'Jordan (front desk)' }, cancelledBy: { kind: 'staff', name: 'Jordan (front desk)' }, createdAt: at.toISOString(),
+      }] } });
+    });
+    await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
+    await expect(page.getByText('A cancelled visit is hidden. Tick Show cancelled to see it.')).toBeVisible();
+    await expect(page.getByText('Nothing booked here yet')).toHaveCount(0);
+  });
+
   test('a booking the server refuses says why, not that the connection failed', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
