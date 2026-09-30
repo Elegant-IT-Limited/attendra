@@ -72,10 +72,19 @@ describe('watching a live call', () => {
     expect(res.headers['cache-control']).toContain('no-transform');
     expect(res.body).toBe(EVENTS.join(''));
     expect(res.body).toContain(': heartbeat');
-    // a reconnect is the same watch
+    // a reconnect within five minutes is the same watch
     await stream(as.staff, api.callId, '1');
     expect(voice.liveStream).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, '1', expect.any(AbortSignal));
     expect(await audits('call.live.watched')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.callId, counts: null }]);
+  });
+
+  it('audits a stream opened with a Last-Event-ID too: the client cannot skip the audit', async () => {
+    await stream(as.admin, api.callId, '42');
+    expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.callId, counts: null }]);
+    // after five minutes, the same person watching again is a new row
+    await api.t.db.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'call.live.watched'`);
+    await stream(as.admin, api.callId, '43');
+    expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toHaveLength(2);
   });
 
   it('needs calls:read, the clinic\'s own call, and a call that is live', async () => {
@@ -117,6 +126,19 @@ describe('staff actions', () => {
     expect((await audits('call.taken_over')).map((a) => a.actor)).toEqual([`user:${api.users.staff}`, `user:${api.users.admin}`]);
   });
 
+  it('keeps own numbers in the clinic\'s country, audits a change, and records a take-over\'s destination by its last four digits', async () => {
+    const foreign = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+8801711000123' } });
+    expect(foreign.statusCode).toBe(422);
+    expect(foreign.json().issues[0]).toMatchObject({ path: 'number', message: expect.stringContaining('+1') });
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550987' } })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: null } })).statusCode).toBe(200);
+    expect((await audits('member.transfer_number.set')).length).toBeGreaterThanOrEqual(2);
+    expect(await audits('member.transfer_number.cleared')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.users.admin, counts: null }]);
+    const rows = await audits('call.taken_over');
+    expect(rows.map((r) => r.counts)).toEqual([{ ownNumber: 0, destinationLast4: 101 }, { ownNumber: 1, destinationLast4: 123 }]);
+    expect(JSON.stringify(await api.t.db.execute(sql`select * from audit_logs where action like 'call.%' or action like 'member.transfer%'`))).not.toMatch(/3035550(123|987|101)/);
+  });
+
   it('tells the second person who already has the call, and why a browser call cannot be transferred', async () => {
     voice.endCall.mockResolvedValueOnce({ ok: false, status: 409, error: 'already_taken', by: api.users.staff });
     const taken = await act('end', as.admin, { key: 'end-key-1' });
@@ -129,6 +151,18 @@ describe('staff actions', () => {
     expect(await audits('call.ended_by_staff')).toEqual([]);
     expect((await act('end', as.staff, { key: 'end-key-3' })).statusCode).toBe(202);
     expect((await audits('call.ended_by_staff')).map((a) => a.actor)).toEqual([`user:${api.users.staff}`]);
+  });
+
+  it('writes the audit row before the action: when the row cannot be written, the assistant is never told', async () => {
+    const calls = voice.coach.mock.calls.length;
+    await api.t.db.execute(sql`revoke insert on audit_logs from attendra_app`);
+    try {
+      const res = await act('coach', as.staff, { note: 'offer Friday', key: 'coach-key-9' });
+      expect(res.statusCode).toBe(500);
+    } finally {
+      await api.t.db.execute(sql`grant insert on audit_logs to attendra_app`);
+    }
+    expect(voice.coach.mock.calls.length).toBe(calls);
   });
 
   it('a simulated call starts only where the voice service offers them', async () => {

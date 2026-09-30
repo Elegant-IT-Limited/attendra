@@ -56,7 +56,7 @@ const TakeOver = LiveAction.extend({
 const Simulate = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64) });
 
 const jsonBody = (raw: unknown) => { try { return JSON.parse(raw as string); } catch { return null; } };
-const ACTION_STATUS: Record<Exclude<ActionResult, { ok: true }>['error'], number> = { not_live: 404, already_taken: 409, web_call: 409 };
+const ACTION_STATUS: Record<Exclude<ActionResult, { ok: true }>['error'], number> = { not_live: 404, already_taken: 409, web_call: 409, emergency_script: 409 };
 
 /** Test calls never text anyone: the number a tester reads out may be a real patient's. */
 const NO_TEXTS: Backend['messenger'] = { sendTemplate: async () => { throw new Error('texts are not sent on test calls'); } };
@@ -306,6 +306,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         coach: (note) => runner.act(a.coach(note)),
         takeOver: (uri) => runner.act(a.takeOver(uri)),
         end: () => runner.act(a.endByStaff()),
+        canEnd: () => a.canEndByStaff(),
       });
       a.observer = (e) => live.publish(callId, e);
       deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel }, 'call accepted');

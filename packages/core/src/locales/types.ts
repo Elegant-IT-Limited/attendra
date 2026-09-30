@@ -53,6 +53,11 @@ export interface LanguagePack {
 
   /** A clear yes, in the caller's own words. */
   yes: RegExp;
+  /**
+   * Words that are a yes only when they are the whole answer: "ha" or "confirm" said
+   * alone is a yes; inside a sentence ("I need to confirm with my wife") it is not.
+   */
+  yesAlone: RegExp;
   /** Anything that makes a yes not count: a no, a wait, a maybe, a question. */
   hedge: RegExp;
 

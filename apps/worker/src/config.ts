@@ -10,6 +10,7 @@ const Env = z.object({
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_SUMMARY_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   ATTENDRA_SMS_STATUS: z.preprocess(blank, z.enum(['on', 'off']).default('off')),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),
 });

@@ -8,13 +8,15 @@
 // voice service starts here too, on 127.0.0.1:8080, and the dashboard's Test call
 // page talks to the receptionist through your microphone. That uses your OpenAI
 // credit: about $0.05 a minute. No phone number or Twilio account is needed.
-import { createPhiCipher } from '@attendra/db';
+import { createPhiCipher, KnowledgeRepository } from '@attendra/db';
 import { openTestDatabase } from '@attendra/db/testing';
+import { HybridKnowledgeBase, LocalAnswerer, LocalEmbedder, ModelAnswerer } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { createSimulatedVoiceApp, createVoiceApp } from '@attendra/voice/runtime';
-import { bossQueue, createBoss } from '@attendra/worker/queue';
+import { bossQueue, createBoss, eventSink } from '@attendra/worker/queue';
 import { startWorker, summariserFromEnv } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
+import OpenAI from 'openai';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +52,15 @@ const boss = createBoss({ pglite: client });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
 const summariser = process.env.ATTENDRA_TEST_CALLS === 'off' ? new LocalSummariser() : summariserFromEnv(process.env);
-await startWorker({ boss, db, cipher, summariser, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false });
+// The demo's documents are indexed with local embeddings, so every part of the demo searches with them too.
+const embedder = new LocalEmbedder();
+const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), embedder);
+// Webhooks to this machine over plain HTTP, for trying n8n locally and for the e2e suite's receiver. Never in a deployment.
+const webhooks = { allowLoopback: process.env.ATTENDRA_WEBHOOKS_ALLOW_LOCAL === 'on' };
+await startWorker({
+  boss, db, cipher, summariser, embedder, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false,
+  events: eventSink(bossQueue(boss)), webhooks,
+});
 
 const failed = results.filter((r) => !r.passed);
 if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo calls did not play as their scenario expects');
@@ -69,7 +79,7 @@ if (realCalls || simulated) {
   const internalToken = randomBytes(32).toString('base64url');
   const common = {
     db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }), internalToken,
-    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300, jobs: bossQueue(boss),
+    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300, jobs: bossQueue(boss), knowledge,
   };
   const voiceApp = realCalls
     ? createVoiceApp({
@@ -88,7 +98,9 @@ if (realCalls || simulated) {
   }
 }
 
-const app = await createApi({ db, cipher, auth, log, voice, options: { publicUrl, demoMode: true, demoSignIn } });
+// Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
+const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
+const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

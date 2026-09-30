@@ -42,6 +42,7 @@ export const TOOLS: Record<string, string> = {
   transfer_call: 'Transfer',
   end_call: 'Ended call',
   get_clinic_info: 'Clinic information',
+  search_knowledge: 'Searched clinic documents',
 };
 
 /** Refusals the backend returned, in words a front-desk person would use. */
@@ -55,6 +56,7 @@ export const REFUSALS: Record<string, string> = {
   nothing_pending: 'nothing to confirm',
   slot_not_offered: 'time was never offered',
   closed: 'office closed',
+  medical_question: 'medical question, not answered',
 };
 
 /** Requests, in the words a front desk uses. The API still calls them tasks. */
