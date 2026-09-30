@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientCard, PatientList } from '@attendra/api/contracts';
-import { countryCopy } from '@attendra/core';
+import { countryCopy, localDateOf } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
+import { useParams } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
@@ -82,11 +83,14 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
 }
 
 export function PatientLine({ p }: { p: PatientCard }) {
+  // always shown inside a clinic's pages: its age is counted on the clinic's date
+  const { clinicId } = useParams<{ clinicId: string }>();
+  const config = useClinicConfig(clinicId);
   return (
     <>
       <span className="min-w-0">
         <span className="block truncate font-medium">{p.name}</span>
-        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob)}</span>
+        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}</span>
       </span>
       {p.phone && <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span>}
     </>

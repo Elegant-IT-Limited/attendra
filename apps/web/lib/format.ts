@@ -164,10 +164,11 @@ export const VISIT_TONES = [
 ];
 export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]'];
 
-/** Whole years since a YYYY-MM-DD date of birth, today. */
-export function age(dateOfBirth: string, today = new Date()) {
+/** Whole years on `today`, the clinic's date (YYYY-MM-DD), not the browser's: a birthday turns over at the clinic's midnight. */
+export function age(dateOfBirth: string, today: string) {
   const [y, m, d] = dateOfBirth.split('-').map(Number) as [number, number, number];
-  let years = today.getFullYear() - y;
-  if (today.getMonth() + 1 < m || (today.getMonth() + 1 === m && today.getDate() < d)) years--;
+  const [ty, tm, td] = today.split('-').map(Number) as [number, number, number];
+  let years = ty - y;
+  if (tm < m || (tm === m && td < d)) years--;
   return years;
 }
