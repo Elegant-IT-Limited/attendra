@@ -32,7 +32,7 @@ const actorOf = (userId: string) => `user:${userId}`;
 export class ScheduleRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
-  /** Booked and cancelled appointments that start in [from, to), earliest first. */
+  /** Booked and cancelled appointments that overlap [from, to), so a visit already under way at `from` is shown too, earliest first. */
   async range(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; label: string }, userId: string): Promise<ScheduleEntry[]> {
     const rows = await withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ a: appointments, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
