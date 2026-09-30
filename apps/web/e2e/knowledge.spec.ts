@@ -9,6 +9,12 @@ test('a manager uploads a document, sees it indexed, and asks a question with a 
   // the demo's own documents are there
   await expect(page.getByTestId('knowledge-document').filter({ hasText: 'Parking and directions' })).toContainText('Ready');
 
+  // an empty file is refused, and the page says why
+  await page.getByLabel('Title').fill('Nothing here');
+  await page.getByLabel('File').setInputFiles({ name: 'empty.txt', mimeType: 'text/plain', buffer: Buffer.alloc(0) });
+  await page.getByRole('button', { name: 'Upload' }).click();
+  await expect(page.getByText('The file is empty. Choose one with the text in it.')).toBeVisible();
+
   await page.getByLabel('Title').fill('Late arrivals');
   await page.getByLabel('File').setInputFiles({
     name: 'late-arrivals.txt', mimeType: 'text/plain',
