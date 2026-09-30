@@ -50,6 +50,8 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`. Back up first, as for any upgrade: `docker compose exec postgres pg_dump -U attendra attendra > attendra.sql`.
 
+**Upgrading to v0.4.1.** Patient names are now compared with letters such as ø, ł, æ and ß spelled with their base letters, so a patient's lookup hash has to be recomputed once, with the same `ATTENDRA_DATA_KEY` the services use: `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups`. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
+
 Using your own Postgres instead of Compose? It needs the pgvector extension installed (the `postgresql-16-pgvector` package on Debian and Ubuntu, or your provider's pgvector option); the migration enables it. Run the migrations as the database owner, and let the service's login role switch into the application role the RLS policies are written for:
 
 ```sql

@@ -11,11 +11,21 @@ import { fold } from './locales';
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
+// letters with no decomposition that removing accents would reach: Ødegård, Łukasz, Æsa, Strauß
+const BASE_LETTERS: Record<string, string> = { ø: 'o', ł: 'l', æ: 'ae', ß: 'ss', đ: 'd', œ: 'oe', þ: 'th', ð: 'd', ı: 'i' };
+
+/**
+ * A name as the identity check compares it: lower case, accents removed and the
+ * letters above spelled with their base letters, so "Søren Ødegård" said as "Soren
+ * Odegard" still matches. Letters of every script are kept; only punctuation and
+ * digits become spaces.
+ */
 export function normalizeName(name: string): string {
   return name
     .normalize('NFKD').replace(/[̀-ͯ]/g, '') // José -> Jose, so transcripts without accents still match
     .toLowerCase()
-    .replace(/[^a-z\s'-]/g, ' ')
+    .replace(/[øłæßđœþðı]/g, (c) => BASE_LETTERS[c]!)
+    .replace(/[^\p{L}\p{M}\s'-]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

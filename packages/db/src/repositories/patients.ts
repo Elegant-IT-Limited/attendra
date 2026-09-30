@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { namesMatch, normalizeName, type PatientDirectory, type PatientLookup } from '@attendra/core';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, patients } from '../schema';
@@ -52,4 +52,33 @@ export class PostgresPatientDirectory implements PatientDirectory {
       return row!.id;
     });
   }
+}
+
+/**
+ * Recomputes every patient's lookup hash from the stored name and date of birth,
+ * after the name normaliser changes: until then a patient whose hash was made the
+ * old way cannot be found. Safe to run more than once, and on any database, since it
+ * only rewrites hashes that differ. Owner connection, one clinic at a time, with one
+ * audit row per clinic that records how many changed.
+ */
+export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Promise<{ checked: number; changed: number }> {
+  let checked = 0;
+  let changed = 0;
+  const clinicIds = (await db.execute(sql`select id from clinics order by id`)).rows as { id: string }[];
+  for (const { id: clinicId } of clinicIds) {
+    await withClinic(db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      let n = 0;
+      for (const r of await tx.select({ id: patients.id, lookupHash: patients.lookupHash, first: patients.firstNameEnc, last: patients.lastNameEnc, dob: patients.dobEnc }).from(patients).where(eq(patients.clinicId, clinicId))) {
+        checked++;
+        const hash = cipher.hash(patientLookupKey(clinicId, `${cipher.decrypt(r.first, ctx('first_name'))} ${cipher.decrypt(r.last, ctx('last_name'))}`, cipher.decrypt(r.dob, ctx('dob'))));
+        if (hash === r.lookupHash) continue;
+        await tx.update(patients).set({ lookupHash: hash }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
+        n++;
+      }
+      changed += n;
+      if (n) await tx.insert(auditLogs).values({ clinicId, actor: 'system', action: 'patient.lookups.rehashed', entity: 'clinic', entityId: clinicId, counts: { patients: n } });
+    });
+  }
+  return { checked, changed };
 }
