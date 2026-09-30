@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -94,13 +94,30 @@ describe('the retention purge', () => {
     await h.summariseCall({ clinicId: OTHER.id, callId: old });
     await t.db.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
 
+    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+
+    const actionsOf = async (id: string) => ((await t.db.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
+    const oldActions = await actionsOf(old);
+    const recentActions = await actionsOf(recent);
+
     const results = await h.purgeRetention();
-    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1 });
-    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0 }); // 2555 days by default
+    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
+    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
+    expect(await actionsOf(old)).toBe(0);
+    expect(await actionsOf(recent)).toBe(recentActions);
     expect(await calls.transcript(OTHER.id, old)).toEqual([]);
     expect(await calls.transcript(OTHER.id, recent)).toHaveLength(1);
     const [audit] = await audits(OTHER.id, 'retention.purged');
-    expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1 } });
+    expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1, callActions: oldActions } });
+  });
+
+  it('works through old calls in batches, each its own transaction', async () => {
+    const ids = [await closedCall(OTHER.id), await closedCall(OTHER.id), await closedCall(OTHER.id)];
+    await t.db.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
+    expect(counts.transcriptLines).toBe(3);
+    for (const id of ids) expect(await calls.transcript(OTHER.id, id)).toEqual([]);
   });
 });
 
