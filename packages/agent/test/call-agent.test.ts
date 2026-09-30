@@ -148,6 +148,22 @@ describe('safety', () => {
 });
 
 describe('call control', () => {
+  it('still tells the caller the booking went through when writing the call record fails', async () => {
+    const c = await w.call('+13035550163', { actions: { record: async () => { throw new Error('audit write failed'); } } });
+    c.caller('Hi, this is James Whitaker, born September 9 1962. I need a sick visit in the afternoon.');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c.assistant('Tuesday afternoon with Dr. Okafor. Shall I book it?');
+    c.caller('Yes, please book it.');
+    const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
+    expect(spoken(done)).toContain('"booked":true');
+    expect(spoken(done)).not.toContain("couldn't complete");
+    expect(c.state.outcome).toBe('booked');
+  });
+
   it('discards a slow result once the caller has moved on to a newer request', async () => {
     const c = await w.call();
     let release!: () => void;

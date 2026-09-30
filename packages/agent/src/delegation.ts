@@ -210,13 +210,19 @@ export class CallAgent {
         this.verified = shortName(String((args as { full_name?: unknown })?.full_name ?? '')) ?? String(result.data.first_name ?? 'Verified');
       }
       this.emitState();
-      await this.actions?.record({
-        tool: name,
-        argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
-        revision,
-        patientId: this.state.verifiedPatient?.id ?? null,
-      });
+      // the step already happened (a booking is booked): a failed write of its record is
+      // logged, and never turned into "I couldn't do that" for the caller
+      try {
+        await this.actions?.record({
+          tool: name,
+          argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
+          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
+          revision,
+          patientId: this.state.verifiedPatient?.id ?? null,
+        });
+      } catch (err) {
+        this.log.error({ call_id: this.ctx.callId, tool: name, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call action not recorded');
+      }
       if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
       return result;
     };
