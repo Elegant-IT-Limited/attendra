@@ -42,7 +42,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 - **Summarises every call** for staff, flags the ones that need a look, and deletes old records on the clinic's retention period.
 - **Webhooks** for n8n, Zapier and Make, signed per Standard Webhooks, with no patient data in them. [docs/webhooks.md](docs/webhooks.md)
 - **Quality**: a weekly page of containment, bookings, refusals and cost, a judge for live evals, and simulated callers. [docs/quality.md](docs/quality.md)
-- **MCP**: other AI agents, such as Claude Desktop, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)
+- **MCP**: other AI agents, such as a desktop MCP client, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)
 - **The front desk dashboard**: Today, the schedule, patients, requests, calls, team, settings and the audit log, in light and dark, with a command palette. [docs/design.md](docs/design.md)
 
 ## How the AI works
