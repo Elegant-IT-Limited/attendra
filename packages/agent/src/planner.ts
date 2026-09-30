@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, ToolArgs, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { type ClinicConfig, NO_INFORMATION, ToolArgs, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -21,7 +21,8 @@ export interface PlannerOutput { say: string | null; quiet?: string }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
   verify_caller: 'Verify the caller by full name and date of birth before anything about their own record.',
-  get_clinic_info: 'Hours for today and the next 7 days, address, parking, insurance and preparation questions, from the clinic FAQ.',
+  get_clinic_info: 'Hours for today and the next 7 days, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer.',
+  search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
   find_slots: 'Find up to 3 open appointment slots. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
   list_appointments: 'List the verified caller\'s upcoming appointments.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
@@ -40,6 +41,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'Rules: verify identity before anything about the caller\'s own records. Offer only slots returned by find_slots.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
     'Never give medical advice, never interpret symptoms, never promise a refill. Offer a callback or a transfer instead.',
+    `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
     'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name}`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}`).join('; ')}.`,
   ].join('\n');
@@ -53,10 +55,15 @@ function transcriptFor(state: CallState): string {
  * The production planner: the Responses API with our tools as strict function
  * tools. store: false keeps the request inside Zero Data Retention, which also means
  * we resend the running input (with the model's encrypted reasoning) each round
- * instead of chaining response ids.
+ * instead of chaining response ids. A caller is waiting, so each round has a short
+ * timeout, and the rounds and each round's output are capped: that is the ceiling
+ * on what one delegation can cost.
  */
 export class ResponsesPlanner implements Planner {
-  constructor(private readonly openai: OpenAI, private readonly model: string, private readonly maxRounds = 5) {}
+  constructor(
+    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 5,
+    private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
+  ) {}
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
     const tools = TOOL_NAMES.map((name) => ({
@@ -69,9 +76,10 @@ export class ResponsesPlanner implements Planner {
     for (let round = 0; round < this.maxRounds; round++) {
       const res = await this.openai.responses.create({
         model: this.model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
+        max_output_tokens: this.limits.maxOutputTokens,
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
-      });
+      }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
       const calls = res.output.filter((o) => o.type === 'function_call');
       if (!calls.length) return { say: res.output_text?.trim() || null };
       for (const item of res.output) {

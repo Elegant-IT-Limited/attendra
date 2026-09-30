@@ -114,16 +114,16 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
         <div className="space-y-1.5">
           <Label htmlFor="note">Note for the team (optional)</Label>
           <Textarea id="note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Anything the provider or front desk should know" />
-          <p className="text-xs text-muted-foreground">Only staff see this note. It is stored encrypted.</p>
+          <p className="text-xs text-text-muted">Only staff see this note. It is stored encrypted.</p>
         </div>
       )}
       {step === 3 && slot && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-muted-foreground">Patient</dt><dd className="font-medium">{patient?.name}</dd>
-          <dt className="text-muted-foreground">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(slot.startsAt), clinic.timezone))} at {timeOf(slot.startsAt, clinic.timezone)}</dd>
-          <dt className="text-muted-foreground">With</dt><dd>{provider?.name}</dd>
-          <dt className="text-muted-foreground">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
-          {note.trim() && <><dt className="text-muted-foreground">Note</dt><dd className="whitespace-pre-wrap">{note.trim()}</dd></>}
+          <dt className="text-text-muted">Patient</dt><dd className="font-medium">{patient?.name}</dd>
+          <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(slot.startsAt), clinic.timezone))} at {timeOf(slot.startsAt, clinic.timezone)}</dd>
+          <dt className="text-text-muted">With</dt><dd>{provider?.name}</dd>
+          <dt className="text-text-muted">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
+          {note.trim() && <><dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{note.trim()}</dd></>}
         </dl>
       )}
     </Panel>
@@ -134,8 +134,8 @@ function Stepper({ step }: { step: number }) {
   return (
     <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
       {STEPS.map((s, i) => (
-        <span key={s} className={cn('inline-flex items-center gap-1', i === step ? 'font-medium text-foreground' : 'text-muted-foreground')} aria-current={i === step ? 'step' : undefined}>
-          <span className={cn('flex size-4 items-center justify-center rounded-full text-[10px]', i < step ? 'bg-primary text-primary-foreground' : i === step ? 'border border-primary' : 'border border-border')}>
+        <span key={s} className={cn('inline-flex items-center gap-1', i === step ? 'font-medium text-text' : 'text-text-muted')} aria-current={i === step ? 'step' : undefined}>
+          <span className={cn('flex size-4 items-center justify-center rounded-full text-xs', i < step ? 'bg-primary text-on-primary' : i === step ? 'border border-primary' : 'border border-border')}>
             {i < step ? <Check className="size-2.5" /> : i + 1}
           </span>
           {s}

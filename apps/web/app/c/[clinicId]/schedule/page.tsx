@@ -52,7 +52,9 @@ function ScheduleScreen() {
   const [providerId, setProviderId] = useState('');
   // in a week the columns are narrow and a cancelled block sits on top of the booking that replaced it, so they start hidden there
   const [cancelledShown, setCancelledShown] = useState({ day: true, week: false });
-  const [booking, setBooking] = useState(false);
+  // ?new=1 (the command palette and the N key) opens New booking straight away
+  const [booking, setBookingState] = useState(params.get('new') === '1');
+  const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
 
   const set = (next: Record<string, string | null>) => {
     const q = new URLSearchParams(params.toString());
@@ -95,10 +97,10 @@ function ScheduleScreen() {
           <Label htmlFor="schedule-date" className="sr-only">Date</Label>
           <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
         </div>
-        <div className="flex rounded-md border border-input p-0.5" role="tablist" aria-label="View">
+        <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
           {(['day', 'week'] as const).map((v) => (
             <button key={v} role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
-              className={cn('rounded px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', view === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              className={cn('rounded px-3 py-1 text-sm focus-ring', view === v ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {v === 'day' ? 'Day' : 'Week'}
             </button>
           ))}
@@ -121,7 +123,7 @@ function ScheduleScreen() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-text-muted">
               {schedule.isPending ? 'Loading…' : `${booked} booked${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
             </p>
           </div>
@@ -156,7 +158,7 @@ function ScheduleScreen() {
 
 function Legend({ clinic }: { clinic: ClinicConfig }) {
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-label="Legend">
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted" aria-label="Legend">
       {clinic.visitTypes.map((v, i) => (
         <li key={v.id} className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full', VISIT_DOTS[i % VISIT_DOTS.length])} aria-hidden />{capital(v.name)}</li>
       ))}

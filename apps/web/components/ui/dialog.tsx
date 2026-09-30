@@ -22,20 +22,20 @@ export function Panel({ open, onOpenChange, title, description, side = 'center',
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-foreground/20" />
+        <D.Overlay className="fixed inset-0 z-40 bg-overlay animate-fade-in" />
         <D.Content
-          className={cn('fixed z-50 flex flex-col bg-card shadow-lg focus-visible:outline-none',
+          className={cn('fixed z-50 flex flex-col bg-surface-raised text-text shadow-lg focus-visible:outline-none',
             side === 'right'
-              ? 'inset-y-0 right-0 w-full max-w-md border-l border-border'
-              : 'left-1/2 top-1/2 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border',
+              ? 'inset-y-0 right-0 w-full max-w-md border-l border-border animate-slide-in'
+              : 'left-1/2 top-1/2 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border animate-rise-in',
             className)}
         >
           <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
             <div className="space-y-1">
               <D.Title className="text-base font-semibold">{title}</D.Title>
-              {description ? <D.Description className="text-sm text-muted-foreground">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}
+              {description ? <D.Description className="text-sm text-text-muted">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}
             </div>
-            <D.Close className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Close">
+            <D.Close className="focus-ring rounded-md p-1 text-text-muted hover:bg-surface-sunken hover:text-text max-md:p-2.5" aria-label="Close">
               <X className="size-4" />
             </D.Close>
           </div>

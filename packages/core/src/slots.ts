@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { type Language, PACKS } from './locales';
 import type { ClinicConfig, Provider, VisitType } from './clinic';
 import { windowsOn } from './hours';
 import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
@@ -60,11 +61,9 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
   return out;
 }
 
-/** "Thursday, October 1 at 10:00 AM", in the clinic's zone, for read-back to the caller. */
-export function speakSlot(start: Date, timeZone: string): string {
-  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(start);
-  const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start);
-  return `${day} at ${time}`;
+/** "Thursday, October 1 at 10:00 AM", in the clinic's zone and the caller's language, for read-back to the caller. */
+export function speakSlot(start: Date, timeZone: string, language: Language = 'en'): string {
+  return PACKS[language].speakWhen(start, timeZone);
 }
 
 export function localDateOf(at: Date, timeZone: string) {

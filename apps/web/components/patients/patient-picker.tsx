@@ -30,11 +30,11 @@ export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; 
       <PatientSearch clinicId={clinicId} autoFocus onPick={pick}
         empty={recent.data?.patients.length ? (
           <div className="space-y-2">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Opened recently</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Opened recently</p>
             <ul className="divide-y divide-border rounded-md border border-border">
               {recent.data.patients.map((p) => (
                 <li key={p.id}>
-                  <button type="button" onClick={() => pick(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none">
+                  <button type="button" onClick={() => pick(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none">
                     <PatientLine p={p} />
                   </button>
                 </li>

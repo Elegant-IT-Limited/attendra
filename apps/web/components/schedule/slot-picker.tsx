@@ -51,7 +51,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
         <Button type="button" size="sm" variant="outline" disabled={from <= today} onClick={() => onFrom(addDays(from, -days) < today ? today : addDays(from, -days))} aria-label="Earlier week">
           <ChevronLeft /> Earlier
         </Button>
-        <p className="text-sm text-muted-foreground">{dayTitle(from, 'short')} to {dayTitle(addDays(from, days - 1), 'short')}</p>
+        <p className="text-sm text-text-muted">{dayTitle(from, 'short')} to {dayTitle(addDays(from, days - 1), 'short')}</p>
         <Button type="button" size="sm" variant="outline" onClick={() => onFrom(addDays(from, days))} aria-label="Later week">
           Later <ChevronRight />
         </Button>
@@ -64,17 +64,17 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
         <div className="max-h-80 space-y-4 overflow-y-auto pr-1" role="radiogroup" aria-label="Open times">
           {[...byDay.entries()].map(([day, list]) => (
             <div key={day} className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{dayTitle(day)}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{dayTitle(day)}</p>
               <div className="flex flex-wrap gap-2">
                 {list.map((s) => {
                   const selected = value?.startsAt === s.startsAt && value.providerId === s.providerId;
                   return (
                     <button key={`${s.providerId}@${s.startsAt}`} type="button" role="radio" aria-checked={selected}
                       onClick={() => onChange({ providerId: s.providerId, startsAt: s.startsAt })}
-                      className={cn('rounded-md border px-2.5 py-1.5 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                        selected ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-card hover:bg-muted')}>
+                      className={cn('rounded-md border px-2.5 py-1.5 text-left text-sm focus-ring',
+                        selected ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface hover:bg-surface-sunken')}>
                       <span className="font-medium tabular-nums">{timeOf(s.startsAt, clinic.timezone)}</span>
-                      {!providerId && <span className={cn('block text-xs', selected ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{providerName(s.providerId)}</span>}
+                      {!providerId && <span className={cn('block text-xs', selected ? 'text-on-primary/80' : 'text-text-muted')}>{providerName(s.providerId)}</span>}
                     </button>
                   );
                 })}

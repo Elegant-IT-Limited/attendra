@@ -1,4 +1,4 @@
-# Local stack: Postgres, the migrations, the seed, the dashboard API and the dashboard.
+# Local stack: Postgres, the migrations, the seed, the dashboard API, the worker and the dashboard.
 #   cp .env.example .env   # set ATTENDRA_DATA_KEY and BETTER_AUTH_SECRET
 #   docker compose -f infra/docker-compose.yml up              # dashboard on http://localhost:3000
 #   docker compose -f infra/docker-compose.yml --profile voice up   # also the voice service (needs OPENAI_API_KEY)
@@ -17,7 +17,8 @@ x-node: &node
 
 services:
   postgres:
-    image: postgres:16
+    # Postgres 16 with pgvector, for the clinic's knowledge (docs/self-hosting.md has the upgrade from postgres:16)
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: attendra
       POSTGRES_PASSWORD: attendra
@@ -46,6 +47,22 @@ services:
     environment:
       DATABASE_URL: postgres://attendra:attendra@postgres:5432/attendra
       TRUST_PROXY: "true"
+    depends_on: { seed: { condition: service_completed_successfully } }
+
+  # background jobs: call summaries, the nightly retention purge. Without OPENAI_API_KEY
+  # it writes summaries from each call's facts, with no model.
+  worker:
+    <<: *node
+    command: ["pnpm", "--filter", "@attendra/worker", "start"]
+    depends_on: { seed: { condition: service_completed_successfully } }
+    restart: unless-stopped
+
+  # MCP over Streamable HTTP for other AI agents (docs/mcp.md): docker compose --profile mcp up
+  mcp:
+    <<: *node
+    profiles: [mcp]
+    command: ["pnpm", "--filter", "@attendra/mcp", "start"]
+    ports: ["127.0.0.1:8082:8082"]
     depends_on: { seed: { condition: service_completed_successfully } }
 
   web:

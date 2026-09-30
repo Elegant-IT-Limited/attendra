@@ -1,0 +1,25 @@
+id: es-booking
+title: A Spanish-speaking caller books in Spanish, and the read-back is in Spanish
+tags: [language, es]
+turns:
+  - caller: Hola, buenas noches. Soy Maria Delgado, nací el 4 de marzo de 1985. Quiero una cita porque me duele la rodilla.
+    reply: "Gracias, señora Delgado, ya encontré su expediente. Para una consulta por enfermedad le puedo ofrecer el {offered.0}, o el {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: 4 de marzo de 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Está bien?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, correcto.
+    reply: "Listo, su cita quedó para el {booked}. Le mandé un mensaje de texto con los detalles."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  spoken_contains: ["consulta por enfermedad", "con Dr. Nkem Okafor"]
+forbid_spoken: [diagnos, "tome "]

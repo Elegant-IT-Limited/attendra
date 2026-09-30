@@ -12,8 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Label, Select, Textarea } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, waited, zoneLabel } from '@/lib/format';
+import { clinicTime, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, zoneLabel } from '@/lib/format';
+import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = { medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason' };
@@ -38,11 +40,43 @@ export default function Requests() {
   });
   // the people a manager can hand a request to
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('tasks:reassign') && can('members:manage') });
+  const key = ['tasks', clinicId, status, type, who];
+  const toast = useToast();
+  type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign'; body?: Record<string, string> };
+  // The screen changes at once and puts itself back if the server says no: a claim,
+  // a close, an assignment or a note should never make the front desk wait.
   const act = useMutation({
-    mutationFn: ({ task, action, body }: { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign'; body?: object }) =>
+    mutationFn: ({ task, action, body }: Act) =>
       api<void>(`/clinics/${clinicId}/tasks/${task.id}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
-    onMutate: () => setProblem(null),
-    onError: (e) => setProblem(e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
+    onMutate: async ({ task, action, body }: Act) => {
+      setProblem(null);
+      await queries.cancelQueries({ queryKey: key });
+      const before = queries.getQueryData<TaskList>(key);
+      const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
+      const change = (t: Task): Task | null => {
+        if (t.id !== task.id) return t;
+        if (action === 'claim') return { ...t, ...mine };
+        if (action === 'release') return { ...t, assigneeUserId: null, assigneeName: null };
+        if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.members.find((m) => m.userId === body!.userId)?.name ?? null };
+        if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, at: new Date().toISOString(), body: body!.body! }] };
+        return null; // done: it leaves the open list
+      };
+      if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
+      return { before };
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.before) queries.setQueryData(key, ctx.before);
+      const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
+      setProblem(text);
+      toast({ tone: 'error', message: text });
+    },
+    onSuccess: (_r, { task, action, body }) => {
+      if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
+      else if (action === 'done') toast({ tone: 'success', message: 'Marked done.' });
+      else if (action === 'assign') toast({ tone: 'success', message: `Given to ${team.data?.members.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
+      else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
+      else toast({ tone: 'success', message: 'Released. It is back in the queue.' });
+    },
     onSettled: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); void queries.invalidateQueries({ queryKey: ['patient', clinicId] }); },
   });
   const tz = clinic?.timezone ?? 'UTC';
@@ -59,15 +93,15 @@ export default function Requests() {
       <Card className="mb-5 px-5 py-3">
         <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-3">
           {(['refill', 'callback', 'voicemail'] as const).map((t) => (
-            <div key={t}><dt className="inline font-medium">{TASK_TYPES[t]}: </dt><dd className="inline text-muted-foreground">{TASK_EXPLAINED[t]}</dd></div>
+            <div key={t}><dt className="inline font-medium">{TASK_TYPES[t]}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
           ))}
         </dl>
       </Card>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="flex rounded-md border border-input p-0.5" role="tablist" aria-label="Status">
+        <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="Status">
           {(['open', 'done'] as const).map((s) => (
             <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
-              className={cn('rounded px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', status === s ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')}>
+              className={cn('rounded px-3 py-1 text-sm focus-ring', status === s ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {s === 'open' ? 'Open' : 'Done'}
             </button>
           ))}
@@ -106,7 +140,7 @@ export default function Requests() {
 function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
   task: Task; clinicId: string; tz: string; meId?: string; busy: boolean; teammates: MemberList['members'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean;
-  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign', body?: object) => void;
+  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign', body?: Record<string, string>) => void;
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
@@ -120,12 +154,12 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
     <Card className="flex flex-col" data-testid="task">
       <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-accent text-primary"><Icon className="size-4" /></span>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary"><Icon className="size-4" /></span>
           <div className="min-w-0">
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{t.patientName ?? 'Caller not verified'}</p>}
-            <p className="text-xs text-muted-foreground">{TASK_TYPES[t.type]}, {open ? `waiting ${waited(t.createdAt)}` : `taken ${clinicTime(t.createdAt, tz)}`}</p>
+            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `taken ${clinicTime(t.createdAt, tz)}`}</p>
           </div>
         </div>
         {!open ? <Badge tone="ok">Done</Badge>
@@ -134,19 +168,20 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
         {Object.entries(t.details).map(([k, v]) => (
           <div key={k} className="contents">
-            <dt className="text-muted-foreground">{DETAIL_LABELS[k] ?? k}</dt>
+            <dt className="text-text-muted">{DETAIL_LABELS[k] ?? k}</dt>
             <dd>{k === 'callback_number' ? <a className="hover:underline" href={`tel:${v}`}>{phone(v)}</a> : v}</dd>
           </div>
         ))}
-        {!open && t.outcome && <><dt className="text-muted-foreground">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
-        {t.callId && <><dt className="text-muted-foreground">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
+        {open && t.followUp && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
+        {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
+        {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
       </dl>
       {(t.notes.length > 0 || (open && canWork)) && (
         <div className="space-y-2 border-t border-border px-5 py-3">
           {t.notes.map((n) => (
-            <div key={n.id} className="rounded-md bg-muted px-3 py-2 text-sm">
+            <div key={n.id} className="rounded-md bg-surface-sunken px-3 py-2 text-sm">
               <p className="whitespace-pre-wrap">{n.body}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{n.author ?? 'A former staff member'}, {clinicTime(n.at, tz)}</p>
+              <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former staff member'}, {clinicTime(n.at, tz)}</p>
             </div>
           ))}
           {open && canWork && (

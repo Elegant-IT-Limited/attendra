@@ -52,7 +52,7 @@ export default function ChangePassword() {
         <div className="space-y-1.5">
           <Label htmlFor="next">New password</Label>
           <Input id="next" type="password" autoComplete="new-password" required minLength={12} value={next} onChange={(e) => setNext(e.target.value)} />
-          <p className="text-xs text-muted-foreground">At least 12 characters. Only you should know it.</p>
+          <p className="text-xs text-text-muted">At least 12 characters. Only you should know it.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="again">New password again</Label>

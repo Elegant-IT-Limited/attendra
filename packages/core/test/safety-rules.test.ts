@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { detectEmergency, isClearYes, namesMatch, parseDob } from '../src';
+import { detectEmergency, isClearYes, isMedicalQuestion, namesMatch, parseDob } from '../src';
 
 describe('emergency guardrail', () => {
   it.each([
     ['I have really bad chest pain', 'cardiac'],
+    ['I think he is having a heart attack', 'cardiac'],
     ['my husband can’t breathe', 'breathing'],
     ['her face is drooping and her speech is slurred', 'stroke'],
     ["it won't stop bleeding", 'bleeding'],
@@ -12,9 +13,18 @@ describe('emergency guardrail', () => {
     ["I don't really want to be here anymore", 'self_harm'],
     ['I think I took too many of my pills', 'overdose'],
     ['my throat is swelling', 'allergic'],
+    ['my son swallowed bleach', 'overdose'],
+    ['I think she was poisoned', 'overdose'],
+    ['he got into the poison under the sink', 'overdose'],
+    ['she took a whole bottle of tylenol', 'overdose'],
+    ['I think it is an overdose', 'overdose'],
     ['this is an emergency', 'general'],
   ])('catches "%s" as %s', (text, kind) => {
     expect(detectEmergency(text)?.kind).toBe(kind);
+  });
+
+  it('hears "stroke" in romanised Bangla, whichever pack catches it first', () => {
+    expect(detectEmergency('baba stroke koreche')?.kind).toBe('stroke');
   });
 
   it('catches a phrase split across transcript fragments once the window is joined', () => {
@@ -48,10 +58,33 @@ describe('identity inputs', () => {
 
 describe('confirmation', () => {
   it('takes a plain yes', () => {
-    for (const t of ['yes', 'Yeah that works, book it', "that's perfect"]) expect(isClearYes(t)).toBe(true);
+    for (const t of ['yes', 'Yeah that works, book it', "that's perfect"]) expect(isClearYes(t, ['en'])).toBe(true);
   });
 
   it('does not take a hedge, a question or a change of mind as yes', () => {
-    for (const t of ['yes, actually no', 'hmm, maybe', 'yes? wait, Thursday or Friday', 'not that one', '']) expect(isClearYes(t)).toBe(false);
+    for (const t of ['yes, actually no', 'hmm, maybe', 'yes? wait, Thursday or Friday', 'not that one', '']) expect(isClearYes(t, ['en'])).toBe(false);
+  });
+});
+
+describe('medical questions', () => {
+  it.each([
+    'can I take ibuprofen for my headache',
+    'is it ok to have advil with my lisinopril',
+    'should he take his insulin before surgery',
+    'insulin before surgery',
+    'ibuprofen dosing',
+    'what is the tylenol dosage',
+    'how much tylenol for a child',
+    'how much should I give for my 2 year old daughter',
+    'how many pills for a toddler',
+    'metformin with alcohol',
+  ])('refuses "%s"', (text) => {
+    expect(isMedicalQuestion(text)).toBe(true);
+  });
+
+  it('lets ordinary questions through', () => {
+    for (const t of ['how much is a visit', 'how much does a physical cost for a new patient', 'what are your hours', 'do you take my insurance', 'is there parking']) {
+      expect(isMedicalQuestion(t), t).toBe(false);
+    }
   });
 });

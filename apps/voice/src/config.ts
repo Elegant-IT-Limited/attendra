@@ -15,6 +15,7 @@ const Env = z.object({
   OPENAI_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_').min(10)),
   GPT_LIVE_MODEL: z.preprocess(blank, z.string().default('gpt-live-1')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),

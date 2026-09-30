@@ -27,7 +27,8 @@ export class MeController {
     return {
       user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword },
       demoMode: this.options.demoMode,
-      testCalls: !!this.voice,
+      testCalls: !!this.voice?.browserCalls,
+      simulatedCalls: !!this.voice?.simulatedCalls,
       clinics: clinics.map((c) => ({ id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role) })),
     };
   }

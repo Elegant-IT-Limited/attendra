@@ -6,4 +6,4 @@ turns:
     delegate:
       - get_clinic_info: { question: which insurance do you accept }
 expect:
-  outcome: abandoned
+  outcome: info

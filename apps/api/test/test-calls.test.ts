@@ -12,7 +12,10 @@ const C = `/api/v1/clinics/${DEMO_CLINIC.id}`;
 let api: Awaited<ReturnType<typeof startApi>>;
 let staff: string;
 let viewer: string;
-const voice = { startTestCall: vi.fn(), endTestCall: vi.fn(async () => {}) };
+const voice = {
+  browserCalls: true, simulatedCalls: false, startTestCall: vi.fn(), endTestCall: vi.fn(async () => {}),
+  startSimulatedCall: vi.fn(), liveCalls: vi.fn(async () => []), liveStream: vi.fn(async () => null), coach: vi.fn(), takeOver: vi.fn(), endCall: vi.fn(),
+};
 
 beforeAll(async () => {
   api = await startApi({ demoMode: false, voice });
