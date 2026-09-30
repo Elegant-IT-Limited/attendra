@@ -15,6 +15,7 @@ import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
 
@@ -27,6 +28,7 @@ export default function Settings() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { can } = useClinic(clinicId);
   const queries = useQueryClient();
+  const toast = useToast();
   const saved = useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`) });
   const [draft, setDraft] = useState<ClinicConfig | null>(null);
   const [issues, setIssues] = useState<ApiError['issues']>([]);
@@ -36,7 +38,11 @@ export default function Settings() {
   const save = useMutation({
     mutationFn: (config: ClinicConfig) => api<ClinicConfig>(`/clinics/${clinicId}/settings`, { method: 'PUT', body: JSON.stringify(config) }),
     onMutate: () => setIssues([]),
-    onSuccess: (config) => { queries.setQueryData(['settings', clinicId], config); setDraft(config); },
+    onSuccess: (config) => {
+      queries.setQueryData(['settings', clinicId], config);
+      setDraft(config);
+      toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
+    },
     onError: (e) => { if (e instanceof ApiFailure) setIssues(e.body.issues ?? [{ path: '', message: e.message }]); },
   });
 
@@ -228,7 +234,6 @@ export default function Settings() {
           </div>
         </div>
       )}
-      {save.isSuccess && !dirty && <p role="status" className="fixed right-6 bottom-6 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">Saved. The next call uses these settings.</p>}
     </>
   );
 }
