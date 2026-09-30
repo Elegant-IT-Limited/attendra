@@ -211,11 +211,16 @@ export async function runTool(
 
       const result = await backend.scheduler.book(clinic.id, {
         patientId: patient.id, slot: pending.slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'book', pending.slot.id, pending.seq),
+        replacesAppointmentId: pending.replacesAppointmentId,
       });
       state.pending = null;
       if (result.status === 'slot_taken') {
         state.offered.delete(pending.slot.id);
         return refuse('slot_taken', 'That time was just taken. Apologise and look up slots again.');
+      }
+      if (result.status === 'patient_busy') {
+        state.offered.delete(pending.slot.id);
+        return refuse('patient_busy', 'They already have an appointment at that time. Say so, and offer another time.');
       }
       let oldStillActive = false;
       if (pending.replacesAppointmentId) {

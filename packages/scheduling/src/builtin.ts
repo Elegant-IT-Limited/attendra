@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { AppointmentSummary, BookingResult, SchedulerAdapter, Slot } from '@attendra/core';
 import { type Database, schema, withClinic } from '@attendra/db';
-import { and, eq, gt, inArray, lt } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { byKey, insertAppointment } from './write';
 
 const { appointments, auditLogs } = schema;
@@ -31,11 +31,19 @@ export class BuiltinScheduler implements SchedulerAdapter {
   /**
    * Idempotent and race-safe. The idempotency key makes a retry return the first
    * booking; the exclusion constraint in the schema makes two different callers
-   * racing for one slot end with exactly one booking and one "slot_taken".
+   * racing for one slot end with exactly one booking and one "slot_taken". A patient
+   * who already has a visit then, with any provider, is refused as the front desk
+   * refuses them: "patient_busy".
    */
-  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string }): Promise<BookingResult> {
+  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult> {
     const existing = await byKey(this.db, clinicId, input.idempotencyKey);
     if (existing) return { status: 'already_done', appointment: summary(existing) };
+    const busy = await withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id }).from(appointments).where(and(
+      eq(appointments.clinicId, clinicId), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked'),
+      lt(appointments.startsAt, input.slot.end), gt(appointments.endsAt, input.slot.start),
+      input.replacesAppointmentId ? ne(appointments.id, input.replacesAppointmentId) : undefined,
+    )).limit(1)).length > 0);
+    if (busy) return { status: 'patient_busy' };
     const result = await insertAppointment(this.db, clinicId, {
       patientId: input.patientId, providerId: input.slot.providerId, visitTypeId: input.slot.visitTypeId,
       startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
