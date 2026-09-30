@@ -43,6 +43,8 @@ export function chime() {
       osc.connect(gain).connect(ctx.destination);
       osc.start(ctx.currentTime + i * 0.25);
       osc.stop(ctx.currentTime + i * 0.25 + 0.25);
+      // a browser allows only a few open audio contexts: this one closes when the last tone ends
+      if (i === 1) osc.onended = () => { void ctx.close(); };
     }
   } catch { /* no audio in this browser */ }
 }

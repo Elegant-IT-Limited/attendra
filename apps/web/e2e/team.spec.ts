@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { openAs } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
+  // one long journey through two people and a dozen pages, each compiled on first use by next dev
+  test.slow();
   const page = await openAs(browser, 'manager');
   await page.getByRole('link', { name: 'Team' }).click();
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
@@ -41,6 +43,32 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.getByRole('button', { name: 'Save my password' }).click();
   await expect(riley.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   await expect(riley.getByRole('link', { name: 'Patients' })).toHaveCount(0);
-  await riley.goto(`${new URL(riley.url()).pathname}/patients`);
+  const home = new URL(riley.url()).pathname;
+  // the shortcuts a viewer is shown are the ones that do something for them
+  await riley.keyboard.press('?');
+  const keys = riley.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(keys.getByText('Go to Calls')).toBeVisible();
+  for (const label of ['Go to Schedule', 'Go to Patients', 'Go to Requests', 'New booking']) await expect(keys.getByText(label)).toHaveCount(0);
+  await riley.keyboard.press('Escape');
+  // and a clinic with no calls yet does not offer a viewer a test call
+  await riley.route((url) => url.pathname.endsWith('/calls') && url.searchParams.get('limit') === '50', (route) => route.fulfill({ json: { calls: [], next: null } }));
+  await riley.goto(home);
+  await expect(riley.getByText('No calls yet')).toBeVisible();
+  await expect(riley.getByRole('link', { name: 'Try a test call' })).toHaveCount(0);
+  await riley.unrouteAll();
+  await riley.goto(`${home}/patients`);
   await expect(riley.getByText('Patients are for the front desk')).toBeVisible();
+  // a direct link to a page the role cannot use says so, instead of an error or a skeleton that never ends
+  const someone = '00000000-0000-4000-8000-000000000001';
+  // the live page does not even open the stream for a role that cannot watch calls
+  let streams = 0;
+  riley.on('request', (r) => { if (new URL(r.url()).pathname.endsWith(`/calls/${someone}/live`) && r.url().includes('/api/v1/')) streams++; });
+  await riley.goto(`${home}/calls/${someone}/live`);
+  await expect(riley.getByText('Your role cannot watch live calls', { exact: false })).toBeVisible({ timeout: 20_000 });
+  expect(streams).toBe(0);
+  for (const [path, title] of [['/audit', 'Not available'], ['/schedule', 'The schedule is for the front desk'],
+    [`/patients/${someone}`, 'Patients are for the front desk'], [`/calls/${someone}`, 'Call records are for the front desk']] as const) {
+    await riley.goto(`${home}${path}`);
+    await expect(riley.getByText(title, { exact: true }), path).toBeVisible({ timeout: 20_000 }); // next dev compiles each page on first use
+  }
 });

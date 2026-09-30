@@ -5,7 +5,7 @@ import { addDays, type ClinicConfig, localDateOf, weekdayOf, windowsOn } from '@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, ScheduleList } from '@/components/schedule/calendar';
@@ -41,7 +41,7 @@ function ScheduleScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const { can } = useClinic(clinicId);
+  const { can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
@@ -55,6 +55,9 @@ function ScheduleScreen() {
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
+  // and so does it again while this page is already open: the page stays mounted when only the query changes
+  const wantsNew = params.get('new') === '1';
+  useEffect(() => { if (wantsNew) setBookingState(true); }, [wantsNew]);
 
   const set = (next: Record<string, string | null>) => {
     const q = new URLSearchParams(params.toString());
@@ -67,15 +70,20 @@ function ScheduleScreen() {
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
-    enabled: !!clinic,
+    enabled: !!clinic && can('schedule:read'),
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 
   const showCancelled = cancelledShown[view];
   const setShowCancelled = (v: boolean) => setCancelledShown((c) => ({ ...c, [view]: v }));
-  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked'), [schedule.data, showCancelled]);
+  // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
+  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open), [schedule.data, showCancelled, open]);
+  const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
+  if (!meLoading && !can('schedule:read')) {
+    return <><PageHeader title="Schedule" /><Card><Empty title="The schedule is for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+  }
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
   const dates = view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
@@ -99,7 +107,7 @@ function ScheduleScreen() {
         </div>
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
           {(['day', 'week'] as const).map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
+            <button key={v} id={`schedule-tab-${v}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
               className={cn('rounded px-3 py-1 text-sm focus-ring', view === v ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {v === 'day' ? 'Day' : 'Week'}
             </button>
@@ -119,12 +127,12 @@ function ScheduleScreen() {
       </div>
 
       {/* busy while the grid still shows the previous range: screen readers and tests wait for it */}
-      <Card className="overflow-hidden" data-testid="schedule" aria-busy={schedule.isPending || schedule.isPlaceholderData}>
+      <Card className="overflow-hidden" data-testid="schedule" role="tabpanel" id="schedule-panel" aria-labelledby={`schedule-tab-${view}`} aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
-              {schedule.isPending ? 'Loading…' : `${booked} booked${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
+              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
             </p>
           </div>
           <Legend clinic={clinic} />
@@ -138,9 +146,11 @@ function ScheduleScreen() {
             <div className="md:hidden">
               <ScheduleList clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
             </div>
-            {appointments.length === 0 && (
+            {appointments.length === 0 && (hidden > 0 ? (
+              <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Tick Show cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
+            ) : (
               <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.</Empty></div>
-            )}
+            ))}
           </>
         )}
       </Card>

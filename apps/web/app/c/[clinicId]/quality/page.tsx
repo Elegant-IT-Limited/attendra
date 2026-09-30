@@ -10,11 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
-import { REFUSALS } from '@/lib/format';
+import { dayTitle, REFUSALS, usd } from '@/lib/format';
 
 const pct = (n: number | null) => (n === null ? 'no calls' : `${Math.round(n * 100)}%`);
-const usd = (n: number | null) => (n === null ? 'none' : `$${n.toFixed(2)}`);
-const short = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const money = (n: number | null) => (n === null ? 'none' : usd(n));
+// "29 Sep", day first like every other date in the dashboard
+const short = (d: string) => dayTitle(d, 'short').replace(/^\w+ /, '');
 
 type Metric = { key: string; label: string; explain: string; value: (w: QualityWeek) => string; trend: (w: QualityWeek) => number | null; href: (w: QualityWeek) => string };
 
@@ -37,8 +38,8 @@ export default function QualityPage() {
     { key: 'transferred', label: 'Transferred to a person', explain: 'Share of calls that went to a person.', value: (w) => `${pct(w.transferredShare)} (${w.transferred})`, trend: (w) => w.transferredShare, href: (w) => week(w, { outcome: 'transferred' }) },
     { key: 'flagged', label: 'Flagged for review', explain: 'Share of calls whose summary said someone should look at them.', value: (w) => `${pct(w.flaggedShare)} (${w.flagged})`, trend: (w) => w.flaggedShare, href: (w) => week(w, { review: 'needed' }) },
     { key: 'after', label: 'After-hours calls answered', explain: 'Calls outside opening hours, all answered.', value: (w) => String(w.afterHours), trend: (w) => w.afterHours, href: (w) => week(w) },
-    { key: 'cost', label: 'Cost per call', explain: 'Voice minutes at the list price, an estimate. The planner and summaries are extra.', value: (w) => usd(w.costPerCall), trend: (w) => w.costPerCall, href: (w) => week(w) },
-    { key: 'costBooking', label: 'Cost per booking', explain: 'The week\'s voice cost, divided by its bookings.', value: (w) => usd(w.costPerBooking), trend: (w) => w.costPerBooking, href: (w) => week(w, { outcome: 'booked' }) },
+    { key: 'cost', label: 'Cost per call', explain: 'Voice minutes at the list price, an estimate. The planner and summaries are extra.', value: (w) => money(w.costPerCall), trend: (w) => w.costPerCall, href: (w) => week(w) },
+    { key: 'costBooking', label: 'Cost per booking', explain: 'The week\'s voice cost, divided by its bookings.', value: (w) => money(w.costPerBooking), trend: (w) => w.costPerBooking, href: (w) => week(w, { outcome: 'booked' }) },
   ];
 
   if (!isPending && !allowed) return <><PageHeader title="Quality" /><Empty title="Not available">Only owners and practice managers see quality.</Empty></>;

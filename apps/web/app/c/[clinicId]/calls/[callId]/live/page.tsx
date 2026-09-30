@@ -27,7 +27,8 @@ type Step =
 type Snapshot = { channel: 'phone' | 'web'; startedAt: string; verified: string | null; doing: string | null; pending: string | null; emergency: boolean };
 
 /** Everything the page knows about the call, built from the stream. */
-function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
+/** `allowed`: the stream carries what the caller says, so it opens only for a role that may read it. */
+function useLiveCall(clinicId: string, callId: string, onEnded: () => void, allowed: boolean) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -39,6 +40,7 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
   ended.current = onEnded;
 
   useEffect(() => {
+    if (!allowed) return;
     // EventSource reconnects on its own and sends Last-Event-ID, so a dropped
     // connection resumes where it stopped
     const source = new EventSource(`/api/v1/clinics/${clinicId}/calls/${callId}/live`);
@@ -74,7 +76,7 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
     on('ended', () => { source.close(); ended.current(); });
     source.onerror = () => { if (source.readyState === EventSource.CLOSED) setLost(true); };
     return () => source.close();
-  }, [clinicId, callId]);
+  }, [clinicId, callId, allowed]);
 
   return { snapshot, captions, steps, state, emergency, staff, lost };
 }
@@ -151,12 +153,16 @@ export default function LiveCallPage() {
     queries.removeQueries({ queryKey: ['call', clinicId, callId] });
     router.replace(`/c/${clinicId}/calls/${callId}`);
   };
-  const live = useLiveCall(clinicId, callId, toRecord);
+  const live = useLiveCall(clinicId, callId, toRecord, can('calls:read'));
+  // a stream that closed for good, for a call no longer live here, ended while the page could not hear it
+  const gone = live.lost && list.isSuccess && !listed;
+  useEffect(() => { if (gone) toRecord(); }, [gone]);
   const length = useTicking(live.snapshot?.startedAt ?? listed?.startedAt);
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<'take' | 'end' | null>(null);
   const [target, setTarget] = useState<'front_desk' | 'me'>('front_desk');
   const [number, setNumber] = useState('');
+  const [changing, setChanging] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const mine = useQuery({ queryKey: ['my-number', clinicId], queryFn: () => api<{ number: string | null }>(`/clinics/${clinicId}/my-transfer-number`), enabled: can('calls:coach') });
 
@@ -166,9 +172,10 @@ export default function LiveCallPage() {
     onSuccess: () => { setNote(''); toast({ tone: 'success', message: 'Note sent to the assistant.' }); },
     onError: (e) => setProblem(e instanceof ApiFailure && e.status === 404 ? 'The call has ended.' : 'The note did not reach the assistant. Try again.'),
   });
+  // null clears it
   const saveNumber = useMutation({
-    mutationFn: (n: string) => api<{ number: string }>(`/clinics/${clinicId}/my-transfer-number`, { method: 'PUT', body: JSON.stringify({ number: n }) }),
-    onSuccess: () => { void mine.refetch(); setNumber(''); },
+    mutationFn: (n: string | null) => api<{ number: string | null }>(`/clinics/${clinicId}/my-transfer-number`, { method: 'PUT', body: JSON.stringify({ number: n }) }),
+    onSuccess: () => { void mine.refetch(); setNumber(''); setChanging(false); },
   });
   const act = useMutation({
     mutationFn: (kind: 'take' | 'end') => api<void>(`/clinics/${clinicId}/calls/${callId}/live/${kind === 'take' ? 'take-over' : 'end'}`, {
@@ -226,7 +233,7 @@ export default function LiveCallPage() {
       {live.staff === 'transfer_failed' && <Alert tone="warn" className="mb-6" title="The transfer did not go through">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {live.staff === 'end_failed' && <Alert tone="warn" className="mb-6" title="The call did not end">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {handedOff && <Alert className="mb-6">{live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
-      {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. It reconnects on its own.</Alert>}
+      {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. Reload the page to reconnect.</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
@@ -294,10 +301,17 @@ export default function LiveCallPage() {
             { value: 'front_desk', label: 'The front desk line', hint: 'The number in Settings, under Routing.' },
             { value: 'me', label: 'My own number', hint: mine.data?.number ?? 'Not set yet.' },
           ]} />
-          {target === 'me' && !mine.data?.number && (
+          {target === 'me' && mine.data?.number && !changing && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setChanging(true)}>Change my number</Button>
+              <Button variant="ghost" size="sm" loading={saveNumber.isPending} onClick={() => saveNumber.mutate(null)}>Clear it</Button>
+            </div>
+          )}
+          {target === 'me' && (!mine.data?.number || changing) && (
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); saveNumber.mutate(number.trim()); }}>
               <Input aria-label="Your number" placeholder={example.e164} value={number} onChange={(e) => setNumber(e.target.value)} className="flex-1" />
               <Button type="submit" variant="outline" loading={saveNumber.isPending}>Save</Button>
+              {changing && <Button type="button" variant="ghost" onClick={() => { setChanging(false); setNumber(''); }}>Keep it</Button>}
             </form>
           )}
           {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like {example.e164}. It must be in the clinic's country.</p>}

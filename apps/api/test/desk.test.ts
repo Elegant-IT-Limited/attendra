@@ -73,6 +73,10 @@ describe('requests', () => {
   it('closes with an outcome, and refuses one that is not on the list', async () => {
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'emailed them' } })).json().error).toBe('invalid_request');
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'left_message' } })).statusCode).toBe(204);
+    // staff read requests, never tasks: the refusal for one already closed says so
+    const again = await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'left_message' } });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().message).toBe('Someone else holds this request, or it is already done.');
     expect((await list('?status=done&type=callback'))[0]).toMatchObject({ outcome: 'left_message', doneAt: expect.any(String), doneByName: 'Ana Front' });
   });
 });

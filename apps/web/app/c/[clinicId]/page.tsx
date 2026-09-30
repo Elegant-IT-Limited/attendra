@@ -3,7 +3,7 @@
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, Webhook } from 'lucide-react';
+import { ArrowRight, Flag, MessageSquare, PhoneCall, PhoneOff, Pill, Siren, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, TASK_TYPES, timeOf, TOOLS, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, TASK_TYPES, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const REFRESH = 30_000;
@@ -25,7 +25,7 @@ const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border bo
 /** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
 export default function Today() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { can } = useClinic(clinicId);
+  const { can, data: me } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
@@ -47,6 +47,8 @@ export default function Today() {
   });
 
   if (!clinic) return <><PageHeader title="Today" /><Skeleton className="h-96" /></>;
+  // browser tests are left out of the counts, so they are left out of the lists too; Live now still shows one going on
+  const phoneCalls = { ...calls, data: calls.data && { ...calls.data, calls: calls.data.calls.filter((c) => c.channel === 'phone') } };
   const hour = localParts(new Date(now), tz).minutes / 60;
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -55,20 +57,20 @@ export default function Today() {
       <PageHeader title="Today" description={<>{greeting}. {dayTitle(today)}, times are {zoneLabel(tz)}.</>} />
       <LiveNow clinicId={clinicId} canWatch={can('calls:read')} />
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
-        <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Last 7 days" />
-        <StatCard label="Booked this week" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
-        <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.tasks.length ?? null) : null} hint="Nobody has them yet" />
-        <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered this week" />
+        <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Trend over the last 7 days" />
+        <StatCard label="Booked, last 7 days" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
+        <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
+        <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered in the last 7 days" />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={calls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
+          <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={phoneCalls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
             turnedOff={(hooks.data?.endpoints ?? []).filter((e) => e.disabledReason === 'repeated_failures')} />
           <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
         </div>
         <div className="space-y-6">
           <AssistantDid overview={overview} />
-          <RecentCalls clinicId={clinicId} tz={tz} calls={calls} canOpen={can('calls:read')} />
+          <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} canTest={can('calls:test') && !!me?.testCalls} />
         </div>
       </div>
     </>
@@ -76,6 +78,13 @@ export default function Today() {
 }
 
 type Q<T> = { data?: T; isPending: boolean; isError: boolean };
+
+// the same icon per request type as the Requests page
+const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
+function RequestIcon({ type }: { type: keyof typeof REQUEST_ICONS }) {
+  const Icon = REQUEST_ICONS[type] ?? PhoneCall;
+  return <Icon className="size-4 text-primary" />;
+}
 
 function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, canOpenCalls, turnedOff }: {
   clinicId: string; tz: string; now: number; calls: Q<CallList>; waiting: Q<WaitingTasks>; canTasks: boolean; canWork: boolean; canOpenCalls: boolean;
@@ -95,7 +104,8 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const emergencies = recent.filter((c) => c.emergency);
   // flagged by the summary and not yet looked at, from the last week; emergencies are already listed above them
   const flagged = (calls.data?.calls ?? []).filter((c) => c.needsReview && !c.emergency && Date.parse(c.startedAt) >= now - 7 * 86_400_000);
-  const unresolved = recent.filter((c) => !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
+  // only calls that are over: one still going has no outcome yet, and is under Live now
+  const unresolved = recent.filter((c) => c.endedAt && !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
   const items: { key: string; icon: ReactNode; title: string; detail: ReactNode; action: ReactNode; tone?: 'danger' }[] = [
     ...emergencies.map((c) => ({
@@ -103,7 +113,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
     ...requests.map((t) => ({
-      key: t.id, icon: t.type === 'refill' ? <Pill className="size-4 text-primary" /> : <PhoneCall className="size-4 text-primary" />, title: TASK_TYPES[t.type] ?? t.type, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+      key: t.id, icon: <RequestIcon type={t.type} />, title: TASK_TYPES[t.type] ?? t.type, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
       action: canWork
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
         : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
@@ -232,7 +242,7 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
     ['Handed to staff', (a) => n(a.handedToStaff)],
     ['After hours', (a) => n(a.afterHours)],
     ['Talk time', (a) => n(a.talkMinutes, (x) => `${x.toFixed(1).replace(/\.0$/, '')} min`)],
-    ['Estimated cost', (a) => n(a.estimatedCost, (x) => `$${x.toFixed(2)}`)],
+    ['Estimated cost', (a) => n(a.estimatedCost, usd)],
   ];
   return (
     <Card>
@@ -258,7 +268,7 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
   );
 }
 
-function RecentCalls({ clinicId, tz, calls, canOpen }: { clinicId: string; tz: string; calls: Q<CallList>; canOpen: boolean }) {
+function RecentCalls({ clinicId, tz, calls, canOpen, canTest }: { clinicId: string; tz: string; calls: Q<CallList>; canOpen: boolean; canTest: boolean }) {
   const last = (calls.data?.calls ?? []).slice(0, 5);
   return (
     <Card>
@@ -267,13 +277,13 @@ function RecentCalls({ clinicId, tz, calls, canOpen }: { clinicId: string; tz: s
         <Link href={`/c/${clinicId}/calls`} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">All calls <ArrowRight className="size-3.5" /></Link>
       </CardHeader>
       {calls.isPending ? <div className="space-y-2 p-5"><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
-        : !last.length ? <Empty title="No calls yet" action={<Link href={`/c/${clinicId}/test-call`} className="text-sm text-primary hover:underline">Try a test call</Link>}>Calls appear here as soon as the assistant answers one.</Empty> : (
+        : !last.length ? <Empty title="No calls yet" action={canTest ? <Link href={`/c/${clinicId}/test-call`} className="text-sm text-primary hover:underline">Try a test call</Link> : undefined}>Calls appear here as soon as the assistant answers one.</Empty> : (
           <ul className="divide-y divide-border" aria-label="Recent calls">
             {last.map((c) => {
               const body = (
                 <>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' }).format(new Date(c.startedAt))}</p>
+                    <p className="text-sm font-medium tabular-nums">{new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date(c.startedAt))} {timeOf(c.startedAt, tz)}</p>
                     <p className="truncate text-xs text-text-muted">{c.tools.map((t) => TOOLS[t] ?? t).join(', ') || 'Talked only'}</p>
                   </div>
                   <Outcome outcome={c.outcome} emergency={c.emergency} />

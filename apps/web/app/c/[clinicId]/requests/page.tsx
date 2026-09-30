@@ -4,8 +4,8 @@ import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Hand, MessageSquare, Phone, PhoneCall, Pill, Voicemail } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,13 +22,25 @@ const DETAIL_LABELS: Record<string, string> = { medication: 'Medication', pharma
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 
-export default function Requests() {
+export default function RequestsPage() {
+  return <Suspense fallback={<Skeleton className="h-64" />}><Requests /></Suspense>;
+}
+
+function Requests() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { clinic, data: me, can, isPending } = useClinic(clinicId);
-  const [status, setStatus] = useState<'open' | 'done'>('open');
+  // the tab is in the address, so a link can open a closed request (?status=done)
+  const search = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
+  const setStatus = (s: 'open' | 'done') => {
+    const q = new URLSearchParams(search.toString());
+    if (s === 'done') q.set('status', 'done'); else q.delete('status');
+    router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
+  };
   const [type, setType] = useState('');
   const [who, setWho] = useState<Who>('everyone');
-  const [problem, setProblem] = useState<string | null>(null);
   const queries = useQueryClient();
   const params = new URLSearchParams({ status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}) });
   const tasks = useQuery({
@@ -49,7 +61,6 @@ export default function Requests() {
     mutationFn: ({ task, action, body }: Act) =>
       api<void>(`/clinics/${clinicId}/tasks/${task.id}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
     onMutate: async ({ task, action, body }: Act) => {
-      setProblem(null);
       await queries.cancelQueries({ queryKey: key });
       const before = queries.getQueryData<TaskList>(key);
       const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
@@ -67,7 +78,7 @@ export default function Requests() {
     onError: (e, _v, ctx) => {
       if (ctx?.before) queries.setQueryData(key, ctx.before);
       const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
-      setProblem(text);
+      // said once, in the toast, which stays until it is read
       toast({ tone: 'error', message: text });
     },
     onSuccess: (_r, { task, action, body }) => {
@@ -100,7 +111,7 @@ export default function Requests() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="Status">
           {(['open', 'done'] as const).map((s) => (
-            <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
+            <button key={s} id={`requests-tab-${s}`} aria-controls="requests-panel" role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
               className={cn('rounded px-3 py-1 text-sm focus-ring', status === s ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {s === 'open' ? 'Open' : 'Done'}
             </button>
@@ -118,7 +129,7 @@ export default function Requests() {
           <option value="unassigned">Unassigned</option>
         </Select>
       </div>
-      {problem && <Alert tone="warn" className="mb-4">{problem}</Alert>}
+      <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
@@ -133,6 +144,7 @@ export default function Requests() {
           ))}
         </div>
       )}
+      </div>
     </>
   );
 }
@@ -159,7 +171,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{t.patientName ?? 'Caller not verified'}</p>}
-            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `taken ${clinicTime(t.createdAt, tz)}`}</p>
+            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
           </div>
         </div>
         {!open ? <Badge tone="ok">Done</Badge>

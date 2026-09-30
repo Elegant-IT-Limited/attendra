@@ -13,7 +13,8 @@ import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
@@ -37,6 +38,9 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const router = useRouter();
   const queries = useQueryClient();
   const { data: me, clinic, can, isPending } = useClinic(clinicId);
+  // the clock and money follow the clinic's country; set before the page below formats anything
+  const config = useClinicConfig(clinicId);
+  if (config.data) setClinicCountry(config.data.phoneNumbers);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
@@ -94,7 +98,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         </div>
         <div className="px-5 pb-3 max-xl:hidden">
           <p className="truncate text-base font-medium">{clinic.name}</p>
-          <p className="text-xs text-text-muted">{clinic.timezone.replace('_', ' ')}</p>
+          <p className="text-xs text-text-muted">{clinic.timezone.replaceAll('_', ' ')}</p>
         </div>
         <div className="px-3 pb-3 max-xl:px-2">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search and jump"
@@ -160,7 +164,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         canSearchPatients={can('patients:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
         <ul className="space-y-2">
-          {SHORTCUTS.map((s) => (
+          {SHORTCUTS.filter((s) => (!s.page || pages.some((p) => p.shortcut === s.page)) && (!s.permission || can(s.permission))).map((s) => (
             <li key={s.label} className="flex items-center justify-between gap-4 text-base">
               <span>{s.label}</span><span className="flex gap-1">{s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>
             </li>
