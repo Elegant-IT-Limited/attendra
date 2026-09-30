@@ -2,7 +2,9 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
-## [Unreleased]
+## [0.4.1] - 2026-10-01
+
+A correctness release from a full audit of 0.4.0: no new features. Webhook retries, emergency transfers, cancellations on the schedule and call page, tenancy keys, retention, audit rows, time zones and the docs are fixed, and the demo's calls now match their transcripts.
 
 ### API changes for integrators
 
