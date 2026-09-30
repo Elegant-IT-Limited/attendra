@@ -98,7 +98,6 @@ export const callActions = pgTable('call_actions', {
   tool: text('tool').notNull(),
   argsRedacted: jsonb('args_redacted').notNull(),
   result: jsonb('result').notNull(),
-  idempotencyKey: text('idempotency_key'),
   taskRevision: integer('task_revision').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

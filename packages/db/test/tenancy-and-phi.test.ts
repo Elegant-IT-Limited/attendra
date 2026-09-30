@@ -75,7 +75,7 @@ describe('PHI at rest', () => {
     const calls = new CallRepository(t.db, cipher);
     const callId = await calls.open(OTHER.id, 'sess_phi_audit', '+13035550199');
     await calls.appendSegment(OTHER.id, callId, { speaker: 'caller', text: 'I need a refill', startMs: 0, endMs: 900 });
-    await calls.recordAction(OTHER.id, callId, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, callId, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
     await calls.close(OTHER.id, callId, { reason: 'caller_hangup', voiceSeconds: 12, outcome: 'info', emergency: false });
     const patientId = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Iris', lastName: 'Novak', dob: '1979-02-11' });
     const rows = await withClinic(t.db, OTHER.id, (tx) => tx.select().from(schema.auditLogs).orderBy(schema.auditLogs.id));

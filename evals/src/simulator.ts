@@ -110,7 +110,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const observed = new Observed({ plan: (input, execute) => queue.shift()!.plan(input, execute) });
   const log = createLogger({ name: 'eval', destination: new Writable({ write: (_c, _e, done) => done() }) });
   const actions: ActionRecorder | undefined = opts.record
-    ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }) }
+    ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
   const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => SIM_NOW }, backend, observed, log, actions);
   const segment = async (speaker: 'caller' | 'agent', text: string, startMs: number) => {

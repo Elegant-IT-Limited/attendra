@@ -21,7 +21,7 @@ let n = 0;
 async function closedCall(clinicId = DEMO_CLINIC.id, opts: { closed?: boolean; emergency?: boolean } = {}) {
   const callId = await calls.open(clinicId, `live_worker_${++n}`, '+13035550147');
   await calls.appendSegment(clinicId, callId, { speaker: 'caller', text: 'Hi, this is Maria Delgado, born March 4th 1985.', startMs: 0, endMs: 900 });
-  await calls.recordAction(clinicId, callId, { tool: 'verify_caller', argsRedacted: ['full_name', 'date_of_birth'], result: { ok: true, verified: true }, idempotencyKey: null, taskRevision: 1 });
+  await calls.recordAction(clinicId, callId, { tool: 'verify_caller', argsRedacted: ['full_name', 'date_of_birth'], result: { ok: true, verified: true }, taskRevision: 1 });
   if (opts.closed !== false) await calls.close(clinicId, callId, { reason: 'caller_hangup', voiceSeconds: 42, outcome: opts.emergency ? 'emergency' : 'info', emergency: !!opts.emergency });
   return callId;
 }
@@ -96,8 +96,8 @@ describe('the retention purge', () => {
     await h.summariseCall({ clinicId: OTHER.id, callId: old });
     await t.db.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
 
-    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
-    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
 
     const actionsOf = async (id: string) => ((await t.db.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
     const oldActions = await actionsOf(old);

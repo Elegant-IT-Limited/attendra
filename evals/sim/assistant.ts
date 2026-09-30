@@ -52,7 +52,7 @@ export class TextAssistant implements AssistantUnderTest {
     };
     const calls = new CallRepository(db, cipher);
     this.agent = new CallAgent(new CallState(), { clinic, callId, callerNumber, now, log: quiet }, backend, this.planner, quiet, {
-      record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, idempotencyKey: null, taskRevision: a.revision, patientId: a.patientId }),
+      record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }),
     });
     this.agent.onAgentTranscript(clinic.greeting, 0, 1000);
   }

@@ -25,7 +25,7 @@ beforeAll(async () => {
   const repo = new CallRepository(t.db, cipher);
   callId = await repo.open(DEMO_CLINIC.id, 'live_fd_1', '+13035550147');
   await repo.appendSegment(DEMO_CLINIC.id, callId, { speaker: 'caller', text: 'This is Maria Delgado, I need my lisinopril refilled.', startMs: 0, endMs: 900 });
-  await repo.recordAction(DEMO_CLINIC.id, callId, { tool: 'verify_identity', argsRedacted: ['full_name', 'dob'], result: { ok: true, verified: true }, idempotencyKey: null, taskRevision: 1 });
+  await repo.recordAction(DEMO_CLINIC.id, callId, { tool: 'verify_identity', argsRedacted: ['full_name', 'dob'], result: { ok: true, verified: true }, taskRevision: 1 });
   await repo.close(DEMO_CLINIC.id, callId, { reason: 'caller_hangup', voiceSeconds: 61.5, outcome: 'task_created', emergency: false });
   otherCallId = await repo.open(OTHER.id, 'live_fd_2', null);
   ({ id: refillId } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, {
