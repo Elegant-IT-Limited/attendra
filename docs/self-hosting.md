@@ -40,15 +40,16 @@ docker compose -f infra/docker-compose.yml exec api pnpm db:add-number --clinic 
 
 At first sign-in the dashboard asks you to set up two-step sign-in with an authenticator app.
 
-**Upgrading an install that ran `postgres:16`.** v0.4 needs the pgvector extension for the clinic's knowledge. The `pgvector/pgvector:pg16` image is Postgres 16 with pgvector added, and reads the same data directory, so the upgrade is a new image and nothing else:
+**Upgrading an install that ran `postgres:16`.** v0.4 needs the pgvector extension for the clinic's knowledge. The `pgvector/pgvector:pg16` image is Postgres 16 with pgvector added, and reads the same data directory, so the upgrade is a new image and nothing else. Back up first, as for any upgrade, while the old stack is still running:
 
 ```bash
+docker compose -f infra/docker-compose.yml exec postgres pg_dump -U attendra attendra > attendra.sql
 docker compose -f infra/docker-compose.yml down        # keeps the pgdata volume
 git pull                                               # compose now names pgvector/pgvector:pg16
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`. Back up first, as for any upgrade: `docker compose exec postgres pg_dump -U attendra attendra > attendra.sql`.
+The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`.
 
 **Upgrading to v0.4.1.** Patient names are now compared with letters such as ø, ł, æ and ß spelled with their base letters, so a patient's lookup hash has to be recomputed once, with the same `ATTENDRA_DATA_KEY` the services use: `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups`. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
 
