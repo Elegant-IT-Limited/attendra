@@ -193,7 +193,7 @@ export async function runTool(
       const pending = state.pending;
       if (!pending) return refuse('nothing_pending', 'There is nothing to confirm. Propose the change first.');
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
-      if (!isClearYes(state.answerToReadback())) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
+      if (!isClearYes(state.answerToReadback(), clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
       const patient = state.verifiedPatient!;
 
       if (pending.kind === 'cancel') {

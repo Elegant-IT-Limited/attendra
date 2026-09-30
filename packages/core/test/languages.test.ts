@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ClinicConfig, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor,
-  isClearYes, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
+  isClearYes, type Language, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
 } from '../src';
 
 const TODAY = new Date('2026-09-29T00:00:00Z');
@@ -128,26 +128,69 @@ describe('the emergency guardrail in every language', () => {
 });
 
 describe('a clear yes in every language', () => {
+  const ALL = LANGUAGES;
   it('accepts a plain yes in Spanish and Bangla, in both scripts', () => {
     for (const t of ['Sí', 'sí, claro', 'correcto', 'está bien', 'de acuerdo', 'জি', 'জি, করে দিন', 'হ্যাঁ, ঠিক আছে', 'ji', 'thik ache', 'accha korun', 'Ji, confirm.']) {
-      expect(isClearYes(t), t).toBe(true);
+      expect(isClearYes(t, ALL), t).toBe(true);
     }
   });
 
   it('refuses a hedge in any language, even next to a yes', () => {
     for (const t of ['no', 'sí, pero espere', 'mejor otro día', 'tal vez', '¿el jueves?', 'na', 'ji... na, pore janabo', 'জি, একটু দাঁড়ান', 'মনে হয়', 'onno din', 'yes, pore', 'sí, maybe']) {
-      expect(isClearYes(t), t).toBe(false);
+      expect(isClearYes(t, ALL), t).toBe(false);
     }
   });
 
   it('matches "দাঁড়ান" however it is composed', () => {
-    expect(isClearYes('জি, দাঁড়ান'.normalize('NFC'))).toBe(false);
-    expect(isClearYes('জি, দাঁড়ান'.normalize('NFD'))).toBe(false);
+    expect(isClearYes('জি, দাঁড়ান'.normalize('NFC'), ALL)).toBe(false);
+    expect(isClearYes('জি, দাঁড়ান'.normalize('NFD'), ALL)).toBe(false);
   });
 
   it('keeps the English rules as they were', () => {
-    expect(isClearYes('Yes, please book it.')).toBe(true);
-    expect(isClearYes('yes, actually no')).toBe(false);
+    expect(isClearYes('Yes, please book it.', ['en'])).toBe(true);
+    expect(isClearYes('yes, actually no', ['en'])).toBe(false);
+  });
+
+  it('does not hear a yes inside an ordinary sentence, or past a "but"', () => {
+    const cases: [string, readonly Language[]][] = [
+      ['I need to confirm with my wife first', ['en']],
+      ['I need to confirm with my wife first', ALL],
+      ['Ella ha dicho que el lunes', ['es']],
+      ['Ella ha dicho que el lunes', ALL],
+      ['por favor repita la hora', ['es']],
+      ['si puede el martes', ['es']],
+      ['sí, pero prefiero el martes', ['es']],
+      ['claro, pero el martes', ['es']],
+      ['ji, kintu bikel e', ['bn']],
+      ['জি, কিন্তু বিকেলে', ['bn']],
+      ['জি, তবে আর একটা কথা', ['bn']],
+      ['accha, tahole 3 tar dike', ['bn']],
+      ['I have to check, ha', ['en']],
+      ['I have to check, ha', ALL],
+      ['yes, but not Monday', ['en']],
+      ['yes, although Friday is better', ['en']],
+      ['sí, aunque mejor el jueves', ['es']],
+      ['ji, ar ekta kotha', ['bn']],
+    ];
+    for (const [t, langs] of cases) expect(isClearYes(t, langs), `${t} (${langs.join(',')})`).toBe(false);
+  });
+
+  it('takes a yes word only in a language the clinic offers', () => {
+    expect(isClearYes('ji', ['en'])).toBe(false);
+    expect(isClearYes('claro', ['en', 'bn'])).toBe(false);
+    expect(isClearYes('yes', ['es'])).toBe(false);
+  });
+
+  it('still takes a plain yes in each language, and a short word said alone', () => {
+    expect(isClearYes('Yes, that\'s right.', ['en'])).toBe(true);
+    expect(isClearYes('Confirm.', ['en'])).toBe(true);
+    expect(isClearYes('Sí, correcto.', ['es'])).toBe(true);
+    expect(isClearYes('Sí.', ['es'])).toBe(true);
+    expect(isClearYes('Por favor.', ['es'])).toBe(true);
+    expect(isClearYes('জি, করে দিন', ['bn'])).toBe(true);
+    expect(isClearYes('Ha.', ['bn'])).toBe(true);
+    expect(isClearYes('accha', ['bn'])).toBe(true);
+    expect(isClearYes('Ji, confirm.', ['bn'])).toBe(true);
   });
 });
 

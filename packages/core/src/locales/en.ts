@@ -52,6 +52,7 @@ export const en: LanguagePack = {
   ],
   notAnEmergency: /\b(not an? emergency|isn'?t an emergency|no emergency|not urgent)\b/,
   yes: /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|sounds good|perfect|please do|go ahead|book it|do it|sure)\b/,
-  hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other)\b|\?/,
+  yesAlone: /^(ok|okay|confirm|confirmed)$/,
+  hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,
   markers: /\b(the|and|you|my|is|appointment|please|thank|what|when|book|need|want|have|can|this|that|to|for|with)\b/g,
 };

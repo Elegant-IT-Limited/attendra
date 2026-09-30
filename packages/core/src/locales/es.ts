@@ -56,7 +56,9 @@ export const es: LanguagePack = {
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),
   // "si" without an accent is also "if", so only at the start of what they said
-  yes: new RegExp(`^(si)(?![\\p{L}])|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|vale|reservela|por favor( hagalo)?|asi es').source}`, 'u'),
-  hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo').source}|[?¿]`, 'u'),
+  // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
+  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es').source}`, 'u'),
+  yesAlone: /^(vale|por favor|si por favor)$/,
+  hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
 };
