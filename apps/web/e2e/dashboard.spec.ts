@@ -66,6 +66,16 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     expect(who.filter((w) => /^(worker|system|seed|api_key:)/.test(w))).toEqual([]);
   });
 
+  test('every tab list has a name, and its panel is named by the selected tab', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    const clinic = new URL(page.url()).pathname.split('/')[2];
+    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['requests', 'Status', 'Open'], ['schedule', 'View', 'Day']] as const) {
+      await page.goto(`/c/${clinic}/${path}`);
+      await expect(page.getByRole('tablist', { name: list })).toBeVisible();
+      await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible();
+    }
+  });
+
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await expect(page.getByRole('link', { name: 'Audit log' })).toHaveCount(0);

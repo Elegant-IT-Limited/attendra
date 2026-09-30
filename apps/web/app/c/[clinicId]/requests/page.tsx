@@ -111,7 +111,7 @@ function Requests() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="Status">
           {(['open', 'done'] as const).map((s) => (
-            <button key={s} role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
+            <button key={s} id={`requests-tab-${s}`} aria-controls="requests-panel" role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
               className={cn('rounded px-3 py-1 text-sm focus-ring', status === s ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {s === 'open' ? 'Open' : 'Done'}
             </button>
@@ -129,6 +129,7 @@ function Requests() {
           <option value="unassigned">Unassigned</option>
         </Select>
       </div>
+      <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
@@ -143,6 +144,7 @@ function Requests() {
           ))}
         </div>
       )}
+      </div>
     </>
   );
 }

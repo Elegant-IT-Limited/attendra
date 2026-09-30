@@ -107,7 +107,7 @@ function ScheduleScreen() {
         </div>
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
           {(['day', 'week'] as const).map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
+            <button key={v} id={`schedule-tab-${v}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
               className={cn('rounded px-3 py-1 text-sm focus-ring', view === v ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
               {v === 'day' ? 'Day' : 'Week'}
             </button>
@@ -127,7 +127,7 @@ function ScheduleScreen() {
       </div>
 
       {/* busy while the grid still shows the previous range: screen readers and tests wait for it */}
-      <Card className="overflow-hidden" data-testid="schedule" aria-busy={schedule.isPending || schedule.isPlaceholderData}>
+      <Card className="overflow-hidden" data-testid="schedule" role="tabpanel" id="schedule-panel" aria-labelledby={`schedule-tab-${view}`} aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
