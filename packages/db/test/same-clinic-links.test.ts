@@ -1,7 +1,7 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, createPhiCipher, PostgresTaskQueue, saveClinic, seedDemo } from '../src';
+import { CallRepository, createPhiCipher, PostgresPatientDirectory, PostgresTaskQueue, saveClinic, seedDemo } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -32,6 +32,21 @@ describe('links between clinic rows', () => {
 
   it('a note cannot hang off another clinic\'s request', async () => {
     expect(await failure(t.db.execute(sql`insert into task_notes (clinic_id, task_id, author_user_id, body_enc) values (${OTHER.id}, ${taskId}, 'u_otto', 'x')`))).toMatch(/task_notes_task_same_clinic/);
+  });
+
+  it('a request, an appointment, a transcript line, a call action and a webhook attempt cannot cross clinics either', async () => {
+    const [demoCall] = (await t.db.execute(sql`select id from calls where openai_session_id = 'live_links_demo'`)).rows as { id: string }[];
+    expect(await failure(t.db.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key) values (${OTHER.id}, 'callback', ${maria}, 'x', 'links-x1')`))).toMatch(/tasks_patient_same_clinic/);
+    expect(await failure(t.db.execute(sql`insert into tasks (clinic_id, type, call_id, details_enc, idempotency_key) values (${OTHER.id}, 'callback', ${demoCall!.id}, 'x', 'links-x2')`))).toMatch(/tasks_call_same_clinic/);
+    const otherPatient = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Ruth', lastName: 'Marsh', dob: '1971-06-02' });
+    const appt = (patientId: string, bookedBy: string | null, cancelledBy: string | null, key: string) => t.db.execute(sql`
+      insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_call_id, created_by_user_id, cancelled_by_call_id)
+      values (${OTHER.id}, ${patientId}, 'prov_okafor', 'vt_sick', '2026-11-02T15:00:00Z', '2026-11-02T15:20:00Z', ${key}, ${bookedBy}, ${bookedBy ? null : 'u_otto'}, ${cancelledBy})`);
+    expect(await failure(appt(maria, null, null, 'links-a1'))).toMatch(/appointments_patient_same_clinic/);
+    expect(await failure(appt(otherPatient, demoCall!.id, null, 'links-a2'))).toMatch(/appointments_booked_by_call_same_clinic/);
+    expect(await failure(appt(otherPatient, null, demoCall!.id, 'links-a3'))).toMatch(/appointments_cancelled_by_call_same_clinic/);
+    expect(await failure(t.db.execute(sql`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values (${OTHER.id}, ${demoCall!.id}, 'caller', 'x', 0, 1)`))).toMatch(/call_segments_call_same_clinic/);
+    expect(await failure(t.db.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values (${OTHER.id}, ${demoCall!.id}, 't', '[]', '{}', 1)`))).toMatch(/call_actions_call_same_clinic/);
   });
 
   it('the same links inside one clinic are fine', async () => {
