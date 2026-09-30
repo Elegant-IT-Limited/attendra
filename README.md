@@ -39,7 +39,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 - **Books, moves and cancels** only after a read-back and a clear yes; takes refills and callbacks as requests for staff.
 - **Answers from the clinic's own documents**, with citations, and refuses medical questions in code. [Decision 8](docs/decisions/0008-clinic-knowledge.md)
 - **Live calls**: staff see captions and every tool step as they happen, send the assistant a note, take the call or end it.
-- **Summarises every call** for staff, flags the ones that need a look, and deletes old records on the clinic's retention period.
+- **Summarises every call** for staff, flags the ones that need a look, and deletes old transcripts, summaries, call actions and webhook events on the clinic's retention period.
 - **Webhooks** for n8n, Zapier and Make, signed per Standard Webhooks, with no patient data in them. [docs/webhooks.md](docs/webhooks.md)
 - **Quality**: a weekly page of containment, bookings, refusals and cost, a judge for live evals, and simulated callers. [docs/quality.md](docs/quality.md)
 - **MCP**: other AI agents, such as a desktop MCP client, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)

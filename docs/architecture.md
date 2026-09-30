@@ -97,7 +97,7 @@ A job that fails is retried with exponential backoff (15 seconds up to an hour, 
 
 **Webhooks.** The agent, the API and the worker emit domain events (a booking, a closed request, a finished call) through an `EventSink`. Each event has an id derived from what happened, so a retried booking is one event. The `webhook-event` job stores it and queues one `deliver-webhook` job per endpoint that wants it; a delivery is retried with backoff for about a day, logged at every attempt, and an endpoint that fails three events in a row is turned off. Emitting never fails the thing that happened: a booking stands whatever the queue does.
 
-`purge-retention` runs at 03:00 UTC. For each clinic it deletes transcripts and summaries of calls older than the clinic's `retentionDays` (2555 by default, about 7 years) and audits how many it deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
+`purge-retention` runs at 03:00 UTC. For each clinic it deletes the transcripts, summaries and call actions of calls, and the webhook events with their delivery attempts, older than the clinic's `retentionDays` (2555 by default, about 7 years), in batches, and audits how many each batch deleted, never what. It runs as the database owner, like the migrations; the application role cannot delete call records.
 
 ## The dashboard
 
