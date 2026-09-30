@@ -27,7 +27,8 @@ type Step =
 type Snapshot = { channel: 'phone' | 'web'; startedAt: string; verified: string | null; doing: string | null; pending: string | null; emergency: boolean };
 
 /** Everything the page knows about the call, built from the stream. */
-function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
+/** `allowed`: the stream carries what the caller says, so it opens only for a role that may read it. */
+function useLiveCall(clinicId: string, callId: string, onEnded: () => void, allowed: boolean) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -39,6 +40,7 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
   ended.current = onEnded;
 
   useEffect(() => {
+    if (!allowed) return;
     // EventSource reconnects on its own and sends Last-Event-ID, so a dropped
     // connection resumes where it stopped
     const source = new EventSource(`/api/v1/clinics/${clinicId}/calls/${callId}/live`);
@@ -74,7 +76,7 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void) {
     on('ended', () => { source.close(); ended.current(); });
     source.onerror = () => { if (source.readyState === EventSource.CLOSED) setLost(true); };
     return () => source.close();
-  }, [clinicId, callId]);
+  }, [clinicId, callId, allowed]);
 
   return { snapshot, captions, steps, state, emergency, staff, lost };
 }
@@ -151,7 +153,7 @@ export default function LiveCallPage() {
     queries.removeQueries({ queryKey: ['call', clinicId, callId] });
     router.replace(`/c/${clinicId}/calls/${callId}`);
   };
-  const live = useLiveCall(clinicId, callId, toRecord);
+  const live = useLiveCall(clinicId, callId, toRecord, can('calls:read'));
   // a stream that closed for good, for a call no longer live here, ended while the page could not hear it
   const gone = live.lost && list.isSuccess && !listed;
   useEffect(() => { if (gone) toRecord(); }, [gone]);

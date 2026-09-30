@@ -58,6 +58,12 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(riley.getByText('Patients are for the front desk')).toBeVisible();
   // a direct link to a page the role cannot use says so, instead of an error or a skeleton that never ends
   const someone = '00000000-0000-4000-8000-000000000001';
+  // the live page does not even open the stream for a role that cannot watch calls
+  let streams = 0;
+  riley.on('request', (r) => { if (new URL(r.url()).pathname.endsWith(`/calls/${someone}/live`) && r.url().includes('/api/v1/')) streams++; });
+  await riley.goto(`${home}/calls/${someone}/live`);
+  await expect(riley.getByText('Your role cannot watch live calls', { exact: false })).toBeVisible({ timeout: 20_000 });
+  expect(streams).toBe(0);
   for (const [path, title] of [['/audit', 'Not available'], ['/schedule', 'The schedule is for the front desk'],
     [`/patients/${someone}`, 'Patients are for the front desk'], [`/calls/${someone}`, 'Call records are for the front desk']] as const) {
     await riley.goto(`${home}${path}`);
