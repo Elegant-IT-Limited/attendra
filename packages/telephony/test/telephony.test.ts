@@ -41,7 +41,7 @@ describe('SMS confirmations', () => {
     let attempts = 0;
     const flaky = { send: async () => { if (++attempts === 1) throw new Error('twilio 503'); return { sid: 'SM2' }; } };
     const messenger = new TwilioMessenger(t.db, cipher, flaky, () => '+13035550100');
-    const input = { to: '+13035550163', template: 'booking_cancelled' as const, idempotencyKey: 'sms:2', vars: { clinic: 'C', when: 'W', clinicPhone: 'P' } };
+    const input = { to: '+13035550163', template: 'booking_confirmed' as const, idempotencyKey: 'sms:2', vars: { clinic: 'C', when: 'W', clinicPhone: 'P' } };
     await expect(messenger.sendTemplate(DEMO_CLINIC.id, input)).rejects.toThrow('twilio 503');
     await messenger.sendTemplate(DEMO_CLINIC.id, input);
     await messenger.sendTemplate(DEMO_CLINIC.id, input);
