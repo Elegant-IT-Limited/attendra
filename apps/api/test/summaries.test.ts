@@ -31,7 +31,7 @@ describe('call summaries', () => {
     const list = await api.request('GET', `${C}/calls?review=needed`, { cookie: as.viewer });
     expect(list.json().calls).toEqual([expect.objectContaining({ id: api.callId, intent: 'refill', needsReview: true })]);
     expect(list.body).not.toContain('lisinopril');
-    expect((await api.request('GET', `${C}/calls?review=maybe`, { cookie: as.staff })).statusCode).toBe(400);
+    expect((await api.request('GET', `${C}/calls?review=maybe`, { cookie: as.staff })).statusCode).toBe(422);
   });
 
   it('give requests from the call their suggested next step', async () => {

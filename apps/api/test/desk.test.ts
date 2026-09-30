@@ -142,7 +142,7 @@ describe('calls', () => {
     expect(all.json().calls).toHaveLength(1);
     const refused = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'no_clear_yes' } });
     expect(refused.json().calls).toEqual([]); // Maria's call refused nothing
-    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'NOT-A-CODE' } })).statusCode).toBe(400);
+    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg', refusal: 'NOT-A-CODE' } })).statusCode).toBe(422);
   });
 
 });

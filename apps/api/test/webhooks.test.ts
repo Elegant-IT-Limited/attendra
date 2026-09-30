@@ -55,7 +55,7 @@ describe('webhook endpoints', () => {
       expect(res.statusCode, url).toBe(422);
       expect(res.json().problem, url).toBe(problem);
     }
-    expect((await create(as.admin, { url: 'https://hooks.example.com/x', events: [] })).statusCode).toBe(400);
+    expect((await create(as.admin, { url: 'https://hooks.example.com/x', events: [] })).statusCode).toBe(422);
   });
 
   it('show the secret once, when the endpoint is made, and never again', async () => {

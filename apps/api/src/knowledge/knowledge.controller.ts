@@ -3,7 +3,7 @@ import type { KnowledgeBase } from '@attendra/core';
 import { type Database, KnowledgeRepository, staffNames } from '@attendra/db';
 import { type Answerer, answerQuestion, MAX_BYTES, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
-import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -58,7 +58,7 @@ export class KnowledgeController {
     // checked as the types they must be, whatever the parsers let through
     if (!(body instanceof Uint8Array) || body.byteLength === 0) throw new HttpException({ error: 'empty_file' }, 400);
     if (body.byteLength > MAX_BYTES) throw new HttpException({ error: 'too_large' }, 413);
-    if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new HttpException({ error: 'invalid_request' }, 400);
+    if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: typeof q.title !== 'string' ? 'title' : 'name', message: 'required' }] });
     const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
     if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);

@@ -42,13 +42,13 @@ describe('API keys', () => {
 
   it('checks what it is given', async () => {
     const bad = async (body: unknown) => (await api.request('POST', `${C}/api-keys`, { cookie: as.admin, body })).statusCode;
-    expect(await bad({ name: '', scopes: ['schedule:read'] })).toBe(400);
-    expect(await bad({ name: 'x', scopes: [] })).toBe(400);
-    expect(await bad({ name: 'x', scopes: ['schedule:write'] })).toBe(400);
+    expect(await bad({ name: '', scopes: ['schedule:read'] })).toBe(422);
+    expect(await bad({ name: 'x', scopes: [] })).toBe(422);
+    expect(await bad({ name: 'x', scopes: ['schedule:write'] })).toBe(422);
     // what Settings offers, 7 days to a year, is what the API takes
-    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 400 })).toBe(400);
-    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 1 })).toBe(400);
-    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 6 })).toBe(400);
+    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 400 })).toBe(422);
+    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 1 })).toBe(422);
+    expect(await bad({ name: 'x', scopes: ['schedule:read'], expiresInDays: 6 })).toBe(422);
   });
 
   it('revoking stops the key at once, audited; a second revoke is 404', async () => {
