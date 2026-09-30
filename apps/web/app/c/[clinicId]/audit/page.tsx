@@ -56,7 +56,30 @@ const ACTIONS: Record<string, string> = {
   'member.transfer_number.cleared': 'Cleared their number for take-overs',
   'retention.purged': 'Deleted old call records',
   'call.summary.reviewed': 'Marked a call summary reviewed',
+  'call.opened': 'Answered a call',
+  'call.closed': 'Finished a call',
+  'call.transcript.written': 'Wrote a line of a call transcript',
+  'call.action.recorded': 'Recorded a step the assistant took',
+  'call.transcript.read': 'Read a call transcript to summarise it',
+  'call.summary.written': 'Wrote a call summary',
+  'patient.busy.shown': 'Saw that a patient was already booked then',
+  'patient.lookups.rehashed': 'Updated how patient names are matched',
+  'knowledge.document.uploaded': 'Uploaded a document for the assistant',
+  'knowledge.document.deleted': 'Deleted a document',
+  'webhook.endpoint.created': 'Added a webhook endpoint',
+  'webhook.endpoint.updated': 'Changed a webhook endpoint',
+  'webhook.endpoint.deleted': 'Removed a webhook endpoint',
+  'webhook.endpoint.secret_rotated': 'Rotated a webhook signing secret',
+  'webhook.endpoint.disabled': 'Turned off a webhook endpoint that kept failing',
+  'webhook.test': 'Sent a test event to a webhook endpoint',
 };
+
+// what an agent did through an API key, by MCP tool
+const MCP_TOOLS: Record<string, string> = {
+  find_open_slots: 'looked for open times', list_todays_schedule: 'read today\'s schedule', list_open_requests: 'read the open requests',
+  mark_request_done: 'closed a request', get_quality_summary: 'read the quality summary',
+};
+const SMS_STATUSES: Record<string, string> = { delivered: 'delivered', undelivered: 'not delivered', failed: 'failed', sent: 'sent', read: 'read', canceled: 'cancelled' };
 
 const ROLE_WORDS: Record<string, string> = { owner: 'owner', admin: 'practice manager', staff: 'front desk', viewer: 'viewer' };
 
@@ -64,6 +87,12 @@ const ROLE_WORDS: Record<string, string> = { owner: 'owner', admin: 'practice ma
 function describe(action: string) {
   if (ACTIONS[action]) return ACTIONS[action];
   if (action.startsWith('sms.sent.')) return 'Sent a text confirmation';
+  if (action.startsWith('sms.status.')) return `A text confirmation was ${SMS_STATUSES[action.slice(11)] ?? action.slice(11).replaceAll('_', ' ')}`;
+  if (action.startsWith('mcp.')) {
+    const [, tool = '', outcome] = action.split('.');
+    const did = `An agent ${MCP_TOOLS[tool] ?? `used ${tool.replaceAll('_', ' ')}`}`;
+    return outcome === 'refused' ? `${did}, refused: its key lacks the scope` : outcome === 'failed' ? `${did}, and it failed` : did;
+  }
   if (action.startsWith('member.added:')) return `Added a person to the team, as ${ROLE_WORDS[action.slice(13)] ?? action.slice(13)}`;
   if (action.startsWith('member.role.changed:')) return `Changed someone's role to ${ROLE_WORDS[action.slice(20)] ?? action.slice(20)}`;
   if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replace('_', ' ')})`;
@@ -72,6 +101,10 @@ function describe(action: string) {
 
 function actor(a: string, meId: string | undefined, names: Map<string, string>) {
   if (a === 'voice-agent') return <Badge tone="accent">Assistant</Badge>;
+  if (a === 'worker') return <span>Attendra, in the background</span>;
+  if (a === 'system') return <span>Attendra</span>;
+  if (a === 'seed') return <span>The demo setup</span>;
+  if (a.startsWith('api_key:')) return <span>An API key <span className="font-mono text-xs text-text-muted">{a.slice(8, 16)}</span></span>;
   if (a.startsWith('user:')) {
     const id = a.slice(5);
     if (id === meId) return <span>You</span>;
