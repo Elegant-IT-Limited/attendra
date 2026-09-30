@@ -104,4 +104,19 @@ test.describe.serial('the schedule', () => {
     await expect(cancelled).toHaveCount(0);
     await expect(page.getByText(/\d+ booked, \d+ cancelled hidden/)).toBeVisible();
   });
+
+  test('the call behind a booking staff cancelled says so, in its header and on the booking', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    const block = await findInWeek(page, /booked by the assistant/);
+    await block.click();
+    const panel = page.getByRole('dialog');
+    await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await panel.getByLabel('Why is it cancelled?').selectOption({ label: 'The patient asked' });
+    await panel.getByRole('button', { name: 'Cancel appointment' }).click();
+    await expect(panel.getByText('Cancelled. The time is free again.')).toBeVisible();
+    await panel.getByRole('link', { name: 'Open the call and its transcript' }).click();
+    await expect(page).toHaveURL(/\/calls\/[^/]+$/);
+    await expect(page.getByText('Booking since cancelled')).toBeVisible();
+    await expect(page.getByText('Since cancelled', { exact: true })).toBeVisible();
+  });
 });
