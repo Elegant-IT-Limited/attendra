@@ -40,6 +40,8 @@ const summaryOf = (clinicId: string, callId: string) =>
 const audits = (clinicId: string, action: string) =>
   withClinic(t.db, clinicId, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.clinicId, clinicId), eq(schema.auditLogs.action, action))));
 
+const lines = async (callId: string) => ((await t.db.execute(sql`select count(*)::int as n from call_segments where call_id = ${callId}`)).rows[0] as { n: number }).n;
+
 beforeAll(async () => {
   t = await openTestDatabase();
   await seedDemo(t.db, cipher);
@@ -58,7 +60,7 @@ describe('summarising a call', () => {
     expect(row).toMatchObject({ intent: 'other', sentiment: 'calm', needsReview: false, model: 'local' });
     expect(row!.bodyEnc).not.toContain('verified'); // encrypted, not JSON in clear
     expect(await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId })).toBe('exists');
-    const actions = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.auditLogs).where(eq(schema.auditLogs.callId, callId)))).map((a) => `${a.actor} ${a.action}`);
+    const actions = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.callId, callId), eq(schema.auditLogs.actor, 'worker'))))).map((a) => `${a.actor} ${a.action}`);
     expect(actions).toEqual(['worker call.transcript.read', 'worker call.summary.written']);
   });
 
@@ -106,8 +108,8 @@ describe('the retention purge', () => {
     expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
     expect(await actionsOf(old)).toBe(0);
     expect(await actionsOf(recent)).toBe(recentActions);
-    expect(await calls.transcript(OTHER.id, old)).toEqual([]);
-    expect(await calls.transcript(OTHER.id, recent)).toHaveLength(1);
+    expect(await lines(old)).toBe(0);
+    expect(await lines(recent)).toBe(1);
     const audit = (await audits(OTHER.id, 'retention.purged')).find((r) => 'transcriptLines' in (r.counts as object));
     expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1, callActions: oldActions } });
   });
@@ -143,7 +145,7 @@ describe('the retention purge', () => {
     const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
     const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
     expect(counts.transcriptLines).toBe(3);
-    for (const id of ids) expect(await calls.transcript(OTHER.id, id)).toEqual([]);
+    for (const id of ids) expect(await lines(id)).toBe(0);
     // one counts row per batch, written with that batch's deletes
     const rows = (await audits(OTHER.id, 'retention.purged')).filter((r) => !seen.has(r.id));
     expect(rows.map((r) => (r.counts as { transcriptLines: number }).transcriptLines).sort()).toEqual([1, 2]);

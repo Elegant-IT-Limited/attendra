@@ -23,12 +23,14 @@ Self-hosters are responsible for their own BAAs and operations.
   - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes every 30 seconds; a repeat is covered by the earlier row only when it is exactly the same view within 5 minutes. The entity id carries every parameter (range, provider, filters, page) and `p:` with a short hash of the patient ids shown, so a refresh that shows someone new writes a new row. The same rule applies to `calls.listed` and `patient.recent.viewed`.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
+- The call record is audited as it is written, under the actor `system`: `call.opened`, `call.transcript.written` for each transcript line, `call.action.recorded` for each tool step, and `call.closed`. A browser test call is opened as `call.test.started` under the staff member instead.
 - The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
 - Patients add these actions:
   - `patient.searched`: a search, with the number of matches (`matches:3`) and never the query, and `patient.search.result`, one row for each patient the search showed. The call search writes the same result rows. The query is sent in a request body, not a URL, so it does not reach access logs or browser history.
   - `patient.viewed`: a patient's record, with their appointments, verified calls and requests.
   - `patient.recent.viewed`: the list of patients a person opened recently, once per 5 minutes.
-  - `patient.created`, `patient.updated`: changes made at the front desk.
+  - `patient.created`, `patient.updated`: changes made at the front desk. A patient added by the seed or the voice service is audited as `patient.created` too, under that service's name.
+  - `patient.busy.shown`: a front-desk booking or move refused because the patient is already booked then, which shows the patient's name.
 - Requests, calls and the team add these actions:
   - `task.note.added`, `task.assigned`: a note on a request, and a request handed to a teammate. `task.done` now records an outcome code with the request.
   - `calls.listed`: the call list with verified callers' names, once per person per 5 minutes. A viewer's list has no names and writes nothing.

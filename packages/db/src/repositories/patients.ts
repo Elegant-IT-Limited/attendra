@@ -49,6 +49,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
         phoneEnc: p.phone ? this.cipher.encrypt(p.phone, ctx('phone')) : null,
         phoneHash: p.phone ? this.cipher.hash(phoneKey(clinicId, p.phone)) : null,
       }).returning({ id: patients.id });
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id });
       return row!.id;
     });
   }
