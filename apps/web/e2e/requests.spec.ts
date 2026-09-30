@@ -26,6 +26,8 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await page.getByRole('tab', { name: 'Done' }).click();
   const done = page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' });
   await expect(done.getByText('Refill sent to the pharmacy')).toBeVisible();
+  // when it was closed and by whom, not when it came in
+  await expect(done.getByText(/^Prescription refill, closed \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M by Jordan \(front desk\)$/)).toBeVisible();
 
   // from its call, the closed request opens on the Done tab
   await done.getByRole('link', { name: /^The call, / }).click();

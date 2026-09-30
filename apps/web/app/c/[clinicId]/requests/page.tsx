@@ -172,7 +172,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{t.patientName ?? 'Caller not verified'}</p>}
-            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `taken ${clinicTime(t.createdAt, tz)}`}</p>
+            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
           </div>
         </div>
         {!open ? <Badge tone="ok">Done</Badge>
