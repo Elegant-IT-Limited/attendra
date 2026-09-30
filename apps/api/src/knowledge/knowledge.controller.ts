@@ -55,11 +55,14 @@ export class KnowledgeController {
   @ApiConsumes('application/pdf', 'text/plain', 'text/markdown')
   @ApiOkResponse({ schema: schemaOf(KnowledgeDocument) })
   async upload(@Param('clinicId') clinicId: string, @Query(new ZodPipe(KnowledgeUpload)) q: z.infer<typeof KnowledgeUpload>, @Body() body: unknown, @Req() req: FastifyRequest, @CurrentStaff() staff: Staff) {
-    if (!Buffer.isBuffer(body) || !body.length) throw new HttpException({ error: 'empty_file' }, 400);
-    if (body.length > MAX_BYTES) throw new HttpException({ error: 'too_large' }, 413);
+    // checked as the types they must be, whatever the parsers let through
+    if (!(body instanceof Uint8Array) || body.byteLength === 0) throw new HttpException({ error: 'empty_file' }, 400);
+    if (body.byteLength > MAX_BYTES) throw new HttpException({ error: 'too_large' }, 413);
+    if (typeof q.title !== 'string' || typeof q.name !== 'string') throw new HttpException({ error: 'invalid_request' }, 400);
+    const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
     if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);
-    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content: body, userId: staff.userId });
+    const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId });
     if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash });
     const doc = await this.repo.get(clinicId, saved.id);
     return this.view(doc!, await staffNames(this.db, clinicId, [doc!.uploadedByUserId]));
