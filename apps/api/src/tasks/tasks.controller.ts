@@ -51,7 +51,8 @@ export class TasksController {
   @ApiOperation({ summary: 'Open tasks nobody has claimed, oldest first: type and age only, for the home screen. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(WaitingTasks) })
   async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {
-    return { tasks: (await this.desk.waitingTasks(clinicId)).map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })) };
+    const { tasks, total } = await this.desk.waitingTasks(clinicId);
+    return { tasks: tasks.map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })), total };
   }
 
   @Post(':taskId/claim')
