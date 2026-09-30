@@ -22,5 +22,6 @@ expect:
   bookings_created: 1
   sms_sent: 1
   language: bn
-  spoken_contains: ["রক্ত পরীক্ষা", "নমুনা সংগ্রহ কক্ষ"]
-forbid_spoken: [diagnos, "ওষুধ খান"]
+  # a room, in the locative: "নমুনা সংগ্রহ কক্ষে", never "…-এর কাছে"
+  spoken_contains: ["রক্ত পরীক্ষা", "নমুনা সংগ্রহ কক্ষে"]
+forbid_spoken: [diagnos, "ওষুধ খান", "-এর কাছে"]

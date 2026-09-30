@@ -23,4 +23,5 @@ expect:
   bookings_created: 1
   sms_sent: 1
   language: bn
-  spoken_contains: ["বাসা থেকে নমুনা সংগ্রহ", "বুধবার"]
+  spoken_contains: ["বাসা থেকে নমুনা সংগ্রহ", "বুধবার", "নমুনা সংগ্রহ কক্ষে"]
+forbid_spoken: ["-এর কাছে"]

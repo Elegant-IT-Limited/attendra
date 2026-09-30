@@ -124,8 +124,8 @@ export class CallAgent {
    * instruction marked as staff's, and changes nothing in code: every rule in runTool
    * still applies to whatever the model does with it.
    */
-  coach(note: string): Outbound[] {
-    this.emit({ type: 'staff', action: 'coached' });
+  coach(note: string, by: string | null = null): Outbound[] {
+    this.emit({ type: 'staff', action: 'coached', by, note });
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
     // a note never replaces the emergency script: it is sent again after the note
     if (this.state.emergency && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
@@ -151,11 +151,11 @@ export class CallAgent {
   }
 
   /** A person takes the call: the assistant says so, then the call is transferred. Work in flight is dropped. */
-  takeOver(uri: string): Outbound[] {
+  takeOver(uri: string, by: string | null = null): Outbound[] {
     this.state.revision++;
     this.state.pending = null;
     if (!this.state.emergency) this.state.outcome = 'transferred';
-    this.emit({ type: 'staff', action: 'taken_over' });
+    this.emit({ type: 'staff', action: 'taken_over', by });
     this.emitState();
     return [
       { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
@@ -164,10 +164,11 @@ export class CallAgent {
   }
 
   /** Staff end the call: the assistant says goodbye, then hangs up. */
-  endByStaff(): Outbound[] {
+  endByStaff(by: string | null = null): Outbound[] {
+    this.state.endedByStaff = true;
     this.state.revision++;
     this.state.pending = null;
-    this.emit({ type: 'staff', action: 'ended' });
+    this.emit({ type: 'staff', action: 'ended', by });
     this.emitState();
     return [
       { type: 'instructions', delegationId: null, content: 'Stop the current task. Thank the caller and say goodbye warmly, in one short sentence. Then say nothing more.' },

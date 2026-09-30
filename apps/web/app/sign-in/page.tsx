@@ -18,14 +18,22 @@ function SignIn() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // the demo login being signed in with, so its button shows the loading state
+  const [demo, setDemo] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    await signIn(email, password);
+  }
+
+  async function signIn(withEmail: string, withPassword: string, demoLogin: string | null = null) {
     setBusy(true);
+    setDemo(demoLogin);
     setError(null);
-    const res = await authClient.signIn.email({ email, password });
-    setBusy(false);
+    const res = await authClient.signIn.email({ email: withEmail, password: withPassword });
     if (res.error) {
+      setBusy(false);
+      setDemo(null);
       const code = (res.error as { error?: string }).error;
       return setError(res.error.status === 429 ? 'Too many attempts. Wait a minute and try again.'
         : code === 'temporary_password_expired' ? 'This temporary password has expired. Ask your practice manager to reset it.'
@@ -42,10 +50,13 @@ function SignIn() {
       {idle && <Alert>You were signed out after 15 minutes without activity.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
-          <p>Sign in with any of these logins. The password is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
+          <p>Click a login to sign in with it. The password, for the form below, is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             {health.data.demoSignIn.logins.map((l) => (
-              <Button key={l.email} type="button" size="sm" variant="outline" onClick={() => { setEmail(l.email); setPassword(health.data!.demoSignIn!.password); }}>{l.label}</Button>
+              <Button key={l.email} type="button" size="sm" variant="outline" disabled={busy} aria-busy={demo === l.email}
+                onClick={() => { setEmail(l.email); setPassword(health.data!.demoSignIn!.password); void signIn(l.email, health.data!.demoSignIn!.password, l.email); }}>
+                {demo === l.email ? 'Signing in…' : l.label}
+              </Button>
             ))}
           </div>
         </Alert>
@@ -62,7 +73,7 @@ function SignIn() {
           <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {error && <Alert tone="danger">{error}</Alert>}
-        <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
+        <Button type="submit" className="w-full" disabled={busy}>{busy && !demo ? 'Signing in…' : 'Sign in'}</Button>
       </form>
     </AuthCard>
   );

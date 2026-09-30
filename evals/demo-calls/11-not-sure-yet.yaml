@@ -1,0 +1,18 @@
+id: demo-not-sure-yet
+title: A caller is not sure about the time, and nothing is booked
+caller_number: "+17205550117"
+turns:
+  - caller: Hi, Daniel Okonkwo, January 11th 1988. I'd like an annual physical.
+    reply: "Thanks, Daniel. The first opening is {readback}. Does that work?"
+    delegate:
+      - verify_caller: { full_name: Daniel Okonkwo, date_of_birth: January 11th 1988 }
+      - find_slots: { visit_type_id: vt_annual, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: I'm not sure, I need to check my work schedule first.
+    reply: "Of course. Nothing is booked. Call us back whenever you're ready."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: abandoned
+  refusals: [no_clear_yes]
+  verified: true

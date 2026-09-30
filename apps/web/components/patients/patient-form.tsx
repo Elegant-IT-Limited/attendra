@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import { countryCopy } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -7,7 +8,7 @@ import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
-import { api, ApiFailure } from '@/lib/api';
+import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 
 /**
  * A patient's name, date of birth and phone. The assistant verifies callers on
@@ -23,6 +24,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   onCancel?: () => void;
 }) {
   const queries = useQueryClient();
+  const config = useClinicConfig(clinicId);
   const [form, setForm] = useState<PatientInput>({ firstName: '', lastName: '', dob: '', phone: '', ...initial });
   const [problem, setProblem] = useState<{ text: string; existing?: string } | null>(null);
   const save = useMutation({
@@ -67,7 +69,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone (optional)</Label>
-          <Input id="phone" type="tel" autoComplete="off" value={form.phone ?? ''} onChange={set('phone')} placeholder="(303) 555-0100" />
+          <Input id="phone" type="tel" autoComplete="off" value={form.phone ?? ''} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} />
           <p className="text-xs text-text-muted">Texts about bookings go to this number.</p>
         </div>
       </fieldset>

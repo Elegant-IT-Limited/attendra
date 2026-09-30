@@ -99,8 +99,9 @@ function Calls() {
               </div>
             </div>
           )}
-          <div className="space-y-1"><Label htmlFor="call-from" className="block text-xs text-text-muted">From</Label><Input id="call-from" type="date" className="h-8 w-38" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="call-to" className="block text-xs text-text-muted">To</Label><Input id="call-to" type="date" className="h-8 w-38" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="call-from" className="block text-xs text-text-muted">From</Label><Input id="call-from" type="date" className="h-8 w-38" aria-describedby="call-dates-hint" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="call-to" className="block text-xs text-text-muted">To</Label><Input id="call-to" type="date" className="h-8 w-38" aria-describedby="call-dates-hint" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <p id="call-dates-hint" className="self-end pb-1.5 text-xs text-text-muted">Times and dates are the clinic&rsquo;s.</p>
           <div className="space-y-1">
             <Label htmlFor="call-outcome" className="block text-xs text-text-muted">Outcome</Label>
             <Select id="call-outcome" className="h-8 w-40" value={outcome} onChange={(e) => setOutcome(e.target.value)}>

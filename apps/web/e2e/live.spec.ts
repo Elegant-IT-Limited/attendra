@@ -46,13 +46,20 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   await page.getByLabel('Note for the assistant').fill('she is a new patient, offer Thursday afternoon');
   await page.getByRole('button', { name: 'Send note' }).click();
   await expect(page.getByText('Note sent to the assistant.')).toBeVisible();
+  // everyone watching sees the note, with who sent it, in the timeline
+  const noteStep = page.getByTestId('staff-step').filter({ hasText: 'Note from Jordan (front desk)' });
+  await expect(noteStep).toContainText('she is a new patient, offer Thursday afternoon');
 
   await page.getByRole('button', { name: 'End call' }).click();
   await page.getByRole('dialog', { name: 'End this call?' }).getByRole('button', { name: 'End the call' }).click();
+  await expect(page.getByTestId('staff-step').filter({ hasText: 'Jordan (front desk) ended the call' })).toBeVisible();
   await expect(captions).toContainText('goodbye', { timeout: 10_000 });
   // the stream ends, and the page turns into the call record without a reload
   await expect(page).toHaveURL(/\/calls\/[^/]+$/, { timeout: 20_000 });
   await expect(page.getByText('Browser test').first()).toBeVisible();
+  await expect(page.getByText('Ended by staff')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Transcript' })).toBeVisible();
   await expect(page.getByText('she is a new patient')).toHaveCount(0); // the note is never in the record
+  // the summary appears when the worker has written it, with no reload
+  await expect(page.getByTestId('call-summary')).toBeVisible({ timeout: 30_000 });
 });

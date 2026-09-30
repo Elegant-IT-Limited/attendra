@@ -107,6 +107,21 @@ describe('the review flag', () => {
 describe('the local summariser', () => {
   const local = new LocalSummariser();
 
+  it('describes a refused medical question as one, flags it, and offers the callback', async () => {
+    const asked: CallForSummary = {
+      ...CALL, outcome: 'abandoned',
+      transcript: [...CALL.transcript.slice(0, 1), { speaker: 'caller', text: 'How much ibuprofen can I give my son?' }],
+      actions: [{ tool: 'get_clinic_info', result: { ok: false, error: 'medical_question' } }],
+    };
+    const s = await local.summarise(asked);
+    expect(s.summary).toBe('The caller asked a medical question. The assistant did not answer it and offered a callback from the care team.');
+    expect(s).toMatchObject({ intent: 'question', needsReview: true, reviewReason: 'Medical question: check whether the caller wants a callback' });
+    // with a callback already taken, nobody needs to check
+    const taken = await local.summarise({ ...asked, tasks: [{ type: 'callback' }] as CallForSummary['tasks'] });
+    expect(taken).toMatchObject({ intent: 'question', needsReview: false, followUp: 'Call the caller back.' });
+    expect(taken.summary).toContain('offered a callback from the care team');
+  });
+
   it('describes a booking from the call\'s facts', async () => {
     expect(await local.summarise(CALL)).toEqual({
       summary: 'The caller was verified by name and date of birth. The assistant booked an appointment after the caller confirmed it.',

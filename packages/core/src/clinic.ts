@@ -21,6 +21,8 @@ export const Provider = z.object({
   id: z.string(),
   name: z.string(),
   names: LocalNames.optional(),
+  // a person ("with Dr. Rahman") or a room ("in the sample collection room"): read-backs say it properly
+  kind: z.enum(['person', 'room']).default('person'),
   // the provider's own bookable hours; falls back to the clinic's hours when absent
   hours: WeeklyHours.optional(),
   visitTypeIds: z.array(z.string()).min(1),
@@ -78,7 +80,7 @@ export const ClinicConfig = z.object({
   retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
     .default({ enabled: false })
-    .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice; several US states require all-party consent'),
+    .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice that plays before the call is recorded'),
 }).superRefine((c, ctx) => {
   if (!c.languages.includes(c.primaryLanguage)) {
     ctx.addIssue({ code: 'custom', path: ['languages'], message: 'the primary language must be one of the languages the assistant speaks' });

@@ -32,7 +32,8 @@ export interface LanguagePack {
   /** A phone number read out digit by digit. */
   speakPhone: (e164: string) => string;
   /** The read-back before a booking or a move. */
-  readbackBooking: (v: { when: string; provider: string; visit: string; replacing: string | null }) => string;
+  /** `providerKind` is how the provider is named: "with" a person, "in" a room. */
+  readbackBooking: (v: { when: string; provider: string; providerKind: 'person' | 'room'; visit: string; replacing: string | null }) => string;
   /** The read-back before a cancellation. */
   readbackCancel: (v: { when: string }) => string;
 

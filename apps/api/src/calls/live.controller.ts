@@ -111,7 +111,7 @@ export class LiveController {
   @ApiOperation({ summary: 'Send the assistant a short note on a live call. It never overrides the rules. Audited with the note\'s length, never its words.' })
   @ApiBody({ schema: schemaOf(LiveCoach) })
   async coach(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @Body(new ZodPipe(LiveCoach)) body: z.infer<typeof LiveCoach>, @CurrentStaff() staff: Staff) {
-    return this.act(clinicId, callId, staff, 'call.coached', { characters: body.note.length }, () => this.live().coach(clinicId, callId, { userId: staff.userId, key: body.key, note: body.note }));
+    return this.act(clinicId, callId, staff, 'call.coached', { characters: body.note.length }, () => this.live().coach(clinicId, callId, { userId: staff.userId, byName: staff.name, key: body.key, note: body.note }));
   }
 
   @Post('calls/:callId/live/take-over')
@@ -134,7 +134,7 @@ export class LiveController {
     // the audit row names the destination by its last four digits only
     return this.act(clinicId, callId, staff, 'call.taken_over', {
       ownNumber: target.kind === 'number' ? 1 : 0, ...(destination ? { destinationLast4: Number(lastFour(destination)) } : {}),
-    }, () => this.live().takeOver(clinicId, callId, { userId: staff.userId, key: body.key, target }));
+    }, () => this.live().takeOver(clinicId, callId, { userId: staff.userId, byName: staff.name, key: body.key, target }));
   }
 
   @Post('calls/:callId/live/end')
@@ -143,7 +143,7 @@ export class LiveController {
   @ApiOperation({ summary: 'End a live call: the assistant says goodbye, then hangs up. Audited.' })
   @ApiBody({ schema: schemaOf(LiveEnd) })
   async end(@Param('clinicId') clinicId: string, @Param('callId') callId: string, @Body(new ZodPipe(LiveEnd)) body: z.infer<typeof LiveEnd>, @CurrentStaff() staff: Staff) {
-    return this.act(clinicId, callId, staff, 'call.ended_by_staff', undefined, () => this.live().endCall(clinicId, callId, { userId: staff.userId, key: body.key }));
+    return this.act(clinicId, callId, staff, 'call.ended_by_staff', undefined, () => this.live().endCall(clinicId, callId, { userId: staff.userId, byName: staff.name, key: body.key }));
   }
 
   @Get('my-transfer-number')

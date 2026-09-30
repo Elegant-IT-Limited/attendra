@@ -4,3 +4,4 @@ export * from './engine';
 export * from './gpt-live';
 export * from './prompt';
 export * from './simulated';
+export * from './voices';

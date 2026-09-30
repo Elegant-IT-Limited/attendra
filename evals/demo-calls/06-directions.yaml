@@ -1,0 +1,11 @@
+id: demo-directions
+title: A new patient asks where the clinic is, and is answered from the FAQ
+caller_number: "+17205550190"
+turns:
+  - caller: Hi, where exactly are you? I've never been in before.
+    reply: "We're at 214 Maple Street, Suite 3, in Denver. Parking is free in the lot behind the building."
+    delegate:
+      - get_clinic_info: { question: where are you located }
+expect:
+  outcome: info
+  answered_from: faq_address

@@ -48,7 +48,7 @@ export interface VoiceDeps {
 
 const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024) });
 const WebCallEnd = z.object({ clinicId: z.string().min(1).max(64) });
-const LiveAction = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), key: z.string().min(8).max(100) });
+const LiveAction = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), byName: z.string().trim().max(100).optional(), key: z.string().min(8).max(100) });
 const Coach = LiveAction.extend({ note: z.string().trim().min(1).max(300) });
 const TakeOver = LiveAction.extend({
   target: z.discriminatedUnion('kind', [z.object({ kind: z.literal('front_desk') }), z.object({ kind: z.literal('number'), number: z.string().regex(/^\+[1-9]\d{7,14}$/) })]),
@@ -228,7 +228,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
         const body = Coach.safeParse(jsonBody(req.body));
         if (!body.success) return reply.code(400).send({ error: 'invalid body' });
-        return answer(reply, await live.coach(body.data.clinicId, (req.params as { callId: string }).callId, body.data.key, body.data.note));
+        return answer(reply, await live.coach(body.data.clinicId, (req.params as { callId: string }).callId, body.data.key, body.data.note, body.data.byName ?? null));
       });
 
       internal.post('/internal/live/:callId/take-over', async (req, reply) => {
@@ -238,14 +238,14 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const callId = (req.params as { callId: string }).callId;
         const uri = body.data.target.kind === 'number' ? `tel:${body.data.target.number}` : frontDesk.get(callId) ?? null;
         if (!uri) return live.has(body.data.clinicId, callId) ? reply.code(409).send({ error: 'no_front_desk' }) : reply.code(404).send({ error: 'not_live' });
-        return answer(reply, await live.claim(body.data.clinicId, callId, body.data.key, body.data.userId, 'take_over', (c) => c.takeOver(uri)));
+        return answer(reply, await live.claim(body.data.clinicId, callId, body.data.key, body.data.userId, 'take_over', (c) => c.takeOver(uri, body.data.byName ?? null)));
       });
 
       internal.post('/internal/live/:callId/end', async (req, reply) => {
         if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
         const body = LiveAction.safeParse(jsonBody(req.body));
         if (!body.success) return reply.code(400).send({ error: 'invalid body' });
-        return answer(reply, await live.claim(body.data.clinicId, (req.params as { callId: string }).callId, body.data.key, body.data.userId, 'end', (c) => c.end()));
+        return answer(reply, await live.claim(body.data.clinicId, (req.params as { callId: string }).callId, body.data.key, body.data.userId, 'end', (c) => c.end(body.data.byName ?? null)));
       });
 
       // A scripted call through the real agent, tools and database, with no audio and
@@ -303,9 +303,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // staff watching live see every event; their actions go through the runner like the agent's own
       frontDesk.set(callId, clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null);
       live.open(callId, { clinicId: clinic.id, channel, startedAt: now() }, {
-        coach: (note) => runner.act(a.coach(note)),
-        takeOver: (uri) => runner.act(a.takeOver(uri)),
-        end: () => runner.act(a.endByStaff()),
+        coach: (note, by) => runner.act(a.coach(note, by)),
+        takeOver: (uri, by) => runner.act(a.takeOver(uri, by)),
+        end: (by) => runner.act(a.endByStaff(by)),
         canEnd: () => a.canEndByStaff(),
       });
       a.observer = (e) => live.publish(callId, e);
