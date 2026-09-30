@@ -37,7 +37,8 @@ function SignIn() {
   }
 
   return (
-    <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist.">
+    // shown once the API has said whether this is a demo, so the demo box never pushes the form down
+    <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist." pending={health.isPending}>
       {idle && <Alert>You were signed out after 15 minutes without activity.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
