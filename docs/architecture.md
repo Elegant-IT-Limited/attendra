@@ -24,7 +24,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 | `apps/worker` | Background jobs on pg-boss, in the same Postgres: a summary of every call, indexing the clinic's documents, the nightly retention purge, and (behind a flag) text delivery statuses. |
 | `apps/mcp` | MCP for other AI agents, over stdio and Streamable HTTP: find open times, today's schedule, the request queue, closing a request, the quality numbers. Per-clinic API keys with scopes and an expiry; no tool books or cancels. [docs/mcp.md](mcp.md). |
 | `packages/webhooks` | Standard Webhooks signing, the SSRF guard (public HTTPS only, checked after DNS and pinned to the checked address), and one delivery. [docs/webhooks.md](webhooks.md). |
-| `packages/knowledge` | The clinic's documents: text extraction (unpdf), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
+| `packages/knowledge` | The clinic's documents: text extraction (unpdf, in a worker thread with a heap limit and a 30 second deadline, at most 200 pages and 2 MB of text, with eval off), chunking, embeddings (OpenAI, or local hashing with no key), hybrid search with reciprocal rank fusion, and grounded answers. [Decision 8](decisions/0008-clinic-knowledge.md). |
 
 ## A delegation, in detail
 
