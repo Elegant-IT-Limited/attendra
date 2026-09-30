@@ -47,6 +47,12 @@ describe('links between clinic rows', () => {
     expect(await failure(appt(otherPatient, null, demoCall!.id, 'links-a3'))).toMatch(/appointments_cancelled_by_call_same_clinic/);
     expect(await failure(t.db.execute(sql`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values (${OTHER.id}, ${demoCall!.id}, 'caller', 'x', 0, 1)`))).toMatch(/call_segments_call_same_clinic/);
     expect(await failure(t.db.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values (${OTHER.id}, ${demoCall!.id}, 't', '[]', '{}', 1)`))).toMatch(/call_actions_call_same_clinic/);
+    // a webhook attempt logged under another clinic's endpoint, for this clinic's event
+    await t.db.execute(sql`insert into webhook_events (id, clinic_id, type, data, occurred_at) values ('evt_links_demo', ${DEMO_CLINIC.id}, 'request.done', '{}', now())`);
+    const [endpoint] = (await t.db.execute(sql`insert into webhook_endpoints (clinic_id, url, events, secret_enc, created_by_user_id)
+      values (${OTHER.id}, 'https://hooks.example.com/other', '{request.done}', 'x', 'u_otto') returning id`)).rows as { id: string }[];
+    expect(await failure(t.db.execute(sql`insert into webhook_attempts (clinic_id, endpoint_id, event_id, kind, attempt, duration_ms)
+      values (${OTHER.id}, ${endpoint!.id}, 'evt_links_demo', 'automatic', 1, 5)`))).toMatch(/webhook_attempts_event_same_clinic/);
   });
 
   it('the same links inside one clinic are fine', async () => {
