@@ -5,18 +5,19 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   answerQuestion, chunkText, DEMO_DOCUMENTS, estimateTokens, extractText, fuse, HybridKnowledgeBase, indexDocument, LocalAnswerer, LocalEmbedder,
-  MEDICAL_REFUSAL, ModelAnswerer, NO_INFORMATION, OpenAIEmbedder, seedDemoKnowledge, sourceTypeOf, topicWords,
+  MEDICAL_REFUSAL, ModelAnswerer, NO_INFORMATION, OpenAIEmbedder, PDF_LIMITS, pdfInWorker, seedDemoKnowledge, sourceTypeOf, topicWords,
 } from '../src';
 
-/** A one-page PDF with one line of text, built by hand so the test needs no fixture file. */
-function pdfWith(line: string): Buffer {
+/** A PDF with one line of text on each of its pages, built by hand so the test needs no fixture file. */
+function pdfWith(line: string, pages = 1): Buffer {
   const stream = `BT /F1 12 Tf 72 720 Td (${line}) Tj ET`;
+  const pageIds = Array.from({ length: pages }, (_, i) => i + 5);
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages} >>`,
     `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ...pageIds.map(() => '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 3 0 R /Resources << /Font << /F1 4 0 R >> >> >>'),
   ];
   let out = '%PDF-1.4\n';
   const offsets: number[] = [];
@@ -43,6 +44,15 @@ describe('reading documents', () => {
   it('refuses a file that is not what it says, or too large, with a code', async () => {
     await expect(extractText(Buffer.from('hello'), 'pdf')).rejects.toThrow('not_a_pdf');
     await expect(extractText(Buffer.from('%PDF-1.4 broken'), 'pdf')).rejects.toThrow('pdf_unreadable');
+  });
+
+  it('reads a PDF in its own thread, up to 200 pages and 2 MB of text, within a deadline', async () => {
+    expect(PDF_LIMITS).toMatchObject({ maxPages: 200, maxChars: 2 * 1024 * 1024 });
+    expect((await extractText(pdfWith('Page text.', 3), 'pdf')).match(/Page text\./g)).toHaveLength(3);
+    await expect(extractText(pdfWith('One too many.', 201), 'pdf')).rejects.toThrow('too_many_pages');
+    const strict = { ...PDF_LIMITS, maxChars: 20 };
+    await expect(pdfInWorker(pdfWith('This line is longer than twenty characters.'), strict)).rejects.toThrow('too_much_text');
+    await expect(pdfInWorker(pdfWith('Slow.', 50), { ...PDF_LIMITS, timeoutMs: 1 })).rejects.toThrow('pdf_timeout');
     await expect(extractText(Buffer.alloc(5 * 1024 * 1024 + 1, 97), 'text')).rejects.toThrow('too_large');
   });
 });
