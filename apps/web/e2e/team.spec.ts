@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 import { openAs } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
+  // one long journey through two people and a dozen pages, each compiled on first use by next dev
+  test.slow();
   const page = await openAs(browser, 'manager');
   await page.getByRole('link', { name: 'Team' }).click();
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
