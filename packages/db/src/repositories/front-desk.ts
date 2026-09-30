@@ -200,7 +200,7 @@ export class FrontDeskRepository {
       const [summary] = await tx.select().from(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), eq(callSummaries.callId, callId)));
       // what the call booked or cancelled, so the call page can link to it on the schedule
       const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
-        status: appointments.status, createdByCallId: appointments.createdByCallId }).from(appointments)
+        status: appointments.status, createdByCallId: appointments.createdByCallId, createdAt: appointments.createdAt, updatedAt: appointments.updatedAt }).from(appointments)
         .where(and(eq(appointments.clinicId, clinicId), or(eq(appointments.createdByCallId, callId), eq(appointments.cancelledByCallId, callId))))
         .orderBy(appointments.startsAt);
       // the call page refreshes while a summary is written: one row per person and call per five minutes
@@ -225,6 +225,9 @@ export class FrontDeskRepository {
         appointments: changed.map((a) => ({
           id: a.id, startsAt: a.startsAt, providerId: a.providerId, visitTypeId: a.visitTypeId, status: a.status,
           change: a.createdByCallId === callId ? 'booked' as const : 'cancelled' as const,
+          createdAt: a.createdAt, updatedAt: a.updatedAt,
+          // still booked, but changed after the call made it: the front desk moved it
+          moved: a.createdByCallId === callId && a.status === 'booked' && a.updatedAt.getTime() - a.createdAt.getTime() > 1000,
         })),
       };
     });
