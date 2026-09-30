@@ -85,6 +85,7 @@ export const CallSearch = z.object({
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
   emergency: z.boolean().optional(),
   review: z.literal('needed').optional(),
+  refusal: CallFilters.shape.refusal,
 });
 
 /** The worker's summary of a call, for staff. Written from the transcript; never medical advice. */
