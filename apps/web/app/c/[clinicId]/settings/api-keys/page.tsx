@@ -28,7 +28,7 @@ const SCOPES: { scope: ApiKeyView['scopes'][number]; label: string; hint: string
 const STATUS: Record<ApiKeyView['status'], { label: string; tone: 'ok' | 'neutral' | 'danger' }> = { active: { label: 'Active', tone: 'ok' }, expired: { label: 'Expired', tone: 'neutral' }, revoked: { label: 'Revoked', tone: 'danger' } };
 
 /**
- * Settings > API keys: keys for another AI agent, such as Claude Desktop, to work with
+ * Settings > API keys: keys for another AI agent, such as a desktop MCP client, to work with
  * the front desk over MCP. It can find open times, read the schedule and requests,
  * close requests and read quality numbers. It can never book or cancel.
  */
@@ -69,7 +69,7 @@ export default function ApiKeysPage() {
           <CardHeader><CardTitle>Make a key</CardTitle></CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-              <Field label="Name" hint="Who or what will use it, like Claude Desktop at the front desk."><Input value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Field>
+              <Field label="Name" hint="Who or what will use it, like the desktop MCP client at the front desk."><Input value={name} maxLength={100} onChange={(e) => setName(e.target.value)} /></Field>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">What it may do</legend>
                 {SCOPES.map((s) => (
