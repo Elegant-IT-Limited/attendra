@@ -371,6 +371,8 @@ export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(),
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
   entity: z.string(), entityId: z.string().nullable(), callId: z.string().nullable(),
+  /** How much, never what: { characters: 24 }, { transcriptLines: 412 }. */
+  counts: z.record(z.string(), z.number()).nullable(),
 });
 export const AuditPage = z.object({
   before: z.coerce.number().int().positive().optional(),
