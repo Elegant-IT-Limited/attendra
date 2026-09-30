@@ -35,6 +35,17 @@ describe('the built-in scheduler', () => {
     expect(again.appointment.id).toBe(first.appointment.id);
   });
 
+  it('refuses a patient who already has a visit then, with any provider, but not the visit being moved', async () => {
+    const first = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: slotAt('14:00'), callId, idempotencyKey: 'k-busy-1' });
+    if (first.status !== 'booked') throw new Error(first.status);
+    const start = zonedInstant('2026-09-29', '14:10', tz);
+    const withLindqvist = { id: `prov_lindqvist@${start.toISOString()}`, providerId: 'prov_lindqvist', visitTypeId: 'vt_sick', start, end: new Date(start.getTime() + 20 * 60_000) };
+    expect(await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: withLindqvist, callId, idempotencyKey: 'k-busy-2' })).toEqual({ status: 'patient_busy' });
+    // moving that same visit to an overlapping time is not a clash with itself
+    const moved = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.james!, slot: withLindqvist, callId, idempotencyKey: 'k-busy-3', replacesAppointmentId: first.appointment.id });
+    expect(moved.status).toBe('booked');
+  });
+
   it('two cancels at the same time give one success and one not_found, and one audit row', async () => {
     const booked = await scheduler.book(DEMO_CLINIC.id, { patientId: ids.maria!, slot: slotAt('11:00'), callId, idempotencyKey: 'k-race-book' });
     if (booked.status !== 'booked') throw new Error(booked.status);

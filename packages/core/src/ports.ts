@@ -53,11 +53,13 @@ export interface AppointmentSummary {
 export type BookingResult =
   | { status: 'booked'; appointment: AppointmentSummary }
   | { status: 'already_done'; appointment: AppointmentSummary } // same idempotency key seen before
-  | { status: 'slot_taken' };
+  | { status: 'slot_taken' }
+  | { status: 'patient_busy' }; // the patient already has a visit that overlaps it
 
 export interface SchedulerAdapter {
   busy(clinicId: string, providerIds: string[], from: Date, to: Date): Promise<{ providerId: string; start: Date; end: Date }[]>;
-  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string }): Promise<BookingResult>;
+  /** `replacesAppointmentId`: the visit this booking moves, which does not count as a clash. */
+  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult>;
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
 }
