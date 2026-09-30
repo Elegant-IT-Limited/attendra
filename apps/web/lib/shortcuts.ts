@@ -2,15 +2,18 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-/** The keys, as the shortcuts dialog lists them. */
-export const SHORTCUTS: { keys: string[]; label: string }[] = [
+/**
+ * The keys, as the shortcuts dialog lists them. `page` is the nav shortcut a G key
+ * goes to, and `permission` what a key needs, so a role sees only keys that do something.
+ */
+export const SHORTCUTS: { keys: string[]; label: string; page?: string; permission?: string }[] = [
   { keys: ['⌘', 'K'], label: 'Search and jump (Ctrl+K on Windows)' },
-  { keys: ['G', 'T'], label: 'Go to Today' },
-  { keys: ['G', 'S'], label: 'Go to Schedule' },
-  { keys: ['G', 'P'], label: 'Go to Patients' },
-  { keys: ['G', 'R'], label: 'Go to Requests' },
-  { keys: ['G', 'C'], label: 'Go to Calls' },
-  { keys: ['N'], label: 'New booking' },
+  { keys: ['G', 'T'], label: 'Go to Today', page: 't' },
+  { keys: ['G', 'S'], label: 'Go to Schedule', page: 's' },
+  { keys: ['G', 'P'], label: 'Go to Patients', page: 'p' },
+  { keys: ['G', 'R'], label: 'Go to Requests', page: 'r' },
+  { keys: ['G', 'C'], label: 'Go to Calls', page: 'c' },
+  { keys: ['N'], label: 'New booking', permission: 'schedule:write' },
   { keys: ['?'], label: 'Show these shortcuts' },
 ];
 

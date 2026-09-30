@@ -160,7 +160,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         canSearchPatients={can('patients:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
         <ul className="space-y-2">
-          {SHORTCUTS.map((s) => (
+          {SHORTCUTS.filter((s) => (!s.page || pages.some((p) => p.shortcut === s.page)) && (!s.permission || can(s.permission))).map((s) => (
             <li key={s.label} className="flex items-center justify-between gap-4 text-base">
               <span>{s.label}</span><span className="flex gap-1">{s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>
             </li>
