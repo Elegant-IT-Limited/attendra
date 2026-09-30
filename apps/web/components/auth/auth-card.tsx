@@ -2,10 +2,15 @@
 import { PhoneCall } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export function AuthCard({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
+/**
+ * The centred card every sign-in step uses. With `pending`, it is laid out but not
+ * shown, so content that arrives a moment later (the demo logins) does not move the
+ * form under someone's cursor.
+ */
+export function AuthCard({ title, subtitle, children, pending = false }: { title: string; subtitle?: string; children: ReactNode; pending?: boolean }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-sm space-y-6">
+      <div className={pending ? 'invisible w-full max-w-sm space-y-6' : 'w-full max-w-sm space-y-6'} aria-busy={pending || undefined}>
         <div className="flex items-center gap-2 text-primary">
           <PhoneCall className="size-5" aria-hidden />
           <span className="text-md font-semibold tracking-tight text-text">Attendra</span>

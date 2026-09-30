@@ -4,14 +4,16 @@ import {
   CallRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
+import type { KnowledgeBase } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { type JobQueue, noJobs } from '@attendra/worker/queue';
+import { eventSink, type JobQueue, noJobs } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { type SmsSender, twilioSender, TwilioMessenger } from '@attendra/telephony';
-import { GptLiveEngine } from '@attendra/voice-engine';
+import { GptLiveEngine, SimulatedEngine } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
-import { buildServer, type IncomingCall } from './server';
+import { buildServer, type IncomingCall, type VoiceDeps } from './server';
+import { simulatedCallFor } from './simulated-calls';
 
 export interface VoiceRuntime {
   db: Database;
@@ -28,14 +30,39 @@ export interface VoiceRuntime {
   browserCallMaxSeconds?: number;
   /** Where a closed call is announced, so the worker summarises it. */
   jobs?: JobQueue;
+  /** Scripted calls with no audio and no model, started from the dashboard. The local demo turns them on. */
+  simulatedCalls?: boolean;
+  /** The clinic's own documents, searched by the assistant. */
+  knowledge?: KnowledgeBase;
 }
 
 const noSms: SmsSender = { send: async () => { throw new Error('SMS is not configured'); } };
 
 /** The voice service wired to Postgres, OpenAI and Twilio. main.ts and the local demo both use it. */
 export function createVoiceApp(rt: VoiceRuntime) {
-  const { db, cipher } = rt;
   const openai = new OpenAI({ apiKey: rt.openaiApiKey, webhookSecret: rt.webhookSecret ?? null });
+  return buildServer(wire(rt, {
+    verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
+    engine: new GptLiveEngine(openai, rt.liveModel),
+    planner: new ResponsesPlanner(openai, rt.backendModel),
+  }));
+}
+
+/**
+ * The voice service with no OpenAI at all: only simulated calls, for the local demo
+ * without a key and for the e2e suite. It takes no phone or browser calls.
+ */
+export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'webhookSecret' | 'liveModel' | 'backendModel' | 'simulatedCalls'>) {
+  const engine = new SimulatedEngine();
+  return buildServer(wire({ ...rt, simulatedCalls: false }, {
+    verifyWebhook: async () => { throw new Error('this voice service takes no phone calls'); },
+    engine,
+    planner: { plan: async () => ({ say: null }) },
+  }, engine));
+}
+
+function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendModel'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
+  const { db, cipher } = rt;
   const calls = new CallRepository(db, cipher);
   const clinicNumbers = new Map<string, string>();
   // texts go out from the clinic's main number, whichever line was dialled
@@ -43,9 +70,10 @@ export function createVoiceApp(rt: VoiceRuntime) {
     if (config) clinicNumbers.set((config as { id: string }).id, (config as { phoneNumbers: string[] }).phoneNumbers[0]!);
     return config;
   };
+  const sim = simulated ?? (rt.simulatedCalls ? new SimulatedEngine() : null);
 
-  return buildServer({
-    verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
+  return {
+    ...parts,
     claimDelivery: (id) => claimDelivery(db, id, 'openai'),
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
@@ -62,13 +90,13 @@ export function createVoiceApp(rt: VoiceRuntime) {
           rt.log.warn({ call_id: callId, err: { message: (err as Error).message } }, 'could not queue the closed call for the worker'));
       },
     }),
-    engine: new GptLiveEngine(openai, rt.liveModel),
-    planner: new ResponsesPlanner(openai, rt.backendModel),
     backend: {
       patients: new PostgresPatientDirectory(db, cipher),
       scheduler: new BuiltinScheduler(db),
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
+      knowledge: rt.knowledge,
+      events: rt.jobs ? eventSink(rt.jobs, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) : undefined,
       messenger: new TwilioMessenger(db, cipher, rt.twilio ? twilioSender(twilio(rt.twilio.accountSid, rt.twilio.authToken)) : noSms, (clinicId) => {
         const from = clinicNumbers.get(clinicId);
         if (!from) throw new Error(`no sending number known for clinic ${clinicId}`);
@@ -78,5 +106,6 @@ export function createVoiceApp(rt: VoiceRuntime) {
     log: rt.log,
     internalToken: rt.internalToken,
     browserCallMaxSeconds: rt.browserCallMaxSeconds,
-  });
+    simulator: sim ? { engine: sim, callFor: simulatedCallFor } : undefined,
+  };
 }

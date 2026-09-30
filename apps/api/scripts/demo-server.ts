@@ -8,13 +8,15 @@
 // voice service starts here too, on 127.0.0.1:8080, and the dashboard's Test call
 // page talks to the receptionist through your microphone. That uses your OpenAI
 // credit: about $0.05 a minute. No phone number or Twilio account is needed.
-import { createPhiCipher } from '@attendra/db';
+import { createPhiCipher, KnowledgeRepository } from '@attendra/db';
 import { openTestDatabase } from '@attendra/db/testing';
+import { HybridKnowledgeBase, LocalAnswerer, LocalEmbedder, ModelAnswerer } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
-import { createVoiceApp } from '@attendra/voice/runtime';
-import { bossQueue, createBoss } from '@attendra/worker/queue';
+import { createSimulatedVoiceApp, createVoiceApp } from '@attendra/voice/runtime';
+import { bossQueue, createBoss, eventSink } from '@attendra/worker/queue';
 import { startWorker, summariserFromEnv } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
+import OpenAI from 'openai';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +52,15 @@ const boss = createBoss({ pglite: client });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
 const summariser = process.env.ATTENDRA_TEST_CALLS === 'off' ? new LocalSummariser() : summariserFromEnv(process.env);
-await startWorker({ boss, db, cipher, summariser, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false });
+// The demo's documents are indexed with local embeddings, so every part of the demo searches with them too.
+const embedder = new LocalEmbedder();
+const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), embedder);
+// Webhooks to this machine over plain HTTP, for trying n8n locally and for the e2e suite's receiver. Never in a deployment.
+const webhooks = { allowLoopback: process.env.ATTENDRA_WEBHOOKS_ALLOW_LOCAL === 'on' };
+await startWorker({
+  boss, db, cipher, summariser, embedder, log: createLogger({ name: 'worker', level: process.env.LOG_LEVEL ?? 'info' }), schedulePurge: false,
+  events: eventSink(bossQueue(boss)), webhooks,
+});
 
 const failed = results.filter((r) => !r.passed);
 if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo calls did not play as their scenario expects');
@@ -59,29 +69,38 @@ if (failed.length) log.warn({ failed: failed.map((r) => r.id) }, 'some demo call
 const demoSignIn = { password: LOCAL_DEMO_PASSWORD, logins: DEMO_LOGINS.map(({ email, label }) => ({ email, label })) };
 let voice = null;
 let voiceNote = 'Test calls are off. Put OPENAI_API_KEY in .env to talk to the receptionist from the browser.';
-if (process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off') {
+// Simulated calls play a scripted conversation through the real agent, with no audio
+// and no model, so Live now has something to show. On unless ATTENDRA_SIMULATED_CALLS=off.
+const simulated = process.env.ATTENDRA_SIMULATED_CALLS !== 'off';
+const realCalls = !!process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off';
+if (realCalls || simulated) {
   const voicePort = Number(process.env.VOICE_PORT || 8080);
   const maxSeconds = Number(process.env.BROWSER_CALL_MAX_SECONDS || 300);
   const internalToken = randomBytes(32).toString('base64url');
-  const voiceApp = createVoiceApp({
-    db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }),
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    liveModel: process.env.GPT_LIVE_MODEL || 'gpt-live-1',
-    backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
-    internalToken,
-    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300,
-    jobs: bossQueue(boss),
-  });
+  const common = {
+    db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }), internalToken,
+    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300, jobs: bossQueue(boss), knowledge,
+  };
+  const voiceApp = realCalls
+    ? createVoiceApp({
+      ...common, openaiApiKey: process.env.OPENAI_API_KEY!, simulatedCalls: simulated,
+      liveModel: process.env.GPT_LIVE_MODEL || 'gpt-live-1', backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
+    })
+    : createSimulatedVoiceApp(common);
   try {
     await voiceApp.listen({ port: voicePort, host: '127.0.0.1' });
-    voice = httpVoiceClient(`http://127.0.0.1:${voicePort}`, internalToken);
-    voiceNote = 'Test calls are on: open Test call in the dashboard and allow the microphone.';
+    voice = httpVoiceClient(`http://127.0.0.1:${voicePort}`, internalToken, 15_000, { browserCalls: realCalls, simulatedCalls: simulated });
+    voiceNote = realCalls
+      ? 'Test calls are on: open Test call in the dashboard and allow the microphone.'
+      : 'Test calls are off (no OPENAI_API_KEY). Simulated calls are on: Test call > Play a simulated call.';
   } catch (err) {
     voiceNote = `Test calls are off: port ${voicePort} is taken (${(err as { code?: string }).code ?? 'error'}). Set VOICE_PORT to another port.`;
   }
 }
 
-const app = await createApi({ db, cipher, auth, log, voice, options: { publicUrl, demoMode: true, demoSignIn } });
+// Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
+const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
+const app = await createApi({ db, cipher, auth, log, voice, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

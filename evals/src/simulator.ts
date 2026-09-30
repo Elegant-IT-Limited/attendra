@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
 import { type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, type Messenger, speakSlot, type ToolName, zonedInstant } from '@attendra/core';
-import { CallRepository, createPhiCipher, type Database, DEMO_PATIENTS, DHANMONDI_PATIENTS, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedDemo, seedDhanmondi, withClinic } from '@attendra/db';
+import { CallRepository, createPhiCipher, type Database, DEMO_PATIENTS, DHANMONDI_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedDemo, seedDhanmondi, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
+import { HybridKnowledgeBase, LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { Writable } from 'node:stream';
 import type { Scenario } from './scenario';
@@ -23,6 +24,8 @@ export interface ScenarioResult {
   refusals: string[];
   outcome: string;
   spoken: string[];
+  /** The call as a judge reads it: the greeting, each caller line, what the assistant said, and any instruction the backend sent the voice. */
+  transcript: { speaker: 'caller' | 'assistant' | 'instruction'; text: string }[];
   tools: string[];
   callId: string;
   ms: number;
@@ -33,6 +36,7 @@ class Observed implements Planner {
   readonly tools: string[] = [];
   readonly refusals: string[] = [];
   readonly sources: string[] = [];
+  readonly cited: string[] = [];
   constructor(private readonly inner: Planner) {}
   plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
     return this.inner.plan(input, async (name, args) => {
@@ -40,6 +44,7 @@ class Observed implements Planner {
       this.tools.push(name);
       if (typeof r.data.error === 'string') this.refusals.push(r.data.error);
       if (typeof r.data.source === 'string') this.sources.push(r.data.source);
+      if (Array.isArray(r.data.passages)) this.cited.push(...(r.data.passages as { title: string }[]).map((p) => p.title));
       return r;
     });
   }
@@ -87,7 +92,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const scheduler = new BuiltinScheduler(db);
   const sms: string[] = [];
   const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); } };
-  const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger };
+  // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
+  const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder());
+  const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };
   const calls = new CallRepository(db, cipher);
 
   // an existing appointment for Maria, for the reschedule and cancel scenarios
@@ -116,16 +123,22 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let clock = 0;
   let delegations = 0;
   let lastReadback: string | null = null;
+  const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: clinic.greeting }];
   await segment('agent', clinic.greeting, clock);
   for (const turn of scenario.turns) {
     clock += 1500;
-    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); await segment('agent', turn.assistant, clock); continue; }
-    outbound.push(...agent.onCallerTranscript(turn.caller, clock, clock + 1000));
+    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); await segment('agent', turn.assistant, clock); continue; }
+    const heard = agent.onCallerTranscript(turn.caller, clock, clock + 1000);
+    outbound.push(...heard);
+    transcript.push({ speaker: 'caller', text: turn.caller });
+    for (const o of heard) if (o.type === 'instructions') transcript.push({ speaker: 'instruction', text: o.content });
     await segment('caller', turn.caller, clock);
     const say = async () => {
-      if (!turn.reply) return;
+      // live, the assistant's words are the model's, not the script's
+      if (!turn.reply || livePlanner) return;
       const text = render(turn.reply, state, lastReadback, clinic);
       replies.push(text);
+      transcript.push({ speaker: 'assistant', text });
       clock += 2500;
       await segment('agent', text, clock);
     };
@@ -142,7 +155,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     }
     const out = await agent.onDelegation(`item_${++delegations}`);
     outbound.push(...out);
-    for (const o of out) if (o.type === 'commentary') { clock += 1500; agent.onAgentTranscript(o.content, clock, clock + 1000); }
+    for (const o of out) if (o.type === 'commentary') {
+      clock += 1500;
+      agent.onAgentTranscript(o.content, clock, clock + 1000);
+      if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
+    }
     if (state.pending) lastReadback = state.pending.readback;
     await say();
   }
@@ -170,6 +187,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
   check(outbound.some((o) => o.type === 'instructions') === e.emergency_instruction, `emergency instruction ${outbound.some((o) => o.type === 'instructions')}, expected ${e.emergency_instruction}`);
+  if (e.cites) {
+    const cited = [...new Set(observed.cited)];
+    const ok = e.cites.length === 0 ? cited.length === 0 : cited[0] === e.cites[0] && e.cites.every((t) => cited.includes(t));
+    check(ok, `cited ${JSON.stringify(cited)}, expected ${e.cites.length ? `${JSON.stringify(e.cites)}, the first leading` : 'nothing'}`);
+  }
   if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
   if (e.language) check(state.language === e.language, `answered in ${state.language}, expected ${e.language}`);
   for (const phrase of e.spoken_contains) {
@@ -178,7 +200,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const phrase of scenario.forbid_spoken) {
     check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
-  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, tools: observed.tools, callId, ms: Math.round(performance.now() - started) };
+  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, callId, ms: Math.round(performance.now() - started) };
 }
 
 /** One scenario in its own fresh in-process Postgres, so no scenario can affect another. */
@@ -187,6 +209,7 @@ export async function runScenario(scenario: Scenario, livePlanner?: Planner): Pr
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
     const { patientIds } = await (scenario.clinic === 'dhanmondi' ? seedDhanmondi : seedDemo)(t.db, cipher);
+    if (scenario.tags.includes('knowledge')) await seedDemoKnowledge(t.db, new LocalEmbedder());
     return await playScenario(t.db, cipher, patientIds, scenario, { livePlanner });
   } finally {
     await t.close();

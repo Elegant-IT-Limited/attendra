@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ClinicConfig, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor,
-  isClearYes, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
+  allowedEmergencyNumbers, ClinicConfig, clinicWarnings, crisisLineFor, DEMO_CLINIC, detectEmergencies, detectEmergency, detectLanguage, DHANMONDI_CLINIC, emergencyNumberFor, emergencyNumberProblem,
+  isClearYes, type Language, LANGUAGES, localName, normalise, PACKS, parseDob, speakSlot, zonedInstant,
 } from '../src';
 
 const TODAY = new Date('2026-09-29T00:00:00Z');
@@ -80,6 +80,24 @@ describe('the emergency guardrail in every language', () => {
     ['আমি আত্মহত্যা করতে চাই', 'self_harm', 'bn'],
     ['ami ar bachte chai na', 'self_harm', 'bn'],
     ['এটা জরুরি', 'general', 'bn'],
+    ['ছেলে বিষ খেয়েছে', 'overdose', 'bn'],
+    ['chele bish kheyeche', 'overdose', 'bn'],
+    ['বাবা স্ট্রোক করেছে', 'stroke', 'bn'],
+    ['মার মুখ বেঁকে গেছে', 'stroke', 'bn'],
+    ['mukh beke geche', 'stroke', 'bn'],
+    ['hat pa obosh hoye geche', 'stroke', 'bn'],
+    ['গলা ফুলে যাচ্ছে', 'allergic', 'bn'],
+    ['gola fule jacche', 'allergic', 'bn'],
+    ['শ্বাস নিতে কষ্ট হচ্ছে', 'breathing', 'bn'],
+    ['shash nite kosto hocche', 'breathing', 'bn'],
+    ['রক্ত পড়ছে থামছে না', 'bleeding', 'bn'],
+    ['rokto porche thamche na', 'bleeding', 'bn'],
+    ['mi padre no puede hablar bien', 'stroke', 'es'],
+    ['tiene la cara caída', 'stroke', 'es'],
+    ['se tomó todas las pastillas', 'overdose', 'es'],
+    ['mi hijo se tomó algo del garaje', 'overdose', 'es'],
+    ['creo que tomó veneno', 'overdose', 'es'],
+    ['se me está cerrando la garganta', 'allergic', 'es'],
   ];
   for (const [text, kind, language] of cases) {
     it(`"${text}" is ${kind}, heard as ${language}`, () => {
@@ -104,7 +122,7 @@ describe('the emergency guardrail in every language', () => {
   });
 
   it('does not fire on ordinary words that look like a phrase', () => {
-    for (const t of ['quiero un examen de pecho la próxima semana', 'report kobe pabo', 'I need a blood test', 'the sample was given']) {
+    for (const t of ['quiero un examen de pecho la próxima semana', 'report kobe pabo', 'I need a blood test', 'the sample was given', 'se tomó el día libre', 'amar gola betha']) {
       expect(detectEmergency(t), t).toBeNull();
     }
   });
@@ -114,7 +132,22 @@ describe('the emergency guardrail in every language', () => {
     expect(emergencyNumberFor(DHANMONDI_CLINIC)).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+8801000000100'] })).toBe('999');
     expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'] })).toBe('999');
-    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], emergencyNumber: '112' })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+442071234567'], emergencyNumber: '112' })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+61291234567'] })).toBe('000');
+    expect(emergencyNumberFor({ phoneNumbers: ['+4930123456'] })).toBe('112');
+    expect(emergencyNumberFor({ phoneNumbers: ['+33142685300'] })).toBe('112');
+  });
+
+  it('takes an emergency number only from the country\'s list, so a typo is never spoken', () => {
+    expect(allowedEmergencyNumbers(['+13035550100'])).toEqual(['911']);
+    expect(allowedEmergencyNumbers(['+8801000000100'])).toEqual(['999']);
+    expect(allowedEmergencyNumbers(['+61291234567'])).toEqual(['000', '112']);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toMatch(/911/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '112' })).toMatch(/911/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+8801000000100'], emergencyNumber: '911' })).toMatch(/999/);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+13035550100'], emergencyNumber: '911' })).toBeNull();
+    // a number saved before the rule is not spoken: the country's is
+    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], emergencyNumber: '91' })).toBe('911');
     expect(crisisLineFor(DEMO_CLINIC)).toBe('988');
     expect(crisisLineFor(DHANMONDI_CLINIC)).toBeNull();
   });
@@ -127,27 +160,79 @@ describe('the emergency guardrail in every language', () => {
   });
 });
 
+describe('the software\'s name', () => {
+  it('in a greeting or as the assistant\'s name is a warning in Settings, never a configuration that fails to load', () => {
+    const named = { ...DEMO_CLINIC, greeting: 'Thanks for calling, this is the Attendra AI assistant.', assistantName: 'Attendra' };
+    expect(ClinicConfig.safeParse(named).success).toBe(true);
+    expect(clinicWarnings(named).map((w) => w.path)).toEqual(['greeting', 'assistantName']);
+    expect(clinicWarnings(DEMO_CLINIC)).toEqual([]);
+  });
+});
+
 describe('a clear yes in every language', () => {
+  const ALL = LANGUAGES;
   it('accepts a plain yes in Spanish and Bangla, in both scripts', () => {
     for (const t of ['Sí', 'sí, claro', 'correcto', 'está bien', 'de acuerdo', 'জি', 'জি, করে দিন', 'হ্যাঁ, ঠিক আছে', 'ji', 'thik ache', 'accha korun', 'Ji, confirm.']) {
-      expect(isClearYes(t), t).toBe(true);
+      expect(isClearYes(t, ALL), t).toBe(true);
     }
   });
 
   it('refuses a hedge in any language, even next to a yes', () => {
     for (const t of ['no', 'sí, pero espere', 'mejor otro día', 'tal vez', '¿el jueves?', 'na', 'ji... na, pore janabo', 'জি, একটু দাঁড়ান', 'মনে হয়', 'onno din', 'yes, pore', 'sí, maybe']) {
-      expect(isClearYes(t), t).toBe(false);
+      expect(isClearYes(t, ALL), t).toBe(false);
     }
   });
 
   it('matches "দাঁড়ান" however it is composed', () => {
-    expect(isClearYes('জি, দাঁড়ান'.normalize('NFC'))).toBe(false);
-    expect(isClearYes('জি, দাঁড়ান'.normalize('NFD'))).toBe(false);
+    expect(isClearYes('জি, দাঁড়ান'.normalize('NFC'), ALL)).toBe(false);
+    expect(isClearYes('জি, দাঁড়ান'.normalize('NFD'), ALL)).toBe(false);
   });
 
   it('keeps the English rules as they were', () => {
-    expect(isClearYes('Yes, please book it.')).toBe(true);
-    expect(isClearYes('yes, actually no')).toBe(false);
+    expect(isClearYes('Yes, please book it.', ['en'])).toBe(true);
+    expect(isClearYes('yes, actually no', ['en'])).toBe(false);
+  });
+
+  it('does not hear a yes inside an ordinary sentence, or past a "but"', () => {
+    const cases: [string, readonly Language[]][] = [
+      ['I need to confirm with my wife first', ['en']],
+      ['I need to confirm with my wife first', ALL],
+      ['Ella ha dicho que el lunes', ['es']],
+      ['Ella ha dicho que el lunes', ALL],
+      ['por favor repita la hora', ['es']],
+      ['si puede el martes', ['es']],
+      ['sí, pero prefiero el martes', ['es']],
+      ['claro, pero el martes', ['es']],
+      ['ji, kintu bikel e', ['bn']],
+      ['জি, কিন্তু বিকেলে', ['bn']],
+      ['জি, তবে আর একটা কথা', ['bn']],
+      ['accha, tahole 3 tar dike', ['bn']],
+      ['I have to check, ha', ['en']],
+      ['I have to check, ha', ALL],
+      ['yes, but not Monday', ['en']],
+      ['yes, although Friday is better', ['en']],
+      ['sí, aunque mejor el jueves', ['es']],
+      ['ji, ar ekta kotha', ['bn']],
+    ];
+    for (const [t, langs] of cases) expect(isClearYes(t, langs), `${t} (${langs.join(',')})`).toBe(false);
+  });
+
+  it('takes a yes word only in a language the clinic offers', () => {
+    expect(isClearYes('ji', ['en'])).toBe(false);
+    expect(isClearYes('claro', ['en', 'bn'])).toBe(false);
+    expect(isClearYes('yes', ['es'])).toBe(false);
+  });
+
+  it('still takes a plain yes in each language, and a short word said alone', () => {
+    expect(isClearYes('Yes, that\'s right.', ['en'])).toBe(true);
+    expect(isClearYes('Confirm.', ['en'])).toBe(true);
+    expect(isClearYes('Sí, correcto.', ['es'])).toBe(true);
+    expect(isClearYes('Sí.', ['es'])).toBe(true);
+    expect(isClearYes('Por favor.', ['es'])).toBe(true);
+    expect(isClearYes('জি, করে দিন', ['bn'])).toBe(true);
+    expect(isClearYes('Ha.', ['bn'])).toBe(true);
+    expect(isClearYes('accha', ['bn'])).toBe(true);
+    expect(isClearYes('Ji, confirm.', ['bn'])).toBe(true);
   });
 });
 
@@ -208,9 +293,11 @@ describe('clinic languages and the assistant\'s name', () => {
     expect(ClinicConfig.safeParse({ ...base, languages: ['en'], greeting: PACKS.bn.greeting({ assistantName: null, clinicName: base.name }) }).success).toBe(false);
   });
 
-  it('never lets the software\'s name reach a caller', () => {
-    expect(ClinicConfig.safeParse({ ...base, greeting: 'Thanks for calling. I am the Attendra AI assistant.' }).error?.issues[0]?.path).toEqual(['greeting']);
-    expect(ClinicConfig.safeParse({ ...base, assistantName: 'Attendra' }).error?.issues[0]?.path).toEqual(['assistantName']);
+  it('warns when the software\'s name would reach a caller, and still loads the configuration', () => {
+    const greeting = { ...base, greeting: 'Thanks for calling. I am the Attendra AI assistant.' };
+    expect(ClinicConfig.safeParse(greeting).success).toBe(true);
+    expect(clinicWarnings(greeting).map((w) => w.path)).toEqual(['greeting']);
+    expect(clinicWarnings({ ...base, assistantName: 'Attendra' }).map((w) => w.path)).toEqual(['assistantName']);
   });
 
   it('names are one word of 2 to 24 letters, in any script', () => {

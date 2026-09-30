@@ -52,6 +52,24 @@ export class TestCallsController {
     }
   }
 
+  /**
+   * Plays a scripted call through the real agent and database, with no audio and no
+   * model, so the dashboard can show a live call. Only where the voice service was
+   * started with simulated calls, which only the local demo does.
+   */
+  @Post('simulated')
+  @HttpCode(201)
+  @Requires('calls:test')
+  @ApiOperation({ summary: 'Start a simulated live call (the local demo only). Audited as a test call.' })
+  async simulated(@Param('clinicId') clinicId: string, @CurrentStaff() staff: Staff): Promise<{ callId: string }> {
+    if (!this.voice?.simulatedCalls) throw new HttpException({ error: 'not_available' }, 404);
+    try {
+      return await this.voice.startSimulatedCall(clinicId, staff.userId);
+    } catch (err) {
+      this.failed(clinicId, err, 'start');
+    }
+  }
+
   /** Ends a test call whose page could not end it itself (closed while connecting). */
   @Post(':callId/end')
   @HttpCode(202)

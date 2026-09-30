@@ -1,10 +1,9 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAs, signInAgain } from './session';
+import { openAs } from './session';
 
 test.describe.serial('call summaries', () => {
-  // one sign-in for the whole spec: sign-in is rate limited
   let page: Page;
-  test.beforeAll(async ({ browser }) => { page = await signInAgain(browser, 'Practice manager'); });
+  test.beforeAll(async ({ browser }) => { page = await openAs(browser, 'manager'); });
 
   test('a booking call shows its summary, with what the caller wanted and how they came across', async () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();

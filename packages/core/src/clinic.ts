@@ -91,11 +91,21 @@ export const ClinicConfig = z.object({
   if (!c.languages.some((l) => PACKS[l].disclosure.test(greeting))) {
     ctx.addIssue({ code: 'custom', path: ['greeting'], message: 'the greeting must disclose that the caller is speaking with an AI assistant' });
   }
-  // the software's name is not the clinic's, and callers never hear it
-  if (/attendra/i.test(c.greeting)) ctx.addIssue({ code: 'custom', path: ['greeting'], message: 'the greeting must not name the software' });
-  if (c.assistantName && /attendra/i.test(c.assistantName)) ctx.addIssue({ code: 'custom', path: ['assistantName'], message: 'the assistant must not be named after the software' });
 });
 export type ClinicConfig = z.infer<typeof ClinicConfig>;
+
+/**
+ * Things worth fixing that do not stop a configuration from being saved or a call
+ * from running, shown in Settings. The software's name is not the clinic's, and
+ * callers should not hear it; but a clinic may be called something like it, so
+ * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
+ */
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'>): { path: 'greeting' | 'assistantName'; message: string }[] {
+  const out: { path: 'greeting' | 'assistantName'; message: string }[] = [];
+  if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });
+  if (c.assistantName && /attendra/i.test(c.assistantName)) out.push({ path: 'assistantName', message: 'The assistant is named after the software. Callers should hear a name of the clinic\'s own.' });
+  return out;
+}
 export type Provider = z.infer<typeof Provider>;
 export type VisitType = z.infer<typeof VisitType>;
 export type RoutingRule = z.infer<typeof RoutingRule>;

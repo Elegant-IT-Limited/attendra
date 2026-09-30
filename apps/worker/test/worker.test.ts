@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, saveClinic, schema, seedDemo, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -94,13 +94,30 @@ describe('the retention purge', () => {
     await h.summariseCall({ clinicId: OTHER.id, callId: old });
     await t.db.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
 
+    await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+    await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, idempotencyKey: null, taskRevision: 1 });
+
+    const actionsOf = async (id: string) => ((await t.db.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
+    const oldActions = await actionsOf(old);
+    const recentActions = await actionsOf(recent);
+
     const results = await h.purgeRetention();
-    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1 });
-    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0 }); // 2555 days by default
+    expect(results.find((r) => r.clinicId === OTHER.id)).toEqual({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
+    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
+    expect(await actionsOf(old)).toBe(0);
+    expect(await actionsOf(recent)).toBe(recentActions);
     expect(await calls.transcript(OTHER.id, old)).toEqual([]);
     expect(await calls.transcript(OTHER.id, recent)).toHaveLength(1);
     const [audit] = await audits(OTHER.id, 'retention.purged');
-    expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1 } });
+    expect(audit).toMatchObject({ actor: 'worker', entity: 'clinic', counts: { transcriptLines: 1, summaries: 1, callActions: oldActions } });
+  });
+
+  it('works through old calls in batches, each its own transaction', async () => {
+    const ids = [await closedCall(OTHER.id), await closedCall(OTHER.id), await closedCall(OTHER.id)];
+    await t.db.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
+    expect(counts.transcriptLines).toBe(3);
+    for (const id of ids) expect(await calls.transcript(OTHER.id, id)).toEqual([]);
   });
 });
 
@@ -117,10 +134,15 @@ describe('text delivery status', () => {
 
 describe('the worker on pg-boss', () => {
   let boss: PgBoss;
-  let failing = false;
+  let failing: false | 'code' | 'raw' = false;
   const flaky: Summariser = {
     model: 'local',
-    summarise: async (call) => { if (failing) throw new JobError('summary_model_http_500'); return new LocalSummariser().summarise(call); },
+    summarise: async (call) => {
+      if (failing === 'code') throw new JobError('summary_model_http_500');
+      // an error from a library, whose message quotes patient data
+      if (failing === 'raw') throw new Error('duplicate key value violates unique constraint: (Maria Delgado, 1985-03-04)');
+      return new LocalSummariser().summarise(call);
+    },
   };
 
   beforeAll(async () => {
@@ -143,7 +165,7 @@ describe('the worker on pg-boss', () => {
   });
 
   it('retries a failing summary, then dead-letters it, with a code the dashboard can show', async () => {
-    failing = true;
+    failing = 'code';
     const callId = await closedCall();
     await bossQueue(boss).callCompleted({ clinicId: DEMO_CLINIC.id, callId });
     const failed = await until(async () => (await workerJobs(t.db, DEMO_CLINIC.id, { callId })).find((j) => j.name === QUEUES.summariseCall && j.state === 'failed'), 30_000);
@@ -152,6 +174,27 @@ describe('the worker on pg-boss', () => {
     expect(await summaryOf(DEMO_CLINIC.id, callId)).toBeNull();
     failing = false;
   }, 45_000);
+
+  it('shows a code for an unexpected error, never its message', async () => {
+    failing = 'raw';
+    const callId = await closedCall();
+    await bossQueue(boss).callCompleted({ clinicId: DEMO_CLINIC.id, callId });
+    const failed = await until(async () => (await workerJobs(t.db, DEMO_CLINIC.id, { callId })).find((j) => j.name === QUEUES.summariseCall && j.state === 'failed'), 30_000);
+    expect(failed.failure).toBe('unexpected_error');
+    expect(JSON.stringify(await workerJobs(t.db, DEMO_CLINIC.id))).not.toContain('Delgado');
+    failing = false;
+  }, 45_000);
+
+  it('indexes an uploaded document once per content, however many times it is sent', async () => {
+    const repo = new KnowledgeRepository(t.db);
+    const saved = await repo.save(DEMO_CLINIC.id, { title: 'Late arrivals', sourceType: 'text', content: Buffer.from('If you arrive more than 15 minutes late, we may ask you to rebook.'), userId: 'u_ana' });
+    const queue = bossQueue(boss);
+    await queue.indexDocument({ clinicId: DEMO_CLINIC.id, documentId: saved.id, hash: saved.hash });
+    await queue.indexDocument({ clinicId: DEMO_CLINIC.id, documentId: saved.id, hash: saved.hash });
+    await until(async () => (await repo.get(DEMO_CLINIC.id, saved.id))?.status === 'ready');
+    expect((await workerJobs(t.db, DEMO_CLINIC.id)).filter((j) => j.name === QUEUES.indexDocument)).toHaveLength(1);
+    expect((await repo.get(DEMO_CLINIC.id, saved.id))?.chunkCount).toBe(1);
+  });
 
   it('shows each clinic only its own jobs', async () => {
     const theirs = await closedCall(OTHER.id);

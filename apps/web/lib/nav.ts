@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { CalendarDays, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, UserCog, Users } from 'lucide-react';
+import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, UserCog, Users } from 'lucide-react';
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; permission: string; shortcut?: string }
 
@@ -19,6 +19,7 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
     group: 'Assistant',
     items: [
       { href: 'test-call', label: 'Test call', icon: Mic, permission: 'calls:test' },
+      { href: 'quality', label: 'Quality', icon: Gauge, permission: 'quality:read' },
       { href: 'settings', label: 'Settings', icon: Settings, permission: 'settings:read' },
     ],
   },

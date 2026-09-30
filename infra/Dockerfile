@@ -8,16 +8,19 @@ RUN corepack enable && corepack install -g pnpm@10.34.5 && chmod -R a+rX /corepa
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
+COPY apps/mcp/package.json apps/mcp/
 COPY apps/voice/package.json apps/voice/
 COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/
 COPY packages/agent/package.json packages/agent/
 COPY packages/core/package.json packages/core/
 COPY packages/db/package.json packages/db/
+COPY packages/knowledge/package.json packages/knowledge/
 COPY packages/observability/package.json packages/observability/
 COPY packages/scheduling/package.json packages/scheduling/
 COPY packages/telephony/package.json packages/telephony/
 COPY packages/voice-engine/package.json packages/voice-engine/
+COPY packages/webhooks/package.json packages/webhooks/
 COPY evals/package.json evals/
 RUN pnpm install --frozen-lockfile
 COPY . .

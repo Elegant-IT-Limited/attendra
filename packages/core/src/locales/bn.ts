@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type LanguagePack, words } from './types';
+import { fold, type LanguagePack, words } from './types';
 
 /*
  * Bangla, experimental. Standard spoken Bangla (cholito bhasha), always "apni",
@@ -76,14 +76,19 @@ export const bn: LanguagePack = {
     ' Stay warm and brief. Do not give medical advice.',
   emergencyPhrases: [
     ['cardiac', words('বুকে (খুব |অনেক )?ব্যথা|বুক ব্যথা|বুকে চাপ|হার্ট অ্যাটাক|buke (khub |onek )?(betha|bytha|batha|byatha|bettha)|buk (betha|bytha|batha|byatha)|buke chap')],
-    ['breathing', words('শ্বাস নিতে (পারছি|পারছে|পারছেন|পারি|পারে) না|শ্বাসকষ্ট|দম (বন্ধ|আটকে)|(shash|shas|swash|sas) (nite|nete) (parchi|parche|parchen|pari|pare) na|(shash|shas|swas|sas)(h)?ko(sh)?to|dom (bondho|atke)')],
+    ['breathing', words('শ্বাস নিতে (পারছি|পারছে|পারছেন|পারি|পারে) না|শ্বাস নিতে কষ্ট( হচ্ছে)?|শ্বাসকষ্ট|(shash|shas|swash|sas) (nite|nete) (kosto|koshto|kashto)|দম (বন্ধ|আটকে)|(shash|shas|swash|sas) (nite|nete) (parchi|parche|parchen|pari|pare) na|(shash|shas|swas|sas)(h)?ko(sh)?to|dom (bondho|atke)')],
+    ['stroke', words('স্ট্রোক( করেছে| হয়েছে)?|মুখ বেঁকে (গেছে|যাচ্ছে)|হাত পা অবশ|(stroke) (koreche|korse|hoyeche)|mukh (beke|benke) (geche|gese|jacche)|hat pa obosh')],
+    ['allergic', words('গলা ফুলে (যাচ্ছে|গেছে)|জিভ ফুলে (যাচ্ছে|গেছে)|gola (fule|phule) (jacche|jache|geche)|jib (fule|phule) (jacche|geche)')],
+    ['overdose', words('বিষ খেয়েছে|বিষ খেয়ে ফেলেছে|অনেকগুলো ওষুধ খেয়ে ফেলেছে|(bish|bis) (kheyeche|kheyese|kheye felse|kheye felche)')],
     ['unresponsive', words('অজ্ঞান|জ্ঞান (নেই|হারিয়েছে|হারিয়ে ফেলেছে|ফিরছে না)|সাড়া দিচ্ছে না|খিঁচুনি|(o)?gg?y?an( hoye)?|(g|gy)an (nei|harie|hariye)|sara dicche na|khichuni')],
-    ['bleeding', words('(অনেক|প্রচুর) রক্ত|রক্ত (থামছে|বন্ধ হচ্ছে) না|রক্তবমি|(onek|prochur) (rokto|rakto)|(rokto|rakto) (thamche|bondho hocche) na|rokto ?bomi')],
+    ['bleeding', words('(অনেক|প্রচুর) রক্ত|রক্ত (পড়ছে )?(থামছে|বন্ধ হচ্ছে) না|রক্তবমি|(onek|prochur) (rokto|rakto)|(rokto|rakto) (porche )?(thamche|bondho hocche) na|rokto ?bomi')],
     ['self_harm', words('আত্মহত্যা|মরে যেতে চাই|বাঁচতে চাই না|নিজেকে শেষ করে|নিজের ক্ষতি|at+o?m?ohot+a|a(t|th)mo ?hot+a|more jete chai|bach?te chai na|nijeke shesh kore|nijer (khoti|kkhoti)')],
     ['general', words('জরুরি|ইমার্জেন্সি|অ্যাম্বুলেন্স|৯৯৯|999|joruri|jaruri|emergency|ambulance')],
   ],
   notAnEmergency: words('জরুরি (না|নয়)|joruri (na|noy)|emergency na'),
-  yes: words('জি|জ্বি|হ্যাঁ|হাঁ|হ্যা|ঠিক আছে|আচ্ছা|করুন|কনফার্ম|ji|jee|ha|haa|haan|hya|hyan|thik ache|thik ase|accha|acha|achha|korun|confirm'),
-  hedge: new RegExp(`${words('না|দাঁড়ান|দাড়ান|পরে|মনে হয়|অন্য দিন|একটু|na|daran|darao|pore|mone hoy|onno din|ektu').source}|[?]`, 'u'),
+  yes: words('জি|জ্বি|হ্যাঁ|ঠিক আছে|করুন|ji|jee|hya|hyan|haan|thik ache|thik ase|korun'),
+  // short words that mean yes alone, and something else inside a sentence
+  yesAlone: new RegExp(`^(${fold('হাঁ|হ্যা|আচ্ছা|কনফার্ম|ha|haa|accha|acha|achha|confirm|ji confirm|জি কনফার্ম')})$`, 'u'),
+  hedge: new RegExp(`${words('না|দাঁড়ান|দাড়ান|পরে|মনে হয়|অন্য দিন|একটু|কিন্তু|তবে|আর একটা|তাহলে|na|daran|darao|pore|mone hoy|onno din|ektu|kintu|tobe|ar ekta|tahole').source}|[?]`, 'u'),
   markers: /[ঀ-৿]+|\b(ami|apni|apnar|amar|ki|kobe|kothay|koto|ache|nai|nei|chai|korte|pabo|diben|bolen|report er|test er|na|ji|hobe|kalke|aj|bhai|apa)\b/g,
 };
