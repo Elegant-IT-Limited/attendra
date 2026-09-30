@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### API changes for integrators
+
+- `invalid_request` is now always **422**. A request that failed its schema used to answer 400 with the same code; a client that checks for 400 should check for 422.
+- Create routes now return **201 Created**: adding a patient, booking a visit and adding a team member used to answer 200 (test calls, API keys, documents and webhook endpoints already answered 201).
+- Additions only, nothing removed: the request list gains `doneByName`, the waiting-requests route gains `total`, and a call's appointments gain `createdAt`, `updatedAt` and `moved`.
+
 ### Fixed
 
 - The webhook delivery queue keeps its own retry policy (12 tries over about a day) when the worker starts with the defaults.
