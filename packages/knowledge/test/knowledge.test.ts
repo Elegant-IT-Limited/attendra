@@ -165,6 +165,12 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await kb.search(DEMO_CLINIC.id, 'what is it?')).toEqual([]);
   });
 
+  it('answers locally from the passage\'s opening, past its heading, not its last paragraph', async () => {
+    const text = 'Parking and directions\nParking is free in the lot behind the clinic. Enter from Elm Street.\n\nThe garage on 5th Avenue is also close.';
+    expect(await new LocalAnswerer().answer('where do I park?', [{ documentId: 'd', title: 'Parking and directions', text }]))
+      .toBe('Parking is free in the lot behind the clinic. Enter from Elm Street.');
+  });
+
   it('answers with citations, refuses a medical question before searching, and says so when it does not know', async () => {
     const ok = await answerQuestion(kb, new LocalAnswerer(), DEMO_CLINIC.id, 'where do I park?');
     expect(ok).toMatchObject({ refusal: null, answer: expect.stringContaining('Parking is free') });
