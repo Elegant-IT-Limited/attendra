@@ -72,7 +72,7 @@ export default function PatientPage() {
         <div className="space-y-1">
           <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-            <span>Age {age(p.dob)}, born {dob(p.dob)}</span>
+            <span>Age {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
             {p.phone && <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
           </p>

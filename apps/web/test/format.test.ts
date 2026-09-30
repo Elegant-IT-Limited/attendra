@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { clinicTime, setClinicCountry, tenDigitPhones, timeOf, usd } from '../lib/format';
+import { age, clinicTime, setClinicCountry, tenDigitPhones, timeOf, usd } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -22,5 +22,13 @@ describe('formatting that follows the clinic\'s country', () => {
   it('keeps the 12-hour clock in Australia', () => {
     setClinicCountry(['+61491570123']);
     expect(timeOf('2026-09-29T05:00:00Z', 'Australia/Sydney')).toBe('3:00 PM');
+  });
+});
+
+describe('age', () => {
+  it('counts whole years on the clinic\'s date, so a birthday turns over at the clinic\'s midnight', () => {
+    expect(age('2000-09-30', '2026-09-29')).toBe(25);
+    expect(age('2000-09-30', '2026-09-30')).toBe(26);
+    expect(age('2000-02-29', '2026-02-28')).toBe(25);
   });
 });

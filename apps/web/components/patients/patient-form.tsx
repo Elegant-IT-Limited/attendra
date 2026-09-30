@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { countryCopy } from '@attendra/core';
+import { countryCopy, localDateOf } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -65,7 +65,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="dob">Date of birth</Label>
-          <Input id="dob" type="date" required min="1890-01-01" max={new Date().toISOString().slice(0, 10)} value={form.dob} onChange={set('dob')} />
+          <Input id="dob" type="date" required min="1890-01-01" max={localDateOf(new Date(), config.data?.timezone ?? 'UTC')} value={form.dob} onChange={set('dob')} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone (optional)</Label>
