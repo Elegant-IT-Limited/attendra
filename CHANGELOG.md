@@ -27,7 +27,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Rows can no longer point into another clinic: migration 0017 adds composite foreign keys, and stops with a count if existing rows would break them.
 - The application role no longer reads the organization and phone number tables, which it never needed (migration 0018).
 - The retention purge also deletes webhook events and their delivery attempts, and audits each batch in its own transaction.
-- Writes to the call record, patients created outside the front desk and a patient-busy refusal are audited.
+- A call's opening and closing are audited (the close with how many transcript lines and tool steps it wrote), and so are patients created outside the front desk and a patient-busy refusal.
 - MCP reads are audited under the key and in the read's own transaction; closing a request no longer claims to be idempotent; a working key is not locked out by another client's failed attempts; today's schedule includes midnight; the server reports its real version.
 - A coaching note or take-over that fails can be tried again.
 - A team member whose add failed can be added again.

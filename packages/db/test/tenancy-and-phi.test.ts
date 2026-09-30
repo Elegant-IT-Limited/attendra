@@ -71,16 +71,18 @@ describe('PHI at rest', () => {
     expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'Sam Rivera', '1990-07-15')).toEqual({ status: 'ambiguous' });
   });
 
-  it('audits each write to a call record and each patient created, with the system as the actor', async () => {
+  it('audits a call record once when it opens and once when it closes, with its counts, and each patient created', async () => {
     const calls = new CallRepository(t.db, cipher);
     const callId = await calls.open(OTHER.id, 'sess_phi_audit', '+13035550199');
     await calls.appendSegment(OTHER.id, callId, { speaker: 'caller', text: 'I need a refill', startMs: 0, endMs: 900 });
+    await calls.appendSegment(OTHER.id, callId, { speaker: 'agent', text: 'I can help with that.', startMs: 1000, endMs: 1900 });
     await calls.recordAction(OTHER.id, callId, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
     await calls.close(OTHER.id, callId, { reason: 'caller_hangup', voiceSeconds: 12, outcome: 'info', emergency: false });
     const patientId = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Iris', lastName: 'Novak', dob: '1979-02-11' });
     const rows = await withClinic(t.db, OTHER.id, (tx) => tx.select().from(schema.auditLogs).orderBy(schema.auditLogs.id));
-    expect(rows.filter((r) => r.callId === callId).map((r) => [r.actor, r.action])).toEqual([
-      ['system', 'call.opened'], ['system', 'call.transcript.written'], ['system', 'call.action.recorded'], ['system', 'call.closed'],
+    // not one row per transcript line or tool step: those would bury the staff rows
+    expect(rows.filter((r) => r.callId === callId).map((r) => [r.actor, r.action, r.counts])).toEqual([
+      ['system', 'call.opened', null], ['system', 'call.closed', { lines: 2, actions: 1 }],
     ]);
     expect(rows.find((r) => r.action === 'patient.created' && r.entityId === patientId)?.actor).toBe('voice-agent');
   });
