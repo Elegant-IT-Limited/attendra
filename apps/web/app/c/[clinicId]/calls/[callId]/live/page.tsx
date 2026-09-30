@@ -160,6 +160,7 @@ export default function LiveCallPage() {
   const [confirm, setConfirm] = useState<'take' | 'end' | null>(null);
   const [target, setTarget] = useState<'front_desk' | 'me'>('front_desk');
   const [number, setNumber] = useState('');
+  const [changing, setChanging] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const mine = useQuery({ queryKey: ['my-number', clinicId], queryFn: () => api<{ number: string | null }>(`/clinics/${clinicId}/my-transfer-number`), enabled: can('calls:coach') });
 
@@ -169,9 +170,10 @@ export default function LiveCallPage() {
     onSuccess: () => { setNote(''); toast({ tone: 'success', message: 'Note sent to the assistant.' }); },
     onError: (e) => setProblem(e instanceof ApiFailure && e.status === 404 ? 'The call has ended.' : 'The note did not reach the assistant. Try again.'),
   });
+  // null clears it
   const saveNumber = useMutation({
-    mutationFn: (n: string) => api<{ number: string }>(`/clinics/${clinicId}/my-transfer-number`, { method: 'PUT', body: JSON.stringify({ number: n }) }),
-    onSuccess: () => { void mine.refetch(); setNumber(''); },
+    mutationFn: (n: string | null) => api<{ number: string | null }>(`/clinics/${clinicId}/my-transfer-number`, { method: 'PUT', body: JSON.stringify({ number: n }) }),
+    onSuccess: () => { void mine.refetch(); setNumber(''); setChanging(false); },
   });
   const act = useMutation({
     mutationFn: (kind: 'take' | 'end') => api<void>(`/clinics/${clinicId}/calls/${callId}/live/${kind === 'take' ? 'take-over' : 'end'}`, {
@@ -297,10 +299,17 @@ export default function LiveCallPage() {
             { value: 'front_desk', label: 'The front desk line', hint: 'The number in Settings, under Routing.' },
             { value: 'me', label: 'My own number', hint: mine.data?.number ?? 'Not set yet.' },
           ]} />
-          {target === 'me' && !mine.data?.number && (
+          {target === 'me' && mine.data?.number && !changing && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setChanging(true)}>Change my number</Button>
+              <Button variant="ghost" size="sm" loading={saveNumber.isPending} onClick={() => saveNumber.mutate(null)}>Clear it</Button>
+            </div>
+          )}
+          {target === 'me' && (!mine.data?.number || changing) && (
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); saveNumber.mutate(number.trim()); }}>
               <Input aria-label="Your number" placeholder={example.e164} value={number} onChange={(e) => setNumber(e.target.value)} className="flex-1" />
               <Button type="submit" variant="outline" loading={saveNumber.isPending}>Save</Button>
+              {changing && <Button type="button" variant="ghost" onClick={() => { setChanging(false); setNumber(''); }}>Keep it</Button>}
             </form>
           )}
           {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like {example.e164}. It must be in the clinic's country.</p>}
