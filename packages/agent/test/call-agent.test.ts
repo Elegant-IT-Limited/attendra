@@ -128,6 +128,13 @@ describe('safety', () => {
     expect(spoken(out)).toContain('Do not promise approval');
     expect(c.state.outcome).toBe('task_created');
   });
+
+  it('refuses a medical question the caller asked, even when the model passes on a softened one', async () => {
+    const c = await w.call();
+    c.caller('How much Tylenol for a child who is four?');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'children\'s pharmacy information' } }, { tool: 'search_knowledge', args: { question: 'pediatric info' } }]);
+    expect(out.errors).toEqual(['medical_question', 'medical_question']);
+  });
 });
 
 describe('call control', () => {

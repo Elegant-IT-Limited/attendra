@@ -4,7 +4,8 @@ import { memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
-import { appointments, auditLogs, callActions, calls, callSegments, clinics, patients, taskNotes, tasks } from '../schema';
+import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, patients, taskNotes, tasks } from '../schema';
+import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
 export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'not_needed';
@@ -53,6 +54,30 @@ export async function auditResults(tx: Tx, clinicId: string, userId: string, pat
  * role inside one clinic's scope, and every read of patient data writes an audit
  * row in the same transaction, so a view that failed to audit also failed to show.
  */
+/** A staff member's own number at the clinic's practice, for a take-over. Owner connection: memberships are not clinic rows. */
+export async function transferNumber(db: Database, userId: string, clinicId: string): Promise<string | null> {
+  const [row] = await db.select({ n: memberships.transferNumber }).from(memberships)
+    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+  return row?.n ?? null;
+}
+
+/** Sets or clears it, audited in the clinic: a take-over rings this number, so a change to it is a change to where calls can go. */
+export async function setTransferNumber(db: Database, userId: string, clinicId: string, number: string | null): Promise<boolean> {
+  const org = await orgOfClinic(db, clinicId);
+  if (!org) return false;
+  const rows = await db.update(memberships).set({ transferNumber: number })
+    .where(and(eq(memberships.userId, userId), eq(memberships.organizationId, org))).returning({ id: memberships.id });
+  if (!rows.length) return false;
+  await withClinic(db, clinicId, (tx) => tx.insert(auditLogs).values({
+    clinicId, actor: actorOf(userId), action: number ? 'member.transfer_number.set' : 'member.transfer_number.cleared', entity: 'member', entityId: userId,
+  }));
+  return true;
+}
+
+/** Rolls back a live action's audit row when the action did not happen. */
+class NotKept extends Error {}
+
 export class FrontDeskRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
@@ -66,7 +91,9 @@ export class FrontDeskRepository {
    */
   async listCalls(clinicId: string, opts: {
     before?: { startedAt: string; id: string }; limit: number;
-    from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; patientIds?: string[];
+    from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; patientIds?: string[]; needsReview?: boolean;
+    /** Calls where a tool was refused with this code, for the quality page's links. */
+    refusal?: string;
     names?: { userId: string; audit: 'list' | 'search'; matches?: number };
   }) {
     return withClinic(this.db, clinicId, async (tx) => {
@@ -80,7 +107,11 @@ export class FrontDeskRepository {
         firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc,
         tools: sql<string[]>`coalesce(array_agg(distinct ${callActions.tool}) filter (where ${callActions.tool} is not null), '{}')`,
         verified: sql<boolean>`coalesce(bool_or((${callActions.result}->>'verified')::boolean), false)`,
+        // the summary's codes only; its text is PHI and stays on the call page
+        intent: callSummaries.intent, sentiment: callSummaries.sentiment,
+        needsReview: sql<boolean>`coalesce(${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null, false)`,
       }).from(calls).leftJoin(callActions, eq(callActions.callId, calls.id)).leftJoin(patients, eq(patients.id, calls.patientId))
+        .leftJoin(callSummaries, eq(callSummaries.callId, calls.id))
         .where(and(eq(calls.clinicId, clinicId),
           opts.before ? sql`(${calls.startedAt}, ${calls.id}) < (${opts.before.startedAt}::timestamptz, ${opts.before.id}::uuid)` : undefined,
           opts.from ? sql`${calls.startedAt} >= ${opts.from}` : undefined,
@@ -88,8 +119,10 @@ export class FrontDeskRepository {
           opts.outcome ? eq(calls.outcome, opts.outcome) : undefined,
           opts.channel ? eq(calls.channel, opts.channel) : undefined,
           opts.emergency !== undefined ? eq(calls.emergencyFlag, opts.emergency) : undefined,
-          opts.patientIds ? inArray(calls.patientId, opts.patientIds) : undefined))
-        .groupBy(calls.id, patients.id).orderBy(desc(calls.startedAt), desc(calls.id)).limit(opts.limit);
+          opts.patientIds ? inArray(calls.patientId, opts.patientIds) : undefined,
+          opts.needsReview ? sql`${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null` : undefined,
+          opts.refusal ? sql`exists (select 1 from call_actions r where r.call_id = ${calls.id} and r.result->>'error' = ${opts.refusal})` : undefined))
+        .groupBy(calls.id, patients.id, callSummaries.callId).orderBy(desc(calls.startedAt), desc(calls.id)).limit(opts.limit);
       const shown = rows.flatMap((r) => (r.firstNameEnc && r.patientId ? [r.patientId] : []));
       if (opts.names?.audit === 'search') {
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(opts.names.userId), action: 'calls.searched', entity: 'call', entityId: `matches:${rows.length}` });
@@ -98,7 +131,7 @@ export class FrontDeskRepository {
         // everything that changes what the list shows is in the key: filters, page, and who is on it
         const key = [
           `from=${opts.from?.toISOString() ?? ''}`, `to=${opts.to?.toISOString() ?? ''}`, `outcome=${opts.outcome ?? ''}`, `channel=${opts.channel ?? ''}`,
-          `emergency=${opts.emergency ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
+          `emergency=${opts.emergency ?? ''}`, `review=${opts.needsReview ?? ''}`, `refusal=${opts.refusal ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
         ].join(';');
         await recordView(tx, { clinicId, actor: actorOf(opts.names.userId), action: 'calls.listed', entity: 'call', entityId: key }, 5);
       }
@@ -111,6 +144,51 @@ export class FrontDeskRepository {
     });
   }
 
+  /**
+   * A staff member starts watching a live call. Its captions are PHI, so the watch is
+   * audited once, as it starts; a reconnect to the same stream is the same watch.
+   * False when the call is not this clinic's.
+   */
+  async watchLive(clinicId: string, callId: string, userId: string, audit: boolean): Promise<boolean> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [call] = await tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call) return false;
+      // every stream opened is a watch, whatever the browser says it saw before; one row per person and call per five minutes
+      if (audit) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'call.live.watched', entity: 'call', entityId: callId, callId }, 5);
+      return true;
+    });
+  }
+
+  /**
+   * A staff action on a live call, audited under the person who took it. Counts only:
+   * a coaching note's length, never its words. The audit row is written first, in a
+   * transaction, and `run` (the voice action) happens only once it is in: an action
+   * whose row cannot be written never runs. When `keep` says the action did not
+   * happen (someone else had the call) or was a repeat of the same click, the row is
+   * rolled back, so the log holds the actions that happened, once each.
+   */
+  async auditedLiveAction<T>(clinicId: string, callId: string, userId: string, action: 'call.coached' | 'call.taken_over' | 'call.ended_by_staff',
+    counts: Record<string, number> | undefined, run: () => Promise<T>, keep: (r: T) => boolean): Promise<T> {
+    let result: { r: T } | null = null;
+    try {
+      return await withClinic(this.db, clinicId, async (tx) => {
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'call', entityId: callId, callId, counts: counts ?? null });
+        result = { r: await run() };
+        if (!keep(result.r)) throw new NotKept();
+        return result.r;
+      });
+    } catch (err) {
+      if (err instanceof NotKept && result) return (result as { r: T }).r;
+      throw err;
+    }
+  }
+
+  /** The live call list with verified callers' short names, recorded once per five minutes for the same calls. */
+  async recordLiveList(clinicId: string, userId: string, callIds: string[]) {
+    if (!callIds.length) return;
+    await withClinic(this.db, clinicId, (tx) => recordView(tx, { clinicId, actor: actorOf(userId), action: 'calls.live.listed', entity: 'call', entityId: patientSetKey(callIds) }, 5));
+  }
+
   /** One call with its transcript. Reading the transcript is a PHI access. */
   async getCall(clinicId: string, callId: string, userId: string) {
     return withClinic(this.db, clinicId, async (tx) => {
@@ -119,6 +197,7 @@ export class FrontDeskRepository {
       const segments = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
       const actions = await tx.select().from(callActions).where(eq(callActions.callId, callId)).orderBy(callActions.id);
       const callTasks = await tx.select({ id: tasks.id, type: tasks.type, status: tasks.status }).from(tasks).where(eq(tasks.callId, callId));
+      const [summary] = await tx.select().from(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), eq(callSummaries.callId, callId)));
       // what the call booked or cancelled, so the call page can link to it on the schedule
       const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
         status: appointments.status, createdByCallId: appointments.createdByCallId }).from(appointments)
@@ -140,6 +219,8 @@ export class FrontDeskRepository {
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx), startMs: s.startMs, endMs: s.endMs })),
         actions: actions.map((a) => ({ tool: a.tool, argumentNames: a.argsRedacted as string[], result: a.result as Record<string, unknown>, revision: a.taskRevision, at: a.createdAt })),
         tasks: callTasks,
+        // read in the same audited view as the transcript it summarises
+        summary: summary ? decryptSummary(this.cipher, clinicId, summary) : null,
         appointments: changed.map((a) => ({
           id: a.id, startsAt: a.startsAt, providerId: a.providerId, visitTypeId: a.visitTypeId, status: a.status,
           change: a.createdByCallId === callId ? 'booked' as const : 'cancelled' as const,
@@ -154,8 +235,8 @@ export class FrontDeskRepository {
    */
   async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, userId: string) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
-        .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId))
+      const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, summary: callSummaries })
+        .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
           opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined))
         .orderBy(opts.status === 'open' ? tasks.createdAt : desc(tasks.doneAt)).limit(opts.limit);
@@ -166,13 +247,15 @@ export class FrontDeskRepository {
         await tx.insert(auditLogs).values(rows.map(({ task }) => ({ clinicId, actor: actorOf(userId), action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId })));
       }
       const ctx = (col: string) => phiContext(clinicId, col);
-      return rows.map(({ task, firstNameEnc, lastNameEnc }) => ({
+      return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
         id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
         assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
         patientName: firstNameEnc && lastNameEnc
           ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
           : null,
         details: JSON.parse(this.cipher.decrypt(task.detailsEnc, ctx('tasks.details'))) as Record<string, string>,
+        // what the call's summary suggests staff do, for a request the assistant created
+        followUp: summary ? decryptSummary(this.cipher, clinicId, summary).followUp : null,
         notes: notes.filter((n) => n.taskId === task.id).map((n) => ({ id: n.id, authorUserId: n.authorUserId, at: n.createdAt, body: this.cipher.decrypt(n.bodyEnc, ctx('task_notes.body')) })),
       }));
     });
@@ -311,7 +394,7 @@ export class FrontDeskRepository {
   async auditTrail(clinicId: string, opts: { beforeId?: number; limit: number; actions?: string[] }) {
     return withClinic(this.db, clinicId, (tx) => tx.select({
       id: auditLogs.id, at: auditLogs.at, actor: auditLogs.actor, action: auditLogs.action,
-      entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId,
+      entity: auditLogs.entity, entityId: auditLogs.entityId, callId: auditLogs.callId, counts: auditLogs.counts,
     }).from(auditLogs)
       .where(and(eq(auditLogs.clinicId, clinicId), opts.beforeId ? lt(auditLogs.id, opts.beforeId) : undefined,
         opts.actions?.length ? inArray(auditLogs.action, opts.actions) : undefined))

@@ -7,6 +7,7 @@ import { localDateOf } from '@attendra/core';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Outcome } from '@/components/calls/outcome';
+import { SummaryCard } from '@/components/calls/summary-card';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -22,7 +23,11 @@ export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
   const { clinic, can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
-  const call = useQuery({ queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`) });
+  const call = useQuery({
+    queryKey: ['call', clinicId, callId], queryFn: () => api<CallDetail>(`/clinics/${clinicId}/calls/${callId}`),
+    // until the worker has written the summary, look again every few seconds
+    refetchInterval: (q) => (q.state.data && !q.state.data.summary && q.state.data.summaryJob?.state !== 'failed' && q.state.data.endedAt ? 4000 : false),
+  });
   const tz = clinic?.timezone ?? 'UTC';
 
   const back = (
@@ -97,6 +102,7 @@ export default function CallPage() {
           </CardContent>
         </Card>
         <div className="space-y-6">
+          <SummaryCard clinicId={clinicId} call={c} canReview={can('calls:read')} />
           <Card>
             <CardHeader><CardTitle>Who&apos;s calling</CardTitle></CardHeader>
             <CardContent className="text-sm">

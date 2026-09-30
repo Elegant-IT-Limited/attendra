@@ -8,7 +8,7 @@ turns:
     delegate:
       - get_clinic_info: { question: রিপোর্ট কবে পাবো }
 expect:
-  outcome: abandoned
+  outcome: info
   answered_from: faq_reports
   language: bn
 forbid_spoken: ["স্বাভাবিক", "normal"]
