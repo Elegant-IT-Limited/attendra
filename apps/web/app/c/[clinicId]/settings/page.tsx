@@ -40,6 +40,8 @@ export default function Settings() {
     onMutate: () => setIssues([]),
     onSuccess: (config) => {
       queries.setQueryData(['settings', clinicId], config);
+      // the clinic's name and time zone also come with who you are, for every other page
+      void queries.invalidateQueries({ queryKey: ['me'] });
       setDraft(config);
       toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
     },
