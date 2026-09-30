@@ -63,6 +63,11 @@ describe('the SSRF guard', () => {
     expect(isPublicAddress('::ffff:8.8.8.8')).toBe(true);
     expect(isPublicAddress('::ffff:10.0.0.1')).toBe(false);
     expect(isPublicAddress('64:ff9b::a9fe:a9fe')).toBe(false);
+    // 6to4, local-use NAT64, site-local and IPv4-translated addresses are refused
+    for (const address of ['2002:a00:1::1', '2002:808:808::1', '64:ff9b:1::a00:1', 'fec0::1', 'feff::1', '::ffff:0:a00:1', '::ffff:0:808:808', '0:0:0:0:ffff:0:7f00:1']) {
+      expect(isPublicAddress(address), address).toBe(false);
+    }
+    expect(isPublicAddress('1.1.1.1')).toBe(true); // and plain IPv4 is judged on its own
     expect(isPublicAddress('not-an-ip')).toBe(false);
     expect(isPublicAddress('0:0:0:0:0:ffff:7f00:1')).toBe(false); // 127.0.0.1, written out in full
     expect(isPublicAddress('::1')).toBe(false);
