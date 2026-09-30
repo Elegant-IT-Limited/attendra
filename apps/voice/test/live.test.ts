@@ -72,6 +72,21 @@ describe('the live registry', () => {
     expect(await live.claim('k1', 'c1', 'key-cccc', 'u_jo', 'end', run)).toEqual({ ok: true, repeat: false });
     expect(runs).toBe(2);
   });
+
+  it('forgets a coaching note or a claim that failed, so trying again is not taken as a repeat', async () => {
+    const live = new LiveRegistry();
+    let fail = true;
+    live.open('c1', { clinicId: 'k1', channel: 'phone', startedAt: new Date() }, {
+      ...control, coach: async () => { if (fail) throw new Error('sideband closed'); },
+    });
+    await expect(live.coach('k1', 'c1', 'note-1', 'Offer Thursday')).rejects.toThrow('sideband closed');
+    fail = false;
+    expect(await live.coach('k1', 'c1', 'note-1', 'Offer Thursday')).toEqual({ ok: true, repeat: false });
+
+    const broken = () => Promise.reject(new Error('twilio down'));
+    await expect(live.claim('k1', 'c1', 'take-1', 'u_ana', 'take_over', broken)).rejects.toThrow('twilio down');
+    expect(await live.claim('k1', 'c1', 'take-2', 'u_jordan', 'take_over', async () => {})).toEqual({ ok: true, repeat: false });
+  });
 });
 
 describe('a simulated live call, over HTTP', () => {
