@@ -2,6 +2,65 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [Unreleased]
+
+### Fixed
+
+- The webhook delivery queue keeps its own retry policy (12 tries over about a day) when the worker starts with the defaults.
+- A caller who says "this is an emergency" and then describes chest pain still gets the on-call transfer, once.
+- Turning a webhook endpoint off and on keeps its description and its patient-id choice.
+- The documented MCP stdio bridge prints only JSON on stdout (`pnpm --silent`).
+- `pnpm demo` passes its switches (simulated calls, local webhooks, ports, log level) through turbo.
+- Uploading the same document after the embedding model changes indexes it again, and a document stuck waiting is picked up.
+- Blank environment values count as unset, and every port is checked to be a real port.
+- A dropped Postgres connection is logged by its code instead of ending the service.
+- A tool step that could not be recorded still gives the caller its result.
+- Open times are offered earliest first across all providers, not provider by provider.
+- Patients whose names use letters such as ø, ł, æ or ß can be verified. Existing installs run `pnpm db:rehash-lookups` once (docs/self-hosting.md).
+- A booking moved back to an earlier time sends its own webhook event.
+- The planner creates the callback it promises when it runs out of steps, to the number the caller rang from.
+- A refreshed transcript or request view is audited once per five minutes, not on every refresh.
+- The call page says when a booking was cancelled or moved since the call, and its header says Booking since cancelled.
+- A call name search keeps its refusal filter.
+- Two cancels of the same visit at once give one cancellation.
+- The phone assistant will not book a patient into two overlapping visits.
+- Rows can no longer point into another clinic: migration 0017 adds composite foreign keys, and stops with a count if existing rows would break them.
+- The application role no longer reads the organization and phone number tables, which it never needed (migration 0018).
+- The retention purge also deletes webhook events and their delivery attempts, and audits each batch in its own transaction.
+- Writes to the call record, patients created outside the front desk and a patient-busy refusal are audited.
+- MCP reads are audited under the key and in the read's own transaction; closing a request no longer claims to be idempotent; a working key is not locked out by another client's failed attempts; today's schedule includes midnight; the server reports its real version.
+- A coaching note or take-over that fails can be tried again.
+- A team member whose add failed can be added again.
+- The day starts at 01:00 where daylight saving time begins at midnight (Havana, Santiago, Asunción).
+- A failed migration file is rolled back.
+- The week view keeps a visit cancelled from the panel on screen, and says how many cancelled visits are hidden.
+- N and New booking work while the Schedule is already open.
+- The Settings saved message can be seen.
+- Today no longer lists calls still in progress as ended with nothing done, counts every waiting request, and marks each request type with its own icon.
+- A live page whose stream has closed for good opens the call record.
+- Pages a role cannot use say so on a direct link, and a viewer's browser no longer opens live streams.
+- A closed request can be opened from its call, and says when and by whom it was closed.
+- A saved time zone shows on every page at once.
+- Your take-over number can be changed or cleared.
+- The audit log shows every action and actor in words.
+- Error messages: a refused booking says why, an empty upload says so, a failed redelivery says so, request errors show once, and the start page says so when the server fails.
+- Ages and date-of-birth limits use the clinic's date; the clock and costs follow the clinic's country.
+- Documentation: the README screenshots are current, and the guides, CHANGELOG and comments match the code.
+
+### Changed
+
+- A request that fails validation now answers 422 `invalid_request`, like every other refusal, and every create route answers 201.
+- The request list returns `doneByName`, and the waiting-requests route returns `total`.
+- The Calls tab Needs attention is now Emergencies and requests; Today's labels say the last 7 days; dates are day first everywhere.
+- Staff read "request", never "task".
+- The unused `booking_cancelled` text and the always-empty `call_actions.idempotency_key` column (migration 0019) are gone.
+- The emergency number rules for a country Attendra does not ship for are removed; a clinic there uses 112, like any country not listed.
+- Text delivery statuses are marked as not wired yet.
+- The root `pnpm dev` is removed; use `pnpm demo`, or a service's own `dev` script.
+- Docker Compose restarts every long-running service, and the MCP port is fixed inside its container.
+- CI pins every action to a commit.
+- The development guide is now docs/development.md.
+
 ## [0.4.0] - 2026-09-30
 
 The AI layer: a design system, the clinic's own assistant in English and Spanish, call summaries, live calls with coaching, clinic knowledge, signed webhooks, the Quality page and an MCP server.
