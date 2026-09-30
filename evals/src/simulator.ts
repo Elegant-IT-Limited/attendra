@@ -49,8 +49,11 @@ class Observed implements Planner {
   }
 }
 
-/** Replaces "$offered[0]" and "$appointments[0]" with ids the call actually produced. */
-function resolve(args: Record<string, unknown>, state: CallState, results: ToolResult[]): Record<string, unknown> {
+/**
+ * Replaces "$offered[0]" and "$appointments[0]" with ids the call actually produced, and
+ * "$next_week" with the Monday after the call's day, for a caller who asks for next week.
+ */
+function resolve(args: Record<string, unknown>, state: CallState, results: ToolResult[], clinic: ClinicConfig, now: Date): Record<string, unknown> {
   const appointments = results.flatMap((r) => (Array.isArray(r.data.appointments) ? (r.data.appointments as { appointment_id: string }[]) : []));
   return Object.fromEntries(Object.entries(args).map(([k, v]) => {
     if (typeof v !== 'string') return [k, v];
@@ -58,6 +61,10 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
     if (offered) return [k, [...state.offered.keys()][Number(offered[1])] ?? v];
     const appt = v.match(/^\$appointments\[(\d+)\]$/);
     if (appt) return [k, appointments[Number(appt[1])]?.appointment_id ?? v];
+    if (v === '$next_week') {
+      const today = localDateOf(now, clinic.timezone);
+      return [k, addDays(today, 7 - ((weekdayOf(today) + 6) % 7))];
+    }
     return [k, v];
   }));
 }
@@ -157,7 +164,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     else {
       const steps: ScriptedStep[] = turn.delegate!.map((step) => {
         const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
-        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar]) };
+        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
       });
       const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
       queue.push(scripted);
