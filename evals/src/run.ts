@@ -37,7 +37,7 @@ for (const s of scenarios) {
     catch (err) { runs.push({ scenario: s, result: r, verdict: null, error: (err as { status?: number }).status ? `judge http ${(err as { status: number }).status}` : 'judge unavailable' }); }
   }
   const refusals = r.refusals.length ? dim(`  refused: ${r.refusals.join(', ')}`) : '';
-  console.log(`  ${r.passed ? green('pass') : red('FAIL')}  ${s.id.padEnd(34)} ${r.outcome.padEnd(13)} ${dim(`${r.ms} ms`)}${refusals}`);
+  console.log(`  ${r.passed ? green('pass') : red('FAIL')}  ${s.id.padEnd(34)} ${r.outcome.padEnd(13)} ${dim(`${String(r.ms).padStart(4)} ms`)}${refusals}`);
   for (const f of r.failures) console.log(`        ${red('·')} ${f}`);
 }
 console.log(`\n${failed ? red(`${failed} failed`) : green('all passed')}${dim(`, ${scenarios.length - failed}/${scenarios.length}`)}`);
