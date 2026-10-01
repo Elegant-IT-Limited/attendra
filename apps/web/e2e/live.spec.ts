@@ -19,7 +19,8 @@ test('watch a live call, coach the assistant, and end it; the page becomes the c
   await expect(page.getByText('Verified: Maria D.')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('list', { name: 'Tool steps' })).toContainText('Identity check');
   const pending = page.getByTestId('pending-readback');
-  await expect(pending).toContainText('Dr. Nkem Okafor', { timeout: 20_000 });
+  // the first free sick-visit slot is with whichever provider is free first that day, so the read-back names a provider, not a fixed one
+  await expect(pending).toContainText(/with Dr\. [A-Z][a-z]+ [A-Z][a-z]+ for a sick visit/, { timeout: 20_000 });
   await expect(captions).toContainText('Is that right?');
 
   // a browser test call cannot be taken over

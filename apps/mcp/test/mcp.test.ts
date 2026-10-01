@@ -126,12 +126,12 @@ describe('the tools', () => {
   });
 
   it('list_todays_schedule needs schedule:read, names patients, and audits how many it showed', async () => {
-    // one visit known to be today, whatever the demo schedule has around it
+    // one visit known to be today, at an hour the demo schedule never books, so it cannot collide with a seeded visit
     const tz = DEMO_CLINIC.timezone;
-    const noon = zonedInstant(localDateOf(new Date(), tz), '12:00', tz);
+    const late = zonedInstant(localDateOf(new Date(), tz), '23:00', tz);
     const [p] = (await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
     const [row] = (await t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
-      values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_lindqvist', 'vt_sick', ${noon.toISOString()}::timestamptz, ${new Date(noon.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-today-fixed', 'u_olga') returning id`)).rows as { id: string }[];
+      values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_lindqvist', 'vt_sick', ${late.toISOString()}::timestamptz, ${new Date(late.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-today-fixed', 'u_olga') returning id`)).rows as { id: string }[];
     const named = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
     await t.db.execute(sql`delete from appointments where id = ${row!.id}`);
     const appts = named.data.appointments as { appointmentId: string; patient?: string }[];
