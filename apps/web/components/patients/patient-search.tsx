@@ -8,21 +8,24 @@ import { useParams } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
-import { api, ApiFailure, useClinicConfig } from '@/lib/api';
-import { age, dob, phone, tenDigitPhones } from '@/lib/format';
+import { Badge } from '@/components/ui/badge';
+import { api, useClinicConfig } from '@/lib/api';
+import { age, dob, phone } from '@/lib/format';
 
-/** Waits until typing pauses, so each keystroke is not a request. */
-function useSettled(value: string, ms = 300) {
+/** A short pause after each key, so a fast typist sends one request, not ten. Short enough to feel instant. */
+export function useSettled<T>(value: T, ms = 150) {
   const [settled, setSettled] = useState(value);
   useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
   return settled;
 }
 
 /**
- * Search by name, date of birth or full phone number. What is typed goes in a POST
- * body and stays in this component: never in the address bar, never in a log.
+ * Search as you type, from the first character: the start of a name ("m" finds every
+ * Maria), any digits of a phone number ("017"), or a whole date of birth. What is
+ * typed goes in a POST body and stays in this component: never in the address bar,
+ * never in a log.
  */
-export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty }: {
+export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty, status }: {
   clinicId: string;
   onPick?: (p: PatientCard) => void;
   /** Render each result yourself, as a link for example. */
@@ -30,22 +33,23 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
   autoFocus?: boolean;
   /** What to show before anything is typed. */
   empty?: ReactNode;
+  /** new: only patients the assistant added that nobody has checked yet. */
+  status?: 'new';
 }) {
   const [text, setText] = useState('');
   const config = useClinicConfig(clinicId);
   const copy = countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] });
-  const hint = `For example a last name, ${copy.exampleDob}${copy.phone.local ? ` or ${copy.phone.local}` : ''}.`;
+  const hint = `Results show as you type: a few letters of a name, a few digits of a phone number, or a date of birth like ${copy.exampleDob}.`;
   const query = useSettled(text.trim());
-  const ready = query.length >= 2;
+  const ready = query.length >= 1;
   const results = useQuery({
-    queryKey: ['patient-search', clinicId, query],
-    queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/search`, { method: 'POST', body: JSON.stringify({ query }) }),
+    queryKey: ['patient-search', clinicId, query, status ?? 'all'],
+    queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/search`, { method: 'POST', body: JSON.stringify({ query, ...(status ? { status } : {}) }) }),
     enabled: ready,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     retry: false,
   });
-  const unreadable = results.error instanceof ApiFailure && results.error.status === 422;
 
   return (
     <div className="space-y-3">
@@ -58,9 +62,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
         </div>
         <p className="text-xs text-text-muted">{hint}</p>
       </div>
-      {!ready ? empty : results.isPending ? <Skeleton className="h-24" /> : unreadable ? (
-        <p className="text-sm text-text-muted">Type a name, a whole date of birth, or {tenDigitPhones() ? 'all ten digits of a phone number' : 'a whole phone number'}.</p>
-      ) : results.isError ? (
+      {!text.trim() ? empty : results.isPending ? <Skeleton className="h-24" /> : results.isError ? (
         <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
       ) : !results.data?.patients.length ? (
         <p className="text-sm text-text-muted">No patient matches. Check the spelling, or add them as a new patient.</p>
@@ -77,7 +79,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
           ))}
         </ul>
       )}
-      {ready && (results.data?.truncated || results.data?.patients.length === 25) && <p className="text-xs text-text-muted">Showing the first matches; type more of the name.</p>}
+      {ready && (results.data?.truncated || results.data?.patients.length === 25) && <p className="text-xs text-text-muted">Showing the first 25 matches; type more to narrow them down.</p>}
     </div>
   );
 }
@@ -89,10 +91,12 @@ export function PatientLine({ p }: { p: PatientCard }) {
   return (
     <>
       <span className="min-w-0">
-        <span className="block truncate font-medium">{p.name}</span>
-        <span className="block text-xs text-text-muted">Born {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}</span>
+        <span className="flex items-center gap-2 truncate font-medium">{p.name}{p.status === 'new' && <Badge tone="warn">New, check details</Badge>}</span>
+        <span className="block text-xs text-text-muted">
+          Born {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}{p.guardianName ? `, parent or guardian ${p.guardianName}` : ''}
+        </span>
       </span>
-      {p.phone && <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span>}
+      {p.phone ? <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span> : <Badge tone="danger">No phone</Badge>}
     </>
   );
 }

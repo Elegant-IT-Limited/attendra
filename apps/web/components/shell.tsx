@@ -14,6 +14,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { useClinicChanges } from '@/lib/changes';
 import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { useEmergencyAlerts } from '@/lib/live';
@@ -41,6 +42,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // the clock and money follow the clinic's country; set before the page below formats anything
   const config = useClinicConfig(clinicId);
   if (config.data) setClinicCountry(config.data.phoneNumbers);
+  // every screen updates as the clinic changes, without a refresh
+  useClinicChanges(clinicId, !!clinic);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);

@@ -40,14 +40,14 @@ export async function world() {
   let n = 0;
 
   /** With `record`, tool actions are written to the call record the way the voice service writes them. */
-  async function call(callerNumber: string | null = '+13035550147', opts: { record?: boolean; clinic?: ClinicConfig; actions?: ActionRecorder } = {}) {
+  async function call(callerNumber: string | null = '+13035550147', opts: { record?: boolean; clinic?: ClinicConfig; actions?: ActionRecorder; reload?: () => Promise<ClinicConfig | null> } = {}) {
     const callId = await calls.open(clinic.id, `live_test_${++n}`, callerNumber);
     const state = new CallState();
     const plans = new PlanQueue();
     const actions: ActionRecorder | undefined = opts.actions ?? (opts.record
       ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
       : undefined);
-    const agent = new CallAgent(state, { clinic: opts.clinic ?? clinic, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
+    const agent = new CallAgent(state, { clinic: opts.clinic ?? clinic, reloadClinic: opts.reload, callId, callerNumber, now: () => NOW }, backend, plans, quietLogger, actions);
     let clock = 0;
     let delegations = 0;
     return {

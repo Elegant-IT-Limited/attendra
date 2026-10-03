@@ -8,7 +8,13 @@ import { TransferTarget } from './clinic';
  * validator cannot drift apart.
  */
 export const ToolArgs = {
-  verify_caller: z.object({ full_name: z.string().min(3), date_of_birth: z.string().min(4) }),
+  // the patient's name and date of birth, and the phone number on their file: null means the number they are calling from
+  verify_caller: z.object({ full_name: z.string().min(3), date_of_birth: z.string().min(4), phone: z.string().min(7).max(30).nullable().default(null) }),
+  // a new patient, after verify_caller found nobody and the caller said they are new; guardian_name for anyone under 18
+  register_patient: z.object({
+    first_name: z.string().trim().min(1).max(60), last_name: z.string().trim().min(1).max(60), date_of_birth: z.string().min(4),
+    phone: z.string().min(7).max(30).nullable().default(null), guardian_name: z.string().trim().min(3).max(120).nullable().default(null),
+  }),
   get_clinic_info: z.object({ question: z.string().min(2) }),
   // a short topic ("parking", "fasting before blood work"), never a name or other personal detail
   search_knowledge: z.object({ question: z.string().min(2).max(300) }),

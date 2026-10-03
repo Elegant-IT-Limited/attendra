@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, KnowledgeRepository } from '@attendra/db';
+import { connect, createPhiCipher, KnowledgeRepository, pgChangeFeed } from '@attendra/db';
 import { HybridKnowledgeBase, LocalAnswerer, ModelAnswerer } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
@@ -30,6 +30,7 @@ const app = await createApi({
   trustProxy: env.TRUST_PROXY,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
+  changes: pgChangeFeed(env.DATABASE_URL, (code) => log.warn({ code }, 'change notices: connection error')),
   knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
 });
 

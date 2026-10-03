@@ -2,6 +2,7 @@
 import { type Language, PACKS } from './locales';
 import type { ClinicConfig, Provider, VisitType } from './clinic';
 import { windowsOn } from './hours';
+import { awayOn } from './providers';
 import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
 
 export interface BusyInterval { providerId: string; start: Date; end: Date }
@@ -43,7 +44,7 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     const weekday = weekdayOf(date);
     const day: { slot: Slot; order: number }[] = [];
     q.providers.forEach((provider, order) => {
-      if (!provider.visitTypeIds.includes(q.visitType.id)) return;
+      if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
       for (const w of windowsOn(provider.hours ?? clinic.hours, weekday)) {
         for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += q.visitType.minutes) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;

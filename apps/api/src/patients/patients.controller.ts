@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ClinicConfig, localDateOf } from '@attendra/core';
-import { type FrontDeskRepository, staffNames, type Database } from '@attendra/db';
-import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ageOn, ClinicConfig, localDateOf, readPatients } from '@attendra/core';
+import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
+import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { type PatientCard, PatientInput, PatientList, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
+import { ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
-const toCard = (p: Card): PatientCard => ({ ...p, name: `${p.firstName} ${p.lastName}` });
+const toCard = (p: Card): PatientCard => ({ ...p, name: `${p.firstName} ${p.lastName}`, createdAt: p.createdAt.toISOString() });
 
 @ApiTags('patients')
 @ApiCookieAuth()
@@ -26,25 +26,44 @@ export class PatientsController {
     @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
   ) {}
 
-  /** A date of birth cannot be after today where the clinic is, whatever the server's own date. */
-  private async checkDob(clinicId: string, dob: string) {
+  private async clinic(clinicId: string) {
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
-    if (dob > localDateOf(this.now(), ClinicConfig.parse(stored).timezone)) {
+    return ClinicConfig.parse(stored);
+  }
+
+  /**
+   * A date of birth cannot be after today where the clinic is, whatever the server's own
+   * date, and a patient under 18 has a parent or guardian on file.
+   */
+  private async check(clinicId: string, body: z.infer<typeof PatientInput>) {
+    const today = localDateOf(this.now(), (await this.clinic(clinicId)).timezone);
+    if (body.dob > today) {
       throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'dob', message: 'a date of birth cannot be in the future' }] });
     }
+    if (ageOn(body.dob, today) < 18 && !body.guardianName?.trim()) {
+      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'a patient under 18 needs a parent or guardian' }] });
+    }
+  }
+
+  @Get()
+  @Requires('patients:read')
+  @ApiOperation({ summary: 'The newest patients first, before anything is typed. status=new lists the ones the assistant added that nobody has checked. Audited.' })
+  @ApiOkResponse({ schema: schemaOf(PatientList) })
+  async newest(@Param('clinicId') clinicId: string, @Query(new ZodPipe(PatientListQuery)) q: z.infer<typeof PatientListQuery>, @CurrentStaff() staff: Staff): Promise<PatientList> {
+    return { patients: (await this.records.newest(clinicId, staff.userId, { status: q.status })).map(toCard) };
   }
 
   /** A POST, not a GET: what is typed can be a name or a date of birth, and URLs end up in logs. */
   @Post('search')
   @HttpCode(200)
   @Requires('patients:read')
-  @ApiOperation({ summary: 'Find patients by name, date of birth or full phone number. At most 25. Audited with the number of matches, not the query.' })
+  @ApiOperation({ summary: 'Find patients as you type: the start of a name, any digits of a phone number, or a date of birth. At most 25. Audited with the number of matches, not the query.' })
   @ApiBody({ schema: schemaOf(PatientSearch) })
   @ApiOkResponse({ schema: schemaOf(PatientList) })
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientSearch)) body: z.infer<typeof PatientSearch>, @CurrentStaff() staff: Staff): Promise<PatientList> {
-    const found = await this.records.search(clinicId, body.query, staff.userId, this.now());
-    if (!found) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'query', message: 'type a name, a date of birth or a full phone number' }] });
+    const found = await this.records.search(clinicId, body.query, staff.userId, this.now(), { status: body.status });
+    if (!found) return { patients: [], truncated: false };
     return { patients: found.patients.map(toCard), truncated: found.truncated };
   }
 
@@ -71,7 +90,8 @@ export class PatientsController {
     const now = this.now().getTime();
     return {
       ...toCard(p),
-      createdAt: p.createdAt.toISOString(),
+      createdByCallId: p.createdByCallId,
+      household: p.household.map(toCard),
       usualProviderId: usual,
       // what is coming first, soonest first; then what has been, latest first
       appointments: [...p.appointments.filter((a) => a.startsAt.getTime() >= now).reverse(), ...p.appointments.filter((a) => a.startsAt.getTime() < now)].map((a) => ({
@@ -89,9 +109,9 @@ export class PatientsController {
   @ApiOperation({ summary: 'Add a patient. The assistant can verify them on their next call. Audited.' })
   @ApiBody({ schema: schemaOf(PatientInput) })
   @ApiCreatedResponse({ schema: schemaOf(PatientSaved) })
-  @ApiConflictResponse({ description: 'Someone with this name and date of birth is already on file; `id` is theirs' })
+  @ApiConflictResponse({ description: 'The same person (name, date of birth and phone) is already on file; `id` is theirs' })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
-    await this.checkDob(clinicId, body.dob);
+    await this.check(clinicId, body);
     return this.answer(await this.records.create(clinicId, body, staff.userId));
   }
 
@@ -103,13 +123,53 @@ export class PatientsController {
   @ApiConflictResponse({ description: 'The change would make them the same as someone already on file' })
   async update(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
-    await this.checkDob(clinicId, body.dob);
+    await this.check(clinicId, body);
     return this.answer(await this.records.update(clinicId, id, body, staff.userId));
+  }
+
+  @Post(':patientId/confirm')
+  @HttpCode(204)
+  @Requires('patients:write')
+  @ApiOperation({ summary: 'The details of a patient the assistant added are checked: they become an ordinary patient, and the request to check them is closed. Audited.' })
+  @ApiNoContentResponse()
+  async confirm(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @CurrentStaff() staff: Staff): Promise<void> {
+    if (!isUuid(id) || (await this.records.confirm(clinicId, id, staff.userId)) === 'not_found') throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * A CSV of patients (the template on the Patients page). With `dryRun` every row is
+   * checked and nothing changes. Without it the new patients are added in one
+   * transaction; someone already on file with the same name, date of birth and phone
+   * is skipped, so the same file can be uploaded twice.
+   */
+  @Post('import')
+  @HttpCode(200)
+  @Requires('patients:import')
+  @ApiOperation({ summary: 'Add patients from a CSV file. Managers only. Audited per patient added.' })
+  @ApiBody({ schema: schemaOf(ImportInput) })
+  @ApiOkResponse({ schema: schemaOf(ImportResult) })
+  async import(@Param('clinicId') clinicId: string, @Body(new ZodPipe(ImportInput)) body: z.infer<typeof ImportInput>, @CurrentStaff() staff: Staff): Promise<ImportResult> {
+    const clinic = await this.clinic(clinicId);
+    const rows = readPatients(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'));
+    const report: ImportResult = { dryRun: body.dryRun, rows: [], counts: { add: 0, update: 0, skip: 0, error: 0 } };
+    // one transaction: a dry run rolls it back, so it checks against the database exactly as the import would
+    const dryRun = Symbol('dry run');
+    await withClinic(this.db, clinicId, async (tx) => {
+      for (const r of rows) {
+        if (!r.ok) { report.rows.push({ line: r.line, name: r.name, status: 'error', message: r.message }); continue; }
+        const saved = await this.records.insert(tx, clinicId, r.value, `user:${staff.userId}`);
+        if (saved.status === 'exists') report.rows.push({ line: r.line, name: r.name, status: 'skip', message: 'already on file with this name, date of birth and phone' });
+        else report.rows.push({ line: r.line, name: r.name, status: 'add', message: saved.status === 'saved' && saved.similar ? 'someone else has this name and date of birth, on another phone' : null });
+      }
+      if (body.dryRun) throw dryRun;
+    }).catch((err: unknown) => { if (err !== dryRun) throw err; });
+    for (const r of report.rows) report.counts[r.status]++;
+    return report;
   }
 
   private answer(r: SaveResult): PatientSaved {
     if (r.status === 'not_found') throw new NotFoundException({ error: 'not_found' });
-    if (r.status === 'exists') throw new ConflictException({ error: 'patient_exists', id: r.id, message: 'Someone with this name and date of birth is already on file.' });
-    return { id: r.id };
+    if (r.status === 'exists') throw new ConflictException({ error: 'patient_exists', id: r.id, message: 'This patient is already on file: the same name, date of birth and phone number.' });
+    return { id: r.id, similar: r.similar };
   }
 }

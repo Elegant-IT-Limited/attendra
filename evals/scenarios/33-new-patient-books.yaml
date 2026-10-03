@@ -1,0 +1,28 @@
+id: new-patient-books
+title: Someone new to the clinic is found nowhere, is added, and books a new patient visit on a clear yes; no text goes to a number they are not calling from
+caller_number: null
+turns:
+  - caller: Hi, I'd like an appointment. I'm Ana Reyes, born June 1 1990, my number is 303 555 0193.
+    reply: "I couldn't find a record with those details. Are you new to the clinic?"
+    delegate:
+      - verify_caller: { full_name: Ana Reyes, date_of_birth: June 1 1990, phone: "303 555 0193" }
+  - caller: Yes, I'm new.
+    reply: "Welcome, Ana. For a new patient visit I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { first_name: Ana, last_name: Reyes, date_of_birth: June 1 1990, phone: "303 555 0193" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "You're booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  # a browser call has no calling number to match the phone given, so no text until the front desk checks the new patient
+  sms_sent: 0

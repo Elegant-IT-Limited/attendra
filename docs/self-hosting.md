@@ -51,6 +51,40 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`.
 
+**Upgrading to v0.5.0.** Compose moves to Postgres 18 (with pgvector 0.8.7) on a new volume, `pgdata18`, so the data is moved across once with a dump. The old `pgdata` volume is left as it was until you remove it.
+
+1. **Back up first**, while the old version is still running:
+
+   ```bash
+   docker compose -f infra/docker-compose.yml exec postgres pg_dump -U attendra attendra > attendra.sql
+   docker compose -f infra/docker-compose.yml down        # keeps the old pgdata volume
+   ```
+
+2. **Pull, start the new Postgres alone, and load the dump into it.** The application role must exist before the dump's grants:
+
+   ```bash
+   git pull
+   docker compose -f infra/docker-compose.yml up -d postgres
+   docker compose -f infra/docker-compose.yml exec postgres psql -U attendra -d attendra -c "create role attendra_app nologin"
+   docker compose -f infra/docker-compose.yml exec -T postgres psql -U attendra -d attendra < attendra.sql
+   ```
+
+3. **Start everything.** The `migrate` service runs migrations 0020 (patient identity) and 0021 (change notices for the live dashboard) on its own:
+
+   ```bash
+   docker compose -f infra/docker-compose.yml up -d --build
+   ```
+
+4. **Recompute the patient hashes once**, with the same `ATTENDRA_DATA_KEY` the services use. A patient is now verified by name, date of birth and phone together, and each gets an identity hash:
+
+   ```bash
+   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups
+   ```
+
+   It prints how many patients have no phone number yet, and how many are on file twice. Until a patient has a phone on file, the front desk can find them but the assistant cannot verify them: add the number on their page (the list of patients shows them with a No phone badge). Someone on file twice keeps their first record's identity; merge the two by hand.
+
+Outside Compose: Node 24 (the current LTS) and pnpm 12, then `pnpm install`, `pnpm db:migrate` and the rehash as above, with `DATABASE_URL` and `ATTENDRA_DATA_KEY` set. The API needs no new setting: it listens for change notices on its own connection to `DATABASE_URL`.
+
 **Upgrading to v0.4.1.**
 
 1. **Back up first**, while the old version is still running:

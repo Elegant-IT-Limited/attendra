@@ -1,0 +1,27 @@
+id: parent-books-child
+title: A parent books for their son on the family phone, and only doctors who see children are offered
+turns:
+  - caller: Hi, it's Maria Delgado. I need to book my son Lucas Delgado, born May 12 2019. He has a fever.
+    reply: "I've found Lucas. For a sick visit I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Lucas Delgado, date_of_birth: May 12 2019 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The adult doctor, Dr. Lindqvist, if she's free.
+    reply: "Dr. Lindqvist sees adults only, so I can offer Dr. Okafor or Dr. Raman."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_lindqvist, from_date: null, part_of_day: any }
+  - caller: OK, the first time you said.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Lucas is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [no_provider_for_patient]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: [diagnos]

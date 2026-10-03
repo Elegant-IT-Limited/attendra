@@ -3,7 +3,7 @@
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Flag, MessageSquare, PhoneCall, PhoneOff, Pill, Siren, Voicemail, Webhook } from 'lucide-react';
+import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -80,7 +80,7 @@ export default function Today() {
 type Q<T> = { data?: T; isPending: boolean; isError: boolean };
 
 // the same icon per request type as the Requests page
-const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
+const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck } as const;
 function RequestIcon({ type }: { type: keyof typeof REQUEST_ICONS }) {
   const Icon = REQUEST_ICONS[type] ?? PhoneCall;
   return <Icon className="size-4 text-primary" />;

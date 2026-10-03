@@ -7,8 +7,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
-    // 25 eval scenarios in the weeks before, and 11 ordinary calls this week
-    await expect(page.locator('tbody tr')).toHaveCount(36);
+    // 29 eval scenarios in the weeks before, and 11 ordinary calls this week
+    await expect(page.locator('tbody tr')).toHaveCount(40);
     // named for what it holds; Today's Needs attention is a different, wider list
     await expect(page.getByRole('tab', { name: 'Needs attention' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Emergencies and requests' }).click();
@@ -51,8 +51,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
-    await expect(tasks).toHaveCount(6); // 4 from the eval calls, a refill and a callback from this week's
-    const first = tasks.first();
+    await expect(tasks).toHaveCount(7); // 5 from the eval calls, a refill and a callback from this week's
+    const first = tasks.filter({ hasText: 'James Whitaker' }); // newest first, so his refill is no longer at the top
     await expect(first.getByText('James Whitaker')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
     await expect(first.getByText('You have it')).toBeVisible();
@@ -62,7 +62,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Mark done' }).click();
     await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await expect(tasks).toHaveCount(5);
+    await expect(tasks).toHaveCount(6);
     await page.getByRole('tab', { name: 'Done' }).click();
     await expect(tasks).toHaveCount(1);
   });

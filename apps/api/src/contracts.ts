@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES } from '@attendra/core';
+import { API_SCOPES, Provider, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -225,8 +225,17 @@ export const TaskQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),
   type: z.enum(['callback', 'refill', 'voicemail', 'review']).optional(),
   assignee: z.enum(['me', 'unassigned']).optional(),
+  /** Came in on or after this clinic-local day. */
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Came in on or before this clinic-local day. */
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
-export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed']);
+/** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
+export const TaskSearch = TaskQuery.extend({
+  /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
+  q: z.string().trim().max(100).default(''),
+});
+export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
@@ -269,6 +278,18 @@ export const ScheduleQuery = z.object({
   from: isoDate,
   days: z.coerce.number().int().min(1).max(14).default(1),
   providerId: z.string().max(64).optional(),
+  /** booked: what is on the calendar; cancelled: only what was cancelled; all: both. */
+  status: z.enum(['booked', 'cancelled', 'all']).default('all'),
+});
+/** Cancelled visits as a history list: a window of visit days, newest first by default. A POST body, since `q` is a patient's name. */
+export const CancelledQuery = z.object({
+  from: isoDate,
+  to: isoDate,
+  providerId: z.string().max(64).optional(),
+  /** visit: by when the visit was to be; cancelled: by when it was cancelled. */
+  sort: z.enum(['visit', 'cancelled']).default('cancelled'),
+  order: z.enum(['newest', 'oldest']).default('newest'),
+  q: z.string().trim().max(100).optional(),
 });
 export const Appointment = z.object({
   id: z.string(),
@@ -285,6 +306,11 @@ export const Appointment = z.object({
   createdAt: z.iso.datetime(),
 });
 export const Schedule = z.object({ from: isoDate, days: z.number(), appointments: z.array(Appointment) });
+export const CancelledList = z.object({
+  appointments: z.array(Appointment.extend({ cancelledAt: z.iso.datetime() })),
+  /** More matched than the 200 shown. */
+  truncated: z.boolean(),
+});
 export const AppointmentDetail = Appointment.extend({
   note: z.string().nullable(),
   updatedAt: z.iso.datetime(),
@@ -316,10 +342,26 @@ export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
 
 const personName = z.string().trim().min(1, 'required').max(80);
-const phoneNumber = z.string().trim().max(30).refine((v) => v === '' || v.replace(/\D/g, '').length >= 10, 'a phone number has at least 10 digits');
+// required: with name and date of birth it is how a patient is told apart from anyone else
+const phoneNumber = z.string().trim().max(30).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
+const PatientStatus = z.enum(['active', 'new']);
 
-export const PatientSearch = z.object({ query: z.string().trim().min(2, 'type at least two characters').max(100) });
-export const PatientCard = z.object({ id: z.string(), name: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(), phone: z.string().nullable() });
+export const PatientSearch = z.object({
+  query: z.string().trim().min(1, 'type something to search for').max(100),
+  /** new: only patients the assistant added that nobody has checked yet. */
+  status: PatientStatus.optional(),
+});
+export const PatientListQuery = z.object({ status: PatientStatus.optional() });
+export const PatientCard = z.object({
+  id: z.string(), name: z.string(), firstName: z.string(), lastName: z.string(), dob: z.string(),
+  /** Null only for a patient added before phone numbers were required: add one so the assistant can verify them. */
+  phone: z.string().nullable(),
+  /** The parent or guardian, for a patient under 18. */
+  guardianName: z.string().nullable(),
+  /** new: added by the assistant on a call; the front desk checks the details and confirms them. */
+  status: PatientStatus,
+  createdAt: z.iso.datetime(),
+});
 export const PatientList = z.object({
   patients: z.array(PatientCard),
   /** The search read its whole cap of patients: someone further on may match too. */
@@ -330,11 +372,20 @@ export const PatientInput = z.object({
   lastName: personName,
   // "not in the future" is checked against the clinic's own date by the route, not the server's
   dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
-  phone: phoneNumber.optional(),
+  phone: phoneNumber,
+  // required for a patient under 18, checked by the route against the clinic's own date
+  guardianName: z.string().trim().max(120).nullable().optional(),
 });
-export const PatientSaved = z.object({ id: z.string() });
+export const PatientSaved = z.object({
+  id: z.string(),
+  /** Someone else is on file with this name and date of birth, on another phone. Saved anyway: worth a look. */
+  similar: z.boolean().optional(),
+});
 export const PatientProfile = PatientCard.extend({
-  createdAt: z.iso.datetime(),
+  /** The call the assistant added them on, for a patient it added. */
+  createdByCallId: z.string().nullable(),
+  /** Everyone else on the same phone number: a parent and their children. */
+  household: z.array(PatientCard),
   /** The provider they have seen most, when they have seen one. */
   usualProviderId: z.string().nullable(),
   appointments: z.array(z.object({
@@ -346,6 +397,25 @@ export const PatientProfile = PatientCard.extend({
     id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), status: z.enum(['open', 'done']), callId: z.string().nullable(),
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
+});
+
+/** A doctor (or a room) as the Doctors page edits them. The id is made from the name when a new one has none. */
+export const DoctorInput = Provider.omit({ id: true }).extend({
+  id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
+  name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
+});
+export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
+/** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
+export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });
+export const ImportResult = z.object({
+  dryRun: z.boolean(),
+  rows: z.array(z.object({
+    line: z.number().int(), name: z.string(),
+    /** add: new; update: an existing doctor; skip: already on file; error: not imported, see message */
+    status: z.enum(['add', 'update', 'skip', 'error']),
+    message: z.string().nullable(),
+  })),
+  counts: z.object({ add: z.number().int(), update: z.number().int(), skip: z.number().int(), error: z.number().int() }),
 });
 
 export const Member = z.object({
@@ -433,6 +503,7 @@ export type AppointmentChange = z.infer<typeof AppointmentChange>;
 export type CancelReason = z.infer<typeof CancelReason>;
 export type BookedBy = z.infer<typeof BookedBy>;
 export type PatientCard = z.infer<typeof PatientCard>;
+export type CancelledList = z.infer<typeof CancelledList>;
 export type PatientList = z.infer<typeof PatientList>;
 export type PatientInput = z.infer<typeof PatientInput>;
 export type PatientSaved = z.infer<typeof PatientSaved>;
@@ -442,3 +513,6 @@ export type WaitingTasks = z.infer<typeof WaitingTasks>;
 export type Member = z.infer<typeof Member>;
 export type MemberList = z.infer<typeof MemberList>;
 export type AddedMember = z.infer<typeof AddedMember>;
+export type DoctorInput = z.infer<typeof DoctorInput>;
+export type DoctorList = z.infer<typeof DoctorList>;
+export type ImportResult = z.infer<typeof ImportResult>;
