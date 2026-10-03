@@ -61,7 +61,7 @@ export async function world() {
         plans.queue.push(planner ?? scripted);
         const out = await agent.onDelegation(`item_${++delegations}`);
         // errors are the refusal codes runTool returned, in call order
-        return Object.assign(out, { errors: scripted.results.map((r) => r.data.error ?? null) });
+        return Object.assign(out, { errors: scripted.results.map((r) => r.data.error ?? null), results: scripted.results });
       },
     };
   }

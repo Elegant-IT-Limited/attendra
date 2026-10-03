@@ -64,6 +64,32 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
   }));
 }
 
+const IGNORED = new Set(['doctor', 'doctors', 'specialist', 'specialists', 'department', 'clinic', 'the', 'for', 'and', 'with']);
+const wordsOf = (s: string) =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !IGNORED.has(w));
+// pediatrician and pediatrics, dermatologist and dermatology, child and children
+const near = (a: string, b: string) => {
+  const n = Math.min(a.length, b.length, 8);
+  return a === b || (n >= 5 && a.slice(0, n) === b.slice(0, n));
+};
+
+/** Whether a doctor is listed for what the caller asked for: their specialty or one of their categories. */
+export function matchesSpecialty(p: Pick<Provider, 'specialty' | 'categories'>, asked: string): boolean {
+  const want = wordsOf(asked);
+  const have = wordsOf([p.specialty ?? '', ...p.categories].join(' '));
+  return want.length > 0 && want.every((w) => have.some((h) => near(w, h)));
+}
+
+/** Each specialty and the doctors in it, as a caller may hear them. */
+export function specialtyFacts(clinic: Pick<ClinicConfig, 'providers'>, language: Language) {
+  const groups = new Map<string, string[]>();
+  for (const p of clinic.providers) {
+    if (p.kind !== 'person' || !p.specialty) continue;
+    groups.set(p.specialty, [...(groups.get(p.specialty) ?? []), localName(p, language)]);
+  }
+  return [...groups].map(([specialty, doctors]) => ({ specialty, doctors }));
+}
+
 export function visitTypeFacts(clinic: Pick<ClinicConfig, 'visitTypes'>, language: Language) {
   return clinic.visitTypes.map((v) => ({ visit_type_id: v.id, name: localName(v, language), minutes: v.minutes, for: audienceLine(v) }));
 }

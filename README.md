@@ -38,7 +38,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 
 - **Answers calls** over Twilio SIP and GPT-Live, or from the browser for testing, with the clinic's hours, providers, visit types, routing and greeting.
 - **Speaks the caller's language**: English and Spanish, with a name for the assistant and the AI disclosure checked in every language. [docs/languages.md](docs/languages.md)
-- **Knows the doctors**: specialty, gender (so a caller can ask for a female or a male doctor), what they see people for, the ages they see, weekly hours, days off and whether they take new patients, kept on a Doctors page or imported from a spreadsheet. A change reaches calls already under way from the next request.
+- **Knows the doctors**: specialty (a caller who asks for a kind of doctor, such as a pediatrician, is offered the doctors listed for it), gender (so a caller can ask for a female or a male doctor), what they see people for, the ages they see, weekly hours, days off and whether they take new patients, kept on a Doctors page or imported from a spreadsheet. A change reaches calls already under way from the next request.
 - **Knows who is calling** by name, date of birth and phone together, so two people with the same name and birthday are never confused; a parent books for each child on the family phone, and a new caller is added as a new patient for the front desk to check. [Decision 9](docs/decisions/0009-patient-identity.md)
 - **Books, moves and cancels** only after a read-back and a clear yes; takes refills and callbacks as requests for staff.
 - **Answers from the clinic's own documents**, with citations, and refuses medical questions in code. [Decision 8](docs/decisions/0008-clinic-knowledge.md)

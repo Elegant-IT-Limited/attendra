@@ -25,6 +25,8 @@ export const ToolArgs = {
     provider_id: z.string().nullable(),
     // when the caller asks for a female or a male doctor
     provider_gender: z.enum(['female', 'male']).nullable().default(null),
+    // the kind of doctor or department the caller asked for, as get_clinic_info lists it
+    specialty: z.string().min(2).max(60).nullable().default(null),
     from_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     part_of_day: z.enum(['morning', 'afternoon', 'any']),
   }),

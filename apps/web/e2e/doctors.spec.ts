@@ -24,6 +24,11 @@ test('a manager adds a doctor with hours and days off, and the front desk sees t
 
   // the front desk's open page updates on its own
   await expect(desk.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toBeVisible({ timeout: 10_000 });
+
+  // and finds doctors by specialty
+  await desk.getByLabel('Specialty').selectOption({ label: 'Dermatology' });
+  await expect(desk.getByTestId('doctor')).toHaveCount(1);
+  await expect(desk.getByTestId('doctor')).toContainText('Dr. Lena Ortiz');
 });
 
 test('patients show as you type: one letter, or a few digits of a phone number', async ({ browser }) => {

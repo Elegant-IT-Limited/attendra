@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, findSlots, resolveTransfer, speakSlot, zonedInstant } from '../src';
+import { DEMO_CLINIC, findSlots, matchesSpecialty, resolveTransfer, speakSlot, specialtyFacts, zonedInstant } from '../src';
 
 const tz = DEMO_CLINIC.timezone;
 const sick = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_sick')!;
@@ -42,6 +42,28 @@ describe('finding slots', () => {
     const morning = zonedInstant('2026-09-29', '08:05', tz);
     const slots = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: okafor, from: '2026-09-29', days: 1, now: morning });
     expect(speakSlot(slots[0]!.start, tz)).toBe('Tuesday, September 29 at 10:20 AM');
+  });
+});
+
+describe('doctors by specialty', () => {
+  const asked = (term: string) => DEMO_CLINIC.providers.filter((p) => matchesSpecialty(p, term)).map((p) => p.id);
+  it('matches a specialty or a category the way a caller says it', () => {
+    expect(asked('pediatrician')).toEqual(['prov_raman']);
+    expect(asked('Pediatrics')).toEqual(['prov_raman']);
+    expect(asked('a children\'s doctor')).toEqual(['prov_raman']);
+    expect(asked('family medicine')).toEqual(['prov_okafor', 'prov_lindqvist']);
+    expect(asked("women's health")).toEqual(['prov_lindqvist']);
+  });
+  it('matches nothing the clinic does not list', () => {
+    expect(asked('dermatologist')).toEqual([]);
+    expect(asked('doctor')).toEqual([]);
+    expect(asked('familiar')).toEqual([]);
+  });
+  it('lists each specialty with its doctors', () => {
+    expect(specialtyFacts(DEMO_CLINIC, 'en')).toEqual([
+      { specialty: 'Family medicine', doctors: ['Dr. Nkem Okafor', 'Dr. Ann Lindqvist'] },
+      { specialty: 'Pediatrics', doctors: ['Dr. Priya Raman'] },
+    ]);
   });
 });
 
