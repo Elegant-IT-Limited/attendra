@@ -34,4 +34,13 @@ describe('names beyond a to z', () => {
     expect((await dir.findByIdentity(DEMO_CLINIC.id, 'Soren Odegard', '1979-04-12', '3035550181')).status).toBe('found');
     expect((await rehashPatientLookups(t.db, cipher)).changed).toBe(0); // a second run changes nothing
   });
+
+  it('counts a patient from before phones were required, and leaves their row alone', async () => {
+    // a row as an older version wrote it: no phone (the constraint is NOT VALID, so it may stay)
+    await t.db.execute(sql`alter table patients drop constraint patients_phone_required`);
+    await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc) select clinic_id, 'old', first_name_enc, last_name_enc, dob_enc from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`);
+    await t.db.execute(sql`alter table patients add constraint patients_phone_required check (phone_enc is not null and phone_hash is not null) not valid`);
+    const run = await rehashPatientLookups(t.db, cipher);
+    expect(run).toMatchObject({ withoutPhone: 1, changed: 0 });
+  });
 });
