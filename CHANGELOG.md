@@ -2,6 +2,44 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.5.0] - 2026-10-04
+
+Doctors, families and a dashboard that updates as it happens, from what the first browser test calls showed: the assistant could not name the doctors or say who sees children, new patients could not get past the identity check, and staff had to refresh to see new requests.
+
+### Added
+
+- **Doctors.** Each has a specialty, what they see people for, the ages they see, whether they take new patients, weekly hours and days off, on a new Doctors page. Managers add, edit and remove them (a doctor with visits still to come cannot be removed), or import a CSV from a template. The assistant describes them to any caller and answers "who is free Monday" without asking who is calling first.
+- **The assistant reads the clinic again before every request**, so a doctor added or a day off set in the dashboard counts on calls already under way.
+- **New patients on the call**: after the identity check finds nobody and the caller says they are new, the assistant adds them (`register_patient`) and books a new-patient visit with a doctor who takes new patients. Every patient it adds becomes a request for the front desk, closed with Details checked.
+- **Families**: a parent books for each child on the family phone, switching between them on one call. Patients under 18 have a parent or guardian on file; a patient's page lists everyone on the same number.
+- **Doctors by age**: once the patient is known, only doctors who see their age are offered.
+- **Patient import** for managers, from a CSV template: every row checked first, the same person skipped, safe to run twice.
+- **Live dashboard**: Postgres notices (clinic and kind of change only), one Server-Sent Events stream per clinic, and every screen re-reads what changed. New requests, bookings, patients, calls and doctors appear without a refresh ([decision 10](docs/decisions/0010-live-updates.md)).
+- **Search as you type**, from the first character: names, any digits of a phone number, dates of birth. Requests can be searched and narrowed to the days they came in.
+- **Cancellations as a history**: the schedule shows booked visits, booked and cancelled, or cancelled only as a list sorted by when the visit was due or when it was cancelled.
+- Visit types say who may book them: anyone, new patients only, or patients on file only.
+- Four eval scenarios from the test calls: the doctors and their open times, a new patient booking, a parent booking a child, the right name with the wrong phone.
+
+### Changed
+
+- **A patient is identified by name, date of birth and phone together** ([decision 9](docs/decisions/0009-patient-identity.md)). Phone is required for every new or changed patient. Two people with the same name and birthday are told apart by phone instead of being sent to staff; the same person cannot be stored twice. `verify_caller` takes the phone on file, or uses the calling number.
+- The newest come first: requests, the waiting list on Today, and patients before anything is typed.
+- Doctors are edited on the Doctors page; saving Settings keeps the doctors on file.
+- The demo clinic has a pediatrician, Dr. Priya Raman, and Maria Delgado's two children on her phone.
+- The stack: Node 24 (current LTS), pnpm 12.8, TypeScript 6.0, Next 16.3.8, NestJS 12.1.2, PGlite 0.5.8, Postgres 18 with pgvector 0.8.7 in Compose, and every other dependency at its latest. TypeScript stays on 6.0 until typescript-eslint supports 7.
+
+### API changes for integrators
+
+- `POST /patients` and `PATCH /patients/:id` require `phone`, and `guardianName` for a patient under 18. 409 `patient_exists` now means the same name, date of birth and phone; the response may carry `similar: true`.
+- `POST /patients/search` answers from one character, and returns an empty list instead of 422 for text it cannot match.
+- New: `GET /patients`, `POST /patients/:id/confirm`, `POST /patients/import`, `/doctors` (list, add, change, remove, import), `GET /appointments/cancelled`, `GET /changes` (text/event-stream).
+- `GET /tasks` lists open requests newest first, and takes `q`, `from` and `to`. The request outcome `details_confirmed` is new.
+- `PUT /settings` no longer changes doctors.
+
+### Upgrading
+
+Postgres moves to 18 on a new Compose volume, migrations 0020 and 0021 run on their own, and `pnpm db:rehash-lookups` runs once. [docs/self-hosting.md](docs/self-hosting.md) has the steps.
+
 ## [0.4.1] - 2026-10-01
 
 A correctness release from a full audit of 0.4.0: no new features. Webhook retries, emergency transfers, cancellations on the schedule and call page, tenancy keys, retention, audit rows, time zones and the docs are fixed, and the demo's calls now match their transcripts.

@@ -1,12 +1,12 @@
 # Attendra
 
-**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English and Spanish, verifies the caller, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
+**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English and Spanish, verifies the caller, adds new patients, tells callers about the doctors, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
 
 Attendra is built and maintained by [Elegant IT Limited](https://eleganttechbd.com), an AI-native software development studio, and is the kind of production AI system the studio builds for clients.
 
 Twilio carries the call over SIP to OpenAI GPT-Live, which holds the conversation. Every decision that matters (who the caller is, which times are really free, whether the caller said yes, what gets written, who is told) runs in this repository's TypeScript backend, where it can be tested, audited and self-hosted.
 
-> **Status: v0.4.1, pre-pilot.** The call path, the backend brain, the scheduler, the dashboard, live calls, summaries, the clinic's knowledge, webhooks, quality tracking and MCP all work and are tested. Reminders and the waitlist come next, once Twilio is live (see the [roadmap](docs/roadmap.md)). Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
+> **Status: v0.5.0, pre-pilot.** The call path, the backend brain, the scheduler, doctors and their hours, patient identity with families and new patients, the dashboard with live updates, live calls, summaries, the clinic's knowledge, webhooks, quality tracking and MCP all work and are tested. Reminders and the waitlist come next, once Twilio is live (see the [roadmap](docs/roadmap.md)). Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
 
 ## One call, end to end
 
@@ -15,7 +15,7 @@ At 8 pm Maria calls the clinic about knee pain.
 1. Twilio receives the call and sends it over an Elastic SIP Trunk to `sip.api.openai.com`.
 2. OpenAI sends `live.transport.incoming` to `apps/voice`. We verify the signature, drop duplicate deliveries, find the clinic from the dialled number and accept with its greeting, hours and voice.
 3. We attach to the call's sideband socket. Every caller transcript fragment goes through the emergency guardrail before anything else.
-4. Maria asks for an appointment. GPT-Live delegates to our backend, which verifies her name and date of birth, finds real openings and offers three.
+4. Maria asks for an appointment. GPT-Live delegates to our backend, which verifies her name, date of birth and the phone on her file, finds real openings with doctors who see her age, and offers three.
 5. She picks one. The backend stages the booking and returns the read-back. The booking is written only after Maria's own words contain a clear yes, and the write carries an idempotency key, so a retried delegation cannot book twice.
 6. She gets one confirmation text at the number on her record. The call, the transcript (encrypted) and every tool action are stored, and the front desk sees them in the dashboard a few seconds after she hangs up.
 
@@ -38,6 +38,8 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 
 - **Answers calls** over Twilio SIP and GPT-Live, or from the browser for testing, with the clinic's hours, providers, visit types, routing and greeting.
 - **Speaks the caller's language**: English and Spanish, with a name for the assistant and the AI disclosure checked in every language. [docs/languages.md](docs/languages.md)
+- **Knows the doctors**: specialty, what they see people for, the ages they see, weekly hours, days off and whether they take new patients, kept on a Doctors page or imported from a spreadsheet. A change reaches calls already under way from the next request.
+- **Knows who is calling** by name, date of birth and phone together, so two people with the same name and birthday are never confused; a parent books for each child on the family phone, and a new caller is added as a new patient for the front desk to check. [Decision 9](docs/decisions/0009-patient-identity.md)
 - **Books, moves and cancels** only after a read-back and a clear yes; takes refills and callbacks as requests for staff.
 - **Answers from the clinic's own documents**, with citations, and refuses medical questions in code. [Decision 8](docs/decisions/0008-clinic-knowledge.md)
 - **Live calls**: staff see captions and every tool step as they happen, send the assistant a note, take the call or end it.
@@ -45,7 +47,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
 - **Webhooks** for n8n, Zapier and Make, signed per Standard Webhooks, with no patient data in them. [docs/webhooks.md](docs/webhooks.md)
 - **Quality**: a weekly page of containment, bookings, refusals and cost, a judge for live evals, and simulated callers. [docs/quality.md](docs/quality.md)
 - **MCP**: other AI agents, such as a desktop MCP client, can read the schedule and requests and close requests with a scoped key, and can never book or cancel. [docs/mcp.md](docs/mcp.md)
-- **The front desk dashboard**: Today, the schedule, patients, requests, calls and live calls, test calls, quality, team, settings (with knowledge, integrations and API keys) and the audit log, in light and dark, with a command palette. [docs/design.md](docs/design.md)
+- **The front desk dashboard**: Today, the schedule (with a history of cancellations), patients, doctors, requests, calls and live calls, test calls, quality, team, settings (with knowledge, integrations and API keys) and the audit log, in light and dark, with a command palette. Every screen updates as the clinic changes, without a refresh, and every search answers as you type. Managers import doctors and patients from CSV templates. [docs/design.md](docs/design.md), [Decision 10](docs/decisions/0010-live-updates.md)
 
 ## How the AI works
 
@@ -64,7 +66,9 @@ Prompts guide the voice. The rules below live in [`packages/agent/src/tools.ts`]
 
 | Rule | Where | Proven by |
 |---|---|---|
-| Nothing patient-specific before a name and date-of-birth match | `runTool` | `identity_required` in agent tests and the `no-identity-no-records` scenario |
+| Nothing patient-specific before a match on name, date of birth and phone together | `runTool`, `findByIdentity` | `identity_required` in agent tests, the `no-identity-no-records` and `right-name-wrong-phone` scenarios |
+| Two people with the same name and birthday are told apart by phone, and the same person is never stored twice | `identity_hash`, unique per clinic | `shared-name-and-dob` scenario, `tenancy-and-phi.test.ts` |
+| Only doctors who see the patient's age, and who take new patients when they are new, are offered; a new patient books new-patient visits | `find_slots` | `parent-books-child` and `new-patient-books` scenarios |
 | Only slots the caller was actually offered can be booked | `CallState.offered` | `invented-slot` scenario |
 | No write without a spoken read-back and a clear yes to it in the caller's own words | `CallState.answerToReadback`, `commit_pending` | `hedge-is-not-yes` scenario, "yes before the read-back" test |
 | Every write is idempotent; the database refuses overlapping bookings | idempotency keys, a Postgres exclusion constraint | scheduler tests |
