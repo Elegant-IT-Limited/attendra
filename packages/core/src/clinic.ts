@@ -17,6 +17,13 @@ export const LanguageSchema = z.enum(LANGUAGES);
 /** What a provider or a visit type is called in another language, when the clinic says it differently. */
 const LocalNames = z.partialRecord(LanguageSchema, z.string().min(1).max(80));
 
+/** A person's gender as a clinic records it. undisclosed: they preferred not to say. */
+export const GENDERS = ['female', 'male', 'other', 'undisclosed'] as const;
+export const Gender = z.enum(GENDERS);
+export type Gender = z.infer<typeof Gender>;
+/** "female", "male", "other", "prefers not to say": how the assistant and the screens say it. */
+export const genderWord = (g: Gender) => (g === 'undisclosed' ? 'prefers not to say' : g);
+
 /** Whole days a provider is away: leave, a conference, a day off. Both ends included. */
 export const TimeOff = z.object({ from: isoDate, to: isoDate, note: z.string().trim().max(80).optional() })
   .refine((t) => t.from <= t.to, 'time off must end on or after the day it starts');
@@ -33,6 +40,8 @@ export const Provider = z.object({
   names: LocalNames.optional(),
   // a person ("with Dr. Rahman") or a room ("in the sample collection room"): read-backs say it properly
   kind: z.enum(['person', 'room']).default('person'),
+  // so a caller who asks for a female or a male doctor is offered one; absent on configurations saved before v0.5.1
+  gender: Gender.optional(),
   // what callers and staff hear about them: "Family medicine", "Pediatrics"
   specialty: z.string().trim().max(60).optional(),
   // what they see people for, a few words each: "Children", "Women's health", "Diabetes care"

@@ -6,6 +6,12 @@ import { type PhiCipher, phiContext } from './crypto';
 import { identityKey, PostgresPatientDirectory } from './repositories/patients';
 import { appointments, patients } from './schema';
 
+// the demo's invented first names that are women's; everyone else in the demo is a man
+const FEMALE_NAMES = new Set(['Maria', 'Sofia', 'Ruth', 'Aisha', 'Grace', 'Hannah', 'Priscilla', 'Lucy', 'Elena', 'Nadia', 'Imani', 'Clara', 'June', 'Maya', 'Rosa',
+  'Ava', 'Mia', 'Zoe', 'Chloe', 'Layla', 'Nora', 'Amara', 'Freya', 'Ingrid', 'Keiko', 'Margot', 'Olive', 'Ivy', 'Luna', 'Nina', 'Pia', 'Sana', 'Uma']);
+/** A demo patient's gender, from their invented first name. */
+export const demoGender = (firstName: string) => (FEMALE_NAMES.has(firstName) ? 'female' as const : 'male' as const);
+
 /**
  * Invented first and last names crossed with each other, with numbers from a range
  * no one is given: enough patients that nobody needs more than two upcoming visits.
@@ -91,7 +97,7 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
   for (const p of opts.extraPatients ?? DEMO_SCHEDULE_PATIENTS) {
     const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: patients.id }).from(patients)
       .where(and(eq(patients.clinicId, clinic.id), eq(patients.identityHash, cipher.hash(identityKey(clinic.id, p.firstName, p.lastName, p.dob, p.phone))))));
-    pool.push(existing?.id ?? await directory.create(clinic.id, p));
+    pool.push(existing?.id ?? await directory.create(clinic.id, { ...p, gender: demoGender(p.firstName) }));
   }
 
   const rand = random(20260929);

@@ -2,6 +2,29 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.5.1] - 2026-10-04
+
+### Added
+
+- **Gender for patients and doctors.** Female, male, other, or prefers not to say, required for every patient added or changed, on the form, in the CSV import and when the assistant adds a new patient (it asks, and never guesses). Stored encrypted like the other details about a person. Patients from before keep an empty value until the front desk adds it, and their record says so.
+- **A female or a male doctor on request.** Each doctor has a gender; a caller who asks is offered only those doctors (`find_slots` takes `provider_gender`), and told when there is none for that visit.
+- **Doctors by specialty.** When a caller has not named a doctor, the assistant asks once whether they want a particular doctor or kind of doctor, matches the answer (pediatrics, a pediatrician, women's health) to the clinic's own specialties and categories, suggests those doctors by name and offers their times (`find_slots` takes `specialty`). When the clinic has no such doctor it says so and lists what it has. It never decides from symptoms what kind of doctor someone needs. `get_clinic_info` returns each specialty with its doctors.
+- **Doctors page filters**: by specialty and by what they see people for, sorted by name or specialty. The Schedule's provider list shows each doctor's specialty.
+
+### Fixed
+
+- Doctors page: each day's hours on a line of its own, category badges no longer stretch, and the hour fields in the edit panel show the whole time.
+- Turbo no longer writes an `AGENTS.md` into the repository (`agentGuidance: false`).
+
+### API changes for integrators
+
+- `POST /patients` and `PATCH /patients/:id` require `gender`; patient responses carry it (null for a patient from before 0.5.1).
+- Doctors added or changed through `/doctors` require `gender`. The patient CSV template gains a required `gender` column, the doctor template an optional one.
+
+### Upgrading
+
+Migration 0022 adds the column on its own. Nothing else to run.
+
 ## [0.5.0] - 2026-10-04
 
 Doctors, families and a dashboard that updates as it happens, from what the first browser test calls showed: the assistant could not name the doctors or say who sees children, new patients could not get past the identity check, and staff had to refresh to see new requests.

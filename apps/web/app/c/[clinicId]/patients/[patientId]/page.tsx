@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { age, clinicTime, dayTitle, dob, duration, phone, TASK_TYPES, timeOf, zoneLabel } from '@/lib/format';
+import { age, clinicTime, dayTitle, dob, duration, GENDER_LABEL, phone, TASK_TYPES, timeOf, zoneLabel } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -77,7 +77,8 @@ export default function PatientPage() {
         <div className="space-y-1">
           <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">{p.name}{p.status === 'new' && <Badge tone="warn">New, added by the assistant</Badge>}</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-            <span>Age {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
+            <span>{p.gender ? `${GENDER_LABEL[p.gender]}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
+            {!p.gender && <Badge tone="warn">Gender not recorded: add it under Details</Badge>}
             {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
             {p.guardianName && <span>Parent or guardian {p.guardianName}</span>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
@@ -174,8 +175,8 @@ export default function PatientPage() {
             <CardContent className="py-5">
               {saved && <Alert className="mb-4">Saved. The assistant verifies them with these details from the next call on.</Alert>}
               {can('patients:write') ? (
-                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '' }} onSaved={() => setSaved(true)} />
+                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender }} onSaved={() => setSaved(true)} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>

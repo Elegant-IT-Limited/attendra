@@ -90,6 +90,8 @@ export const REFUSALS: Record<string, string> = {
 };
 
 /** Requests, in the words a front desk uses. The API still calls them tasks. */
+export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Prefers not to say' };
+
 export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check' };
 
 export const TASK_EXPLAINED: Record<string, string> = {

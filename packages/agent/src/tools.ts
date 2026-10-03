@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, ageOn, type AuditLog, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, type Messenger, NO_INFORMATION, PACKS, parseDob, samePhone,
-  type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, type TaskQueue,
+  addDays, ageOn, type AuditLog, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  fold, matchesSpecialty, type Messenger, NO_INFORMATION, PACKS, parseDob, samePhone,
+  type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, visitTypeFacts, weekHours, zonedInstant,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
@@ -132,7 +132,8 @@ export async function runTool(
       if (age < 18 && !guardian) return refuse('guardian_required', 'They are under 18: ask for the name of the parent or guardian.');
       const first = String(args.first_name).trim();
       const last = String(args.last_name).trim();
-      const result = await backend.patients.register(clinic.id, { firstName: first, lastName: last, dob, phone, guardianName: guardian, callId: ctx.callId });
+      const gender = args.gender as Gender;
+      const result = await backend.patients.register(clinic.id, { firstName: first, lastName: last, dob, gender, phone, guardianName: guardian, callId: ctx.callId });
       if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
       state.verifiedPatient = result.patient;
       // the same details as someone on file: as good as a verification, and counted like one, so it is no way round the limit
@@ -144,7 +145,7 @@ export async function runTool(
         idempotencyKey: key(ctx.callId, 'review', result.patient.id),
         details: {
           reason: 'New patient added by the assistant. Check their details and confirm them.',
-          first_name: first, last_name: last, date_of_birth: dob, phone,
+          first_name: first, last_name: last, date_of_birth: dob, gender: genderWord(gender), phone,
           ...(guardian ? { guardian_name: guardian } : {}),
           ...(result.similar ? { possible_duplicate: 'Another patient has the same name and date of birth with a different phone number.' } : {}),
         },
@@ -170,7 +171,7 @@ export async function runTool(
         data: {
           today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
           // who works here: anyone may ask, so it carries no patient data
-          providers: providerFacts(clinic, today, lang), visit_types: visitTypeFacts(clinic, lang),
+          providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
         },
       };
@@ -203,6 +204,19 @@ export async function runTool(
       }
       let providers = args.provider_id ? clinic.providers.filter((p) => p.id === args.provider_id) : clinic.providers;
       if (args.provider_id && !providers.length) return refuse('unknown_provider', 'Use a provider_id from get_clinic_info.');
+      // the kind of doctor or department the caller asked for, matched to the clinic's own list only
+      if (args.specialty) {
+        providers = providers.filter((p) => matchesSpecialty(p, String(args.specialty)));
+        if (!providers.length) {
+          const list = specialtyFacts(clinic, lang).map((s) => `${s.specialty} (${s.doctors.join(', ')})`).join('; ');
+          return refuse('no_provider_for_specialty', `No doctor here is listed for ${String(args.specialty)}. Say so, without guessing why, and offer what the clinic has: ${list}. Or offer a callback.`);
+        }
+      }
+      // a caller who asks for a female or a male doctor
+      if (args.provider_gender) {
+        providers = providers.filter((p) => p.gender === args.provider_gender);
+        if (!providers.length) return refuse('no_provider_of_gender', `No ${String(args.provider_gender)} doctor here offers that. Say so, and offer the clinic's other doctors.`);
+      }
       // once we know who the visit is for: only doctors who see their age, and take new patients if they are new
       if (patient) {
         const age = ageOn(patient.dob, localDateOf(ctx.now(), clinic.timezone));
@@ -225,7 +239,7 @@ export async function runTool(
       return {
         ok: true,
         data: {
-          slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId) })),
+          slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null })),
           note: slots.length ? 'Offer these as written. Do not invent other times.' : 'No openings in the next two weeks; offer a callback.',
         },
       };

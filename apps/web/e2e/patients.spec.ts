@@ -27,6 +27,7 @@ test.describe.serial('patients', () => {
     await form.getByLabel('First name').fill('Tessa');
     await form.getByLabel('Last name').fill('Okoro');
     await form.getByLabel('Date of birth').fill('1993-02-11');
+    await form.getByLabel('Gender').selectOption({ label: 'Female' });
     await form.getByLabel(/Phone/).fill('(720) 555-0188');
     await form.getByRole('button', { name: 'Add patient' }).click();
 
