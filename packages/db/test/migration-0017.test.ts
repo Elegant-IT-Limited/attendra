@@ -1,6 +1,6 @@
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { vector } from '@electric-sql/pglite/vector';
+import { vector } from '@electric-sql/pglite-pgvector';
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/pglite';

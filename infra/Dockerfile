@@ -1,10 +1,10 @@
 # One image for the voice service, the dashboard API, the worker and the migrate/seed jobs. They
 # run TypeScript directly through tsx. The dashboard itself has its own image
 # (web.Dockerfile), a compiled Next.js build.
-FROM node:22-slim
+FROM node:24-slim
 # pnpm is fetched once here, into a directory the node user can read at runtime
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH COREPACK_HOME=/corepack COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable && corepack install -g pnpm@10.34.5 && chmod -R a+rX /corepack
+RUN corepack enable && corepack install -g pnpm@12.8.1 && chmod -R a+rX /corepack
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json apps/api/
