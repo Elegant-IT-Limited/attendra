@@ -28,6 +28,8 @@ const ACTIONS: Record<string, string> = {
   'task.released': 'Released a request',
   'task.released.override': 'Released someone else\'s request',
   'task.created.voicemail': 'Took a voicemail',
+  'task.created.review': 'Added a new patient for the front desk to check',
+  'task.created.follow_up': 'Opened a follow-up request for a call left unfinished',
   'task.assigned': 'Handed a request to a teammate',
   'task.note.added': 'Added a note to a request',
   'schedule.viewed': 'Looked at the schedule',
