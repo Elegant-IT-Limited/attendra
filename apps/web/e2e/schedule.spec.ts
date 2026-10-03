@@ -46,7 +46,7 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
     await page.getByRole('link', { name, exact: true }).click(); // who was calling, verified
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible(); // a caller added on the call also says New
-    await expect(page.getByText(/^Age \d+, born \d{1,2} [A-Z][a-z]+ \d{4}$/)).toBeVisible();
+    await expect(page.getByText(/^(?:(?:Female|Male|Other|Prefers not to say), age|Age) \d+, born \d{1,2} [A-Z][a-z]+ \d{4}$/)).toBeVisible(); // with the gender first, when it is known
     await page.getByRole('tab', { name: /Calls/ }).click();
     await expect(page.getByRole('link', { name: /Transcript/ }).first()).toBeVisible();
   });
