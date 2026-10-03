@@ -13,16 +13,22 @@ test('a manager adds a doctor with hours and days off, and the front desk sees t
   await manager.getByRole('button', { name: 'Add doctor' }).click();
   const panel = manager.getByRole('dialog', { name: 'Add doctor' });
   await panel.getByLabel('Name').fill('Dr. Lena Ortiz');
+  await panel.getByLabel('Gender').selectOption({ label: 'Female' });
   await panel.getByLabel('Specialty').fill('Dermatology');
   await panel.getByLabel('What they see people for').fill('Skin, Allergies');
   await panel.getByLabel('Their own hours, not the clinic\'s').check();
   await panel.getByRole('button', { name: 'Days off' }).click();
   await panel.getByRole('button', { name: 'Save' }).click();
   await expect(panel).toBeHidden();
-  await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toContainText('Dermatology');
+  await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toContainText('Dermatology, Female');
 
   // the front desk's open page updates on its own
   await expect(desk.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toBeVisible({ timeout: 10_000 });
+
+  // and finds doctors by specialty
+  await desk.getByLabel('Specialty').selectOption({ label: 'Dermatology' });
+  await expect(desk.getByTestId('doctor')).toHaveCount(1);
+  await expect(desk.getByTestId('doctor')).toContainText('Dr. Lena Ortiz');
 });
 
 test('patients show as you type: one letter, or a few digits of a phone number', async ({ browser }) => {

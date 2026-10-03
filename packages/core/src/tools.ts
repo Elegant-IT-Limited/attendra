@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
-import { TransferTarget } from './clinic';
+import { Gender, TransferTarget } from './clinic';
 
 /**
  * Arguments for every backend tool, as the planner model must send them. The same
@@ -13,6 +13,8 @@ export const ToolArgs = {
   // a new patient, after verify_caller found nobody and the caller said they are new; guardian_name for anyone under 18
   register_patient: z.object({
     first_name: z.string().trim().min(1).max(60), last_name: z.string().trim().min(1).max(60), date_of_birth: z.string().min(4),
+    // female, male, other, or undisclosed when they prefer not to say: asked, never guessed from a name or a voice
+    gender: Gender,
     phone: z.string().min(7).max(30).nullable().default(null), guardian_name: z.string().trim().min(3).max(120).nullable().default(null),
   }),
   get_clinic_info: z.object({ question: z.string().min(2) }),
@@ -21,6 +23,10 @@ export const ToolArgs = {
   find_slots: z.object({
     visit_type_id: z.string(),
     provider_id: z.string().nullable(),
+    // when the caller asks for a female or a male doctor
+    provider_gender: z.enum(['female', 'male']).nullable().default(null),
+    // the kind of doctor or department the caller asked for, as get_clinic_info lists it
+    specialty: z.string().min(2).max(60).nullable().default(null),
     from_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     part_of_day: z.enum(['morning', 'afternoon', 'any']),
   }),

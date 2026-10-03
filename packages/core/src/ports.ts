@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { Gender } from './clinic';
 import type { Language } from './locales';
 import type { Slot } from './slots';
 
@@ -34,7 +35,7 @@ export interface KnowledgeBase {
 }
 
 /** A verified patient as a call knows them: enough to book, confirm by text and pick a doctor who sees their age. */
-export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean }
+export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null }
 
 export type PatientLookup =
   | { status: 'found'; patient: CallPatient } // phone on file, for confirmations
@@ -52,7 +53,7 @@ export type Registration =
  */
 export interface PatientDirectory {
   findByIdentity(clinicId: string, fullName: string, dob: string, phone: string): Promise<PatientLookup>;
-  register(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName: string | null; callId: string }): Promise<Registration>;
+  register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string }): Promise<Registration>;
 }
 
 export interface AppointmentSummary {

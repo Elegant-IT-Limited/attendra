@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = {
   medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
-  first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
+  first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
 };
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck } as const;
 type Who = 'everyone' | 'me' | 'unassigned';

@@ -6,10 +6,10 @@ turns:
     reply: "I couldn't find a record with those details. Are you new to the clinic?"
     delegate:
       - verify_caller: { full_name: Ana Reyes, date_of_birth: June 1 1990, phone: "303 555 0193" }
-  - caller: Yes, I'm new.
+  - caller: Yes, I'm new. I'm female.
     reply: "Welcome, Ana. For a new patient visit I can offer {offered.0}, or {offered.1}."
     delegate:
-      - register_patient: { first_name: Ana, last_name: Reyes, date_of_birth: June 1 1990, phone: "303 555 0193" }
+      - register_patient: { first_name: Ana, last_name: Reyes, date_of_birth: June 1 1990, gender: female, phone: "303 555 0193" }
       - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
   - caller: The first one.
     reply: "Just to confirm: {readback}. Is that right?"
