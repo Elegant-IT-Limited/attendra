@@ -20,7 +20,7 @@ pnpm test                 # vitest: unit, Postgres (PGlite) integration, eval sc
 pnpm eval                 # scenario report; --live uses the real planner model
 pnpm lint && pnpm typecheck
 pnpm db:migrate && pnpm db:seed    # against DATABASE_URL; the seed also needs ATTENDRA_DATA_KEY; synthetic data only
-pnpm db:rehash-lookups    # once after upgrading to v0.4.1, with DATABASE_URL and ATTENDRA_DATA_KEY
+pnpm db:rehash-lookups    # once after upgrading to v0.4.1 or v0.5.0, with DATABASE_URL and ATTENDRA_DATA_KEY
 pnpm demo                 # API on an in-memory Postgres with demo calls, plus the dashboard on :3000
 pnpm test:e2e             # Playwright against the demo (starts both servers)
 pnpm sim                  # simulated callers against the real planner (needs OPENAI_API_KEY, costs credit)
