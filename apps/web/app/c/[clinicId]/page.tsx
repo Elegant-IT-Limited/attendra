@@ -80,7 +80,7 @@ export default function Today() {
 type Q<T> = { data?: T; isPending: boolean; isError: boolean };
 
 // the same icon per request type as the Requests page
-const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck } as const;
+const REQUEST_ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 function RequestIcon({ type }: { type: keyof typeof REQUEST_ICONS }) {
   const Icon = REQUEST_ICONS[type] ?? PhoneCall;
   return <Icon className="size-4 text-primary" />;
@@ -107,6 +107,8 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   // only calls that are over: one still going has no outcome yet, and is under Live now
   const unresolved = recent.filter((c) => c.endedAt && !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
+  // a flagged call that became a follow-up request is listed once, as the request
+  const followedUp = new Set(requests.flatMap((t) => (t.type === 'follow_up' && t.callId ? [t.callId] : [])));
   const items: { key: string; icon: ReactNode; title: string; detail: ReactNode; action: ReactNode; tone?: 'danger' }[] = [
     ...emergencies.map((c) => ({
       key: c.id, icon: <Siren className="size-4 text-danger" />, tone: 'danger' as const, title: 'Emergency language on a call', detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} /></>,
@@ -118,7 +120,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
         : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
     })),
-    ...flagged.map((c) => ({
+    ...flagged.filter((c) => !followedUp.has(c.id)).map((c) => ({
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
       detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. The summary says why.</>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,

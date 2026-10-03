@@ -11,6 +11,7 @@ const CALL: CallForSummary = {
   ],
   actions: [{ tool: 'verify_caller', result: { ok: true, verified: true } }, { tool: 'commit_pending', result: { ok: true, booked: true } }],
   tasks: [],
+  patientId: null,
 };
 
 const GOOD = { summary: 'The caller booked a sick visit for a sore knee. The assistant texted a confirmation.', intent: 'book', sentiment: 'calm', needsReview: false, reviewReason: null, followUp: null };

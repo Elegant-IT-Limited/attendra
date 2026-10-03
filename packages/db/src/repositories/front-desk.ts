@@ -9,7 +9,7 @@ import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
 export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'not_needed' | 'details_confirmed';
-type TaskType = 'callback' | 'refill' | 'voicemail' | 'review';
+type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 
 /**
  * Which clinics a signed-in person can open, and with which role. Runs as the owner
@@ -380,11 +380,16 @@ export class FrontDeskRepository {
       const updated = await tx.update(tasks).set({ status: 'done', doneAt: new Date(), doneByUserId: userId, outcome })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'),
           or(isNull(tasks.assigneeUserId), eq(tasks.assigneeUserId, userId))))
-        .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId });
+        .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId, callId: tasks.callId });
       if (updated.length) {
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.done', entity: 'task', entityId: taskId });
         // checking a patient the assistant added makes them an ordinary patient
-        const { type, patientId } = updated[0]!;
+        const { type, patientId, callId } = updated[0]!;
+        // getting back to the caller is the review the call was flagged for
+        if (type === 'follow_up' && callId) {
+          await tx.update(callSummaries).set({ reviewedAt: new Date(), reviewedByUserId: userId })
+            .where(and(eq(callSummaries.callId, callId), isNull(callSummaries.reviewedAt)));
+        }
         if (type === 'review' && outcome === 'details_confirmed' && patientId) {
           await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
           await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.confirmed', entity: 'patient', entityId: patientId });

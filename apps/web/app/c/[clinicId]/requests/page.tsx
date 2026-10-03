@@ -2,7 +2,7 @@
 'use client';
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
+import { Flag, Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -22,8 +22,9 @@ import { cn } from '@/lib/utils';
 const DETAIL_LABELS: Record<string, string> = {
   medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
+  suggested: 'Suggested next step',
 };
-const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck } as const;
+const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 
 export default function RequestsPage() {
@@ -113,8 +114,8 @@ function Requests() {
     <>
       <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>} />
       <Card className="mb-5 px-5 py-3">
-        <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-3">
-          {(['refill', 'callback', 'review'] as const).map((t) => (
+        <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-2 xl:grid-cols-4">
+          {(['refill', 'callback', 'review', 'follow_up'] as const).map((t) => (
             <div key={t}><dt className="inline font-medium">{TASK_TYPES[t]}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
           ))}
         </dl>
