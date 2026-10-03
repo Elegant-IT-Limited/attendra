@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, createPhiCipher, PostgresTaskQueue, saveClinic, seedDemo } from '@attendra/db';
+import { CallRepository, createPhiCipher, pgliteChangeFeed, PostgresTaskQueue, saveClinic, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { createHmac } from 'node:crypto';
@@ -28,7 +28,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream'] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -51,7 +51,8 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     type: 'refill', callId, patientId: patientIds.maria!, idempotencyKey: 'api-refill', details: { medication: 'lisinopril', pharmacy: 'Main St', callback_number: '+13035550147' },
   });
 
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks });
+  const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

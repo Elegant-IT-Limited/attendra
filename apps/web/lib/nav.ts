@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, UserCog, Users } from 'lucide-react';
+import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; permission: string; shortcut?: string }
 
@@ -11,6 +11,7 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
     items: [
       { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read', shortcut: 's' },
       { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read', shortcut: 'p' },
+      { href: 'doctors', label: 'Doctors', icon: Stethoscope, permission: 'settings:read', shortcut: 'd' },
       { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:read', shortcut: 'r' },
       { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list', shortcut: 'c' },
     ],

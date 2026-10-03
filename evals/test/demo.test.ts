@@ -61,7 +61,7 @@ describe('demo calls', () => {
     const { patientIds } = await seedDemo(t.db, cipher);
     expect(await patientOf('booking-happy-path')).toBe(patientIds.maria);
     expect(await patientOf('no-identity-no-records')).toBeNull();
-    expect(await patientOf('shared-name-and-dob')).toBeNull(); // two records match: nobody is verified
+    expect(await patientOf('shared-name-and-dob')).toBe(patientIds.sam_b); // the phone on file tells the two Sams apart
   });
 
   it('puts back no more than two upcoming visits per patient, however many calls booked for them', async () => {

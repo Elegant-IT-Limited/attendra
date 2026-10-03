@@ -2,8 +2,8 @@
 'use client';
 import type { PatientProfile } from '@attendra/api/contracts';
 import { localDateOf } from '@attendra/core';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Bot, CalendarPlus, Phone, User } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Bot, CalendarPlus, CheckCircle2, Phone, User, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
@@ -36,6 +36,11 @@ export default function PatientPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [booking, setBooking] = useState(false);
   const [saved, setSaved] = useState(false);
+  const queries = useQueryClient();
+  const confirm = useMutation({
+    mutationFn: () => api<void>(`/clinics/${clinicId}/patients/${patientId}/confirm`, { method: 'POST' }),
+    onSuccess: () => { void queries.invalidateQueries({ queryKey: ['patient', clinicId] }); void queries.invalidateQueries({ queryKey: ['patients', clinicId] }); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
+  });
   const patient = useQuery({
     queryKey: ['patient', clinicId, patientId],
     queryFn: () => api<PatientProfile>(`/clinics/${clinicId}/patients/${patientId}`),
@@ -70,16 +75,31 @@ export default function PatientPage() {
       {back}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight">{p.name}</h1>
+          <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">{p.name}{p.status === 'new' && <Badge tone="warn">New, added by the assistant</Badge>}</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
             <span>Age {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
-            {p.phone && <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a>}
+            {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
+            {p.guardianName && <span>Parent or guardian {p.guardianName}</span>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
           </p>
+          {p.household.length > 0 && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
+              <Users className="size-3.5" aria-hidden /> On the same phone:
+              {p.household.map((h, i) => <span key={h.id}><Link className="text-primary hover:underline" href={`/c/${clinicId}/patients/${h.id}`}>{h.name}</Link>{i < p.household.length - 1 ? ',' : ''}</span>)}
+            </p>
+          )}
           <p className="text-xs text-text-muted">Times are {zoneLabel(tz)}. Opening this record is in the audit log.</p>
         </div>
-        {can('schedule:write') && <Button onClick={() => setBooking(true)}><CalendarPlus /> Book</Button>}
+        <div className="flex gap-2">
+          {p.status === 'new' && can('patients:write') && <Button variant="outline" disabled={confirm.isPending} onClick={() => confirm.mutate()}><CheckCircle2 /> Details checked</Button>}
+          {can('schedule:write') && <Button onClick={() => setBooking(true)}><CalendarPlus /> Book</Button>}
+        </div>
       </div>
+      {p.status === 'new' && (
+        <Alert tone="warn" className="mb-4">
+          The assistant added {p.firstName} on {p.createdByCallId ? <Link className="underline" href={`/c/${clinicId}/calls/${p.createdByCallId}`}>a call</Link> : 'a call'}. Check the name, date of birth and phone with them, correct anything under Details, then press Details checked.
+        </Alert>
+      )}
 
       <Tabs label="Patient record" value={tab} onValueChange={setTab} className="mb-4" tabs={TABS.map((t) => ({ value: t.id, label: t.label, count: counts[t.id] }))} />
 
@@ -113,7 +133,7 @@ export default function PatientPage() {
         )}
         {tab === 'calls' && (
           <Card>
-            {p.calls.length === 0 ? <Empty title="No verified calls">Calls appear here once the assistant has verified the caller as this patient by name and date of birth.</Empty> : (
+            {p.calls.length === 0 ? <Empty title="No verified calls">Calls appear here once the assistant has verified the caller as this patient by name, date of birth and phone.</Empty> : (
               <ul className="divide-y divide-border">
                 {p.calls.map((c) => (
                   <li key={c.id}>
@@ -154,8 +174,8 @@ export default function PatientPage() {
             <CardContent className="py-5">
               {saved && <Alert className="mb-4">Saved. The assistant verifies them with these details from the next call on.</Alert>}
               {can('patients:write') ? (
-                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '' }} onSaved={() => setSaved(true)} />
+                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '' }} onSaved={() => setSaved(true)} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>

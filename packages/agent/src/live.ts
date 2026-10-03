@@ -18,6 +18,7 @@ export type LiveEvent =
 /** What the assistant is doing, in the words the dashboard shows: "finding open times". */
 export const DOING: Record<ToolName, string> = {
   verify_caller: 'checking who is calling',
+  register_patient: 'adding a new patient',
   get_clinic_info: 'looking up clinic information',
   search_knowledge: 'searching the clinic\'s documents',
   find_slots: 'finding open times',

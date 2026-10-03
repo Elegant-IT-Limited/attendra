@@ -38,7 +38,7 @@ describe('links between clinic rows', () => {
     const [demoCall] = (await t.db.execute(sql`select id from calls where openai_session_id = 'live_links_demo'`)).rows as { id: string }[];
     expect(await failure(t.db.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key) values (${OTHER.id}, 'callback', ${maria}, 'x', 'links-x1')`))).toMatch(/tasks_patient_same_clinic/);
     expect(await failure(t.db.execute(sql`insert into tasks (clinic_id, type, call_id, details_enc, idempotency_key) values (${OTHER.id}, 'callback', ${demoCall!.id}, 'x', 'links-x2')`))).toMatch(/tasks_call_same_clinic/);
-    const otherPatient = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Ruth', lastName: 'Marsh', dob: '1971-06-02' });
+    const otherPatient = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Ruth', lastName: 'Marsh', dob: '1971-06-02', phone: '+13035550191' });
     const appt = (patientId: string, bookedBy: string | null, cancelledBy: string | null, key: string) => t.db.execute(sql`
       insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_call_id, created_by_user_id, cancelled_by_call_id)
       values (${OTHER.id}, ${patientId}, 'prov_okafor', 'vt_sick', '2026-11-02T15:00:00Z', '2026-11-02T15:20:00Z', ${key}, ${bookedBy}, ${bookedBy ? null : 'u_otto'}, ${cancelledBy})`);

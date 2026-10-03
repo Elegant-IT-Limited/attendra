@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, type EventSink, localDateOf, zonedInstant } from '@attendra/core';
-import { appointmentFacts, type Database, type FrontDeskRepository, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
+import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
-  type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, RescheduleAppointment, Schedule,
+  type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, CancelledList, CancelledQuery, RescheduleAppointment, Schedule,
   ScheduleQuery, SlotList, SlotQuery,
 } from '../contracts';
 import { schemaOf } from '../http/openapi';
@@ -54,14 +54,30 @@ export class AppointmentsController {
 
   @Get()
   @Requires('schedule:read')
-  @ApiOperation({ summary: 'Appointments that start on the given clinic-time days, booked and cancelled. Audited as one view of the range.' })
+  @ApiOperation({ summary: 'Appointments that start on the given clinic-time days: booked, cancelled, or both. Audited as one view of the range.' })
   @ApiOkResponse({ schema: schemaOf(Schedule) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ScheduleQuery)) q: z.infer<typeof ScheduleQuery>, @CurrentStaff() staff: Staff): Promise<Schedule> {
     const clinic = await this.clinic(clinicId);
     const from = zonedInstant(q.from, '00:00', clinic.timezone);
     const to = zonedInstant(addDays(q.from, q.days), '00:00', clinic.timezone);
-    const rows = await this.schedule.range(clinicId, { from, to, providerId: q.providerId, label: `${q.from}+${q.days}` }, staff.userId);
+    const rows = await this.schedule.range(clinicId, { from, to, providerId: q.providerId, status: q.status, label: `${q.from}+${q.days}` }, staff.userId);
     return { from: q.from, days: q.days, appointments: rows.map(toAppointment) };
+  }
+
+  @Get('cancelled')
+  @Requires('schedule:read')
+  @ApiOperation({ summary: 'Cancelled visits as a history list: by visit day or by when they were cancelled, newest or oldest first, optionally by patient name. At most 200. Audited as one view.' })
+  @ApiOkResponse({ schema: schemaOf(CancelledList) })
+  async cancelled(@Param('clinicId') clinicId: string, @Query(new ZodPipe(CancelledQuery)) q: z.infer<typeof CancelledQuery>, @CurrentStaff() staff: Staff): Promise<CancelledList> {
+    if (q.to < q.from) throw this.invalid('to', 'the last day is before the first');
+    const clinic = await this.clinic(clinicId);
+    const words = q.q ? q.q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean) : [];
+    const { entries, truncated } = await this.schedule.cancelled(clinicId, {
+      from: zonedInstant(q.from, '00:00', clinic.timezone), to: zonedInstant(addDays(q.to, 1), '00:00', clinic.timezone),
+      providerId: q.providerId, sort: q.sort, order: q.order, label: `${q.from}..${q.to}`,
+      match: words.length ? (name) => { const [first = '', ...rest] = name.split(' '); return nameMatches(words, { firstName: first, lastName: rest.join(' ') }); } : undefined,
+    }, staff.userId);
+    return { appointments: entries.map((e) => ({ ...toAppointment(e), cancelledAt: e.cancelledAt.toISOString() })), truncated };
   }
 
   @Get('slots')

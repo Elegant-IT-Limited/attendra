@@ -35,14 +35,20 @@ export const DEMO_CLINIC = ClinicConfig.parse({
   languages: ['en', 'es'],
   primaryLanguage: 'en',
   providers: [
-    { id: 'prov_okafor', name: 'Dr. Nkem Okafor', visitTypeIds: ['vt_sick', 'vt_annual', 'vt_new'] },
-    { id: 'prov_lindqvist', name: 'Dr. Ann Lindqvist', visitTypeIds: ['vt_sick', 'vt_annual'],
+    { id: 'prov_okafor', name: 'Dr. Nkem Okafor', specialty: 'Family medicine', categories: ['Adults', 'Chronic conditions'],
+      visitTypeIds: ['vt_sick', 'vt_annual', 'vt_new'] },
+    { id: 'prov_lindqvist', name: 'Dr. Ann Lindqvist', specialty: 'Family medicine', categories: ["Women's health", 'Older adults'],
+      ages: { min: 18, max: null }, acceptingNewPatients: false, visitTypeIds: ['vt_sick', 'vt_annual'],
       hours: { '2': [{ open: '09:00', close: '15:00' }], '4': [{ open: '09:00', close: '15:00' }] } },
+    // added after the first eval scenarios: last in the list, so a tie for the same time still goes to the doctors above
+    { id: 'prov_raman', name: 'Dr. Priya Raman', specialty: 'Pediatrics', categories: ['Children', 'Newborns', 'Vaccinations'],
+      ages: { min: 0, max: 17 }, visitTypeIds: ['vt_sick', 'vt_annual', 'vt_new'],
+      hours: { '1': [{ open: '08:00', close: '12:00' }], '3': [{ open: '08:00', close: '12:00' }, { open: '13:00', close: '17:00' }], '5': [{ open: '08:00', close: '13:00' }] } },
   ],
   visitTypes: [
     { id: 'vt_sick', name: 'sick visit', names: { es: 'consulta por enfermedad' }, minutes: 20 },
-    { id: 'vt_annual', name: 'annual physical', names: { es: 'examen físico anual' }, minutes: 40 },
-    { id: 'vt_new', name: 'new patient visit', names: { es: 'primera consulta' }, minutes: 60 },
+    { id: 'vt_annual', name: 'annual physical', names: { es: 'examen físico anual' }, minutes: 40, audience: 'existing' },
+    { id: 'vt_new', name: 'new patient visit', names: { es: 'primera consulta' }, minutes: 60, audience: 'new' },
   ],
   routing: [
     { target: 'front_desk', uri: 'tel:+13035550101', when: 'open' },
@@ -72,7 +78,7 @@ export const CEDAR_PARK_CLINIC = ClinicConfig.parse({
   phoneNumbers: ['+17205550150'],
   hours: { '1': WEEKDAY, '2': WEEKDAY, '3': WEEKDAY, '4': WEEKDAY, '5': WEEKDAY },
   greeting: "Thanks for calling Cedar Park Clinic. I'm the clinic's AI assistant. How can I help you today?",
-  providers: [{ id: 'prov_osei', name: 'Dr. Ama Osei', visitTypeIds: ['vt_sick'] }],
+  providers: [{ id: 'prov_osei', name: 'Dr. Ama Osei', specialty: 'Family medicine', visitTypeIds: ['vt_sick'] }],
   visitTypes: [{ id: 'vt_sick', name: 'sick visit', minutes: 20 }],
   routing: [{ target: 'front_desk', uri: 'tel:+17205550151', when: 'open' }],
 });

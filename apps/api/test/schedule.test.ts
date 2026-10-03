@@ -176,6 +176,18 @@ describe('moving and cancelling', () => {
     expect((await api.request('POST', `${C}/${id}/reschedule`, { cookie: as.staff, body: { startsAt: at('2026-09-29', '16:00') } })).json()).toMatchObject({ reason: 'cancelled' });
   });
 
+  it('shows only what is booked, only what was cancelled, or both, and the cancelled ones as a history', async () => {
+    const day = async (status: string) => (await api.request('GET', `${C}?from=2026-09-29&days=1&status=${status}`, { cookie: as.staff })).json().appointments.map((a: { id: string; status: string }) => a.status);
+    expect(await day('cancelled')).toEqual(['cancelled']);
+    expect((await day('booked')).every((s: string) => s === 'booked')).toBe(true);
+    expect((await day('all')).length).toBe((await day('booked')).length + 1);
+    const history = (await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31`, { cookie: as.staff })).json();
+    expect(history.appointments).toEqual([expect.objectContaining({ id, status: 'cancelled', cancelReason: 'patient_asked', cancelledAt: expect.any(String) })]);
+    expect((await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31&q=nobody`, { cookie: as.staff })).json().appointments).toEqual([]);
+    expect((await api.request('GET', `${C}/cancelled?from=2026-10-31&to=2026-09-01`, { cookie: as.staff })).statusCode).toBe(422);
+    expect((await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31`, { cookie: as.viewer })).statusCode).toBe(403);
+  });
+
   it('validates the reason and the time', async () => {
     expect((await api.request('POST', `${C}/${booked}/cancel`, { cookie: as.staff, body: { reason: 'because I said so' } })).json().error).toBe('invalid_request');
     expect((await api.request('POST', `${C}/${booked}/reschedule`, { cookie: as.staff, body: {} })).json().error).toBe('invalid_request');

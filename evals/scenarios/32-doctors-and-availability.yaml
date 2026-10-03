@@ -1,0 +1,16 @@
+id: doctors-and-availability
+title: A caller hears the doctors, who sees children, and who is free Monday, without being asked who they are first
+caller_number: null
+turns:
+  - caller: Hi, which doctors do you have? Do you have a pediatrician?
+    reply: "We have Dr. Nkem Okafor and Dr. Ann Lindqvist in family medicine, and Dr. Priya Raman, our pediatrician, who sees children up to 17."
+    delegate:
+      - get_clinic_info: { question: which doctors do you have }
+  - caller: When is Dr. Raman free next week?
+    reply: "Dr. Raman can see a child for a sick visit {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_raman, from_date: "$next_week", part_of_day: any }
+expect:
+  outcome: info
+  verified: false
+  refusals: []

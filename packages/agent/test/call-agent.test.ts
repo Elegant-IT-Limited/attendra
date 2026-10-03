@@ -84,7 +84,7 @@ describe('booking over the phone', () => {
     ]);
     expect(out.errors).toEqual(['identity_required', 'identity_required']);
 
-    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } }]);
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962', phone: '303-555-0163' } }]);
     const invented = await c.delegate([{ tool: 'propose_booking', args: { slot_id: 'prov_okafor@2026-09-29T14:00:00.000Z', replaces_appointment_id: null } }]);
     expect(invented.errors).toEqual(['slot_not_offered']);
   });
@@ -96,11 +96,79 @@ describe('booking over the phone', () => {
     expect(tries.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified', 'too_many_attempts']);
   });
 
-  it('flags shared name and DOB for staff instead of picking one', async () => {
-    const c = await w.call();
+  it('tells apart two patients with the same name and DOB by the phone on their file, and never guesses without it', async () => {
+    const c = await w.call(null);
     const out = await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Sam Rivera', date_of_birth: 'July 15 1990' } }]);
+    expect(out.errors).toEqual(['phone_required']);
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Sam Rivera', date_of_birth: 'July 15 1990', phone: '(303) 555-0172' } }]);
+    expect(c.state.verifiedPatient?.id).toBe(w.patientIds.sam_b);
+  });
+
+  it('a parent books for each child on the family phone, and a doctor who does not see children is never offered', async () => {
+    const c = await w.call(); // from Maria's phone
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Lucas Delgado', date_of_birth: 'May 12 2019' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
+    ]);
+    expect(c.state.verifiedPatient?.id).toBe(w.patientIds.lucas);
+    expect([...c.state.offered.values()].every((s) => s.providerId !== 'prov_lindqvist')).toBe(true); // she sees adults only
+    const asked = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: 'prov_lindqvist', from_date: null, part_of_day: 'any' } }]);
+    expect(asked.errors).toEqual(['no_provider_for_patient']);
+    // the second child: verified on the same phone, and what was offered for Lucas is gone
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Sofia Delgado', date_of_birth: 'November 2 2023' } }]);
+    expect(c.state.verifiedPatient?.id).toBe(w.patientIds.sofia);
+    expect(c.state.offered.size).toBe(0);
+  });
+
+  it('adds a new patient after the check finds nobody, asks for a guardian for a child, and offers new-patient visits only', async () => {
+    const c = await w.call('+13035550199');
+    const missing = await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Ana Reyes', date_of_birth: 'June 1 2018' } }]);
+    expect(missing.errors).toEqual(['not_verified']);
+    const child = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018' } }]);
+    expect(child.errors).toEqual(['guardian_required']);
+    await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018', guardian_name: 'Luis Reyes' } }]);
+    expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
+    const annual = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: null, from_date: null, part_of_day: 'any' } }]);
+    expect(annual.errors).toEqual(['new_patient_visit_type']);
+    await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_new', provider_id: null, from_date: null, part_of_day: 'any' } }]);
+    // a six-year-old new patient: only doctors who see children and take new patients
+    expect(c.state.offered.size).toBeGreaterThan(0);
+    expect([...c.state.offered.values()].every((s) => ['prov_okafor', 'prov_raman'].includes(s.providerId))).toBe(true);
+    // the front desk is asked to check the new record
+    const [review] = await w.t.db.execute(sql`select type, status from tasks where call_id = ${c.callId}`).then((r) => r.rows);
+    expect(review).toEqual({ type: 'review', status: 'open' });
+  });
+
+  it('anyone may hear the doctors and their open times without being verified', async () => {
+    const c = await w.call(null);
+    const out = await c.delegate([
+      { tool: 'get_clinic_info', args: { question: 'which doctors do you have' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: 'prov_raman', from_date: null, part_of_day: 'any' } },
+    ]);
+    expect(out.errors).toEqual([null, null]);
     expect(c.state.verifiedPatient).toBeNull();
-    expect(out.errors).toEqual(['needs_staff']);
+    expect(c.state.offered.size).toBeGreaterThan(0);
+  });
+
+  it('describes each doctor to the planner: specialty, what they see people for, ages, hours, new patients', async () => {
+    const c = await w.call(null);
+    const results: ToolResult[] = [];
+    await c.delegate([{ tool: 'get_clinic_info', args: { question: 'do you have a pediatrician' } }], {
+      plan: async (_input, execute) => { results.push(await execute('get_clinic_info', { question: 'do you have a pediatrician' })); return { say: null }; },
+    });
+    const providers = results[0]!.data.providers as { name: string; specialty: string; sees: string; categories: string[]; accepting_new_patients: boolean; hours: string }[];
+    expect(providers.find((p) => p.name === 'Dr. Priya Raman')).toMatchObject({ specialty: 'Pediatrics', sees: 'ages 0 to 17', categories: ['Children', 'Newborns', 'Vaccinations'], accepting_new_patients: true });
+    expect(providers.find((p) => p.name === 'Dr. Ann Lindqvist')).toMatchObject({ sees: 'ages 18 and over', accepting_new_patients: false, hours: 'Tue 09:00-15:00; Thu 09:00-15:00' });
+  });
+
+  it('knows a doctor added in the dashboard from the next request on a call already under way', async () => {
+    const added = { ...DEMO_CLINIC, providers: [...DEMO_CLINIC.providers, { ...DEMO_CLINIC.providers[0]!, id: 'prov_new', name: 'Dr. Mid Call' }] };
+    let current = DEMO_CLINIC;
+    const c = await w.call(null, { reload: async () => current });
+    current = added;
+    const results: ToolResult[] = [];
+    await c.delegate([], { plan: async (_i, execute) => { results.push(await execute('get_clinic_info', { question: 'doctors' })); return { say: null }; } });
+    expect((results[0]!.data.providers as { name: string }[]).map((p) => p.name)).toContain('Dr. Mid Call');
   });
 });
 
@@ -109,7 +177,7 @@ describe('safety', () => {
     const c = await w.call();
     c.caller('James Whitaker, September 9 1962, I want to book');
     await c.delegate([
-      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } },
+      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962', phone: '303-555-0163' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
@@ -133,7 +201,7 @@ describe('safety', () => {
 
   it('turns a refill into a staff task and never approves it', async () => {
     const c = await w.call();
-    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962' } }]);
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: '303-555-0163' } }]);
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
     expect(spoken(out)).toContain('Do not promise approval');
     expect(c.state.outcome).toBe('task_created');
@@ -152,7 +220,7 @@ describe('call control', () => {
     const c = await w.call('+13035550163', { actions: { record: async () => { throw new Error('audit write failed'); } } });
     c.caller('Hi, this is James Whitaker, born September 9 1962. I need a sick visit in the afternoon.');
     await c.delegate([
-      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } },
+      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962', phone: '303-555-0163' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
@@ -212,16 +280,16 @@ describe('review fixes', () => {
 
   it('counts a read-back spoken in the same breath as "let me book that", as on the first live test call', async () => {
     const c = await w.call();
-    c.caller('Maria Delgado, March 4 1985, new patient visit, afternoon');
+    c.caller('Maria Delgado, March 4 1985, sick visit, afternoon');
     await c.delegate([
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
-      { tool: 'find_slots', args: { visit_type_id: 'vt_new', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
     ]);
     c.assistant('I have 1, 2 or 3 PM. Which time would you like?');
     c.caller('3');
     c.assistant('Sure, I will go ahead and book that.'); // already speaking while the proposal runs
     await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) }]);
-    c.assistant('Tuesday at 3 PM with Dr. Okafor for a new patient visit. Would you like me to book it?'); // same turn
+    c.assistant('Tuesday at 3 PM with Dr. Okafor for a sick visit. Would you like me to book it?'); // same turn
     c.caller('Yeah');
     c.assistant('Alright, booking that now.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
@@ -245,7 +313,7 @@ describe('review fixes', () => {
   it('refuses to move an appointment the caller does not have', async () => {
     const c = await w.call();
     await c.delegate([
-      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } },
+      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962', phone: '303-555-0163' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     const out = await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: '00000000-0000-4000-8000-000000000000' }) }]);
@@ -255,7 +323,7 @@ describe('review fixes', () => {
 
   it('keeps listening after an emergency: a new kind gets its own instruction, and the task stays stopped', async () => {
     const c = await w.call('+13035550163');
-    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } }]);
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962', phone: '303-555-0163' } }]);
     expect(c.caller('I have chest pain')).toHaveLength(2); // instruction + delayed transfer
     expect(c.caller('and now I think I passed out for a second')).toEqual([expect.objectContaining({ type: 'instructions' })]); // new kind, no second transfer
     expect(c.caller('chest pain still')).toEqual([]); // same kind, not repeated
@@ -301,7 +369,7 @@ describe('review fixes', () => {
     try {
       c.caller('James Whitaker, 9/9/1962, annual physical');
       await c.delegate([
-        { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '9/9/1962' } },
+        { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '9/9/1962', phone: '303-555-0163' } },
         { tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: null, from_date: '2026-10-05', part_of_day: 'any' } },
         { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
       ]);

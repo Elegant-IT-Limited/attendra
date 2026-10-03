@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, type ClinicConfig, DEMO_CLINIC, fromMinutes, localDateOf, toMinutes, weekdayOf, windowsOn, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, type ClinicConfig, DEMO_CLINIC, fromMinutes, localDateOf, type Provider, seesAge, toMinutes, weekdayOf, windowsOn, zonedInstant } from '@attendra/core';
 import { and, eq, like } from 'drizzle-orm';
 import { type Database, withClinic } from './client';
 import { type PhiCipher, phiContext } from './crypto';
-import { phoneKey, PostgresPatientDirectory } from './repositories/patients';
+import { identityKey, PostgresPatientDirectory } from './repositories/patients';
 import { appointments, patients } from './schema';
 
 /**
@@ -27,6 +27,13 @@ const MAPLE_MORE = crossed(
   (i) => `+1${i < 100 ? '719' : '970'}555${String(100 + (i % 100)).padStart(4, '0')}`, 7,
 );
 
+// Children for the pediatrician, each on a parent's number and with the parent named, as a family registers them
+const MAPLE_KIDS = [
+  ['Ivy', 'Brennan', '2015-04-09'], ['Kai', 'Castillo', '2018-09-23'], ['Luna', 'Duarte', '2021-01-30'], ['Milo', 'Ellison', '2012-06-14'],
+  ['Nina', 'Kowalski', '2019-11-05'], ['Otis', 'Brennan', '2023-03-17'], ['Pia', 'Castillo', '2016-12-01'], ['Rafi', 'Duarte', '2014-08-27'],
+  ['Sana', 'Ellison', '2020-05-19'], ['Tobi', 'Kowalski', '2011-10-08'], ['Uma', 'Brennan', '2024-07-02'], ['Vic', 'Castillo', '2013-02-25'],
+].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+1970555${String(150 + i).padStart(4, '0')}`, guardianName: `Alex ${lastName}` }));
+
 /**
  * More synthetic patients, so the demo schedule reads like a practice rather than
  * four people seen forty times. Invented names; every number is in the 555-01xx
@@ -40,7 +47,8 @@ export const DEMO_SCHEDULE_PATIENTS = [
   ['Sofia', 'Lombardi', '1986-06-13'], ['Theo', 'Nakamura', '2004-08-08'], ['Imani', 'Carter', '1990-04-01'], ['Victor', 'Salazar', '1959-01-22'],
   ['Clara', 'Jensen', '1968-10-30'], ['Bilal', 'Qureshi', '1981-03-16'], ['June', 'Park', '1996-09-04'], ['Frank', 'Delaney', '1949-12-12'],
   ['Maya', 'Singh', '1987-07-29'], ['Isaac', 'Feldman', '1977-02-08'], ['Rosa', 'Ibáñez', '1963-05-18'], ['Leo', 'Marchetti', '2008-11-26'],
-].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+1720555${String(110 + i).padStart(4, '0')}` })).concat(MAPLE_MORE);
+].map(([firstName, lastName, dob], i) => ({ firstName: firstName!, lastName: lastName!, dob: dob!, phone: `+1720555${String(110 + i).padStart(4, '0')}` }) as { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string })
+  .concat(MAPLE_MORE, MAPLE_KIDS);
 
 /** A small, seeded generator: the same demo every time it starts, so screenshots and specs are stable. */
 function random(seed: number) {
@@ -82,7 +90,7 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
   const pool = Object.values(opts.patientIds);
   for (const p of opts.extraPatients ?? DEMO_SCHEDULE_PATIENTS) {
     const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: patients.id }).from(patients)
-      .where(and(eq(patients.clinicId, clinic.id), eq(patients.phoneHash, cipher.hash(phoneKey(clinic.id, p.phone))))));
+      .where(and(eq(patients.clinicId, clinic.id), eq(patients.identityHash, cipher.hash(identityKey(clinic.id, p.firstName, p.lastName, p.dob, p.phone))))));
     pool.push(existing?.id ?? await directory.create(clinic.id, p));
   }
 
@@ -98,12 +106,17 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
     .from(appointments).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.status, 'booked'))))) {
     if (b.start > now) upcoming.set(b.patientId, (upcoming.get(b.patientId) ?? 0) + 1);
   }
-  /** Anyone for a past visit; for an upcoming one, someone with fewer than two already, or nobody. */
-  const patientFor = (start: Date): string | null => {
-    if (start <= now) return pick(pool);
-    const offset = Math.floor(rand() * pool.length);
-    for (let i = 0; i < pool.length; i++) {
-      const id = pool[(offset + i) % pool.length]!;
+  // each patient's date of birth, so a pediatrician sees children and a doctor for adults sees adults
+  const dobs = new Map((await withClinic(db, clinic.id, (tx) => tx.select({ id: patients.id, dob: patients.dobEnc }).from(patients).where(eq(patients.clinicId, clinic.id))))
+    .map((r) => [r.id, cipher.decrypt(r.dob, phiContext(clinic.id, 'patients.dob'))]));
+  /** Anyone the provider sees for a past visit; for an upcoming one, someone with fewer than two already, or nobody. */
+  const patientFor = (start: Date, provider: Provider, date: string): string | null => {
+    const seen = pool.filter((id) => seesAge(provider, ageOn(dobs.get(id) ?? '1980-01-01', date)));
+    if (!seen.length) return null;
+    if (start <= now) return pick(seen);
+    const offset = Math.floor(rand() * seen.length);
+    for (let i = 0; i < seen.length; i++) {
+      const id = seen[(offset + i) % seen.length]!;
       if ((upcoming.get(id) ?? 0) < MAX_UPCOMING) return id;
     }
     return null;
@@ -123,7 +136,7 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
           if (m + visit.minutes > toMinutes(w.close)) break;
           const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
           const end = new Date(start.getTime() + visit.minutes * 60_000);
-          const patientId = rand() < 0.6 && !clashes(provider.id, start, end) ? patientFor(start) : null;
+          const patientId = rand() < 0.6 && !clashes(provider.id, start, end) ? patientFor(start, provider, date) : null;
           if (patientId) {
             const cancelled = rand() < 0.06;
             const bookedBy = pick(opts.staffUserIds);

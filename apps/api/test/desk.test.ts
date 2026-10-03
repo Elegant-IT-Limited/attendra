@@ -40,8 +40,20 @@ describe('requests', () => {
     expect((await audit('task.viewed')).length).toBe(before);
     expect((await list('?assignee=me')).map((t) => t.id)).toEqual([]);
     expect((await list('?assignee=unassigned')).map((t) => t.id).sort()).toEqual([api.taskId, callback].sort());
-    expect((await list())[0]!.patientId).toBe(api.patientIds.maria);
+    expect((await list()).find((t) => t.id === api.taskId)!.patientId).toBe(api.patientIds.maria);
+    // the newest first: the callback came in after the refill
+    expect((await list()).map((t) => t.id)).toEqual([callback, api.taskId]);
     expect((await api.request('GET', `${C}/tasks?assignee=bob`, { cookie: as.staff })).json().error).toBe('invalid_request');
+  });
+
+  it('finds requests by words or digits in them, and by the day they came in', async () => {
+    expect((await list('?q=lisin')).map((t) => t.id)).toEqual([api.taskId]); // the medication
+    expect((await list('?q=maria')).map((t) => t.id)).toEqual([api.taskId]); // the patient
+    expect((await list('?q=refill')).map((t) => t.id)).toEqual([api.taskId]); // the kind of request
+    expect((await list('?q=zzz')).map((t) => t.id)).toEqual([]);
+    expect((await list('?from=2000-01-01&to=2000-01-31')).map((t) => t.id)).toEqual([]);
+    expect((await list('?from=2000-01-01')).map((t) => t.id).sort()).toEqual([api.taskId, callback].sort());
+    expect((await api.request('GET', `${C}/tasks?from=yesterday`, { cookie: as.staff })).json().error).toBe('invalid_request');
   });
 
   it('adds an encrypted internal note under the author\'s name, audited', async () => {
