@@ -225,12 +225,15 @@ export const TaskQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),
   type: z.enum(['callback', 'refill', 'voicemail', 'review']).optional(),
   assignee: z.enum(['me', 'unassigned']).optional(),
-  /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
-  q: z.string().trim().max(100).optional(),
   /** Came in on or after this clinic-local day. */
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   /** Came in on or before this clinic-local day. */
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+/** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
+export const TaskSearch = TaskQuery.extend({
+  /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
+  q: z.string().trim().max(100).default(''),
 });
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
@@ -278,7 +281,7 @@ export const ScheduleQuery = z.object({
   /** booked: what is on the calendar; cancelled: only what was cancelled; all: both. */
   status: z.enum(['booked', 'cancelled', 'all']).default('all'),
 });
-/** Cancelled visits as a history list: a window of visit days, newest first by default. */
+/** Cancelled visits as a history list: a window of visit days, newest first by default. A POST body, since `q` is a patient's name. */
 export const CancelledQuery = z.object({
   from: isoDate,
   to: isoDate,
@@ -397,7 +400,10 @@ export const PatientProfile = PatientCard.extend({
 });
 
 /** A doctor (or a room) as the Doctors page edits them. The id is made from the name when a new one has none. */
-export const DoctorInput = Provider.omit({ id: true }).extend({ id: Provider.shape.id.optional() });
+export const DoctorInput = Provider.omit({ id: true }).extend({
+  id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
+  name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
+});
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
 export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });

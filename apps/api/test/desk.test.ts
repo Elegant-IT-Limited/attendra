@@ -47,10 +47,14 @@ describe('requests', () => {
   });
 
   it('finds requests by words or digits in them, and by the day they came in', async () => {
-    expect((await list('?q=lisin')).map((t) => t.id)).toEqual([api.taskId]); // the medication
-    expect((await list('?q=maria')).map((t) => t.id)).toEqual([api.taskId]); // the patient
-    expect((await list('?q=refill')).map((t) => t.id)).toEqual([api.taskId]); // the kind of request
-    expect((await list('?q=zzz')).map((t) => t.id)).toEqual([]);
+    const find = async (q: string) => (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q } })).json().tasks.map((t: { id: string }) => t.id);
+    expect(await find('lisin')).toEqual([api.taskId]); // the medication
+    expect(await find('maria')).toEqual([api.taskId]); // the patient
+    expect(await find('refill')).toEqual([api.taskId]); // the kind of request
+    expect(await find('0199')).toEqual([callback]); // digits of the callback number
+    expect(await find('zzz')).toEqual([]);
+    // never in a URL: the GET route takes no words
+    expect((await list('?q=maria')).map((t) => t.id).sort()).toEqual([api.taskId, callback].sort());
     expect((await list('?from=2000-01-01&to=2000-01-31')).map((t) => t.id)).toEqual([]);
     expect((await list('?from=2000-01-01')).map((t) => t.id).sort()).toEqual([api.taskId, callback].sort());
     expect((await api.request('GET', `${C}/tasks?from=yesterday`, { cookie: as.staff })).json().error).toBe('invalid_request');

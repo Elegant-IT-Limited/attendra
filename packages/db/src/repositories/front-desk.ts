@@ -43,6 +43,9 @@ export async function orgOfClinic(db: Database, clinicId: string): Promise<strin
 
 const actorOf = (userId: string) => `user:${userId}`;
 
+/** What a settings change hands back: the config to save with a result, or a result alone. */
+export type SettingsChange<T> = { save: { name: string; timezone: string }; result: T } | { result: T };
+
 /** The most requests one search of the queue reads before it filters. */
 export const TASK_SEARCH_SCAN = 2000;
 const TASK_LABELS: Record<string, string> = { refill: 'refill prescription', callback: 'callback call back', voicemail: 'voicemail message', review: 'review new patient check' };
@@ -443,11 +446,12 @@ export class FrontDeskRepository {
    * two people editing doctors at once cannot undo each other. `change` returns the
    * validated config to save, or a value to hand back without saving.
    */
-  async updateSettings<T>(clinicId: string, userId: string, action: string, entityId: string, change: (current: unknown) => { save: { name: string; timezone: string }; result: T } | { result: T }): Promise<T | null> {
+  async updateSettings<T>(clinicId: string, userId: string, action: string, entityId: string,
+    change: (current: unknown, tx: Tx) => SettingsChange<T> | Promise<SettingsChange<T>>): Promise<T | null> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
       if (!row) return null;
-      const out = change(row.config);
+      const out = await change(row.config, tx);
       if ('save' in out) {
         await tx.update(clinics).set({ name: out.save.name, timezone: out.save.timezone, config: out.save }).where(eq(clinics.id, clinicId));
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId });
@@ -456,13 +460,14 @@ export class FrontDeskRepository {
     });
   }
 
-  /** Booked visits still to come with a provider: a provider with any cannot be removed. */
-  async upcomingForProvider(clinicId: string, providerId: string, now: Date): Promise<number> {
-    return withClinic(this.db, clinicId, async (tx) => {
+  /** Booked visits still to come with a provider: a provider with any cannot be removed. Inside `updateSettings`, pass its transaction. */
+  async upcomingForProvider(clinicId: string, providerId: string, now: Date, within?: Tx): Promise<number> {
+    const count = async (tx: Tx) => {
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(appointments)
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${now}`)) as [{ n: number }];
       return n;
-    });
+    };
+    return within ? count(within) : withClinic(this.db, clinicId, count);
   }
 
   /** Saves a validated ClinicConfig. The caller checks that the id and phone numbers are unchanged. */

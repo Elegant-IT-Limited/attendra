@@ -1,5 +1,5 @@
 id: new-patient-books
-title: Someone new to the clinic is found nowhere, is added, and books a new patient visit on a clear yes
+title: Someone new to the clinic is found nowhere, is added, and books a new patient visit on a clear yes; no text goes to a number they are not calling from
 caller_number: null
 turns:
   - caller: Hi, I'd like an appointment. I'm Ana Reyes, born June 1 1990, my number is 303 555 0193.
@@ -24,4 +24,5 @@ expect:
   verified: true
   refusals: [not_verified]
   bookings_created: 1
-  sms_sent: 1
+  # a browser call has no calling number to match the phone given, so no text until the front desk checks the new patient
+  sms_sent: 0

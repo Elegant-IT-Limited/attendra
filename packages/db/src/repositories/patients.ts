@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, type Registration } from '@attendra/core';
-import { and, eq, sql } from 'drizzle-orm';
+import { type CallPatient, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, patients } from '../schema';
 
 const lastName = (full: string) => normalizeName(full).split(' ').at(-1) ?? '';
 const firstName = (full: string) => normalizeName(full).split(' ')[0] ?? '';
-/** The digits a phone number is compared on: the last 10, so +1 (303) 555-0100 equals 3035550100. */
-export const phoneDigits = (phone: string) => phone.replace(/\D/g, '').slice(-10);
 // keyed per clinic, so the same person at two clinics does not share a lookup value
 export const patientLookupKey = (clinicId: string, full: string, dob: string) => `${clinicId}|${lastName(full)}|${dob}`;
 export const phoneKey = (clinicId: string, phone: string) => `${clinicId}|${phoneDigits(phone)}`;
@@ -20,8 +18,27 @@ export const phoneKey = (clinicId: string, phone: string) => `${clinicId}|${phon
 export const identityKey = (clinicId: string, first: string, last: string, dob: string, phone: string) =>
   `${clinicId}|${firstName(first)}|${lastName(last)}|${dob}|${phoneDigits(phone)}`;
 
-/** A phone number the identity check can use: at least 10 digits, or 7 outside North America. */
-export const usablePhone = (phone: string | null | undefined, northAmerica = true) => !!phone && phone.replace(/\D/g, '').length >= (northAmerica ? 10 : 7);
+/** Whether an insert failed only because the same person is already stored: another request added them a moment ago. */
+export const isSameIdentity = (err: unknown) => {
+  const e = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+  const c = e.cause ?? e;
+  return c.code === '23505' && (c.constraint === 'patients_identity' || !c.constraint);
+};
+
+/**
+ * The same person already on file: by identity hash, or, for a row written before
+ * v0.5 that has none yet, by last name and date of birth, phone and first name.
+ */
+export async function findSameIdentity(tx: Tx, cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string }, except?: string): Promise<string | null> {
+  const [hit] = (await tx.select({ id: patients.id }).from(patients)
+    .where(and(eq(patients.clinicId, clinicId), eq(patients.identityHash, cipher.hash(identityKey(clinicId, p.firstName, p.lastName, p.dob, p.phone))))))
+    .filter((r) => r.id !== except);
+  if (hit) return hit.id;
+  const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+  const older = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.identityHash),
+    eq(patients.lookupHash, cipher.hash(patientLookupKey(clinicId, `${p.firstName} ${p.lastName}`, p.dob))), eq(patients.phoneHash, cipher.hash(phoneKey(clinicId, p.phone)))));
+  return older.find((r) => r.id !== except && namesMatch(`${p.firstName} ${p.lastName}`, `${cipher.decrypt(r.firstNameEnc, ctx('first_name'))} ${cipher.decrypt(r.lastNameEnc, ctx('last_name'))}`))?.id ?? null;
+}
 
 type Row = typeof patients.$inferSelect;
 
@@ -53,12 +70,12 @@ export class PostgresPatientDirectory implements PatientDirectory {
    * desk to look, without the caller ever hearing about the other record.
    */
   async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName: string | null; callId: string }): Promise<Registration> {
-    return withClinic(this.db, clinicId, async (tx) => {
-      const identity = this.cipher.hash(identityKey(clinicId, p.firstName, p.lastName, p.dob, p.phone));
-      const [same] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.identityHash, identity)));
-      if (same) {
-        await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified', entity: 'patient', entityId: same.id, callId: p.callId });
-        return { status: 'exists', patient: this.callPatient(clinicId, same) } as const;
+    const attempt = () => withClinic(this.db, clinicId, async (tx) => {
+      const sameId = await findSameIdentity(tx, this.cipher, clinicId, p);
+      if (sameId) {
+        const [same] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, sameId)));
+        await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified', entity: 'patient', entityId: same!.id, callId: p.callId });
+        return { status: 'exists', patient: this.callPatient(clinicId, same!) } as const;
       }
       const full = `${p.firstName} ${p.lastName}`;
       const similar = (await this.candidates(tx, clinicId, full, p.dob)).some((r) => namesMatch(full, this.fullName(clinicId, r)));
@@ -68,6 +85,8 @@ export class PostgresPatientDirectory implements PatientDirectory {
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id, callId: p.callId });
       return { status: 'created', patient: this.callPatient(clinicId, row!), similar } as const;
     });
+    // two requests adding the same person at once: the second finds the first
+    return attempt().catch((err: unknown) => { if (isSameIdentity(err)) return attempt(); throw err; });
   }
 
   /** For seeds, imports and tests. Stores only ciphertext and keyed hashes. */
@@ -136,9 +155,10 @@ export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Pro
     await withClinic(db, clinicId, async (tx) => {
       const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
       let n = 0;
-      const seen = new Set<string>();
-      const rows = await tx.select({ id: patients.id, lookupHash: patients.lookupHash, identityHash: patients.identityHash, first: patients.firstNameEnc, last: patients.lastNameEnc, dob: patients.dobEnc, phone: patients.phoneEnc })
+      const rows = await tx.select({ id: patients.id, lookupHash: patients.lookupHash, identityHash: patients.identityHash, phoneHash: patients.phoneHash, first: patients.firstNameEnc, last: patients.lastNameEnc, dob: patients.dobEnc, phone: patients.phoneEnc })
         .from(patients).where(eq(patients.clinicId, clinicId)).orderBy(patients.createdAt, patients.id);
+      // identities already stored, by whom: a patient added since the upgrade may already hold the one an older row would get
+      const holder = new Map(rows.filter((r) => r.identityHash).map((r) => [r.identityHash!, r.id]));
       for (const r of rows) {
         checked++;
         // without a phone a patient cannot be verified, and migration 0020 lets no such row change until one is added
@@ -146,12 +166,16 @@ export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Pro
         const first = cipher.decrypt(r.first, ctx('first_name'));
         const last = cipher.decrypt(r.last, ctx('last_name'));
         const dob = cipher.decrypt(r.dob, ctx('dob'));
+        const phone = cipher.decrypt(r.phone, ctx('phone'));
         const lookupHash = cipher.hash(patientLookupKey(clinicId, `${first} ${last}`, dob));
-        let identityHash: string | null = cipher.hash(identityKey(clinicId, first, last, dob, cipher.decrypt(r.phone, ctx('phone'))));
+        const phoneHash = cipher.hash(phoneKey(clinicId, phone));
+        let identityHash: string | null = cipher.hash(identityKey(clinicId, first, last, dob, phone));
         // the same person twice, from before identities were unique: the later row keeps no identity until staff merge them
-        if (seen.has(identityHash)) { duplicates++; identityHash = null; } else seen.add(identityHash);
-        if (lookupHash === r.lookupHash && identityHash === r.identityHash) continue;
-        await tx.update(patients).set({ lookupHash, identityHash }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
+        const owner = holder.get(identityHash);
+        if (owner && owner !== r.id) { duplicates++; identityHash = null; } else holder.set(identityHash, r.id);
+        if (lookupHash === r.lookupHash && phoneHash === r.phoneHash && identityHash === r.identityHash) continue;
+        if (r.identityHash && r.identityHash !== identityHash && holder.get(r.identityHash) === r.id) holder.delete(r.identityHash);
+        await tx.update(patients).set({ lookupHash, phoneHash, identityHash }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
         n++;
       }
       changed += n;

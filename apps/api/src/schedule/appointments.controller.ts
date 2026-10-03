@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, type EventSink, localDateOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, type EventSink, localDateOf, normalizeName, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -64,14 +64,17 @@ export class AppointmentsController {
     return { from: q.from, days: q.days, appointments: rows.map(toAppointment) };
   }
 
-  @Get('cancelled')
+  /** A POST, not a GET: the name typed to narrow it is a patient's, and URLs end up in logs. */
+  @Post('cancelled')
+  @HttpCode(200)
   @Requires('schedule:read')
   @ApiOperation({ summary: 'Cancelled visits as a history list: by visit day or by when they were cancelled, newest or oldest first, optionally by patient name. At most 200. Audited as one view.' })
+  @ApiBody({ schema: schemaOf(CancelledQuery) })
   @ApiOkResponse({ schema: schemaOf(CancelledList) })
-  async cancelled(@Param('clinicId') clinicId: string, @Query(new ZodPipe(CancelledQuery)) q: z.infer<typeof CancelledQuery>, @CurrentStaff() staff: Staff): Promise<CancelledList> {
+  async cancelled(@Param('clinicId') clinicId: string, @Body(new ZodPipe(CancelledQuery)) q: z.infer<typeof CancelledQuery>, @CurrentStaff() staff: Staff): Promise<CancelledList> {
     if (q.to < q.from) throw this.invalid('to', 'the last day is before the first');
     const clinic = await this.clinic(clinicId);
-    const words = q.q ? q.q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean) : [];
+    const words = q.q ? normalizeName(q.q).split(' ').filter(Boolean) : [];
     const { entries, truncated } = await this.schedule.cancelled(clinicId, {
       from: zonedInstant(q.from, '00:00', clinic.timezone), to: zonedInstant(addDays(q.to, 1), '00:00', clinic.timezone),
       providerId: q.providerId, sort: q.sort, order: q.order, label: `${q.from}..${q.to}`,

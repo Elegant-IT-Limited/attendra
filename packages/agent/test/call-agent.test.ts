@@ -139,6 +139,38 @@ describe('booking over the phone', () => {
     expect(review).toEqual({ type: 'review', status: 'open' });
   });
 
+  it('adds nobody before the check has found nobody, and is no way round its limit', async () => {
+    const c = await w.call('+13035550198');
+    const early = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Eve', last_name: 'Early', date_of_birth: 'May 5 1990' } }]);
+    expect(early.errors).toEqual(['verify_first']);
+    for (let i = 0; i < 3; i++) await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: `January ${i + 1} 1990` } }]);
+    // three wrong guesses used up: registering the real details now would be a fourth guess
+    const late = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Maria', last_name: 'Delgado', date_of_birth: 'March 4 1985', phone: '303-555-0147' } }]);
+    expect(late.errors).toEqual(['too_many_attempts']);
+    expect(c.state.verifiedPatient).toBeNull();
+  });
+
+  it('texts a booking for a patient it just added only to the number they are calling from', async () => {
+    const book = async (caller: string | null, phone: string) => {
+      const c = await w.call(caller);
+      c.caller('I am new, Zoe Quill, March 3 1991, sick visit');
+      await c.delegate([
+        { tool: 'verify_caller', args: { full_name: 'Zoe Quill', date_of_birth: 'March 3 1991', phone } },
+        { tool: 'register_patient', args: { first_name: 'Zoe', last_name: 'Quill', date_of_birth: 'March 3 1991', phone } },
+        { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
+        { tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) },
+      ]);
+      c.assistant('Just to confirm, the first time. Is that right?');
+      c.caller('Yes');
+      return c.delegate([{ tool: 'commit_pending', args: {} }]);
+    };
+    const before = w.sms.length;
+    await book(null, '303-555-0196'); // a browser call: nothing to match the number against
+    expect(w.sms.length).toBe(before);
+    await book('+13035550197', '303-555-0197'); // the number they are calling from
+    expect(w.sms.length).toBe(before + 1);
+  });
+
   it('anyone may hear the doctors and their open times without being verified', async () => {
     const c = await w.call(null);
     const out = await c.delegate([

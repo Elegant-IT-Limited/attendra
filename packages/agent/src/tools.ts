@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   addDays, ageOn, type AuditLog, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, type Messenger, NO_INFORMATION, PACKS, parseDob,
+  fold, type Messenger, NO_INFORMATION, PACKS, parseDob, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, visitTypeFacts, weekHours, zonedInstant,
 } from '@attendra/core';
@@ -94,7 +94,7 @@ export async function runTool(
     case 'verify_caller': {
       // the number on their file, as they said it, or else the number they are calling from
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
-      if (!phone || phone.replace(/\D/g, '').length < 7) return refuse('phone_required', 'Ask for the phone number on their file.');
+      if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
       // numeric dates are month first only in North America
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', 'Ask for the date of birth again, month, day and year.');
@@ -112,11 +112,15 @@ export async function runTool(
       }
       state.verifyAttempts++;
       if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm their record, and offer a callback.');
+      state.notFound = true;
       // same answer for "no such patient", "wrong DOB" and "wrong phone": never confirm a record exists
       return refuse('not_verified', 'Say you could not find a match. Ask them to spell their last name and repeat their date of birth and the phone number on their file. If they say they are new to the clinic, add them with register_patient.');
     }
 
     case 'register_patient': {
+      // a new patient is added only after the check found nobody, and never as a way round its limit
+      if (!state.notFound) return refuse('verify_first', 'First look them up with verify_caller: name, date of birth and the phone on file.');
+      if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
       if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach them, with the area code.');
@@ -131,7 +135,8 @@ export async function runTool(
       const result = await backend.patients.register(clinic.id, { firstName: first, lastName: last, dob, phone, guardianName: guardian, callId: ctx.callId });
       if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
       state.verifiedPatient = result.patient;
-      if (result.status === 'exists') return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: 'They are already a patient here: carry on as for any patient.' } };
+      // the same details as someone on file: as good as a verification, and counted like one, so it is no way round the limit
+      if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: 'They are already a patient here: carry on as for any patient.' } }; }
       state.registrations++;
       // the front desk checks every patient the assistant adds
       const task = await backend.tasks.create(clinic.id, {
@@ -305,7 +310,10 @@ export async function runTool(
       }
       // the booking stands whatever happens to the text message; never report it as failed
       let smsSent = false;
-      if (patient.phone) {
+      // a patient the assistant just added gets texts only at the number they are calling from, until the front desk checks them:
+      // nobody can have bookings texted to someone else's phone by making up a patient
+      const textable = !!patient.phone && (!patient.isNew || (!!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone)));
+      if (textable && patient.phone) {
         try {
           await backend.messenger.sendTemplate(clinic.id, {
             to: patient.phone, template: 'booking_confirmed', idempotencyKey: key(ctx.callId, 'sms', result.appointment.id), language: lang,

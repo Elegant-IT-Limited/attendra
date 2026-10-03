@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, newProviderId, type Provider, readDoctors } from '@attendra/core';
-import type { FrontDeskRepository } from '@attendra/db';
+import { ClinicConfig, configProblems, newProviderId, type Provider, readDoctors } from '@attendra/core';
+import type { FrontDeskRepository, Tx } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { z } from 'zod';
@@ -69,12 +69,11 @@ export class DoctorsController {
   @ApiOkResponse({ schema: schemaOf(DoctorList) })
   @ApiConflictResponse({ description: 'They still have booked visits to come, or they are the last doctor' })
   async remove(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @CurrentStaff() staff: Staff): Promise<DoctorList> {
-    const upcoming = await this.desk.upcomingForProvider(clinicId, providerId, this.now());
-    if (upcoming) {
-      throw new ConflictException({ error: 'has_upcoming_visits', message: `They have ${upcoming} booked ${upcoming === 1 ? 'visit' : 'visits'} still to come. Move or cancel ${upcoming === 1 ? 'it' : 'them'} on the Schedule first.` });
-    }
-    return this.change(clinicId, staff, 'clinic.doctor.removed', providerId, (c) => {
+    // counted with the settings row locked, so a booking made a moment before is seen
+    return this.change(clinicId, staff, 'clinic.doctor.removed', providerId, async (c, tx) => {
       if (!c.providers.some((p) => p.id === providerId)) return { error: 'not_found', status: 404 };
+      const upcoming = await this.desk.upcomingForProvider(clinicId, providerId, this.now(), tx);
+      if (upcoming) return { error: `They have ${upcoming} booked ${upcoming === 1 ? 'visit' : 'visits'} still to come. Move or cancel ${upcoming === 1 ? 'it' : 'them'} on the Schedule first.`, status: 409 };
       if (c.providers.length === 1) return { error: 'A clinic needs at least one doctor for the assistant to book with.', status: 409 };
       return { config: { ...c, providers: c.providers.filter((p) => p.id !== providerId) } };
     });
@@ -107,6 +106,7 @@ export class DoctorsController {
       const providers = c.providers.map((p) => good.find((r) => r.existingId === p.id)?.value ?? p).concat(good.filter((r) => !r.existingId).map((r) => r.value));
       const parsed = ClinicConfig.safeParse({ ...c, providers });
       if (!parsed.success) return { result: { issues: issuesOf(parsed.error) } };
+      if (configProblems(parsed.data).length) return { result: { issues: configProblems(parsed.data) } };
       return { save: parsed.data, result: { report } };
     });
     if (!out) throw new NotFoundException({ error: 'not_found' });
@@ -114,20 +114,21 @@ export class DoctorsController {
     return out.report;
   }
 
-  private async change(clinicId: string, staff: Staff, action: string, entityId: string, fn: (c: ClinicConfig) => Change): Promise<DoctorList> {
-    const out = await this.desk.updateSettings<Change>(clinicId, staff.userId, action, entityId, (stored) => {
-      const next = fn(ClinicConfig.parse(stored));
+  private async change(clinicId: string, staff: Staff, action: string, entityId: string, fn: (c: ClinicConfig, tx: Tx) => Change | Promise<Change>): Promise<DoctorList> {
+    const out = await this.desk.updateSettings<Change>(clinicId, staff.userId, action, entityId, async (stored, tx) => {
+      const next = await fn(ClinicConfig.parse(stored), tx);
       if (!('config' in next)) return { result: next };
       // the same checks as saving Settings: ids unique, visit types that exist, hours that make sense
       const parsed = ClinicConfig.safeParse(next.config);
       if (!parsed.success) return { result: { issues: issuesOf(parsed.error) } };
+      if (configProblems(parsed.data).length) return { result: { issues: configProblems(parsed.data) } };
       return { save: parsed.data, result: { config: parsed.data } };
     });
     if (!out) throw new NotFoundException({ error: 'not_found' });
     if ('issues' in out) throw new UnprocessableEntityException({ error: 'invalid_doctor', issues: out.issues });
     if ('error' in out) {
       if (out.status === 404) throw new NotFoundException({ error: 'not_found' });
-      throw new ConflictException({ error: 'conflict', message: out.error });
+      throw new ConflictException({ error: out.error.startsWith('They have') ? 'has_upcoming_visits' : 'conflict', message: out.error });
     }
     return { providers: out.config.providers, visitTypes: out.config.visitTypes };
   }

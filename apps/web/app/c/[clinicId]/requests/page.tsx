@@ -51,11 +51,12 @@ function Requests() {
   const [to, setTo] = useState('');
   const q = useSettled(text.trim());
   const queries = useQueryClient();
-  const params = new URLSearchParams({ status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}), ...(q ? { q } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) });
+  // a POST body: what is typed can be a name or a phone number, and never goes in an address
+  const filters = { status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}), q, ...(from ? { from } : {}), ...(to ? { to } : {}) };
   const filtered = !!(type || who !== 'everyone' || q || from || to);
   const tasks = useQuery({
     queryKey: ['tasks', clinicId, status, type, who, q, from, to],
-    queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks?${params}`),
+    queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify(filters) }),
     enabled: can('tasks:read'),
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,

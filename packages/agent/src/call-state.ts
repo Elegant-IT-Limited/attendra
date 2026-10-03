@@ -27,6 +27,8 @@ export class CallState {
   verifyAttempts = 0;
   /** New patients added on this call: a parent may add two children, nobody adds ten. */
   registrations = 0;
+  /** The identity check has found nobody on this call: only then may the assistant add a new patient. */
+  notFound = false;
   /** Slots the caller has actually been offered. A booking can only use one of these. */
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;

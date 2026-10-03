@@ -4,7 +4,7 @@ import { type Database, type FrontDeskRepository, staffNames, staffRole, taskFac
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, WaitingTasks } from '../contracts';
+import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -26,6 +26,21 @@ export class TasksController {
   @ApiOperation({ summary: 'The request queue (refills, callbacks, new patients to check), newest first, filtered by type, by who has them, by the day they came in, and by words in them. Audited per request shown.' })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(TaskQuery)) q: z.infer<typeof TaskQuery>, @CurrentStaff() staff: Staff): Promise<TaskList> {
+    return this.find(clinicId, { ...q, q: '' }, staff);
+  }
+
+  /** A POST, not a GET: what is typed can be a name, a medication or a phone number, and URLs end up in logs. */
+  @Post('search')
+  @HttpCode(200)
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'The request queue with words to find in the patient\'s name, the details or the type, from the first character. Audited per request shown, never by what was typed.' })
+  @ApiBody({ schema: schemaOf(TaskSearch) })
+  @ApiOkResponse({ schema: schemaOf(TaskList) })
+  async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TaskSearch)) q: z.infer<typeof TaskSearch>, @CurrentStaff() staff: Staff): Promise<TaskList> {
+    return this.find(clinicId, q, staff);
+  }
+
+  private async find(clinicId: string, q: z.infer<typeof TaskSearch>, staff: Staff): Promise<TaskList> {
     const assignee = q.assignee === 'me' ? { userId: staff.userId } : q.assignee;
     // the days are the clinic's own, whatever zone the server or the browser is in
     const tz = q.from || q.to ? ClinicConfig.parse(await this.desk.settings(clinicId)).timezone : null;

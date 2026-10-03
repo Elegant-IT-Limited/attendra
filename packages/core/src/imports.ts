@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, Provider } from './clinic';
-import { parseDob } from './identity';
+import { parseDob, phoneDigits } from './identity';
 import { ageOn } from './providers';
 
 /**
@@ -52,7 +52,7 @@ export const PATIENT_COLUMNS = ['first_name', 'last_name', 'date_of_birth', 'pho
 /** The guide a template carries, in the order a manager fills it in. Shown next to the download, never written into the file. */
 export const DOCTOR_GUIDE = [
   'One row per doctor. name is required; every other column may be left empty.',
-  'id: leave empty to add a doctor. To change one already on file, keep the id the Doctors page shows, or the same name.',
+  'id: leave empty to add a doctor. To change one already on file, use the same name (or their id): fill only what changes, and empty cells keep what is on file.',
   'categories and visit_types: several values separated by semicolons, like Children; Vaccinations. Visit types are the names in Settings.',
   'ages_min and ages_max: whole years. Leave ages_max empty for no upper limit; leave both empty for every age.',
   'accepting_new_patients: yes or no. Empty means yes.',
@@ -148,17 +148,20 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       if (!m) return fail(`time_off: "${part}" is not a date like 2026-12-24 or a range like 2026-12-24 to 2026-12-31`);
       timeOff.push({ from: m[1]!, to: m[2] ?? m[1]! });
     }
+    // for a doctor already on file an empty cell keeps what is on file, so a file that changes one column changes only that
+    const keep = <T>(cell: string, fresh: T, onFile: T | undefined): T | undefined => (existing && cell === '' ? onFile : fresh);
+    const allDaysEmpty = DAY_COLUMNS.every((d) => r.get(d) === '');
     const parsed = Provider.safeParse({
       ...existing,
       id: existing?.id ?? newProviderId(name),
       name,
-      specialty: r.get('specialty') || undefined,
-      categories: split(r.get('categories')),
-      ages: min === '' && max === '' ? undefined : { min: min === '' ? 0 : Number(min), max: max === '' ? null : Number(max) },
-      acceptingNewPatients: accepting,
+      specialty: keep(r.get('specialty'), r.get('specialty') || undefined, existing?.specialty),
+      categories: keep(r.get('categories'), split(r.get('categories')), existing?.categories) ?? [],
+      ages: existing && min === '' && max === '' ? existing.ages : min === '' && max === '' ? undefined : { min: min === '' ? 0 : Number(min), max: max === '' ? null : Number(max) },
+      acceptingNewPatients: keep(r.get('accepting_new_patients'), accepting, existing?.acceptingNewPatients) ?? true,
       visitTypeIds: visitTypeIds.length ? visitTypeIds : existing?.visitTypeIds ?? clinic.visitTypes.map((v) => v.id),
-      hours: Object.keys(hours).length ? hours : undefined,
-      timeOff,
+      hours: existing && allDaysEmpty ? existing.hours : Object.keys(hours).length ? hours : undefined,
+      timeOff: keep(r.get('time_off'), timeOff, existing?.timeOff) ?? [],
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => `${i.path.join('.') || 'row'}: ${i.message}`).join('; '));
     return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}) };
@@ -192,7 +195,7 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     if (phone.replace(/\D/g, '').length < (northAmerica ? 10 : 7)) return fail('phone is required, with the area code');
     const guardianName = r.get('guardian_name') || null;
     if (ageOn(dob, today) < 18 && !guardianName) return fail('guardian_name is required for a patient under 18');
-    const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}|${dob}|${phone.replace(/\D/g, '').slice(-10)}`;
+    const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this patient is in the file twice');
     seen.add(key);
     return { line: r.line, name, ok: true, value: { firstName, lastName, dob, phone, guardianName } };
