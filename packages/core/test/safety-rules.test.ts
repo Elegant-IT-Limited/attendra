@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectEmergency, isClearYes, isMedicalQuestion, namesMatch, parseDob } from '../src';
+import { detectEmergency, dobProblem, isClearYes, isMedicalQuestion, namesMatch, parseDob } from '../src';
 
 describe('emergency guardrail', () => {
   it.each([
@@ -43,6 +43,16 @@ describe('identity inputs', () => {
 
   it('refuses dates it would have to guess', () => {
     for (const s of ['March 85', '02/30/1990', 'next year', '01/01/2099']) expect(parseDob(s, new Date('2026-09-28'))).toBeNull();
+  });
+
+  it('says which part of a refused date of birth is wrong', () => {
+    const today = new Date('2026-09-28');
+    expect(parseDob('29th February, 2025', today)).toBeNull();
+    expect(dobProblem('29th February, 2025', today)).toBe('February 29 is not a date in 2025, which is not a leap year');
+    expect(parseDob('29 February 2024', today)).toBe('2024-02-29');
+    expect(dobProblem('April 31 1990', today)).toBe('April has no day 31');
+    expect(dobProblem('01/01/2099', today)).toBe('January 1, 2099 is in the future');
+    expect(dobProblem('March 85', today)).toBeNull(); // not understood: ask for it again
   });
 
   it('matches first and last name, ignoring accents and middle names', () => {

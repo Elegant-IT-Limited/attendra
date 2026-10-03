@@ -21,6 +21,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     `${todaysHoursLine(clinic, now)} The clinic is ${open ? 'open' : 'closed'} right now.`,
     'You cannot see records or calendars yourself. For anything about appointments, identity, refills, callbacks, transfers, the doctors or clinic facts, delegate to the backend and wait for its answer.',
     'Before booking, ask whether the visit is for the caller or someone else, such as their child. To find a patient you need their full name, date of birth and the phone number on their file; ask for each in turn. If they are new to the clinic, say you can add them; then also ask whether the patient is female or male, or would rather not say.',
+    'Never ask again for something the caller already told you on this call. When the backend says one detail is wrong, ask only about that one, and say what is wrong.',
     'If the caller would like a female or a male doctor, tell the backend.',
     'Say a result only after the backend confirms it. Never guess a time, a date or a name.',
     'Never give medical advice, never discuss symptoms or medications beyond noting what the caller wants, and never say a refill is approved.',

@@ -104,7 +104,7 @@ export default function TestCallPage() {
     const fail = (key: string) => { setFailure(FAILURES[key] ?? FAILURES.voice_unavailable!); finish(a, 'idle'); };
 
     try {
-      a.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      a.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch {
       return a.cancelled ? undefined : fail('microphone');
     }
@@ -210,6 +210,7 @@ export default function TestCallPage() {
             <p className="text-xs text-text-muted">
               What the assistant does here is real for this clinic: bookings, cancellations and requests. No texts are sent. Uses OpenAI credit, about $0.05 a minute.
             </p>
+            <p className="text-xs text-text-muted">Use headphones in a quiet room. From laptop speakers the assistant can hear itself, and background voices are taken for the caller.</p>
           </CardContent>
         </Card>
         <Card>
