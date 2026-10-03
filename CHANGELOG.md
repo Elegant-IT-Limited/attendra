@@ -4,12 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [0.5.2] - 2026-10-04
 
-From a browser test call where a parent booking for a child was asked for the same details over and over and waited half a minute in silence.
+From a browser test call where a parent booking for a child was asked for the same details over and over, waited half a minute in silence, and was hung up on mid-sentence.
 
 ### Fixed
 
 - **A date of birth that cannot exist is named, not just refused.** "29 February 2025" gets "February 29 is not a date in 2025, which is not a leap year", and the caller is asked to check the date only. The assistant keeps the name and phone already given instead of asking for everything again, and a date that cannot exist does not count as a failed identity check.
 - **The assistant passes what the caller said to the backend** instead of judging a date itself, so the backend's checks and wording apply every time. Someone who says they are new is still looked up first with the details they gave.
+- **The assistant never hangs up on a caller who has not finished.** `end_call` is refused unless the caller's own last words are a goodbye, or "no" to "anything else?"; "I'm done" at the end of a phone number no longer ends the call. A frustrated caller with an unfinished request is offered what the assistant can still do, or a callback.
+- **A goodbye is never cut off.** The hang-up waits until the assistant has been quiet for 1.5 seconds, up to 20 seconds.
+- **Other languages.** A caller speaking a language the clinic does not offer is told, kindly and in one sentence, that the assistant can only help in English (or the clinic's languages), and is asked to carry on in it or offered a callback.
 - **No long silences.** When a request runs longer than 7 seconds, the caller hears once that the assistant is still checking.
 - **Test calls**: the page asks for headphones in a quiet room, since laptop speakers let the assistant hear itself and background voices are taken for the caller. Automatic gain control is on for the microphone.
 

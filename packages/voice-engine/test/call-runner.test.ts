@@ -75,6 +75,21 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('hangs up only once the assistant has finished its goodbye', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.act([{ type: 'hangup', afterMs: 3500 }]);
+    // the goodbye is still being spoken when the 3.5 seconds are up
+    for (let i = 0; i < 6; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      await h.runner.handle(delta('out', `o${i}`, 'goodbye ', 1000 * i));
+    }
+    expect(h.engine.hangup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('records a call staff ended as ended_by_staff, not as the assistant hanging up', async () => {
     const h = harness(new ScriptedPlanner([]));
     await h.runner.act((h.runner as unknown as { agent: CallAgent }).agent.endByStaff());
