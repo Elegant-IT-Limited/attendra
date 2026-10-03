@@ -56,10 +56,10 @@ export async function world() {
       caller: (text: string) => { clock += 1000; return agent.onCallerTranscript(text, clock, clock + 900); },
       assistant: (text: string) => { clock += 1000; agent.onAgentTranscript(text, clock, clock + 900); },
       /** GPT-Live delegates; the next scripted plan answers. */
-      delegate: async (steps: ScriptedStep[], planner?: Planner) => {
+      delegate: async (steps: ScriptedStep[], planner?: Planner, emit?: Parameters<CallAgent['onDelegation']>[1]) => {
         const scripted = new ScriptedPlanner(steps);
         plans.queue.push(planner ?? scripted);
-        const out = await agent.onDelegation(`item_${++delegations}`);
+        const out = await agent.onDelegation(`item_${++delegations}`, emit);
         // errors are the refusal codes runTool returned, in call order
         return Object.assign(out, { errors: scripted.results.map((r) => r.data.error ?? null), results: scripted.results });
       },

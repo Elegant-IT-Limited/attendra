@@ -1,6 +1,6 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
 import { world } from './support';
 
@@ -179,6 +179,15 @@ describe('booking over the phone', () => {
     expect(none.errors).toEqual(['no_provider_of_gender']);
   });
 
+  it('says which part of a date of birth is wrong, and keeps the rest of what the caller said', async () => {
+    const c = await w.call(null);
+    const out = await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Sarah Kim', date_of_birth: '29 February 2025', phone: '(303) 555-0190' } }]);
+    expect(out.errors).toEqual(['unclear_date_of_birth']);
+    expect(String(out.results[0]!.data.say)).toContain('2025, which is not a leap year');
+    expect(String(out.results[0]!.data.say)).toContain('do not ask for them again');
+    expect(c.state.verifyAttempts).toBe(0); // a date that cannot exist is not a failed try
+  });
+
   it('offers the doctors of the specialty the caller asks for, and says what the clinic has when none match', async () => {
     const c = await w.call(null);
     const info = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'which specialists do you have' } }]);
@@ -291,6 +300,28 @@ describe('call control', () => {
     release();
     expect([...(await first)]).toEqual([]);
     expect((await second).some((o) => o.type === 'commentary' && o.content.includes('214 Maple Street'))).toBe(true);
+  });
+
+  it('tells the caller once that it is still checking when a request takes long', async () => {
+    const c = await w.call();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let release!: () => void;
+      const slow = { plan: () => new Promise<{ say: string }>((r) => { release = () => r({ say: 'Dr. Raman is free Monday at 9.' }); }) };
+      const early: string[] = [];
+      const pending = c.delegate([], slow, (o) => { if (o.type === 'thinking') early.push(o.content); });
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(early).toEqual(['Working on it.']);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(early).toHaveLength(2);
+      expect(early[1]).toContain('still checking');
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(early).toHaveLength(2); // once, not every few seconds
+      release();
+      expect(spoken(await pending)).toContain('Dr. Raman');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('never claims success when the backend fails', async () => {

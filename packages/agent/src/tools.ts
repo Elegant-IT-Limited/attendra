@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
-  addDays, ageOn, type AuditLog, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, matchesSpecialty, type Messenger, NO_INFORMATION, PACKS, parseDob, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, visitTypeFacts, weekHours, zonedInstant,
@@ -50,6 +50,15 @@ const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback',
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
+
+/** What to ask when a date of birth is refused: the one part that is wrong, keeping everything else the caller said. */
+function dobAgain(said: string, now: Date, monthFirst: boolean): string {
+  const problem = dobProblem(said, now, monthFirst ? 'mdy' : 'dmy');
+  return problem
+    ? `Say that ${problem}, and ask them to check the date of birth. Keep the name and phone they already gave; do not ask for them again.`
+    : 'Ask for the date of birth again, month, day and year. Keep the name and phone they already gave; do not ask for them again.';
+}
+
 const northAmerica = (clinic: ClinicConfig) => clinic.phoneNumbers[0]!.startsWith('+1');
 const sameFirstWord = (spoken: string, firstName: string) => fold(spoken).toLowerCase().split(/\s+/)[0] === fold(firstName).toLowerCase().split(/\s+/)[0];
 const key = (...parts: (string | number)[]) => createHash('sha256').update(parts.join('|')).digest('base64url').slice(0, 32);
@@ -97,7 +106,7 @@ export async function runTool(
       if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
       // numeric dates are month first only in North America
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
-      if (!dob) return refuse('unclear_date_of_birth', 'Ask for the date of birth again, month, day and year.');
+      if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       // the patient already verified: nothing to do. Someone else (a parent's second child) is checked like anyone
       const current = state.verifiedPatient;
       if (current && current.dob === dob && sameFirstWord(String(args.full_name), current.firstName)) return { ok: true, data: { verified: true, first_name: current.firstName } };
@@ -125,7 +134,7 @@ export async function runTool(
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
       if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach them, with the area code.');
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
-      if (!dob) return refuse('unclear_date_of_birth', 'Ask for the date of birth again, month, day and year.');
+      if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       const today = localDateOf(ctx.now(), clinic.timezone);
       const age = ageOn(dob, today);
       const guardian = (args.guardian_name as string | null)?.trim() || null;
