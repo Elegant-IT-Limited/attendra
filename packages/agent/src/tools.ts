@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, matchesSpecialty, type Messenger, NO_INFORMATION, PACKS, parseDob, samePhone,
+  fold, matchesSpecialty, type Messenger, NO_INFORMATION, PACKS, parseDob, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   ToolArgs, type ToolName, todaysHoursLine, visitTypeFacts, weekHours, zonedInstant,
 } from '@attendra/core';
@@ -388,6 +388,10 @@ export async function runTool(
     }
 
     case 'end_call':
+      // never hang up on a caller who has not finished: "I'm done" can end a phone number, not the call
+      if (!saidGoodbye(state.lastTurn('caller'), state.lastTurn('agent', 2))) {
+        return refuse('caller_not_finished', 'Do not end the call: the caller has not said goodbye. If their request is not finished, say what you can still do or offer a callback. Otherwise ask if there is anything else.');
+      }
       return { ok: true, data: { ending: true, say: 'Say goodbye warmly.' }, action: { type: 'hangup' } };
   }
 }

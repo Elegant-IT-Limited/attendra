@@ -83,6 +83,11 @@ export class CallState {
     return said.at(-1) ?? '';
   }
 
+  /** What one side said in its last few turns. */
+  lastTurn(speaker: 'caller' | 'agent', count = 1): string {
+    return this.turns.filter((t) => t.speaker === speaker).slice(-count).map((t) => t.text).join(' ');
+  }
+
   /** The last stretch of caller speech, for the emergency guardrail's rolling window. */
   recentCallerText(chars = 240): string {
     const text = this.turns.filter((t) => t.speaker === 'caller').slice(-3).map((t) => t.text).join(' ');

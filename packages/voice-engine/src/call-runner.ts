@@ -14,11 +14,17 @@ export interface CallRecorder {
  * returns. It is the single owner of every side effect for its session, so events
  * seen twice (sideband replay after a reconnect) are dropped by event id.
  */
+/** How long the assistant must be quiet before a hang-up goes through, and the most it waits for that. */
+const QUIET_MS = 1500;
+const HANGUP_MAX_WAIT_MS = 20_000;
+
 export class CallRunner {
   private readonly seen = new Set<string>();
   private flushedTurns = 0;
   private closed = false;
   private readonly timers = new Set<NodeJS.Timeout>();
+  /** When the assistant last said something: a hang-up waits until it has finished. */
+  private agentSpokeAt = 0;
 
   constructor(
     private readonly sessionId: string,
@@ -59,6 +65,7 @@ export class CallRunner {
       case 'session.output_transcript.delta': {
         const e = event as Extract<SidebandEvent, { delta: string }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        this.agentSpokeAt = Date.now();
         return this.flushFinishedTurns();
       }
       case 'session.delegation.created': {
@@ -96,8 +103,17 @@ export class CallRunner {
             if (!this.closed) return this.dispatch(this.agent.onControlFailed(o.type));
           });
         if (!o.afterMs) { await act(); continue; }
-        const t = setTimeout(() => { this.timers.delete(t); void act(); }, o.afterMs);
-        this.timers.add(t);
+        // a goodbye is never cut off: the hang-up waits until the assistant has gone quiet
+        const due = Date.now() + HANGUP_MAX_WAIT_MS;
+        const later = (ms: number) => {
+          const t = setTimeout(() => {
+            this.timers.delete(t);
+            const talking = Date.now() - this.agentSpokeAt < QUIET_MS;
+            if (o.type === 'hangup' && talking && Date.now() < due) later(500); else void act();
+          }, ms);
+          this.timers.add(t);
+        };
+        later(o.afterMs);
       } else if (o.type === 'instructions') {
         this.sideband.send({ type: 'session.instructions.append', event_id: `evt_${randomUUID()}`, delegation_id: null, content: o.content });
       } else {

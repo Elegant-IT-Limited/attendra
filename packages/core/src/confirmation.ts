@@ -20,3 +20,17 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
   const hedge = LANGUAGES.some((l) => PACKS[l].hedge.test(t));
   return yes && !hedge;
 }
+
+const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no thanks|no thank you|have a (good|nice|great) (day|one)|adios|hasta luego|eso es todo|nada mas|chao|chau)\b/;
+const NOTHING_MORE = /^(no|nope|nah|no gracias)\b/;
+
+/**
+ * Has the caller finished? Read on their own last words, never on the model's view of
+ * them: "I'm done" in the middle of giving a phone number is not a goodbye. A plain
+ * "no" counts only as the answer to "anything else?".
+ */
+export function saidGoodbye(lastCallerTurn: string, lastAgentTurn = ''): boolean {
+  const t = normalise(lastCallerTurn).trim();
+  if (GOODBYE.test(t)) return true;
+  return NOTHING_MORE.test(t) && /anything else|algo mas/.test(normalise(lastAgentTurn));
+}

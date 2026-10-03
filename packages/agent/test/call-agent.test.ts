@@ -438,9 +438,24 @@ describe('review fixes', () => {
 
   it('puts transfers and hang-ups after the spoken result, with time to say it', async () => {
     const c = await w.call();
+    c.caller('That is all, thanks. Bye.');
     const out = await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }]);
     expect(out.map((o) => o.type)).toEqual(['thinking', 'commentary', 'hangup']);
     expect(out.at(-1)).toMatchObject({ type: 'hangup', afterMs: 3500 });
+  });
+
+  it('never hangs up on a caller who has not said goodbye', async () => {
+    const c = await w.call();
+    c.assistant('And what is the phone number for his file?');
+    c.caller('0 1 7 1 4 2 6 2 5 8 4. I am done.');
+    const cut = await c.delegate([{ tool: 'end_call', args: { reason: 'caller is done' } }]);
+    expect(cut.errors).toEqual(['caller_not_finished']);
+    expect(cut.some((o) => o.type === 'hangup')).toBe(false);
+    c.assistant('Is there anything else I can help with?');
+    c.caller('No.');
+    const ok = await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }]);
+    expect(ok.errors).toEqual([null]);
+    expect(ok.some((o) => o.type === 'hangup')).toBe(true);
   });
 
   it('reports the booking as made even when the confirmation text fails', async () => {
