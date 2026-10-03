@@ -181,11 +181,11 @@ describe('moving and cancelling', () => {
     expect(await day('cancelled')).toEqual(['cancelled']);
     expect((await day('booked')).every((s: string) => s === 'booked')).toBe(true);
     expect((await day('all')).length).toBe((await day('booked')).length + 1);
-    const history = (await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31`, { cookie: as.staff })).json();
-    expect(history.appointments).toEqual([expect.objectContaining({ id, status: 'cancelled', cancelReason: 'patient_asked', cancelledAt: expect.any(String) })]);
-    expect((await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31&q=nobody`, { cookie: as.staff })).json().appointments).toEqual([]);
-    expect((await api.request('GET', `${C}/cancelled?from=2026-10-31&to=2026-09-01`, { cookie: as.staff })).statusCode).toBe(422);
-    expect((await api.request('GET', `${C}/cancelled?from=2026-09-01&to=2026-10-31`, { cookie: as.viewer })).statusCode).toBe(403);
+    const history = async (body: object, cookie = as.staff) => api.request('POST', `${C}/cancelled`, { cookie, body: { from: '2026-09-01', to: '2026-10-31', ...body } });
+    expect((await history({})).json().appointments).toEqual([expect.objectContaining({ id, status: 'cancelled', cancelReason: 'patient_asked', cancelledAt: expect.any(String) })]);
+    expect((await history({ q: 'nobody' })).json().appointments).toEqual([]);
+    expect((await history({ from: '2026-10-31', to: '2026-09-01' })).statusCode).toBe(422);
+    expect((await history({}, as.viewer)).statusCode).toBe(403);
   });
 
   it('validates the reason and the time', async () => {

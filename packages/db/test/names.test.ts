@@ -43,4 +43,15 @@ describe('names beyond a to z', () => {
     const run = await rehashPatientLookups(t.db, cipher);
     expect(run).toMatchObject({ withoutPhone: 1, changed: 0 });
   });
+
+  it('does not stop when someone added since the upgrade is the same person as a row from before it', async () => {
+    // the older row: same person, no identity yet; the newer one holds the identity
+    const older = await dir.create(DEMO_CLINIC.id, { firstName: 'Ada', lastName: 'Byron', dob: '1985-12-10', phone: '+13035550186' });
+    await t.db.execute(sql`update patients set identity_hash = null, created_at = '2020-01-01' where id = ${older}`);
+    const newer = await dir.create(DEMO_CLINIC.id, { firstName: 'Ada', lastName: 'Byron', dob: '1985-12-10', phone: '+13035550186' });
+    const run = await rehashPatientLookups(t.db, cipher);
+    expect(run.duplicates).toBe(1);
+    const held = (await t.db.execute(sql`select id from patients where identity_hash is not null and id in (${older}, ${newer})`)).rows as { id: string }[];
+    expect(held).toEqual([{ id: newer }]);
+  });
 });

@@ -3,12 +3,16 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-/** Which cached screens each kind of change makes stale. Keys are the first part of a query key. */
+/**
+ * Which cached screens each kind of change makes stale. Keys are the first part of a
+ * query key. An open patient record and a patient search are left alone: reading them
+ * again writes an audit row for a view nobody made, so they refresh when used.
+ */
 const STALE: Record<string, string[]> = {
-  requests: ['tasks', 'overview', 'patient'],
-  schedule: ['schedule', 'appointment', 'slots', 'overview', 'patient', 'cancelled'],
-  patients: ['patient', 'patient-search', 'patients', 'tasks', 'schedule'],
-  calls: ['calls', 'call', 'overview', 'live', 'patient'],
+  requests: ['tasks', 'overview'],
+  schedule: ['schedule', 'appointment', 'slots', 'overview', 'cancelled'],
+  patients: ['patients', 'tasks'],
+  calls: ['calls', 'call', 'overview', 'live'],
   settings: ['settings', 'doctors', 'slots'],
 };
 

@@ -26,8 +26,10 @@ export const AgeRange = z.object({ min: z.number().int().min(0).max(120), max: z
   .refine((a) => a.max === null || a.max >= a.min, 'the oldest age must be at least the youngest');
 
 export const Provider = z.object({
-  id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores'),
-  name: z.string().trim().min(2).max(80),
+  // loose here, so a configuration saved by an older version still loads and calls keep running;
+  // a doctor added or changed now is held to DoctorInput's stricter rules
+  id: z.string(),
+  name: z.string(),
   names: LocalNames.optional(),
   // a person ("with Dr. Rahman") or a room ("in the sample collection room"): read-backs say it properly
   kind: z.enum(['person', 'room']).default('person'),
@@ -111,10 +113,7 @@ const ClinicConfigShape = z.object({
   if (provider) ctx.addIssue({ code: 'custom', path: ['providers'], message: `two providers have the id ${provider}` });
   const visit = dupe(c.visitTypes.map((v) => v.id));
   if (visit) ctx.addIssue({ code: 'custom', path: ['visitTypes'], message: `two visit types have the id ${visit}` });
-  c.providers.forEach((p, i) => {
-    const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
-    if (unknown) ctx.addIssue({ code: 'custom', path: ['providers', i, 'visitTypeIds'], message: `${p.name} offers a visit type that does not exist (${unknown})` });
-  });
+
   // A name is never a disclosure: "Hi, I'm Maya" sounds like a person. The greeting
   // must say AI assistant (or the same in one of the clinic's languages) whatever the
   // assistant is called.
@@ -170,6 +169,18 @@ export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName
   return out;
 }
 export type Provider = z.infer<typeof Provider>;
+
+/**
+ * Problems a change must not introduce, checked when doctors or settings are saved.
+ * Not part of ClinicConfig itself, so a configuration saved by an older version that
+ * has one still loads and its calls keep running.
+ */
+export function configProblems(c: Pick<z.infer<typeof ClinicConfigShape>, 'providers' | 'visitTypes'>): { path: string; message: string }[] {
+  return c.providers.flatMap((p, i) => {
+    const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
+    return unknown ? [{ path: `providers.${i}.visitTypeIds`, message: `${p.name} offers a visit type that does not exist (${unknown})` }] : [];
+  });
+}
 export type TimeOff = z.infer<typeof TimeOff>;
 export type AgeRange = z.infer<typeof AgeRange>;
 export type VisitType = z.infer<typeof VisitType>;

@@ -6,7 +6,7 @@ import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
 import { patientSetKey, recordView } from './audit';
 import { auditResults } from './front-desk';
-import { identityKey, patientLookupKey, sealPatient } from './patients';
+import { findSameIdentity, isSameIdentity, patientLookupKey, phoneKey, sealPatient } from './patients';
 
 /** The most patients one search will read. Decision 7 says why, and what replaces it. */
 export const PATIENT_SCAN_LIMIT = 20_000;
@@ -87,8 +87,11 @@ export class PatientRecords {
     const q = readQuery(query, today);
     if (!q) return null;
     return withClinic(this.db, clinicId, async (tx) => {
+      // a whole number is looked up by its keyed hash, beyond the scan cap; a few digits are matched in the scan
+      const whole = q.kind === 'phone' && q.digits.length >= 10;
       const rows = await tx.select().from(patients)
-        .where(and(eq(patients.clinicId, clinicId), opts.status ? eq(patients.status, opts.status) : undefined))
+        .where(and(eq(patients.clinicId, clinicId), opts.status ? eq(patients.status, opts.status) : undefined,
+          whole ? eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, q.digits))) : undefined))
         .orderBy(asc(patients.id)).limit(this.scanLimit);
       const cards = rows.map((r) => this.card(clinicId, r));
       let matched: PatientCard[];
@@ -102,7 +105,7 @@ export class PatientRecords {
       const shown = matched.slice(0, SEARCH_RESULTS);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.searched', entity: 'patient', entityId: `matches:${matched.length}` });
       await auditResults(tx, clinicId, userId, shown.map((p) => p.id));
-      return { patients: shown, truncated: rows.length >= this.scanLimit };
+      return { patients: shown, truncated: !whole && rows.length >= this.scanLimit };
     });
   }
 
@@ -182,12 +185,21 @@ export class PatientRecords {
 
   /** The import's way in: the same checks as one patient added by hand, in the caller's transaction. */
   async insert(tx: Tx, clinicId: string, p: PatientFields, actor: string): Promise<SaveResult> {
-    const same = await this.sameIdentity(tx, clinicId, p);
+    const same = await findSameIdentity(tx, this.cipher, clinicId, p);
     if (same) return { status: 'exists', id: same };
     const similar = await this.similar(tx, clinicId, p);
-    const [row] = await tx.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p) }).returning({ id: patients.id });
-    await tx.insert(auditLogs).values({ clinicId, actor, action: 'patient.created', entity: 'patient', entityId: row!.id });
-    return { status: 'saved', id: row!.id, similar };
+    try {
+      // in a savepoint, so the same person added by someone else a moment ago ends this insert, not the whole import
+      const row = await tx.transaction(async (sp) => {
+        const [r] = await sp.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p) }).returning({ id: patients.id });
+        await sp.insert(auditLogs).values({ clinicId, actor, action: 'patient.created', entity: 'patient', entityId: r!.id });
+        return r!;
+      });
+      return { status: 'saved', id: row.id, similar };
+    } catch (err) {
+      if (!isSameIdentity(err)) throw err;
+      return { status: 'exists', id: (await findSameIdentity(tx, this.cipher, clinicId, p))! };
+    }
   }
 
   /** Replaces a patient's details, recomputing every hash. */
@@ -195,7 +207,7 @@ export class PatientRecords {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
       if (!row) return { status: 'not_found' };
-      const same = await this.sameIdentity(tx, clinicId, p, patientId);
+      const same = await findSameIdentity(tx, this.cipher, clinicId, p, patientId);
       if (same) return { status: 'exists', id: same };
       const similar = await this.similar(tx, clinicId, p, patientId);
       await tx.update(patients).set(sealPatient(this.cipher, clinicId, p)).where(eq(patients.id, patientId));
@@ -210,7 +222,7 @@ export class PatientRecords {
    */
   async confirm(clinicId: string, patientId: string, userId: string): Promise<'confirmed' | 'not_found'> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId))).returning({ id: patients.id });
+      const [row] = await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId), eq(patients.status, 'new'))).returning({ id: patients.id });
       if (!row) return 'not_found';
       await tx.update(tasks).set({ status: 'done', doneAt: new Date(), doneByUserId: userId, outcome: 'details_confirmed' })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.patientId, patientId), eq(tasks.type, 'review'), eq(tasks.status, 'open')));
@@ -237,12 +249,6 @@ export class PatientRecords {
     if (!w.length) return [];
     const rows = await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(asc(patients.id)).limit(PATIENT_SCAN_LIMIT);
     return rows.map((r) => this.card(clinicId, r)).filter((c) => nameMatches(w, c)).map((c) => c.id);
-  }
-
-  private async sameIdentity(tx: Tx, clinicId: string, p: PatientFields, except?: string) {
-    const rows = await tx.select({ id: patients.id }).from(patients)
-      .where(and(eq(patients.clinicId, clinicId), eq(patients.identityHash, this.cipher.hash(identityKey(clinicId, p.firstName, p.lastName, p.dob, p.phone)))));
-    return rows.find((r) => r.id !== except)?.id ?? null;
   }
 
   /** Someone else on file with this name and date of birth, on another phone. */

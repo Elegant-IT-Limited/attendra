@@ -206,8 +206,11 @@ export class CallAgent {
       const result = await runTool(name, args, this.state, this.ctx, this.backend, revision);
       const code = typeof result.data.error === 'string' ? result.data.error : null;
       this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
-      if (name === 'verify_caller' && result.data.verified === true && !this.verified) {
-        this.verified = shortName(String((args as { full_name?: unknown })?.full_name ?? '')) ?? String(result.data.first_name ?? 'Verified');
+      // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
+      if ((name === 'verify_caller' || name === 'register_patient') && result.data.verified !== false && (result.data.verified === true || result.data.registered === true)) {
+        const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown };
+        const spoken = name === 'verify_caller' ? String(a.full_name ?? '') : `${String(a.first_name ?? '')} ${String(a.last_name ?? '')}`;
+        this.verified = shortName(spoken) ?? String(result.data.first_name ?? 'Verified');
       }
       this.emitState();
       // the step already happened (a booking is booked): a failed write of its record is

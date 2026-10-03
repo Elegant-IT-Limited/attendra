@@ -31,10 +31,11 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
   const [sort, setSort] = useState<SortKey>('cancelled-newest');
   const [text, setText] = useState('');
   const q = useSettled(text.trim());
-  const params = new URLSearchParams({ from, to, sort: SORTS[sort].sort, order: SORTS[sort].order, ...(providerId ? { providerId } : {}), ...(q ? { q } : {}) });
+  // a POST body: the name typed is a patient's, and never goes in an address
+  const body = { from, to, sort: SORTS[sort].sort, order: SORTS[sort].order, ...(providerId ? { providerId } : {}), ...(q ? { q } : {}) };
   const list = useQuery({
     queryKey: ['cancelled', clinicId, from, to, sort, providerId, q],
-    queryFn: () => api<CancelledList>(`/clinics/${clinicId}/appointments/cancelled?${params}`),
+    queryFn: () => api<CancelledList>(`/clinics/${clinicId}/appointments/cancelled`, { method: 'POST', body: JSON.stringify(body) }),
     enabled: !!from && !!to && from <= to,
     placeholderData: keepPreviousData,
   });

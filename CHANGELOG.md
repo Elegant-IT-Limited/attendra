@@ -10,7 +10,7 @@ Doctors, families and a dashboard that updates as it happens, from what the firs
 
 - **Doctors.** Each has a specialty, what they see people for, the ages they see, whether they take new patients, weekly hours and days off, on a new Doctors page. Managers add, edit and remove them (a doctor with visits still to come cannot be removed), or import a CSV from a template. The assistant describes them to any caller and answers "who is free Monday" without asking who is calling first.
 - **The assistant reads the clinic again before every request**, so a doctor added or a day off set in the dashboard counts on calls already under way.
-- **New patients on the call**: after the identity check finds nobody and the caller says they are new, the assistant adds them (`register_patient`) and books a new-patient visit with a doctor who takes new patients. Every patient it adds becomes a request for the front desk, closed with Details checked.
+- **New patients on the call**: after the identity check finds nobody and the caller says they are new, the assistant adds them (`register_patient`) and books a new-patient visit with a doctor who takes new patients. Every patient it adds becomes a request for the front desk, closed with Details checked. It cannot be used to get round the three-try limit, adds at most three people a call, and until the front desk confirms them texts only the number the caller is ringing from.
 - **Families**: a parent books for each child on the family phone, switching between them on one call. Patients under 18 have a parent or guardian on file; a patient's page lists everyone on the same number.
 - **Doctors by age**: once the patient is known, only doctors who see their age are offered.
 - **Patient import** for managers, from a CSV template: every row checked first, the same person skipped, safe to run twice.
@@ -22,7 +22,7 @@ Doctors, families and a dashboard that updates as it happens, from what the firs
 
 ### Changed
 
-- **A patient is identified by name, date of birth and phone together** ([decision 9](docs/decisions/0009-patient-identity.md)). Phone is required for every new or changed patient. Two people with the same name and birthday are told apart by phone instead of being sent to staff; the same person cannot be stored twice. `verify_caller` takes the phone on file, or uses the calling number.
+- **A patient is identified by name, date of birth and phone together** ([decision 9](docs/decisions/0009-patient-identity.md)). Phones are compared on their last nine digits, so a number written with or without its country code, or with a leading 0, is the same number. Phone is required for every new or changed patient. Two people with the same name and birthday are told apart by phone instead of being sent to staff; the same person cannot be stored twice. `verify_caller` takes the phone on file, or uses the calling number.
 - The newest come first: requests, the waiting list on Today, and patients before anything is typed.
 - Doctors are edited on the Doctors page; saving Settings keeps the doctors on file.
 - The demo clinic has a pediatrician, Dr. Priya Raman, and Maria Delgado's two children on her phone.
@@ -32,8 +32,8 @@ Doctors, families and a dashboard that updates as it happens, from what the firs
 
 - `POST /patients` and `PATCH /patients/:id` require `phone`, and `guardianName` for a patient under 18. 409 `patient_exists` now means the same name, date of birth and phone; the response may carry `similar: true`.
 - `POST /patients/search` answers from one character, and returns an empty list instead of 422 for text it cannot match.
-- New: `GET /patients`, `POST /patients/:id/confirm`, `POST /patients/import`, `/doctors` (list, add, change, remove, import), `GET /appointments/cancelled`, `GET /changes` (text/event-stream).
-- `GET /tasks` lists open requests newest first, and takes `q`, `from` and `to`. The request outcome `details_confirmed` is new.
+- New: `GET /patients`, `POST /patients/:id/confirm`, `POST /patients/import`, `/doctors` (list, add, change, remove, import), `POST /appointments/cancelled`, `POST /tasks/search`, `GET /changes` (text/event-stream). Searches that take words are POSTs, so names and phone numbers never sit in a URL.
+- `GET /tasks` lists open requests newest first, and takes `from` and `to`. The request outcome `details_confirmed` is new.
 - `PUT /settings` no longer changes doctors.
 
 ### Upgrading
