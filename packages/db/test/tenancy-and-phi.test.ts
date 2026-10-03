@@ -16,20 +16,20 @@ beforeAll(async () => {
   t = await openTestDatabase();
   ({ patientIds: ids } = await seedDemo(t.db, cipher));
   await saveClinic(t.db, 'org_other', OTHER);
-  await new PostgresPatientDirectory(t.db, cipher, 'seed').create(OTHER.id, { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04' });
+  await new PostgresPatientDirectory(t.db, cipher, 'seed').create(OTHER.id, { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04', phone: '+13035550147' });
 });
 afterAll(() => t.close());
 
 describe('tenant isolation', () => {
   it('a clinic cannot read another clinic\'s patients, even with no filter in the query', async () => {
     const rows = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.patients));
-    expect(rows.length).toBe(4);
+    expect(rows.length).toBe(6);
     expect(rows.every((r) => r.clinicId === DEMO_CLINIC.id)).toBe(true);
   });
 
   it('a write tagged with another clinic is refused by the policy', async () => {
     expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.patients).values({
-      clinicId: OTHER.id, lookupHash: 'x', firstNameEnc: 'x', lastNameEnc: 'x', dobEnc: 'x',
+      clinicId: OTHER.id, lookupHash: 'x', firstNameEnc: 'x', lastNameEnc: 'x', dobEnc: 'x', phoneEnc: 'x', phoneHash: 'x',
     })))).toMatch(/row-level security/);
   });
 
@@ -40,10 +40,10 @@ describe('tenant isolation', () => {
     expect(own.rows).toEqual([{ id: DEMO_CLINIC.id }]);
   });
 
-  it('the same name and DOB in two clinics resolves to each clinic\'s own record', async () => {
+  it('the same person in two clinics resolves to each clinic\'s own record', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
-    const here = await dir.findByNameAndDob(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04');
-    const there = await dir.findByNameAndDob(OTHER.id, 'Maria Delgado', '1985-03-04');
+    const here = await dir.findByIdentity(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04', '+13035550147');
+    const there = await dir.findByIdentity(OTHER.id, 'Maria Delgado', '1985-03-04', '+13035550147');
     expect(here.status === 'found' && here.patient.id).toBe(ids.maria);
     expect(there.status === 'found' && there.patient.id).not.toBe(ids.maria);
   });
@@ -54,7 +54,7 @@ describe('seed', () => {
     const again = await seedDemo(t.db, cipher);
     expect(again.patientIds).toEqual(ids);
     const rows = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.patients));
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(6);
   });
 });
 
@@ -64,11 +64,31 @@ describe('PHI at rest', () => {
     for (const plain of ['Maria', 'Delgado', '1985-03-04', '3035550147']) expect(dump).not.toContain(plain);
   });
 
-  it('finds a caller by name and DOB, refuses a near miss, and flags twins as ambiguous', async () => {
+  it('finds a patient by name, DOB and phone, refuses a near miss, and tells apart two people who share a name and birthday', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
-    expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'maria delgado', '1985-03-04')).toMatchObject({ status: 'found', patient: { firstName: 'Maria' } });
-    expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'Maria Delgado', '1985-04-03')).toEqual({ status: 'not_found' });
-    expect(await dir.findByNameAndDob(DEMO_CLINIC.id, 'Sam Rivera', '1990-07-15')).toEqual({ status: 'ambiguous' });
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'maria delgado', '1985-03-04', '303-555-0147')).toMatchObject({ status: 'found', patient: { firstName: 'Maria', dob: '1985-03-04', isNew: false } });
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'Maria Delgado', '1985-04-03', '303-555-0147')).toEqual({ status: 'not_found' });
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04', '303-555-0199')).toEqual({ status: 'not_found' });
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'Sam Rivera', '1990-07-15', '+13035550171')).toMatchObject({ status: 'found', patient: { id: ids.sam_a } });
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'Sam Rivera', '1990-07-15', '+13035550172')).toMatchObject({ status: 'found', patient: { id: ids.sam_b } });
+    // Maria's children are on her phone: each is found by their own name and birthday
+    expect(await dir.findByIdentity(DEMO_CLINIC.id, 'Lucas Delgado', '2019-05-12', '+13035550147')).toMatchObject({ status: 'found', patient: { id: ids.lucas } });
+  });
+
+  it('adds a new patient once, and tells the front desk when someone else shares their name and birthday', async () => {
+    const dir = new PostgresPatientDirectory(t.db, cipher);
+    const callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'sess_register', null);
+    const first = await dir.register(DEMO_CLINIC.id, { firstName: 'Sam', lastName: 'Rivera', dob: '1990-07-15', phone: '+13035550173', guardianName: null, callId });
+    expect(first).toMatchObject({ status: 'created', similar: true, patient: { isNew: true } });
+    const again = await dir.register(DEMO_CLINIC.id, { firstName: 'sam', lastName: 'rivera', dob: '1990-07-15', phone: '(303) 555-0173', guardianName: null, callId });
+    expect(again).toMatchObject({ status: 'exists', patient: { id: first.patient.id } });
+    const child = await dir.register(DEMO_CLINIC.id, { firstName: 'Mateo', lastName: 'Delgado', dob: '2021-02-03', phone: '+13035550147', guardianName: 'Maria Delgado', callId });
+    expect(child).toMatchObject({ status: 'created', similar: false });
+    // the same person cannot be stored twice, whichever path writes them
+    expect(await failure(withClinic(t.db, DEMO_CLINIC.id, async (tx) => {
+      const [row] = await tx.select().from(schema.patients).where(sql`${schema.patients.id} = ${child.patient.id}`);
+      await tx.insert(schema.patients).values({ ...row!, id: undefined });
+    }))).toMatch(/patients_identity/);
   });
 
   it('audits a call record once when it opens and once when it closes, with its counts, and each patient created', async () => {
@@ -78,7 +98,7 @@ describe('PHI at rest', () => {
     await calls.appendSegment(OTHER.id, callId, { speaker: 'agent', text: 'I can help with that.', startMs: 1000, endMs: 1900 });
     await calls.recordAction(OTHER.id, callId, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
     await calls.close(OTHER.id, callId, { reason: 'caller_hangup', voiceSeconds: 12, outcome: 'info', emergency: false });
-    const patientId = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Iris', lastName: 'Novak', dob: '1979-02-11' });
+    const patientId = await new PostgresPatientDirectory(t.db, cipher).create(OTHER.id, { firstName: 'Iris', lastName: 'Novak', dob: '1979-02-11', phone: '+13035550190' });
     const rows = await withClinic(t.db, OTHER.id, (tx) => tx.select().from(schema.auditLogs).orderBy(schema.auditLogs.id));
     // not one row per transcript line or tool step: those would bury the staff rows
     expect(rows.filter((r) => r.callId === callId).map((r) => [r.actor, r.action, r.counts])).toEqual([

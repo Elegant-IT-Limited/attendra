@@ -33,13 +33,26 @@ export interface KnowledgeBase {
   search(clinicId: string, question: string): Promise<KnowledgePassage[]>;
 }
 
-export type PatientLookup =
-  | { status: 'found'; patient: { id: string; firstName: string; phone: string | null } } // phone on file, for confirmations
-  | { status: 'not_found' }
-  | { status: 'ambiguous' }; // two records share name and DOB; staff must sort it out
+/** A verified patient as a call knows them: enough to book, confirm by text and pick a doctor who sees their age. */
+export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean }
 
+export type PatientLookup =
+  | { status: 'found'; patient: CallPatient } // phone on file, for confirmations
+  | { status: 'not_found' }
+  | { status: 'ambiguous' }; // two records share name, date of birth and phone; staff must sort it out
+
+export type Registration =
+  | { status: 'created'; patient: CallPatient; similar: boolean } // similar: someone else has this name and date of birth with another phone
+  | { status: 'exists'; patient: CallPatient }; // the same person is already on file: they are simply verified
+
+/**
+ * Patients as a call reaches them. A patient is one person: name, date of birth and
+ * the phone number on file together. Names and birthdays repeat, and a family shares
+ * one phone (a parent and their children), so no one of them is enough on its own.
+ */
 export interface PatientDirectory {
-  findByNameAndDob(clinicId: string, fullName: string, dob: string): Promise<PatientLookup>;
+  findByIdentity(clinicId: string, fullName: string, dob: string, phone: string): Promise<PatientLookup>;
+  register(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName: string | null; callId: string }): Promise<Registration>;
 }
 
 export interface AppointmentSummary {

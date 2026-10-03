@@ -18,6 +18,8 @@ export const PERMISSIONS = {
   'calls:coach': ['owner', 'admin', 'staff'],
   'patients:read': ['owner', 'admin', 'staff'],
   'patients:write': ['owner', 'admin', 'staff'],
+  // a whole list of patients from a spreadsheet: managers only
+  'patients:import': ['owner', 'admin'],
   'schedule:read': ['owner', 'admin', 'staff'],
   'schedule:write': ['owner', 'admin', 'staff'],
   'tasks:read': ['owner', 'admin', 'staff'],

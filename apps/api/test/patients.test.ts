@@ -83,9 +83,11 @@ describe('search', () => {
     expect(dump).not.toMatch(/whitaker|delgado|5550163/i);
   });
 
-  it('asks for more than one character, and for something it can read', async () => {
-    expect((await search('m')).json().error).toBe('invalid_request');
-    expect((await search('12')).statusCode).toBe(422);
+  it('answers from the first character typed: the start of a name, or any digits of a phone number', async () => {
+    expect(await names('m')).toEqual(expect.arrayContaining(['Maria Delgado']));
+    expect(await names('017')).toEqual(['Sam Rivera', 'Sam Rivera']); // 303 555 0171 and 0172
+    expect(await names('999')).toEqual([]);
+    expect(await names('555-016')).toEqual(['James Whitaker']);
     expect((await api.request('POST', `${C}/search`, { cookie: as.staff, body: {} })).json().error).toBe('invalid_request');
   });
 });
@@ -118,35 +120,50 @@ describe('adding and editing', () => {
     const res = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Nora', lastName: 'Quinlan', dob: '1971-06-18', phone: '(303) 555-0188' } });
     expect(res.statusCode).toBe(201);
     id = res.json().id;
-    expect(await directory().findByNameAndDob(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0188' } });
+    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0188' } });
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
     expect((await audit('patient.created')).filter((a) => a.entity_id === id)).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
     const stored = JSON.stringify((await api.t.db.execute(sql`select * from patients where id = ${id}`)).rows);
     expect(stored).not.toMatch(/Nora|Quinlan|1971/);
   });
 
-  it('refuses someone already on file with the same name and date of birth', async () => {
-    const res = await api.request('POST', C, { cookie: as.admin, body: { firstName: 'maria', lastName: 'DELGADO', dob: '1985-03-04' } });
+  it('refuses the same person twice (name, date of birth and phone), and adds a different person who shares a name and birthday', async () => {
+    const res = await api.request('POST', C, { cookie: as.admin, body: { firstName: 'maria', lastName: 'DELGADO', dob: '1985-03-04', phone: '303-555-0147' } });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toMatchObject({ error: 'patient_exists', id: api.patientIds.maria });
+    const other = await api.request('POST', C, { cookie: as.admin, body: { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04', phone: '303-555-0177' } });
+    expect(other.statusCode).toBe(201);
+    expect(other.json()).toMatchObject({ similar: true });
   });
 
-  it('edits a patient and keeps the voice lookup right: the new name verifies, the old one does not', async () => {
-    const res = await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Nora', lastName: 'Quinlan-Hart', dob: '1971-06-18', phone: '' } });
-    expect(res.json()).toEqual({ id });
-    expect(await directory().findByNameAndDob(DEMO_CLINIC.id, 'Nora Quinlan-Hart', '1971-06-18')).toMatchObject({ status: 'found', patient: { id, phone: null } });
-    expect(await directory().findByNameAndDob(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18')).toEqual({ status: 'not_found' });
+  it('needs a phone number for everyone, and a parent or guardian for anyone under 18', async () => {
+    const noPhone = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Pat', lastName: 'Nophone', dob: '1990-01-01' } });
+    expect(noPhone.json().issues[0]).toMatchObject({ path: 'phone' });
+    const child = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Leo', lastName: 'Delgado', dob: '2022-08-01', phone: '303-555-0147' } });
+    expect(child.json().issues[0]).toMatchObject({ path: 'guardianName' });
+    const ok = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Leo', lastName: 'Delgado', dob: '2022-08-01', phone: '303-555-0147', guardianName: 'Maria Delgado' } });
+    expect(ok.statusCode).toBe(201);
+    // the family on one phone, on the parent's record
+    const maria = (await api.request('GET', `${C}/${api.patientIds.maria}`, { cookie: as.staff })).json();
+    expect(maria.household.map((p: { firstName: string }) => p.firstName)).toEqual(['Lucas', 'Leo', 'Sofia']);
+  });
+
+  it('edits a patient and keeps the voice lookup right: the new name and phone verify, the old ones do not', async () => {
+    const res = await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Nora', lastName: 'Quinlan-Hart', dob: '1971-06-18', phone: '(303) 555-0189' } });
+    expect(res.json()).toEqual({ id, similar: false });
+    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan-Hart', '1971-06-18', '3035550189')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0189' } });
+    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toEqual({ status: 'not_found' });
     expect(await names('3035550188')).toEqual([]);
     expect(await audit('patient.updated')).toEqual([{ actor: `user:${api.users.owner}`, entity_id: id }]);
-    expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04' } })).statusCode).toBe(409);
+    expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04', phone: '+13035550147' } })).statusCode).toBe(409);
   });
 
   it('judges a date of birth "in the future" by the clinic\'s date, not the server\'s', async () => {
     // 8 pm on Monday 28 September in Denver is already Tuesday the 29th in UTC
-    const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29' } });
+    const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29', phone: '303-555-0140', guardianName: 'Pat Early' } });
     expect(tomorrowThere.statusCode).toBe(422);
     expect(tomorrowThere.json().issues[0]).toMatchObject({ path: 'dob', message: 'a date of birth cannot be in the future' });
-    expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28' } })).statusCode).toBe(201);
+    expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28', phone: '303-555-0141', guardianName: 'Pat Today' } })).statusCode).toBe(201);
   });
 
   it('validates the details', async () => {
@@ -158,7 +175,53 @@ describe('adding and editing', () => {
     ]) {
       expect((await api.request('POST', C, { cookie: as.staff, body })).json().error, JSON.stringify(body)).toBe('invalid_request');
     }
-    expect((await api.request('PATCH', `${C}/00000000-0000-4000-8000-000000000000`, { cookie: as.staff, body: { firstName: 'X', lastName: 'Y', dob: '1990-01-01' } })).statusCode).toBe(404);
+    expect((await api.request('PATCH', `${C}/00000000-0000-4000-8000-000000000000`, { cookie: as.staff, body: { firstName: 'X', lastName: 'Y', dob: '1990-01-01', phone: '303-555-0142' } })).statusCode).toBe(404);
+  });
+
+  it('lists the newest patients first before anything is typed', async () => {
+    const list = (await api.request('GET', C, { cookie: as.staff })).json().patients;
+    expect(list[0].name).toBe('Baby Today');
+    expect(new Date(list[0].createdAt) >= new Date(list.at(-1).createdAt)).toBe(true);
+  });
+});
+
+describe('patients the assistant adds', () => {
+  it('are marked new, listed for checking, and become ordinary patients once confirmed', async () => {
+    const directory = new PostgresPatientDirectory(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    const added = await directory.register(DEMO_CLINIC.id, { firstName: 'Ines', lastName: 'Park', dob: '1999-12-01', phone: '+13035550143', guardianName: null, callId: api.callId });
+    const waiting = (await api.request('GET', `${C}?status=new`, { cookie: as.staff })).json().patients;
+    expect(waiting.map((p: { name: string; status: string }) => [p.name, p.status])).toEqual([['Ines Park', 'new']]);
+    expect((await api.request('POST', `${C}/${added.patient.id}/confirm`, { cookie: as.staff })).statusCode).toBe(204);
+    expect((await api.request('GET', `${C}?status=new`, { cookie: as.staff })).json().patients).toEqual([]);
+    expect((await audit('patient.confirmed')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: added.patient.id });
+  });
+});
+
+describe('importing patients from a spreadsheet', () => {
+  const csv = [
+    'first_name,last_name,date_of_birth,phone,guardian_name',
+    'Rosa,Ibanez,1979-02-11,+1 303 555 0144,',
+    'Tom,Ibanez,2018-04-04,+1 303 555 0144,Rosa Ibanez',
+    'Kid,Noguardian,2019-01-01,+1 303 555 0145,',
+    'Maria,Delgado,1985-03-04,+1 303 555 0147,',
+    'Rosa,Ibanez,02/11/1979,303-555-0144,',
+  ].join('\n');
+
+  it('is for managers only', async () => {
+    expect((await api.request('POST', `${C}/import`, { cookie: as.staff, body: { csv, dryRun: true } })).statusCode).toBe(403);
+  });
+
+  it('checks every row first, then adds the new patients, skips the ones on file, and can run twice', async () => {
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows.map((r: { status: string }) => r.status)).toEqual(['add', 'add', 'error', 'skip', 'error']);
+    expect(dry.rows[2].message).toMatch(/guardian/);
+    expect(dry.rows[4].message).toMatch(/twice/);
+    expect((await names('ibanez'))).toEqual([]); // a dry run changes nothing
+    const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
+    expect(real.counts).toEqual({ add: 2, update: 0, skip: 1, error: 2 });
+    expect(await names('ibanez')).toEqual(['Rosa Ibanez', 'Tom Ibanez']);
+    const again = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
+    expect(again.counts).toEqual({ add: 0, update: 0, skip: 3, error: 2 });
   });
 });
 

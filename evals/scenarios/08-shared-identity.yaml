@@ -1,10 +1,14 @@
 id: shared-name-and-dob
-title: Two patients with the same name and date of birth go to staff, not a guess
+title: Two patients share a name and a birthday; the phone on file tells them apart, and nobody is guessed without it
+caller_number: null
 turns:
   - caller: Sam Rivera, July 15 1990.
-    reply: "Thanks, Sam. I want to be sure I have the right record, so I'll ask the front desk to call you back and finish this with you."
+    reply: "Thanks, Sam. What's the phone number on your file?"
     delegate: [{ verify_caller: { full_name: Sam Rivera, date_of_birth: July 15 1990 } }]
+  - caller: It's 303 555 0172.
+    reply: "Thanks, Sam, I've found your record. How can I help today?"
+    delegate: [{ verify_caller: { full_name: Sam Rivera, date_of_birth: July 15 1990, phone: "303 555 0172" } }]
 expect:
   outcome: abandoned
-  verified: false
-  refusals: [needs_staff]
+  verified: true
+  refusals: [phone_required]

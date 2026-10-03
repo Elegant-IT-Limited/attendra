@@ -287,7 +287,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     const hangup = () => { hungUp = true; return engine.hangup(sessionId).catch(() => {}); };
     try {
       const backend = web ? { ...deps.backend, messenger: NO_TEXTS } : deps.backend;
-      agent = new CallAgent(new CallState(), { clinic, callId, callerNumber: from, now, log: deps.log }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      // before each request the agent reads the clinic again, so the doctors and their hours are the ones in the dashboard now
+      const reloadClinic = async () => {
+        const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));
+        return parsed.success ? parsed.data : null;
+      };
+      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, now, log: deps.log }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       if (web) {

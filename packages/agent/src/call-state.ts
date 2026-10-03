@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { Language, Slot } from '@attendra/core';
+import type { CallPatient, Language, Slot } from '@attendra/core';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -22,8 +22,11 @@ export type PendingChange =
  */
 export class CallState {
   readonly turns: Turn[] = [];
-  verifiedPatient: { id: string; firstName: string; phone: string | null } | null = null;
+  /** The patient this call is about: the caller, or the child or relative they are calling for. */
+  verifiedPatient: CallPatient | null = null;
   verifyAttempts = 0;
+  /** New patients added on this call: a parent may add two children, nobody adds ten. */
+  registrations = 0;
   /** Slots the caller has actually been offered. A booking can only use one of these. */
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;

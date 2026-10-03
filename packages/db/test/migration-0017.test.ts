@@ -8,8 +8,7 @@ import { copyFileSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createPhiCipher, type Database, MIGRATIONS_DIR, migrate, saveClinic, schema, seedDemo } from '../src';
-import { TEST_DATA_KEY } from '../src/testing';
+import { type Database, MIGRATIONS_DIR, migrate, saveClinic, schema } from '../src';
 
 describe('migration 0017', () => {
   it('stops with a message naming what links across clinics, and changes nothing', async () => {
@@ -19,7 +18,9 @@ describe('migration 0017', () => {
     const client = new PGlite({ extensions: { btree_gist, vector } });
     await migrate(client, before);
     const db = drizzle(client, { schema }) as unknown as Database;
-    const maria = (await seedDemo(db, createPhiCipher(TEST_DATA_KEY))).patientIds.maria!;
+    // a patient as the schema stood then: the seed of today writes columns 0020 adds
+    await saveClinic(db, 'org_demo', DEMO_CLINIC);
+    const [{ id: maria }] = (await db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc) values (${DEMO_CLINIC.id}, 'x', 'x', 'x', 'x') returning id`)).rows as [{ id: string }];
     await saveClinic(db, 'org_other', { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other', phoneNumbers: ['+13035550200'] });
     await db.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key) values ('clinic_other', 'callback', ${maria}, 'x', 'cross-1')`);
 

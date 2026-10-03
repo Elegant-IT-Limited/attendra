@@ -228,6 +228,14 @@ export class CallAgent {
     };
 
     try {
+      // the clinic as it is now: a doctor added or a day off set in the dashboard counts from the next request
+      if (this.ctx.reloadClinic) {
+        const fresh = await this.ctx.reloadClinic().catch((err: unknown) => {
+          this.log.warn({ call_id: this.ctx.callId, err: { message: (err as Error).message } }, 'could not reload the clinic settings; keeping the ones the call has');
+          return null;
+        });
+        if (fresh) this.ctx.clinic = fresh;
+      }
       const plan = await this.planner.plan({
         clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber,
         nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,

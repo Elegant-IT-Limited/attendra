@@ -11,6 +11,7 @@ export const SHORTCUTS: { keys: string[]; label: string; page?: string; permissi
   { keys: ['G', 'T'], label: 'Go to Today', page: 't' },
   { keys: ['G', 'S'], label: 'Go to Schedule', page: 's' },
   { keys: ['G', 'P'], label: 'Go to Patients', page: 'p' },
+  { keys: ['G', 'D'], label: 'Go to Doctors', page: 'd' },
   { keys: ['G', 'R'], label: 'Go to Requests', page: 'r' },
   { keys: ['G', 'C'], label: 'Go to Calls', page: 'c' },
   { keys: ['N'], label: 'New booking', permission: 'schedule:write' },

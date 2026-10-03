@@ -27,7 +27,7 @@ export function simulatedCallFor(clinic: ClinicConfig): { script: SimulatedScrip
   if (clinic.id === DEMO_CLINIC.id) {
     const plans = [
       new ScriptedPlanner([
-        { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } },
+        { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985', phone: '303 555 0147' } },
         { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
       ] satisfies ScriptedStep[], (r) => {
         const s = slots(keep(r));
@@ -40,7 +40,7 @@ export function simulatedCallFor(clinic: ClinicConfig): { script: SimulatedScrip
       script: {
         turns: [
           { assistant: clinic.greeting },
-          { caller: 'Hi, this is Maria Delgado, born March 4th 1985. My knee has been hurting and I would like to be seen this week.', delegate: true },
+          { caller: 'Hi, this is Maria Delgado, born March 4th 1985, my number is 303 555 0147. My knee has been hurting and I would like to be seen this week.', delegate: true },
           { caller: 'The first one works for me.', delegate: true },
         ],
       },

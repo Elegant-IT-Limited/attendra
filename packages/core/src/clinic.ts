@@ -17,14 +17,31 @@ export const LanguageSchema = z.enum(LANGUAGES);
 /** What a provider or a visit type is called in another language, when the clinic says it differently. */
 const LocalNames = z.partialRecord(LanguageSchema, z.string().min(1).max(80));
 
+/** Whole days a provider is away: leave, a conference, a day off. Both ends included. */
+export const TimeOff = z.object({ from: isoDate, to: isoDate, note: z.string().trim().max(80).optional() })
+  .refine((t) => t.from <= t.to, 'time off must end on or after the day it starts');
+
+/** The ages a provider sees, in whole years. No upper limit means every age from `min`. */
+export const AgeRange = z.object({ min: z.number().int().min(0).max(120), max: z.number().int().min(0).max(120).nullable() })
+  .refine((a) => a.max === null || a.max >= a.min, 'the oldest age must be at least the youngest');
+
 export const Provider = z.object({
-  id: z.string(),
-  name: z.string(),
+  id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores'),
+  name: z.string().trim().min(2).max(80),
   names: LocalNames.optional(),
   // a person ("with Dr. Rahman") or a room ("in the sample collection room"): read-backs say it properly
   kind: z.enum(['person', 'room']).default('person'),
+  // what callers and staff hear about them: "Family medicine", "Pediatrics"
+  specialty: z.string().trim().max(60).optional(),
+  // what they see people for, a few words each: "Children", "Women's health", "Diabetes care"
+  categories: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
+  // who they see; absent means every age
+  ages: AgeRange.optional(),
+  // a new patient is only offered providers who take new patients
+  acceptingNewPatients: z.boolean().default(true),
   // the provider's own bookable hours; falls back to the clinic's hours when absent
   hours: WeeklyHours.optional(),
+  timeOff: z.array(TimeOff).max(100).default([]),
   visitTypeIds: z.array(z.string()).min(1),
 });
 
@@ -33,6 +50,8 @@ export const VisitType = z.object({
   name: z.string(), // "new patient visit", said to callers as written
   names: LocalNames.optional(), // the same, in another language: { es: 'consulta por enfermedad' }
   minutes: z.number().int().min(5).max(240),
+  // who may book it: everyone, only new patients ("new patient visit") or only patients already on file
+  audience: z.enum(['all', 'new', 'existing']).default('all'),
 });
 
 export const TransferTarget = z.enum(['front_desk', 'billing', 'on_call']);
@@ -86,6 +105,16 @@ const ClinicConfigShape = z.object({
     ctx.addIssue({ code: 'custom', path: ['languages'], message: 'the primary language must be one of the languages the assistant speaks' });
   }
   if (new Set(c.languages).size !== c.languages.length) ctx.addIssue({ code: 'custom', path: ['languages'], message: 'a language is listed twice' });
+  // ids are what bookings and the assistant refer to, so each one names exactly one thing
+  const dupe = (ids: string[]) => ids.find((id, i) => ids.indexOf(id) !== i);
+  const provider = dupe(c.providers.map((p) => p.id));
+  if (provider) ctx.addIssue({ code: 'custom', path: ['providers'], message: `two providers have the id ${provider}` });
+  const visit = dupe(c.visitTypes.map((v) => v.id));
+  if (visit) ctx.addIssue({ code: 'custom', path: ['visitTypes'], message: `two visit types have the id ${visit}` });
+  c.providers.forEach((p, i) => {
+    const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
+    if (unknown) ctx.addIssue({ code: 'custom', path: ['providers', i, 'visitTypeIds'], message: `${p.name} offers a visit type that does not exist (${unknown})` });
+  });
   // A name is never a disclosure: "Hi, I'm Maya" sounds like a person. The greeting
   // must say AI assistant (or the same in one of the clinic's languages) whatever the
   // assistant is called.
@@ -141,6 +170,8 @@ export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName
   return out;
 }
 export type Provider = z.infer<typeof Provider>;
+export type TimeOff = z.infer<typeof TimeOff>;
+export type AgeRange = z.infer<typeof AgeRange>;
 export type VisitType = z.infer<typeof VisitType>;
 export type RoutingRule = z.infer<typeof RoutingRule>;
 

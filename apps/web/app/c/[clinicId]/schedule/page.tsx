@@ -9,6 +9,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, ScheduleList } from '@/components/schedule/calendar';
+import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
@@ -50,8 +51,10 @@ function ScheduleScreen() {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') ?? '') ? params.get('date')! : today;
   const open = params.get('appointment');
   const [providerId, setProviderId] = useState('');
-  // in a week the columns are narrow and a cancelled block sits on top of the booking that replaced it, so they start hidden there
-  const [cancelledShown, setCancelledShown] = useState({ day: true, week: false });
+  // booked only, booked and cancelled, or cancelled only (a history list). In a week the columns are narrow
+  // and a cancelled block sits on top of the booking that replaced it, so a week starts with booked only
+  const shown = params.get('show');
+  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'week' ? 'booked' : 'all';
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
@@ -70,13 +73,12 @@ function ScheduleScreen() {
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
-    enabled: !!clinic && can('schedule:read'),
+    enabled: !!clinic && can('schedule:read') && show !== 'cancelled',
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 
-  const showCancelled = cancelledShown[view];
-  const setShowCancelled = (v: boolean) => setCancelledShown((c) => ({ ...c, [view]: v }));
+  const showCancelled = show === 'all';
   // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
   const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open), [schedule.data, showCancelled, open]);
   const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
@@ -120,13 +122,26 @@ function ScheduleScreen() {
             {clinic.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
         </div>
-        <label className="flex h-8 items-center gap-2 text-sm">
-          <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} />
-          Show cancelled
-        </label>
+        <div className="space-y-1">
+          <Label htmlFor="schedule-show" className="sr-only">Show</Label>
+          <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
+            <option value="booked">Booked visits</option>
+            <option value="all">Booked and cancelled</option>
+            <option value="cancelled">Cancelled only, as a list</option>
+          </Select>
+        </div>
       </div>
 
-      {/* busy while the grid still shows the previous range: screen readers and tests wait for it */}
+      {show === 'cancelled' ? (
+        <Card className="overflow-hidden" data-testid="cancelled">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="font-semibold">Cancelled visits</h2>
+            <p className="text-xs text-text-muted">The history of cancellations: who cancelled, why and when. Open one to see the visit.</p>
+          </div>
+          <CancelledHistory clinicId={clinicId} clinic={clinic} providerId={providerId} onOpen={(id) => set({ appointment: id })} />
+        </Card>
+      ) : (
+      // busy while the grid still shows the previous range: screen readers and tests wait for it
       <Card className="overflow-hidden" data-testid="schedule" role="tabpanel" id="schedule-panel" aria-labelledby={`schedule-tab-${view}`} aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
@@ -147,13 +162,14 @@ function ScheduleScreen() {
               <ScheduleList clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
             </div>
             {appointments.length === 0 && (hidden > 0 ? (
-              <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Tick Show cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
+              <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Choose Booked and cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
             ) : (
               <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.</Empty></div>
             ))}
           </>
         )}
       </Card>
+      )}
 
       <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={open} onClose={() => set({ appointment: null })} canWrite={writable}
         patientHref={can('patients:read') ? (id) => `/c/${clinicId}/patients/${id}` : undefined} />

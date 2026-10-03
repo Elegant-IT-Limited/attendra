@@ -8,7 +8,7 @@ import { appointments, auditLogs, callActions, calls, callSegments, callSummarie
 import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
-export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'not_needed';
+export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'not_needed' | 'details_confirmed';
 type TaskType = 'callback' | 'refill' | 'voicemail' | 'review';
 
 /**
@@ -42,6 +42,18 @@ export async function orgOfClinic(db: Database, clinicId: string): Promise<strin
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
+
+/** The most requests one search of the queue reads before it filters. */
+export const TASK_SEARCH_SCAN = 2000;
+const TASK_LABELS: Record<string, string> = { refill: 'refill prescription', callback: 'callback call back', voicemail: 'voicemail message', review: 'review new patient check' };
+const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** A request matches when every word typed is found in its patient's name, its details or its type; digits match inside phone numbers. */
+export function taskMatches(q: string, t: { type: string; patientName: string; details: string[] }): boolean {
+  const hay = fold([t.patientName, TASK_LABELS[t.type] ?? t.type, ...t.details].join(' '));
+  const digits = hay.replace(/\D/g, '');
+  return fold(q).split(/\s+/).filter(Boolean).every((w) => (/^[\d()+.-]+$/.test(w) && w.replace(/\D/g, '') ? digits.includes(w.replace(/\D/g, '')) : hay.includes(w)));
+}
 
 /** One row per patient a search showed, in the search's transaction. The query itself is never written. */
 export async function auditResults(tx: Tx, clinicId: string, userId: string, patientIds: string[]) {
@@ -248,32 +260,47 @@ export class FrontDeskRepository {
    * Filters run in the database, so a task that is not shown is not read or audited.
    */
   /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
-  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned' }, viewer: string | { apiKeyId: string }) {
-    const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
+  async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned'; q?: string; from?: Date; to?: Date }, viewer: string | { apiKeyId: string }) {
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, summary: callSummaries })
         .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
-          opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined))
-        .orderBy(opts.status === 'open' ? tasks.createdAt : desc(tasks.doneAt)).limit(opts.limit);
-      const notes = rows.length
-        ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
-        : [];
-      // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
-      for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
-      const ctx = (col: string) => phiContext(clinicId, col);
-      return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
-        id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
-        assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
-        patientName: firstNameEnc && lastNameEnc
-          ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
-          : null,
-        details: JSON.parse(this.cipher.decrypt(task.detailsEnc, ctx('tasks.details'))) as Record<string, string>,
-        // what the call's summary suggests staff do, for a request the assistant created
-        followUp: summary ? decryptSummary(this.cipher, clinicId, summary).followUp : null,
-        notes: notes.filter((n) => n.taskId === task.id).map((n) => ({ id: n.id, authorUserId: n.authorUserId, at: n.createdAt, body: this.cipher.decrypt(n.bodyEnc, ctx('task_notes.body')) })),
-      }));
+          opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
+          opts.from ? sql`${tasks.createdAt} >= ${opts.from}` : undefined, opts.to ? lt(tasks.createdAt, opts.to) : undefined))
+        // the newest first: what just came in is what the front desk looks for
+        .orderBy(opts.status === 'open' ? desc(tasks.createdAt) : desc(tasks.doneAt), desc(tasks.id))
+        // a search reads more, decrypts them and keeps the matches: names and details are encrypted (decision 7)
+        .limit(opts.q ? Math.max(opts.limit, TASK_SEARCH_SCAN) : opts.limit);
+      const ctxOf = (col: string) => phiContext(clinicId, col);
+      const matching = opts.q ? rows.filter((r) => taskMatches(opts.q!, {
+        type: r.task.type,
+        patientName: r.firstNameEnc && r.lastNameEnc ? `${this.cipher.decrypt(r.firstNameEnc, ctxOf('patients.first_name'))} ${this.cipher.decrypt(r.lastNameEnc, ctxOf('patients.last_name'))}` : '',
+        details: Object.values(JSON.parse(this.cipher.decrypt(r.task.detailsEnc, ctxOf('tasks.details'))) as Record<string, string>),
+      })).slice(0, opts.limit) : rows;
+      return this.taskViews(tx, clinicId, matching, viewer);
     });
+  }
+
+  /** Requests as staff see them: details and notes decrypted, one audit row per request shown. */
+  private async taskViews(tx: Tx, clinicId: string, rows: { task: typeof tasks.$inferSelect; firstNameEnc: string | null; lastNameEnc: string | null; summary: typeof callSummaries.$inferSelect | null }[], viewer: string | { apiKeyId: string }) {
+    const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
+    const notes = rows.length
+      ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
+      : [];
+    // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
+    for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
+    const ctx = (col: string) => phiContext(clinicId, col);
+    return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
+      id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
+      assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
+      patientName: firstNameEnc && lastNameEnc
+        ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
+        : null,
+      details: JSON.parse(this.cipher.decrypt(task.detailsEnc, ctx('tasks.details'))) as Record<string, string>,
+      // what the call's summary suggests staff do, for a request the assistant created
+      followUp: summary ? decryptSummary(this.cipher, clinicId, summary).followUp : null,
+      notes: notes.filter((n) => n.taskId === task.id).map((n) => ({ id: n.id, authorUserId: n.authorUserId, at: n.createdAt, body: this.cipher.decrypt(n.bodyEnc, ctx('task_notes.body')) })),
+    }));
   }
 
   /** Adds an internal note to a request. Notes are never edited or removed. */
@@ -350,9 +377,15 @@ export class FrontDeskRepository {
       const updated = await tx.update(tasks).set({ status: 'done', doneAt: new Date(), doneByUserId: userId, outcome })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'),
           or(isNull(tasks.assigneeUserId), eq(tasks.assigneeUserId, userId))))
-        .returning({ id: tasks.id });
+        .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId });
       if (updated.length) {
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.done', entity: 'task', entityId: taskId });
+        // checking a patient the assistant added makes them an ordinary patient
+        const { type, patientId } = updated[0]!;
+        if (type === 'review' && outcome === 'details_confirmed' && patientId) {
+          await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+          await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.confirmed', entity: 'patient', entityId: patientId });
+        }
         return 'done';
       }
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
@@ -377,7 +410,7 @@ export class FrontDeskRepository {
   }
 
   /**
-   * Open requests nobody has claimed, oldest first: type and age only, so the home
+   * Open requests nobody has claimed, newest first: type and age only, so the home
    * screen shows them without reading patient data. `total` counts them all, past the
    * first `limit`.
    */
@@ -385,7 +418,7 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
       const rows = await tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
-        .where(waiting).orderBy(tasks.createdAt).limit(limit);
+        .where(waiting).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(limit);
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(tasks).where(waiting) as [{ n: number }];
       return { tasks: rows, total: n };
     });
@@ -402,6 +435,33 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId));
       return row?.config ?? null;
+    });
+  }
+
+  /**
+   * Reads the clinic's settings, applies a change and saves it, with the row locked so
+   * two people editing doctors at once cannot undo each other. `change` returns the
+   * validated config to save, or a value to hand back without saving.
+   */
+  async updateSettings<T>(clinicId: string, userId: string, action: string, entityId: string, change: (current: unknown) => { save: { name: string; timezone: string }; result: T } | { result: T }): Promise<T | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [row] = await tx.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
+      if (!row) return null;
+      const out = change(row.config);
+      if ('save' in out) {
+        await tx.update(clinics).set({ name: out.save.name, timezone: out.save.timezone, config: out.save }).where(eq(clinics.id, clinicId));
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId });
+      }
+      return out.result;
+    });
+  }
+
+  /** Booked visits still to come with a provider: a provider with any cannot be removed. */
+  async upcomingForProvider(clinicId: string, providerId: string, now: Date): Promise<number> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(appointments)
+        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${now}`)) as [{ n: number }];
+      return n;
     });
   }
 

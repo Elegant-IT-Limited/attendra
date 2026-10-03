@@ -131,7 +131,7 @@ test.describe.serial('the schedule', () => {
       }] } });
     });
     await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
-    await expect(page.getByText('A cancelled visit is hidden. Tick Show cancelled to see it.')).toBeVisible();
+    await expect(page.getByText('A cancelled visit is hidden. Choose Booked and cancelled to see it.')).toBeVisible();
     await expect(page.getByText('Nothing booked here yet')).toHaveCount(0);
   });
 

@@ -90,12 +90,13 @@ export const REFUSALS: Record<string, string> = {
 };
 
 /** Requests, in the words a front desk uses. The API still calls them tasks. */
-export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'Needs review' };
+export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check' };
 
 export const TASK_EXPLAINED: Record<string, string> = {
   refill: 'The patient asked for a refill. Check with the care team, then call them back.',
   callback: 'Someone asked for a person to call them back.',
   voicemail: 'A message the caller left for the team.',
+  review: 'The assistant added a new patient on a call. Check their name, date of birth and phone, then confirm them.',
 };
 
 export const TASK_OUTCOMES: Record<string, string> = {
@@ -103,6 +104,7 @@ export const TASK_OUTCOMES: Record<string, string> = {
   left_message: 'No answer, left a message',
   refill_sent: 'Refill sent to the pharmacy',
   not_needed: 'Not needed',
+  details_confirmed: 'Details checked and confirmed',
 };
 
 /** "2 days", "3 hours", "12 minutes": how long something has waited. */

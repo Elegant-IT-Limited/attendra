@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
 import type { KnowledgeBase } from '@attendra/core';
-import { clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { type ChangeFeed, clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
 import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
 import { type GuardOptions, type Resolver } from '@attendra/webhooks';
@@ -16,13 +16,15 @@ import { ApiKeysController } from './api-keys/api-keys.controller';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
 import { CallsController } from './calls/calls.controller';
+import { ChangesController } from './changes/changes.controller';
+import { DoctorsController } from './doctors/doctors.controller';
 import { LiveController } from './calls/live.controller';
 import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
@@ -55,6 +57,8 @@ export interface ApiDeps {
   trustProxy?: number;
   /** The clock for booking rules ("no past times"). Tests set it; the default is the real time. */
   now?: () => Date;
+  /** Change notices from Postgres, so the dashboard updates without a refresh. Without it, screens refresh on a timer. */
+  changes?: ChangeFeed | null;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
@@ -72,7 +76,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, TeamController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, AuditController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -84,6 +88,7 @@ class ApiModule {
         { provide: KNOWLEDGE, useValue: deps.knowledge ?? null },
         { provide: EVENTS, useValue: eventSink(deps.jobs ?? noJobs, (err) => deps.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) },
         { provide: WEBHOOK_GUARD, useValue: deps.webhooks ?? {} },
+        { provide: CHANGES, useValue: deps.changes ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
@@ -102,6 +107,8 @@ class ApiModule {
  */
 /** The one route that takes a large body. */
 export const KNOWLEDGE_UPLOAD_ROUTE = '/api/v1/clinics/:clinicId/knowledge/documents';
+/** CSV imports: up to 2 MB of text, as JSON. */
+export const IMPORT_ROUTES = ['/api/v1/clinics/:clinicId/doctors/import', '/api/v1/clinics/:clinicId/patients/import'];
 
 export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> {
   const hops = deps.trustProxy ?? 0;
@@ -118,6 +125,7 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   fastify.addHook('onRoute', (route) => {
     if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
+    if (IMPORT_ROUTES.includes(route.url) && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 3 * 1024 * 1024;
   });
 
   // every route, Better Auth's included: sign-in is where guessing happens

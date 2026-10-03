@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, NO_INFORMATION, ToolArgs, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, audienceLine, type ClinicConfig, NO_INFORMATION, ToolArgs, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -21,10 +21,11 @@ export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine:
 export interface PlannerOutput { say: string | null; quiet?: string }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
-  verify_caller: 'Verify the caller by full name and date of birth before anything about their own record.',
-  get_clinic_info: 'Hours for today and the next 7 days, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer.',
+  verify_caller: 'Verify the patient by full name, date of birth and the phone number on their file (null: the number they are calling from) before booking, changing or reading anything of theirs. For a child, use the child\'s name and date of birth and the family phone. Call it again to switch to another family member.',
+  register_patient: 'Add a new patient. Only after verify_caller found no match and the caller says they are new to the clinic. Needs first and last name, date of birth and phone; for anyone under 18 also the parent or guardian\'s name. They are then verified and can book.',
+  get_clinic_info: 'Hours for today and the next 7 days, the doctors (specialty, what they see people for, ages, visit types, weekly hours, time off, whether they take new patients), the visit types, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
   search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
-  find_slots: 'Find up to 3 open appointment slots. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
+  find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
   list_appointments: 'List the verified caller\'s upcoming appointments.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',
@@ -39,12 +40,12 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
   return [
     `You are the backend for the phone assistant of ${clinic.name}. ${nowLine}`,
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
-    'Rules: verify identity before anything about the caller\'s own records. Offer only slots returned by find_slots.',
+    'Rules: verify the patient (name, date of birth and phone) before booking, changing or reading anything of theirs. Anyone may hear the doctors, their specialties, hours and open times without being verified: answer those from get_clinic_info and find_slots. Before booking, ask whether the visit is for the caller or someone else, such as their child. If verification finds nobody and they say they are new, add them with register_patient. Offer only slots returned by find_slots.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
     'Never give medical advice, never interpret symptoms, never promise a refill. Offer a callback or a transfer instead.',
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
     'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',
-    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name}`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}`).join('; ')}.`,
+    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}, ${agesLine(p)}`).join('; ')}.`,
   ].join('\n');
 }
 
@@ -106,7 +107,7 @@ export class ResponsesPlanner implements Planner {
 
 export function stateLine(state: CallState): string {
   return [
-    state.verifiedPatient ? `caller verified as ${state.verifiedPatient.firstName}` : 'caller not verified',
+    state.verifiedPatient ? `patient verified as ${state.verifiedPatient.firstName}${state.verifiedPatient.isNew ? ' (new patient)' : ''}` : 'patient not verified',
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
   ].join('; ');

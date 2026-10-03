@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { countryCopy, localDateOf } from '@attendra/core';
+import { ageOn, countryCopy, localDateOf } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -11,8 +11,10 @@ import { Input, Label } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 
 /**
- * A patient's name, date of birth and phone. The assistant verifies callers on
- * exactly these, so they are asked for the way a caller would give them.
+ * A patient's name, date of birth and phone, and a parent or guardian for a child.
+ * The assistant verifies callers on exactly the first three together, so they are
+ * all required, and asked for the way a caller would give them. A family can share
+ * one phone: each child is a patient of their own on the parent's number.
  */
 export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved, onCancel }: {
   clinicId: string;
@@ -25,29 +27,38 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
 }) {
   const queries = useQueryClient();
   const config = useClinicConfig(clinicId);
-  const [form, setForm] = useState<PatientInput>({ firstName: '', lastName: '', dob: '', phone: '', ...initial });
+  const [form, setForm] = useState<PatientInput>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', ...initial });
   const [problem, setProblem] = useState<{ text: string; existing?: string } | null>(null);
+  const [similar, setSimilar] = useState(false);
+  const today = localDateOf(new Date(), config.data?.timezone ?? 'UTC');
+  const child = !!form.dob && form.dob <= today && ageOn(form.dob, today) < 18;
   const save = useMutation({
     mutationFn: (input: PatientInput) => api<PatientSaved>(`/clinics/${clinicId}/patients${patientId ? `/${patientId}` : ''}`, {
       method: patientId ? 'PATCH' : 'POST', body: JSON.stringify(input),
     }),
-    onMutate: () => setProblem(null),
+    onMutate: () => { setProblem(null); setSimilar(false); },
     onSuccess: (r, input) => {
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patient-search', clinicId] });
+      void queries.invalidateQueries({ queryKey: ['patients', clinicId] });
+      if (r.similar) setSimilar(true);
       onSaved(r.id, input);
     },
     onError: (e) => {
-      if (e instanceof ApiFailure && e.status === 409) setProblem({ text: 'Someone with this name and date of birth is already on file.', existing: (e.body as { id?: string }).id });
+      if (e instanceof ApiFailure && e.status === 409) setProblem({ text: 'This patient is already on file: the same name, date of birth and phone number.', existing: (e.body as { id?: string }).id });
       else if (e instanceof ApiFailure && e.body.issues?.length) setProblem({ text: e.body.issues.map((i) => i.message).join('. ') });
       else setProblem({ text: 'That did not save. Check your connection and try again.' });
     },
   });
   const set = (k: keyof PatientInput) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
-  const submit = (e: FormEvent) => { e.preventDefault(); save.mutate({ ...form, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone?.trim() }); };
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    save.mutate({ ...form, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
+  };
 
   return (
     <form onSubmit={submit} className="space-y-4">
+      {similar && <Alert>Saved. Someone else on file has the same name and date of birth, on another phone number. That is allowed; check it is not the same person twice.</Alert>}
       {problem && (
         <Alert tone="warn">
           {problem.text}{' '}
@@ -65,13 +76,20 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="dob">Date of birth</Label>
-          <Input id="dob" type="date" required min="1890-01-01" max={localDateOf(new Date(), config.data?.timezone ?? 'UTC')} value={form.dob} onChange={set('dob')} />
+          <Input id="dob" type="date" required min="1890-01-01" max={today} value={form.dob} onChange={set('dob')} />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="phone">Phone (optional)</Label>
-          <Input id="phone" type="tel" autoComplete="off" value={form.phone ?? ''} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} />
-          <p className="text-xs text-text-muted">Texts about bookings go to this number.</p>
+          <Label htmlFor="phone">Phone</Label>
+          <Input id="phone" type="tel" required minLength={10} autoComplete="off" value={form.phone} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} />
+          <p className="text-xs text-text-muted">With the area code. The assistant uses it, with the name and date of birth, to know who is calling. For a child, the parent&apos;s number.</p>
         </div>
+        {child && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="guardian">Parent or guardian</Label>
+            <Input id="guardian" required maxLength={120} autoComplete="off" value={form.guardianName ?? ''} onChange={set('guardianName')} placeholder="Full name" />
+            <p className="text-xs text-text-muted">Under 18: the person who books for them and answers that phone.</p>
+          </div>
+        )}
       </fieldset>
       <div className="flex justify-end gap-2">
         {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={save.isPending}>Cancel</Button>}
