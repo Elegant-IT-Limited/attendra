@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, Provider } from './clinic';
+import { type ClinicConfig, type Gender, Provider } from './clinic';
 import { parseDob, phoneDigits } from './identity';
 import { ageOn } from './providers';
 
@@ -46,13 +46,24 @@ export const MAX_IMPORT_ROWS = 5000;
 const DAY_COLUMNS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 const DAY_INDEX: Record<(typeof DAY_COLUMNS)[number], string> = { mon: '1', tue: '2', wed: '3', thu: '4', fri: '5', sat: '6', sun: '0' };
 
-export const DOCTOR_COLUMNS = ['id', 'name', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', ...DAY_COLUMNS, 'time_off'] as const;
-export const PATIENT_COLUMNS = ['first_name', 'last_name', 'date_of_birth', 'phone', 'guardian_name'] as const;
+/** female, male, other, or undisclosed for "prefer not to say", from the ways a spreadsheet writes them; null when it is not one. */
+export function readGender(v: string): Gender | null {
+  const g = v.trim().toLowerCase();
+  if (/^(f|female|woman|girl)$/.test(g)) return 'female';
+  if (/^(m|male|man|boy)$/.test(g)) return 'male';
+  if (/^(o|other|non-?binary)$/.test(g)) return 'other';
+  if (/^(u|undisclosed|prefer not to say|prefers not to say|not stated|n\/?a)$/.test(g)) return 'undisclosed';
+  return null;
+}
+
+export const DOCTOR_COLUMNS = ['id', 'name', 'gender', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', ...DAY_COLUMNS, 'time_off'] as const;
+export const PATIENT_COLUMNS = ['first_name', 'last_name', 'date_of_birth', 'gender', 'phone', 'guardian_name'] as const;
 
 /** The guide a template carries, in the order a manager fills it in. Shown next to the download, never written into the file. */
 export const DOCTOR_GUIDE = [
   'One row per doctor. name is required; every other column may be left empty.',
   'id: leave empty to add a doctor. To change one already on file, use the same name (or their id): fill only what changes, and empty cells keep what is on file.',
+  'gender: female, male, other or prefer not to say. Callers can ask for a female or a male doctor.',
   'categories and visit_types: several values separated by semicolons, like Children; Vaccinations. Visit types are the names in Settings.',
   'ages_min and ages_max: whole years. Leave ages_max empty for no upper limit; leave both empty for every age.',
   'accepting_new_patients: yes or no. Empty means yes.',
@@ -60,8 +71,9 @@ export const DOCTOR_GUIDE = [
   'time_off: days away like 2026-12-24 to 2026-12-31; 2027-01-15. Both ends are included.',
 ];
 export const PATIENT_GUIDE = [
-  'One row per patient. first_name, last_name, date_of_birth and phone are required.',
+  'One row per patient. first_name, last_name, date_of_birth, gender and phone are required.',
   'date_of_birth: YYYY-MM-DD, like 1985-03-04, or month/day/year, like 03/04/1985.',
+  'gender: female, male, other or prefer not to say. Required.',
   'phone: with the area code. A family may share one number: a parent and each child get a row of their own with the same phone.',
   'guardian_name: required for anyone under 18, the parent or guardian who books for them.',
   'A patient already on file with the same name, date of birth and phone is skipped, so the same file can be uploaded twice safely.',
@@ -71,16 +83,16 @@ export function doctorTemplate(clinic: Pick<ClinicConfig, 'visitTypes'>): string
   const visits = clinic.visitTypes.map((v) => v.name);
   return toCsv([
     [...DOCTOR_COLUMNS],
-    ['', 'Dr. Jane Example', 'Family medicine', 'Adults; Chronic conditions', '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31'],
-    ['', 'Dr. Sam Example', 'Pediatrics', 'Children; Newborns; Vaccinations', '0', '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', ''],
+    ['', 'Dr. Jane Example', 'female', 'Family medicine', 'Adults; Chronic conditions', '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31'],
+    ['', 'Dr. Sam Example', 'male', 'Pediatrics', 'Children; Newborns; Vaccinations', '0', '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', ''],
   ]);
 }
 
 export function patientTemplate(): string {
   return toCsv([
     [...PATIENT_COLUMNS],
-    ['Jane', 'Example', '1985-03-04', '+1 303 555 0100', ''],
-    ['Sam', 'Example', '2019-05-12', '+1 303 555 0100', 'Jane Example'],
+    ['Jane', 'Example', '1985-03-04', 'female', '+1 303 555 0100', ''],
+    ['Sam', 'Example', '2019-05-12', 'male', '+1 303 555 0100', 'Jane Example'],
   ]);
 }
 
@@ -132,6 +144,8 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       if (!match) return fail(`"${v}" is not a visit type in Settings (${clinic.visitTypes.map((t) => t.name).join(', ')})`);
       visitTypeIds.push(match.id);
     }
+    const gender = r.get('gender') === '' ? undefined : readGender(r.get('gender'));
+    if (gender === null) return fail('gender is female, male, other or prefer not to say');
     const accepting = yes(r.get('accepting_new_patients'));
     if (accepting === null) return fail('accepting_new_patients is yes or no');
     const min = r.get('ages_min');
@@ -155,6 +169,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       ...existing,
       id: existing?.id ?? newProviderId(name),
       name,
+      gender: keep(r.get('gender'), gender, existing?.gender),
       specialty: keep(r.get('specialty'), r.get('specialty') || undefined, existing?.specialty),
       categories: keep(r.get('categories'), split(r.get('categories')), existing?.categories) ?? [],
       ages: existing && min === '' && max === '' ? existing.ages : min === '' && max === '' ? undefined : { min: min === '' ? 0 : Number(min), max: max === '' ? null : Number(max) },
@@ -168,7 +183,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
   });
 }
 
-export interface PatientRow { firstName: string; lastName: string; dob: string; phone: string; guardianName: string | null }
+export interface PatientRow { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null }
 
 /**
  * Patient rows checked on their own: required fields, a real date of birth, a phone
@@ -178,8 +193,8 @@ export interface PatientRow { firstName: string; lastName: string; dob: string; 
 export function readPatients(text: string, today: string, northAmerica = true): RowResult<PatientRow>[] {
   const rows = records(text);
   if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
-  if (rows.length && !['first_name', 'last_name', 'date_of_birth', 'phone'].every((c) => rows[0]!.headers.includes(c))) {
-    return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names: first_name, last_name, date_of_birth, phone, guardian_name; download the template' }];
+  if (rows.length && !['first_name', 'last_name', 'date_of_birth', 'gender', 'phone'].every((c) => rows[0]!.headers.includes(c))) {
+    return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names: first_name, last_name, date_of_birth, gender, phone, guardian_name; download the template' }];
   }
   const seen = new Set<string>();
   const todayDate = new Date(`${today}T12:00:00Z`);
@@ -191,6 +206,8 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     if (!firstName || !lastName) return fail('first_name and last_name are required');
     const dob = parseDob(r.get('date_of_birth'), todayDate, northAmerica ? 'mdy' : 'dmy');
     if (!dob) return fail(`date_of_birth "${r.get('date_of_birth')}" is not a full date like 1985-03-04 or a date in the future`);
+    const gender = readGender(r.get('gender'));
+    if (!gender) return fail('gender is required: female, male, other or prefer not to say');
     const phone = r.get('phone');
     if (phone.replace(/\D/g, '').length < (northAmerica ? 10 : 7)) return fail('phone is required, with the area code');
     const guardianName = r.get('guardian_name') || null;
@@ -198,6 +215,6 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this patient is in the file twice');
     seen.add(key);
-    return { line: r.line, name, ok: true, value: { firstName, lastName, dob, phone, guardianName } };
+    return { line: r.line, name, ok: true, value: { firstName, lastName, dob, gender, phone, guardianName } };
   });
 }

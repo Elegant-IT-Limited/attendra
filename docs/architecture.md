@@ -115,4 +115,4 @@ Patients (`/clinics/:clinicId/patients`) go through `PatientRecords`. Search is 
 
 ## Data
 
-Postgres 18 with pgvector is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, guardian names, dates of birth, phone numbers, transcript text, task details, appointment notes and call summaries are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).
+Postgres 18 with pgvector is the only store. Every clinic table has `clinic_id` and a Row Level Security policy; requests run as a role that cannot bypass it, inside a transaction that sets the clinic. Names, guardian names, genders, dates of birth, phone numbers, transcript text, task details, appointment notes and call summaries are encrypted in the application with AES-256-GCM; lookups use keyed HMACs. The audit log is append-only by grant. Details: [decisions/0003-tenancy-and-phi.md](decisions/0003-tenancy-and-phi.md).

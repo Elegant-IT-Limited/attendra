@@ -2,6 +2,22 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.5.1] - 2026-10-04
+
+### Added
+
+- **Gender for patients and doctors.** Female, male, other, or prefers not to say, required for every patient added or changed, on the form, in the CSV import and when the assistant adds a new patient (it asks, and never guesses). Stored encrypted like the other details about a person. Patients from before keep an empty value until the front desk adds it, and their record says so.
+- **A female or a male doctor on request.** Each doctor has a gender; a caller who asks is offered only those doctors (`find_slots` takes `provider_gender`), and told when there is none for that visit.
+
+### API changes for integrators
+
+- `POST /patients` and `PATCH /patients/:id` require `gender`; patient responses carry it (null for a patient from before 0.5.1).
+- Doctors added or changed through `/doctors` require `gender`. The patient CSV template gains a required `gender` column, the doctor template an optional one.
+
+### Upgrading
+
+Migration 0022 adds the column on its own. Nothing else to run.
+
 ## [0.5.0] - 2026-10-04
 
 Doctors, families and a dashboard that updates as it happens, from what the first browser test calls showed: the assistant could not name the doctors or say who sees children, new patients could not get past the identity check, and staff had to refresh to see new requests.

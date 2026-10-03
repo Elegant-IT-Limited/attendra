@@ -124,9 +124,9 @@ describe('booking over the phone', () => {
     const c = await w.call('+13035550199');
     const missing = await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Ana Reyes', date_of_birth: 'June 1 2018' } }]);
     expect(missing.errors).toEqual(['not_verified']);
-    const child = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018' } }]);
+    const child = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018', gender: 'female' } }]);
     expect(child.errors).toEqual(['guardian_required']);
-    await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018', guardian_name: 'Luis Reyes' } }]);
+    await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 2018', gender: 'female', guardian_name: 'Luis Reyes' } }]);
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
     const annual = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: null, from_date: null, part_of_day: 'any' } }]);
     expect(annual.errors).toEqual(['new_patient_visit_type']);
@@ -141,11 +141,11 @@ describe('booking over the phone', () => {
 
   it('adds nobody before the check has found nobody, and is no way round its limit', async () => {
     const c = await w.call('+13035550198');
-    const early = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Eve', last_name: 'Early', date_of_birth: 'May 5 1990' } }]);
+    const early = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Eve', last_name: 'Early', date_of_birth: 'May 5 1990', gender: 'female' } }]);
     expect(early.errors).toEqual(['verify_first']);
     for (let i = 0; i < 3; i++) await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: `January ${i + 1} 1990` } }]);
     // three wrong guesses used up: registering the real details now would be a fourth guess
-    const late = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Maria', last_name: 'Delgado', date_of_birth: 'March 4 1985', phone: '303-555-0147' } }]);
+    const late = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Maria', last_name: 'Delgado', date_of_birth: 'March 4 1985', gender: 'female', phone: '303-555-0147' } }]);
     expect(late.errors).toEqual(['too_many_attempts']);
     expect(c.state.verifiedPatient).toBeNull();
   });
@@ -156,7 +156,7 @@ describe('booking over the phone', () => {
       c.caller('I am new, Zoe Quill, March 3 1991, sick visit');
       await c.delegate([
         { tool: 'verify_caller', args: { full_name: 'Zoe Quill', date_of_birth: 'March 3 1991', phone } },
-        { tool: 'register_patient', args: { first_name: 'Zoe', last_name: 'Quill', date_of_birth: 'March 3 1991', phone } },
+        { tool: 'register_patient', args: { first_name: 'Zoe', last_name: 'Quill', date_of_birth: 'March 3 1991', gender: 'female', phone } },
         { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
         { tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) },
       ]);
@@ -169,6 +169,14 @@ describe('booking over the phone', () => {
     expect(w.sms.length).toBe(before);
     await book('+13035550197', '303-555-0197'); // the number they are calling from
     expect(w.sms.length).toBe(before + 1);
+  });
+
+  it('offers a female or a male doctor when the caller asks, and says when there is none', async () => {
+    const c = await w.call(null);
+    await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, provider_gender: 'female', from_date: null, part_of_day: 'any' } }]);
+    expect([...c.state.offered.values()].every((s) => ['prov_lindqvist', 'prov_raman'].includes(s.providerId))).toBe(true);
+    const none = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: 'prov_okafor', provider_gender: 'female', from_date: null, part_of_day: 'any' } }]);
+    expect(none.errors).toEqual(['no_provider_of_gender']);
   });
 
   it('anyone may hear the doctors and their open times without being verified', async () => {

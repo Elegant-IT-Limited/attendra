@@ -78,11 +78,11 @@ describe('PHI at rest', () => {
   it('adds a new patient once, and tells the front desk when someone else shares their name and birthday', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'sess_register', null);
-    const first = await dir.register(DEMO_CLINIC.id, { firstName: 'Sam', lastName: 'Rivera', dob: '1990-07-15', phone: '+13035550173', guardianName: null, callId });
+    const first = await dir.register(DEMO_CLINIC.id, { firstName: 'Sam', lastName: 'Rivera', dob: '1990-07-15', phone: '+13035550173', gender: 'male', guardianName: null, callId });
     expect(first).toMatchObject({ status: 'created', similar: true, patient: { isNew: true } });
-    const again = await dir.register(DEMO_CLINIC.id, { firstName: 'sam', lastName: 'rivera', dob: '1990-07-15', phone: '(303) 555-0173', guardianName: null, callId });
+    const again = await dir.register(DEMO_CLINIC.id, { firstName: 'sam', lastName: 'rivera', dob: '1990-07-15', phone: '(303) 555-0173', gender: 'male', guardianName: null, callId });
     expect(again).toMatchObject({ status: 'exists', patient: { id: first.patient.id } });
-    const child = await dir.register(DEMO_CLINIC.id, { firstName: 'Mateo', lastName: 'Delgado', dob: '2021-02-03', phone: '+13035550147', guardianName: 'Maria Delgado', callId });
+    const child = await dir.register(DEMO_CLINIC.id, { firstName: 'Mateo', lastName: 'Delgado', dob: '2021-02-03', phone: '+13035550147', gender: 'male', guardianName: 'Maria Delgado', callId });
     expect(child).toMatchObject({ status: 'created', similar: false });
     // the same person cannot be stored twice, whichever path writes them
     expect(await failure(withClinic(t.db, DEMO_CLINIC.id, async (tx) => {

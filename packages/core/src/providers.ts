@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, localName, type Provider, type VisitType } from './clinic';
+import { type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
 import { windowsOn } from './hours';
 import type { Language } from './locales';
 import { addDays } from './time';
@@ -50,6 +50,7 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
     provider_id: p.id,
     name: localName(p, language),
     kind: p.kind,
+    gender: p.gender ? genderWord(p.gender) : null,
     specialty: p.specialty ?? null,
     categories: p.categories,
     sees: agesLine(p),

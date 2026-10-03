@@ -10,7 +10,7 @@ let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 
 const stored = async () => ClinicConfig.parse(((await api.t.db.execute(sql`select config from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { config: unknown }).config);
 const kim = {
-  name: 'Dr. Jae Kim', specialty: 'Pediatrics', categories: ['Children', 'Asthma'], ages: { min: 0, max: 17 }, acceptingNewPatients: true,
+  name: 'Dr. Jae Kim', gender: 'male', specialty: 'Pediatrics', categories: ['Children', 'Asthma'], ages: { min: 0, max: 17 }, acceptingNewPatients: true,
   visitTypeIds: ['vt_sick', 'vt_new'], hours: { '1': [{ open: '09:00', close: '13:00' }] }, timeOff: [{ from: '2026-12-24', to: '2026-12-31' }],
 };
 
@@ -74,11 +74,11 @@ describe('doctors', () => {
 
   it('imports doctors from a CSV: checks first, then adds new ones and updates the ones on file', async () => {
     const csv = [
-      'id,name,specialty,categories,ages_min,ages_max,accepting_new_patients,visit_types,mon,tue,wed,thu,fri,sat,sun,time_off',
-      ',Dr. Lee Park,Dermatology,Skin; Allergies,,,yes,sick visit,08:00-12:00,,,,,,,2026-11-27',
-      ',Dr. Nkem Okafor,Family medicine,Adults; Diabetes,,,yes,sick visit; annual physical; new patient visit,,,,,,,,',
-      ',Dr. Broken,,,,,maybe,,,,,,,,,',
-      ',Dr. Hours,,,,,,,9-5,,,,,,,',
+      'id,name,gender,specialty,categories,ages_min,ages_max,accepting_new_patients,visit_types,mon,tue,wed,thu,fri,sat,sun,time_off',
+      ',Dr. Lee Park,female,Dermatology,Skin; Allergies,,,yes,sick visit,08:00-12:00,,,,,,,2026-11-27',
+      ',Dr. Nkem Okafor,,Family medicine,Adults; Diabetes,,,yes,sick visit; annual physical; new patient visit,,,,,,,,',
+      ',Dr. Broken,,,,,,maybe,,,,,,,,,',
+      ',Dr. Hours,,,,,,,,9-5,,,,,,,',
     ].join('\n');
     const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
     expect(dry.rows.map((r: { status: string }) => r.status)).toEqual(['add', 'update', 'error', 'error']);
@@ -86,7 +86,8 @@ describe('doctors', () => {
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
     expect(real.counts).toEqual({ add: 1, update: 1, skip: 0, error: 2 });
     const after = await stored();
-    expect(after.providers.find((p) => p.name === 'Dr. Lee Park')).toMatchObject({ specialty: 'Dermatology', timeOff: [{ from: '2026-11-27', to: '2026-11-27' }] });
+    expect(after.providers.find((p) => p.name === 'Dr. Lee Park')).toMatchObject({ gender: 'female', specialty: 'Dermatology', timeOff: [{ from: '2026-11-27', to: '2026-11-27' }] });
+    expect(after.providers.find((p) => p.id === 'prov_okafor')!.gender).toBe('male'); // an empty cell keeps what is on file
     expect(after.providers.find((p) => p.id === 'prov_okafor')!.categories).toEqual(['Adults', 'Diabetes']);
     expect((await api.request('POST', `${C}/import`, { cookie: as.staff, body: { csv, dryRun: true } })).statusCode).toBe(403);
   });

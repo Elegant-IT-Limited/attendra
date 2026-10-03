@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, Gender, Provider, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -358,6 +358,8 @@ export const PatientCard = z.object({
   phone: z.string().nullable(),
   /** The parent or guardian, for a patient under 18. */
   guardianName: z.string().nullable(),
+  /** female, male, other, or undisclosed (prefers not to say). Null only for a patient added before v0.5.1. */
+  gender: Gender.nullable(),
   /** new: added by the assistant on a call; the front desk checks the details and confirms them. */
   status: PatientStatus,
   createdAt: z.iso.datetime(),
@@ -373,6 +375,7 @@ export const PatientInput = z.object({
   // "not in the future" is checked against the clinic's own date by the route, not the server's
   dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber,
+  gender: Gender,
   // required for a patient under 18, checked by the route against the clinic's own date
   guardianName: z.string().trim().max(120).nullable().optional(),
 });
@@ -403,6 +406,7 @@ export const PatientProfile = PatientCard.extend({
 export const DoctorInput = Provider.omit({ id: true }).extend({
   id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
   name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
+  gender: Gender,
 });
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
