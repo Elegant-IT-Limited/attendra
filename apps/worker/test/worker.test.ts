@@ -87,6 +87,35 @@ describe('summarising a call', () => {
   });
 });
 
+describe('follow-up requests', () => {
+  const flagging: Summariser = {
+    model: 'stub',
+    summarise: async () => ({ summary: 'The caller wanted a visit for their son. Nothing was booked.', intent: 'book', sentiment: 'frustrated', needsReview: true, reviewReason: 'The caller became frustrated and nothing was booked.', followUp: 'Call the caller to book the visit.' }),
+  };
+  const h = () => handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: flagging, log });
+  const tasksOf = (callId: string) => withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, callId)));
+
+  it('opens one follow-up request for a flagged call that settled nothing, and closing it reviews the call', async () => {
+    const callId = await closedCall();
+    await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
+    await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
+    const opened = await tasksOf(callId);
+    expect(opened.map((x) => x.type)).toEqual(['follow_up']);
+    const desk = new FrontDeskRepository(t.db, cipher);
+    expect(await desk.completeTask(DEMO_CLINIC.id, opened[0]!.id, 'u_ana', 'called_back')).toBe('done');
+    expect((await summaryOf(DEMO_CLINIC.id, callId))!.reviewedAt).not.toBeNull();
+  });
+
+  it('opens none for a booked call, an emergency, or a call that already made a request', async () => {
+    const booked = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '+13035550147');
+    await calls.close(DEMO_CLINIC.id, booked, { reason: 'caller_hangup', voiceSeconds: 60, outcome: 'booked', emergency: false });
+    const emergency = await closedCall(DEMO_CLINIC.id, { emergency: true });
+    for (const callId of [booked, emergency]) await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
+    expect(await tasksOf(booked)).toEqual([]);
+    expect(await tasksOf(emergency)).toEqual([]);
+  });
+});
+
 describe('the retention purge', () => {
   it('deletes transcripts and summaries past each clinic\'s retention, and audits how many, never what', async () => {
     await saveClinic(t.db, 'org_other', { ...OTHER, retentionDays: 30 } as typeof OTHER);

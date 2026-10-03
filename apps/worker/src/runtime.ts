@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
@@ -51,6 +51,7 @@ export function embedderFromEnv(env: { OPENAI_API_KEY?: string; ATTENDRA_EMBEDDI
 export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'send'> }) {
   const summaries = new CallSummaryRepository(d.db, d.cipher);
   const hooks = new WebhookRepository(d.db, d.cipher);
+  const tasks = new PostgresTaskQueue(d.db, d.cipher, 'worker');
   const emit: EventSink['emit'] = (clinicId, e) => (d.events?.emit(clinicId, e) ?? Promise.resolve()).catch((err: unknown) =>
     d.log.warn({ clinic_id: clinicId, type: e.type, err: { message: (err as Error).message } }, 'could not queue an event'));
   const now = d.now ?? (() => new Date());
@@ -74,6 +75,17 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       d.log.info({ call_id: callId, model: d.summariser.model, needs_review: summary.needsReview }, 'call summarised');
       // the codes only; the summary's text stays in Attendra
       if (saved === 'saved') await emit(clinicId, { type: 'call.summary.ready', key: callId, data: { callId, intent: summary.intent, sentiment: summary.sentiment, needsReview: summary.needsReview } });
+      // a call that ended with the caller's request unfinished becomes a request, so a person gets back to them
+      if (saved === 'saved' && needsFollowUp(call, summary)) {
+        const task = await tasks.create(clinicId, {
+          type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `follow_up:${callId}`,
+          details: {
+            reason: summary.reviewReason ?? 'The call ended without the caller\'s request done.',
+            ...(summary.followUp ? { suggested: summary.followUp } : {}),
+          },
+        });
+        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: 'follow_up', patientId: call.patientId, callId } });
+      }
       return saved;
     },
 
@@ -172,4 +184,16 @@ export async function startWorker(d: WorkerDeps) {
   if (d.schedulePurge !== false) await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
   d.log.info({ summariser: d.summariser.model, sms_status: !!d.smsStatus }, 'worker started');
   return h;
+}
+
+/** Done outcomes: a booking, a change or a transfer to a person already settled the call. */
+const SETTLED = new Set(['booked', 'rescheduled', 'cancelled', 'transferred']);
+
+/**
+ * Whether staff should get back to the caller: the summary flagged the call, nothing on
+ * it settled what they wanted, and it did not already open a request (a callback, a
+ * refill, a new patient). Emergencies have their own place at the top of Today.
+ */
+export function needsFollowUp(call: { outcome: string | null; emergency: boolean; tasks: { type: string }[] }, summary: { needsReview: boolean }): boolean {
+  return summary.needsReview && !call.emergency && call.tasks.length === 0 && !SETTLED.has(call.outcome ?? '');
 }

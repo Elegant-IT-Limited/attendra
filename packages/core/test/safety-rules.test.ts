@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectEmergency, isClearYes, isMedicalQuestion, namesMatch, parseDob } from '../src';
+import { detectEmergency, dobProblem, isClearYes, saidGoodbye, isMedicalQuestion, namesMatch, parseDob } from '../src';
 
 describe('emergency guardrail', () => {
   it.each([
@@ -43,6 +43,29 @@ describe('identity inputs', () => {
 
   it('refuses dates it would have to guess', () => {
     for (const s of ['March 85', '02/30/1990', 'next year', '01/01/2099']) expect(parseDob(s, new Date('2026-09-28'))).toBeNull();
+  });
+
+  it('ends a call only after "anything else?" is answered no or goodbye', () => {
+    const asked = 'You are booked for Monday at 9. Is there anything else I can help you with?';
+    expect(saidGoodbye('Okay, thank you, bye!', asked)).toBe(true);
+    expect(saidGoodbye("No, that's all", asked)).toBe(true);
+    expect(saidGoodbye('No', asked)).toBe(true);
+    expect(saidGoodbye('Adiós, gracias', '¿Hay algo más en que pueda ayudarle?')).toBe(true);
+    expect(saidGoodbye('Okay, thank you, bye!')).toBe(false); // the question comes first
+    expect(saidGoodbye('0 1 7 1 4 2 6 2 5 8 4. I am done', 'And the phone number for his file?')).toBe(false);
+    expect(saidGoodbye('No', 'Is he a new patient?')).toBe(false);
+    expect(saidGoodbye('Yes, one more thing', asked)).toBe(false);
+    expect(saidGoodbye('Thanks, but can you also book my son?', asked)).toBe(false);
+  });
+
+  it('says which part of a refused date of birth is wrong', () => {
+    const today = new Date('2026-09-28');
+    expect(parseDob('29th February, 2025', today)).toBeNull();
+    expect(dobProblem('29th February, 2025', today)).toBe('February 29 is not a date in 2025, which is not a leap year');
+    expect(parseDob('29 February 2024', today)).toBe('2024-02-29');
+    expect(dobProblem('April 31 1990', today)).toBe('April has no day 31');
+    expect(dobProblem('01/01/2099', today)).toBe('January 1, 2099 is in the future');
+    expect(dobProblem('March 85', today)).toBeNull(); // not understood: ask for it again
   });
 
   it('matches first and last name, ignoring accents and middle names', () => {

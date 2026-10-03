@@ -78,7 +78,8 @@ export interface SchedulerAdapter {
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
 }
 
-export type TaskType = 'callback' | 'refill' | 'voicemail' | 'review';
+/** follow_up: a call that ended with the caller's request unfinished, opened after the call for staff to pick up. */
+export type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 
 export interface TaskQueue {
   create(clinicId: string, input: {

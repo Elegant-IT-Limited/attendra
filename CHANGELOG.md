@@ -2,6 +2,29 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.5.2] - 2026-10-04
+
+From a browser test call where a parent booking for a child was asked for the same details over and over, waited half a minute in silence, and was hung up on mid-sentence.
+
+### Fixed
+
+- **A date of birth that cannot exist is named, not just refused.** "29 February 2025" gets "February 29 is not a date in 2025, which is not a leap year", and the caller is asked to check the date only. The assistant keeps the name and phone already given instead of asking for everything again, and a date that cannot exist does not count as a failed identity check.
+- **The assistant passes what the caller said to the backend** instead of judging a date itself, so the backend's checks and wording apply every time. Someone who says they are new is still looked up first with the details they gave.
+- **The assistant never hangs up on a caller who has not finished.** Ending a call takes two steps: the assistant asks "Is there anything else I can help you with?", and the caller answers no or says goodbye. `end_call` is refused otherwise, even after a goodbye that came before the question, and "I'm done" at the end of a phone number no longer ends the call. A frustrated caller with an unfinished request is offered what the assistant can still do, or a callback.
+- **A goodbye is never cut off.** The hang-up waits until the assistant has been quiet for 1.5 seconds, up to 20 seconds.
+- **Other languages.** A caller speaking a language the clinic does not offer is told, kindly and in one sentence, that the assistant can only help in English (or the clinic's languages), and is asked to carry on in it or offered a callback.
+- **A call that ended unfinished becomes a request.** Once a call is summarised, a flagged call that booked, changed or transferred nothing, and opened no other request, opens a "Follow up" request on the Requests page with the reason and the suggested next step, linked to the call. One per call; emergencies keep their own place on Today. Closing it marks the call reviewed, and Today lists the call once, as the request.
+- **No long silences.** When a request runs longer than 7 seconds, the caller hears once that the assistant is still checking.
+- **Test calls**: the page asks for headphones in a quiet room, since laptop speakers let the assistant hear itself and background voices are taken for the caller. Automatic gain control is on for the microphone.
+
+### API changes for integrators
+
+- Requests have a fifth type, `follow_up`, in `GET /tasks`, `POST /tasks/search`, the waiting list, the `request.created` webhook and the MCP `list_open_requests` tool.
+
+### Upgrading
+
+Migration 0023 widens the request types on its own. Nothing else to run.
+
 ## [0.5.1] - 2026-10-04
 
 ### Added

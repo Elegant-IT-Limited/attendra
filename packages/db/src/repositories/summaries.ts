@@ -38,6 +38,8 @@ export interface CallForSummary {
   /** Tool names and their results: codes like verified, booked, error. Never arguments. */
   actions: { tool: string; result: Record<string, unknown> }[];
   tasks: { type: string }[];
+  /** The patient the assistant verified on the call, if any. */
+  patientId: string | null;
 }
 
 const WORKER = 'worker';
@@ -77,6 +79,7 @@ export class CallSummaryRepository {
         transcript: segments.map((s) => ({ speaker: s.speaker, text: this.cipher.decrypt(s.textEnc, ctx) })),
         actions: actions.map((a) => ({ tool: a.tool, result: a.result as Record<string, unknown> })),
         tasks: callTasks,
+        patientId: call.patientId,
       };
     });
   }

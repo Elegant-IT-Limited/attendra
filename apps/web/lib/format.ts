@@ -92,13 +92,14 @@ export const REFUSALS: Record<string, string> = {
 /** Requests, in the words a front desk uses. The API still calls them tasks. */
 export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Prefers not to say' };
 
-export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check' };
+export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check', follow_up: 'Follow up' };
 
 export const TASK_EXPLAINED: Record<string, string> = {
   refill: 'The patient asked for a refill. Check with the care team, then call them back.',
   callback: 'Someone asked for a person to call them back.',
   voicemail: 'A message the caller left for the team.',
   review: 'The assistant added a new patient on a call. Check their name, date of birth and phone, then confirm them.',
+  follow_up: 'A call ended with the caller\'s request unfinished, or the caller upset. Read the call, then get back to them.',
 };
 
 export const TASK_OUTCOMES: Record<string, string> = {
