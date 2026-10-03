@@ -22,15 +22,18 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
 }
 
 const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no thanks|no thank you|have a (good|nice|great) (day|one)|adios|hasta luego|eso es todo|nada mas|chao|chau)\b/;
-const NOTHING_MORE = /^(no|nope|nah|no gracias)\b/;
+const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|gracias)\b/;
+const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;
+const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|espere|pregunta)\b|\?/;
 
 /**
- * Has the caller finished? Read on their own last words, never on the model's view of
- * them: "I'm done" in the middle of giving a phone number is not a goodbye. A plain
- * "no" counts only as the answer to "anything else?".
+ * May the call end? Two steps, like a front desk: the assistant has asked whether
+ * there is anything else, and the caller's own last words answer no or say goodbye.
+ * Read on what was said, never on the model's view of it: "I'm done" in the middle of
+ * giving a phone number ends nothing, and a goodbye before the question is answered
+ * with the question.
  */
-export function saidGoodbye(lastCallerTurn: string, lastAgentTurn = ''): boolean {
+export function saidGoodbye(lastCallerTurn: string, lastAgentTurns = ''): boolean {
   const t = normalise(lastCallerTurn).trim();
-  if (GOODBYE.test(t)) return true;
-  return NOTHING_MORE.test(t) && /anything else|algo mas/.test(normalise(lastAgentTurn));
+  return ANYTHING_ELSE.test(normalise(lastAgentTurns)) && !MORE_TO_SAY.test(t) && (GOODBYE.test(t) || NOTHING_MORE.test(t));
 }

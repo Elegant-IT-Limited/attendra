@@ -390,7 +390,7 @@ export async function runTool(
     case 'end_call':
       // never hang up on a caller who has not finished: "I'm done" can end a phone number, not the call
       if (!saidGoodbye(state.lastTurn('caller'), state.lastTurn('agent', 2))) {
-        return refuse('caller_not_finished', 'Do not end the call: the caller has not said goodbye. If their request is not finished, say what you can still do or offer a callback. Otherwise ask if there is anything else.');
+        return refuse('caller_not_finished', 'Do not end the call yet. If their request is not finished, say what you can still do or offer a callback. Otherwise ask: "Is there anything else I can help you with?" End the call only after they say no or goodbye.');
       }
       return { ok: true, data: { ending: true, say: 'Say goodbye warmly.' }, action: { type: 'hangup' } };
   }

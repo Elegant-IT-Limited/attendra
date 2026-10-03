@@ -438,6 +438,7 @@ describe('review fixes', () => {
 
   it('puts transfers and hang-ups after the spoken result, with time to say it', async () => {
     const c = await w.call();
+    c.assistant('Is there anything else I can help you with?');
     c.caller('That is all, thanks. Bye.');
     const out = await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }]);
     expect(out.map((o) => o.type)).toEqual(['thinking', 'commentary', 'hangup']);
@@ -451,6 +452,8 @@ describe('review fixes', () => {
     const cut = await c.delegate([{ tool: 'end_call', args: { reason: 'caller is done' } }]);
     expect(cut.errors).toEqual(['caller_not_finished']);
     expect(cut.some((o) => o.type === 'hangup')).toBe(false);
+    c.caller('Thanks, bye.'); // a goodbye before the question gets the question
+    expect((await c.delegate([{ tool: 'end_call', args: { reason: 'goodbye' } }])).errors).toEqual(['caller_not_finished']);
     c.assistant('Is there anything else I can help with?');
     c.caller('No.');
     const ok = await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }]);
