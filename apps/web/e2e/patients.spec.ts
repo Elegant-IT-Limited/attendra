@@ -8,14 +8,14 @@ test.describe.serial('patients', () => {
     const search = page.getByLabel('Find a patient');
     const results = page.getByRole('list', { name: 'Matching patients' });
     await search.fill('delg');
-    await expect(results.getByRole('link', { name: /Maria Delgado/ })).toBeVisible();
+    await expect(results.getByRole('link', { name: /^Maria Delgado/ })).toBeVisible();
     await search.fill('03/04/1985');
     await expect(results.getByRole('link')).toHaveCount(1);
-    await expect(results.getByRole('link', { name: /Maria Delgado/ })).toBeVisible();
+    await expect(results.getByRole('link', { name: /^Maria Delgado/ })).toBeVisible();
     await search.fill('March 4 1985');
-    await expect(results.getByRole('link', { name: /Maria Delgado/ })).toBeVisible();
+    await expect(results.getByRole('link', { name: /^Maria Delgado/ })).toBeVisible();
     await expect(page).not.toHaveURL(/1985|delg/i); // what was typed never reaches the address bar
-    await results.getByRole('link', { name: /Maria Delgado/ }).click();
+    await results.getByRole('link', { name: /^Maria Delgado/ }).click();
     await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
   });
 
