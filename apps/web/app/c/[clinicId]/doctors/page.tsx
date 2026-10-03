@@ -92,9 +92,9 @@ export default function DoctorsPage() {
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   <dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd>
-                  {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
+                  {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
-                  <dt className="text-text-muted">Hours</dt><dd>{weeklyHoursLine(p.hours ?? clinicHours)}{!p.hours && <span className="text-text-muted"> (the clinic&apos;s)</span>}</dd>
+                  <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
                   {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t) => <span key={t.from} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
                 </dl>
                 {manager && (
@@ -240,9 +240,9 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, today, onClos
                     {windows.length === 0 && <span className="text-text-muted">Not working</span>}
                     {windows.map((w, i) => (
                       <span key={i} className="flex items-center gap-1">
-                        <Input type="time" aria-label={`${label} from`} className="h-8 w-28" value={w.open} onChange={(e) => setDay(day, windows.map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
+                        <Input type="time" aria-label={`${label} from`} className="h-8 w-36" value={w.open} onChange={(e) => setDay(day, windows.map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
                         <span>to</span>
-                        <Input type="time" aria-label={`${label} until`} className="h-8 w-28" value={w.close} onChange={(e) => setDay(day, windows.map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
+                        <Input type="time" aria-label={`${label} until`} className="h-8 w-36" value={w.close} onChange={(e) => setDay(day, windows.map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
                         <Button type="button" size="sm" variant="ghost" aria-label={`Remove these ${label} hours`} onClick={() => setDay(day, windows.filter((_, j) => j !== i))}><X /></Button>
                       </span>
                     ))}

@@ -9,6 +9,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Gender for patients and doctors.** Female, male, other, or prefers not to say, required for every patient added or changed, on the form, in the CSV import and when the assistant adds a new patient (it asks, and never guesses). Stored encrypted like the other details about a person. Patients from before keep an empty value until the front desk adds it, and their record says so.
 - **A female or a male doctor on request.** Each doctor has a gender; a caller who asks is offered only those doctors (`find_slots` takes `provider_gender`), and told when there is none for that visit.
 
+### Fixed
+
+- Doctors page: each day's hours on a line of its own, category badges no longer stretch, and the hour fields in the edit panel show the whole time.
+- Turbo no longer writes an `AGENTS.md` into the repository (`agentGuidance: false`).
+
 ### API changes for integrators
 
 - `POST /patients` and `PATCH /patients/:id` require `gender`; patient responses carry it (null for a patient from before 0.5.1).
