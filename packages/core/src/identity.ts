@@ -44,6 +44,32 @@ export function namesMatch(spoken: string, onFile: string): boolean {
  * and day first everywhere else (`order`). Two-digit years are refused: "85" is a guess.
  */
 export function parseDob(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): string | null {
+  const r = readDob(input, order);
+  if (!r) return null;
+  const [y, m, d] = r;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCMonth() !== m - 1 || date > today || y < today.getUTCFullYear() - 130) return null; // "Feb 30", the future, typos
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Why a date of birth parseDob refused cannot be right, in words the assistant can
+ * say back, so the caller is asked about the one part that is wrong instead of all of
+ * it again. Null when the date was not understood at all.
+ */
+export function dobProblem(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): string | null {
+  const r = readDob(input, order);
+  if (!r) return null;
+  const [y, m, d] = r;
+  const month = MONTHS[m - 1]!.replace(/^./, (c) => c.toUpperCase());
+  if (m === 2 && d === 29 && new Date(Date.UTC(y, 1, 29)).getUTCMonth() !== 1) return `February 29 is not a date in ${y}, which is not a leap year`;
+  if (new Date(Date.UTC(y, m - 1, d)).getUTCMonth() !== m - 1) return `${month} has no day ${d}`;
+  if (new Date(Date.UTC(y, m - 1, d)) > today) return `${month} ${d}, ${y} is in the future`;
+  if (y < today.getUTCFullYear() - 130) return `${y} is too long ago`;
+  return null;
+}
+
+function readDob(input: string, order: 'mdy' | 'dmy'): [number, number, number] | null {
   const s = fold(input).toLowerCase()
     .replace(/(\d)(st|nd|rd|th)\b/g, '$1')
     .replace(/ de(l)? /g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().replace(/^el /, '');
@@ -56,10 +82,8 @@ export function parseDob(input: string, today = new Date(), order: 'mdy' | 'dmy'
     if (order === 'dmy') [m, d] = [d, m];
   } else if ((r = s.match(new RegExp(`^${word} (\\d{1,2}) (\\d{4})$`, 'u')))) [m, d, y] = [monthIndex(r[1]!) + 1, Number(r[2]), Number(r[3])];
   else if ((r = s.match(new RegExp(`^(\\d{1,2}) ${word} (\\d{4})$`, 'u')))) [d, m, y] = [Number(r[1]), monthIndex(r[2]!) + 1, Number(r[3])];
-  if (!y || !m || !d || m < 1 || m > 12) return null;
-  const date = new Date(Date.UTC(y, m - 1, d));
-  if (date.getUTCMonth() !== m - 1 || date > today || y < today.getUTCFullYear() - 130) return null; // "Feb 30", the future, typos
-  return date.toISOString().slice(0, 10);
+  if (!y || !m || !d || m < 1 || m > 12 || d > 31) return null;
+  return [y, m, d];
 }
 
 function monthIndex(word: string): number {

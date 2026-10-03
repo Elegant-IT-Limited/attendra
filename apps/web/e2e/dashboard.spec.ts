@@ -51,7 +51,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
-    await expect(tasks).toHaveCount(7); // 5 from the eval calls, a refill and a callback from this week's
+    await expect(tasks).toHaveCount(11); // 5 from the eval calls, a refill and a callback from this week's, 4 follow-ups for flagged calls
     const first = tasks.filter({ hasText: 'James Whitaker' }); // newest first, so his refill is no longer at the top
     await expect(first.getByText('James Whitaker')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
@@ -62,7 +62,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Mark done' }).click();
     await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await expect(tasks).toHaveCount(6);
+    await expect(tasks).toHaveCount(10);
     await page.getByRole('tab', { name: 'Done' }).click();
     await expect(tasks).toHaveCount(1);
   });

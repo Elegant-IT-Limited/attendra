@@ -21,6 +21,8 @@ export const clamp = (s: string) => (s.length <= MAX_APPEND_CHARS ? s : `${s.sli
 // Call control waits for the spoken result: "I'll connect you now" before the ring,
 // the goodbye before the line drops.
 const AFTER_SPEECH_MS = 3500;
+/** How long a request may run before the caller hears that it is still being worked on. */
+const HOLD_AFTER_MS = 7000;
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 // Staff cannot end a call before the caller has heard the emergency number. The
@@ -197,6 +199,10 @@ export class CallAgent {
     const out: Outbound[] = [];
     const progress: Outbound = { type: 'thinking', delegationId, content: 'Working on it.' };
     if (emit) emit(progress); else out.push(progress);
+    // a long wait is never silence: once, the caller hears that we are still on it
+    const hold = emit ? setTimeout(() => {
+      if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
+    }, HOLD_AFTER_MS) : null;
 
     const controls: Outbound[] = [];
     const execute = async (name: ToolName, args: unknown): Promise<ToolResult> => {
@@ -254,6 +260,7 @@ export class CallAgent {
       // never claim success on failure; hand the caller to a person instead
       out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.' });
     } finally {
+      if (hold) clearTimeout(hold);
       this.doing = this.state.pending ? 'waiting for a yes' : null;
       this.emitState();
     }
