@@ -8,6 +8,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - **Gender for patients and doctors.** Female, male, other, or prefers not to say, required for every patient added or changed, on the form, in the CSV import and when the assistant adds a new patient (it asks, and never guesses). Stored encrypted like the other details about a person. Patients from before keep an empty value until the front desk adds it, and their record says so.
 - **A female or a male doctor on request.** Each doctor has a gender; a caller who asks is offered only those doctors (`find_slots` takes `provider_gender`), and told when there is none for that visit.
+- **Doctors by specialty.** When a caller has not named a doctor, the assistant asks once whether they want a particular doctor or kind of doctor, matches the answer (pediatrics, a pediatrician, women's health) to the clinic's own specialties and categories, suggests those doctors by name and offers their times (`find_slots` takes `specialty`). When the clinic has no such doctor it says so and lists what it has. It never decides from symptoms what kind of doctor someone needs. `get_clinic_info` returns each specialty with its doctors.
+- **Doctors page filters**: by specialty and by what they see people for, sorted by name or specialty. The Schedule's provider list shows each doctor's specialty.
 
 ### Fixed
 

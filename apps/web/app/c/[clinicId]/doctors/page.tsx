@@ -43,6 +43,9 @@ export default function DoctorsPage() {
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [importing, setImporting] = useState(false);
   const [text, setText] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [category, setCategory] = useState('');
+  const [sort, setSort] = useState<'added' | 'name' | 'specialty'>('added');
   const doctors = useQuery({ queryKey: ['doctors', clinicId], queryFn: () => api<DoctorList>(`/clinics/${clinicId}/doctors`), enabled: can('settings:read') });
   const manager = can('settings:write');
   const refresh = () => { void queries.invalidateQueries({ queryKey: ['doctors', clinicId] }); void queries.invalidateQueries({ queryKey: ['settings', clinicId] }); };
@@ -52,11 +55,17 @@ export default function DoctorsPage() {
 
   const shown = useMemo(() => {
     const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-    return (doctors.data?.providers ?? []).filter((p) => {
+    const found = (doctors.data?.providers ?? []).filter((p) => {
       const hay = [p.name, p.specialty ?? '', ...p.categories].join(' ').toLowerCase();
-      return words.every((w) => hay.includes(w));
+      return words.every((w) => hay.includes(w)) && (!specialty || p.specialty === specialty) && (!category || p.categories.includes(category));
     });
-  }, [doctors.data, text]);
+    if (sort === 'name') return [...found].sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'specialty') return [...found].sort((a, b) => (a.specialty || '\uffff').localeCompare(b.specialty || '\uffff') || a.name.localeCompare(b.name));
+    return found;
+  }, [doctors.data, text, specialty, category, sort]);
+  const specialties = useMemo(() => [...new Set((doctors.data?.providers ?? []).flatMap((p) => (p.specialty ? [p.specialty] : [])))].sort(), [doctors.data]);
+  const categories = useMemo(() => [...new Set((doctors.data?.providers ?? []).flatMap((p) => p.categories))].sort(), [doctors.data]);
+  const filtered = !!(text || specialty || category);
 
   if (isPending || doctors.isPending) return <><PageHeader title="Doctors" /><Skeleton className="h-64" /></>;
   if (doctors.isError || !doctors.data) return <><PageHeader title="Doctors" /><Alert tone="danger">The list of doctors did not load. Refresh to try again.</Alert></>;
@@ -72,12 +81,31 @@ export default function DoctorsPage() {
             <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add doctor</Button>
           </>
         )} />
-      <div className="relative mb-4 max-w-md">
-        <Label htmlFor="doctor-search" className="sr-only">Find a doctor</Label>
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-        <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name, specialty or what they see people for" />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative w-full max-w-md">
+          <Label htmlFor="doctor-search" className="sr-only">Find a doctor</Label>
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
+          <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name, specialty or what they see people for" />
+        </div>
+        <Label htmlFor="doctor-specialty" className="sr-only">Specialty</Label>
+        <Select id="doctor-specialty" className="w-48" value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
+          <option value="">All specialties</option>
+          {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
+        </Select>
+        <Label htmlFor="doctor-category" className="sr-only">Sees people for</Label>
+        <Select id="doctor-category" className="w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">Any category</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </Select>
+        <Label htmlFor="doctor-sort" className="sr-only">Sort</Label>
+        <Select id="doctor-sort" className="w-44" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+          <option value="added">In the order added</option>
+          <option value="name">By name</option>
+          <option value="specialty">By specialty</option>
+        </Select>
+        {filtered && <Button variant="ghost" size="sm" onClick={() => { setText(''); setSpecialty(''); setCategory(''); }}><X /> Clear</Button>}
       </div>
-      {!shown.length ? <Card><Empty title={text ? 'No doctor matches' : 'No doctors yet'}>{text ? 'Try another word.' : 'Add the first doctor, or import a list.'}</Empty></Card> : (
+      {!shown.length ? <Card><Empty title={filtered ? 'No doctor matches' : 'No doctors yet'}>{filtered ? 'Try another word, specialty or category.' : 'Add the first doctor, or import a list.'}</Empty></Card> : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((p) => {
             const away = p.timeOff.filter((t) => t.to >= today).sort((a, b) => a.from.localeCompare(b.from));

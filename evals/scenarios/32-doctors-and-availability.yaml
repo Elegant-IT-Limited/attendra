@@ -1,5 +1,5 @@
 id: doctors-and-availability
-title: A caller hears the doctors, who sees children, and who is free Monday, without being asked who they are first
+title: A caller hears the doctors, asks for a kind of doctor, and hears who is free, without being asked who they are first
 caller_number: null
 turns:
   - caller: Hi, which doctors do you have? Do you have a pediatrician?
@@ -10,7 +10,15 @@ turns:
     reply: "Dr. Raman can see a child for a sick visit {offered.0}, or {offered.1}."
     delegate:
       - find_slots: { visit_type_id: vt_sick, provider_id: prov_raman, from_date: "$next_week", part_of_day: any }
+  - caller: And for me, any family doctor is fine. Who's free first?
+    reply: "In family medicine I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, specialty: family medicine, from_date: null, part_of_day: any }
+  - caller: Do you have a skin doctor too?
+    reply: "We don't have a dermatologist. We have family medicine with Dr. Okafor and Dr. Lindqvist, and pediatrics with Dr. Raman, or I can ask the team to call you back."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, specialty: dermatology, from_date: null, part_of_day: any }
 expect:
   outcome: info
   verified: false
-  refusals: []
+  refusals: [no_provider_for_specialty]

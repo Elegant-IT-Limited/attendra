@@ -179,6 +179,16 @@ describe('booking over the phone', () => {
     expect(none.errors).toEqual(['no_provider_of_gender']);
   });
 
+  it('offers the doctors of the specialty the caller asks for, and says what the clinic has when none match', async () => {
+    const c = await w.call(null);
+    const info = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'which specialists do you have' } }]);
+    expect(JSON.stringify(info.results[0])).toContain('"specialty":"Pediatrics","doctors":["Dr. Priya Raman"]');
+    await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, specialty: 'pediatrician', from_date: null, part_of_day: 'any' } }]);
+    expect([...c.state.offered.values()].every((s) => s.providerId === 'prov_raman')).toBe(true);
+    const none = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, specialty: 'dermatology', from_date: null, part_of_day: 'any' } }]);
+    expect(none.errors).toEqual(['no_provider_for_specialty']);
+  });
+
   it('anyone may hear the doctors and their open times without being verified', async () => {
     const c = await w.call(null);
     const out = await c.delegate([

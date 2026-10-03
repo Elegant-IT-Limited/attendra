@@ -117,9 +117,9 @@ function ScheduleScreen() {
         </div>
         <div className="space-y-1">
           <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
-          <Select id="schedule-provider" className="h-8 w-48" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+          <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
             <option value="">All providers</option>
-            {clinic.providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {clinic.providers.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${p.name}, ${p.specialty}` : p.name}</option>)}
           </Select>
         </div>
         <div className="space-y-1">
