@@ -10,10 +10,10 @@
     "@attendra/agent": "workspace:*",
     "@attendra/core": "workspace:*",
     "@attendra/observability": "workspace:*",
-    "openai": "7.23.0",
+    "openai": "7.27.0",
     "ws": "8.22.0"
   },
   "devDependencies": {
-    "@types/ws": "8.18.1"
+    "@types/ws": "8.18.2"
   }
 }

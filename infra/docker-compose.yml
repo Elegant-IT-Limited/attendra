@@ -17,14 +17,15 @@ x-node: &node
 
 services:
   postgres:
-    # Postgres 16 with pgvector, for the clinic's knowledge (docs/self-hosting.md has the upgrade from postgres:16)
-    image: pgvector/pgvector:pg16
+    # Postgres 18 with pgvector, for the clinic's knowledge (docs/self-hosting.md has the upgrade from Postgres 16)
+    image: pgvector/pgvector:0.8.7-pg18-trixie
     environment:
       POSTGRES_USER: attendra
       POSTGRES_PASSWORD: attendra
       POSTGRES_DB: attendra
     ports: ["127.0.0.1:5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
+    # Postgres 18 images keep their data under /var/lib/postgresql/18, so the volume is mounted one level up
+    volumes: [pgdata18:/var/lib/postgresql]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U attendra"]
       interval: 3s
@@ -88,4 +89,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  # Postgres 18. The Postgres 16 volume (pgdata) is left alone; docs/self-hosting.md moves its data across
+  pgdata18:

@@ -31,7 +31,7 @@ Caller ─PSTN─▶ Twilio ─Elastic SIP (TLS/SRTP)─▶ OpenAI GPT-Live ◀�
                                   packages/agent: CallAgent + runTool (the rules)
                                      │            │             │           │
                               scheduling      identity      tasks, SMS     audit
-                                     └────────── Postgres 16, RLS, encrypted PHI ──┘
+                                     └────────── Postgres 18, RLS, encrypted PHI ──┘
 ```
 
 ## What it does
@@ -78,7 +78,7 @@ Prompts guide the voice. The rules below live in [`packages/agent/src/tools.ts`]
 
 ## Quick start
 
-You need Node 22.12 or later and pnpm 10.
+You need Node 24 (the current LTS) and pnpm 12.
 
 ```bash
 pnpm install
