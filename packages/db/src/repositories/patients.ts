@@ -141,16 +141,15 @@ export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Pro
         .from(patients).where(eq(patients.clinicId, clinicId)).orderBy(patients.createdAt, patients.id);
       for (const r of rows) {
         checked++;
+        // without a phone a patient cannot be verified, and migration 0020 lets no such row change until one is added
+        if (!r.phone) { withoutPhone++; continue; }
         const first = cipher.decrypt(r.first, ctx('first_name'));
         const last = cipher.decrypt(r.last, ctx('last_name'));
         const dob = cipher.decrypt(r.dob, ctx('dob'));
         const lookupHash = cipher.hash(patientLookupKey(clinicId, `${first} ${last}`, dob));
-        let identityHash: string | null = null;
-        if (r.phone) {
-          identityHash = cipher.hash(identityKey(clinicId, first, last, dob, cipher.decrypt(r.phone, ctx('phone'))));
-          // the same person twice, from before identities were unique: the later row keeps no identity until staff merge them
-          if (seen.has(identityHash)) { duplicates++; identityHash = null; } else seen.add(identityHash);
-        } else withoutPhone++;
+        let identityHash: string | null = cipher.hash(identityKey(clinicId, first, last, dob, cipher.decrypt(r.phone, ctx('phone'))));
+        // the same person twice, from before identities were unique: the later row keeps no identity until staff merge them
+        if (seen.has(identityHash)) { duplicates++; identityHash = null; } else seen.add(identityHash);
         if (lookupHash === r.lookupHash && identityHash === r.identityHash) continue;
         await tx.update(patients).set({ lookupHash, identityHash }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
         n++;
