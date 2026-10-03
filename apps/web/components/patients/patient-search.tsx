@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { api, useClinicConfig } from '@/lib/api';
-import { age, dob, phone } from '@/lib/format';
+import { age, dob, GENDER_LABEL, phone } from '@/lib/format';
 
 /** A short pause after each key, so a fast typist sends one request, not ten. Short enough to feel instant. */
 export function useSettled<T>(value: T, ms = 150) {
@@ -93,7 +93,7 @@ export function PatientLine({ p }: { p: PatientCard }) {
       <span className="min-w-0">
         <span className="flex items-center gap-2 truncate font-medium">{p.name}{p.status === 'new' && <Badge tone="warn">New, check details</Badge>}</span>
         <span className="block text-xs text-text-muted">
-          Born {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}{p.guardianName ? `, parent or guardian ${p.guardianName}` : ''}
+          {p.gender ? `${GENDER_LABEL[p.gender]}, born` : 'Born'} {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}{p.guardianName ? `, parent or guardian ${p.guardianName}` : ''}
         </span>
       </span>
       {p.phone ? <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span> : <Badge tone="danger">No phone</Badge>}

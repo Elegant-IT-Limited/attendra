@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { type CallPatient, Gender, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -69,7 +69,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
    * but another phone is a different person and is added; `similar` tells the front
    * desk to look, without the caller ever hearing about the other record.
    */
-  async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName: string | null; callId: string }): Promise<Registration> {
+  async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string }): Promise<Registration> {
     const attempt = () => withClinic(this.db, clinicId, async (tx) => {
       const sameId = await findSameIdentity(tx, this.cipher, clinicId, p);
       if (sameId) {
@@ -90,7 +90,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /** For seeds, imports and tests. Stores only ciphertext and keyed hashes. */
-  async create(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null }): Promise<string> {
+  async create(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p) }).returning({ id: patients.id });
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id });
@@ -116,12 +116,20 @@ export class PostgresPatientDirectory implements PatientDirectory {
       phone: r.phoneEnc ? this.cipher.decrypt(r.phoneEnc, ctx('phone')) : null,
       dob: this.cipher.decrypt(r.dobEnc, ctx('dob')),
       isNew: r.status === 'new',
+      gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
     };
   }
 }
 
 /** The stored form of a patient's details: ciphertext and keyed hashes, computed one way for every path that writes a patient. */
-export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null }) {
+/** A stored gender, or null for a patient from before it was recorded (or a value no longer offered). */
+export function readGenderColumn(cipher: PhiCipher, clinicId: string, enc: string | null): Gender | null {
+  if (!enc) return null;
+  const parsed = Gender.safeParse(cipher.decrypt(enc, phiContext(clinicId, 'patients.gender')));
+  return parsed.success ? parsed.data : null;
+}
+
+export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }) {
   const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
   const phone = p.phone.trim();
   const guardian = p.guardianName?.trim() || null;
@@ -134,6 +142,8 @@ export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName:
     phoneEnc: cipher.encrypt(phone, ctx('phone')),
     phoneHash: cipher.hash(phoneKey(clinicId, phone)),
     guardianNameEnc: guardian ? cipher.encrypt(guardian, ctx('guardian_name')) : null,
+    // left as it is when not given, so an edit that does not touch it keeps it
+    ...(p.gender !== undefined ? { genderEnc: p.gender ? cipher.encrypt(p.gender, ctx('gender')) : null } : {}),
   };
 }
 

@@ -51,6 +51,8 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`.
 
+**Upgrading to v0.5.1.** From v0.5.0, start the new version: migration 0022 adds each patient's gender, encrypted. Patients from before have none until the front desk adds it on their record, and their page says so.
+
 **Upgrading to v0.5.0.** Compose moves to Postgres 18 (with pgvector 0.8.7) on a new volume, `pgdata18`, so the data is moved across once with a dump. The old `pgdata` volume is left as it was until you remove it.
 
 1. **Back up first**, while the old version is still running:

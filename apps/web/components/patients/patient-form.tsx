@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { ageOn, countryCopy, localDateOf } from '@attendra/core';
+import { ageOn, countryCopy, type Gender, localDateOf } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Input, Label, Select } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 
 /**
@@ -20,14 +20,14 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   clinicId: string;
   /** Set to edit this patient; left out to add a new one. */
   patientId?: string;
-  initial?: Partial<PatientInput>;
+  initial?: Partial<Omit<PatientInput, 'gender'>> & { gender?: Gender | null };
   submitLabel: string;
   onSaved: (id: string, input: PatientInput) => void;
   onCancel?: () => void;
 }) {
   const queries = useQueryClient();
   const config = useClinicConfig(clinicId);
-  const [form, setForm] = useState<PatientInput>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', ...initial });
+  const [form, setForm] = useState<Omit<PatientInput, 'gender'> & { gender: Gender | '' }>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', ...initial, gender: initial?.gender ?? '' });
   const [problem, setProblem] = useState<{ text: string; existing?: string } | null>(null);
   const [similar, setSimilar] = useState(false);
   const today = localDateOf(new Date(), config.data?.timezone ?? 'UTC');
@@ -50,10 +50,11 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
       else setProblem({ text: 'That did not save. Check your connection and try again.' });
     },
   });
-  const set = (k: keyof PatientInput) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    save.mutate({ ...form, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
+    if (!form.gender) { setProblem({ text: 'Choose their gender, or Prefers not to say.' }); return; }
+    save.mutate({ ...form, gender: form.gender, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
   };
 
   return (
@@ -77,6 +78,13 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         <div className="space-y-1.5">
           <Label htmlFor="dob">Date of birth</Label>
           <Input id="dob" type="date" required min="1890-01-01" max={today} value={form.dob} onChange={set('dob')} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="gender">Gender</Label>
+          <Select id="gender" required value={form.gender} onChange={set('gender')}>
+            <option value="" disabled>Choose</option>
+            <option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="undisclosed">Prefers not to say</option>
+          </Select>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone</Label>

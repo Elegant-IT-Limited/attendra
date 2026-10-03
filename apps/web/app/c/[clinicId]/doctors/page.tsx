@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, DOCTOR_GUIDE, doctorTemplate, localDateOf, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, localDateOf, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, Trash2, X } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -18,15 +18,16 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
 type Hours = NonNullable<Provider['hours']>;
-type Draft = DoctorInput & { ownHours: boolean };
+type Draft = Omit<DoctorInput, 'gender'> & { gender: Gender | ''; ownHours: boolean };
 
 const blank = (visitTypes: VisitType[]): Draft => ({
-  name: '', kind: 'person', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
+  name: '', kind: 'person', gender: '', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
   visitTypeIds: visitTypes.slice(0, 1).map((v) => v.id), ownHours: false,
 });
-const draftOf = (p: Provider): Draft => ({ ...p, specialty: p.specialty ?? '', ownHours: !!p.hours });
+const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', specialty: p.specialty ?? '', ownHours: !!p.hours });
 
 /**
  * The clinic's doctors, and rooms booked like one. Everyone on the team can look;
@@ -85,7 +86,7 @@ export default function DoctorsPage() {
                 <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.name}</p>
-                    <p className="text-sm text-text-muted">{p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set')}</p>
+                    <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
                   </div>
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new patients</Badge> : <Badge>No new patients</Badge>}
                 </div>
@@ -146,9 +147,11 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, today, onClos
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const { ownHours, ...rest } = d;
+    const { ownHours, gender, ...rest } = d;
+    if (!gender) { setProblem('Choose their gender, so callers who ask for a female or a male doctor are offered the right one.'); return; }
     save.mutate({
       ...rest,
+      gender,
       name: d.name.trim(),
       specialty: d.specialty?.trim() || undefined,
       categories: categories.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
@@ -176,6 +179,14 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, today, onClos
           <div className="space-y-1.5"><Label htmlFor="doc-kind">Is a</Label>
             <Select id="doc-kind" value={d.kind} onChange={(e) => set({ kind: e.target.value as 'person' | 'room' })}><option value="person">Person</option><option value="room">Room</option></Select>
           </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="doc-gender">Gender</Label>
+          <Select id="doc-gender" required value={d.gender} onChange={(e) => set({ gender: e.target.value as Gender | '' })}>
+            <option value="" disabled>Choose</option>
+            <option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="undisclosed">Prefers not to say</option>
+          </Select>
+          <p className="text-xs text-text-muted">A caller can ask for a female or a male doctor.</p>
         </div>
         <div className="space-y-1.5"><Label htmlFor="doc-specialty">Specialty</Label><Input id="doc-specialty" maxLength={60} value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder="Family medicine, Pediatrics…" /></div>
         <div className="space-y-1.5">

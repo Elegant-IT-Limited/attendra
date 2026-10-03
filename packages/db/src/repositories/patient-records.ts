@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { namesMatch, normalizeName, parseDob } from '@attendra/core';
+import { type Gender, namesMatch, normalizeName, parseDob } from '@attendra/core';
 import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
 import { patientSetKey, recordView } from './audit';
 import { auditResults } from './front-desk';
-import { findSameIdentity, isSameIdentity, patientLookupKey, phoneKey, sealPatient } from './patients';
+import { findSameIdentity, isSameIdentity, patientLookupKey, phoneKey, readGenderColumn, sealPatient } from './patients';
 
 /** The most patients one search will read. Decision 7 says why, and what replaces it. */
 export const PATIENT_SCAN_LIMIT = 20_000;
@@ -20,11 +20,13 @@ export interface PatientCard {
   /** Null only for someone added before v0.5 made it required: they cannot be verified on a call until it is added. */
   phone: string | null;
   guardianName: string | null;
+  /** Null only for a patient from before v0.5.1: the front desk adds it on their record. */
+  gender: Gender | null;
   /** new: added by the assistant on a call, waiting for the front desk to check the details. */
   status: PatientStatus;
   createdAt: Date;
 }
-export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null }
+export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }
 
 /** `similar`: someone else has this name and date of birth with another phone, which is allowed and worth a look. */
 export type SaveResult = { status: 'saved'; id: string; similar: boolean } | { status: 'exists'; id: string } | { status: 'not_found' };
@@ -267,6 +269,7 @@ export class PatientRecords {
       dob: this.cipher.decrypt(r.dobEnc, ctx('dob')),
       phone: r.phoneEnc ? this.cipher.decrypt(r.phoneEnc, ctx('phone')) : null,
       guardianName: r.guardianNameEnc ? this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name')) : null,
+      gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
       status: r.status,
       createdAt: r.createdAt,
     };

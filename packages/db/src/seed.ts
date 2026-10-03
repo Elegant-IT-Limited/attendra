@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { type Database, withClinic } from './client';
 import type { PhiCipher } from './crypto';
 import { saveClinic } from './repositories/calls';
+import { demoGender } from './demo-schedule';
 import { identityKey, PostgresPatientDirectory } from './repositories/patients';
 import { clinics, patients } from './schema';
 
@@ -44,7 +45,7 @@ export async function seedDemoClinic(db: Database, cipher: PhiCipher, clinic: Cl
   for (const p of people) {
     const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: patients.id }).from(patients)
       .where(and(eq(patients.clinicId, clinic.id), eq(patients.identityHash, cipher.hash(identityKey(clinic.id, p.firstName, p.lastName, p.dob, p.phone))))));
-    ids[p.key] = existing?.id ?? await directory.create(clinic.id, p);
+    ids[p.key] = existing?.id ?? await directory.create(clinic.id, { ...p, gender: demoGender(p.firstName) });
   }
   return { clinic, patientIds: ids };
 }
