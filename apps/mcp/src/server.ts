@@ -114,9 +114,9 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   server.registerTool('list_open_requests', {
     title: 'Open requests',
     description: 'Refill and callback requests waiting for staff, oldest first, with the patient and the details. Needs requests:read, and each request shown is audited.',
-    inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review']).optional() },
+    inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review', 'follow_up']).optional() },
     annotations: { readOnlyHint: true },
-  }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' }) => {
+  }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' | 'follow_up' }) => {
     // every request shown writes its task.viewed row, under the key
     const tasks = await desk.listTasks(caller.clinicId, { status: 'open', type: a.type, limit: 50 }, { apiKeyId: caller.keyId });
     return {

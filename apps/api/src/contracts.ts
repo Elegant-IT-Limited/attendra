@@ -223,7 +223,7 @@ export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSecon
 
 export const TaskQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),
-  type: z.enum(['callback', 'refill', 'voicemail', 'review']).optional(),
+  type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']).optional(),
   assignee: z.enum(['me', 'unassigned']).optional(),
   /** Came in on or after this clinic-local day. */
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -241,7 +241,7 @@ export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({
   id: z.string(),
-  type: z.enum(['callback', 'refill', 'voicemail', 'review']),
+  type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']),
   status: z.enum(['open', 'done']),
   callId: z.string().nullable(),
   createdAt: z.iso.datetime(),
@@ -397,7 +397,7 @@ export const PatientProfile = PatientCard.extend({
   })),
   calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable() })),
   requests: z.array(z.object({
-    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), status: z.enum(['open', 'done']), callId: z.string().nullable(),
+    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(),
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
 });
@@ -454,7 +454,7 @@ export const Overview = z.object({
   daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
 });
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int() });
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int() });
 
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),

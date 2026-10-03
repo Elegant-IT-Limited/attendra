@@ -110,7 +110,7 @@ export const callActions = pgTable('call_actions', {
 export const tasks = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   clinicId: text('clinic_id').notNull(),
-  type: text('type', { enum: ['callback', 'refill', 'voicemail', 'review'] }).notNull(),
+  type: text('type', { enum: ['callback', 'refill', 'voicemail', 'review', 'follow_up'] }).notNull(),
   status: text('status', { enum: ['open', 'done'] }).notNull().default('open'),
   callId: uuid('call_id'),
   patientId: uuid('patient_id'),
