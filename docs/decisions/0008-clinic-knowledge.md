@@ -24,7 +24,7 @@ A question that asks for dosing, whether to take or stop a medicine, side effect
 
 ## Storage and cost
 
-Chunks live in Postgres, next to everything else, in `knowledge_chunks` with a `vector(1536)` column and an HNSW index. Compose uses the `pgvector/pgvector:pg16` image; the extension is created by the migration. There is no separate vector database to run or secure.
+Chunks live in Postgres, next to everything else, in `knowledge_chunks` with a `vector(1536)` column and an HNSW index. Compose uses the `pgvector/pgvector:0.8.7-pg18-trixie` image; the extension is created by the migration. There is no separate vector database to run or secure.
 
 Embedding uses `text-embedding-3-small` by default (`ATTENDRA_EMBEDDING_MODEL`), at 1,536 dimensions. A document's cost is its length in tokens: a ten-page policy is roughly 5,000 tokens. Indexing is capped at 400 chunks per document (about 200,000 tokens), and each request has a timeout. A question costs the embedding of a few words. Answers in the Ask a question box use the backend model with a 200-token ceiling. Check OpenAI's current prices for what these come to: embedding is priced per token, and a clinic's documents are short.
 

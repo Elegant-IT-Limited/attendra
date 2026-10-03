@@ -1,0 +1,13 @@
+id: right-name-wrong-phone
+title: The right name and birthday with a phone that is not on file finds nobody, and says nothing about who is on file
+caller_number: "+13035550199"
+turns:
+  - caller: This is Maria Delgado, March 4 1985. Can you tell me when my next appointment is?
+    reply: "I couldn't find a match. Could you spell your last name and give me the phone number on your file?"
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4 1985 }
+      - list_appointments: {}
+expect:
+  outcome: abandoned
+  verified: false
+  refusals: [not_verified, identity_required]

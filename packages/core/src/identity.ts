@@ -70,5 +70,14 @@ function monthIndex(word: string): number {
   return -1;
 }
 
-/** Phone numbers compared on their last 10 digits, so +1 (303) 555-0100 equals 3035550100. */
-export const samePhone = (a: string, b: string) => a.replace(/\D/g, '').slice(-10) === b.replace(/\D/g, '').slice(-10);
+/**
+ * How many trailing digits a phone number is compared on. Nine is the national number
+ * almost everywhere, whichever way it is written: +34 912 345 678 and 912 345 678,
+ * +44 7911 123456 and 07911 123456, +1 (303) 555-0100 and 303-555-0100 all agree on
+ * their last nine. The phone is one of three things a patient is known by, beside
+ * name and date of birth, so the digit dropped from a North American area code costs
+ * nothing.
+ */
+export const PHONE_MATCH_DIGITS = 9;
+export const phoneDigits = (phone: string) => phone.replace(/\D/g, '').slice(-PHONE_MATCH_DIGITS);
+export const samePhone = (a: string, b: string) => phoneDigits(a) === phoneDigits(b);

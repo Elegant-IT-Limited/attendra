@@ -45,7 +45,7 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByRole('heading', { level: 1, name: /^\w+day \d{1,2} \w+ \d{4}, \d{1,2}:\d{2} [AP]M M[DS]T$/ })).toBeVisible();
     await expect(page.getByRole('link', { name: /^Booked: \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M with Dr\. / })).toBeVisible();
     await page.getByRole('link', { name, exact: true }).click(); // who was calling, verified
-    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name })).toBeVisible(); // a caller added on the call also says New
     await expect(page.getByText(/^Age \d+, born \d{1,2} [A-Z][a-z]+ \d{4}$/)).toBeVisible();
     await page.getByRole('tab', { name: /Calls/ }).click();
     await expect(page.getByRole('link', { name: /Transcript/ }).first()).toBeVisible();
@@ -131,7 +131,7 @@ test.describe.serial('the schedule', () => {
       }] } });
     });
     await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
-    await expect(page.getByText('A cancelled visit is hidden. Tick Show cancelled to see it.')).toBeVisible();
+    await expect(page.getByText('A cancelled visit is hidden. Choose Booked and cancelled to see it.')).toBeVisible();
     await expect(page.getByText('Nothing booked here yet')).toHaveCount(0);
   });
 

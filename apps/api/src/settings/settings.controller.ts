@@ -41,7 +41,17 @@ export class SettingsController {
     const parsed = ClinicConfig.safeParse(body);
     if (!parsed.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(parsed.error) });
     const current = ClinicConfig.parse(await this.desk.settings(clinicId));
-    const next = parsed.data;
+    // Doctors are changed on the Doctors page. Settings keeps the ones on file, so a
+    // Settings page opened before a doctor was added cannot remove them; a visit type
+    // removed here is taken off every doctor who offered it.
+    const providers = current.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => parsed.data.visitTypes.some((v) => v.id === id)) }));
+    const stranded = providers.find((p) => !p.visitTypeIds.length);
+    if (stranded) {
+      throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'visitTypes', message: `${stranded.name} would have no visit types left. Give them another one on the Doctors page first.` }] });
+    }
+    const merged = ClinicConfig.safeParse({ ...parsed.data, providers });
+    if (!merged.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(merged.error) });
+    const next = merged.data;
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
     // in order: the first number is the one confirmations are texted from
     if (JSON.stringify(next.phoneNumbers) !== JSON.stringify(current.phoneNumbers)) {

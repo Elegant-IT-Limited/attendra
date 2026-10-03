@@ -3,9 +3,9 @@
   "private": true,
   "description": "Open-source AI phone receptionist for medical practices: Twilio SIP, OpenAI GPT-Live, and a TypeScript backend that owns identity, scheduling and audit.",
   "license": "AGPL-3.0-only",
-  "packageManager": "pnpm@10.34.5",
+  "packageManager": "pnpm@12.8.1",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=24.21"
   },
   "scripts": {
     "build": "turbo run build",
@@ -25,13 +25,13 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "22.20.4",
-    "eslint": "10.11.0",
+    "@types/node": "24.19.1",
+    "eslint": "10.12.0",
     "tsx": "4.23.15",
-    "turbo": "2.11.5",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.70.1",
-    "vitest": "5.0.2"
+    "turbo": "2.11.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.3"
   },
   "type": "module"
 }

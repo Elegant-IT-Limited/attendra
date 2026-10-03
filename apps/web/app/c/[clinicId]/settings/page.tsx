@@ -4,6 +4,7 @@ import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, countryCopy, emerge
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
@@ -133,48 +134,32 @@ export default function Settings() {
         </Section>
 
         <Section title="Visit types" description="What callers can book, with how long each takes."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ visitTypes: [...c.visitTypes, { id: newId('vt', 'visit'), name: 'New visit type', minutes: 20 }] })}><Plus /> Visit type</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ visitTypes: [...c.visitTypes, { id: newId('vt', 'visit'), name: 'New visit type', minutes: 20, audience: 'all' }] })}><Plus /> Visit type</Button>}>
           {c.visitTypes.map((v, i) => (
             <div key={v.id} className="flex flex-wrap items-end gap-3">
               <Field label="Name"><Input className="w-64" value={v.name} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
               <LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, names } : x)) })} />
               <Field label="Minutes"><Input type="number" min={5} max={240} className="w-24" value={v.minutes} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) } : x)) })} /></Field>
+              <Field label="Who can book it">
+                <Select className="w-52" value={v.audience} aria-label={`${v.name}: who can book it`}
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, audience: e.target.value as 'all' | 'new' | 'existing' } : x)) })}>
+                  <option value="all">Anyone</option><option value="new">New patients only</option><option value="existing">Patients on file only</option>
+                </Select>
+              </Field>
               <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${v.name}`} onClick={() => set({
                 visitTypes: c.visitTypes.filter((_, j) => j !== i),
+                // taken off every doctor who offered it, on the server too
                 providers: c.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => id !== v.id) })),
               })}><Trash2 /></Button>
             </div>
           ))}
         </Section>
 
-        <Section title="Providers" description="Who can be booked, and for which visit types. A provider without their own hours uses the clinic's."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ providers: [...c.providers, { id: newId('prov', 'provider'), name: 'New provider', kind: 'person', visitTypeIds: c.visitTypes.slice(0, 1).map((v) => v.id) }] })}><Plus /> Provider</Button>}>
-          {c.providers.map((p, i) => (
-            <div key={p.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
-              <div className="flex flex-wrap items-end gap-3">
-                <Field label="Name"><Input className="w-64" value={p.name} onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
-                <LocalNames thing={p} languages={c.languages} what="Provider" onChange={(names) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, names } : x)) })} />
-                <Field label="A person or a room" hint="Read-backs say &ldquo;with Dr. Rahman&rdquo; or &ldquo;in the sample collection room&rdquo;.">
-                  <Select className="w-44" value={p.kind} aria-label={`${p.name}: a person or a room`}
-                    onChange={(e) => set({ providers: c.providers.map((x, j) => (j === i ? { ...x, kind: e.target.value as 'person' | 'room' } : x)) })}>
-                    <option value="person">A person</option><option value="room">A room</option>
-                  </Select>
-                </Field>
-                <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => set({ providers: c.providers.filter((_, j) => j !== i) })}><Trash2 /></Button>
-              </div>
-              <div className="flex flex-wrap gap-4 text-sm">
-                {c.visitTypes.map((v) => (
-                  <label key={v.id} className="flex items-center gap-2">
-                    <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={p.visitTypeIds.includes(v.id)} onChange={(e) => set({
-                      providers: c.providers.map((x, j) => (j === i ? { ...x, visitTypeIds: e.target.checked ? [...x.visitTypeIds, v.id] : x.visitTypeIds.filter((id) => id !== v.id) } : x)),
-                    })} />
-                    {v.name}
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-text-muted">{p.hours ? 'Has their own hours.' : 'Uses the clinic hours.'}</p>
-            </div>
-          ))}
+        <Section title="Doctors" description="Who can be booked, their specialties, the ages they see, their weekly hours and days off.">
+          <p className="text-sm text-text-muted">
+            Doctors have a page of their own, where managers add them, set their hours and days off, or import a list. Saving these settings never changes them.{' '}
+            <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open Doctors</Link>
+          </p>
         </Section>
 
         <Section title="Routing" description="Where transfers go. The assistant transfers only to these numbers."

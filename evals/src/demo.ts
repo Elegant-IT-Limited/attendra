@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, type ClinicConfig, DEMO_CLINICS, isOpen, localDateOf, weekdayOf, zonedInstant } from '@attendra/core';
-import { type Database, DEMO_SCHEDULE_PATIENTS, type PhiCipher, phoneKey, PostgresPatientDirectory, schema, withClinic } from '@attendra/db';
+import { type Database, DEMO_SCHEDULE_PATIENTS, identityKey, type PhiCipher, PostgresPatientDirectory, schema, withClinic } from '@attendra/db';
 import { join } from 'node:path';
 import { and, eq, sql } from 'drizzle-orm';
 import { loadScenarios, type Scenario } from './scenario';
@@ -111,7 +111,7 @@ async function ensurePatients(db: Database, cipher: PhiCipher, clinic: ClinicCon
   const directory = new PostgresPatientDirectory(db, cipher, 'seed');
   for (const p of DEMO_SCHEDULE_PATIENTS.slice(0, 8)) {
     const [existing] = await withClinic(db, clinic.id, (tx) => tx.select({ id: schema.patients.id }).from(schema.patients)
-      .where(and(eq(schema.patients.clinicId, clinic.id), eq(schema.patients.phoneHash, cipher.hash(phoneKey(clinic.id, p.phone))))));
+      .where(and(eq(schema.patients.clinicId, clinic.id), eq(schema.patients.identityHash, cipher.hash(identityKey(clinic.id, p.firstName, p.lastName, p.dob, p.phone))))));
     if (!existing) await directory.create(clinic.id, p);
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@attendra/evals",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -16,9 +16,9 @@
     "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
-    "@electric-sql/pglite": "0.3.16",
+    "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "0.45.3",
-    "openai": "7.23.0",
+    "openai": "7.27.0",
     "yaml": "2.9.1",
     "zod": "4.6.5"
   },

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, asc, eq, gt, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, lt } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, patients } from '../schema';
@@ -23,6 +23,8 @@ export interface ScheduleEntry {
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
+/** The most cancelled visits one name search reads before it filters: names are encrypted. */
+const CANCELLED_SCAN = 5000;
 
 /**
  * The schedule as the front desk reads it. Every read shows patient names, so every
@@ -33,19 +35,42 @@ export class ScheduleRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
   /** Booked and cancelled appointments that overlap [from, to), so a visit already under way at `from` is shown too, earliest first. */
-  async range(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; label: string }, userId: string): Promise<ScheduleEntry[]> {
+  async range(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; status?: 'booked' | 'cancelled' | 'all'; label: string }, userId: string): Promise<ScheduleEntry[]> {
     const rows = await withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ a: appointments, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
         .from(appointments).innerJoin(patients, eq(patients.id, appointments.patientId))
         .where(and(eq(appointments.clinicId, clinicId), lt(appointments.startsAt, q.to), gt(appointments.endsAt, q.from),
-          q.providerId ? eq(appointments.providerId, q.providerId) : undefined))
+          q.providerId ? eq(appointments.providerId, q.providerId) : undefined,
+          q.status && q.status !== 'all' ? eq(appointments.status, q.status) : undefined))
         .orderBy(asc(appointments.startsAt), asc(appointments.id));
       // a screen left open refreshes every 30 seconds: the same range, filter and patients within 5 minutes is one row
-      const key = `${q.label};provider=${q.providerId ?? 'all'};${patientSetKey(rows.map((r) => r.a.patientId))}`;
+      const key = `${q.label};provider=${q.providerId ?? 'all'};${q.status && q.status !== 'all' ? `status=${q.status};` : ''}${patientSetKey(rows.map((r) => r.a.patientId))}`;
       await recordView(tx, { clinicId, actor: actorOf(userId), action: 'schedule.viewed', entity: 'schedule', entityId: key }, 5);
       return rows;
     });
     return this.entries(clinicId, rows);
+  }
+
+  /**
+   * Cancelled visits as a history: those due in [from, to), sorted by when the visit was
+   * to be or by when it was cancelled, at most `limit`. `match` narrows by the patient's
+   * name, after decrypting, so it reads more first. Audited as one view of the list.
+   */
+  async cancelled(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; sort: 'visit' | 'cancelled'; order: 'newest' | 'oldest'; match?: (patientName: string) => boolean; label: string }, userId: string, limit = 200): Promise<{ entries: (ScheduleEntry & { cancelledAt: Date })[]; truncated: boolean }> {
+    const column = q.sort === 'visit' ? appointments.startsAt : appointments.updatedAt;
+    const scan = q.match ? CANCELLED_SCAN : limit + 1;
+    const rows = await withClinic(this.db, clinicId, (tx) => tx.select({ a: appointments, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc })
+      .from(appointments).innerJoin(patients, eq(patients.id, appointments.patientId))
+      .where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'cancelled'), lt(appointments.startsAt, q.to), gt(appointments.endsAt, q.from),
+        q.providerId ? eq(appointments.providerId, q.providerId) : undefined))
+      .orderBy(q.order === 'newest' ? desc(column) : asc(column), asc(appointments.id))
+      .limit(scan));
+    const all = (await this.entries(clinicId, rows)).map((e, i) => ({ ...e, cancelledAt: rows[i]!.a.updatedAt }));
+    const kept = q.match ? all.filter((e) => q.match!(e.patientName)) : all;
+    const shown = kept.slice(0, limit);
+    // audited for the patients shown, not the ones read to find them
+    await withClinic(this.db, clinicId, (tx) => recordView(tx, { clinicId, actor: actorOf(userId), action: 'schedule.viewed', entity: 'schedule', entityId: `cancelled:${q.label};provider=${q.providerId ?? 'all'};${patientSetKey(shown.map((e) => e.patientId))}` }, 5));
+    return { entries: shown, truncated: kept.length > limit || rows.length >= scan };
   }
 
   /** One appointment with the patient's contact details and the note. Audited as a PHI view. */

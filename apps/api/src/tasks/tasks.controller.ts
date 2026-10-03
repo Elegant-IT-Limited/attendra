@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { EventSink } from '@attendra/core';
+import { addDays, ClinicConfig, type EventSink, zonedInstant } from '@attendra/core';
 import { type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, WaitingTasks } from '../contracts';
+import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -23,11 +23,32 @@ export class TasksController {
 
   @Get()
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'The request queue (refills, callbacks, voicemail), filtered by type and by who has them. Open ones oldest first, done ones newest first. Audited per request shown.' })
+  @ApiOperation({ summary: 'The request queue (refills, callbacks, new patients to check), newest first, filtered by type, by who has them, by the day they came in, and by words in them. Audited per request shown.' })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(TaskQuery)) q: z.infer<typeof TaskQuery>, @CurrentStaff() staff: Staff): Promise<TaskList> {
+    return this.find(clinicId, { ...q, q: '' }, staff);
+  }
+
+  /** A POST, not a GET: what is typed can be a name, a medication or a phone number, and URLs end up in logs. */
+  @Post('search')
+  @HttpCode(200)
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'The request queue with words to find in the patient\'s name, the details or the type, from the first character. Audited per request shown, never by what was typed.' })
+  @ApiBody({ schema: schemaOf(TaskSearch) })
+  @ApiOkResponse({ schema: schemaOf(TaskList) })
+  async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TaskSearch)) q: z.infer<typeof TaskSearch>, @CurrentStaff() staff: Staff): Promise<TaskList> {
+    return this.find(clinicId, q, staff);
+  }
+
+  private async find(clinicId: string, q: z.infer<typeof TaskSearch>, staff: Staff): Promise<TaskList> {
     const assignee = q.assignee === 'me' ? { userId: staff.userId } : q.assignee;
-    const tasks = await this.desk.listTasks(clinicId, { status: q.status, type: q.type, assignee, limit: 100 }, staff.userId);
+    // the days are the clinic's own, whatever zone the server or the browser is in
+    const tz = q.from || q.to ? ClinicConfig.parse(await this.desk.settings(clinicId)).timezone : null;
+    const tasks = await this.desk.listTasks(clinicId, {
+      status: q.status, type: q.type, assignee, limit: 100, q: q.q || undefined,
+      from: q.from && tz ? zonedInstant(q.from, '00:00', tz) : undefined,
+      to: q.to && tz ? zonedInstant(addDays(q.to, 1), '00:00', tz) : undefined,
+    }, staff.userId);
     const names = await staffNames(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, t.doneByUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
     return {
       tasks: tasks.map(({ assignedByUserId: _by, notes, ...t }) => ({
@@ -49,7 +70,7 @@ export class TasksController {
 
   @Get('waiting')
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'Open tasks nobody has claimed, oldest first: type and age only, for the home screen. No patient data, not audited.' })
+  @ApiOperation({ summary: 'Open tasks nobody has claimed, newest first: type and age only, for the home screen. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(WaitingTasks) })
   async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {
     const { tasks, total } = await this.desk.waitingTasks(clinicId);

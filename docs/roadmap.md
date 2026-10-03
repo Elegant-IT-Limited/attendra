@@ -27,7 +27,16 @@ Test calls from the browser over WebRTC; the Schedule with staff booking; Today;
 - Quality: the weekly page, a judge for live evals, and simulated callers.
 - `apps/mcp`: other AI agents can work with the front desk, with scoped, expiring API keys.
 
-## v0.5: the revenue release (next)
+## v0.5: doctors, families and a live dashboard (done)
+
+From the first browser test calls:
+
+- Doctors with specialties, what they see people for, ages, weekly hours, days off and new-patient status, on a page of their own and in CSV imports. The assistant describes them to any caller and reads them again before every request.
+- Patients known by name, date of birth and phone together; families on one phone; new patients added on a call and checked by the front desk; doctors offered by the patient's age.
+- Every screen updates as the clinic changes, every search answers as you type, the newest come first, and cancellations have a history of their own.
+- The latest stack: Node 24, pnpm 12, Postgres 18, TypeScript 6, Next 16.3, NestJS 12.1.
+
+## v0.6: the revenue release (next)
 
 Once Twilio is live:
 

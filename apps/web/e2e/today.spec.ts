@@ -66,5 +66,5 @@ test('Today marks each kind of waiting request with its own icon, as Requests do
   await page.route('**/tasks/waiting', (route) => route.fulfill({ json: { tasks, total: 4 } }));
   await page.reload();
   const attention = page.getByRole('list', { name: 'Needs attention' });
-  for (const icon of ['pill', 'phone-call', 'voicemail', 'message-square']) await expect(attention.locator(`svg.lucide-${icon}`).first()).toBeVisible();
+  for (const icon of ['pill', 'phone-call', 'voicemail', 'user-check']) await expect(attention.locator(`svg.lucide-${icon}`).first()).toBeVisible();
 });

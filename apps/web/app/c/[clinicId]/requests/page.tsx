@@ -2,7 +2,7 @@
 'use client';
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Hand, MessageSquare, Phone, PhoneCall, Pill, Voicemail } from 'lucide-react';
+import { Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -11,15 +11,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
-import { Label, Select, Textarea } from '@/components/ui/input';
+import { useSettled } from '@/components/patients/patient-search';
+import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, zoneLabel } from '@/lib/format';
 import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
 
-const DETAIL_LABELS: Record<string, string> = { medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason' };
-const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: MessageSquare } as const;
+const DETAIL_LABELS: Record<string, string> = {
+  medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
+  first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
+};
+const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 
 export default function RequestsPage() {
@@ -41,18 +45,25 @@ function Requests() {
   };
   const [type, setType] = useState('');
   const [who, setWho] = useState<Who>('everyone');
+  // what is typed narrows the list as it is typed; the dates are the clinic's own days
+  const [text, setText] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const q = useSettled(text.trim());
   const queries = useQueryClient();
-  const params = new URLSearchParams({ status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}) });
+  // a POST body: what is typed can be a name or a phone number, and never goes in an address
+  const filters = { status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}), q, ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  const filtered = !!(type || who !== 'everyone' || q || from || to);
   const tasks = useQuery({
-    queryKey: ['tasks', clinicId, status, type, who],
-    queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks?${params}`),
+    queryKey: ['tasks', clinicId, status, type, who, q, from, to],
+    queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify(filters) }),
     enabled: can('tasks:read'),
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
   // the people a manager can hand a request to
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('tasks:reassign') && can('members:manage') });
-  const key = ['tasks', clinicId, status, type, who];
+  const key = ['tasks', clinicId, status, type, who, q, from, to];
   const toast = useToast();
   type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign'; body?: Record<string, string> };
   // The screen changes at once and puts itself back if the server says no: a claim,
@@ -100,10 +111,10 @@ function Requests() {
 
   return (
     <>
-      <PageHeader title="Requests" description={<>What callers asked the team for. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>} />
+      <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>} />
       <Card className="mb-5 px-5 py-3">
         <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-3">
-          {(['refill', 'callback', 'voicemail'] as const).map((t) => (
+          {(['refill', 'callback', 'review'] as const).map((t) => (
             <div key={t}><dt className="inline font-medium">{TASK_TYPES[t]}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
           ))}
         </dl>
@@ -128,12 +139,25 @@ function Requests() {
           <option value="me">Assigned to me</option>
           <option value="unassigned">Unassigned</option>
         </Select>
+        <div className="relative min-w-56 flex-1">
+          <Label htmlFor="request-search" className="sr-only">Search requests</Label>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
+          <Input id="request-search" type="search" className="h-8 pl-8" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
+            placeholder="Name, medication, phone digits…" />
+        </div>
+        <div className="flex items-center gap-1.5 text-sm">
+          <Label htmlFor="request-from" className="text-text-muted">From</Label>
+          <Input id="request-from" type="date" className="h-8 w-38" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          <Label htmlFor="request-to" className="text-text-muted">to</Label>
+          <Input id="request-to" type="date" className="h-8 w-38" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); }}><X /> Clear</Button>}
       </div>
       <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
-          {status === 'open' ? (type || who !== 'everyone' ? 'Nothing open matches these filters.' : 'New refill and callback requests from calls appear here.') : 'Requests you mark done appear here, with what came of them.'}
+          {filtered ? 'Nothing matches these filters.' : status === 'open' ? 'New refill and callback requests, and new patients to check, appear here as calls come in.' : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
@@ -156,7 +180,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
-  const [outcome, setOutcome] = useState(t.type === 'refill' ? 'refill_sent' : 'called_back');
+  const [outcome, setOutcome] = useState(t.type === 'refill' ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : 'called_back');
   const Icon = ICONS[t.type] ?? Phone;
   const mine = t.assigneeUserId === meId;
   const heldByOther = !!t.assigneeUserId && !mine;
@@ -211,7 +235,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             <>
               <Label htmlFor={`outcome-${t.id}`} className="sr-only">Outcome</Label>
               <Select id={`outcome-${t.id}`} className="h-8 flex-1" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Outcome">
-                {Object.entries(TASK_OUTCOMES).filter(([k]) => k !== 'refill_sent' || t.type === 'refill').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(TASK_OUTCOMES).filter(([k]) => (k !== 'refill_sent' || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
               <Button size="sm" disabled={busy} onClick={() => { onAct('done', { outcome }); setClosing(false); }}>Mark done</Button>

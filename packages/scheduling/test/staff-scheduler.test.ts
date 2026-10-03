@@ -109,7 +109,7 @@ describe('staff bookings', () => {
   });
 
   it('will not book another clinic\'s patient', async () => {
-    const otherPatient = (await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc) values (${OTHER.id}, 'x', 'x', 'x', 'x') returning id`)).rows[0] as { id: string };
+    const otherPatient = (await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash) values (${OTHER.id}, 'x', 'x', 'x', 'x', 'x', 'x') returning id`)).rows[0] as { id: string };
     expect(await book('11:00', 'desk-8', { patientId: otherPatient.id })).toEqual({ status: 'not_found' });
   });
 });

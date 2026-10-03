@@ -1,6 +1,6 @@
 {
   "name": "@attendra/knowledge",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -10,12 +10,12 @@
   "dependencies": {
     "@attendra/core": "workspace:*",
     "@attendra/db": "workspace:*",
-    "openai": "7.23.0",
+    "openai": "7.27.0",
     "unpdf": "1.8.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.3.16",
+    "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "0.45.3"
   },
   "exports": {
