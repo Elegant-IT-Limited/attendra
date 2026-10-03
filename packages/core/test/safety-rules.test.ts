@@ -45,14 +45,17 @@ describe('identity inputs', () => {
     for (const s of ['March 85', '02/30/1990', 'next year', '01/01/2099']) expect(parseDob(s, new Date('2026-09-28'))).toBeNull();
   });
 
-  it('hears a goodbye only in the caller\'s own last words', () => {
-    expect(saidGoodbye('Okay, thank you, bye!')).toBe(true);
-    expect(saidGoodbye("No, that's all")).toBe(true);
-    expect(saidGoodbye('Adiós, gracias')).toBe(true);
-    expect(saidGoodbye('0 1 7 1 4 2 6 2 5 8 4. I am done')).toBe(false);
-    expect(saidGoodbye("That's it, I put the name")).toBe(false);
-    expect(saidGoodbye('No', 'Is there anything else I can help with?')).toBe(true);
+  it('ends a call only after "anything else?" is answered no or goodbye', () => {
+    const asked = 'You are booked for Monday at 9. Is there anything else I can help you with?';
+    expect(saidGoodbye('Okay, thank you, bye!', asked)).toBe(true);
+    expect(saidGoodbye("No, that's all", asked)).toBe(true);
+    expect(saidGoodbye('No', asked)).toBe(true);
+    expect(saidGoodbye('Adiós, gracias', '¿Hay algo más en que pueda ayudarle?')).toBe(true);
+    expect(saidGoodbye('Okay, thank you, bye!')).toBe(false); // the question comes first
+    expect(saidGoodbye('0 1 7 1 4 2 6 2 5 8 4. I am done', 'And the phone number for his file?')).toBe(false);
     expect(saidGoodbye('No', 'Is he a new patient?')).toBe(false);
+    expect(saidGoodbye('Yes, one more thing', asked)).toBe(false);
+    expect(saidGoodbye('Thanks, but can you also book my son?', asked)).toBe(false);
   });
 
   it('says which part of a refused date of birth is wrong', () => {
