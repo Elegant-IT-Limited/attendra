@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clock } from '@/lib/format';
+import { MIC_CONSTRAINTS, micWarning, missingProcessing } from '@/lib/mic';
 import { cn } from '@/lib/utils';
 
 type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
@@ -55,6 +56,7 @@ export default function TestCallPage() {
   const queries = useQueryClient();
   const [phase, setPhase] = useState<Phase>('idle');
   const [failure, setFailure] = useState<string | null>(null);
+  const [micNote, setMicNote] = useState<string | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [callId, setCallId] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
@@ -100,15 +102,18 @@ export default function TestCallPage() {
     if (attempt.current) return;
     const a: Attempt = { cancelled: false };
     attempt.current = a;
-    setFailure(null); setCaptions([]); setCallId(null); setSeconds(0); setPhase('connecting');
+    setFailure(null); setMicNote(null); setCaptions([]); setCallId(null); setSeconds(0); setPhase('connecting');
     const fail = (key: string) => { setFailure(FAILURES[key] ?? FAILURES.voice_unavailable!); finish(a, 'idle'); };
 
     try {
-      a.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      a.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
     } catch {
       return a.cancelled ? undefined : fail('microphone');
     }
     if (a.cancelled) return release(a); // left the page while the browser asked for the microphone
+    // what the browser actually applied, which can differ from what we asked for
+    const track = a.mic.getAudioTracks()[0];
+    setMicNote(track ? micWarning(missingProcessing(track.getSettings())) : null);
 
     const peer = new RTCPeerConnection();
     a.peer = peer;
@@ -217,6 +222,7 @@ export default function TestCallPage() {
           <CardHeader><CardTitle>Live captions</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {failure && <Alert tone="danger">{failure}</Alert>}
+            {micNote && <Alert tone="warn">{micNote}</Alert>}
             {captions.length === 0 && !failure && <p className="text-sm text-text-muted">What you and the assistant say appears here.</p>}
             {captions.map((c, i) => {
               const agent = c.speaker === 'agent';
