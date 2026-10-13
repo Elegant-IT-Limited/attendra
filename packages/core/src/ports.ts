@@ -44,7 +44,15 @@ export type PatientLookup =
 
 export type Registration =
   | { status: 'created'; patient: CallPatient; similar: boolean } // similar: someone else has this name and date of birth with another phone
-  | { status: 'exists'; patient: CallPatient }; // the same person is already on file: they are simply verified
+  | { status: 'exists'; patient: CallPatient } // the same person is already on file: they are simply verified
+  | { status: 'limited' }; // this phone number already added MAX_NEW_PATIENTS_PER_PHONE_PER_DAY patients in the last 24 hours
+
+/**
+ * How many new patients the assistant may add on one phone number in 24 hours,
+ * across all calls. A family shares a phone, so this leaves room for a parent and
+ * their children; past it, a caller cannot fill the clinic with made-up records.
+ */
+export const MAX_NEW_PATIENTS_PER_PHONE_PER_DAY = 5;
 
 /**
  * Patients as a call reaches them. A patient is one person: name, date of birth and

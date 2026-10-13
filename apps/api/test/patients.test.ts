@@ -197,6 +197,7 @@ describe('patients the assistant adds', () => {
   it('are marked new, listed for checking, and become ordinary patients once confirmed', async () => {
     const directory = new PostgresPatientDirectory(api.t.db, createPhiCipher(TEST_DATA_KEY));
     const added = await directory.register(DEMO_CLINIC.id, { firstName: 'Ines', lastName: 'Park', dob: '1999-12-01', gender: 'female', phone: '+13035550143', guardianName: null, callId: api.callId });
+    if (added.status === 'limited') throw new Error('unexpected daily limit');
     const waiting = (await api.request('GET', `${C}?status=new`, { cookie: as.staff })).json().patients;
     expect(waiting.map((p: { name: string; status: string }) => [p.name, p.status])).toEqual([['Ines Park', 'new']]);
     expect((await api.request('POST', `${C}/${added.patient.id}/confirm`, { cookie: as.staff })).statusCode).toBe(204);
