@@ -52,6 +52,16 @@ describe('doctors', () => {
     expect((await api.request('PUT', `${C}/prov_nobody`, { cookie: as.owner, body: kim })).statusCode).toBe(404);
   });
 
+  it('saves how the assistant says a doctor\'s name in another language, and keeps it on the next save', async () => {
+    const res = await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, names: { es: 'el doctor Jae Kim' } } });
+    expect(res.statusCode).toBe(200);
+    expect((await stored()).providers.find((p) => p.id === id)?.names).toEqual({ es: 'el doctor Jae Kim' });
+    // the Doctors page sends back what it loaded, names included
+    const loaded = (await stored()).providers.find((p) => p.id === id)!;
+    await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...loaded, specialty: 'Pediatric care' } });
+    expect((await stored()).providers.find((p) => p.id === id)).toMatchObject({ specialty: 'Pediatric care', names: { es: 'el doctor Jae Kim' } });
+  });
+
   it('keeps doctors when Settings is saved from a page opened before they were added', async () => {
     const before = await stored();
     const old = { ...before, providers: before.providers.filter((p) => p.id !== id) };
