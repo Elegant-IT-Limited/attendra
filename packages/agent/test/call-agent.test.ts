@@ -150,6 +150,20 @@ describe('booking over the phone', () => {
     expect(c.state.verifiedPatient).toBeNull();
   });
 
+  it('adds at most five new patients on one phone number in a day, across calls', async () => {
+    const phone = '+13035550188';
+    const add = async (first: string) => {
+      const c = await w.call(phone);
+      await c.delegate([{ tool: 'verify_caller', args: { full_name: `${first} Limit`, date_of_birth: 'May 5 1990' } }]);
+      return c.delegate([{ tool: 'register_patient', args: { first_name: first, last_name: 'Limit', date_of_birth: 'May 5 1990', gender: 'female' } }]);
+    };
+    for (const first of ['Ada', 'Bea', 'Cai', 'Dee', 'Eli']) expect((await add(first)).errors).toEqual([null]);
+    expect((await add('Fay')).errors).toEqual(['daily_registration_limit']);
+    // someone already added is still found by the check: the limit only stops new records
+    const back = await w.call(phone);
+    expect((await back.delegate([{ tool: 'verify_caller', args: { full_name: 'Ada Limit', date_of_birth: 'May 5 1990' } }])).errors).toEqual([null]);
+  });
+
   it('texts a booking for a patient it just added only to the number they are calling from', async () => {
     const book = async (caller: string | null, phone: string) => {
       const c = await w.call(caller);

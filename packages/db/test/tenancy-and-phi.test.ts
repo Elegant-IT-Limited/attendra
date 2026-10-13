@@ -80,10 +80,12 @@ describe('PHI at rest', () => {
     const callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'sess_register', null);
     const first = await dir.register(DEMO_CLINIC.id, { firstName: 'Sam', lastName: 'Rivera', dob: '1990-07-15', phone: '+13035550173', gender: 'male', guardianName: null, callId });
     expect(first).toMatchObject({ status: 'created', similar: true, patient: { isNew: true } });
+    if (first.status === 'limited') throw new Error('unexpected daily limit');
     const again = await dir.register(DEMO_CLINIC.id, { firstName: 'sam', lastName: 'rivera', dob: '1990-07-15', phone: '(303) 555-0173', gender: 'male', guardianName: null, callId });
     expect(again).toMatchObject({ status: 'exists', patient: { id: first.patient.id } });
     const child = await dir.register(DEMO_CLINIC.id, { firstName: 'Mateo', lastName: 'Delgado', dob: '2021-02-03', phone: '+13035550147', gender: 'male', guardianName: 'Maria Delgado', callId });
     expect(child).toMatchObject({ status: 'created', similar: false });
+    if (child.status === 'limited') throw new Error('unexpected daily limit');
     // the same person cannot be stored twice, whichever path writes them
     expect(await failure(withClinic(t.db, DEMO_CLINIC.id, async (tx) => {
       const [row] = await tx.select().from(schema.patients).where(sql`${schema.patients.id} = ${child.patient.id}`);
