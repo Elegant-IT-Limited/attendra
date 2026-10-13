@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, localDateOf, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, Trash2, X } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useMemo, useState } from 'react';
 import { ImportPanel } from '@/components/import-panel';
+import { LocalNames } from '@/components/settings/assistant';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -137,7 +138,7 @@ export default function DoctorsPage() {
       )}
 
       {editing && (
-        <DoctorPanel clinicId={clinicId} editing={editing} visitTypes={visitTypes} clinicHours={clinicHours} today={today}
+        <DoctorPanel clinicId={clinicId} editing={editing} visitTypes={visitTypes} clinicHours={clinicHours} languages={config.data?.languages ?? ['en']} today={today}
           onClose={() => setEditing(null)} onSaved={refresh} />
       )}
       <ImportPanel open={importing} onOpenChange={setImporting} title="Import doctors" what="doctors" endpoint={`/clinics/${clinicId}/doctors/import`}
@@ -146,8 +147,8 @@ export default function DoctorsPage() {
   );
 }
 
-function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, today, onClose, onSaved }: {
-  clinicId: string; editing: { id: string | null; draft: Draft }; visitTypes: VisitType[]; clinicHours: Hours; today: string;
+function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, today, onClose, onSaved }: {
+  clinicId: string; editing: { id: string | null; draft: Draft }; visitTypes: VisitType[]; clinicHours: Hours; languages: Language[]; today: string;
   onClose: () => void; onSaved: () => void;
 }) {
   const [d, setD] = useState<Draft>(editing.draft);
@@ -208,6 +209,12 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, today, onClos
             <Select id="doc-kind" value={d.kind} onChange={(e) => set({ kind: e.target.value as 'person' | 'room' })}><option value="person">Person</option><option value="room">Room</option></Select>
           </div>
         </div>
+        {languages.every((l) => l === 'en') ? null : (
+          <div className="space-y-3">
+            <LocalNames thing={d} languages={languages} what="Doctor" onChange={(names) => set({ names })} />
+            <p className="text-xs text-text-muted">How the assistant says their name to a caller in that language. Empty means it uses the name above.</p>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="doc-gender">Gender</Label>
           <Select id="doc-gender" required value={d.gender} onChange={(e) => set({ gender: e.target.value as Gender | '' })}>

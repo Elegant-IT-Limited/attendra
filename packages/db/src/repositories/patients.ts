@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, Gender, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { and, count, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, patients } from '../schema';
@@ -67,7 +67,8 @@ export class PostgresPatientDirectory implements PatientDirectory {
    * of birth and phone) is not added again: the caller gave exactly what verification
    * asks for, so they are that patient. Someone else with the same name and birthday
    * but another phone is a different person and is added; `similar` tells the front
-   * desk to look, without the caller ever hearing about the other record.
+   * desk to look, without the caller ever hearing about the other record. One phone
+   * number adds at most MAX_NEW_PATIENTS_PER_PHONE_PER_DAY new patients in 24 hours.
    */
   async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string }): Promise<Registration> {
     const attempt = () => withClinic(this.db, clinicId, async (tx) => {
@@ -77,6 +78,11 @@ export class PostgresPatientDirectory implements PatientDirectory {
         await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified', entity: 'patient', entityId: same!.id, callId: p.callId });
         return { status: 'exists', patient: this.callPatient(clinicId, same!) } as const;
       }
+      // added on calls from this number in the last 24 hours, whoever they were
+      const [added] = await tx.select({ n: count() }).from(patients).where(and(eq(patients.clinicId, clinicId),
+        eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, p.phone))), isNotNull(patients.createdByCallId),
+        gt(patients.createdAt, sql`now() - interval '24 hours'`)));
+      if ((added?.n ?? 0) >= MAX_NEW_PATIENTS_PER_PHONE_PER_DAY) return { status: 'limited' } as const;
       const full = `${p.firstName} ${p.lastName}`;
       const similar = (await this.candidates(tx, clinicId, full, p.dob)).some((r) => namesMatch(full, this.fullName(clinicId, r)));
       const [row] = await tx.insert(patients).values({

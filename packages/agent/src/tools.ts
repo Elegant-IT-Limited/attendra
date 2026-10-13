@@ -143,6 +143,7 @@ export async function runTool(
       const last = String(args.last_name).trim();
       const gender = args.gender as Gender;
       const result = await backend.patients.register(clinic.id, { firstName: first, lastName: last, dob, gender, phone, guardianName: guardian, callId: ctx.callId });
+      if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add anyone else, and offer a callback.');
       if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
       state.verifiedPatient = result.patient;
       // the same details as someone on file: as good as a verification, and counted like one, so it is no way round the limit
