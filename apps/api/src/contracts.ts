@@ -225,6 +225,22 @@ export const ApiKeyInput = z.object({
 /** The only time a key is shown. */
 export const ApiKeyCreated = z.object({ apiKey: ApiKeyView, key: z.string() });
 
+const Says = z.object({ en: z.string(), es: z.string() });
+const ReviewItem = z.object({ kind: z.string(), title: z.string(), examples: Says });
+export const EmergencyReview = z.object({
+  sheet: z.object({
+    industry: z.string(), version: z.string(), animal: z.array(ReviewItem), person: z.array(ReviewItem),
+    says: z.object({ animal: Says.nullable(), person: Says }), hospitalSet: z.boolean(),
+  }),
+  review: z.object({ reviewerName: z.string(), reviewerRole: z.string(), reviewedAt: z.string(), version: z.string() }).nullable(),
+  /** The review covers the lists in use now. */
+  current: z.boolean(),
+});
+export const EmergencyReviewInput = z.object({
+  reviewerName: z.string().trim().min(2, 'the reviewer\'s full name').max(100),
+  reviewerRole: z.string().trim().min(2, 'their role, like Veterinarian, DVM').max(60),
+});
+
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 /** A clinic's browser test-call time: its limit (null is none) and what its test calls have used. */
@@ -509,6 +525,7 @@ export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
 export type TestCall = z.infer<typeof TestCall>;
+export type EmergencyReview = z.infer<typeof EmergencyReview>;
 export type TestCallAllowance = z.infer<typeof TestCallAllowance>;
 export type TaskCount = z.infer<typeof TaskCount>;
 export type AuditEntry = z.infer<typeof AuditEntry>;

@@ -31,6 +31,7 @@ import { PatientsController } from './patients/patients.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
 import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
+import { EmergencyReviewController } from './settings/emergency-review.controller';
 import { SettingsController } from './settings/settings.controller';
 import { TasksController } from './tasks/tasks.controller';
 import { TeamController } from './team/team.controller';
@@ -77,7 +78,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

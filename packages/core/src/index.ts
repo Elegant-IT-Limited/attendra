@@ -7,6 +7,7 @@ export * from './medical';
 export * from './quality';
 export * from './demo';
 export * from './emergency';
+export * from './emergency-review';
 export * from './hours';
 export * from './identity';
 export * from './industries';

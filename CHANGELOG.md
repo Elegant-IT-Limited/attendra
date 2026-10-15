@@ -15,6 +15,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Quality**: bookings made after hours, emergencies, and refill requests, week by week. A new setting, the average visit value, is what the weekly report counts each booking made after hours as.
 - **Extra menu links for owners** from `ATTENDRA_ACCOUNT_LINKS`, for a hosting layer's billing or setup pages.
 - **Provisioning** for a hosting layer, behind `ATTENDRA_PROVISIONING_TOKEN`: open an account (organization, clinic from the pack's first settings, owner), confirm its email, set test-call time, point and release numbers, read phone minutes and the weekly report. See `docs/provisioning.md`. `pnpm db:add-number` uses the same code.
+- **The clinic's review of the emergency lists.** `GET /clinics/:clinicId/emergency-review` shows every kind of emergency the assistant acts on, examples, and the exact words callers hear with the clinic's own hospital and emergency number; `POST` records who reviewed it (name, role, time, and a fingerprint of the lists, so a list change makes the review out of date). Audited; Settings cannot change it. `docs/safety.md` names the published sources the animal list follows.
 - **Two-step sign-in can be optional** (`ATTENDRA_TWO_FACTOR=optional`), for a hosted service without patient health information. Required stays the default.
 
 ### Changed

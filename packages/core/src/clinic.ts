@@ -119,6 +119,13 @@ const ClinicConfigShape = z.object({
   afterHours: z.enum(['book', 'requests']).default('book'),
   // what a visit is worth on average, in the clinic's currency: the weekly report multiplies the bookings made after hours by it
   averageVisitValue: z.number().int().min(0).max(100_000).default(150),
+  // the clinic's own review of the emergency lists: who reviewed them, when, and which version of the lists
+  emergencyReview: z.object({
+    reviewerName: z.string().trim().min(2).max(100),
+    reviewerRole: z.string().trim().min(2).max(60),
+    reviewedAt: z.iso.datetime(),
+    version: z.string().regex(/^[0-9a-f]{8}$/),
+  }).optional(),
   // transcripts and call summaries older than this are deleted; about 7 years by default, as many US states keep records
   retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
