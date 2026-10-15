@@ -23,6 +23,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Texts end with how to opt out** ("Reply STOP to opt out.", in Spanish "Responda STOP para no recibir más mensajes."), as US carriers expect for A2P 10DLC registration. Twilio handles STOP replies itself.
 - **Sign-in needs a confirmed email address.** Accounts made with `pnpm add-member`, the Team page or the seed are confirmed when they are made, so nothing changes for them; an account opened through provisioning waits for its confirmation.
 
+### Fixed
+
+- **Account links in the menu open their page.** Links from `ATTENDRA_ACCOUNT_LINKS` point at another app on the same address, so they now load the page instead of trying to switch inside the dashboard, where the click did nothing.
+
 ### API changes for integrators
 
 - Request outcomes `refill_ready` and `refill_declined`, in the API, the `request.done` webhook and the MCP `mark_request_done` tool.
