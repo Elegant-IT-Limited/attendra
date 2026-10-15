@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, audienceLine, type ClinicConfig, NO_INFORMATION, ToolArgs, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, audienceLine, type ClinicConfig, industryPack, NO_INFORMATION, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -37,15 +37,14 @@ const DESCRIPTIONS: Record<ToolName, string> = {
 };
 
 export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
+  const { planner } = industryPack(clinic.industry);
   return [
     `You are the backend for the phone assistant of ${clinic.name}. ${nowLine}`,
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
-    'Rules: verify the patient (name, date of birth and phone) before booking, changing or reading anything of theirs. Anyone may hear the doctors, their specialties, hours and open times without being verified: answer those from get_clinic_info and find_slots. Before booking, ask whether the visit is for the caller or someone else, such as their child. If verification finds nobody and they say they are new, add them with register_patient. Offer only slots returned by find_slots.',
-    'Choosing the doctor: when the caller wants a visit and has not named a doctor, ask once whether they would like a particular doctor or a particular kind of doctor. Match what they ask for (a name, a specialty or department such as pediatrics, or a category such as women\'s health) to the doctors from get_clinic_info, suggest the matching doctors by name and specialty, and pass find_slots their provider_id or the specialty. Match only against the clinic\'s own list. If the caller only describes symptoms, do not decide what kind of doctor they need: ask which doctor or kind of doctor they would like, or offer the clinic\'s family doctors. If they have no preference, search all doctors.',
-    'Details: pass the name, date of birth and phone the caller gave to verify_caller or register_patient as they said them, even when a date or number looks wrong: the tool checks them and says exactly what to ask again. Never ask again for a detail the caller already gave on this call; when one detail is wrong, ask only for that one. Someone who says they are new is still looked up first with verify_caller, using the details they gave.',
+    ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
-    'Never give medical advice, never interpret symptoms, never promise a refill. Offer a callback or a transfer instead.',
+    ...planner.limits,
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
     'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
@@ -71,9 +70,12 @@ export class ResponsesPlanner implements Planner {
   ) {}
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
+    // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
+    const trade = industryPack(input.clinic.industry);
+    const args = toolArgsFor(input.clinic.industry);
     const tools = TOOL_NAMES.map((name) => ({
-      type: 'function' as const, name, description: DESCRIPTIONS[name], strict: true,
-      parameters: z.toJSONSchema(ToolArgs[name]) as Record<string, unknown>,
+      type: 'function' as const, name, description: trade.planner.descriptions?.[name] ?? DESCRIPTIONS[name], strict: true,
+      parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
     }));
     const state = input.state;
     const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}` }];

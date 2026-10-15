@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, type PhiCipher, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule } from '@attendra/db';
+import { type Database, type PhiCipher, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
@@ -10,18 +10,19 @@ import { recordDemoCalls } from '@attendra/evals/demo';
 import type { Auth } from '../src/auth';
 import { addMember } from '../src/members';
 
-/** The demo logins. The Cedar Park one belongs to a different organization and sees only its own clinic. */
+/** The demo logins. Cedar Park and Riverbend (the veterinary clinic) each have an organization of their own and see only their own clinic. */
 export const DEMO_LOGINS = [
   { email: 'frontdesk@maple-demo.test', name: 'Jordan (front desk)', label: 'Front desk', role: 'staff' as const, orgId: 'org_demo' },
   { email: 'manager@maple-demo.test', name: 'Priya (practice manager)', label: 'Practice manager', role: 'admin' as const, orgId: 'org_demo' },
   { email: 'frontdesk@cedarpark-demo.test', name: 'Casey (front desk)', label: 'Cedar Park front desk', role: 'staff' as const, orgId: 'org_cedar_park' },
+  { email: 'manager@riverbend-demo.test', name: 'Robin (practice manager)', label: 'Vet clinic manager', role: 'admin' as const, orgId: 'org_riverbend' },
 ];
 
 /** The local demo's password (`pnpm demo`, gone when the process stops). A deployed demo gets its own. */
 export const LOCAL_DEMO_PASSWORD = 'attendra-demo-password';
 
 /**
- * Both demo clinics, their synthetic patients and the demo logins. Maple Street also
+ * The demo clinics, their synthetic patients and the demo logins. Maple Street also
  * gets recorded calls and two weeks of appointments: the ones those calls booked, and
  * the rest by staff. Cedar Park stays small: it is there to be a clinic Maple Street
  * cannot see.
@@ -29,6 +30,8 @@ export const LOCAL_DEMO_PASSWORD = 'attendra-demo-password';
 export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: Auth, password: string, now = new Date()) {
   const maple = await seedDemo(db, cipher);
   await seedCedarPark(db, cipher);
+  // the veterinary clinic: its pets and its manager's login; its calls are made live, with browser test calls
+  await seedRiverbend(db, cipher);
   const staff: Record<string, string[]> = {};
   for (const l of DEMO_LOGINS) (staff[l.orgId] ??= []).push(await addMember(auth, db, { email: l.email, name: l.name, role: l.role, password, orgId: l.orgId }));
   // the clinic's documents, indexed with local embeddings: the demo needs no key for them

@@ -24,6 +24,8 @@ export class CallState {
   readonly turns: Turn[] = [];
   /** The patient this call is about: the caller, or the child or relative they are calling for. */
   verifiedPatient: CallPatient | null = null;
+  /** For a pet: the owner's name as the caller gave it when the pet was found. */
+  verifiedOwner: string | null = null;
   verifyAttempts = 0;
   /** New patients added on this call: a parent may add two children, nobody adds ten. */
   registrations = 0;

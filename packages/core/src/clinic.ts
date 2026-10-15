@@ -109,6 +109,14 @@ const ClinicConfigShape = z.object({
   routing: z.array(RoutingRule).default([]),
   faqs: z.array(Faq).default([]),
   emergencyTransferEnabled: z.boolean().default(false),
+  // where the veterinary pack sends an animal in danger: the clinic's chosen 24-hour emergency hospital
+  emergencyHospital: z.object({
+    name: z.string().trim().min(2).max(80),
+    phone: e164,
+    address: z.string().trim().min(5).max(200),
+  }).optional(),
+  // while the clinic is closed: book as usual, or take requests for the team to book in the morning
+  afterHours: z.enum(['book', 'requests']).default('book'),
   // transcripts and call summaries older than this are deleted; about 7 years by default, as many US states keep records
   retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
