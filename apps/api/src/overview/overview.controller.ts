@@ -28,6 +28,7 @@ function summarize(a: Activity, clinic: ClinicConfig, from: Date) {
     requestsTaken: a.requests.filter((d) => d >= from).length,
     handedToStaff: calls.filter((c) => c.outcome === 'transferred' || c.closeReason === 'transferred').length,
     afterHours: calls.filter((c) => !isOpen(clinic, c.startedAt)).length,
+    emergencies: calls.filter((c) => c.emergency).length,
     talkMinutes,
     estimatedCost: Math.round(talkMinutes * COST_PER_MINUTE * 100) / 100,
   };

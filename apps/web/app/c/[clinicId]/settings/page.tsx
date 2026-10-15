@@ -110,6 +110,9 @@ export default function Settings() {
               <option value="requests">Take requests; the team books in the morning</option>
             </Select>
           </Field>
+          <Field label="Average visit value" htmlFor="visit-value" hint="The weekly report counts bookings made after hours as visits saved, at this value each.">
+            <Input id="visit-value" type="number" min={0} max={100000} className="w-28" value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
+          </Field>
           {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
             <div key={d} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
               <span className="w-24 text-sm font-medium">{DAYS[Number(d)]}</span>

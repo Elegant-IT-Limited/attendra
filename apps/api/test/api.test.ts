@@ -1,6 +1,7 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { loadEnv } from '../src/config';
 import { OTHER, PASSWORD, startApi } from './helpers';
 
 const C = `/api/v1/clinics/${DEMO_CLINIC.id}`;
@@ -68,6 +69,28 @@ describe('me', () => {
     const me = (await api.request('GET', '/api/v1/me', { cookie: viewer })).json();
     expect(me.clinics).toEqual([expect.objectContaining({ id: DEMO_CLINIC.id, role: 'viewer', permissions: ['calls:list', 'settings:read'] })]);
     expect(me.demoMode).toBe(false);
+  });
+});
+
+it('shows the deployment\'s account links to owners only, with the clinic filled in', async () => {
+  const hosted = await startApi({ demoMode: true, accountLinks: [{ label: 'Billing', href: 'https://cloud.example/billing/{clinicId}' }] });
+  try {
+    const owner = (await hosted.request('GET', '/api/v1/me', { cookie: await hosted.signIn('omar@maple.example') })).json();
+    expect(owner.clinics[0].accountLinks).toEqual([{ label: 'Billing', href: `https://cloud.example/billing/${DEMO_CLINIC.id}` }]);
+    const admin = (await hosted.request('GET', '/api/v1/me', { cookie: await hosted.signIn('olga@maple.example') })).json();
+    expect(admin.clinics[0].accountLinks).toEqual([]);
+  } finally {
+    await hosted.close();
+  }
+});
+
+describe('API account links setting', () => {
+  const base = { DATABASE_URL: 'postgres://a:b@localhost:5432/c', ATTENDRA_DATA_KEY: 'x'.repeat(44), BETTER_AUTH_SECRET: 's'.repeat(32) };
+  it('reads JSON, defaults to none, and refuses plain http and bad JSON', () => {
+    expect(loadEnv(base).ATTENDRA_ACCOUNT_LINKS).toEqual([]);
+    expect(loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Setup","href":"/setup"}]' }).ATTENDRA_ACCOUNT_LINKS).toEqual([{ label: 'Setup', href: '/setup' }]);
+    expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Billing","href":"http://x.example"}]' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
+    expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: 'not json' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
   });
 });
 

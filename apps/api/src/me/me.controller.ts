@@ -29,7 +29,10 @@ export class MeController {
       demoMode: this.options.demoMode,
       testCalls: !!this.voice?.browserCalls,
       simulatedCalls: !!this.voice?.simulatedCalls,
-      clinics: clinics.map((c) => ({ id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role) })),
+      clinics: clinics.map((c) => ({
+        id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role),
+        accountLinks: c.role === 'owner' ? (this.options.accountLinks ?? []).map((l) => ({ label: l.label, href: l.href.replaceAll('{clinicId}', encodeURIComponent(c.clinicId)) })) : [],
+      })),
     };
   }
 }

@@ -146,6 +146,15 @@ describe('browser test calls', () => {
     expect(engine.release).toHaveBeenCalledWith('live_web');
   });
 
+  it('ends a call sooner when the API asks for less than the usual limit, never later', async () => {
+    const { d } = deps({ internalToken: TOKEN });
+    const app = buildServer(d);
+    expect((await webCall(app, { ...OFFER, maxSeconds: 90 })).json()).toMatchObject({ maxSeconds: 90 });
+    expect((await webCall(app, { ...OFFER, maxSeconds: 9000 })).json()).toMatchObject({ maxSeconds: 300 });
+    expect((await webCall(app, { ...OFFER, maxSeconds: 0 })).statusCode).toBe(400);
+    await app.close();
+  });
+
   it('answers 404 for an unknown clinic, 400 for a bad body and 500 for broken settings', async () => {
     const { d } = deps({ internalToken: TOKEN });
     const app = buildServer(d);

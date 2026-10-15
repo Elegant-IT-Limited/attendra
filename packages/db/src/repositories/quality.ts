@@ -14,6 +14,7 @@ export interface QualityRow {
   triedToBook: boolean;
   callerTurns: number;
   refusals: string[];
+  refillRequests: number;
 }
 
 /**
@@ -26,6 +27,7 @@ export async function qualityRows(db: Database, clinicId: string, from: Date, to
       coalesce(s.needs_review, false) as flagged,
       exists (select 1 from call_actions a where a.call_id = c.id and a.tool = 'propose_booking') as tried_to_book,
       (select count(*)::int from call_segments g where g.call_id = c.id and g.speaker = 'caller') as caller_turns,
+      (select count(*)::int from tasks t where t.call_id = c.id and t.type = 'refill') as refill_requests,
       coalesce((select array_agg(a.result->>'error') from call_actions a where a.call_id = c.id and a.result->>'error' is not null), '{}') as refusals
     from calls c left join call_summaries s on s.call_id = c.id
     where c.clinic_id = ${clinicId} and c.channel = 'phone' and c.started_at >= ${from} and c.started_at < ${to}
@@ -34,7 +36,7 @@ export async function qualityRows(db: Database, clinicId: string, from: Date, to
     return {
       callId: String(x.id), startedAt: new Date(x.started_at as string), outcome: (x.outcome as string | null) ?? null, closeReason: (x.close_reason as string | null) ?? null,
       voiceSeconds: Number(x.voice_seconds), emergency: !!x.emergency_flag, flagged: !!x.flagged, triedToBook: !!x.tried_to_book,
-      callerTurns: Number(x.caller_turns), refusals: (x.refusals as string[]) ?? [],
+      callerTurns: Number(x.caller_turns), refusals: (x.refusals as string[]) ?? [], refillRequests: Number(x.refill_requests),
     };
   }));
 }

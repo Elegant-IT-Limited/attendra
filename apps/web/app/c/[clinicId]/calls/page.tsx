@@ -46,7 +46,8 @@ function Calls() {
   const [outcome, setOutcome] = useState(params.get('outcome') ?? '');
   const [refusal, setRefusal] = useState(params.get('refusal') ?? '');
   const [channel, setChannel] = useState('');
-  const [emergencyOnly, setEmergencyOnly] = useState(false);
+  // the emergency log is this page with ?emergency=true
+  const [emergencyOnly, setEmergencyOnly] = useState(params.get('emergency') === 'true');
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
   useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 300); return () => clearTimeout(t); }, [text]);

@@ -13,6 +13,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "add-number": "tsx scripts/add-number.ts",
+    "test-call-limit": "tsx scripts/test-call-limit.ts",
     "rehash-lookups": "tsx scripts/rehash-lookups.ts"
   },
   "dependencies": {

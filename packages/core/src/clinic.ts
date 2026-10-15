@@ -117,6 +117,8 @@ const ClinicConfigShape = z.object({
   }).optional(),
   // while the clinic is closed: book as usual, or take requests for the team to book in the morning
   afterHours: z.enum(['book', 'requests']).default('book'),
+  // what a visit is worth on average, in the clinic's currency: the weekly report multiplies the bookings made after hours by it
+  averageVisitValue: z.number().int().min(0).max(100_000).default(150),
   // transcripts and call summaries older than this are deleted; about 7 years by default, as many US states keep records
   retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })

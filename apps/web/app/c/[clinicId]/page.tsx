@@ -59,8 +59,18 @@ export default function Today() {
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="At a glance">
         <StatCard label="Calls today" value={overview.data?.today.callsAnswered ?? null} trend={overview.data?.daily.map((d) => d.calls)} hint="Trend over the last 7 days" />
         <StatCard label="Booked, last 7 days" value={overview.data ? overview.data.period.booked : null} trend={overview.data?.daily.map((d) => d.booked)} hint="By the assistant" />
-        <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
-        <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered in the last 7 days" />
+        {clinic.industry === 'vet' ? (
+          // a vet clinic's two queues: refills waiting for a vet, and the animals sent to the emergency hospital
+          <>
+            <StatCard label="Refills waiting" value={can('tasks:read') ? (waiting.data?.byType.refill ?? (waiting.data ? 0 : null)) : null} hint="Open the refill queue" href={`/c/${clinicId}/requests?type=refill`} />
+            <StatCard label="Emergencies, last 7 days" value={overview.data ? overview.data.period.emergencies : null} tone="danger" hint="Open the emergency log" href={`/c/${clinicId}/calls?emergency=true`} />
+          </>
+        ) : (
+          <>
+            <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
+            <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered in the last 7 days" />
+          </>
+        )}
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
