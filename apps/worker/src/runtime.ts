@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
 import { and, eq } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
+import { type SmsSender, TwilioMessenger } from '@attendra/telephony';
+import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
 export interface WorkerDeps {
@@ -30,6 +31,8 @@ export interface WorkerDeps {
   events?: EventSink;
   /** Webhook delivery: plain HTTP to this machine for local development, and a resolver for tests. */
   webhooks?: GuardOptions & { resolve?: Resolver; timeoutMs?: number };
+  /** Sends texts (Twilio). Without it, nothing is texted and the request stays as it was closed. */
+  texts?: SmsSender;
 }
 
 /**
@@ -145,6 +148,31 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       throw new JobError(`webhook_${result.error ?? 'failed'}`);
     },
 
+    /**
+     * A refill the team approved: one text to the number the caller left, from the
+     * clinic's own number, saying it is ready to pick up and never what it is.
+     */
+    async requestReady(job: RequestJob): Promise<'sent' | 'off' | 'skipped'> {
+      const { clinicId, taskId } = RequestJob.parse(job);
+      if (!d.texts) { d.log.info({ clinic_id: clinicId, task_id: taskId }, 'texts are off: no ready-to-pick-up text sent'); return 'off'; }
+      const found = await withClinic(d.db, clinicId, async (tx) => {
+        const [task] = await tx.select().from(schema.tasks).where(and(eq(schema.tasks.clinicId, clinicId), eq(schema.tasks.id, taskId)));
+        const [clinic] = await tx.select({ config: schema.clinics.config }).from(schema.clinics).where(eq(schema.clinics.id, clinicId));
+        return task && clinic ? { task, config: ClinicConfig.parse(clinic.config) } : null;
+      });
+      if (!found || found.task.type !== 'refill' || found.task.outcome !== 'refill_ready') return 'skipped';
+      const details = JSON.parse(d.cipher.decrypt(found.task.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>;
+      const to = details.callback_number;
+      if (!to) return 'skipped';
+      const { config } = found;
+      const messenger = new TwilioMessenger(d.db, d.cipher, d.texts, () => config.phoneNumbers[0]!);
+      await messenger.sendTemplate(clinicId, {
+        to, template: 'request_ready', vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]! },
+        idempotencyKey: `request-ready:${taskId}`, language: config.primaryLanguage,
+      });
+      return 'sent';
+    },
+
     /** Records a text's delivery status from Twilio. A placeholder until Twilio status callbacks are wired to the queue. */
     async smsStatus(job: SmsStatusJob) {
       const { clinicId, messageSid, status } = SmsStatusJob.parse(job);
@@ -176,6 +204,7 @@ export async function startWorker(d: WorkerDeps) {
   const retryLimit = d.retry?.retryLimit ?? WEBHOOK_RETRY.retryLimit;
   await d.boss.work<DeliveryJob>(QUEUES.deliverWebhook, { ...poll, localConcurrency: 4 }, each((data, job) => h.deliverWebhook(data, { retryCount: job.retryCount, retryLimit })));
   if (d.smsStatus) await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, each((data) => h.smsStatus(data)));
+  await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
     d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');

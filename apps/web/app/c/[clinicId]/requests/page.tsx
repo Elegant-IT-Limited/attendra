@@ -236,7 +236,7 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             <>
               <Label htmlFor={`outcome-${t.id}`} className="sr-only">Outcome</Label>
               <Select id={`outcome-${t.id}`} className="h-8 flex-1" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Outcome">
-                {Object.entries(TASK_OUTCOMES).filter(([k]) => (k !== 'refill_sent' || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
               <Button size="sm" disabled={busy} onClick={() => { onAct('done', { outcome }); setClosing(false); }}>Mark done</Button>

@@ -2,6 +2,8 @@
 import { connect, createPhiCipher } from '@attendra/db';
 import { createLogger } from '@attendra/observability';
 import { loadEnv } from './config';
+import { twilioSender } from '@attendra/telephony';
+import twilio from 'twilio';
 import { bossQueue, createBoss, eventSink } from './queue';
 import { embedderFromEnv, startWorker, summariserFromEnv } from './runtime';
 
@@ -16,6 +18,7 @@ if (summariser.model === 'local') log.warn('no OPENAI_API_KEY: calls are summari
 await startWorker({
   boss, db: connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') }), cipher: createPhiCipher(env.ATTENDRA_DATA_KEY), summariser, embedder: embedderFromEnv(env), log,
   smsStatus: env.ATTENDRA_SMS_STATUS === 'on', events: eventSink(bossQueue(boss)),
+  texts: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? twilioSender(twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN)) : undefined,
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

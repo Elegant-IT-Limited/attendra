@@ -22,6 +22,8 @@ export interface PatientCard {
   guardianName: string | null;
   /** Null only for a patient from before v0.5.1: the front desk adds it on their record. */
   gender: Gender | null;
+  /** The kind of animal, for a pet. */
+  species: string | null;
   /** new: added by the assistant on a call, waiting for the front desk to check the details. */
   status: PatientStatus;
   createdAt: Date;
@@ -270,6 +272,7 @@ export class PatientRecords {
       phone: r.phoneEnc ? this.cipher.decrypt(r.phoneEnc, ctx('phone')) : null,
       guardianName: r.guardianNameEnc ? this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name')) : null,
       gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
+      species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, ctx('species')) : null,
       status: r.status,
       createdAt: r.createdAt,
     };

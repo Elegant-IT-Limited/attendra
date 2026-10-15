@@ -8,7 +8,7 @@ import { appointments, auditLogs, callActions, calls, callSegments, callSummarie
 import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
-export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'not_needed' | 'details_confirmed';
+export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'refill_ready' | 'refill_declined' | 'not_needed' | 'details_confirmed';
 type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 
 /**
