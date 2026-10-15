@@ -235,7 +235,7 @@ export const TaskSearch = TaskQuery.extend({
   /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(100).default(''),
 });
-export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed', 'details_confirmed']);
+export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
@@ -360,6 +360,8 @@ export const PatientCard = z.object({
   guardianName: z.string().nullable(),
   /** female, male, other, or undisclosed (prefers not to say). Null only for a patient added before v0.5.1. */
   gender: Gender.nullable(),
+  /** The kind of animal, at a veterinary clinic: dog, cat, rabbit. Null for people. */
+  species: z.string().nullable(),
   /** new: added by the assistant on a call; the front desk checks the details and confirms them. */
   status: PatientStatus,
   createdAt: z.iso.datetime(),

@@ -29,7 +29,8 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
   if (week.length) await ensurePatients(db, cipher, clinic);
   const times = callTimes(clinic, now, evals.length, week.length);
-  const scenarios = [...evals, ...week].map((scenario, i) => ({ scenario: voiced(scenario), at: times[i]! }));
+  // a scenario set at a local time (a booking at a clinic that takes requests after hours) is moved to that time on an open day
+  const scenarios = [...evals, ...week].map((scenario, i) => ({ scenario: voiced(scenario), at: scenario.local_time ? atLocalTime(clinic, times[i]!, scenario.local_time, now) : times[i]! }));
 
   // Every call runs at the time it is dated, in order, on one calendar: what the assistant
   // offers and reads back is what that caller would have heard then, and a booking stays
@@ -81,6 +82,16 @@ function callTimes(clinic: ClinicConfig, now: Date, evals: number, ordinary: num
     ? Array.from({ length: ordinary }, (_, i) => new Date(open[Math.floor(((i + 0.5) * open.length) / ordinary)]!))
     : spread(ordinary, weekStart + Math.min(hour, (end - weekStart) / 20), end); // a week only hours old
   return [...before, ...thisWeek];
+}
+
+/** `hhmm` in the clinic's time on the day of `at`, or the open day before it, never after `now`. */
+function atLocalTime(clinic: ClinicConfig, at: Date, hhmm: string, now: Date): Date {
+  let date = localDateOf(at, clinic.timezone);
+  for (let i = 0; i < 14; i++, date = addDays(date, -1)) {
+    const t = zonedInstant(date, hhmm, clinic.timezone);
+    if (t < now && isOpen(clinic, t)) return t;
+  }
+  return at;
 }
 
 /**

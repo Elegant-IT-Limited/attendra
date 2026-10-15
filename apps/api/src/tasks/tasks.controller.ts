@@ -8,7 +8,8 @@ import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, Ta
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { DB, EVENTS, FRONT_DESK } from '../http/tokens';
+import { DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
+import type { JobQueue } from '@attendra/worker/queue';
 import { ZodPipe } from '../http/zod.pipe';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
@@ -19,7 +20,7 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/tasks')
 export class TasksController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink, @Inject(JOBS) private readonly jobs: JobQueue) {}
 
   @Get()
   @Requires('tasks:read')
@@ -97,6 +98,8 @@ export class TasksController {
   async done(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskDone)) body: z.infer<typeof TaskDone>, @CurrentStaff() staff: Staff) {
     this.outcome(isUuid(taskId) ? await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null) : 'not_found');
     const facts = await taskFacts(this.db, clinicId, taskId);
+    // a refill the team approved: the caller hears by text, once, that it is ready to pick up
+    if (body.outcome === 'refill_ready' && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId });
     if (facts) await this.events.emit(clinicId, { type: 'request.done', key: taskId, data: facts });
   }
 

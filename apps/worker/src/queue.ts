@@ -22,6 +22,8 @@ export const QUEUES = {
   webhookEvent: 'webhook-event',
   /** One event to one endpoint, retried for about a day. */
   deliverWebhook: 'deliver-webhook',
+  /** A request the team approved: text the caller that it is ready to pick up. */
+  requestReady: 'request-ready',
   /** Where a job goes after its last retry fails, to be looked at, not retried. */
   deadLetter: 'dead-letter',
 } as const;
@@ -38,6 +40,9 @@ export const WebhookEventJob = z.object({ clinicId: z.string().min(1), id: z.str
 export type WebhookEventJob = z.infer<typeof WebhookEventJob>;
 export const DeliveryJob = z.object({ clinicId: z.string().min(1), endpointId: z.uuid(), eventId: z.string().min(1) });
 export type DeliveryJob = z.infer<typeof DeliveryJob>;
+
+export const RequestJob = z.object({ clinicId: z.string().min(1), taskId: z.uuid() });
+export type RequestJob = z.infer<typeof RequestJob>;
 
 /** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
 export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
@@ -69,9 +74,11 @@ export interface JobQueue {
   /** Once per document content: the same bytes uploaded again are the same job. */
   indexDocument(job: DocumentJob): Promise<void>;
   webhookEvent(job: WebhookEventJob): Promise<void>;
+  /** Once per request: closing it again does not text twice. */
+  requestReady(job: RequestJob): Promise<void>;
 }
 
-export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {} };
+export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {}, requestReady: async () => {} };
 
 /**
  * Domain events as webhook jobs. Emitting never fails the thing that happened: a
@@ -96,6 +103,9 @@ export function bossQueue(boss: PgBoss): JobQueue {
     async indexDocument(job) {
       await boss.send(QUEUES.indexDocument, DocumentJob.parse(job), { id: jobId(QUEUES.indexDocument, `${job.documentId}|${job.hash}|${job.version ?? ''}`) });
     },
+    async requestReady(job) {
+      await boss.send(QUEUES.requestReady, RequestJob.parse(job), { id: jobId(QUEUES.requestReady, job.taskId) });
+    },
   };
 }
 
@@ -119,7 +129,7 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
 export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
   if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
-  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook]) {
+  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady]) {
     const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
     if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });

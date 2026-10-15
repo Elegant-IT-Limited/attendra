@@ -18,14 +18,15 @@ describe('language packs', () => {
     }
   });
 
-  it('every pack writes both texts from the same three variables, and nothing clinical', () => {
+  it('every pack writes every text from the same variables, and nothing clinical', () => {
     for (const code of LANGUAGES) {
-      for (const render of Object.values(PACKS[code].sms)) {
+      expect(Object.keys(PACKS[code].sms).sort()).toEqual(Object.keys(PACKS.en.sms).sort());
+      for (const [name, render] of Object.entries(PACKS[code].sms)) {
         const text = render({ clinic: 'C', when: 'W', clinicPhone: 'P' });
         expect(text).toContain('C');
-        expect(text).toContain('W');
+        if (name === 'booking_confirmed') expect(text).toContain('W');
         expect(text).toContain('P');
-        expect(text).not.toMatch(/undefined/);
+        expect(text).not.toMatch(/undefined|refill|medic|prescri|receta|medicamento/i);
       }
     }
   });

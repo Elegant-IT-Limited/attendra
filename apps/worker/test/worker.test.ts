@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -266,5 +266,28 @@ describe('the worker on pg-boss', () => {
     await until(() => summaryOf(OTHER.id, theirs));
     expect((await workerJobs(t.db, DEMO_CLINIC.id)).some((j) => j.callId === theirs)).toBe(false);
     expect((await workerJobs(t.db, OTHER.id)).some((j) => j.callId === theirs)).toBe(true);
+  });
+});
+
+describe('a refill ready to pick up', () => {
+  it('texts the number the caller left, once, from the clinic\'s number, without naming the medication', async () => {
+    const sent: { from: string; to: string; body: string }[] = [];
+    const texts = { send: async (m: { from: string; to: string; body: string }) => { sent.push(m); return { sid: `SM${'a'.repeat(31)}${sent.length}` }; } };
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts });
+    const queue = new PostgresTaskQueue(t.db, cipher);
+    const { id } = await queue.create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: 'refill-ready-1', details: { medication: 'lisinopril 10 mg', pharmacy: 'pick up at the clinic', callback_number: '+13035550163' } });
+    // not yet approved: nothing goes out
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('skipped');
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent');
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent'); // a retry is not a second text
+    expect(sent).toEqual([{ from: DEMO_CLINIC.phoneNumbers[0], to: '+13035550163', body: expect.stringContaining('your request is ready to pick up') }]);
+    expect(sent[0]!.body).not.toMatch(/lisinopril/i);
+    expect(await audits(DEMO_CLINIC.id, 'sms.sent.request_ready')).toHaveLength(1);
+  });
+
+  it('sends nothing when texts are off', async () => {
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: '00000000-0000-4000-8000-000000000000' })).toBe('off');
   });
 });

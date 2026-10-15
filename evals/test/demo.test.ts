@@ -1,5 +1,5 @@
-import { DEMO_CLINIC, isOpen, localDateOf, qualityOf, speakSlot, zonedInstant } from '@attendra/core';
-import { createPhiCipher, FrontDeskRepository, qualityRows, seedDemo } from '@attendra/db';
+import { DEMO_CLINIC, isOpen, localDateOf, qualityOf, RIVERBEND_CLINIC, speakSlot, zonedInstant } from '@attendra/core';
+import { createPhiCipher, FrontDeskRepository, qualityRows, seedDemo, seedRiverbend } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { sql } from 'drizzle-orm';
@@ -128,4 +128,22 @@ describe('demo calls', () => {
     await t.db.execute(sql`insert into calls (clinic_id, openai_session_id) values (${DEMO_CLINIC.id}, 'live_real_call')`);
     await expect(recordDemoCalls(t.db, cipher, {})).rejects.toThrow(/real calls/);
   });
+});
+
+describe('the veterinary demo clinic\'s calls', () => {
+  it('plays every Riverbend scenario at a time it passes, bookings while the clinic is open, all in the past', async () => {
+    const fresh = await openTestDatabase();
+    try {
+      const { patientIds } = await seedRiverbend(fresh.db, cipher);
+      const vet = await recordDemoCalls(fresh.db, cipher, patientIds, NOW, { clinic: RIVERBEND_CLINIC });
+      expect(vet.filter((r) => !r.passed).map((r) => `${r.id}: ${r.failures.join('; ')}`)).toEqual([]);
+      expect(vet).toHaveLength(loadScenarios().filter((s) => s.clinic === 'riverbend').length);
+      const calls = await new FrontDeskRepository(fresh.db, cipher).listCalls(RIVERBEND_CLINIC.id, { limit: 100 });
+      expect(calls.every((c) => c.startedAt.getTime() < NOW.getTime())).toBe(true);
+      const booking = calls.find((c) => c.id === vet.find((r) => r.id === 'vet-booking')!.callId)!;
+      expect(isOpen(RIVERBEND_CLINIC, booking.startedAt)).toBe(true);
+    } finally {
+      await fresh.close();
+    }
+  }, 60_000);
 });
