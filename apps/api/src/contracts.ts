@@ -17,6 +17,8 @@ export const Health = z.object({
 export const Me = z.object({
   user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean() }),
   demoMode: z.boolean(),
+  /** Whether this deployment requires two-step sign-in before anything else. */
+  twoFactorRequired: z.boolean(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */

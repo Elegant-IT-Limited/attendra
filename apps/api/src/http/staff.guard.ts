@@ -83,7 +83,7 @@ export class StaffGuard implements CanActivate {
     const beforeTwoFactor = meta<boolean>(BEFORE_TWO_FACTOR);
     // demo mode or not: the person who typed a temporary password must not be able to act as its owner
     if (!beforeTwoFactor && req.staff.mustChangePassword) throw new ForbiddenException({ error: 'password_change_required' });
-    if (!beforeTwoFactor && !this.options.demoMode && !req.staff.twoFactorEnabled) {
+    if (!beforeTwoFactor && !this.options.demoMode && this.options.twoFactor !== 'optional' && !req.staff.twoFactorEnabled) {
       throw new ForbiddenException({ error: 'two_factor_required' });
     }
 

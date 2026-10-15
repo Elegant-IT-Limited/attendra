@@ -15,6 +15,7 @@ export * from './ports';
 export * from './providers';
 export * from './routing';
 export * from './slots';
+export * from './starter';
 export * from './time';
 export * from './tools';
 export * from './voices';

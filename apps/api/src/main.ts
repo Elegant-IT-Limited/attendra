@@ -26,7 +26,7 @@ const app = await createApi({
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
   auth: createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET, log }),
   log,
-  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS },
+  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, twoFactor: env.ATTENDRA_TWO_FACTOR, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN },
   trustProxy: env.TRUST_PROXY,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
