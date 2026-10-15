@@ -101,7 +101,15 @@ export default function Settings() {
 
         <AssistantSection c={c} set={set} disabled={!writable || save.isPending} />
 
-        <Section title="Opening hours" description="Outside these hours the assistant still answers, takes callbacks and books, but does not transfer to the front desk.">
+        <Section title="Opening hours" description={c.afterHours === 'requests'
+          ? 'Outside these hours the assistant still answers and takes requests and callbacks, but books nothing and does not transfer to the front desk.'
+          : 'Outside these hours the assistant still answers, takes callbacks and books, but does not transfer to the front desk.'}>
+          <Field label="While you are closed" htmlFor="after-hours" hint="Taking requests lets the team book in the morning, after a person has looked at each one.">
+            <Select id="after-hours" className="w-80" value={c.afterHours} onChange={(e) => set({ afterHours: e.target.value as ClinicConfig['afterHours'] })}>
+              <option value="book">Book visits, as during opening hours</option>
+              <option value="requests">Take requests; the team books in the morning</option>
+            </Select>
+          </Field>
           {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
             <div key={d} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
               <span className="w-24 text-sm font-medium">{DAYS[Number(d)]}</span>
@@ -118,6 +126,20 @@ export default function Settings() {
             </div>
           ))}
         </Section>
+
+        {(c.industry === 'vet' || c.emergencyHospital) && (
+          <Section title="Emergency hospital" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. Without one, callers are told to go to the nearest 24-hour emergency vet.">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Name" htmlFor="er-name"><Input id="er-name" value={c.emergencyHospital?.name ?? ''} placeholder="Front Range Pet Emergency"
+                onChange={(e) => set({ emergencyHospital: { name: e.target.value, phone: c.emergencyHospital?.phone ?? '', address: c.emergencyHospital?.address ?? '' } })} /></Field>
+              <Field label="Phone" htmlFor="er-phone" hint="With the country code, like +17205550188."><Input id="er-phone" value={c.emergencyHospital?.phone ?? ''} placeholder="+1"
+                onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: e.target.value, address: c.emergencyHospital?.address ?? '' } })} /></Field>
+            </div>
+            <Field label="Address" htmlFor="er-address"><Input id="er-address" value={c.emergencyHospital?.address ?? ''} placeholder="1200 Larkspur Avenue, Denver"
+              onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: c.emergencyHospital?.phone ?? '', address: e.target.value } })} /></Field>
+            {c.emergencyHospital && <Button type="button" size="sm" variant="ghost" onClick={() => set({ emergencyHospital: undefined })}><Trash2 /> Remove the emergency hospital</Button>}
+          </Section>
+        )}
 
         <Section title="Holidays" description="Closed all day. Nothing is offered on these dates.">
           <div className="flex flex-wrap gap-2">

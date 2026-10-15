@@ -360,6 +360,8 @@ export const PatientCard = z.object({
   guardianName: z.string().nullable(),
   /** female, male, other, or undisclosed (prefers not to say). Null only for a patient added before v0.5.1. */
   gender: Gender.nullable(),
+  /** The kind of animal, at a veterinary clinic: dog, cat, rabbit. Null for people. */
+  species: z.string().nullable(),
   /** new: added by the assistant on a call; the front desk checks the details and confirms them. */
   status: PatientStatus,
   createdAt: z.iso.datetime(),
