@@ -32,14 +32,15 @@ beforeAll(async () => {
   await call(tz('2026-09-26', '10:00'), 'transferred', 30);   // Saturday: closed
   await call(tz('2026-09-10', '10:00'), 'booked', 600);       // outside the week
   await call(tz('2026-09-29', '09:30'), 'booked', 300, 'web'); // a browser test: not counted
+  await api.t.db.execute(sql`update calls set emergency_flag = true where outcome = 'transferred'`); // Saturday's call ran the emergency script
 });
 afterAll(() => api.close());
 
 describe('the overview', () => {
   it('counts today and the last seven days in the database, leaving out browser tests', async () => {
     const res = (await api.request('GET', `${C}/overview?days=7`, { cookie: staff })).json();
-    expect(res.today).toEqual({ callsAnswered: 2, booked: 1, rescheduled: 0, cancelled: 1, requestsTaken: 0, handedToStaff: 0, afterHours: 1, talkMinutes: 3, estimatedCost: 0.15 });
-    expect(res.period).toEqual({ callsAnswered: 5, booked: 1, rescheduled: 1, cancelled: 1, requestsTaken: 1, handedToStaff: 1, afterHours: 3, talkMinutes: 5.8, estimatedCost: 0.29 });
+    expect(res.today).toEqual({ callsAnswered: 2, booked: 1, rescheduled: 0, cancelled: 1, requestsTaken: 0, handedToStaff: 0, afterHours: 1, emergencies: 0, talkMinutes: 3, estimatedCost: 0.15 });
+    expect(res.period).toEqual({ callsAnswered: 5, booked: 1, rescheduled: 1, cancelled: 1, requestsTaken: 1, handedToStaff: 1, afterHours: 3, emergencies: 1, talkMinutes: 5.8, estimatedCost: 0.29 });
     expect(res).toMatchObject({ days: 7, costPerMinute: 0.05 });
     // one entry per clinic day, oldest first, ending today; the browser test is not counted
     expect(res.daily.map((d: { date: string }) => d.date)).toEqual(['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29']);
@@ -66,7 +67,7 @@ describe('waiting requests', () => {
   it('lists open unclaimed requests oldest first, with type and age only, not audited', async () => {
     const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/tasks/waiting`, { cookie: staff });
-    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, type: 'refill', createdAt: expect.any(String), callId: api.callId }], total: 1 });
+    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, type: 'refill', createdAt: expect.any(String), callId: api.callId }], total: 1, byType: { refill: 1 } });
     expect(res.body).not.toMatch(/Maria|lisinopril|555/);
     const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);

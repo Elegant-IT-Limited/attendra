@@ -44,7 +44,8 @@ function Requests() {
     if (s === 'done') q.set('status', 'done'); else q.delete('status');
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
   };
-  const [type, setType] = useState('');
+  // a link can open the list on one type: the refill queue is ?type=refill
+  const [type, setType] = useState(() => { const t = search.get('type') ?? ''; return Object.hasOwn(TASK_TYPES, t) ? t : ''; });
   const [who, setWho] = useState<Who>('everyone');
   // what is typed narrows the list as it is typed; the dates are the clinic's own days
   const [text, setText] = useState('');

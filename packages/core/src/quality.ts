@@ -10,6 +10,10 @@ export interface QualityCall {
   callerTurns: number;
   refusals: string[];
   afterHours: boolean;
+  /** The emergency script ran on the call. */
+  emergency?: boolean;
+  /** Refill requests the call left for the team. */
+  refillRequests?: number;
 }
 
 export interface QualityNumbers {
@@ -21,6 +25,10 @@ export interface QualityNumbers {
   transferred: number; transferredShare: number | null;
   flagged: number; flaggedShare: number | null;
   afterHours: number;
+  /** Bookings made while the clinic was closed: the visits the weekly report counts as saved. */
+  afterHoursBookings: number;
+  emergencies: number;
+  refillRequests: number;
   voiceMinutes: number; cost: number; costPerCall: number | null; costPerBooking: number | null;
 }
 
@@ -51,6 +59,9 @@ export function qualityOf(calls: QualityCall[], costPerMinute: number): QualityN
     refusals: [...refusals].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)),
     transferred, transferredShare: rate(transferred, calls.length), flagged, flaggedShare: rate(flagged, calls.length),
     afterHours: calls.filter((c) => c.afterHours).length,
+    afterHoursBookings: booked.filter((c) => c.afterHours).length,
+    emergencies: calls.filter((c) => c.emergency).length,
+    refillRequests: calls.reduce((n, c) => n + (c.refillRequests ?? 0), 0),
     voiceMinutes: Math.round(minutes * 10) / 10, cost: money(cost), costPerCall: calls.length ? money(cost / calls.length) : null, costPerBooking: booked.length ? money(cost / booked.length) : null,
   };
 }

@@ -42,8 +42,8 @@ export function httpVoiceClient(baseUrl: string, token: string, timeoutMs = 15_0
     coach: (clinicId, callId, a) => action(`/internal/live/${encodeURIComponent(callId)}/coach`, { clinicId, ...a }),
     takeOver: (clinicId, callId, a) => action(`/internal/live/${encodeURIComponent(callId)}/take-over`, { clinicId, ...a }),
     endCall: (clinicId, callId, a) => action(`/internal/live/${encodeURIComponent(callId)}/end`, { clinicId, ...a }),
-    async startTestCall(clinicId, userId, sdp) {
-      const res = await post('/internal/web-calls', { clinicId, userId, sdp });
+    async startTestCall(clinicId, userId, sdp, maxSeconds) {
+      const res = await post('/internal/web-calls', { clinicId, userId, sdp, ...(maxSeconds === undefined ? {} : { maxSeconds }) });
       if (res.status !== 201) throw refused(res.status);
       return TestCall.parse(await res.json());
     },

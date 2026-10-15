@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Logger } from '@attendra/observability';
-import { Body, Controller, HttpCode, HttpException, Inject, Param, Post } from '@nestjs/common';
-import { ApiAcceptedResponse, ApiBody, ApiCookieAuth, ApiCreatedResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { type Database, testCallAllowance } from '@attendra/db';
+import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post } from '@nestjs/common';
+import { ApiAcceptedResponse, ApiBody, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { TestCall, TestCallStart } from '../contracts';
+import { TestCall, TestCallAllowance, TestCallStart } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { LOGGER, VOICE, type VoiceClient } from '../http/tokens';
+import { CLOCK, DB, LOGGER, VOICE, type VoiceClient } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
+
+/** Under this much test time left, a call would end before it said anything useful. */
+const MIN_TEST_SECONDS = 15;
 
 @ApiTags('calls')
 @ApiCookieAuth()
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/test-calls')
 export class TestCallsController {
-  constructor(@Inject(VOICE) private readonly voice: VoiceClient | null, @Inject(LOGGER) private readonly log: Logger) {}
+  constructor(@Inject(VOICE) private readonly voice: VoiceClient | null, @Inject(LOGGER) private readonly log: Logger, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date) {}
 
   private available(): VoiceClient {
     if (!this.voice) throw new HttpException({ error: 'voice_not_configured' }, 503);
@@ -45,11 +49,24 @@ export class TestCallsController {
   @ApiCreatedResponse({ schema: schemaOf(TestCall) })
   async start(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TestCallStart)) body: z.infer<typeof TestCallStart>, @CurrentStaff() staff: Staff): Promise<TestCall> {
     const voice = this.available();
+    // a clinic with a test-call limit (a hosted trial) gets only the time it has left
+    const { limitSeconds, usedSeconds } = await testCallAllowance(this.db, clinicId, this.now());
+    const left = limitSeconds === null ? undefined : limitSeconds - usedSeconds;
+    if (left !== undefined && left < MIN_TEST_SECONDS) throw new HttpException({ error: 'test_minutes_used' }, 403);
     try {
-      return await voice.startTestCall(clinicId, staff.userId, body.sdp);
+      return await voice.startTestCall(clinicId, staff.userId, body.sdp, left);
     } catch (err) {
       this.failed(clinicId, err, 'start');
     }
+  }
+
+  /** How much browser test-call time the clinic has, when it has a limit (hosted trials do). */
+  @Get('allowance')
+  @Requires('calls:test')
+  @ApiOperation({ summary: 'The clinic\'s test-call time: its limit (null is none) and the seconds used' })
+  @ApiOkResponse({ schema: schemaOf(TestCallAllowance) })
+  async allowance(@Param('clinicId') clinicId: string): Promise<TestCallAllowance> {
+    return testCallAllowance(this.db, clinicId, this.now());
   }
 
   /**

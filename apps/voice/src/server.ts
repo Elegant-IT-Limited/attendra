@@ -46,7 +46,7 @@ export interface VoiceDeps {
   simulator?: { engine: SimulatedEngine; callFor(clinic: ClinicConfig): { script: SimulatedScript; planner: Planner } | null };
 }
 
-const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024) });
+const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024), maxSeconds: z.number().int().positive().optional() });
 const WebCallEnd = z.object({ clinicId: z.string().min(1).max(64) });
 const LiveAction = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), byName: z.string().trim().max(100).optional(), key: z.string().min(8).max(100) });
 const Coach = LiveAction.extend({ note: z.string().trim().min(1).max(300) });
@@ -170,11 +170,13 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
           return reply.code(500).send({ error: 'setup_failed' });
         }
         webCalls.set(callId, { clinicId: clinic.id, sessionId });
-        track(runCall(clinic, sessionId, callId, null, 'web').finally(() => {
+        // the API may ask for less than the usual limit: the clinic's test time left
+        const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
+        track(runCall(clinic, sessionId, callId, null, 'web', { maxSeconds: limit }).finally(() => {
           webCalls.delete(callId);
           hold(clinic.id, -1);
         }));
-        return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds });
+        return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit });
       });
 
       // The dashboard's way out when the browser cannot send session.close itself:
@@ -277,7 +279,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
     const timers: NodeJS.Timeout[] = [];
@@ -296,12 +298,13 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const sideband = engine.attach(sessionId);
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       if (web) {
+        const limit = opts.maxSeconds ?? maxSeconds;
         timers.push(setTimeout(() => {
           deps.log.info({ session_id: sessionId }, 'test call reached its time limit');
           void hangup();
-        }, maxSeconds * 1000));
+        }, limit * 1000));
         // if the session ignores the close, stop listening anyway so the call counts as over
-        timers.push(setTimeout(() => sideband.close(), (maxSeconds + 30) * 1000));
+        timers.push(setTimeout(() => sideband.close(), (limit + 30) * 1000));
       }
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log);
       const a = agent;

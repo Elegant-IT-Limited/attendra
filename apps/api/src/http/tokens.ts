@@ -33,7 +33,8 @@ export interface VoiceClient {
   readonly browserCalls: boolean;
   /** Whether it can play a scripted call with no audio, for the demo. */
   readonly simulatedCalls: boolean;
-  startTestCall(clinicId: string, userId: string, sdpOffer: string): Promise<{ callId: string; sdp: string; maxSeconds: number }>;
+  /** `maxSeconds` shortens the call when the clinic has less test time left than the usual limit. */
+  startTestCall(clinicId: string, userId: string, sdpOffer: string, maxSeconds?: number): Promise<{ callId: string; sdp: string; maxSeconds: number }>;
   endTestCall(clinicId: string, callId: string): Promise<void>;
   startSimulatedCall(clinicId: string, userId: string): Promise<{ callId: string }>;
   liveCalls(clinicId: string): Promise<LiveCallSummary[]>;
@@ -50,6 +51,8 @@ export interface ApiOptions {
   demoMode: boolean;
   /** Printed on the sign-in page. Only `pnpm demo` sets it: a deployed demo keeps its password private. */
   demoSignIn?: { password: string; logins: { email: string; label: string }[] };
+  /** Extra menu links for owners, from ATTENDRA_ACCOUNT_LINKS; {clinicId} in an href becomes the clinic's id. */
+  accountLinks?: { label: string; href: string }[];
   /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
   liveStream?: { maxMs?: number; recheckMs?: number };
 }

@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
+import { BellRing, ExternalLink, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
@@ -91,6 +91,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const count = (n: NavItem) => (n.href === 'requests' ? openTasks.data?.open : undefined);
   const groups = nav.map((g) => ({ ...g, items: g.items.filter((n) => pages.includes(n)) })).filter((g) => g.items.length);
   const phoneBar = pages.filter((p) => PHONE_BAR.includes(p.href));
+  // links the deployment adds for owners (a hosted service's billing or setup pages)
+  const accountLinks: NavItem[] = clinic.accountLinks.map((l) => ({ href: l.href, label: l.label, icon: ExternalLink, permission: '' }));
   const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
 
   return (
@@ -122,6 +124,12 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
               ))}
             </div>
           ))}
+          {accountLinks.length > 0 && (
+            <div role="group" aria-label="Account" className="space-y-0.5">
+              <p className="px-3 pb-1 text-xs font-medium text-text-muted max-xl:sr-only">Account</p>
+              {accountLinks.map((n) => <NavLink key={n.href} item={n} href={n.href} active={pathname === n.href} />)}
+            </div>
+          )}
         </nav>
         <div className="border-t border-border p-3 max-xl:px-2">
           <UserMenu user={user} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
@@ -163,6 +171,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           {pages.filter((p) => !PHONE_BAR.includes(p.href)).map((n) => (
             <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={hrefOf(n)} active={active(n)} count={count(n)} expanded /></div>
           ))}
+          {accountLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={pathname === n.href} expanded /></div>)}
         </div>
       </Panel>
 
