@@ -477,10 +477,10 @@ export class FrontDeskRepository {
   }
 
   /** Saves a validated ClinicConfig. The caller checks that the id and phone numbers are unchanged. */
-  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string) {
+  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string, action = 'clinic.settings.updated') {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(clinics).set({ name: config.name, timezone: config.timezone, config }).where(eq(clinics.id, clinicId));
-      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'clinic.settings.updated', entity: 'clinic', entityId: clinicId });
+      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId: clinicId });
     });
   }
 

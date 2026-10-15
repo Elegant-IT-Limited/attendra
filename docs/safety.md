@@ -21,9 +21,14 @@ The guardrail keeps listening after the first match: a different kind later in t
 
 No clinic setting turns the guardrail off.
 
-### Before any release
+### Review
 
-The phrase list and both scripts must be reviewed by a licensed clinician, and the review recorded in the pull request that changes them. The Spanish list needs a clinician who works in Spanish.
+Two reviews, and both are recorded:
+
+1. **Each clinic reviews the lists before its calls go live.** `GET /api/v1/clinics/:clinicId/emergency-review` shows a clinician (a veterinarian, at a veterinary clinic) every kind of emergency the assistant acts on, examples of what callers say, and the exact words callers hear, with the clinic's own emergency hospital and emergency number in them. `POST` to the same address records who reviewed it, their role and when, in the clinic's settings and the audit log. The review carries a fingerprint of the lists; a release that changes a list makes every clinic's review out of date until it is done again. Settings cannot change or remove a review.
+2. **A change to a list or a script is reviewed in its pull request**, by a clinician where one is available, and always against the published sources listed below; the pull request says which.
+
+The Spanish lists need a reviewer who works in Spanish.
 
 What the lists catch is what their tests show, and no more: a phrase list catches the phrases on it and the spellings written into it, and a caller who says it another way is not caught. The tests are in `packages/core/test/safety-rules.test.ts` (English) and `packages/core/test/languages.test.ts` (Spanish).
 
@@ -46,7 +51,9 @@ A clinic on the veterinary industry pack (see [industries](industries.md)) has a
 
 The person on the phone is still covered by the engine's list: someone with chest pain calling a vet hears the 911 script, and self-harm language always gets the crisis script first, before anything about an animal.
 
-The animal list must be reviewed by a licensed veterinarian before release, and the review recorded in the pull request that changes it. Its tests are in `packages/core/test/vet-pack.test.ts`.
+The animal list is reviewed like the person list (see Review above): by each clinic's veterinarian before its calls go live, and in the pull request that changes it. Its tests are in `packages/core/test/vet-pack.test.ts`.
+
+What the list covers follows published guidance for pet owners on when to get emergency care at once: the AVMA's pet first aid guidance ([brochure, 2025](https://ebusiness.avma.org/files/ProductDownloads/mcm-client-brochures-pet-first-aid-2025.pdf): severe bleeding, choking and breathing trouble, seizures, heatstroke, snake bites) and the ASPCA Animal Poison Control Center's list of foods that are toxic to pets ([people foods to avoid](https://www.aspca.org/pet-care/aspca-poison-control/people-foods-avoid-feeding-your-pets): chocolate, xylitol, grapes and raisins, onions and garlic, and others). The list sends the owner to the emergency hospital; it never decides that a case is safe.
 
 | Kind | English | Spanish |
 |---|---|---|

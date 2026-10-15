@@ -8,8 +8,8 @@ import { type Language, LANGUAGES, normalise, PACKS } from './locales';
  * It is deliberately a phrase list, not a classifier. A missed emergency is the one
  * failure this product cannot have, so the list errs toward false positives: telling
  * a caller with a mild cough to call 911 costs a moment of confusion, missing chest
- * pain costs far more. The patterns live in the language packs, are reviewed by a
- * clinician before any release (docs/safety.md), and every one has a test.
+ * pain costs far more. The patterns live in the language packs, are reviewed by each
+ * clinic and in the pull request that changes them (docs/safety.md), and every one has a test.
  *
  * Every pack's phrases are checked on every call, whatever languages the clinic has
  * switched on: a caller does not choose their language by the clinic's settings.
