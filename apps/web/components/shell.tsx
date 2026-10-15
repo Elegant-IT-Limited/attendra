@@ -19,6 +19,7 @@ import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
+import { useTerms } from '@/lib/terms';
 import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { type ThemeChoice, useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
@@ -71,7 +72,10 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     return () => { clearTimeout(timer); for (const e of events) window.removeEventListener(e, reset); };
   }, [signOut]);
 
-  const pages = NAV.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls));
+  // menu labels in the account's own words ("Pets", "Veterinarians")
+  const terms = useTerms(clinicId);
+  const nav = NAV.map((g) => ({ ...g, items: g.items.map((n) => (n.term ? { ...n, label: terms.title(n.term) } : n)) }));
+  const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls));
   const hrefOf = (n: NavItem) => (n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`);
   useShortcuts({
     palette: () => setPalette(true),
@@ -85,7 +89,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
 
   const active = (n: NavItem) => (n.href ? pathname.startsWith(`/c/${clinicId}/${n.href}`) : pathname === `/c/${clinicId}`);
   const count = (n: NavItem) => (n.href === 'requests' ? openTasks.data?.open : undefined);
-  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((n) => pages.includes(n)) })).filter((g) => g.items.length);
+  const groups = nav.map((g) => ({ ...g, items: g.items.filter((n) => pages.includes(n)) })).filter((g) => g.items.length);
   const phoneBar = pages.filter((p) => PHONE_BAR.includes(p.href));
   const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
 

@@ -71,7 +71,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, canSearchP
                 {searching && patients.isFetching ? 'Searching…' : 'Nothing matches. Try a name, a date of birth or a page.'}
               </Command.Empty>
               {searching && (patients.data?.patients.length ?? 0) > 0 && (
-                <Command.Group heading="Patients" className={group}>
+                <Command.Group heading={pages.find((p) => p.href === 'patients')?.label ?? 'Patients'} className={group}>
                   {patients.data!.patients.slice(0, 8).map((p) => (
                     <Command.Item key={p.id} value={`patient-${p.id}`} onSelect={() => go(`/c/${clinicId}/patients/${p.id}`)} className={item}>
                       <User aria-hidden /><span className="flex-1">{p.name}</span><span className="text-sm text-text-muted">Born {dob(p.dob)}</span>

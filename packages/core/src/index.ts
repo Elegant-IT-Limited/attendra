@@ -9,6 +9,7 @@ export * from './demo';
 export * from './emergency';
 export * from './hours';
 export * from './identity';
+export * from './industries';
 export * from './imports';
 export * from './ports';
 export * from './providers';

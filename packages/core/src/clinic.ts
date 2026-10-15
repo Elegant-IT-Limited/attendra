@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
+import { INDUSTRIES } from './industries/types';
 import { type Language, LANGUAGES, normalise, PACKS } from './locales';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
@@ -85,6 +86,8 @@ export const Faq = z.object({
 const ClinicConfigShape = z.object({
   id: z.string(),
   name: z.string(),
+  // the trade the assistant works in: what things are called and the prompt lines that depend on it
+  industry: z.enum(INDUSTRIES).default('clinic'),
   timezone: z.string().refine((tz) => {
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
   }, 'unknown IANA time zone'),
