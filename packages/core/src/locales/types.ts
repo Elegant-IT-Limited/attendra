@@ -38,6 +38,8 @@ export interface LanguagePack {
   /** Text messages: when and where, never why. */
   sms: {
     booking_confirmed: (v: Record<string, string>) => string;
+    /** A request the team approved is ready to pick up: never what it is. */
+    request_ready: (v: Record<string, string>) => string;
   };
 
   /** The fixed emergency instruction, with the clinic's emergency number. */

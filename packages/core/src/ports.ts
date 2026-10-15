@@ -108,5 +108,5 @@ export interface AuditLog {
 
 export interface Messenger {
   // templates only: free text could carry PHI to a carrier that has no BAA
-  sendTemplate(clinicId: string, input: { to: string; template: 'booking_confirmed'; vars: Record<string, string>; idempotencyKey: string; language?: Language }): Promise<void>;
+  sendTemplate(clinicId: string, input: { to: string; template: 'booking_confirmed' | 'request_ready'; vars: Record<string, string>; idempotencyKey: string; language?: Language }): Promise<void>;
 }
