@@ -10,10 +10,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Records requests** at a veterinary clinic: the pet is found first, then the request goes to the team, starting "Records request:". Records are never read out on the phone.
 - **Settings**: "While you are closed" (book, or take requests), and the emergency hospital for a veterinary clinic. A pet's page shows its kind of animal and its owner; patient cards in the API carry `species`.
 - **Demo**: Riverbend Animal Hospital's call scenarios are recorded into its call history, like Maple Street's.
+- **Test-call allowance.** A clinic can be given a total of test-call time (`pnpm db:test-call-limit`, migration 0026); the Test call page shows what is left, and a call ends when it runs out. Without one, nothing changes.
+- **A vet clinic's Today** shows the refills waiting for a vet and the emergencies of the last 7 days; each card opens the list behind it (`/requests?type=refill`, `/calls?emergency=true`). Pets are listed with their kind of animal and owner.
+- **Quality**: bookings made after hours, emergencies, and refill requests, week by week. A new setting, the average visit value, is what the weekly report counts each booking made after hours as.
+- **Extra menu links for owners** from `ATTENDRA_ACCOUNT_LINKS`, for a hosting layer's billing or setup pages.
 
 ### API changes for integrators
 
 - Request outcomes `refill_ready` and `refill_declined`, in the API, the `request.done` webhook and the MCP `mark_request_done` tool.
+- `GET /clinics/:clinicId/test-calls/allowance`. `QualityWeek` adds `afterHoursBookings`, `emergencies` and `refillRequests`; the overview's periods add `emergencies`; waiting tasks add `byType`; each clinic in `/me` adds `accountLinks`. Settings add `averageVisitValue` (default 150).
 
 ## [0.7.0] - 2026-10-16
 

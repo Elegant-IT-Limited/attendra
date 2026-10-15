@@ -21,7 +21,9 @@ export const Me = z.object({
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
-  clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()) })),
+  clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()),
+    /** Links the deployment adds to the menu (billing, setup), for owners only. */
+    accountLinks: z.array(z.object({ label: z.string(), href: z.string() })) })),
 });
 
 /** An opaque cursor: the last call's exact start time and id, so equal timestamps page correctly. */
@@ -198,6 +200,9 @@ export const QualityWeek = z.object({
   transferred: z.number(), transferredShare: z.number().nullable(),
   flagged: z.number(), flaggedShare: z.number().nullable(),
   afterHours: z.number(),
+  /** Bookings made while the clinic was closed. */
+  afterHoursBookings: z.number(),
+  emergencies: z.number(), refillRequests: z.number(),
   voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
 });
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
@@ -220,6 +225,8 @@ export const ApiKeyCreated = z.object({ apiKey: ApiKeyView, key: z.string() });
 
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
+/** A clinic's browser test-call time: its limit (null is none) and what its test calls have used. */
+export const TestCallAllowance = z.object({ limitSeconds: z.number().nullable(), usedSeconds: z.number() });
 
 export const TaskQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),
@@ -445,6 +452,8 @@ const Activity = z.object({
   requestsTaken: z.number(),
   handedToStaff: z.number(),
   afterHours: z.number(),
+  /** Calls where the emergency script ran. */
+  emergencies: z.number(),
   talkMinutes: z.number(),
   /** talkMinutes at the per-minute rate below, in US dollars. */
   estimatedCost: z.number(),
@@ -456,7 +465,9 @@ export const Overview = z.object({
   daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
 });
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int() });
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
+  /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
+  byType: z.record(z.string(), z.number().int()) });
 
 export const AuditEntry = z.object({
   id: z.number(), at: z.iso.datetime(), actor: z.string(), action: z.string(),
@@ -496,6 +507,7 @@ export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
 export type TestCall = z.infer<typeof TestCall>;
+export type TestCallAllowance = z.infer<typeof TestCallAllowance>;
 export type TaskCount = z.infer<typeof TaskCount>;
 export type AuditEntry = z.infer<typeof AuditEntry>;
 export type AuditList = z.infer<typeof AuditList>;

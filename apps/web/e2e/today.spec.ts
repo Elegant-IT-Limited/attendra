@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAs } from './session';
+import { openAs, signInAgain } from './session';
 
 test('Today shows what needs attention, the day\'s appointments, what the assistant did and the latest calls', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
@@ -67,4 +67,17 @@ test('Today marks each kind of waiting request with its own icon, as Requests do
   await page.reload();
   const attention = page.getByRole('list', { name: 'Needs attention' });
   for (const icon of ['pill', 'phone-call', 'voicemail', 'user-check']) await expect(attention.locator(`svg.lucide-${icon}`).first()).toBeVisible();
+});
+
+test('a vet clinic\'s Today leads to its refill queue and its emergency log', async ({ browser }) => {
+  const page = await signInAgain(browser, 'Vet clinic manager');
+  const glance = page.getByLabel('At a glance');
+  await expect(glance.getByText('Requests waiting', { exact: true })).toHaveCount(0);
+  await glance.getByRole('link', { name: /Refills waiting/ }).click();
+  await expect(page).toHaveURL(/\/requests\?type=refill$/);
+  await expect(page.getByLabel('Type')).toHaveValue('refill');
+  await page.goBack();
+  await page.getByLabel('At a glance').getByRole('link', { name: /Emergencies, last 7 days/ }).click();
+  await expect(page).toHaveURL(/\/calls\?emergency=true$/);
+  await expect(page.getByRole('checkbox', { name: 'Emergencies only' })).toBeChecked();
 });

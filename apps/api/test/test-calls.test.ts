@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, createPhiCipher } from '@attendra/db';
+import { CallRepository, createPhiCipher, setTestCallLimit } from '@attendra/db';
 import { TEST_DATA_KEY } from '@attendra/db/testing';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -36,7 +36,7 @@ describe('browser test calls', () => {
     expect(res.statusCode).toBe(201);
     const { callId, sdp, maxSeconds } = res.json();
     expect({ sdp, maxSeconds }).toEqual({ sdp: 'v=0 answer', maxSeconds: 300 });
-    expect(voice.startTestCall).toHaveBeenCalledWith(DEMO_CLINIC.id, api.users.staff, 'v=0 offer');
+    expect(voice.startTestCall).toHaveBeenCalledWith(DEMO_CLINIC.id, api.users.staff, 'v=0 offer', undefined);
     const audit = (await api.request('GET', `${C}/audit`, { cookie: await api.signIn('olga@maple.example', true) })).json();
     expect(audit.entries[0]).toMatchObject({ action: 'call.test.started', callId, actor: `user:${api.users.staff}` });
     const list = (await api.request('GET', `${C}/calls`, { cookie: staff })).json();
@@ -56,6 +56,28 @@ describe('browser test calls', () => {
     expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0' }, origin: 'https://evil.example' })).statusCode).toBe(403);
     expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: '' } })).statusCode).toBe(422);
     expect((await api.request('POST', `${C}/test-calls/call_1/end`, { cookie: viewer })).statusCode).toBe(403);
+  });
+
+  it('keeps a clinic with a test-call limit within it, and says how much is left', async () => {
+    const none = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
+    expect(none).toEqual({ limitSeconds: null, usedSeconds: 0 });
+    expect(await setTestCallLimit(api.t.db, DEMO_CLINIC.id, 600)).toBe(true);
+    try {
+      const { usedSeconds } = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
+      expect(usedSeconds).toBeGreaterThanOrEqual(0);
+      voice.startTestCall.mockClear();
+      expect((await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0 offer' } })).statusCode).toBe(201);
+      const asked = voice.startTestCall.mock.calls[0]![3] as number;
+      expect(asked).toBeLessThanOrEqual(600 - usedSeconds);
+      expect(asked).toBeGreaterThan(500);
+      await setTestCallLimit(api.t.db, DEMO_CLINIC.id, 0);
+      const used = await api.request('POST', `${C}/test-calls`, { cookie: staff, body: { sdp: 'v=0 offer' } });
+      expect([used.statusCode, used.json()]).toEqual([403, { error: 'test_minutes_used' }]);
+      expect((await api.request('GET', `${C}/test-calls/allowance`, { cookie: viewer })).statusCode).toBe(403);
+    } finally {
+      await setTestCallLimit(api.t.db, DEMO_CLINIC.id, null);
+    }
+    await expect(setTestCallLimit(api.t.db, DEMO_CLINIC.id, -1)).rejects.toThrow('whole number');
   });
 
   it('passes on the per-clinic limit, and says so when the voice service is down', async () => {

@@ -86,6 +86,27 @@ export async function clinicById(db: Database, clinicId: string): Promise<unknow
   return row?.config ?? null;
 }
 
+/**
+ * How much browser test-call time a clinic has: its limit (null is none) and the
+ * seconds its test calls have used so far, a call still running counted up to now.
+ */
+export async function testCallAllowance(db: Database, clinicId: string, now: Date): Promise<{ limitSeconds: number | null; usedSeconds: number }> {
+  const [row] = await db.select({ limit: clinics.testSecondsLimit }).from(clinics).where(eq(clinics.id, clinicId));
+  const limitSeconds = row?.limit ?? null;
+  if (limitSeconds === null) return { limitSeconds, usedSeconds: 0 };
+  const used = await withClinic(db, clinicId, async (tx) => (await tx.execute(sql`
+    select coalesce(sum(extract(epoch from (coalesce(ended_at, ${now}) - started_at))), 0)::float as s
+    from calls where clinic_id = ${clinicId} and channel = 'web'`)).rows[0] as { s: number });
+  return { limitSeconds, usedSeconds: Math.max(0, Math.round(Number(used.s))) };
+}
+
+/** Sets or clears (null) a clinic's test-call limit. For the hosting layer and self-hosters' scripts; staff cannot reach it. */
+export async function setTestCallLimit(db: Database, clinicId: string, seconds: number | null): Promise<boolean> {
+  if (seconds !== null && (!Number.isInteger(seconds) || seconds < 0)) throw new Error('a test-call limit is a whole number of seconds, 0 or more');
+  const rows = await db.update(clinics).set({ testSecondsLimit: seconds }).where(eq(clinics.id, clinicId)).returning({ id: clinics.id });
+  return rows.length === 1;
+}
+
 /** True the first time a webhook delivery id is seen, false for every retry after. */
 export async function claimDelivery(db: Database, id: string, source: 'openai' | 'twilio'): Promise<boolean> {
   const rows = await db.insert(webhookDeliveries).values({ id, source }).onConflictDoNothing().returning({ id: webhookDeliveries.id });
