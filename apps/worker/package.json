@@ -1,6 +1,6 @@
 {
   "name": "@attendra/worker",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -15,13 +15,13 @@
     "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/webhooks": "workspace:*",
-    "drizzle-orm": "0.45.3",
-    "openai": "7.27.0",
-    "pg-boss": "12.36.0",
-    "zod": "4.6.5"
+    "drizzle-orm": "0.45.4",
+    "openai": "7.33.0",
+    "pg-boss": "12.38.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8"
+    "@electric-sql/pglite": "0.5.9"
   },
   "exports": {
     "./queue": "./src/queue.ts",

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import type { Terms } from '@attendra/core';
 import { CalendarDays, Gauge, House, ListChecks, type LucideIcon, Mic, Phone, Settings, ShieldCheck, Stethoscope, UserCog, Users } from 'lucide-react';
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; permission: string; shortcut?: string }
+export interface NavItem { href: string; label: string; icon: LucideIcon; permission: string; shortcut?: string; /** The label comes from the account's industry pack. */ term?: keyof Terms }
 
 // The menu in the groups a front desk thinks in. A group with nothing the role may open is not shown.
 export const NAV: { group: string | null; items: NavItem[] }[] = [
@@ -10,8 +11,8 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
     group: 'Front desk',
     items: [
       { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read', shortcut: 's' },
-      { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read', shortcut: 'p' },
-      { href: 'doctors', label: 'Doctors', icon: Stethoscope, permission: 'settings:read', shortcut: 'd' },
+      { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read', shortcut: 'p', term: 'patients' },
+      { href: 'doctors', label: 'Doctors', icon: Stethoscope, permission: 'settings:read', shortcut: 'd', term: 'providers' },
       { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:read', shortcut: 'r' },
       { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list', shortcut: 'c' },
     ],

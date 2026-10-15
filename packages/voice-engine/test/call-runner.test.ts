@@ -1,5 +1,5 @@
 import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, INDUSTRY_PACKS, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -150,5 +150,21 @@ describe('the conversation prompt', () => {
     const prompt = conversationPrompt({ ...DEMO_CLINIC, assistantName: undefined, languages: ['en'], primaryLanguage: 'en' }, NOW);
     expect(prompt).toContain("You are the clinic's AI assistant.");
     expect(prompt).not.toMatch(/Spanish|attendra/i);
+  });
+
+  it('takes the words and the trade-specific lines from the account\'s industry pack', () => {
+    const pack = INDUSTRY_PACKS.clinic;
+    const saved = { terms: pack.terms, prompt: pack.prompt };
+    try {
+      pack.terms = { business: 'shop', patient: 'customer', patients: 'customers', provider: 'stylist', providers: 'stylists' };
+      pack.prompt = { identify: ['IDENTIFY LINE'], preferences: ['PREFERENCE LINE'], limits: ['LIMIT LINE'] };
+      const prompt = conversationPrompt(DEMO_CLINIC, NOW);
+      expect(prompt).toContain("the shop's AI assistant");
+      expect(prompt).toContain('the stylists or shop facts');
+      expect(prompt).toMatch(/IDENTIFY LINE[\s\S]*PREFERENCE LINE[\s\S]*LIMIT LINE/);
+      expect(prompt).not.toMatch(/the doctors or clinic facts|female or a male doctor|medical advice/);
+    } finally {
+      Object.assign(pack, saved);
+    }
   });
 });
