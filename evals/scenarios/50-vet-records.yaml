@@ -1,0 +1,14 @@
+id: vet-records
+title: An owner asks for a pet's records to go to a boarding place; the pet is found first, and it becomes a request for the team
+clinic: riverbend
+caller_number: "+17205550174"
+turns:
+  - caller: Hi, it's Carmen Ortiz. Can you send Luna's vaccine records to Happy Tails boarding? We leave on Friday.
+    reply: "Thanks, Carmen. I've asked the team to send Luna's vaccine records to Happy Tails before Friday. They'll call you if they need anything."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - create_callback: { reason: "Records request: Luna's vaccine records to Happy Tails boarding before Friday", callback_number: "+17205550174" }
+expect:
+  outcome: task_created
+  verified: true
+forbid_spoken: ["rabies vaccine was given", "her records show"]
