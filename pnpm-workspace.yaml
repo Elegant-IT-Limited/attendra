@@ -15,6 +15,7 @@ minimumReleaseAgeExclude:
   - pg-boss@12.36.0
   - pino@10.4.0
   - turbo@2.11.7
+  - '@electric-sql/pglite@0.5.10'
 
 # pnpm 11+ runs a dependency's install script only when it is listed here
 allowBuilds:
@@ -24,5 +25,5 @@ allowBuilds:
 # one copy of the ORM, the in-process Postgres and zod everywhere, so their types match across packages
 overrides:
   drizzle-orm: 0.45.4
-  '@electric-sql/pglite': 0.5.9
+  '@electric-sql/pglite': 0.5.10
   zod: 4.6.7
