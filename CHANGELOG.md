@@ -14,11 +14,18 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A vet clinic's Today** shows the refills waiting for a vet and the emergencies of the last 7 days; each card opens the list behind it (`/requests?type=refill`, `/calls?emergency=true`). Pets are listed with their kind of animal and owner.
 - **Quality**: bookings made after hours, emergencies, and refill requests, week by week. A new setting, the average visit value, is what the weekly report counts each booking made after hours as.
 - **Extra menu links for owners** from `ATTENDRA_ACCOUNT_LINKS`, for a hosting layer's billing or setup pages.
+- **Provisioning** for a hosting layer, behind `ATTENDRA_PROVISIONING_TOKEN`: open an account (organization, clinic from the pack's first settings, owner), confirm its email, set test-call time, point and release numbers, read phone minutes and the weekly report. See `docs/provisioning.md`. `pnpm db:add-number` uses the same code.
+- **Two-step sign-in can be optional** (`ATTENDRA_TWO_FACTOR=optional`), for a hosted service without patient health information. Required stays the default.
+
+### Changed
+
+- **Sign-in needs a confirmed email address.** Accounts made with `pnpm add-member`, the Team page or the seed are confirmed when they are made, so nothing changes for them; an account opened through provisioning waits for its confirmation.
 
 ### API changes for integrators
 
 - Request outcomes `refill_ready` and `refill_declined`, in the API, the `request.done` webhook and the MCP `mark_request_done` tool.
 - `GET /clinics/:clinicId/test-calls/allowance`. `QualityWeek` adds `afterHoursBookings`, `emergencies` and `refillRequests`; the overview's periods add `emergencies`; waiting tasks add `byType`; each clinic in `/me` adds `accountLinks`. Settings add `averageVisitValue` (default 150).
+- `/me` adds `twoFactorRequired`.
 
 ## [0.7.0] - 2026-10-16
 
