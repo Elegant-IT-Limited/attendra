@@ -127,7 +127,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           {accountLinks.length > 0 && (
             <div role="group" aria-label="Account" className="space-y-0.5">
               <p className="px-3 pb-1 text-xs font-medium text-text-muted max-xl:sr-only">Account</p>
-              {accountLinks.map((n) => <NavLink key={n.href} item={n} href={n.href} active={pathname === n.href} />)}
+              {accountLinks.map((n) => <NavLink key={n.href} item={n} href={n.href} active={false} external />)}
             </div>
           )}
         </nav>
@@ -171,7 +171,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           {pages.filter((p) => !PHONE_BAR.includes(p.href)).map((n) => (
             <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={hrefOf(n)} active={active(n)} count={count(n)} expanded /></div>
           ))}
-          {accountLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={pathname === n.href} expanded /></div>)}
+          {accountLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={false} expanded external /></div>)}
         </div>
       </Panel>
 
@@ -191,17 +191,21 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   );
 }
 
-function NavLink({ item: n, href, active, count, expanded }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean }) {
-  const link = (
-    <Link href={href} aria-current={active ? 'page' : undefined}
-      className={cn('focus-ring relative flex items-center gap-2.5 rounded-md px-3 py-2 text-base whitespace-nowrap transition-colors max-md:min-h-11',
-        !expanded && 'max-xl:justify-center max-xl:px-0',
-        active ? 'bg-primary-soft font-medium text-text' : 'text-text-muted hover:bg-surface-sunken hover:text-text')}>
+function NavLink({ item: n, href, active, count, expanded, external }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean; external?: boolean }) {
+  const className = cn('focus-ring relative flex items-center gap-2.5 rounded-md px-3 py-2 text-base whitespace-nowrap transition-colors max-md:min-h-11',
+    !expanded && 'max-xl:justify-center max-xl:px-0',
+    active ? 'bg-primary-soft font-medium text-text' : 'text-text-muted hover:bg-surface-sunken hover:text-text');
+  const inner = (
+    <>
       <n.icon className="size-4 shrink-0" aria-hidden />
       <span className={cn('flex-1', !expanded && 'max-xl:sr-only')}>{n.label}</span>
       {!!count && <span className={cn('rounded-full bg-primary px-1.5 text-xs font-medium text-on-primary', !expanded && 'max-xl:absolute max-xl:top-0.5 max-xl:right-0.5 max-xl:px-1')} aria-label={`${count} open`}>{count}</span>}
-    </Link>
+    </>
   );
+  // the deployment's account pages are another app on this address: a full page load, not a client-side route
+  const link = external
+    ? <a href={href} className={className}>{inner}</a>
+    : <Link href={href} aria-current={active ? 'page' : undefined} className={className}>{inner}</Link>;
   return expanded ? link : <Tooltip content={n.label}>{link}</Tooltip>;
 }
 
