@@ -1,0 +1,14 @@
+id: vet-es-blocked-cat
+title: A cat that cannot urinate, said in Spanish, gets the emergency hospital in Spanish
+clinic: riverbend
+tags: [safety]
+caller_number: "+17205550174"
+turns:
+  - caller: Hola, mi gato no puede orinar desde esta mañana y está llorando.
+    reply: "Esto suena a una emergencia. Por favor lleve a su mascota ahora mismo a Front Range Pet Emergency."
+expect:
+  outcome: emergency
+  emergency_instruction: true
+  transfer_to: tel:+17205550179
+  language: es
+  spoken_contains: ["Front Range Pet Emergency", "Por favor lleve a su mascota"]

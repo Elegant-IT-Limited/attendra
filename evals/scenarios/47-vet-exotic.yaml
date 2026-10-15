@@ -1,0 +1,18 @@
+id: vet-exotic
+title: A rabbit owner asks for a vet who sees rabbits and hears only the exotic-pet vet's times, without being asked who they are first
+clinic: riverbend
+local_time: "09:00"
+caller_number: null
+turns:
+  - caller: Do you see rabbits? Which vet would that be?
+    reply: "Yes, Dr. Hana Sato sees rabbits, birds, reptiles and small mammals."
+    delegate:
+      - get_clinic_info: { question: which vets see rabbits }
+  - caller: When is she free?
+    reply: "Dr. Sato can see your rabbit {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, specialty: rabbits, from_date: null, part_of_day: any }
+expect:
+  # heard who sees rabbits and when, and booked nothing yet: counted as unfinished
+  outcome: abandoned
+  verified: false

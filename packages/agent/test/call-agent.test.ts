@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
@@ -260,6 +260,26 @@ describe('safety', () => {
     expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000 });
     expect(c.state.pending).toBeNull();
     expect(c.state.outcome).toBe('emergency');
+  });
+
+  it('at a veterinary clinic, sends an animal in danger to the emergency hospital, and keeps a person in danger first', async () => {
+    const pet = await w.call('+17205550172', { clinic: RIVERBEND_CLINIC });
+    const out = pet.caller('my dog got into the antifreeze');
+    const script = out[0]!.type === 'instructions' ? out[0]!.content : '';
+    expect(script).toContain('Front Range Pet Emergency');
+    expect(script).toContain('call 911');
+    expect(pet.state.emergency?.kind).toBe('pet_toxin');
+    expect(out).toContainEqual({ type: 'transfer', uri: 'tel:+17205550179', afterMs: 8000 });
+    // ending the call waits until the hospital's name has been said
+    expect(pet.agent.canEndByStaff()).toBe(false);
+    pet.agent.onAgentTranscript('Please take your pet to Front Range Pet Emergency right away.', 0, 1000);
+    expect(pet.agent.canEndByStaff()).toBe(true);
+
+    const person = await w.call('+17205550172', { clinic: RIVERBEND_CLINIC });
+    const harm = person.caller('my dog died and I want to kill myself');
+    const said = harm[0]!.type === 'instructions' ? harm[0]!.content : '';
+    expect(said).toContain('988');
+    expect(said).not.toContain('Front Range');
   });
 
   it('queues the on-call transfer for chest pain even when "this is an emergency" came first, and only once', async () => {

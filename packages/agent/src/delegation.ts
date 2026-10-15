@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, industryPack, isPetEmergency, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
@@ -71,8 +71,12 @@ export class CallAgent {
     this.emit({ type: 'caption', speaker: 'caller', text: delta, atMs: startMs });
     const { clinic } = this.ctx;
     if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
-    const fresh = detectEmergencies(this.state.recentCallerText()).filter((m) => !this.state.emergencyKinds.has(m.kind));
-    const match = fresh[0];
+    // the trade's own emergencies (an animal in danger) are checked too, before the engine's
+    const trade = industryPack(clinic.industry);
+    const fresh = detectEmergencies(this.state.recentCallerText(), trade.emergency?.phrases).filter((m) => !this.state.emergencyKinds.has(m.kind));
+    // a person in danger of harming themselves always comes first; then the trade's
+    // emergency, whose script also tells a person in danger to call the emergency number
+    const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
     if (!match) return [];
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
@@ -86,11 +90,18 @@ export class CallAgent {
 
     // The script is said in the language the emergency was said in, when the clinic
     // offers it, and otherwise in the language of the call. The number is the clinic's.
-    const pack = PACKS[clinic.languages.includes(match.language) ? match.language : this.state.language];
+    const language = clinic.languages.includes(match.language) ? match.language : this.state.language;
+    const pack = PACKS[language];
     const number = emergencyNumberFor(clinic);
-    const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic)) : pack.emergencyScript(number);
+    // an animal in danger (or the bare word "emergency" at a clinic for animals) gets the trade's script
+    const forTrade = trade.emergency && (isPetEmergency(match.kind) || match.kind === 'general');
+    const hospital = clinic.emergencyHospital ?? null;
+    const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic))
+      : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number })
+        : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
-    this.emergencyScript = { content: script, number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+    // what the caller must hear before anyone may end the call: the hospital's name, or the number
+    this.emergencyScript = { content: script, number: forTrade && hospital ? hospital.name : number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
     // once per call, the first time a kind serious enough is heard: "this is an emergency"
     // on its own does not ring anyone, and must not stop the chest pain after it from doing so
     if (!this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
@@ -109,7 +120,9 @@ export class CallAgent {
     const s = this.emergencyScript;
     if (s && !s.said) {
       s.heard = (s.heard + delta).slice(-400);
-      s.said = s.heard.replace(/[\s-]/g, '').includes(s.number);
+      // a number ("9-1-1") or a hospital's name ("City Pet ER"), however it was spaced or punctuated
+      const plain = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+      s.said = plain(s.heard).includes(plain(s.number));
     }
   }
 
@@ -214,9 +227,10 @@ export class CallAgent {
       this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
       // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
       if ((name === 'verify_caller' || name === 'register_patient') && result.data.verified !== false && (result.data.verified === true || result.data.registered === true)) {
-        const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown };
-        const spoken = name === 'verify_caller' ? String(a.full_name ?? '') : `${String(a.first_name ?? '')} ${String(a.last_name ?? '')}`;
-        this.verified = shortName(spoken) ?? String(result.data.first_name ?? 'Verified');
+        const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown; pet_name?: unknown };
+        // a pet is shown by its own name
+        const spoken = a.pet_name ? '' : name === 'verify_caller' ? String(a.full_name ?? '') : `${String(a.first_name ?? '')} ${String(a.last_name ?? '')}`;
+        this.verified = a.pet_name ? String(result.data.pet_name ?? a.pet_name) : shortName(spoken) ?? String(result.data.first_name ?? 'Verified');
       }
       this.emitState();
       // the step already happened (a booking is booked): a failed write of its record is

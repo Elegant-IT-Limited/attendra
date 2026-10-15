@@ -83,5 +83,51 @@ export const CEDAR_PARK_CLINIC = ClinicConfig.parse({
   routing: [{ target: 'front_desk', uri: 'tel:+17205550151', when: 'open' }],
 });
 
-/** Both demo clinics, for the seed and the evals. */
-export const DEMO_CLINICS = { maple: DEMO_CLINIC, cedar_park: CEDAR_PARK_CLINIC } as const;
+const VET_DAY = [{ open: '08:00', close: '18:00' }];
+
+/**
+ * The veterinary demo clinic, on the vet industry pack, in an organization of its own.
+ * Out of hours it takes requests instead of booking, and it sends an animal in danger
+ * to its emergency hospital. Fictional throughout, with 555-01xx numbers.
+ */
+export const RIVERBEND_CLINIC = ClinicConfig.parse({
+  id: 'clinic_demo_riverbend',
+  name: 'Riverbend Animal Hospital',
+  industry: 'vet',
+  timezone: 'America/Denver',
+  phoneNumbers: ['+17205550170'],
+  hours: { '1': VET_DAY, '2': VET_DAY, '3': VET_DAY, '4': VET_DAY, '5': VET_DAY, '6': [{ open: '09:00', close: '13:00' }] },
+  holidays: demoHolidays(new Date().getUTCFullYear()),
+  greeting: "Thanks for calling Riverbend Animal Hospital. I'm Juniper, the clinic's AI assistant. How can I help you and your pet today?",
+  assistantName: 'Juniper',
+  languages: ['en', 'es'],
+  primaryLanguage: 'en',
+  providers: [
+    { id: 'prov_ruiz', name: 'Dr. Elena Ruiz', gender: 'female', specialty: 'General practice', categories: ['Dogs', 'Cats', 'Dentistry'], visitTypeIds: ['vt_wellness', 'vt_sick', 'vt_vaccines', 'vt_new'] },
+    { id: 'prov_bell', name: 'Dr. Marcus Bell', gender: 'male', specialty: 'General practice', categories: ['Dogs', 'Cats', 'Senior pets'], visitTypeIds: ['vt_wellness', 'vt_sick', 'vt_vaccines', 'vt_new'] },
+    { id: 'prov_sato', name: 'Dr. Hana Sato', gender: 'female', specialty: 'Exotic pets', categories: ['Rabbits', 'Birds', 'Reptiles', 'Small mammals'],
+      visitTypeIds: ['vt_wellness', 'vt_sick', 'vt_new'], hours: { '2': VET_DAY, '4': VET_DAY } },
+  ],
+  visitTypes: [
+    { id: 'vt_wellness', name: 'wellness exam', names: { es: 'chequeo general' }, minutes: 30, audience: 'existing' },
+    { id: 'vt_sick', name: 'sick visit', names: { es: 'consulta por enfermedad' }, minutes: 20 },
+    { id: 'vt_vaccines', name: 'vaccine appointment', names: { es: 'cita de vacunas' }, minutes: 15 },
+    { id: 'vt_new', name: 'new patient exam', names: { es: 'primera consulta' }, minutes: 40, audience: 'new' },
+  ],
+  routing: [
+    { target: 'front_desk', uri: 'tel:+17205550171', when: 'open' },
+    { target: 'on_call', uri: 'tel:+17205550179', when: 'always' },
+  ],
+  faqs: [
+    { id: 'faq_address', question: 'Where are you located? What is the address? Where do I park?', answer: 'We are at 88 Riverbend Road, Denver, with free parking in front of the clinic.' },
+    { id: 'faq_payment', question: 'How do I pay? Do you take pet insurance?', answer: 'We take cards and cash. We give you an itemised invoice to send to your pet insurance.' },
+    { id: 'faq_first_visit', question: 'What should I bring to the first visit?', answer: 'Bring any records from your previous vet, and bring dogs on a leash and cats in a carrier.' },
+    { id: 'faq_boarding', question: 'Do you board pets? Do you offer grooming?', answer: 'We do not offer boarding or grooming. The front desk can suggest places nearby.' },
+  ],
+  emergencyTransferEnabled: true,
+  emergencyHospital: { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' },
+  afterHours: 'requests',
+});
+
+/** The demo clinics, for the seed and the evals. */
+export const DEMO_CLINICS = { maple: DEMO_CLINIC, cedar_park: CEDAR_PARK_CLINIC, riverbend: RIVERBEND_CLINIC } as const;

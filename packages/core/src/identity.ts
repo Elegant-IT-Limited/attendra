@@ -105,3 +105,32 @@ function monthIndex(word: string): number {
 export const PHONE_MATCH_DIGITS = 9;
 export const phoneDigits = (phone: string) => phone.replace(/\D/g, '').slice(-PHONE_MATCH_DIGITS);
 export const samePhone = (a: string, b: string) => phoneDigits(a) === phoneDigits(b);
+
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+  un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
+};
+
+/**
+ * A pet's date of birth from what an owner says: an exact date ("March 4 2021"), or an
+ * age ("3 years old", "about two", "six months", "tres años"), which becomes an
+ * estimated date that many years or months before today. Owners rarely know the day;
+ * the vet's record only needs to be close. Null when it is neither.
+ */
+export function parsePetBirth(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): { dob: string; estimated: boolean } | null {
+  const exact = parseDob(input, today, order);
+  if (exact) return { dob: exact, estimated: false };
+  const s = fold(input).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const r = s.match(/(?:^|\s)(\d{1,2}|[a-z]+)(?:\s+and\s+a\s+half)?\s*(years?|yrs?|anos?|months?|mos?|meses|mes|weeks?|semanas?)(?:\s|$)/)
+    ?? (s.match(/^(?:about|around|maybe|como|unos|unas)?\s*(\d{1,2}|[a-z]+)(?:\s+(?:years? old|anos))?$/) ? [s, s.replace(/^(?:about|around|maybe|como|unos|unas)\s*/, '').split(' ')[0]!, 'years'] : null);
+  if (!r) return null;
+  const n = /^\d+$/.test(r[1]!) ? Number(r[1]) : NUMBER_WORDS[r[1]!];
+  if (n === undefined || n < 0 || n > 40) return null;
+  const unit = r[2]!;
+  const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  if (/^(years?|yrs?|anos?)$/.test(unit)) d.setUTCFullYear(d.getUTCFullYear() - n);
+  else if (/^(months?|mos?|meses|mes)$/.test(unit)) d.setUTCMonth(d.getUTCMonth() - n);
+  else d.setUTCDate(d.getUTCDate() - 7 * n);
+  return { dob: d.toISOString().slice(0, 10), estimated: true };
+}
