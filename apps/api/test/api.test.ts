@@ -195,6 +195,19 @@ describe('settings', () => {
     await api.t.db.execute(sql`update clinics set config = jsonb_set(config, '{phoneNumbers}', ${JSON.stringify(DEMO_CLINIC.phoneNumbers)}::jsonb) where id = ${DEMO_CLINIC.id}`);
   });
 
+  it('saves after-hours requests and an emergency hospital, refuses a hospital without a usable phone, and clears it', async () => {
+    const hospital = { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' };
+    const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, afterHours: 'requests', emergencyHospital: hospital } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ afterHours: 'requests', emergencyHospital: hospital });
+    const bad = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencyHospital: { ...hospital, phone: '555-0188' } } });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().issues[0].path).toContain('emergencyHospital');
+    const cleared = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC } });
+    expect(cleared.json()).toMatchObject({ afterHours: 'book' });
+    expect(cleared.json().emergencyHospital).toBeUndefined();
+  });
+
   it('saves a valid change and shows it in the audit trail', async () => {
     const holidays = ['2026-11-26'];
     expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, holidays } })).statusCode).toBe(200);

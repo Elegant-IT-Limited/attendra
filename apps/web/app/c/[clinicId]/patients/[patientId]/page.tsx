@@ -80,7 +80,8 @@ export default function PatientPage() {
             <span>{p.gender ? `${GENDER_LABEL[p.gender]}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
             {!p.gender && <Badge tone="warn">Gender not recorded: add it under Details</Badge>}
             {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
-            {p.guardianName && <span>Parent or guardian {p.guardianName}</span>}
+            {p.species && <span className="capitalize">{p.species}</span>}
+            {p.guardianName && <span>{p.species ? 'Owner' : 'Parent or guardian'} {p.guardianName}</span>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
           </p>
           {p.household.length > 0 && (
