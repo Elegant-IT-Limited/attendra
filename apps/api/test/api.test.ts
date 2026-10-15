@@ -69,6 +69,7 @@ describe('me', () => {
     const me = (await api.request('GET', '/api/v1/me', { cookie: viewer })).json();
     expect(me.clinics).toEqual([expect.objectContaining({ id: DEMO_CLINIC.id, role: 'viewer', permissions: ['calls:list', 'settings:read'] })]);
     expect(me.demoMode).toBe(false);
+    expect(me.twoFactorRequired).toBe(true);
   });
 });
 
@@ -84,13 +85,17 @@ it('shows the deployment\'s account links to owners only, with the clinic filled
   }
 });
 
-describe('API account links setting', () => {
+describe('API settings for a hosted service', () => {
   const base = { DATABASE_URL: 'postgres://a:b@localhost:5432/c', ATTENDRA_DATA_KEY: 'x'.repeat(44), BETTER_AUTH_SECRET: 's'.repeat(32) };
-  it('reads JSON, defaults to none, and refuses plain http and bad JSON', () => {
+  it('account links, two-step sign-in and the provisioning token', () => {
     expect(loadEnv(base).ATTENDRA_ACCOUNT_LINKS).toEqual([]);
     expect(loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Setup","href":"/setup"}]' }).ATTENDRA_ACCOUNT_LINKS).toEqual([{ label: 'Setup', href: '/setup' }]);
     expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Billing","href":"http://x.example"}]' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
     expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: 'not json' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
+    expect(loadEnv(base).ATTENDRA_TWO_FACTOR).toBe('required');
+    expect(loadEnv({ ...base, ATTENDRA_TWO_FACTOR: 'optional' }).ATTENDRA_TWO_FACTOR).toBe('optional');
+    expect(() => loadEnv({ ...base, ATTENDRA_TWO_FACTOR: 'off' })).toThrow('ATTENDRA_TWO_FACTOR');
+    expect(() => loadEnv({ ...base, ATTENDRA_PROVISIONING_TOKEN: 'short' })).toThrow('ATTENDRA_PROVISIONING_TOKEN');
   });
 });
 

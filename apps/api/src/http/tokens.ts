@@ -53,6 +53,10 @@ export interface ApiOptions {
   demoSignIn?: { password: string; logins: { email: string; label: string }[] };
   /** Extra menu links for owners, from ATTENDRA_ACCOUNT_LINKS; {clinicId} in an href becomes the clinic's id. */
   accountLinks?: { label: string; href: string }[];
+  /** 'optional' lets people use the dashboard without two-step sign-in. Default 'required'. */
+  twoFactor?: 'required' | 'optional';
+  /** The bearer token for /api/v1/provisioning; without it those routes answer 404. */
+  provisioningToken?: string;
   /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
   liveStream?: { maxMs?: number; recheckMs?: number };
 }

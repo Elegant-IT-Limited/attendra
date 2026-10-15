@@ -1,0 +1,85 @@
+import { DEMO_CLINIC } from '@attendra/core';
+import { clinicForNumber } from '@attendra/db';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { startApi } from './helpers';
+
+const TOKEN = 'p'.repeat(40);
+const auth = `Bearer ${TOKEN}`;
+const P = '/api/v1/provisioning';
+let api: Awaited<ReturnType<typeof startApi>>;
+
+beforeAll(async () => { api = await startApi({ demoMode: false, twoFactor: 'optional', provisioningToken: TOKEN }); });
+afterAll(() => api.close());
+
+const account = {
+  organization: { name: 'Oak Hill Vets' },
+  clinic: { name: 'Oak Hill Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550100' },
+  owner: { name: 'Dana Oak', email: 'Dana@OakHill.example', password: 'a-long-password-1' },
+  testCallMinutes: 10,
+  plan: 'trial',
+};
+
+describe('provisioning', () => {
+  it('needs the token, and does not exist without one', async () => {
+    expect((await api.request('POST', `${P}/accounts`, { body: account })).statusCode).toBe(401);
+    expect((await api.request('POST', `${P}/accounts`, { body: account, authorization: 'Bearer wrong' })).statusCode).toBe(401);
+    const bare = await startApi({ demoMode: false });
+    try {
+      expect((await bare.request('POST', `${P}/accounts`, { body: account, authorization: auth })).statusCode).toBe(404);
+    } finally {
+      await bare.close();
+    }
+  });
+
+  it('opens an account whose owner signs in only after the email is confirmed, and without two-step sign-in here', async () => {
+    const res = await api.request('POST', `${P}/accounts`, { body: account, authorization: auth, origin: null });
+    expect(res.statusCode).toBe(201);
+    const { organizationId, clinicId, userId } = res.json();
+    expect([organizationId, clinicId, userId].every(Boolean)).toBe(true);
+    const signIn = () => api.request('POST', '/api/auth/sign-in/email', { body: { email: 'dana@oakhill.example', password: account.owner.password } });
+    expect((await signIn()).statusCode).toBe(403);
+    expect((await api.request('POST', `${P}/email-confirmations`, { body: { email: 'dana@oakhill.example' }, authorization: auth })).statusCode).toBe(204);
+    const ok = await signIn();
+    expect(ok.statusCode).toBe(200);
+    const cookie = ([] as string[]).concat(ok.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]).join('; ');
+    const me = (await api.request('GET', '/api/v1/me', { cookie })).json();
+    expect(me.twoFactorRequired).toBe(false);
+    expect(me.clinics).toEqual([expect.objectContaining({ id: clinicId, name: 'Oak Hill Vets', role: 'owner' })]);
+    const settings = await api.request('GET', `/api/v1/clinics/${clinicId}/settings`, { cookie });
+    expect(settings.statusCode).toBe(200);
+    expect(settings.json()).toMatchObject({ industry: 'vet', afterHours: 'requests', phoneNumbers: ['+13125550100'] });
+    expect((await api.request('GET', `/api/v1/clinics/${clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 600, usedSeconds: 0 });
+    expect(await clinicForNumber(api.t.db, '+13125550100')).toBeNull();
+
+    // the same email again
+    expect((await api.request('POST', `${P}/accounts`, { body: account, authorization: auth })).json()).toEqual({ error: 'email_taken' });
+    // an unknown time zone
+    const bad = await api.request('POST', `${P}/accounts`, { body: { ...account, owner: { ...account.owner, email: 'x@oakhill.example' }, clinic: { ...account.clinic, timezone: 'Mars/Base' } }, authorization: auth });
+    expect(bad.statusCode).toBe(422);
+  });
+
+  it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: null }, authorization: auth })).statusCode).toBe(204);
+
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
+    expect(await clinicForNumber(api.t.db, '+13035550177')).toMatchObject({ id: DEMO_CLINIC.id });
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/12345`, { authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('DELETE', `${P}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
+    expect(await clinicForNumber(api.t.db, '+13035550177')).toBeNull();
+
+    await api.t.db.execute(sql`update calls set ended_at = started_at + interval '95 seconds', channel = 'phone' where id = ${api.callId}`);
+    const from = new Date(Date.now() - 86_400_000).toISOString();
+    const to = new Date(Date.now() + 86_400_000).toISOString();
+    const usage = await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/usage?from=${from}&to=${to}`, { authorization: auth });
+    expect(usage.json()).toEqual({ calls: 1, seconds: 95 });
+
+    const report = (await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/report`, { authorization: auth })).json();
+    expect(report.clinic).toMatchObject({ id: DEMO_CLINIC.id, averageVisitValue: 150 });
+    expect(report.weeks).toHaveLength(1);
+    expect(report.owners).toEqual([{ name: 'Omar Owner', email: 'omar@maple.example' }]);
+    expect(JSON.stringify(report)).not.toMatch(/Maria|Delgado|lisinopril/);
+  });
+});

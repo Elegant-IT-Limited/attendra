@@ -50,7 +50,8 @@ export function createAuth(db: Database, opts: AuthOptions) {
     // busy it is. The dashboard also signs out after 15 idle minutes.
     session: { modelName: 'auth_sessions', expiresIn: 60 * 60 * 12, disableSessionRefresh: true },
     // People are added on the Team page or with scripts/add-member.ts, never by sign-up.
-    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
+    // Accounts made here are confirmed already; one opened by self-serve sign-up waits until its address is confirmed.
+    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12, requireEmailVerification: true },
     rateLimit: { enabled: opts.rateLimit ?? true, window: 60, max: 30 },
     plugins: [
       organization({

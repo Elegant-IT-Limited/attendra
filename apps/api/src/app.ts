@@ -28,6 +28,7 @@ import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS,
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
+import { ProvisioningController } from './provisioning/provisioning.controller';
 import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { SettingsController } from './settings/settings.controller';
@@ -76,7 +77,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, AuditController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
