@@ -63,6 +63,26 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /**
+   * A pet, by its owner's name, its own name and the owner's phone. Narrows by the
+   * keyed phone hash, then decrypts only those rows to compare the pet's name (the
+   * record's first name) and the owner's (its guardian). Audited like findByIdentity.
+   */
+  async findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone)))));
+      const pet = firstName(petName);
+      const matches = rows.filter((r) => firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) === pet
+        && !!r.guardianNameEnc && namesMatch(ownerName, this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name'))));
+      if (matches.length > 1) return { status: 'ambiguous' } as const;
+      const match = matches[0];
+      if (!match) return { status: 'not_found' } as const;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified', entity: 'patient', entityId: match.id });
+      return { status: 'found', patient: this.callPatient(clinicId, match) } as const;
+    });
+  }
+
+  /**
    * A new patient, added on a call. The same person already on file (same name, date
    * of birth and phone) is not added again: the caller gave exactly what verification
    * asks for, so they are that patient. Someone else with the same name and birthday
@@ -70,7 +90,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
    * desk to look, without the caller ever hearing about the other record. One phone
    * number adds at most MAX_NEW_PATIENTS_PER_PHONE_PER_DAY new patients in 24 hours.
    */
-  async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string }): Promise<Registration> {
+  async register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string; species?: string | null }): Promise<Registration> {
     const attempt = () => withClinic(this.db, clinicId, async (tx) => {
       const sameId = await findSameIdentity(tx, this.cipher, clinicId, p);
       if (sameId) {
@@ -96,7 +116,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /** For seeds, imports and tests. Stores only ciphertext and keyed hashes. */
-  async create(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }): Promise<string> {
+  async create(clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null }): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p) }).returning({ id: patients.id });
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id });
@@ -123,6 +143,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
       dob: this.cipher.decrypt(r.dobEnc, ctx('dob')),
       isNew: r.status === 'new',
       gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
+      species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, ctx('species')) : null,
     };
   }
 }
@@ -135,7 +156,7 @@ export function readGenderColumn(cipher: PhiCipher, clinicId: string, enc: strin
   return parsed.success ? parsed.data : null;
 }
 
-export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }) {
+export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null }) {
   const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
   const phone = p.phone.trim();
   const guardian = p.guardianName?.trim() || null;
@@ -150,6 +171,7 @@ export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName:
     guardianNameEnc: guardian ? cipher.encrypt(guardian, ctx('guardian_name')) : null,
     // left as it is when not given, so an edit that does not touch it keeps it
     ...(p.gender !== undefined ? { genderEnc: p.gender ? cipher.encrypt(p.gender, ctx('gender')) : null } : {}),
+    ...(p.species !== undefined ? { speciesEnc: p.species?.trim() ? cipher.encrypt(p.species.trim().toLowerCase(), ctx('species')) : null } : {}),
   };
 }
 

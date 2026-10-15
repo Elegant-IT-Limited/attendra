@@ -34,6 +34,11 @@ describe('the redacting logger', () => {
     expect(redact({ route: '/patients/search', query: 'delgado' })).toEqual({ route: '/patients/search', query: '[redacted]' });
   });
 
+  it('replaces what finds a pet: the owner\'s name, the pet\'s name and its age', () => {
+    expect(redact({ tool: 'verify_caller', owner_name: 'Linh Nguyen', pet_name: 'Biscuit', birthday_or_age: '3 years', guardian_name: 'Linh Nguyen' }))
+      .toEqual({ tool: 'verify_caller', owner_name: '[redacted]', pet_name: '[redacted]', birthday_or_age: '[redacted]', guardian_name: '[redacted]' });
+  });
+
   it('walks nested objects and arrays', () => {
     expect(redact({ turns: [{ speaker: 'caller', text: 'hi' }], meta: { phone: 'x', ms: 1200 } }))
       .toEqual({ turns: [{ speaker: 'caller', text: '[redacted]' }], meta: { phone: '[redacted]', ms: 1200 } });

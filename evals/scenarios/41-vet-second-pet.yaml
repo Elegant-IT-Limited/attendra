@@ -1,0 +1,24 @@
+id: vet-second-pet
+title: An owner with two pets on one number moves from the dog to the cat, and the cat's vaccines are booked
+clinic: riverbend
+local_time: "11:00"
+turns:
+  - caller: Hi, Linh Nguyen here. Biscuit's fine, but I need to book vaccines for my cat Mochi.
+    reply: "Thanks, Linh. I've found Mochi. For a vaccine appointment I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The second one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

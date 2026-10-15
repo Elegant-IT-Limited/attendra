@@ -35,7 +35,7 @@ export interface KnowledgeBase {
 }
 
 /** A verified patient as a call knows them: enough to book, confirm by text and pick a doctor who sees their age. */
-export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null }
+export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null; /** The kind of animal, for a pet. */ species?: string | null }
 
 export type PatientLookup =
   | { status: 'found'; patient: CallPatient } // phone on file, for confirmations
@@ -61,7 +61,13 @@ export const MAX_NEW_PATIENTS_PER_PHONE_PER_DAY = 5;
  */
 export interface PatientDirectory {
   findByIdentity(clinicId: string, fullName: string, dob: string, phone: string): Promise<PatientLookup>;
-  register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string }): Promise<Registration>;
+  register(clinicId: string, p: { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; callId: string; species?: string | null }): Promise<Registration>;
+  /**
+   * A pet, by its owner's name (the record's guardian), its own name and the phone on
+   * file. The same answer as findByIdentity: found, nobody, or two records only staff
+   * can tell apart.
+   */
+  findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup>;
 }
 
 export interface AppointmentSummary {

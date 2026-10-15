@@ -26,10 +26,12 @@ export const Scenario = z.object({
   id: z.string(),
   title: z.string(),
   tags: z.array(z.string()).default([]),
-  // which demo clinic takes the call: Maple Street (English and Spanish) or Cedar Park (English)
-  clinic: z.enum(['maple', 'cedar_park']).default('maple'),
-  // defaults to the clinic's first demo patient: Maria at Maple Street, Ruth at Cedar Park
+  // which demo clinic takes the call: Maple Street (English and Spanish), Cedar Park (English), or Riverbend, the veterinary clinic
+  clinic: z.enum(['maple', 'cedar_park', 'riverbend']).default('maple'),
+  // defaults to the clinic's first demo patient: Maria at Maple Street, Ruth at Cedar Park, Biscuit's owner at Riverbend
   caller_number: z.string().nullable().optional(),
+  // the clinic's local time of the call on its day (Monday 28 September 2026); 20:00, after hours, unless set
+  local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   turns: z.array(Turn).min(1),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),

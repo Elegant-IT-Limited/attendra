@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clock } from '@/lib/format';
-import { MIC_CONSTRAINTS, micWarning, missingProcessing } from '@/lib/mic';
+import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
 import { cn } from '@/lib/utils';
 
 type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
@@ -113,7 +113,7 @@ export default function TestCallPage() {
     if (a.cancelled) return release(a); // left the page while the browser asked for the microphone
     // what the browser actually applied, which can differ from what we asked for
     const track = a.mic.getAudioTracks()[0];
-    setMicNote(track ? micWarning(missingProcessing(track.getSettings())) : null);
+    setMicNote(track ? micWarning(micCheck(track.getSettings())) : null);
 
     const peer = new RTCPeerConnection();
     a.peer = peer;

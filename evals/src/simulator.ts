@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
 import { addDays, type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, type Messenger, speakSlot, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
-import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, schema, seedCedarPark, seedDemo, withClinic } from '@attendra/db';
+import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -14,7 +14,9 @@ import type { Scenario } from './scenario';
 export const SIM_NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
 export const clinicOf = (scenario: Scenario): ClinicConfig => DEMO_CLINICS[scenario.clinic];
-const defaultCaller = (scenario: Scenario) => (scenario.clinic === 'cedar_park' ? CEDAR_PARK_PATIENTS[0].phone : DEMO_PATIENTS[0].phone);
+const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
+/** Each demo clinic's seed: the clinic and its patients. */
+export const SEEDS = { maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend } as const;
 
 export interface ScenarioResult {
   id: string;
@@ -102,7 +104,7 @@ function nextThursday(clinic: ClinicConfig, now: Date): Date {
 export async function playScenario(db: Database, cipher: PhiCipher, patientIds: Record<string, string>, scenario: Scenario, opts: PlayOptions = {}): Promise<ScenarioResult> {
   const started = performance.now();
   const clinic = clinicOf(scenario);
-  const now = opts.now ?? SIM_NOW;
+  const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
   const scheduler = new BuiltinScheduler(db);
@@ -224,7 +226,7 @@ export async function runScenario(scenario: Scenario, livePlanner?: Planner): Pr
   const t = await openTestDatabase();
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
-    const { patientIds } = await (scenario.clinic === 'cedar_park' ? seedCedarPark : seedDemo)(t.db, cipher);
+    const { patientIds } = await SEEDS[scenario.clinic](t.db, cipher);
     if (scenario.tags.includes('knowledge')) await seedDemoKnowledge(t.db, new LocalEmbedder());
     return await playScenario(t.db, cipher, patientIds, scenario, { livePlanner });
   } finally {

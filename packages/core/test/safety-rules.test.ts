@@ -97,12 +97,16 @@ describe('medical questions', () => {
     'how much should I give for my 2 year old daughter',
     'how many pills for a toddler',
     'metformin with alcohol',
+    // pet owners give, and ask whether something is serious
+    'should I give him some of my ibuprofen',
+    'can we give her benadryl',
+    'my dog is limping, is that serious',
   ])('refuses "%s"', (text) => {
     expect(isMedicalQuestion(text)).toBe(true);
   });
 
   it('lets ordinary questions through', () => {
-    for (const t of ['how much is a visit', 'how much does a physical cost for a new patient', 'what are your hours', 'do you take my insurance', 'is there parking']) {
+    for (const t of ['how much is a visit', 'how much does a physical cost for a new patient', 'what are your hours', 'do you take my insurance', 'is there parking', 'can I give you my new address', 'should I give you a call back later']) {
       expect(isMedicalQuestion(t), t).toBe(false);
     }
   });

@@ -40,9 +40,30 @@ What the lists catch is what their tests show, and no more: a phrase list catche
 
 Every pack's phrases are checked on every call, whichever languages the clinic offers.
 
+### Animal emergencies (the veterinary pack)
+
+A clinic on the veterinary industry pack (see [industries](industries.md)) has a second list, checked before the language's own: an animal in danger. Its script sends the caller to the clinic's chosen 24-hour emergency hospital (name, address and phone, set as `emergencyHospital`), or to the nearest 24-hour emergency vet when none is set, and then tells a person who is hurt or in danger to call the emergency number. It gives no first-aid advice and asks no questions about symptoms. Staff cannot end the call until the hospital's name has been said, or the grace period has passed.
+
+The person on the phone is still covered by the engine's list: someone with chest pain calling a vet hears the 911 script, and self-harm language always gets the crisis script first, before anything about an animal.
+
+The animal list must be reviewed by a licensed veterinarian before release, and the review recorded in the pull request that changes it. Its tests are in `packages/core/test/vet-pack.test.ts`.
+
+| Kind | English | Spanish |
+|---|---|---|
+| Toxin or swallowed object | ate chocolate, got into the rat poison, licked antifreeze, swallowed a sock | se comió chocolate, tomó anticongelante |
+| Breathing | can't breathe, gums are blue, open-mouth breathing | no puede respirar |
+| Trauma | hit by a car, bleeding a lot, bitten by a snake | lo atropelló un carro |
+| Collapse or seizure | collapsed, having a seizure, dying | está convulsionando |
+| Bloat | belly swollen and hard, retching, trying to throw up and nothing comes | panza hinchada, quiere vomitar y no puede |
+| Can't urinate | can't pee, straining to urinate | no puede orinar |
+| Heat | heatstroke, left in a hot car | golpe de calor |
+| Birth | in labour for hours, a puppy is stuck | cachorro atorado |
+
 ## Identity
 
 Patient-specific actions need a match on full name and date of birth. The calling number is only a hint: families share phones and numbers can be spoofed. Three failed attempts end the check and offer a callback. "No such patient" and "wrong date of birth" get the same answer, so a caller cannot probe whether someone is a patient. Two records with the same name and date of birth go to staff; the agent never picks one.
+
+At a veterinary clinic, a pet is found by its owner's full name, its own name and the phone on file, with the same three tries, the same answer whichever detail was wrong, and two pets with the same name on one number going to staff.
 
 ## Writes
 
