@@ -22,7 +22,10 @@ const PATTERNS = [
   // English
   words('how (much|many) (should|do|can|could) (i|we|he|she|they) (take|give|use)|what (dose|dosage|amount)|(right|correct|safe|max(imum)?|normal) (dose|dosage)|dos(e|age|ing) (of|for)'),
   words('(should|can|could|is it (ok|okay|safe) to) (i|we|he|she|they)? ?(take|stop|skip|double|mix|combine|drink)|(stop|skip|double|halve) (my|the|his|her) (dose|pill|pills|medication|medicine|tablets?)'),
-  words('side effects?|interact(ion|s)? with|(safe|okay|ok) (to take|with|during) (pregnan(t|cy)|breastfeeding|alcohol)|is (it|this) (serious|normal|dangerous)|what does (it|this|my) (mean|result)'),
+  words('side effects?|interact(ion|s)? with|(safe|okay|ok) (to take|with|during) (pregnan(t|cy)|breastfeeding|alcohol)|is (it|this|that) (serious|normal|dangerous)|what does (it|this|my) (mean|result)'),
+  // giving a medicine to someone else: a child, or a pet at a veterinary clinic
+  words(`(should|can|could|is it (ok|okay|safe) to) (i|we) give (him|her|it|them|my \\w+|the \\w+|our \\w+)? ?(some |a little )?(of )?(my |his |her |the |our )?(${DRUGS})`),
+  words('(should|can|could) (i|we) give (him|her|it|them) (something|anything)'),
   words('\\d+ ?(mg|milligrams?|ml|units?|tablets?|pills?)'),
   // Spanish, without accents: text is normalised first
   words('cuant(o|a|os|as) (debo|puedo|tengo que) tomar|que dosis|la dosis|puedo tomar|debo tomar|efectos secundarios|dejar de tomar'),
