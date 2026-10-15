@@ -1,6 +1,6 @@
 {
   "name": "@attendra/worker",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -21,7 +21,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.9"
+    "@electric-sql/pglite": "0.5.10"
   },
   "exports": {
     "./queue": "./src/queue.ts",

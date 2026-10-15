@@ -1,5 +1,5 @@
 import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, INDUSTRY_PACKS, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -150,6 +150,16 @@ describe('the conversation prompt', () => {
     const prompt = conversationPrompt({ ...DEMO_CLINIC, assistantName: undefined, languages: ['en'], primaryLanguage: 'en' }, NOW);
     expect(prompt).toContain("You are the clinic's AI assistant.");
     expect(prompt).not.toMatch(/Spanish|attendra/i);
+  });
+
+  it('at a veterinary clinic, asks which pet, finds it by owner and name, and gives no advice about animals', () => {
+    const prompt = conversationPrompt(RIVERBEND_CLINIC, NOW);
+    expect(prompt).toContain("I'm Juniper, the clinic's AI assistant");
+    expect(prompt).toContain('ask which pet the visit is for');
+    expect(prompt).toContain("the owner's full name, the pet's name and the phone number on file");
+    expect(prompt).toContain('Never give medical or first-aid advice for an animal');
+    expect(prompt).toContain('the veterinarians or clinic facts');
+    expect(prompt).not.toMatch(/date of birth|female or a male doctor/);
   });
 
   it('takes the words and the trade-specific lines from the account\'s industry pack', () => {

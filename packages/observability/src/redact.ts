@@ -11,6 +11,8 @@
 
 export const PHI_KEYS = new Set([
   'name', 'full_name', 'fullname', 'first_name', 'last_name', 'patient_name', 'caller_name',
+  // the veterinary pack: a pet is found by its owner's name and its own
+  'owner_name', 'pet_name', 'guardian_name', 'birthday_or_age',
   'dob', 'date_of_birth', 'birth_date', 'birthdate',
   'phone', 'phone_number', 'callback_number', 'from', 'to', 'caller_id', 'ani',
   'email', 'address', 'ssn', 'mrn', 'insurance_id', 'member_id',

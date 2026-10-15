@@ -1,6 +1,6 @@
 {
   "name": "@attendra/agent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -19,7 +19,7 @@
   "devDependencies": {
     "@attendra/db": "workspace:*",
     "@attendra/scheduling": "workspace:*",
-    "@electric-sql/pglite": "0.5.9",
+    "@electric-sql/pglite": "0.5.10",
     "drizzle-orm": "0.45.4"
   }
 }

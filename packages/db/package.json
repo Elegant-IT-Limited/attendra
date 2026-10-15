@@ -1,6 +1,6 @@
 {
   "name": "@attendra/db",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -21,8 +21,8 @@
     "pg": "8.23.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.9",
-    "@electric-sql/pglite-pgvector": "0.0.10",
+    "@electric-sql/pglite": "0.5.10",
+    "@electric-sql/pglite-pgvector": "0.0.11",
     "@types/pg": "8.23.1"
   }
 }

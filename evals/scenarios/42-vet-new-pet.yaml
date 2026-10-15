@@ -1,0 +1,29 @@
+id: vet-new-pet
+title: A new pet is looked up first, then added with its owner, its kind and its age, and books a new patient exam
+clinic: riverbend
+local_time: "14:00"
+caller_number: "+17205550190"
+turns:
+  - caller: Hi, I just adopted a puppy. I'm Ava Patel and his name is Ziggy.
+    reply: "Congratulations! I couldn't find Ziggy in our records yet. Is he new to the clinic?"
+    delegate:
+      - verify_caller: { owner_name: Ava Patel, pet_name: Ziggy }
+  - caller: Yes he's new. He's a male dog, about eight months old.
+    reply: "Welcome, Ziggy. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Ziggy, owner_name: Ava Patel, species: dog, sex: male, birthday_or_age: about eight months old }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Ziggy is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
