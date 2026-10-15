@@ -16,7 +16,7 @@
     "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "@attendra/scheduling": "workspace:*",
-    "@electric-sql/pglite": "0.5.9",
+    "@electric-sql/pglite": "0.5.10",
     "drizzle-orm": "0.45.4",
     "openai": "7.33.0",
     "yaml": "2.9.1",
