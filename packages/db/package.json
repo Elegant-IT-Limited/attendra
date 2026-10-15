@@ -1,6 +1,6 @@
 {
   "name": "@attendra/db",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "pg": "8.23.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8",
-    "@electric-sql/pglite-pgvector": "0.0.9",
+    "@electric-sql/pglite": "0.5.9",
+    "@electric-sql/pglite-pgvector": "0.0.10",
     "@types/pg": "8.23.1"
   }
 }

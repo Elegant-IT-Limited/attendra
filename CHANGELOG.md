@@ -2,6 +2,29 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.6.0] - 2026-10-15
+
+### Added
+
+- **Industry packs.** The engine and the trade are now separate. An account's `industry` setting (default `clinic`) picks a pack that names things (the business, who is booked, who can be booked) and adds the conversation prompt lines that depend on the trade: how to identify who a visit is for, preferences about who they see, and what the assistant must never do. The dashboard menu, page titles and the command palette use the pack's words. Medical clinics are the first pack, and their prompt is unchanged word for word. See `docs/industries.md`.
+- **Test calls check the microphone.** After the microphone starts, the Test call page reads what the browser actually applied and warns when echo cancellation or noise suppression is off.
+- **Doctors' names in other languages.** The doctor panel has an "In Spanish" field (one per extra language the clinic speaks), so the assistant says a doctor's name the way Spanish-speaking callers say it.
+
+### Changed
+
+- **At most five new patients per phone number in a day.** The assistant already added at most three on one call; registering now also counts patients added on calls from that number in the last 24 hours, and past five it refuses with `daily_registration_limit` and offers a callback. Someone already on file is still found by the identity check.
+
+- **The latest stack.** Next 16.4, the OpenAI SDK 7.33 (with the new GPT-Live voice "Shida" in Settings), radix-ui 1.8, pg-boss 12.38, Twilio 6.2, Playwright 1.64 and the latest patch of everything else. TypeScript stays on 6.0 until typescript-eslint supports 7.
+
+### API changes for integrators
+
+- Clinic settings have an `industry` field (`clinic`). Existing configurations read as `clinic`.
+- `register_patient` may refuse with `daily_registration_limit`.
+
+### Upgrading
+
+Nothing to run. No migrations in this release.
+
 ## [0.5.2] - 2026-10-04
 
 From a browser test call where a parent booking for a child was asked for the same details over and over, waited half a minute in silence, and was hung up on mid-sentence.

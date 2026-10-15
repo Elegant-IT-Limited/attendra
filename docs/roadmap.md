@@ -36,7 +36,17 @@ From the first browser test calls:
 - Every screen updates as the clinic changes, every search answers as you type, the newest come first, and cancellations have a history of their own.
 - The latest stack: Node 24, pnpm 12, Postgres 18, TypeScript 6, Next 16.3, NestJS 12.1.
 
-## v0.6: the revenue release (next)
+## v0.6: industry packs (done)
+
+- The engine and the trade are separate: an account picks an industry pack, which names things and adds the prompt lines that depend on the trade. The clinic is the first pack, with no change in behaviour. See [industries.md](industries.md).
+- Test calls warn when the browser did not turn on echo cancellation or noise suppression.
+- At most five new patients per phone number in a day; doctors' names in the clinic's other languages.
+
+## v0.7: veterinary clinics (next)
+
+A pack for veterinary practices: pets and their owners, a pet emergency list that sends callers to the clinic's emergency hospital, refill requests that a vet approves, after-hours rules, and call scenarios for all of it.
+
+## Revenue features
 
 Once Twilio is live:
 

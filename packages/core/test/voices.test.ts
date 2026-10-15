@@ -4,7 +4,7 @@ import { BUILT_IN_VOICES, ClinicConfig, DEMO_CLINIC, voiceLabel } from '../src';
 describe('voices', () => {
   it('offers the built-in voices by name, with the default marked', () => {
     expect(BUILT_IN_VOICES).toContain('marin');
-    expect(BUILT_IN_VOICES).toHaveLength(22);
+    expect(BUILT_IN_VOICES).toHaveLength(23);
     expect(voiceLabel('marin')).toBe('Marin (the default)');
     expect(voiceLabel('cedar')).toBe('Cedar');
   });
