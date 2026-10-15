@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { RIVERBEND_CLINIC } from '@attendra/core';
 import { type Database, type PhiCipher, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
@@ -30,13 +31,14 @@ export const LOCAL_DEMO_PASSWORD = 'attendra-demo-password';
 export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: Auth, password: string, now = new Date()) {
   const maple = await seedDemo(db, cipher);
   await seedCedarPark(db, cipher);
-  // the veterinary clinic: its pets and its manager's login; its calls are made live, with browser test calls
-  await seedRiverbend(db, cipher);
+  // the veterinary clinic: its pets, its manager's login, and its call scenarios as calls from the past week
+  const riverbend = await seedRiverbend(db, cipher);
   const staff: Record<string, string[]> = {};
   for (const l of DEMO_LOGINS) (staff[l.orgId] ??= []).push(await addMember(auth, db, { email: l.email, name: l.name, role: l.role, password, orgId: l.orgId }));
   // the clinic's documents, indexed with local embeddings: the demo needs no key for them
   await seedDemoKnowledge(db, new LocalEmbedder(), staff.org_demo![1]);
   const results = await recordDemoCalls(db, cipher, maple.patientIds, now, { bookedBy: staff.org_demo![0] });
+  results.push(...await recordDemoCalls(db, cipher, riverbend.patientIds, now, { clinic: RIVERBEND_CLINIC }));
   await seedDemoSchedule(db, cipher, { patientIds: maple.patientIds, staffUserIds: staff.org_demo!, now });
   // the same one-off an upgraded deployment runs (pnpm db:rehash-lookups): on a fresh demo it changes nothing
   await rehashPatientLookups(db, cipher);
