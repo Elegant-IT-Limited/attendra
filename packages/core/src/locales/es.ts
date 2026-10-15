@@ -29,6 +29,7 @@ export const es: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}.`,
+    request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}.`,
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +

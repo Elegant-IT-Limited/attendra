@@ -106,6 +106,8 @@ export const TASK_OUTCOMES: Record<string, string> = {
   called_back: 'Called back',
   left_message: 'No answer, left a message',
   refill_sent: 'Refill sent to the pharmacy',
+  refill_ready: 'Approved, ready to pick up (texts the caller)',
+  refill_declined: 'Not approved, called back',
   not_needed: 'Not needed',
   details_confirmed: 'Details checked and confirmed',
 };

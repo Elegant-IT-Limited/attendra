@@ -1,6 +1,6 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { verify } from '@attendra/webhooks';
-import type { WebhookEventJob } from '@attendra/worker/queue';
+import type { RequestJob, WebhookEventJob } from '@attendra/worker/queue';
 import { sql } from 'drizzle-orm';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -14,6 +14,7 @@ let server: Server;
 let base: string;
 const received: { headers: IncomingMessage['headers']; body: string }[] = [];
 const events: WebhookEventJob[] = [];
+const ready: RequestJob[] = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => { let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => { received.push({ headers: req.headers, body: b }); res.end(); }); });
@@ -21,7 +22,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   api = await startApi({
     demoMode: false,
-    jobs: { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async (e) => { events.push(e); } },
+    jobs: { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async (e) => { events.push(e); }, requestReady: async (j) => { ready.push(j); } },
     // plain HTTP to this machine for the local receiver, and a resolver the tests control
     webhooks: { allowLoopback: true, resolve: async (host) => [{ address: host === 'internal.example.com' ? '10.1.2.3' : '93.184.216.34', family: 4 }] },
   });
@@ -164,9 +165,13 @@ describe('events from the front desk', () => {
     expect(JSON.stringify(mine)).not.toMatch(/James|Whitaker|1962|5550163/);
   });
 
-  it('closing a request is request.done, with its outcome', async () => {
+  it('closing a request is request.done, with its outcome, and a refill ready to pick up queues one text', async () => {
     await api.request('POST', `${C}/tasks/${api.taskId}/claim`, { cookie: as.staff });
-    await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_sent' } });
-    expect(events.at(-1)).toMatchObject({ type: 'request.done', data: { requestId: api.taskId, type: 'refill', outcome: 'refill_sent' } });
+    await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });
+    expect(events.at(-1)).toMatchObject({ type: 'request.done', data: { requestId: api.taskId, type: 'refill', outcome: 'refill_ready' } });
+    expect(ready).toEqual([{ clinicId: DEMO_CLINIC.id, taskId: api.taskId }]);
+    // closing it again changes nothing and texts nobody
+    expect((await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } })).statusCode).toBe(409);
+    expect(ready).toHaveLength(1);
   });
 });

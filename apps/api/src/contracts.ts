@@ -235,7 +235,7 @@ export const TaskSearch = TaskQuery.extend({
   /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(100).default(''),
 });
-export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed', 'details_confirmed']);
+export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });

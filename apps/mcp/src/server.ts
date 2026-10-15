@@ -128,10 +128,10 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
   server.registerTool('mark_request_done', {
     title: 'Close a request',
     description: 'Mark an open request done, with what came of it. Needs requests:write. It fails if someone else holds the request.',
-    inputSchema: { requestId: z.uuid(), outcome: z.enum(['called_back', 'left_message', 'refill_sent', 'not_needed']) },
+    inputSchema: { requestId: z.uuid(), outcome: z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed']) },
     // not idempotent: a second call finds the request already closed and answers held_by_someone_else
     annotations: { destructiveHint: false, idempotentHint: false },
-  }, tool('mark_request_done', 'requests:write', async (a: { requestId: string; outcome: 'called_back' | 'left_message' | 'refill_sent' | 'not_needed' }) => {
+  }, tool('mark_request_done', 'requests:write', async (a: { requestId: string; outcome: 'called_back' | 'left_message' | 'refill_sent' | 'refill_ready' | 'refill_declined' | 'not_needed' }) => {
     // closed in the name of the person who made the key: a key never acts on its own authority
     const done = await desk.completeTask(caller.clinicId, a.requestId, caller.createdByUserId, a.outcome);
     if (done === 'done') {
