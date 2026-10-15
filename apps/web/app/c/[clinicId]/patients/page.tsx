@@ -16,11 +16,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, useClinic } from '@/lib/api';
+import { useTerms } from '@/lib/terms';
 
 const row = 'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none';
 
 export default function Patients() {
   const { clinicId } = useParams<{ clinicId: string }>();
+  const terms = useTerms(clinicId);
   const router = useRouter();
   const { can, isPending } = useClinic(clinicId);
   const [adding, setAdding] = useState(false);
@@ -39,11 +41,11 @@ export default function Patients() {
     enabled: allowed,
   });
 
-  if (isPending) return <><PageHeader title="Patients" /><Skeleton className="h-64" /></>;
+  if (isPending) return <><PageHeader title={terms.title('patients')} /><Skeleton className="h-64" /></>;
   if (!allowed) {
     return (
       <>
-        <PageHeader title="Patients" />
+        <PageHeader title={terms.title('patients')} />
         <Card><Empty title="Patients are for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card>
       </>
     );
@@ -51,7 +53,7 @@ export default function Patients() {
 
   return (
     <>
-      <PageHeader title="Patients" description="Find a patient by name, phone or date of birth as you type, and see their visits, calls and requests. The newest are at the top."
+      <PageHeader title={terms.title('patients')} description="Find a patient by name, phone or date of birth as you type, and see their visits, calls and requests. The newest are at the top."
         actions={(
           <>
             {can('patients:import') && <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>}

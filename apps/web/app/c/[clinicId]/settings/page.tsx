@@ -19,6 +19,7 @@ import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { DAYS } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 
 type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
 const select = 'h-9 rounded-md border border-border-strong bg-surface px-2 text-sm';
@@ -27,6 +28,7 @@ const newId = (prefix: string, name: string) => `${prefix}_${slug(name)}_${Math.
 
 export default function Settings() {
   const { clinicId } = useParams<{ clinicId: string }>();
+  const terms = useTerms(clinicId);
   const { can } = useClinic(clinicId);
   const queries = useQueryClient();
   const toast = useToast();
@@ -155,7 +157,7 @@ export default function Settings() {
           ))}
         </Section>
 
-        <Section title="Doctors" description="Who can be booked, their specialties, the ages they see, their weekly hours and days off.">
+        <Section title={terms.title('providers')} description="Who can be booked, their specialties, the ages they see, their weekly hours and days off.">
           <p className="text-sm text-text-muted">
             Doctors have a page of their own, where managers add them, set their hours and days off, or import a list. Saving these settings never changes them.{' '}
             <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open Doctors</Link>

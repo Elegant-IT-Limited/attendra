@@ -18,6 +18,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
@@ -38,6 +39,7 @@ const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', special
  */
 export default function DoctorsPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
+  const terms = useTerms(clinicId);
   const { can, isPending } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const queries = useQueryClient();
@@ -68,14 +70,14 @@ export default function DoctorsPage() {
   const categories = useMemo(() => [...new Set((doctors.data?.providers ?? []).flatMap((p) => p.categories))].sort(), [doctors.data]);
   const filtered = !!(text || specialty || category);
 
-  if (isPending || doctors.isPending) return <><PageHeader title="Doctors" /><Skeleton className="h-64" /></>;
-  if (doctors.isError || !doctors.data) return <><PageHeader title="Doctors" /><Alert tone="danger">The list of doctors did not load. Refresh to try again.</Alert></>;
+  if (isPending || doctors.isPending) return <><PageHeader title={terms.title('providers')} /><Skeleton className="h-64" /></>;
+  if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of doctors did not load. Refresh to try again.</Alert></>;
   const { visitTypes } = doctors.data;
   const visitName = (id: string) => visitTypes.find((v) => v.id === id)?.name ?? id;
 
   return (
     <>
-      <PageHeader title="Doctors" description="Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks."
+      <PageHeader title={terms.title('providers')} description="Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks."
         actions={manager && (
           <>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
