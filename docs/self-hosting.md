@@ -130,3 +130,7 @@ grant attendra_app to <your_service_user>;
 ## Configuring your clinic
 
 A clinic is one validated JSON document (`ClinicConfig` in `packages/core/src/clinic.ts`): time zone, weekly hours, holidays, providers with their own hours and visit types, routing rules for transfers, the FAQ, the greeting, the voice, and whether emergency transfer is on. Invalid config is refused at load, with the field that failed. A practice manager edits all of it under **Settings** in the dashboard, where the same validation runs before anything is saved; phone numbers stay with the operator (`pnpm db:add-number`).
+
+**For a veterinary clinic**, set `industry` to `vet` (Settings shows the choice) and fill in the emergency hospital: the animal emergency script sends owners there. Choose what happens while you are closed (book, or take requests for the morning), and set the average visit value the Quality page uses for bookings made after hours. See [industries.md](industries.md).
+
+**Extra menu links.** `ATTENDRA_ACCOUNT_LINKS` on the API adds links for owners to the dashboard menu, as JSON: `[{"label":"Billing","href":"https://billing.example/{clinicId}"}]`. An href is an `https://` address or a path, and `{clinicId}` becomes the clinic's id. At most five; leave it unset for none.
