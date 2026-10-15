@@ -36,6 +36,11 @@ if (existsSync(envFile)) {
   }
 }
 
+// a hosting layer tried locally (attendra-cloud): its menu links and its provisioning token, from the shell only
+const accountLinks = process.env.ATTENDRA_ACCOUNT_LINKS ? JSON.parse(process.env.ATTENDRA_ACCOUNT_LINKS) as { label: string; href: string }[] : undefined;
+const provisioningToken = process.env.ATTENDRA_PROVISIONING_TOKEN || undefined;
+if (provisioningToken && provisioningToken.length < 32) throw new Error('ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters');
+
 const port = Number(process.env.API_PORT ?? 8081);
 const publicUrl = process.env.PUBLIC_URL ?? 'http://localhost:3000';
 const log = createLogger({ name: 'api', level: process.env.LOG_LEVEL ?? 'info' });
@@ -101,7 +106,7 @@ if (realCalls || simulated) {
 // Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
 const changes = await pgliteChangeFeed(client);
-const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn } });
+const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken } });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

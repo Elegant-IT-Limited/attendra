@@ -23,6 +23,7 @@ const ACTIONS: Record<string, string> = {
   'task.created.callback': 'Took a callback request',
   'patient.identified': 'Verified a caller',
   'clinic.settings.updated': 'Changed clinic settings',
+  'clinic.emergency_list.reviewed': 'Recorded a review of the emergency lists',
   'appointment.booked': 'Booked an appointment',
   'appointment.cancelled': 'Cancelled an appointment',
   'task.released': 'Released a request',

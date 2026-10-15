@@ -31,6 +31,11 @@ const Env = z.object({
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  // Two-step sign-in: required for everyone (the default), or optional, for a hosted service whose
+  // accounts hold no patient health information (veterinary clinics). Demo mode skips it either way.
+  ATTENDRA_TWO_FACTOR: z.preprocess(blank, z.enum(['required', 'optional']).default('required')),
+  // Turns on /api/v1/provisioning for a hosting layer: opening accounts, numbers, usage. Unset, the routes do not exist.
+  ATTENDRA_PROVISIONING_TOKEN: optional(z.string().min(32, 'ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters: openssl rand -base64 32')),
   // Extra links for owners in the dashboard menu, as JSON: [{"label":"Billing","href":"https://billing.example/{clinicId}"}].
   // A hosting layer uses it for billing or setup pages; {clinicId} becomes the clinic's id. Self-hosters leave it unset.
   ATTENDRA_ACCOUNT_LINKS: z.preprocess((v) => (v === '' || v === undefined ? [] : typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v),

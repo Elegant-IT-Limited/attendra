@@ -39,7 +39,7 @@ export default function ChangePassword() {
     }
     await queries.invalidateQueries({ queryKey: ['me'] });
     // two-step sign-in comes next; the home page sends them there when it is needed
-    window.location.assign(me.data?.user.twoFactorEnabled || me.data?.demoMode ? '/' : '/setup-two-factor');
+    window.location.assign(me.data?.user.twoFactorEnabled || !me.data?.twoFactorRequired ? '/' : '/setup-two-factor');
   }
 
   return (

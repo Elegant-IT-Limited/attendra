@@ -7,10 +7,11 @@ import type { Auth } from './auth';
 export const temporaryPassword = () => randomBytes(12).toString('base64url');
 
 /** A new account with a password. The caller decides the membership. */
-export async function createAccount(auth: Auth, m: { email: string; name: string; password: string }) {
+/** `emailVerified: false` is for self-serve sign-up: the account cannot sign in until the address is confirmed. */
+export async function createAccount(auth: Auth, m: { email: string; name: string; password: string; emailVerified?: boolean }) {
   if (m.password.length < 12) throw new Error('passwords must be at least 12 characters');
   const ctx = await auth.$context;
-  const user = await ctx.internalAdapter.createUser({ email: m.email.trim().toLowerCase(), name: m.name, emailVerified: true }, { method: 'admin' });
+  const user = await ctx.internalAdapter.createUser({ email: m.email.trim().toLowerCase(), name: m.name, emailVerified: m.emailVerified ?? true }, { method: 'admin' });
   await ctx.internalAdapter.linkAccount({ userId: user.id, providerId: 'credential', accountId: user.id, password: await ctx.password.hash(m.password) });
   return user.id;
 }

@@ -37,6 +37,7 @@ function SignIn() {
       const code = (res.error as { error?: string }).error;
       return setError(res.error.status === 429 ? 'Too many sign-in attempts. Wait a few seconds and try again.'
         : code === 'temporary_password_expired' ? 'This temporary password has expired. Ask your practice manager to reset it.'
+          : (res.error as { code?: string }).code === 'EMAIL_NOT_VERIFIED' ? 'Confirm your email address first: open the link we sent you when you signed up.'
           : 'That email and password do not match.');
     }
     // with two-factor on, the client plugin has already moved us to /two-factor;

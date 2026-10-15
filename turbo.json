@@ -33,7 +33,10 @@
         "ATTENDRA_SUMMARY_MODEL",
         "API_PORT",
         "PUBLIC_URL",
-        "LOG_LEVEL"
+        "LOG_LEVEL",
+        "ATTENDRA_ACCOUNT_LINKS",
+        "ATTENDRA_PROVISIONING_TOKEN",
+        "ATTENDRA_ACCOUNT_URL"
       ]
     }
   }
