@@ -2,6 +2,19 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [Unreleased]
+
+### Added
+
+- **Refills ready to pick up.** A refill request closes as "Approved, ready to pick up" (the worker texts the number the caller left, once, from the clinic's number, never naming the medication), "Not approved, called back", or "Sent to the pharmacy" as before. Migration 0025. The worker texts only with `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` set.
+- **Records requests** at a veterinary clinic: the pet is found first, then the request goes to the team, starting "Records request:". Records are never read out on the phone.
+- **Settings**: "While you are closed" (book, or take requests), and the emergency hospital for a veterinary clinic. A pet's page shows its kind of animal and its owner; patient cards in the API carry `species`.
+- **Demo**: Riverbend Animal Hospital's call scenarios are recorded into its call history, like Maple Street's.
+
+### API changes for integrators
+
+- Request outcomes `refill_ready` and `refill_declined`, in the API, the `request.done` webhook and the MCP `mark_request_done` tool.
+
 ## [0.7.0] - 2026-10-16
 
 ### Added
