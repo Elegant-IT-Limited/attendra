@@ -2,6 +2,31 @@
 
 All notable changes are recorded here. The project follows [Semantic Versioning](https://semver.org/); until 1.0, minor versions may change behaviour.
 
+## [0.7.0] - 2026-10-16
+
+### Added
+
+- **The veterinary pack.** An account with `industry: vet` answers for a veterinary clinic. The patient is a pet, found by its owner's full name, its own name and the owner's phone, with the same rules as for a person (three tries, the same answer whichever detail was wrong, two pets with the same name on one number go to staff). A new pet is added with its owner as the guardian, its kind of animal and its birthday or age; an age becomes an estimated date of birth, and the front desk is asked to check the new pet. The dashboard says Pets and Veterinarians. The planner's rules and the identity tools follow the pack (`verify_caller` takes `owner_name` and `pet_name`; `register_patient` takes `pet_name`, `owner_name`, `species`, `sex` and `birthday_or_age`).
+- **Animal emergencies.** A phrase list in English and Spanish, checked before the engine's: toxins and swallowed objects, breathing, trauma, collapse and seizures, bloat, a cat that cannot urinate, heatstroke and difficult births. The script sends the caller to the clinic's emergency hospital (`emergencyHospital`: name, phone, address) or the nearest 24-hour emergency vet, and tells a person in danger to call the emergency number. No first-aid advice. Staff cannot end the call before the hospital's name has been said. A person in danger is still covered by the engine's list, and self-harm language always comes first. See `docs/safety.md`.
+- **After-hours requests.** A new `afterHours` setting for every pack: `book` (as before, the default) or `requests`, where nothing is booked or cancelled while the clinic is closed and the caller's visit becomes a request for the team.
+- **A demo veterinary clinic**, Riverbend Animal Hospital, with four pets and its own demo login ("Vet clinic manager"), and 10 call scenarios for it.
+
+### Changed
+
+- **Medical questions.** "Should I give him some of my ibuprofen", "can we give her Benadryl" and "is that serious" are refused like "should I take", for clinics and veterinary clinics alike.
+- **Test calls**: a microphone setting the browser does not report is shown as unverified, not taken as on.
+- The latest stack: PGlite 0.5.10, pglite-pgvector 0.0.11, Playwright 1.64.1.
+
+### API changes for integrators
+
+- Clinic settings have `emergencyHospital` and `afterHours`, and `industry` may be `vet`.
+- `propose_booking` and `propose_cancellation` may refuse with `after_hours`; a veterinary clinic's tools may refuse with `owner_full_name` and `unclear_age`.
+- New-pet review requests carry `pet_name`, `species`, `sex`, `owner_name` and, for an estimated date of birth, `date_of_birth_note`.
+
+### Upgrading
+
+Migration 0024 adds the encrypted kind of animal to patients. Nothing else to run.
+
 ## [0.6.0] - 2026-10-15
 
 ### Added

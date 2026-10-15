@@ -42,9 +42,13 @@ From the first browser test calls:
 - Test calls warn when the browser did not turn on echo cancellation or noise suppression.
 - At most five new patients per phone number in a day; doctors' names in the clinic's other languages.
 
-## v0.7: veterinary clinics (next)
+## v0.7: veterinary clinics (done)
 
-A pack for veterinary practices: pets and their owners, a pet emergency list that sends callers to the clinic's emergency hospital, refill requests that a vet approves, after-hours rules, and call scenarios for all of it.
+A pack for veterinary practices: pets found by their owner and their own name, new pets added with their kind of animal and age, an animal emergency list in English and Spanish that sends callers to the clinic's emergency hospital, after-hours requests instead of bookings, and a demo veterinary clinic with 10 call scenarios.
+
+## v0.8: the veterinary front desk (next)
+
+Refill requests a vet approves before the owner is texted, records requests, more call scenarios, the emergency hospital and after-hours settings in the dashboard, and each pet's kind of animal on its page.
 
 ## Revenue features
 
