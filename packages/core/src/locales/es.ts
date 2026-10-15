@@ -28,8 +28,8 @@ export const es: LanguagePack = {
   readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) => `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
   sms: {
-    booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}.`,
-    request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}.`,
+    booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
