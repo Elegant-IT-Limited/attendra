@@ -25,8 +25,8 @@ export const en: LanguagePack = {
     `${w} ${providerKind === 'room' ? `in the ${provider.replace(/^the /i, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())}` : `with ${provider}`} for ${/^[aeiou]/i.test(visit) ? 'an' : 'a'} ${visit}${replacing ? `, moving it from ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
-    booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}.`,
-    request_ready: (v) => `${v.clinic}: your request is ready to pick up. Questions? Call ${v.clinicPhone}.`,
+    booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    request_ready: (v) => `${v.clinic}: your request is ready to pick up. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +
