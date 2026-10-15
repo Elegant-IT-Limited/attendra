@@ -6,7 +6,7 @@
  */
 export const BUILT_IN_VOICES = [
   'alloy', 'ash', 'ballad', 'beacon', 'bossa', 'cedar', 'cinder', 'coral', 'delta', 'echo', 'gleam',
-  'marin', 'meridian', 'quartz', 'ripple', 'sage', 'shimmer', 'stone', 'tempo', 'verse', 'vesper', 'willow',
+  'marin', 'meridian', 'quartz', 'ripple', 'sage', 'shida', 'shimmer', 'stone', 'tempo', 'verse', 'vesper', 'willow',
 ] as const;
 export type BuiltInVoiceName = (typeof BUILT_IN_VOICES)[number];
 export const DEFAULT_VOICE: BuiltInVoiceName = 'marin';

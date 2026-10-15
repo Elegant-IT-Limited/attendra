@@ -4,7 +4,13 @@
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc --noEmit -p ." },
-  "dependencies": { "zod": "4.6.5" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
 }

@@ -13,13 +13,13 @@
   "dependencies": {
     "@attendra/core": "workspace:*",
     "@attendra/observability": "workspace:*",
-    "openai": "7.27.0",
-    "zod": "4.6.5"
+    "openai": "7.33.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@attendra/db": "workspace:*",
     "@attendra/scheduling": "workspace:*",
-    "@electric-sql/pglite": "0.5.8",
-    "drizzle-orm": "0.45.3"
+    "@electric-sql/pglite": "0.5.9",
+    "drizzle-orm": "0.45.4"
   }
 }
