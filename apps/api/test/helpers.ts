@@ -28,7 +28,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -52,13 +52,14 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null } = {}) => {
+  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null; authorization?: string } = {}) => {
     const headers: Record<string, string> = {};
     if (o.cookie) headers.cookie = o.cookie;
+    if (o.authorization) headers.authorization = o.authorization;
     if (o.origin !== null) headers.origin = o.origin ?? ORIGIN;
     if (o.body !== undefined) headers['content-type'] = 'application/json';
     return http.inject({ method, url, headers, payload: o.body === undefined ? undefined : JSON.stringify(o.body) });

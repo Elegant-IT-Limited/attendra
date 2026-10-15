@@ -51,7 +51,8 @@ export class SettingsController {
     }
     const merged = ClinicConfig.safeParse({ ...parsed.data, providers });
     if (!merged.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(merged.error) });
-    const next = merged.data;
+    // the emergency review is recorded on its own route, by the person who did it; Settings keeps it as it is
+    const next = { ...merged.data, emergencyReview: current.emergencyReview };
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
     // in order: the first number is the one confirmations are texted from
     if (JSON.stringify(next.phoneNumbers) !== JSON.stringify(current.phoneNumbers)) {
