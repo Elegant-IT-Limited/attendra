@@ -408,7 +408,7 @@ export class FrontDeskRepository {
    */
   async activity(clinicId: string, from: Date) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select({ startedAt: calls.startedAt, outcome: calls.outcome, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds })
+      const rows = await tx.select({ startedAt: calls.startedAt, outcome: calls.outcome, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, emergency: calls.emergencyFlag })
         .from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.channel, 'phone'), sql`${calls.startedAt} >= ${from}`));
       const requests = await tx.select({ createdAt: tasks.createdAt }).from(tasks)
         .innerJoin(calls, eq(calls.id, tasks.callId))
@@ -427,8 +427,9 @@ export class FrontDeskRepository {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
       const rows = await tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
         .where(waiting).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(limit);
-      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(tasks).where(waiting) as [{ n: number }];
-      return { tasks: rows, total: n };
+      const counts = await tx.select({ type: tasks.type, n: sql<number>`count(*)::int` }).from(tasks).where(waiting).groupBy(tasks.type);
+      const byType = Object.fromEntries(counts.map((c) => [c.type, Number(c.n)]));
+      return { tasks: rows, total: counts.reduce((n, c) => n + Number(c.n), 0), byType };
     });
   }
 

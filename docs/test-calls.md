@@ -43,4 +43,15 @@ The browser's data channel is limited to what a page needs: it may send `session
 
 The call ends when you press End, when the page is closed (the page asks the API to end it if it cannot say so itself), at the time limit, or when the voice service loses its sideband: a browser would otherwise keep talking to a model with no tools behind it.
 
+## Limiting test-call time
+
+A clinic can be given a total allowance of test-call time, which a hosted trial uses (10 minutes). Without one, as every clinic starts, there is no limit beyond the time limit per call.
+
+```bash
+pnpm db:test-call-limit --clinic clinic_demo_maple --minutes 10
+pnpm db:test-call-limit --clinic clinic_demo_maple --none
+```
+
+The Test call page then shows the time left. A call starts only with at least 15 seconds left, and ends when the allowance runs out. The limit is kept outside the clinic's settings, so the people who edit those cannot raise it. `GET /api/v1/clinics/:clinicId/test-calls/allowance` answers `{ limitSeconds, usedSeconds }`.
+
 A test call cannot be transferred, since there is no phone line to transfer. When the assistant would transfer, for an emergency or a caller asking for a person, it says the words, the transfer step is logged as failed, and the conversation goes on.

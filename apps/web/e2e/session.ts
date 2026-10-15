@@ -28,7 +28,7 @@ export async function signInPatiently(page: Page, submit: () => Promise<void>) {
 }
 
 /** A fresh sign-in, for specs that run after another spec has signed a shared login out. */
-export async function signInAgain(browser: Browser, label: 'Practice manager' | 'Front desk' | 'Cedar Park front desk') {
+export async function signInAgain(browser: Browser, label: 'Practice manager' | 'Front desk' | 'Cedar Park front desk' | 'Vet clinic manager') {
   const page = await (await browser.newContext()).newPage();
   await page.goto('/sign-in');
   await signInPatiently(page, () => page.getByRole('button', { name: label, exact: true }).click());

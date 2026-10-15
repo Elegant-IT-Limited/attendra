@@ -31,6 +31,10 @@ const Env = z.object({
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  // Extra links for owners in the dashboard menu, as JSON: [{"label":"Billing","href":"https://billing.example/{clinicId}"}].
+  // A hosting layer uses it for billing or setup pages; {clinicId} becomes the clinic's id. Self-hosters leave it unset.
+  ATTENDRA_ACCOUNT_LINKS: z.preprocess((v) => (v === '' || v === undefined ? [] : typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v),
+    z.array(z.object({ label: z.string().trim().min(1).max(30), href: z.string().max(300).refine((h) => /^(https:\/\/|\/)/.test(h), 'an account link is an https:// address or a path') })).max(5)),
   LOG_LEVEL: z.preprocess(blank, z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
 });
 export type ApiEnv = z.infer<typeof Env>;

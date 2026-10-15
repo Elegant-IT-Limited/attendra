@@ -28,7 +28,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -52,7 +52,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

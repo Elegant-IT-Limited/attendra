@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { TestCall } from '@attendra/api/contracts';
-import { useQueryClient } from '@tanstack/react-query';
+import type { TestCall, TestCallAllowance } from '@attendra/api/contracts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -26,6 +26,7 @@ const FAILURES: Record<string, string> = {
   voice_not_configured: 'Test calls are not set up on this server. The voice service needs an OpenAI API key.',
   voice_unavailable: 'The voice service could not start the call. Check the OpenAI API key and its credit, then try again.',
   test_call_limit: 'This clinic already has two test calls open. End one, or wait for it to finish.',
+  test_minutes_used: 'This clinic has used all its test-call minutes.',
   connection: 'The audio connection dropped.',
 };
 
@@ -61,6 +62,8 @@ export default function TestCallPage() {
   const [callId, setCallId] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [maxSeconds, setMaxSeconds] = useState(300);
+  const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
+  const left = allowance.data?.limitSeconds == null ? null : Math.max(0, allowance.data.limitSeconds - allowance.data.usedSeconds);
   const attempt = useRef<Attempt | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
 
@@ -91,6 +94,7 @@ export default function TestCallPage() {
     release(a, sessionOpen);
     setPhase(next);
     void queries.invalidateQueries({ queryKey: ['calls', clinicId] });
+    void queries.invalidateQueries({ queryKey: ['test-call-allowance', clinicId] });
   }, [clinicId, queries, release]);
 
   const caption = (speaker: Caption['speaker'], delta: string) => setCaptions((all) => {
@@ -208,7 +212,10 @@ export default function TestCallPage() {
             </div>
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>
-              : <Button onClick={() => void start()}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
+              : <Button onClick={() => void start()} disabled={left !== null && left < 15}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
+            {left !== null && (
+              <p className="text-sm text-text-muted" data-testid="test-minutes-left">{left < 15 ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
+            )}
             {phase === 'ended' && callId && can('calls:read') && (
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>
             )}

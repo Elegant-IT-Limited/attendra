@@ -23,6 +23,8 @@ export const clinics = pgTable('clinics', {
   timezone: text('timezone').notNull(),
   config: jsonb('config').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Seconds of browser test calls the clinic may use in all; null is no limit. Not part of the settings staff edit. */
+  testSecondsLimit: integer('test_seconds_limit'),
 });
 
 export const phoneNumbers = pgTable('phone_numbers', {

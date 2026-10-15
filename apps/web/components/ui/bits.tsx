@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import Link from 'next/link';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Tooltip } from '@/components/ui/overlay';
 import { ago } from '@/lib/format';
@@ -67,9 +68,9 @@ export function Sparkline({ points, className, label }: { points: number[]; clas
 }
 
 /** A figure with its label, and optionally a trend. */
-export function StatCard({ label, value, trend, tone, hint }: { label: string; value: number | null; trend?: number[]; tone?: 'danger'; hint?: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-surface px-4 py-3 shadow-xs">
+export function StatCard({ label, value, trend, tone, hint, href }: { label: string; value: number | null; trend?: number[]; tone?: 'danger'; hint?: string; href?: string }) {
+  const body = (
+    <div className={cn('rounded-lg border border-border bg-surface px-4 py-3 shadow-xs', href && 'transition-colors hover:border-border-strong')}>
       <p className="text-sm text-text-muted">{label}</p>
       <div className="mt-1 flex items-end justify-between gap-2">
         <p className={cn('text-xl font-semibold', tone === 'danger' && value ? 'text-danger' : '')}>{value === null ? <span className="text-text-muted">-</span> : <AnimatedNumber value={value} />}</p>
@@ -78,4 +79,5 @@ export function StatCard({ label, value, trend, tone, hint }: { label: string; v
       {hint && <p className="mt-1 text-xs text-text-muted">{hint}</p>}
     </div>
   );
+  return href ? <Link href={href} className="focus-ring rounded-lg">{body}</Link> : body;
 }
