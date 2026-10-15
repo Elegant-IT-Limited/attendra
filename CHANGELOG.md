@@ -20,6 +20,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Changed
 
+- **Texts end with how to opt out** ("Reply STOP to opt out.", in Spanish "Responda STOP para no recibir más mensajes."), as US carriers expect for A2P 10DLC registration. Twilio handles STOP replies itself.
 - **Sign-in needs a confirmed email address.** Accounts made with `pnpm add-member`, the Team page or the seed are confirmed when they are made, so nothing changes for them; an account opened through provisioning waits for its confirmation.
 
 ### API changes for integrators

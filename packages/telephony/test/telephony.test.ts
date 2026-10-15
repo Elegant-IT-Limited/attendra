@@ -34,7 +34,7 @@ describe('SMS confirmations', () => {
     await messenger.sendTemplate(DEMO_CLINIC.id, input);
     await messenger.sendTemplate(DEMO_CLINIC.id, input);
     expect(sent).toHaveLength(1);
-    expect(sent[0]!.body).toBe("Maple Street Family Medicine: you're booked for Tue Sep 29, 9:00 AM. To change or cancel, call (303) 555-0100.");
+    expect(sent[0]!.body).toBe("Maple Street Family Medicine: you're booked for Tue Sep 29, 9:00 AM. To change or cancel, call (303) 555-0100. Reply STOP to opt out.");
   });
 
   it('retries a send that failed, with the same key', async () => {
