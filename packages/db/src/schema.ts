@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { sql } from 'drizzle-orm';
-import { bigserial, boolean, customType, integer, jsonb, numeric, pgTable, text, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
+import { bigserial, boolean, customType, date, integer, jsonb, numeric, pgTable, text, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
 
 // Typed views of the SQL migrations. The SQL file is the source of truth;
 // constraints and policies live there, not here.
@@ -126,6 +126,8 @@ export const tasks = pgTable('tasks', {
   doneByUserId: text('done_by_user_id'),
   outcome: text('outcome', { enum: ['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed'] }),
   assignedByUserId: text('assigned_by_user_id'),
+  urgent: boolean('urgent').notNull().default(false),
+  dueOn: date('due_on', { mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -162,7 +162,7 @@ describe('the tools', () => {
   it('list_open_requests needs requests:read; mark_request_done needs requests:write and announces the change', async () => {
     const reader = await clientFor((await make(['requests:read'])).key);
     const list = await call(reader, 'list_open_requests');
-    expect(list.data.requests).toEqual([expect.objectContaining({ requestId: taskId, type: 'refill', patient: 'James Whitaker', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
+    expect(list.data.requests).toEqual([expect.objectContaining({ requestId: taskId, type: 'refill', urgent: false, dueOn: null, patient: 'James Whitaker', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
     expect(await call(reader, 'mark_request_done', { requestId: taskId, outcome: 'refill_sent' })).toMatchObject({ error: true, text: expect.stringContaining('requests:write') });
     const writer = await clientFor((await make(['requests:write'])).key);
     expect((await call(writer, 'mark_request_done', { requestId: taskId, outcome: 'refill_sent' })).data).toEqual({ requestId: taskId, status: 'done' });
