@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
+import { localDateOf } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Flag, Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, Flag, Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -15,7 +16,7 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, zoneLabel } from '@/lib/format';
 import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,8 @@ const DETAIL_LABELS: Record<string, string> = {
 };
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
+/** What an action sends: the teammate, a note, an outcome, or the urgency and due day. */
+type ActBody = { userId?: string; body?: string; outcome?: string; urgent?: boolean; dueOn?: string | null };
 
 export default function RequestsPage() {
   return <Suspense fallback={<Skeleton className="h-64" />}><Requests /></Suspense>;
@@ -68,7 +71,7 @@ function Requests() {
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('tasks:reassign') && can('members:manage') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
   const toast = useToast();
-  type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign'; body?: Record<string, string> };
+  type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan'; body?: ActBody };
   // The screen changes at once and puts itself back if the server says no: a claim,
   // a close, an assignment or a note should never make the front desk wait.
   const act = useMutation({
@@ -83,6 +86,7 @@ function Requests() {
         if (action === 'claim') return { ...t, ...mine };
         if (action === 'release') return { ...t, assigneeUserId: null, assigneeName: null };
         if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.members.find((m) => m.userId === body!.userId)?.name ?? null };
+        if (action === 'plan') return { ...t, ...(body!.urgent !== undefined ? { urgent: body!.urgent } : {}), ...(body!.dueOn !== undefined ? { dueOn: body!.dueOn } : {}) };
         if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, at: new Date().toISOString(), body: body!.body! }] };
         return null; // done: it leaves the open list
       };
@@ -100,6 +104,7 @@ function Requests() {
       else if (action === 'done') toast({ tone: 'success', message: 'Marked done.' });
       else if (action === 'assign') toast({ tone: 'success', message: `Given to ${team.data?.members.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
+      else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
       else toast({ tone: 'success', message: 'Released. It is back in the queue.' });
     },
     onSettled: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); void queries.invalidateQueries({ queryKey: ['patient', clinicId] }); },
@@ -165,7 +170,7 @@ function Requests() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {tasks.data.tasks.map((t) => (
-            <RequestCard key={t.id} task={t} clinicId={clinicId} tz={tz} meId={me?.user.id} busy={act.isPending} teammates={teammates}
+            <RequestCard key={t.id} task={t} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
               canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')}
               onAct={(action, body) => act.mutate({ task: t, action, body })} />
           ))}
@@ -176,10 +181,10 @@ function Requests() {
   );
 }
 
-function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
-  task: Task; clinicId: string; tz: string; meId?: string; busy: boolean; teammates: MemberList['members'];
+function RequestCard({ task: t, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
+  task: Task; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean;
-  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign', body?: Record<string, string>) => void;
+  onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
@@ -201,8 +206,12 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
             <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
           </div>
         </div>
-        {!open ? <Badge tone="ok">Done</Badge>
-          : t.assigneeUserId ? <Badge tone="accent"><Hand /> {mine ? 'You have it' : `${t.assigneeName ?? 'Someone'} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
+          {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue, due ' : 'Due '}{t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
+          {!open ? <Badge tone="ok">Done</Badge>
+            : t.assigneeUserId ? <Badge tone="accent"><Hand /> {mine ? 'You have it' : `${t.assigneeName ?? 'Someone'} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
+        </div>
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
         {Object.entries(t.details).map(([k, v]) => (
@@ -254,6 +263,9 @@ function RequestCard({ task: t, clinicId, tz, meId, busy, teammates, canWork, ca
                   </Select>
                 </>
               )}
+              <Button size="sm" variant="ghost" disabled={busy} aria-pressed={t.urgent} onClick={() => onAct('plan', { urgent: !t.urgent })}>{t.urgent ? 'Not urgent' : 'Urgent'}</Button>
+              <Label htmlFor={`due-${t.id}`} className="sr-only">Due</Label>
+              <Input id={`due-${t.id}`} type="date" className="h-8 w-38" title="Due" value={t.dueOn ?? ''} disabled={busy} onChange={(e) => onAct('plan', { dueOn: e.target.value || null })} />
               {!t.assigneeUserId && <Button size="sm" variant="outline" disabled={busy} onClick={() => onAct('claim')}>Claim</Button>}
               {t.assigneeUserId && (mine || canReassign) && <Button size="sm" variant="ghost" disabled={busy} onClick={() => onAct('release')}>Release</Button>}
               {!heldByOther && <Button size="sm" disabled={busy} onClick={() => setClosing(true)}>Mark done</Button>}

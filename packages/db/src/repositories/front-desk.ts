@@ -271,7 +271,8 @@ export class FrontDeskRepository {
           opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
           opts.from ? sql`${tasks.createdAt} >= ${opts.from}` : undefined, opts.to ? lt(tasks.createdAt, opts.to) : undefined))
         // the newest first: what just came in is what the front desk looks for
-        .orderBy(opts.status === 'open' ? desc(tasks.createdAt) : desc(tasks.doneAt), desc(tasks.id))
+        // urgent ones lead the open queue
+        .orderBy(...(opts.status === 'open' ? [desc(tasks.urgent), desc(tasks.createdAt)] : [desc(tasks.doneAt)]), desc(tasks.id))
         // a search reads more, decrypts them and keeps the matches: names and details are encrypted (decision 7)
         .limit(opts.q ? Math.max(opts.limit, TASK_SEARCH_SCAN) : opts.limit);
       const ctxOf = (col: string) => phiContext(clinicId, col);
@@ -296,6 +297,7 @@ export class FrontDeskRepository {
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
       id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
+      urgent: task.urgent, dueOn: task.dueOn,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
         : null,
@@ -314,6 +316,22 @@ export class FrontDeskRepository {
       await tx.insert(taskNotes).values({ clinicId, taskId, authorUserId: userId, bodyEnc: this.cipher.encrypt(body, phiContext(clinicId, 'task_notes.body')) });
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.note.added', entity: 'task', entityId: taskId, callId: task.callId });
       return 'added';
+    });
+  }
+
+  /** Marks an open request urgent or not, and sets or clears the day it is due. What is left out stays as it was. Audited. */
+  async planTask(clinicId: string, taskId: string, plan: { urgent?: boolean; dueOn?: string | null }, userId: string): Promise<'planned' | 'taken' | 'not_found'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const set = { ...(plan.urgent !== undefined ? { urgent: plan.urgent } : {}), ...(plan.dueOn !== undefined ? { dueOn: plan.dueOn } : {}) };
+      const updated = Object.keys(set).length
+        ? await tx.update(tasks).set(set).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'))).returning({ id: tasks.id, callId: tasks.callId })
+        : await tx.select({ id: tasks.id, callId: tasks.callId }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open')));
+      if (updated.length) {
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.planned', entity: 'task', entityId: taskId, callId: updated[0]!.callId });
+        return 'planned';
+      }
+      const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
+      return exists ? 'taken' : 'not_found';
     });
   }
 
