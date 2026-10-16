@@ -3,7 +3,7 @@ import {
   addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, matchesSpecialty, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
-  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, weekHours, zonedInstant,
+  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -194,6 +194,8 @@ export async function runTool(
           today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
+          ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
+          ...(clinic.requestTopics?.length ? { request_topics: requestTopicFacts(clinic) } : {}),
           ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
         },
       };
@@ -217,6 +219,8 @@ export async function runTool(
     case 'find_slots': {
       const visitType = clinic.visitTypes.find((v) => v.id === args.visit_type_id);
       if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => localName(v, lang)).join(', ')}.`);
+      // the clinic books this one itself: a request for the team, never a time from the assistant
+      if (visitType.staffOnly) return refuse('staff_books', 'The team books this visit themselves. Say so, and offer to take a request for them to call back with create_callback: what the visit is for, and the best number.');
       const patient = state.verifiedPatient;
       if (patient?.isNew && visitType.audience === 'existing') {
         return refuse('new_patient_visit_type', `New patients book one of these first: ${clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang)).join(', ')}.`);
@@ -381,10 +385,14 @@ export async function runTool(
     }
 
     case 'create_callback': {
+      // only one of the clinic's own topics labels a request; anything else is left unlabelled
+      const same = (x: string) => fold(x).toLowerCase().trim();
+      const asked = typeof args.topic === 'string' ? same(args.topic) : '';
+      const topic = asked ? clinic.requestTopics?.find((t) => same(t.name) === asked || t.id === args.topic) : undefined;
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         idempotencyKey: key(ctx.callId, 'callback', String(args.reason).toLowerCase()),
-        details: { reason: String(args.reason), callback_number: String(args.callback_number) },
+        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: String(args.callback_number) },
       });
       if (!state.emergency) state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });

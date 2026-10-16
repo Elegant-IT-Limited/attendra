@@ -31,7 +31,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',
   commit_pending: 'Perform the staged change. Only after the caller clearly said yes to the read-back.',
   create_refill_request: 'Log a prescription refill request for the care team. Never approve or promise a refill.',
-  create_callback: 'Ask staff to call the caller back.',
+  create_callback: 'Ask staff to call the caller back. When the request matches one of the clinic\'s request_topics from get_clinic_info, ask for what that topic says and pass its name as topic; otherwise topic is null.',
   transfer_call: 'Transfer the call to a person: front_desk, billing or on_call.',
   end_call: 'End the call, only after you have asked "Is there anything else I can help you with?" and the caller said no or goodbye. Refused otherwise.',
 };

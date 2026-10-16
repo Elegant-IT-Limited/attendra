@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, ExternalLink, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
+import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
@@ -93,6 +93,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const phoneBar = pages.filter((p) => PHONE_BAR.includes(p.href));
   // links the deployment adds for owners (a hosted service's billing or setup pages)
   const accountLinks: NavItem[] = clinic.accountLinks.map((l) => ({ href: l.href, label: l.label, icon: ExternalLink, permission: '' }));
+  // the clinic's own links, from Settings, for everyone on the team
+  const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
   const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
 
   return (
@@ -124,6 +126,12 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
               ))}
             </div>
           ))}
+          {clinicLinks.length > 0 && (
+            <div role="group" aria-label="Your links" className="space-y-0.5">
+              <p className="px-3 pb-1 text-xs font-medium text-text-muted max-xl:sr-only">Your links</p>
+              {clinicLinks.map((n) => <NavLink key={n.href} item={n} href={n.href} active={false} external newTab />)}
+            </div>
+          )}
           {accountLinks.length > 0 && (
             <div role="group" aria-label="Account" className="space-y-0.5">
               <p className="px-3 pb-1 text-xs font-medium text-text-muted max-xl:sr-only">Account</p>
@@ -171,6 +179,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           {pages.filter((p) => !PHONE_BAR.includes(p.href)).map((n) => (
             <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={hrefOf(n)} active={active(n)} count={count(n)} expanded /></div>
           ))}
+          {clinicLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={false} expanded external newTab /></div>)}
           {accountLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={false} expanded external /></div>)}
         </div>
       </Panel>
@@ -191,7 +200,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   );
 }
 
-function NavLink({ item: n, href, active, count, expanded, external }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean; external?: boolean }) {
+function NavLink({ item: n, href, active, count, expanded, external, newTab }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean; external?: boolean; newTab?: boolean }) {
   const className = cn('focus-ring relative flex items-center gap-2.5 rounded-md px-3 py-2 text-base whitespace-nowrap transition-colors max-md:min-h-11',
     !expanded && 'max-xl:justify-center max-xl:px-0',
     active ? 'bg-primary-soft font-medium text-text' : 'text-text-muted hover:bg-surface-sunken hover:text-text');
@@ -204,7 +213,7 @@ function NavLink({ item: n, href, active, count, expanded, external }: { item: N
   );
   // the deployment's account pages are another app on this address: a full page load, not a client-side route
   const link = external
-    ? <a href={href} className={className}>{inner}</a>
+    ? <a href={href} className={className} {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
     : <Link href={href} aria-current={active ? 'page' : undefined} className={className}>{inner}</Link>;
   return expanded ? link : <Tooltip content={n.label}>{link}</Tooltip>;
 }

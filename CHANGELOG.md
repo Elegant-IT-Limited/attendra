@@ -23,6 +23,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Texts end with how to opt out** ("Reply STOP to opt out.", in Spanish "Responda STOP para no recibir más mensajes."), as US carriers expect for A2P 10DLC registration. Twilio handles STOP replies itself.
 - **Sign-in needs a confirmed email address.** Accounts made with `pnpm add-member`, the Team page or the seed are confirmed when they are made, so nothing changes for them; an account opened through provisioning waits for its confirmation.
 
+### Added (customising)
+
+- **Offers and announcements** (Settings): what the clinic is running now, with optional start and end dates. The assistant answers from them when callers ask, only while they run.
+- **Visit types the team books itself**: a "Team books it" switch. The assistant never offers times for such a visit; it takes a request for the team instead (refusal `staff_books`). Each visit type can also carry a short description the assistant gives callers who ask what it includes.
+- **Qualifications and certifications** for each doctor or veterinarian, on the Doctors page and in what the assistant says when asked.
+- **Kinds of request** (Settings): the clinic's own request topics (boarding inquiry, insurance question) with what to ask for each. The assistant asks for it and labels the callback request with the topic; `create_callback` takes an optional `topic`, and only the clinic's own topics are kept.
+- **Links in your menu** (Settings): up to 8 of the clinic's own links (practice software, booking page, forms), shown to the whole team and opened in a new tab.
+
 ### Fixed
 
 - **Account links in the menu open their page.** Links from `ATTENDRA_ACCOUNT_LINKS` point at another app on the same address, so they now load the page instead of trying to switch inside the dashboard, where the click did nothing.
