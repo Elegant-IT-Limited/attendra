@@ -30,6 +30,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Qualifications and certifications** for each doctor or veterinarian, on the Doctors page and in what the assistant says when asked.
 - **Kinds of request** (Settings): the clinic's own request topics (boarding inquiry, insurance question) with what to ask for each. The assistant asks for it and labels the callback request with the topic; `create_callback` takes an optional `topic`, and only the clinic's own topics are kept.
 - **Fields on each patient or pet** (Settings): up to 20 of the clinic's own details (microchip, insurer, a reminder date), each text, yes or no, or a date. Staff fill them in under Details on the record; they are encrypted like the rest of it (schema v27, `patients.custom_enc`), saved with `PUT /patients/:patientId/fields`, and audited without the values. Not used on calls yet.
+- **Urgent requests and due days** (Requests): the front desk marks an open request urgent, which puts it first in the open queue, and gives it a due day, shown as Due or Overdue. `POST /tasks/:taskId/plan` (schema v28, `tasks.urgent`, `tasks.due_on`), audited as `task.planned`; the MCP `list_open_requests` tool returns both.
 - **Links in your menu** (Settings): up to 8 of the clinic's own links (practice software, booking page, forms), shown to the whole team and opened in a new tab.
 
 ### Fixed

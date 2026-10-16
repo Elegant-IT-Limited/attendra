@@ -23,7 +23,7 @@ A key acts in the name of the person who made it: a request it closes is closed 
 |---|---|---|
 | `find_open_slots` | `schedule:read` | Open times for a visit type over the next days, optionally for one provider. No patient data. |
 | `list_todays_schedule` | `schedule:read` | Today's appointments, with patient names; the audit row records how many were shown. |
-| `list_open_requests` | `requests:read` | Open requests, oldest first, with the patient, the details and the suggested follow-up. |
+| `list_open_requests` | `requests:read` | Open requests, urgent ones first, then the newest, with the patient, the details, the suggested follow-up, and whether staff marked it urgent or gave it a due day. |
 | `mark_request_done` | `requests:write` | Close a request with `called_back`, `left_message`, `refill_sent` or `not_needed`. It tells the clinic's webhooks, as the dashboard does. |
 | `get_quality_summary` | `quality:read` | The last 7 days of the Quality page's numbers. Counts only. |
 

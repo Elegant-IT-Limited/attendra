@@ -113,14 +113,14 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('list_open_requests', {
     title: 'Open requests',
-    description: 'Refill and callback requests waiting for staff, oldest first, with the patient and the details. Needs requests:read, and each request shown is audited.',
+    description: 'Refill and callback requests waiting for staff, urgent ones first, then the newest, with the patient, the details and any due day. Needs requests:read, and each request shown is audited.',
     inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review', 'follow_up']).optional() },
     annotations: { readOnlyHint: true },
   }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' | 'follow_up' }) => {
     // every request shown writes its task.viewed row, under the key
     const tasks = await desk.listTasks(caller.clinicId, { status: 'open', type: a.type, limit: 50 }, { apiKeyId: caller.keyId });
     return {
-      result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), claimed: !!t.assigneeUserId, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
+      result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), claimed: !!t.assigneeUserId, urgent: t.urgent, dueOn: t.dueOn, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
       counts: { requests: tasks.length },
     };
   }));
