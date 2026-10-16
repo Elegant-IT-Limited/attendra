@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { Outcome } from '@/components/calls/outcome';
+import { CustomFieldsForm } from '@/components/patients/custom-fields';
 import { PatientForm } from '@/components/patients/patient-form';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
@@ -179,6 +180,14 @@ export default function PatientPage() {
                 <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
                   initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender }} onSaved={() => setSaved(true)} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
+            </CardContent>
+          </Card>
+        )}
+        {tab === 'details' && !!clinic.customFields?.length && (
+          <Card className="mt-4">
+            <CardContent className="py-5">
+              <h2 className="mb-4 text-sm font-semibold">More details</h2>
+              <CustomFieldsForm key={JSON.stringify(p.customFields)} clinicId={clinicId} patientId={p.id} fields={clinic.customFields} values={p.customFields} canWrite={can('patients:write')} />
             </CardContent>
           </Card>
         )}

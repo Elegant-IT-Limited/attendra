@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, ClinicConfig, localDateOf, readPatients } from '@attendra/core';
+import { ageOn, ClinicConfig, localDateOf, readCustomValues, readPatients } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
-import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
+import { CustomFieldValues, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
@@ -88,9 +88,11 @@ export class PatientsController {
     for (const a of p.appointments) if (a.status === 'booked' && a.startsAt < this.now()) seen.set(a.providerId, (seen.get(a.providerId) ?? 0) + 1);
     const usual = [...seen.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
     const now = this.now().getTime();
+    const fields = new Set((await this.clinic(clinicId)).customFields?.map((f) => f.id) ?? []);
     return {
       ...toCard(p),
       createdByCallId: p.createdByCallId,
+      customFields: Object.fromEntries(Object.entries(p.customFields).filter(([id]) => fields.has(id))),
       household: p.household.map(toCard),
       usualProviderId: usual,
       // what is coming first, soonest first; then what has been, latest first
@@ -125,6 +127,20 @@ export class PatientsController {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     await this.check(clinicId, body);
     return this.answer(await this.records.update(clinicId, id, body, staff.userId));
+  }
+
+  @Put(':patientId/fields')
+  @HttpCode(204)
+  @Requires('patients:write')
+  @ApiOperation({ summary: 'Set the clinic\'s own details on a record (the fields in its settings), the whole set at once. Audited without the values.' })
+  @ApiBody({ schema: schemaOf(CustomFieldValues) })
+  @ApiNoContentResponse()
+  @ApiNotFoundResponse()
+  async fields(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(CustomFieldValues)) body: z.infer<typeof CustomFieldValues>, @CurrentStaff() staff: Staff): Promise<void> {
+    if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
+    const read = readCustomValues((await this.clinic(clinicId)).customFields ?? [], body.values);
+    if (!read.ok) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: `values.${read.field}`, message: read.message }] });
+    if ((await this.records.setCustomFields(clinicId, id, read.values, staff.userId)) === 'not_found') throw new NotFoundException({ error: 'not_found' });
   }
 
   @Post(':patientId/confirm')
