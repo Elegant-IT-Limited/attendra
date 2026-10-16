@@ -167,6 +167,15 @@ export default function Settings() {
               <Field label="Name"><Input className="w-64" value={v.name} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
               <LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, names } : x)) })} />
               <Field label="Minutes"><Input type="number" min={5} max={240} className="w-24" value={v.minutes} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) } : x)) })} /></Field>
+              <Field label="What it is, for callers" hint="Optional. Said when a caller asks.">
+                <Input className="w-80" maxLength={300} value={v.description ?? ''} placeholder="Core vaccines and a full check-up"
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, description: e.target.value || undefined } : x)) })} />
+              </Field>
+              <label className="flex h-9 items-center gap-2 text-sm">
+                <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={!!v.staffOnly}
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, staffOnly: e.target.checked || undefined } : x)) })} />
+                Team books it
+              </label>
               <Field label="Who can book it">
                 <Select className="w-52" value={v.audience} aria-label={`${v.name}: who can book it`}
                   onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, audience: e.target.value as 'all' | 'new' | 'existing' } : x)) })}>
@@ -224,6 +233,55 @@ export default function Settings() {
               <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} onChange={(e) => set({ faqs: c.faqs.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)) })} /></Field>
             </div>
           ))}
+        </Section>
+
+        <Section title="Offers and announcements" description="What you are running now, like a vaccine clinic or a dental month. The assistant tells callers who ask, only between the dates you set."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ offers: [...(c.offers ?? []), { id: newId('offer', 'offer'), title: '', details: '' }] })}><Plus /> Offer</Button>}>
+          {!c.offers?.length && <p className="text-sm text-text-muted">No offers running.</p>}
+          {(c.offers ?? []).map((o, i) => {
+            const upd = (patch: Partial<typeof o>) => set({ offers: (c.offers ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+            return (
+              <div key={o.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field label="Title"><Input className="w-72" maxLength={80} value={o.title} placeholder="Vaccine clinic Saturday" onChange={(e) => upd({ title: e.target.value })} /></Field>
+                  <Field label="From"><Input type="date" className="w-40" value={o.from ?? ''} onChange={(e) => upd({ from: e.target.value || undefined })} /></Field>
+                  <Field label="To"><Input type="date" className="w-40" value={o.to ?? ''} min={o.from} onChange={(e) => upd({ to: e.target.value || undefined })} /></Field>
+                  <Button type="button" size="sm" variant="ghost" aria-label="Remove offer" onClick={() => set({ offers: (c.offers ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+                </div>
+                <Field label="Details" hint={`${o.details.length}/400`}><Textarea maxLength={400} value={o.details} placeholder="Core vaccines for dogs and cats, 9 to 1, no appointment needed." onChange={(e) => upd({ details: e.target.value })} /></Field>
+              </div>
+            );
+          })}
+        </Section>
+
+        <Section title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => set({ requestTopics: [...(c.requestTopics ?? []), { id: newId('topic', 'topic'), name: '' }] })}><Plus /> Kind of request</Button>}>
+          {!c.requestTopics?.length && <p className="text-sm text-text-muted">None yet. Requests are still taken; they are just not labelled.</p>}
+          {(c.requestTopics ?? []).map((t, i) => {
+            const upd = (patch: Partial<typeof t>) => set({ requestTopics: (c.requestTopics ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+            return (
+              <div key={t.id} className="flex flex-wrap items-end gap-3">
+                <Field label="Name"><Input className="w-56" maxLength={60} value={t.name} placeholder="Boarding inquiry" onChange={(e) => upd({ name: e.target.value })} /></Field>
+                <Field label="What to ask the caller"><Input className="w-96" maxLength={300} value={t.collect ?? ''} placeholder="The dates, the pet, and whether vaccines are current" onChange={(e) => upd({ collect: e.target.value || undefined })} /></Field>
+                <Button type="button" size="sm" variant="ghost" aria-label="Remove kind of request" onClick={() => set({ requestTopics: (c.requestTopics ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+              </div>
+            );
+          })}
+        </Section>
+
+        <Section title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => set({ menuLinks: [...(c.menuLinks ?? []), { label: '', url: 'https://' }] })}><Plus /> Link</Button>}>
+          {!c.menuLinks?.length && <p className="text-sm text-text-muted">No links yet.</p>}
+          {(c.menuLinks ?? []).map((l, i) => {
+            const upd = (patch: Partial<typeof l>) => set({ menuLinks: (c.menuLinks ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+            return (
+              <div key={i} className="flex flex-wrap items-end gap-3">
+                <Field label="Label"><Input className="w-48" maxLength={30} value={l.label} placeholder="ezyVet" onChange={(e) => upd({ label: e.target.value })} /></Field>
+                <Field label="Address"><Input className="w-96" value={l.url} onChange={(e) => upd({ url: e.target.value })} /></Field>
+                <Button type="button" size="sm" variant="ghost" aria-label="Remove link" onClick={() => set({ menuLinks: (c.menuLinks ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+              </div>
+            );
+          })}
         </Section>
 
         <Section title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">

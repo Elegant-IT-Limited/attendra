@@ -516,3 +516,50 @@ describe('review fixes', () => {
     }
   });
 });
+
+describe('what the clinic customised', () => {
+  const custom = {
+    ...DEMO_CLINIC,
+    visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? { ...v, description: 'Same-week visits for something new', staffOnly: true } : v)),
+    providers: DEMO_CLINIC.providers.map((p, i) => (i === 0 ? { ...p, credentials: ['MD', 'Board-certified in family medicine'] } : p)),
+    offers: [
+      { id: 'offer_flu', title: 'Flu shot clinic', details: 'Walk in Saturdays, 9 to 1.', from: '2026-09-01', to: '2026-12-31' },
+      { id: 'offer_old', title: 'Summer check-ups', details: 'Ended.', to: '2026-08-31' },
+    ],
+  };
+
+  it('tells callers about running offers, descriptions and credentials, and leaves out what ended', async () => {
+    const c = await w.call('+13035550147', { clinic: custom });
+    c.caller('Do you have any specials right now?');
+    const [info] = (await c.delegate([{ tool: 'get_clinic_info', args: { question: 'any specials or offers' } }])).results;
+    expect(info!.data.current_offers).toEqual([{ title: 'Flu shot clinic', details: 'Walk in Saturdays, 9 to 1.', until: '2026-12-31' }]);
+    const sick = (info!.data.visit_types as { visit_type_id: string; description?: string; booked_by?: string }[]).find((v) => v.visit_type_id === 'vt_sick');
+    expect(sick).toMatchObject({ description: 'Same-week visits for something new', booked_by: 'the team only: take a request' });
+    expect((info!.data.providers as { credentials?: string[] }[])[0]!.credentials).toEqual(['MD', 'Board-certified in family medicine']);
+  });
+
+  it('never offers times for a visit the team books itself', async () => {
+    const c = await w.call('+13035550147', { clinic: custom });
+    c.caller('Hi, this is Maria Delgado, born March 4th 1985. I need a sick visit.');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } }]);
+    const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
+    expect(slots!.ok).toBe(false);
+    expect(slots!.data.error).toBe('staff_books');
+  });
+});
+
+describe('the clinic\'s own kinds of request', () => {
+  const custom = { ...DEMO_CLINIC, requestTopics: [{ id: 'topic_ins', name: 'Insurance question', collect: 'The insurer and the policy number' }] };
+
+  it('lists them with what to ask, and labels a request only with one of them', async () => {
+    const c = await w.call('+13035550147', { clinic: custom });
+    c.caller('I have a question about my insurance.');
+    const [info] = (await c.delegate([{ tool: 'get_clinic_info', args: { question: 'insurance' } }])).results;
+    expect(info!.data.request_topics).toEqual([{ topic: 'Insurance question', ask_for: 'The insurer and the policy number' }]);
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    await c.delegate([{ tool: 'create_callback', args: { reason: 'Insurance question about a claim, Aetna policy 123', callback_number: '+13035550147', topic: 'insurance QUESTION' } }]);
+    await c.delegate([{ tool: 'create_callback', args: { reason: 'Something else entirely', callback_number: '+13035550147', topic: 'Made-up topic' } }]);
+    expect(create.mock.calls.map(([, input]) => input.details.topic ?? null)).toEqual(['Insurance question', null]);
+    create.mockRestore();
+  });
+});

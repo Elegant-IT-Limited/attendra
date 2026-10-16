@@ -20,6 +20,7 @@ import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = {
+  topic: 'Topic',
   medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
