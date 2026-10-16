@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clashes, DEMO_CLINIC, findSlots, matchesSpecialty, resolveTransfer, speakSlot, specialtyFacts, zonedInstant } from '../src';
+import { clashes, DEMO_CLINIC, findSlots, vipRoute, matchesSpecialty, resolveTransfer, speakSlot, specialtyFacts, zonedInstant } from '../src';
 
 const tz = DEMO_CLINIC.timezone;
 const sick = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_sick')!;
@@ -86,5 +86,22 @@ describe('transfers', () => {
     expect(resolveTransfer(DEMO_CLINIC, 'front_desk', zonedInstant('2026-09-29', '10:00', tz))).toEqual({ ok: true, uri: 'tel:+13035550101' });
     expect(resolveTransfer(DEMO_CLINIC, 'front_desk', now)).toEqual({ ok: false, reason: 'closed' });
     expect(resolveTransfer(DEMO_CLINIC, 'on_call', now)).toEqual({ ok: true, uri: 'tel:+13035550199' });
+  });
+});
+
+describe('VIP callers', () => {
+  const clinic = { ...DEMO_CLINIC, vipCallers: [{ name: 'Partner clinic', phone: '+13035550147' }] };
+  const open = zonedInstant('2026-09-29', '10:00', tz);
+
+  it('sends a listed number to the front desk while it is open, however the number is written', () => {
+    expect(vipRoute(clinic, '+13035550147', open)).toEqual({ name: 'Partner clinic', uri: 'tel:+13035550101' });
+    expect(vipRoute(clinic, '3035550147', open)?.name).toBe('Partner clinic');
+  });
+
+  it('leaves everyone else, an unknown number and closed hours to the assistant', () => {
+    expect(vipRoute(clinic, '+13035550148', open)).toBeNull();
+    expect(vipRoute(clinic, null, open)).toBeNull();
+    expect(vipRoute(DEMO_CLINIC, '+13035550147', open)).toBeNull();
+    expect(vipRoute(clinic, '+13035550147', now)).toBeNull(); // Monday 8 pm: no front desk rule applies
   });
 });

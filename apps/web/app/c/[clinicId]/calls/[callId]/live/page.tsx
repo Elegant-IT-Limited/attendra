@@ -69,7 +69,7 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void, allo
     on('emergency', (d) => setEmergency(String(d.kind)));
     on('staff', (d) => {
       setStaff(String(d.action));
-      if (['coached', 'taken_over', 'ended'].includes(String(d.action))) {
+      if (['coached', 'taken_over', 'vip', 'ended'].includes(String(d.action))) {
         setSteps((ss) => [...ss, { kind: 'staff', action: String(d.action), by: (d.by as string | null) ?? null, note: (d.note as string | undefined) ?? null, at: Date.now() }]);
       }
     });
@@ -130,6 +130,7 @@ function staffLine(action: string, by: string | null) {
   const who = by ?? 'Someone on the team';
   if (action === 'coached') return `Note from ${by ?? 'the team'}`;
   if (action === 'taken_over') return `${who} took over the call`;
+  if (action === 'vip') return 'A VIP caller: going straight to the front desk';
   return `${who} ended the call`;
 }
 
@@ -199,7 +200,7 @@ export default function LiveCallPage() {
 
   const web = live.snapshot.channel === 'web';
   const acting = can('calls:coach');
-  const handedOff = live.staff === 'taken_over' || live.staff === 'ended';
+  const handedOff = live.staff === 'taken_over' || live.staff === 'vip' || live.staff === 'ended';
 
   return (
     <>
@@ -232,7 +233,7 @@ export default function LiveCallPage() {
       {problem && <Alert tone="warn" className="mb-6">{problem}</Alert>}
       {live.staff === 'transfer_failed' && <Alert tone="warn" className="mb-6" title="The transfer did not go through">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {live.staff === 'end_failed' && <Alert tone="warn" className="mb-6" title="The call did not end">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
-      {handedOff && <Alert className="mb-6">{live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
+      {handedOff && <Alert className="mb-6">{live.staff === 'vip' ? 'A caller on your VIP list: the call is going straight to the front desk.' : live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
       {live.lost && <Alert tone="warn" className="mb-6">The live connection dropped. Reload the page to reconnect.</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">

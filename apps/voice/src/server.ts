@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
-import { ClinicConfig } from '@attendra/core';
+import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { callerNumber, dialledNumber } from '@attendra/telephony';
 import { CallRunner, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
@@ -279,7 +279,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
     const timers: NodeJS.Timeout[] = [];
@@ -319,6 +319,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       a.observer = (e) => live.publish(callId, e);
       deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel }, 'call accepted');
       const done = runner.start();
+      // a VIP caller hears the greeting, then goes straight to the front desk
+      if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
       opts.onReady?.();
       await done;
     } catch (err) {
@@ -356,7 +358,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       await deps.engine.accept(sessionId, clinic, now());
       accepted = true;
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
-      await runCall(clinic, sessionId, callId, from, 'phone');
+      const vip = vipRoute(clinic, from, now());
+      if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
+      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       // best effort: the call is already failing, and a second error must not escape

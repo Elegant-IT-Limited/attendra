@@ -118,6 +118,12 @@ export const CustomField = z.object({
   kind: z.enum(['text', 'yesno', 'date']),
 });
 
+/** A caller the clinic always wants a person to answer: a partner vet, a breeder, the owner's family. */
+export const VipCaller = z.object({
+  name: z.string().trim().min(1).max(60),
+  phone: e164,
+});
+
 export const Faq = z.object({
   id: z.string(),
   question: z.string(),
@@ -157,6 +163,8 @@ const ClinicConfigShape = z.object({
   menuLinks: z.array(MenuLink).max(8).optional(),
   // the clinic's own details on each pet or patient, filled in by staff on the record
   customFields: z.array(CustomField).max(20).optional(),
+  // numbers that go straight to the front desk while it takes transfers
+  vipCallers: z.array(VipCaller).max(50).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
   // where the veterinary pack sends an animal in danger: the clinic's chosen 24-hour emergency hospital
   emergencyHospital: z.object({

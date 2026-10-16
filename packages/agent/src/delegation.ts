@@ -10,7 +10,7 @@ import { type Backend, type CallContext, runTool, type ToolResult } from './tool
 export type Outbound =
   | { type: 'thinking' | 'commentary'; delegationId: string; content: string }
   | { type: 'instructions'; delegationId: null; content: string }
-  | { type: 'transfer'; uri: string; afterMs?: number }
+  | { type: 'transfer'; uri: string; afterMs?: number; quiet?: boolean }
   | { type: 'hangup'; afterMs?: number };
 
 // GPT-Live accepts at most 500 tokens per append. Names, digits and addresses
@@ -21,6 +21,8 @@ export const clamp = (s: string) => (s.length <= MAX_APPEND_CHARS ? s : `${s.sli
 // Call control waits for the spoken result: "I'll connect you now" before the ring,
 // the goodbye before the line drops.
 const AFTER_SPEECH_MS = 3500;
+/** A VIP hears the greeting and one line first: at least this long, then until the assistant is quiet. */
+const VIP_AFTER_MS = 6000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
 // and the emergency number before an emergency transfer starts ringing
@@ -177,6 +179,23 @@ export class CallAgent {
     return [
       { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
       { type: 'transfer', uri, afterMs: AFTER_SPEECH_MS },
+    ];
+  }
+
+  /**
+   * A caller the clinic marked VIP: after the greeting, the assistant says it is
+   * connecting them and the call goes to the front desk. A failed transfer is
+   * handled like a staff takeover's: the assistant stays and offers a callback.
+   */
+  vip(uri: string): Outbound[] {
+    this.state.revision++;
+    this.state.outcome = 'transferred';
+    this.emit({ type: 'staff', action: 'vip' });
+    this.emitState();
+    return [
+      { type: 'instructions', delegationId: null, content: `This caller is on the clinic's VIP list. Right after your greeting, say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
+      // after the greeting and the line, whatever their length: the runner waits for quiet
+      { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true },
     ];
   }
 
