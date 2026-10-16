@@ -162,7 +162,8 @@ describe('events from the front desk', () => {
     expect(mine.map((e) => e.type)).toEqual(['appointment.booked', 'appointment.rescheduled', 'appointment.cancelled']);
     expect(mine[0]!.data).toMatchObject({ patientId: api.patientIds.james, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: first!.startsAt, by: 'staff' });
     expect(mine[2]!.data).toMatchObject({ by: 'staff', reason: 'patient_asked' });
-    expect(JSON.stringify(mine)).not.toMatch(/James|Whitaker|1962|5550163/);
+    // the year on its own, not four digits inside a random id
+    expect(JSON.stringify(mine)).not.toMatch(/James|Whitaker|(?<![\w+/=])1962(?![\w+/=])|5550163/);
   });
 
   it('closing a request is request.done, with its outcome, and a refill ready to pick up queues one text', async () => {
