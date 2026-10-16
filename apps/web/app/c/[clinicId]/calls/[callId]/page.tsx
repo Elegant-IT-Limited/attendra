@@ -13,7 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, clock, duration, REFUSALS, shortWhen, TASK_TYPES, TOOLS } from '@/lib/format';
+import { clinicTime, clock, duration, REFUSALS, shortWhen, taskType, TOOLS } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
 const CLOSE_REASONS: Record<string, string> = {
@@ -31,6 +32,7 @@ function summaryPending(c: CallDetail) {
 
 export default function CallPage() {
   const { clinicId, callId } = useParams<{ clinicId: string; callId: string }>();
+  const terms = useTerms(clinicId);
   const { clinic, can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   // until the worker has written the summary, look again every 5 seconds, for up to 2 minutes
@@ -184,7 +186,7 @@ export default function CallPage() {
               <CardContent className="space-y-2">
                 {c.tasks.map((t) => (
                   <Link key={t.id} href={`/c/${clinicId}/requests${t.status === 'open' ? '' : '?status=done'}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-surface-sunken">
-                    <span>{TASK_TYPES[t.type] ?? t.type}</span>
+                    <span>{taskType(t.type, terms.patient)}</span>
                     <Badge tone={t.status === 'open' ? 'warn' : 'ok'}>{t.status === 'open' ? 'Open' : 'Done'}</Badge>
                   </Link>
                 ))}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientProfile } from '@attendra/api/contracts';
-import { localDateOf } from '@attendra/core';
+import { industryPack, localDateOf } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bot, CalendarPlus, CheckCircle2, Phone, User, Users } from 'lucide-react';
 import Link from 'next/link';
@@ -18,7 +18,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { age, clinicTime, dayTitle, dob, duration, GENDER_LABEL, phone, TASK_TYPES, timeOf, zoneLabel } from '@/lib/format';
+import { age, clinicTime, dayTitle, dob, duration, phone, sexLabel, taskType, timeOf, zoneLabel } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -33,6 +34,8 @@ export default function PatientPage() {
   const { clinicId, patientId } = useParams<{ clinicId: string; patientId: string }>();
   const { can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
+  const terms = useTerms(clinicId);
+  const pet = industryPack(config.data?.industry).identity === 'pet';
   const [tab, setTab] = useState<Tab>('appointments');
   const [open, setOpen] = useState<string | null>(null);
   const [booking, setBooking] = useState(false);
@@ -50,17 +53,17 @@ export default function PatientPage() {
 
   const back = (
     <Link href={`/c/${clinicId}/patients`} className="mb-4 inline-flex items-center gap-1 text-sm text-text-muted hover:text-text">
-      <ArrowLeft className="size-4" /> Patients
+      <ArrowLeft className="size-4" /> {terms.title('patients')}
     </Link>
   );
   const clinic = config.data;
   if (!meLoading && !can('patients:read')) {
-    return <>{back}<Card><Empty title="Patients are for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+    return <>{back}<Card><Empty title={`${terms.title('patients')} are for the front desk`}>Your role can see calls and settings, not {terms.patient} records. Ask a practice manager if you need more.</Empty></Card></>;
   }
   if (patient.isPending || !clinic) return <>{back}<Skeleton className="h-10 w-72" /><Skeleton className="mt-6 h-72" /></>;
   if (patient.isError || !patient.data) {
     const missing = patient.error instanceof ApiFailure && patient.error.status === 404;
-    return <>{back}<Card><Empty title={missing ? 'Patient not found' : 'This record did not load'}>{missing ? 'They may belong to another clinic, or the link is wrong.' : 'Try again in a moment.'}</Empty></Card></>;
+    return <>{back}<Card><Empty title={missing ? `${terms.title('patient')} not found` : 'This record did not load'}>{missing ? 'They may belong to another clinic, or the link is wrong.' : 'Try again in a moment.'}</Empty></Card></>;
   }
   const p = patient.data;
   const tz = clinic.timezone;
@@ -78,8 +81,8 @@ export default function PatientPage() {
         <div className="space-y-1">
           <h1 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">{p.name}{p.status === 'new' && <Badge tone="warn">New, added by the assistant</Badge>}</h1>
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-            <span>{p.gender ? `${GENDER_LABEL[p.gender]}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
-            {!p.gender && <Badge tone="warn">Gender not recorded: add it under Details</Badge>}
+            <span>{p.gender ? `${sexLabel(p.gender, pet)}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
+            {!p.gender && <Badge tone="warn">{pet ? 'Sex' : 'Gender'} not recorded: add it under Details</Badge>}
             {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
             {p.species && <span className="capitalize">{p.species}</span>}
             {p.guardianName && <span>{p.species ? 'Owner' : 'Parent or guardian'} {p.guardianName}</span>}
@@ -100,11 +103,11 @@ export default function PatientPage() {
       </div>
       {p.status === 'new' && (
         <Alert tone="warn" className="mb-4">
-          The assistant added {p.firstName} on {p.createdByCallId ? <Link className="underline" href={`/c/${clinicId}/calls/${p.createdByCallId}`}>a call</Link> : 'a call'}. Check the name, date of birth and phone with them, correct anything under Details, then press Details checked.
+          The assistant added {p.firstName} on {p.createdByCallId ? <Link className="underline" href={`/c/${clinicId}/calls/${p.createdByCallId}`}>a call</Link> : 'a call'}. {pet ? 'Check the pet\'s name, kind, birthday, the owner\'s name and the phone' : 'Check the name, date of birth and phone'} with them, correct anything under Details, then press Details checked.
         </Alert>
       )}
 
-      <Tabs label="Patient record" value={tab} onValueChange={setTab} className="mb-4" tabs={TABS.map((t) => ({ value: t.id, label: t.label, count: counts[t.id] }))} />
+      <Tabs label={`${terms.title('patient')} record`} value={tab} onValueChange={setTab} className="mb-4" tabs={TABS.map((t) => ({ value: t.id, label: t.label, count: counts[t.id] }))} />
 
       <div role="region" aria-label={TABS.find((t) => t.id === tab)?.label}>
         {tab === 'appointments' && (
@@ -136,7 +139,7 @@ export default function PatientPage() {
         )}
         {tab === 'calls' && (
           <Card>
-            {p.calls.length === 0 ? <Empty title="No verified calls">Calls appear here once the assistant has verified the caller as this patient by name, date of birth and phone.</Empty> : (
+            {p.calls.length === 0 ? <Empty title="No verified calls">{pet ? 'Calls appear here once the assistant has found this pet by the owner\'s name, the pet\'s name and the phone.' : 'Calls appear here once the assistant has verified the caller as this patient by name, date of birth and phone.'}</Empty> : (
               <ul className="divide-y divide-border">
                 {p.calls.map((c) => (
                   <li key={c.id}>
@@ -155,12 +158,12 @@ export default function PatientPage() {
         )}
         {tab === 'requests' && (
           <Card>
-            {p.requests.length === 0 ? <Empty title="No requests">Refill and callback requests the assistant takes from this patient appear here.</Empty> : (
+            {p.requests.length === 0 ? <Empty title="No requests">Refill and callback requests the assistant takes for this {terms.patient} appear here.</Empty> : (
               <ul className="divide-y divide-border">
                 {p.requests.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-3 text-sm">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{TASK_TYPES[r.type] ?? r.type}</p>
+                      <p className="font-medium">{taskType(r.type, terms.patient)}</p>
                       <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number').map(([, v]) => v).join(', ') || 'No details'}</p>
                       <p className="text-xs text-text-muted">{clinicTime(r.createdAt, tz)}</p>
                     </div>
@@ -177,8 +180,8 @@ export default function PatientPage() {
             <CardContent className="py-5">
               {saved && <Alert className="mb-4">Saved. The assistant verifies them with these details from the next call on.</Alert>}
               {can('patients:write') ? (
-                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender }} onSaved={() => setSaved(true)} />
+                <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}|${p.species}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '' }} onSaved={() => setSaved(true)} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>

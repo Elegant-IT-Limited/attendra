@@ -28,7 +28,7 @@ export interface PatientCard {
   status: PatientStatus;
   createdAt: Date;
 }
-export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null }
+export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null }
 
 /** `similar`: someone else has this name and date of birth with another phone, which is allowed and worth a look. */
 export type SaveResult = { status: 'saved'; id: string; similar: boolean } | { status: 'exists'; id: string } | { status: 'not_found' };

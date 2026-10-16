@@ -95,6 +95,10 @@ export const REFUSALS: Record<string, string> = {
 export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Prefers not to say' };
 
 export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check', follow_up: 'Follow up' };
+/** A request type in the clinic's words: a vet clinic checks a new pet, not a new patient. */
+export const taskType = (type: string, patient = 'patient') => (type === 'review' ? `New ${patient} to check` : TASK_TYPES[type] ?? type);
+/** A pet's sex, or a person's gender, as the record shows it. */
+export const sexLabel = (g: string, pet: boolean) => (pet ? ({ female: 'Female', male: 'Male' } as Record<string, string>)[g] ?? 'Sex unknown' : GENDER_LABEL[g] ?? g);
 
 export const TASK_EXPLAINED: Record<string, string> = {
   refill: 'The patient asked for a refill. Check with the care team, then call them back.',

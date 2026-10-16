@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { ageOn, countryCopy, type Gender, localDateOf } from '@attendra/core';
+import { ageOn, countryCopy, type Gender, industryPack, localDateOf } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -27,7 +27,9 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
 }) {
   const queries = useQueryClient();
   const config = useClinicConfig(clinicId);
-  const [form, setForm] = useState<Omit<PatientInput, 'gender'> & { gender: Gender | '' }>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', ...initial, gender: initial?.gender ?? '' });
+  const [form, setForm] = useState<Omit<PatientInput, 'gender'> & { gender: Gender | '' }>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', species: '', ...initial, gender: initial?.gender ?? '' });
+  // a vet clinic's records are pets: found on a call by the owner's full name, the pet's name and the phone
+  const pet = industryPack(config.data?.industry).identity === 'pet';
   const [problem, setProblem] = useState<{ text: string; existing?: string } | null>(null);
   const [similar, setSimilar] = useState(false);
   const today = localDateOf(new Date(), config.data?.timezone ?? 'UTC');
@@ -45,7 +47,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
       onSaved(r.id, input);
     },
     onError: (e) => {
-      if (e instanceof ApiFailure && e.status === 409) setProblem({ text: 'This patient is already on file: the same name, date of birth and phone number.', existing: (e.body as { id?: string }).id });
+      if (e instanceof ApiFailure && e.status === 409) setProblem({ text: pet ? 'This pet is already on file: the same name, owner, birthday and phone number.' : 'This patient is already on file: the same name, date of birth and phone number.', existing: (e.body as { id?: string }).id });
       else if (e instanceof ApiFailure && e.body.issues?.length) setProblem({ text: e.body.issues.map((i) => i.message).join('. ') });
       else setProblem({ text: 'That did not save. Check your connection and try again.' });
     },
@@ -53,8 +55,15 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!form.gender) { setProblem({ text: 'Choose their gender, or Prefers not to say.' }); return; }
-    save.mutate({ ...form, gender: form.gender, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
+    if (!form.gender) { setProblem({ text: pet ? 'Choose its sex, or Unknown.' : 'Choose their gender, or Prefers not to say.' }); return; }
+    if (pet) {
+      const owner = (form.guardianName ?? '').trim().replace(/\s+/g, ' ');
+      if (owner.split(' ').length < 2) { setProblem({ text: 'Add the owner\'s first and last name.' }); return; }
+      // stored as the assistant stores a pet: its own name, the owner's last name, the owner as the guardian
+      save.mutate({ firstName: form.firstName.trim(), lastName: owner.split(' ').at(-1)!, dob: form.dob, gender: form.gender, phone: form.phone.trim(), guardianName: owner, species: form.species?.trim().toLowerCase() || null });
+      return;
+    }
+    save.mutate({ ...form, species: undefined, gender: form.gender, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
   };
 
   return (
@@ -66,6 +75,40 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           {problem.existing && <Link className="font-medium underline" href={`/c/${clinicId}/patients/${problem.existing}`}>Open their record</Link>}
         </Alert>
       )}
+      {pet ? (
+        <fieldset disabled={save.isPending} className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="pet-name">Pet&apos;s name</Label>
+            <Input id="pet-name" required maxLength={80} autoComplete="off" value={form.firstName} onChange={set('firstName')} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="species">Kind of animal</Label>
+            <Input id="species" required maxLength={40} autoComplete="off" list="species-list" value={form.species ?? ''} onChange={set('species')} placeholder="Dog, cat, rabbit…" />
+            <datalist id="species-list">{['dog', 'cat', 'rabbit', 'bird', 'guinea pig', 'ferret', 'reptile', 'horse'].map((k) => <option key={k} value={k} />)}</datalist>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dob">Birthday</Label>
+            <Input id="dob" type="date" required min="1890-01-01" max={today} value={form.dob} onChange={set('dob')} />
+            <p className="text-xs text-text-muted">If the owner only knows the age, pick the same day that many years ago.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="gender">Sex</Label>
+            <Select id="gender" required value={form.gender} onChange={set('gender')}>
+              <option value="" disabled>Choose</option>
+              <option value="female">Female</option><option value="male">Male</option><option value="undisclosed">Unknown</option>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="guardian">Owner&apos;s full name</Label>
+            <Input id="guardian" required maxLength={120} autoComplete="off" value={form.guardianName ?? ''} onChange={set('guardianName')} placeholder="First and last name" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="phone">Owner&apos;s phone</Label>
+            <Input id="phone" type="tel" required minLength={10} autoComplete="off" value={form.phone} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} />
+            <p className="text-xs text-text-muted">With the area code. The assistant finds the pet by this number, the owner&apos;s name and the pet&apos;s name.</p>
+          </div>
+        </fieldset>
+      ) : (
       <fieldset disabled={save.isPending} className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="first-name">First name</Label>
@@ -99,6 +142,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           </div>
         )}
       </fieldset>
+      )}
       <div className="flex justify-end gap-2">
         {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={save.isPending}>Cancel</Button>}
         <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Saving…' : submitLabel}</Button>
