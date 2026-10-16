@@ -35,6 +35,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed
 
+- **A vet clinic's screens speak of pets.** Adding or editing a pet asks for its name, the kind of animal, its sex (female, male or unknown), its birthday, the owner's full name and the owner's phone, and stores it the way the assistant does (the owner's last name, the owner as the guardian), so the assistant finds it on the owner's next call. The API needs the owner's first and last name for every pet, whatever its age, and keeps the kind of animal (`species` on `PatientInput`) when an edit leaves it out. "Add veterinarian", "Takes new pets", "New pet to check", and the details the assistant gathers for a new pet (Pet, Kind of animal, Sex, Owner, Birthday note) are labelled in words on Requests.
+
 - **Account links in the menu open their page.** Links from `ATTENDRA_ACCOUNT_LINKS` point at another app on the same address, so they now load the page instead of trying to switch inside the dashboard, where the click did nothing.
 
 ### API changes for integrators
