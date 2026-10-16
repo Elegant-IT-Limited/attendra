@@ -109,7 +109,7 @@ export class CallRunner {
           const t = setTimeout(() => {
             this.timers.delete(t);
             const talking = Date.now() - this.agentSpokeAt < QUIET_MS;
-            if (o.type === 'hangup' && talking && Date.now() < due) later(500); else void act();
+            if ((o.type === 'hangup' || (o.type === 'transfer' && o.quiet)) && talking && Date.now() < due) later(500); else void act();
           }, ms);
           this.timers.add(t);
         };
