@@ -5,6 +5,7 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | What | Where | What the assistant does with it |
 |---|---|---|
 | Visit types: name, length, who can book, a description, "Team books it" | Settings, Visit types | Offers the visit; gives the description when asked. A visit the team books itself is never offered as a time: the assistant takes a request instead. |
+| Visit types: notice (hours), up to how many days ahead, minutes free after | Settings, Visit types | Offers no time sooner than the notice (never under 2 hours) or past the last day; a caller asking for a later day hears the last day and is offered a request (`too_far_ahead`). The minutes free after each visit are kept on calls and at the front desk alike, and the time grid steps by visit plus buffer. The front desk is not held to the notice or the days ahead. |
 | Doctors or veterinarians: specialty, what they see, ages, hours, days off, qualifications and certifications | Doctors (Veterinarians) | Offers the right person; mentions qualifications when asked. |
 | Offers and announcements, with optional dates | Settings | Answers callers who ask, only while each one runs. |
 | Kinds of request, with what to ask for each | Settings | Asks for what you listed and labels the callback request with the kind, shown on Requests. |

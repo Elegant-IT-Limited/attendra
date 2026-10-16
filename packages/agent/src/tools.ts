@@ -257,16 +257,24 @@ export async function runTool(
       const today = localDateOf(now, clinic.timezone);
       const requested = (args.from_date as string | null) ?? today;
       const from = requested < today ? today : requested;
-      const days = 14;
+      // the clinic's booking window for this visit: how far ahead the assistant may book it
+      const lastDay = visitType.maxDaysAhead ? addDays(today, visitType.maxDaysAhead) : null;
+      if (lastDay && from > lastDay) {
+        return refuse('too_far_ahead', `This visit is booked at most ${visitType.maxDaysAhead} days ahead, so the last day it can be booked for is ${lastDay}. Offer to look before then, or take a request for the team with create_callback.`);
+      }
+      let days = 14;
+      while (lastDay && days > 1 && addDays(from, days - 1) > lastDay) days--;
+      // and how much notice it needs: never under two hours
+      const leadMinutes = Math.max(120, (visitType.noticeHours ?? 0) * 60);
       // busy time must cover the whole search window, however far out it starts
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
-      const slots = findSlots(clinic, busy, { visitType, providers, from, days, now, partOfDay: args.part_of_day as 'any' });
+      const slots = findSlots(clinic, busy, { visitType, providers, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any' });
       for (const s of slots) state.offered.set(s.id, s);
       return {
         ok: true,
         data: {
           slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null })),
-          note: slots.length ? 'Offer these as written. Do not invent other times.' : 'No openings in the next two weeks; offer a callback.',
+          note: slots.length ? 'Offer these as written. Do not invent other times.' : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`,
         },
       };
     }
