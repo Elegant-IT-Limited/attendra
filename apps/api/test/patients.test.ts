@@ -282,3 +282,28 @@ describe("the clinic's own fields on a record", () => {
     expect(await fieldsOf()).toEqual({ insured: 'yes' });
   });
 });
+
+describe('pets, at a vet clinic', () => {
+  const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
+  const pet = { firstName: 'Biscuit', lastName: 'Okafor', dob: '2024-05-01', phone: '+13035550177', gender: 'female', guardianName: 'Ngozi Okafor', species: 'Dog' };
+  let industry: string;
+  const setIndustry = async (to: string) => {
+    const settings = (await api.request('GET', S, { cookie: as.owner })).json();
+    industry ??= settings.industry;
+    expect((await api.request('PUT', S, { cookie: as.owner, body: { ...settings, industry: to } })).statusCode).toBe(200);
+  };
+  beforeAll(() => setIndustry('vet'));
+  afterAll(() => setIndustry(industry));
+
+  it('adds a young pet with its owner and kind of animal, and needs the owner\'s full name whatever its age', async () => {
+    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, guardianName: null } })).json().issues[0].path).toBe('guardianName');
+    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, guardianName: 'Ngozi' } })).statusCode).toBe(422);
+    const added = await api.request('POST', C, { cookie: as.staff, body: pet });
+    expect(added.statusCode).toBe(201);
+    const id = added.json().id;
+    expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ firstName: 'Biscuit', guardianName: 'Ngozi Okafor', species: 'dog' });
+    // an edit that leaves the kind out keeps it
+    expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.staff, body: { ...pet, species: undefined, firstName: 'Biscuits' } })).statusCode).toBe(200);
+    expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ firstName: 'Biscuits', species: 'dog' });
+  });
+});

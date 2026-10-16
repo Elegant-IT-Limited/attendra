@@ -16,7 +16,8 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, dayTitle, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, taskType, zoneLabel } from '@/lib/format';
+import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +26,7 @@ const DETAIL_LABELS: Record<string, string> = {
   medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
+  pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
 };
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
@@ -38,6 +40,7 @@ export default function RequestsPage() {
 function Requests() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { clinic, data: me, can, isPending } = useClinic(clinicId);
+  const terms = useTerms(clinicId);
   // the tab is in the address, so a link can open a closed request (?status=done)
   const search = useSearchParams();
   const router = useRouter();
@@ -123,7 +126,7 @@ function Requests() {
       <Card className="mb-5 px-5 py-3">
         <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-2 xl:grid-cols-4">
           {(['refill', 'callback', 'review', 'follow_up'] as const).map((t) => (
-            <div key={t}><dt className="inline font-medium">{TASK_TYPES[t]}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
+            <div key={t}><dt className="inline font-medium">{taskType(t, terms.patient)}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
           ))}
         </dl>
       </Card>
@@ -139,7 +142,7 @@ function Requests() {
         <Label htmlFor="request-type" className="sr-only">Type</Label>
         <Select id="request-type" className="h-8 w-48" value={type} onChange={(e) => setType(e.target.value)}>
           <option value="">All types</option>
-          {Object.entries(TASK_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.keys(TASK_TYPES).map((k) => <option key={k} value={k}>{taskType(k, terms.patient)}</option>)}
         </Select>
         <Label htmlFor="request-who" className="sr-only">Assigned to</Label>
         <Select id="request-who" className="h-8 w-44" value={who} onChange={(e) => setWho(e.target.value as Who)}>
@@ -170,7 +173,7 @@ function Requests() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {tasks.data.tasks.map((t) => (
-            <RequestCard key={t.id} task={t} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
+            <RequestCard key={t.id} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
               canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')}
               onAct={(action, body) => act.mutate({ task: t, action, body })} />
           ))}
@@ -181,8 +184,8 @@ function Requests() {
   );
 }
 
-function RequestCard({ task: t, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
-  task: Task; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
+function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
+  task: Task; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean;
   onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
 }) {
@@ -203,7 +206,7 @@ function RequestCard({ task: t, clinicId, tz, today, meId, busy, teammates, canW
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{t.patientName ?? 'Caller not verified'}</p>}
-            <p className="text-xs text-text-muted">{TASK_TYPES[t.type]}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
+            <p className="text-xs text-text-muted">{taskType(t.type, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">

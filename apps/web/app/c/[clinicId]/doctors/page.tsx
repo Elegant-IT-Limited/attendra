@@ -71,7 +71,7 @@ export default function DoctorsPage() {
   const filtered = !!(text || specialty || category);
 
   if (isPending || doctors.isPending) return <><PageHeader title={terms.title('providers')} /><Skeleton className="h-64" /></>;
-  if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of doctors did not load. Refresh to try again.</Alert></>;
+  if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of {terms.providers} did not load. Refresh to try again.</Alert></>;
   const { visitTypes } = doctors.data;
   const visitName = (id: string) => visitTypes.find((v) => v.id === id)?.name ?? id;
 
@@ -81,12 +81,12 @@ export default function DoctorsPage() {
         actions={manager && (
           <>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
-            <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add doctor</Button>
+            <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add {terms.provider}</Button>
           </>
         )} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative w-full max-w-md">
-          <Label htmlFor="doctor-search" className="sr-only">Find a doctor</Label>
+          <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name, specialty or what they see people for" />
         </div>
@@ -108,7 +108,7 @@ export default function DoctorsPage() {
         </Select>
         {filtered && <Button variant="ghost" size="sm" onClick={() => { setText(''); setSpecialty(''); setCategory(''); }}><X /> Clear</Button>}
       </div>
-      {!shown.length ? <Card><Empty title={filtered ? 'No doctor matches' : 'No doctors yet'}>{filtered ? 'Try another word, specialty or category.' : 'Add the first doctor, or import a list.'}</Empty></Card> : (
+      {!shown.length ? <Card><Empty title={filtered ? `No ${terms.provider} matches` : `No ${terms.providers} yet`}>{filtered ? 'Try another word, specialty or category.' : `Add the first ${terms.provider}, or import a list.`}</Empty></Card> : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((p) => {
             const away = p.timeOff.filter((t) => t.to >= today).sort((a, b) => a.from.localeCompare(b.from));
@@ -119,7 +119,7 @@ export default function DoctorsPage() {
                     <p className="truncate font-medium">{p.name}</p>
                     <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
                   </div>
-                  {p.acceptingNewPatients ? <Badge tone="ok">Takes new patients</Badge> : <Badge>No new patients</Badge>}
+                  {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   <dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd>
@@ -154,6 +154,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   clinicId: string; editing: { id: string | null; draft: Draft }; visitTypes: VisitType[]; clinicHours: Hours; languages: Language[]; today: string;
   onClose: () => void; onSaved: () => void;
 }) {
+  const terms = useTerms(clinicId);
   const [d, setD] = useState<Draft>(editing.draft);
   const [categories, setCategories] = useState(editing.draft.categories.join(', '));
   const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
@@ -181,7 +182,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const { ownHours, gender, ...rest } = d;
-    if (!gender) { setProblem('Choose their gender, so callers who ask for a female or a male doctor are offered the right one.'); return; }
+    if (!gender) { setProblem(`Choose their gender, so callers who ask for a female or a male ${terms.provider} are offered the right one.`); return; }
     save.mutate({
       ...rest,
       gender,
@@ -196,7 +197,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const setDay = (day: string, windows: { open: string; close: string }[]) => set({ hours: { ...hours, [day]: windows } });
 
   return (
-    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${editing.draft.name}` : 'Add doctor'}
+    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${editing.draft.name}` : `Add ${terms.provider}`}
       description="Saved changes reach the assistant on the next thing a caller asks."
       footer={(
         <>
@@ -216,7 +217,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </div>
         {languages.every((l) => l === 'en') ? null : (
           <div className="space-y-3">
-            <LocalNames thing={d} languages={languages} what="Doctor" onChange={(names) => set({ names })} />
+            <LocalNames thing={d} languages={languages} what={terms.title('provider')} onChange={(names) => set({ names })} />
             <p className="text-xs text-text-muted">How the assistant says their name to a caller in that language. Empty means it uses the name above.</p>
           </div>
         )}
@@ -253,7 +254,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </fieldset>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={d.acceptingNewPatients} onChange={(e) => set({ acceptingNewPatients: e.target.checked })} />
-          Takes new patients
+          Takes new {terms.patients}
         </label>
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium">Visit types they can be booked for</legend>

@@ -409,8 +409,10 @@ export const PatientInput = z.object({
   dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber,
   gender: Gender,
-  // required for a patient under 18, checked by the route against the clinic's own date
+  // required for a patient under 18, and for every pet (its owner), checked by the route
   guardianName: z.string().trim().max(120).nullable().optional(),
+  /** The kind of animal, for a pet. Left out, an edit keeps what was there. */
+  species: z.string().trim().max(40).nullable().optional(),
 });
 export const PatientSaved = z.object({
   id: z.string(),
