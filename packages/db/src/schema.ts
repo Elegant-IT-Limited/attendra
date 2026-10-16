@@ -48,6 +48,7 @@ export const patients = pgTable('patients', {
   guardianNameEnc: text('guardian_name_enc'),
   genderEnc: text('gender_enc'),
   speciesEnc: text('species_enc'),
+  customEnc: text('custom_enc'),
   status: text('status', { enum: ['active', 'new'] }).notNull().default('active'),
   createdByCallId: uuid('created_by_call_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

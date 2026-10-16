@@ -151,6 +151,7 @@ export class PatientRecords {
       return {
         ...this.card(clinicId, row),
         createdByCallId: row.createdByCallId,
+        customFields: row.customEnc ? JSON.parse(this.cipher.decrypt(row.customEnc, phiContext(clinicId, 'patients.custom'))) as Record<string, string> : {},
         household: family.map((f) => this.card(clinicId, f)).sort((a, b) => a.dob.localeCompare(b.dob)),
         appointments: visits,
         calls: theirCalls.map((c) => ({ ...c, voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds) })),
@@ -217,6 +218,17 @@ export class PatientRecords {
       await tx.update(patients).set(sealPatient(this.cipher, clinicId, p)).where(eq(patients.id, patientId));
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.updated', entity: 'patient', entityId: patientId });
       return { status: 'saved', id: patientId, similar };
+    });
+  }
+
+  /** Replaces the clinic's own details on a record (already checked against its fields). Audited, without the values. */
+  async setCustomFields(clinicId: string, patientId: string, values: Record<string, string>, userId: string): Promise<'saved' | 'not_found'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const customEnc = Object.keys(values).length ? this.cipher.encrypt(JSON.stringify(values), phiContext(clinicId, 'patients.custom')) : null;
+      const [row] = await tx.update(patients).set({ customEnc }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId))).returning({ id: patients.id });
+      if (!row) return 'not_found';
+      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.fields.updated', entity: 'patient', entityId: patientId });
+      return 'saved';
     });
   }
 

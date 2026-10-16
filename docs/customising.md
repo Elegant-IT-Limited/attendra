@@ -10,6 +10,7 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Kinds of request, with what to ask for each | Settings | Asks for what you listed and labels the callback request with the kind, shown on Requests. |
 | Answers to common questions, and documents | Settings, Knowledge | Answers from your words, and never invents the rest. |
 | Hours, holidays, what happens while you are closed, the emergency hospital | Settings | Books inside your hours; takes requests or books after hours, as you chose. |
+| Fields on each patient or pet: a label and a kind (text, yes or no, date), up to 20 | Settings; filled in under Details on each record (`PUT /api/v1/clinics/:clinicId/patients/:patientId/fields`) | Not used on calls. Encrypted like the rest of the record; saving is in the audit log, without the values. Removing a field hides what was filled in. |
 | Links in your menu | Settings | Not used on calls. Your own tools in everyone's menu, opened in a new tab. |
 | Team members and their roles | Team | Not used on calls. No limit on members. |
 

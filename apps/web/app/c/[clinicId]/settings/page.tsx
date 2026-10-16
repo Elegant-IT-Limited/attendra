@@ -269,6 +269,25 @@ export default function Settings() {
           })}
         </Section>
 
+        <Section title={`Fields on each ${terms.patient}`} description={`Details you keep that Attendra has no place for, like a microchip number, an insurer or a reminder date. Your team fills them in under Details on each ${terms.patient}'s record. Removing a field hides what was filled in.`}
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => set({ customFields: [...(c.customFields ?? []), { id: newId('field', 'field'), label: '', kind: 'text' }] })}><Plus /> Field</Button>}>
+          {!c.customFields?.length && <p className="text-sm text-text-muted">No fields yet.</p>}
+          {(c.customFields ?? []).map((f, i) => {
+            const upd = (patch: Partial<typeof f>) => set({ customFields: (c.customFields ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+            return (
+              <div key={f.id} className="flex flex-wrap items-end gap-3">
+                <Field label="Label"><Input className="w-56" maxLength={40} value={f.label} placeholder="Microchip" onChange={(e) => upd({ label: e.target.value })} /></Field>
+                <Field label="Kind">
+                  <select className={select} value={f.kind} onChange={(e) => upd({ kind: e.target.value as typeof f.kind })}>
+                    <option value="text">Text</option><option value="yesno">Yes or no</option><option value="date">Date</option>
+                  </select>
+                </Field>
+                <Button type="button" size="sm" variant="ghost" aria-label="Remove field" onClick={() => set({ customFields: (c.customFields ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+              </div>
+            );
+          })}
+        </Section>
+
         <Section title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => set({ menuLinks: [...(c.menuLinks ?? []), { label: '', url: 'https://' }] })}><Plus /> Link</Button>}>
           {!c.menuLinks?.length && <p className="text-sm text-text-muted">No links yet.</p>}
