@@ -20,7 +20,8 @@ describe('events from calls', () => {
     const booked = w.events.find((e) => e.type === 'appointment.booked')!;
     expect(booked.data).toMatchObject({ patientId: w.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', by: 'assistant', callId: c.callId });
     expect(booked.key).toBe(booked.data.appointmentId);
-    expect(JSON.stringify(w.events)).not.toMatch(/Maria|Delgado|1985|5550147/);
+    // the year on its own, not four digits inside a random id or hash
+    expect(JSON.stringify(w.events)).not.toMatch(/Maria|Delgado|(?<![\w+/=])1985(?![\w+/=])|5550147/);
   });
 
   it('a refill request is request.created, once, however often the planner asks', async () => {
