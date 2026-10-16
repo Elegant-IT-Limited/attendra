@@ -13,6 +13,7 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Hours, holidays, what happens while you are closed, the emergency hospital | Settings | Books inside your hours; takes requests or books after hours, as you chose. |
 | Fields on each patient or pet: a label and a kind (text, yes or no, date), up to 20 | Settings; filled in under Details on each record (`PUT /api/v1/clinics/:clinicId/patients/:patientId/fields`) | Not used on calls. Encrypted like the rest of the record; saving is in the audit log, without the values. Removing a field hides what was filled in. |
 | Urgent and a due day on each open request | Requests (`POST /api/v1/clinics/:clinicId/tasks/:taskId/plan`) | Not used on calls. Urgent requests lead the open queue; a due day shows as Due or Overdue. Audited. |
+| VIP callers: a name and a phone number, up to 50 | Settings | While a front desk route applies (Routing), the assistant greets a VIP caller, says it is connecting them, and transfers the call once it has finished speaking. Outside those hours, or with no front desk route, it answers them like anyone else. A failed transfer is handled as any failed transfer: the assistant offers a callback. |
 | Links in your menu | Settings | Not used on calls. Your own tools in everyone's menu, opened in a new tab. |
 | Team members and their roles | Team | Not used on calls. No limit on members. |
 

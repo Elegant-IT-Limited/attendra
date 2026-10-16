@@ -300,6 +300,22 @@ export default function Settings() {
           })}
         </Section>
 
+        <Section title="VIP callers" description="Numbers that always reach a person. While your front desk takes transfers, the assistant greets them, says it is connecting them, and transfers the call. Outside those hours the assistant answers them as usual."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => set({ vipCallers: [...(c.vipCallers ?? []), { name: '', phone: '' }] })}><Plus /> VIP caller</Button>}>
+          {!c.routing.some((r) => r.target === 'front_desk') && !!c.vipCallers?.length && <Alert tone="warn">Add a front desk number under Routing, or VIP callers reach the assistant like anyone else.</Alert>}
+          {!c.vipCallers?.length && <p className="text-sm text-text-muted">No VIP callers yet.</p>}
+          {(c.vipCallers ?? []).map((v, i) => {
+            const upd = (patch: Partial<typeof v>) => set({ vipCallers: (c.vipCallers ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+            return (
+              <div key={i} className="flex flex-wrap items-end gap-3">
+                <Field label="Who"><Input className="w-56" maxLength={60} value={v.name} placeholder="Partner clinic, Dr. Ruiz's mobile" onChange={(e) => upd({ name: e.target.value })} /></Field>
+                <Field label="Phone, with country code"><Input className="w-48" type="tel" value={v.phone} placeholder="+13035550100" onChange={(e) => upd({ phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+                <Button type="button" size="sm" variant="ghost" aria-label="Remove VIP caller" onClick={() => set({ vipCallers: (c.vipCallers ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+              </div>
+            );
+          })}
+        </Section>
+
         <Section title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => set({ menuLinks: [...(c.menuLinks ?? []), { label: '', url: 'https://' }] })}><Plus /> Link</Button>}>
           {!c.menuLinks?.length && <p className="text-sm text-text-muted">No links yet.</p>}

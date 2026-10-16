@@ -87,6 +87,24 @@ describe('the OpenAI webhook', () => {
     expect(engine.hangup).toHaveBeenCalledWith('live_abc');
   });
 
+  it('sends a VIP caller to the front desk while it is open, and lets the assistant answer anyone else', async () => {
+    const vipClinic = { ...DEMO_CLINIC, vipCallers: [{ name: 'Partner clinic', phone: '+13035550147' }] };
+    const run = async (at: string, clinic: typeof DEMO_CLINIC) => {
+      const sideband = { send: vi.fn(), onEvent: vi.fn(), onError: vi.fn(), onClose: (h: (code: number) => void) => void setTimeout(() => h(1000), 0), close: vi.fn() };
+      const { d, engine } = deps({ clinicForNumber: async () => clinic, now: () => new Date(at) });
+      engine.attach.mockReturnValue(sideband);
+      const app = buildServer(d);
+      await post(app, incoming(`wh_vip_${at}`, '+13035550100'));
+      await app.close();
+      return JSON.stringify(sideband.send.mock.calls);
+    };
+    // Tuesday 29 September 2026, 10 am in Denver: open
+    expect(await run('2026-09-29T16:00:00Z', vipClinic)).toContain('VIP list');
+    expect(await run('2026-09-29T16:00:00Z', DEMO_CLINIC)).not.toContain('VIP list');
+    // 10 pm: the front desk takes no transfers, so the assistant answers as usual
+    expect(await run('2026-09-30T04:00:00Z', vipClinic)).not.toContain('VIP list');
+  });
+
   it('rejects a call to a number no clinic owns with SIP 404', async () => {
     const { d, engine } = deps();
     const app = buildServer(d);

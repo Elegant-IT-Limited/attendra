@@ -548,6 +548,16 @@ describe('what the clinic customised', () => {
   });
 });
 
+describe('a VIP caller', () => {
+  it('says the connecting line after the greeting and transfers once the assistant is quiet', async () => {
+    const c = await w.call('+13035550147');
+    const out = c.agent.vip('tel:+13035550101');
+    expect(out[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('VIP list') });
+    expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550101', afterMs: 6000, quiet: true });
+    expect(c.state.outcome).toBe('transferred');
+  });
+});
+
 describe('when a visit may be booked', () => {
   // the sick visit needs two days' notice and books at most 3 days out: today is Monday 28 September, 8 pm
   const limited = { ...DEMO_CLINIC, visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? { ...v, noticeHours: 48, maxDaysAhead: 3 } : v)) };
