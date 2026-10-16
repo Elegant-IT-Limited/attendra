@@ -5,7 +5,8 @@ import { windowsOn } from './hours';
 import { awayOn } from './providers';
 import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
 
-export interface BusyInterval { providerId: string; start: Date; end: Date }
+/** Booked time. With its visit type, a visit that keeps a buffer after it blocks that too. */
+export interface BusyInterval { providerId: string; start: Date; end: Date; visitTypeId?: string }
 
 export interface Slot {
   id: string; // stable: provider + start, so the same slot offered twice has one id
@@ -28,15 +29,30 @@ export interface SlotQuery {
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 
+const MINUTE = 60_000;
+const bufferOf = (visitTypes: Pick<VisitType, 'id' | 'bufferMinutes'>[] | undefined, id: string | undefined) => (id ? visitTypes?.find((v) => v.id === id)?.bufferMinutes ?? 0 : 0);
+
+/**
+ * Whether a visit from start to end, keeping `buffer` minutes free after it, overlaps
+ * booked time; each booked visit also keeps its own type's buffer after it.
+ */
+export function clashes(busy: BusyInterval[], visitTypes: Pick<VisitType, 'id' | 'bufferMinutes'>[] | undefined, providerId: string, start: Date, end: Date, buffer = 0) {
+  return busy.some((b) => b.providerId === providerId
+    && b.start.getTime() < end.getTime() + buffer * MINUTE
+    && start.getTime() < b.end.getTime() + bufferOf(visitTypes, b.visitTypeId) * MINUTE);
+}
+
 /**
  * Free slots in clinic-local time, earliest first: day by day, and within a day by
  * start time across every provider, with the providers' given order breaking a tie,
  * so results are deterministic. The step is the visit length: a 30-minute visit
- * offers 9:00, 9:30, 10:00.
+ * offers 9:00, 9:30, 10:00, and with a 10-minute buffer after it 9:00, 9:40, 10:20.
  */
-export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'>, busy: BusyInterval[], q: SlotQuery): Slot[] {
+export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[] }, busy: BusyInterval[], q: SlotQuery): Slot[] {
   const limit = q.limit ?? 3;
-  const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * 60_000;
+  const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * MINUTE;
+  const buffer = q.visitType.bufferMinutes ?? 0;
+  const step = q.visitType.minutes + buffer;
   const out: Slot[] = [];
   for (let i = 0; i < q.days && out.length < limit; i++) {
     const date = addDays(q.from, i);
@@ -46,13 +62,13 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     q.providers.forEach((provider, order) => {
       if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
       for (const w of windowsOn(provider.hours ?? clinic.hours, weekday)) {
-        for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += q.visitType.minutes) {
+        for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += step) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;
           if (q.partOfDay === 'afternoon' && m < 12 * 60) continue;
           const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
-          const end = new Date(start.getTime() + q.visitType.minutes * 60_000);
+          const end = new Date(start.getTime() + q.visitType.minutes * MINUTE);
           if (start.getTime() < earliest) continue;
-          if (busy.some((b) => b.providerId === provider.id && b.start < end && start < b.end)) continue;
+          if (clashes(busy, clinic.visitTypes, provider.id, start, end, buffer)) continue;
           day.push({ slot: { id: slotId(provider.id, start), providerId: provider.id, visitTypeId: q.visitType.id, start, end }, order });
         }
       }

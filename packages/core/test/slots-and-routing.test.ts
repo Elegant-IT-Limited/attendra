@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, findSlots, matchesSpecialty, resolveTransfer, speakSlot, specialtyFacts, zonedInstant } from '../src';
+import { clashes, DEMO_CLINIC, findSlots, matchesSpecialty, resolveTransfer, speakSlot, specialtyFacts, zonedInstant } from '../src';
 
 const tz = DEMO_CLINIC.timezone;
 const sick = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_sick')!;
@@ -7,6 +7,20 @@ const okafor = DEMO_CLINIC.providers.filter((p) => p.id === 'prov_okafor');
 const now = zonedInstant('2026-09-28', '20:00', tz); // Monday evening, after hours
 
 describe('finding slots', () => {
+  it('keeps a visit type\'s buffer free after each one, its own and those already booked', () => {
+    const buffered = { ...sick, bufferMinutes: 10 };
+    const clinic = { ...DEMO_CLINIC, visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? buffered : v)) };
+    // the grid steps by visit plus buffer: 8:00, 8:30, 9:00
+    expect(findSlots(clinic, [], { visitType: buffered, providers: okafor, from: '2026-09-29', days: 5, now }).map((s) => speakSlot(s.start, tz)))
+      .toEqual(['Tuesday, September 29 at 8:00 AM', 'Tuesday, September 29 at 8:30 AM', 'Tuesday, September 29 at 9:00 AM']);
+    // a sick visit booked 8:00-8:20 keeps 8:20-8:30 free for any visit after it; with no buffer set, 8:20 is free
+    const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '08:00', tz), end: zonedInstant('2026-09-29', '08:20', tz), visitTypeId: 'vt_sick' }];
+    const next = [zonedInstant('2026-09-29', '08:20', tz), zonedInstant('2026-09-29', '08:40', tz)] as const;
+    expect(clashes(busy, clinic.visitTypes, 'prov_okafor', ...next)).toBe(true);
+    expect(clashes(busy, DEMO_CLINIC.visitTypes, 'prov_okafor', ...next)).toBe(false);
+    expect(clashes(busy, clinic.visitTypes, 'prov_okafor', zonedInstant('2026-09-29', '08:30', tz), zonedInstant('2026-09-29', '08:50', tz))).toBe(false);
+  });
+
   it('offers the three earliest free slots, in clinic time', () => {
     const slots = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: okafor, from: '2026-09-29', days: 5, now });
     expect(slots.map((s) => speakSlot(s.start, tz))).toEqual([

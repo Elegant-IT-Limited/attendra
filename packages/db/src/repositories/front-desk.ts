@@ -453,7 +453,7 @@ export class FrontDeskRepository {
 
   /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */
   async busy(clinicId: string, q: { from: Date; to: Date; except?: string }) {
-    return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt })
+    return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId })
       .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
         lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
   }

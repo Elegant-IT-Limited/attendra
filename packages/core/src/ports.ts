@@ -85,7 +85,7 @@ export type BookingResult =
   | { status: 'patient_busy' }; // the patient already has a visit that overlaps it
 
 export interface SchedulerAdapter {
-  busy(clinicId: string, providerIds: string[], from: Date, to: Date): Promise<{ providerId: string; start: Date; end: Date }[]>;
+  busy(clinicId: string, providerIds: string[], from: Date, to: Date): Promise<{ providerId: string; start: Date; end: Date; visitTypeId?: string }[]>;
   /** `replacesAppointmentId`: the visit this booking moves, which does not count as a clash. */
   book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult>;
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
