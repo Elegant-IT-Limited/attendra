@@ -124,7 +124,8 @@ describe('adding and editing', () => {
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
     expect((await audit('patient.created')).filter((a) => a.entity_id === id)).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
     const stored = JSON.stringify((await api.t.db.execute(sql`select * from patients where id = ${id}`)).rows);
-    expect(stored).not.toMatch(/Nora|Quinlan|1971/);
+    // the year on its own, not four digits inside a hash, an id or the ciphertext
+    expect(stored).not.toMatch(/Nora|Quinlan|(?<![\w+/=])1971(?![\w+/=])/);
   });
 
   it('refuses the same person twice (name, date of birth and phone), and adds a different person who shares a name and birthday', async () => {
