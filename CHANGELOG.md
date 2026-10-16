@@ -29,6 +29,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Visit types the team books itself**: a "Team books it" switch. The assistant never offers times for such a visit; it takes a request for the team instead (refusal `staff_books`). Each visit type can also carry a short description the assistant gives callers who ask what it includes.
 - **Qualifications and certifications** for each doctor or veterinarian, on the Doctors page and in what the assistant says when asked.
 - **Kinds of request** (Settings): the clinic's own request topics (boarding inquiry, insurance question) with what to ask for each. The assistant asks for it and labels the callback request with the topic; `create_callback` takes an optional `topic`, and only the clinic's own topics are kept.
+- **Fields on each patient or pet** (Settings): up to 20 of the clinic's own details (microchip, insurer, a reminder date), each text, yes or no, or a date. Staff fill them in under Details on the record; they are encrypted like the rest of it (schema v27, `patients.custom_enc`), saved with `PUT /patients/:patientId/fields`, and audited without the values. Not used on calls yet.
 - **Links in your menu** (Settings): up to 8 of the clinic's own links (practice software, booking page, forms), shown to the whole team and opened in a new tab.
 
 ### Fixed

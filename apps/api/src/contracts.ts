@@ -411,9 +411,14 @@ export const PatientSaved = z.object({
   /** Someone else is on file with this name and date of birth, on another phone. Saved anyway: worth a look. */
   similar: z.boolean().optional(),
 });
+/** The clinic's own details on a record, the whole set: an empty value leaves a field blank. */
+export const CustomFieldValues = z.object({ values: z.record(z.string().max(40), z.string().max(400)) });
+
 export const PatientProfile = PatientCard.extend({
   /** The call the assistant added them on, for a patient it added. */
   createdByCallId: z.string().nullable(),
+  /** The clinic's own details on this record, by field id: only fields the clinic still has. */
+  customFields: z.record(z.string(), z.string()),
   /** Everyone else on the same phone number: a parent and their children. */
   household: z.array(PatientCard),
   /** The provider they have seen most, when they have seen one. */
