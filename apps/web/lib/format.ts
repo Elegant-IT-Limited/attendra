@@ -88,6 +88,7 @@ export const REFUSALS: Record<string, string> = {
   medical_question: 'medical question, not answered',
   patient_busy: 'patient already booked then',
   staff_books: 'booked by the team only, request taken',
+  too_far_ahead: 'too far ahead for this visit',
   after_hours: 'closed, request taken instead',
 };
 

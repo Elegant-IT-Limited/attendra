@@ -146,7 +146,7 @@ export class StaffScheduler {
     const date = localDateOf(start, clinic.timezone);
     const from = zonedInstant(date, '00:00', clinic.timezone);
     const to = zonedInstant(addDays(date, 1), '00:00', clinic.timezone);
-    const rows = await tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt }).from(appointments).where(and(
+    const rows = await tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId }).from(appointments).where(and(
       eq(appointments.clinicId, clinic.id), eq(appointments.status, 'booked'), eq(appointments.providerId, providerId),
       lt(appointments.startsAt, to), gt(appointments.endsAt, from), except ? ne(appointments.id, except) : undefined,
     ));

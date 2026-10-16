@@ -1,8 +1,8 @@
-import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
-import { world } from './support';
+import { NOW, world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(); });
@@ -545,6 +545,34 @@ describe('what the clinic customised', () => {
     const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
     expect(slots!.ok).toBe(false);
     expect(slots!.data.error).toBe('staff_books');
+  });
+});
+
+describe('when a visit may be booked', () => {
+  // the sick visit needs two days' notice and books at most 3 days out: today is Monday 28 September, 8 pm
+  const limited = { ...DEMO_CLINIC, visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? { ...v, noticeHours: 48, maxDaysAhead: 3 } : v)) };
+  const find = async (from: string | null) => {
+    const c = await w.call('+13035550147', { clinic: limited });
+    c.caller('A sick visit please.');
+    const [r] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: from, part_of_day: 'any' } }])).results;
+    return { r: r!, offered: [...c.state.offered.values()] };
+  };
+
+  it('offers only times inside the notice and the days ahead', async () => {
+    const { r, offered } = await find(null);
+    expect(r.ok).toBe(true);
+    expect(offered.length).toBeGreaterThan(0);
+    for (const s of offered) {
+      expect(s.start.getTime()).toBeGreaterThanOrEqual(NOW.getTime() + 48 * 3_600_000);
+      expect(localDateOf(s.start, DEMO_CLINIC.timezone)).toBe('2026-10-01');
+    }
+  });
+
+  it('refuses a day past the window, and says the last day', async () => {
+    const { r } = await find('2026-10-12');
+    expect(r.ok).toBe(false);
+    expect(r.data.error).toBe('too_far_ahead');
+    expect(r.data.say).toContain('2026-10-01');
   });
 });
 

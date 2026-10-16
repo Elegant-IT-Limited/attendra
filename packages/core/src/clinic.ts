@@ -70,6 +70,12 @@ export const VisitType = z.object({
   description: z.string().trim().max(300).optional(),
   // booked by the team only: the assistant takes a request instead of offering times
   staffOnly: z.boolean().optional(),
+  // the assistant books it at least this many hours ahead (never under two hours)
+  noticeHours: z.number().int().min(0).max(720).optional(),
+  // the assistant books it at most this many days ahead
+  maxDaysAhead: z.number().int().min(1).max(365).optional(),
+  // free minutes the provider keeps after each one (cleaning, notes): for every booking, on calls and at the desk
+  bufferMinutes: z.number().int().min(0).max(120).optional(),
 });
 
 export const TransferTarget = z.enum(['front_desk', 'billing', 'on_call']);
