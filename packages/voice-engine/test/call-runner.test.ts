@@ -90,6 +90,21 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('transfers a VIP caller only once the assistant has finished speaking', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.act([{ type: 'transfer', uri: 'tel:+13035550101', afterMs: 6000, quiet: true }]);
+    // the greeting and the line run past the 6 seconds
+    for (let i = 0; i < 8; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      await h.runner.handle(delta('out', `v${i}`, 'connecting you ', 1000 * i));
+    }
+    expect(h.engine.transfer).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.engine.transfer).toHaveBeenCalledWith('live_1', 'tel:+13035550101');
+    vi.useRealTimers();
+  });
+
   it('records a call staff ended as ended_by_staff, not as the assistant hanging up', async () => {
     const h = harness(new ScriptedPlanner([]));
     await h.runner.act((h.runner as unknown as { agent: CallAgent }).agent.endByStaff());
