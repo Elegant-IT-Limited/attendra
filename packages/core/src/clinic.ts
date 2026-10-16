@@ -105,6 +105,13 @@ export const MenuLink = z.object({
   url: z.string().trim().max(500).regex(/^https:\/\//, 'a link starts with https://'),
 });
 
+/** A detail the clinic keeps on each pet or patient that Attendra has no field for: microchip, insurer, a note. Staff fill it in. */
+export const CustomField = z.object({
+  id: z.string().regex(/^[a-z0-9_-]{1,40}$/),
+  label: z.string().trim().min(1).max(40),
+  kind: z.enum(['text', 'yesno', 'date']),
+});
+
 export const Faq = z.object({
   id: z.string(),
   question: z.string(),
@@ -142,6 +149,8 @@ const ClinicConfigShape = z.object({
   requestTopics: z.array(RequestTopic).max(20).optional(),
   // the clinic's own links in its dashboard menu, for everyone on the team
   menuLinks: z.array(MenuLink).max(8).optional(),
+  // the clinic's own details on each pet or patient, filled in by staff on the record
+  customFields: z.array(CustomField).max(20).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
   // where the veterinary pack sends an animal in danger: the clinic's chosen 24-hour emergency hospital
   emergencyHospital: z.object({
@@ -176,6 +185,9 @@ const ClinicConfigShape = z.object({
   if (provider) ctx.addIssue({ code: 'custom', path: ['providers'], message: `two providers have the id ${provider}` });
   const visit = dupe(c.visitTypes.map((v) => v.id));
   if (visit) ctx.addIssue({ code: 'custom', path: ['visitTypes'], message: `two visit types have the id ${visit}` });
+  // a value on a record is kept under its field's id
+  const field = dupe((c.customFields ?? []).map((f) => f.id));
+  if (field) ctx.addIssue({ code: 'custom', path: ['customFields'], message: `two fields have the id ${field}` });
 
   // A name is never a disclosure: "Hi, I'm Maya" sounds like a person. The greeting
   // must say AI assistant (or the same in one of the clinic's languages) whatever the
@@ -247,6 +259,7 @@ export function configProblems(c: Pick<z.infer<typeof ClinicConfigShape>, 'provi
 export type TimeOff = z.infer<typeof TimeOff>;
 export type AgeRange = z.infer<typeof AgeRange>;
 export type VisitType = z.infer<typeof VisitType>;
+export type CustomField = z.infer<typeof CustomField>;
 export type RoutingRule = z.infer<typeof RoutingRule>;
 
 /** The name a provider or visit type is said with in a language, falling back to the clinic's own. */

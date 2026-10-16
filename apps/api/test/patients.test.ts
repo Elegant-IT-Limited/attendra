@@ -240,3 +240,45 @@ describe('calls and patients', () => {
     expect(call.patient).toEqual({ id: api.patientIds.maria, name: 'Maria Delgado' });
   });
 });
+
+describe("the clinic's own fields on a record", () => {
+  const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
+  const fieldsOf = (cookie = as.staff) => api.request('GET', `${C}/${api.patientIds.maria}`, { cookie }).then((r) => r.json().customFields);
+  const put = (values: Record<string, string>, cookie = as.staff, id = api.patientIds.maria) => api.request('PUT', `${C}/${id}/fields`, { cookie, body: { values } });
+
+  beforeAll(async () => {
+    const settings = (await api.request('GET', S, { cookie: as.owner })).json();
+    const res = await api.request('PUT', S, { cookie: as.owner, body: { ...settings, customFields: [
+      { id: 'microchip', label: 'Microchip', kind: 'text' }, { id: 'insured', label: 'Insured', kind: 'yesno' }, { id: 'rabies', label: 'Rabies due', kind: 'date' },
+    ] } });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('starts empty, saves what staff fill in, encrypted, and audits without the values', async () => {
+    expect(await fieldsOf()).toEqual({});
+    expect((await put({ microchip: ' 985112003456789 ', insured: 'yes', rabies: '' })).statusCode).toBe(204);
+    expect(await fieldsOf()).toEqual({ microchip: '985112003456789', insured: 'yes' });
+    const [row] = (await api.t.db.execute(sql`select custom_enc from patients where id = ${api.patientIds.maria}`)).rows as { custom_enc: string }[];
+    expect(row!.custom_enc).not.toContain('985112003456789');
+    expect((await audit('patient.fields.updated')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria });
+  });
+
+  it('checks each value against its field, and refuses a field the clinic does not have', async () => {
+    expect((await put({ insured: 'maybe' })).statusCode).toBe(422);
+    expect((await put({ rabies: 'next May' })).statusCode).toBe(422);
+    expect((await put({ blood_type: 'A' })).statusCode).toBe(422);
+    expect(await fieldsOf()).toEqual({ microchip: '985112003456789', insured: 'yes' });
+  });
+
+  it('is for people who can change records, in this clinic only', async () => {
+    expect((await put({ microchip: '1' }, as.viewer)).statusCode).toBe(403);
+    expect((await put({ microchip: '1' }, as.staff, '00000000-0000-4000-8000-000000000000')).statusCode).toBe(404);
+    expect((await api.request('PUT', `/api/v1/clinics/${OTHER.id}/patients/${api.patientIds.maria}/fields`, { cookie: as.owner, body: { values: {} } })).statusCode).toBe(404);
+  });
+
+  it('hides a value once its field is removed from Settings', async () => {
+    const settings = (await api.request('GET', S, { cookie: as.owner })).json();
+    await api.request('PUT', S, { cookie: as.owner, body: { ...settings, customFields: settings.customFields.filter((f: { id: string }) => f.id !== 'microchip') } });
+    expect(await fieldsOf()).toEqual({ insured: 'yes' });
+  });
+});
