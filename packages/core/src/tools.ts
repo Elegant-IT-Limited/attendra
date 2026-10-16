@@ -37,7 +37,11 @@ export const ToolArgs = {
   propose_cancellation: z.object({ appointment_id: z.string() }),
   commit_pending: z.object({}),
   create_refill_request: z.object({ medication: z.string().min(2), pharmacy: z.string().min(2), callback_number: z.string().min(7) }),
-  create_callback: z.object({ reason: z.string().min(3).max(200), callback_number: z.string().min(7) }),
+  create_callback: z.object({
+    reason: z.string().min(3).max(200), callback_number: z.string().min(7),
+    // one of the clinic's own request topics, as get_clinic_info lists them, when one fits
+    topic: z.string().max(80).nullable().default(null),
+  }),
   transfer_call: z.object({ target: TransferTarget }),
   end_call: z.object({ reason: z.string().max(100) }),
 } as const;

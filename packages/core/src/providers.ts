@@ -61,6 +61,7 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
     }),
     hours: weeklyHoursLine(p.hours ?? clinic.hours),
     away: p.timeOff.filter((t) => t.to >= today && t.from <= horizon).map((t) => (t.from === t.to ? t.from : `${t.from} to ${t.to}`)),
+    ...(p.credentials?.length ? { credentials: p.credentials } : {}),
   }));
 }
 
@@ -91,5 +92,19 @@ export function specialtyFacts(clinic: Pick<ClinicConfig, 'providers'>, language
 }
 
 export function visitTypeFacts(clinic: Pick<ClinicConfig, 'visitTypes'>, language: Language) {
-  return clinic.visitTypes.map((v) => ({ visit_type_id: v.id, name: localName(v, language), minutes: v.minutes, for: audienceLine(v) }));
+  return clinic.visitTypes.map((v) => ({
+    visit_type_id: v.id, name: localName(v, language), minutes: v.minutes, for: audienceLine(v),
+    ...(v.description ? { description: v.description } : {}),
+    ...(v.staffOnly ? { booked_by: 'the team only: take a request' } : {}),
+  }));
+}
+
+/** The clinic's own request topics, with what to ask the caller for each. */
+export function requestTopicFacts(clinic: Pick<ClinicConfig, 'requestTopics'>) {
+  return (clinic.requestTopics ?? []).map((t) => ({ topic: t.name, ...(t.collect ? { ask_for: t.collect } : {}) }));
+}
+
+/** The clinic's offers running on this clinic-local date, as a caller may hear them. */
+export function currentOffers(clinic: Pick<ClinicConfig, 'offers'>, today: string) {
+  return (clinic.offers ?? []).filter((o) => (!o.from || o.from <= today) && (!o.to || o.to >= today)).map((o) => ({ title: o.title, details: o.details, ...(o.to ? { until: o.to } : {}) }));
 }

@@ -123,6 +123,7 @@ export default function DoctorsPage() {
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   <dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd>
+                  {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
                   <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
@@ -155,6 +156,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
 }) {
   const [d, setD] = useState<Draft>(editing.draft);
   const [categories, setCategories] = useState(editing.draft.categories.join(', '));
+  const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const toast = useToast();
@@ -186,6 +188,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       name: d.name.trim(),
       specialty: d.specialty?.trim() || undefined,
       categories: categories.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
+      credentials: credentials.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
       hours: ownHours ? Object.fromEntries(Object.entries(hours).filter(([, w]) => w && w.length)) : undefined,
       timeOff: d.timeOff.filter((t) => t.from && t.to),
     });
@@ -230,6 +233,11 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           <Label htmlFor="doc-categories">What they see people for</Label>
           <Input id="doc-categories" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="Children, Vaccinations, Diabetes care" />
           <p className="text-xs text-text-muted">Separated by commas. The assistant tells callers, so they pick the right doctor.</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="doc-credentials">Qualifications and certifications</Label>
+          <Input id="doc-credentials" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder="DVM, Fear Free Certified, Board-certified surgeon" />
+          <p className="text-xs text-text-muted">Separated by commas. Shown on this page, and the assistant mentions them when a caller asks.</p>
         </div>
         <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium">Ages they see</legend>
