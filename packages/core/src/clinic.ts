@@ -55,6 +55,8 @@ export const Provider = z.object({
   hours: WeeklyHours.optional(),
   timeOff: z.array(TimeOff).max(100).default([]),
   visitTypeIds: z.array(z.string()).min(1),
+  // qualifications a caller may hear when they ask: "DVM", "Fear Free Certified", "Board-certified surgeon"
+  credentials: z.array(z.string().trim().min(2).max(60)).max(8).optional(),
 });
 
 export const VisitType = z.object({
@@ -64,6 +66,10 @@ export const VisitType = z.object({
   minutes: z.number().int().min(5).max(240),
   // who may book it: everyone, only new patients ("new patient visit") or only patients already on file
   audience: z.enum(['all', 'new', 'existing']).default('all'),
+  // what the assistant tells a caller who asks what it is or what it includes
+  description: z.string().trim().max(300).optional(),
+  // booked by the team only: the assistant takes a request instead of offering times
+  staffOnly: z.boolean().optional(),
 });
 
 export const TransferTarget = z.enum(['front_desk', 'billing', 'on_call']);
@@ -75,6 +81,28 @@ export const RoutingRule = z.object({
   uri: z.string().regex(/^(tel:\+[1-9]\d{7,14}|sips?:[^\s]+)$/),
   when: z.enum(['open', 'closed', 'always']),
   priority: z.number().int().default(0),
+});
+
+/** Something the clinic is running now that callers may ask about: a vaccine clinic, a dental month. */
+export const Offer = z.object({
+  id: z.string(),
+  title: z.string().trim().min(2).max(80),
+  details: z.string().trim().min(2).max(400),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+}).refine((o) => !o.from || !o.to || o.from <= o.to, 'an offer must end on or after the day it starts');
+
+/** A kind of request the clinic wants taken its own way: boarding, grooming, insurance. What to ask is the clinic's words. */
+export const RequestTopic = z.object({
+  id: z.string(),
+  name: z.string().trim().min(2).max(60),
+  collect: z.string().trim().max(300).optional(),
+});
+
+/** A link the clinic adds to its own dashboard menu: its practice software, its booking page, a form. */
+export const MenuLink = z.object({
+  label: z.string().trim().min(1).max(30),
+  url: z.string().trim().max(500).regex(/^https:\/\//, 'a link starts with https://'),
 });
 
 export const Faq = z.object({
@@ -108,6 +136,12 @@ const ClinicConfigShape = z.object({
   visitTypes: z.array(VisitType).min(1),
   routing: z.array(RoutingRule).default([]),
   faqs: z.array(Faq).default([]),
+  // what the clinic is running now; the assistant answers from it when callers ask
+  offers: z.array(Offer).max(20).optional(),
+  // the clinic's own kinds of request: the assistant asks what each one needs and labels the request with it
+  requestTopics: z.array(RequestTopic).max(20).optional(),
+  // the clinic's own links in its dashboard menu, for everyone on the team
+  menuLinks: z.array(MenuLink).max(8).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
   // where the veterinary pack sends an animal in danger: the clinic's chosen 24-hour emergency hospital
   emergencyHospital: z.object({

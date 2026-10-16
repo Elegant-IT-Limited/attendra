@@ -87,6 +87,8 @@ export const REFUSALS: Record<string, string> = {
   closed: 'office closed',
   medical_question: 'medical question, not answered',
   patient_busy: 'patient already booked then',
+  staff_books: 'booked by the team only, request taken',
+  after_hours: 'closed, request taken instead',
 };
 
 /** Requests, in the words a front desk uses. The API still calls them tasks. */
