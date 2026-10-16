@@ -160,7 +160,7 @@ export default function Settings() {
           </div>
         </Section>
 
-        <Section title="Visit types" description="What callers can book, with how long each takes."
+        <Section title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
           action={<Button type="button" size="sm" variant="outline" onClick={() => set({ visitTypes: [...c.visitTypes, { id: newId('vt', 'visit'), name: 'New visit type', minutes: 20, audience: 'all' }] })}><Plus /> Visit type</Button>}>
           {c.visitTypes.map((v, i) => (
             <div key={v.id} className="flex flex-wrap items-end gap-3">
@@ -181,6 +181,18 @@ export default function Settings() {
                   onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, audience: e.target.value as 'all' | 'new' | 'existing' } : x)) })}>
                   <option value="all">Anyone</option><option value="new">New patients only</option><option value="existing">Patients on file only</option>
                 </Select>
+              </Field>
+              <Field label="Notice, hours" hint="On calls. Empty: 2 hours.">
+                <Input type="number" min={0} max={720} className="w-24" value={v.noticeHours ?? ''} aria-label={`${v.name}: notice in hours`}
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, noticeHours: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
+              </Field>
+              <Field label="Up to, days ahead" hint="On calls. Empty: no limit.">
+                <Input type="number" min={1} max={365} className="w-24" value={v.maxDaysAhead ?? ''} aria-label={`${v.name}: days ahead`}
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, maxDaysAhead: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
+              </Field>
+              <Field label="Free after, minutes" hint="On calls and at the desk.">
+                <Input type="number" min={0} max={120} className="w-24" value={v.bufferMinutes ?? ''} aria-label={`${v.name}: minutes free after`}
+                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, bufferMinutes: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
               </Field>
               <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${v.name}`} onClick={() => set({
                 visitTypes: c.visitTypes.filter((_, j) => j !== i),

@@ -24,7 +24,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
         eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
         inArray(appointments.providerId, providerIds), lt(appointments.startsAt, to), gt(appointments.endsAt, from),
       ));
-      return rows.map((r) => ({ providerId: r.providerId, start: r.startsAt, end: r.endsAt }));
+      return rows.map((r) => ({ providerId: r.providerId, start: r.startsAt, end: r.endsAt, visitTypeId: r.visitTypeId }));
     });
   }
 

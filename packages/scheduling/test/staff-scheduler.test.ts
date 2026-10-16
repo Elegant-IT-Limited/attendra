@@ -1,4 +1,4 @@
-import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { type BusyInterval, DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, saveClinic, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
@@ -49,6 +49,18 @@ describe('the booking rules, shared with the assistant', () => {
     expect(rule({ start: at('2026-09-29', '09:05') })).toBe('closed');
     expect(rule({ start: at('2026-10-03', '10:00') })).toBe('closed'); // a Saturday
     expect(rule({ start: at('2026-09-30', '10:00'), providerId: 'prov_lindqvist' })).toBe('closed'); // she works Tuesdays and Thursdays
+  });
+
+  it('keeps the minutes free after a visit type with a buffer, at the desk too; notice and days ahead are the assistant\'s', () => {
+    const clinic = { ...DEMO_CLINIC, visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? { ...v, bufferMinutes: 10, noticeHours: 48, maxDaysAhead: 3 } : v)) };
+    const busy = [{ providerId: 'prov_okafor', start: at('2026-09-29', '08:00'), end: at('2026-09-29', '08:20'), visitTypeId: 'vt_sick' }];
+    const desk = (start: Date, b: BusyInterval[] = busy) => slotProblem(clinic, b, { providerId: 'prov_okafor', visitTypeId: 'vt_sick', start }, NOW);
+    expect(desk(at('2026-09-29', '08:30'))).toBeNull();
+    expect(desk(at('2026-09-29', '08:20'))).toBe('closed'); // off the 30-minute grid a 10-minute buffer makes
+    // a 9:00 visit needs 9:00 to 9:30 free: one at 9:25 is in its buffer
+    expect(desk(at('2026-09-29', '09:00'), [{ providerId: 'prov_okafor', start: at('2026-09-29', '09:25'), end: at('2026-09-29', '09:45') }])).toBe('taken');
+    // the front desk can book tomorrow morning and a month out
+    expect(desk(at('2026-10-27', '09:00'))).toBeNull();
   });
 
   it('refuses a holiday', () => {
