@@ -30,7 +30,7 @@ beforeAll(async () => {
 afterAll(() => api.close());
 
 describe('requests', () => {
-  const list = async (q = '', cookie = as.staff) => (await api.request('GET', `${C}/tasks${q}`, { cookie })).json().tasks as { id: string; type: string; assigneeName: string | null; notes: { author: string; body: string }[]; outcome: string | null; patientId: string | null }[];
+  const list = async (q = '', cookie = as.staff) => (await api.request('GET', `${C}/tasks${q}`, { cookie })).json().tasks as { id: string; type: string; assigneeName: string | null; notes: { author: string; body: string }[]; outcome: string | null; patientId: string | null; urgent: boolean; dueOn: string | null }[];
 
   it('filters by type and by who has them, reading and auditing only what is shown', async () => {
     expect((await list('?type=refill')).map((t) => t.id)).toEqual([api.taskId]);
@@ -86,6 +86,22 @@ describe('requests', () => {
     expect((await api.request('POST', `${O}/tasks/${callback}/assign`, { cookie: as.owner, body: { userId: api.users.staff } })).statusCode).toBe(404);
   });
 
+  it('marks a request urgent, first in the queue, with a due day; staff can, a viewer cannot, audited', async () => {
+    const plan = (id: string, body: unknown, cookie = as.staff) => api.request('POST', `${C}/tasks/${id}/plan`, { cookie, body });
+    const open = async () => (await list()).map(({ id, urgent, dueOn }) => ({ id, urgent, dueOn }));
+    expect((await open()).find((t) => t.id === api.taskId)).toEqual({ id: api.taskId, urgent: false, dueOn: null });
+    expect((await plan(api.taskId, { urgent: true, dueOn: '2026-10-20' })).statusCode).toBe(204);
+    expect((await open())[0]).toEqual({ id: api.taskId, urgent: true, dueOn: '2026-10-20' });
+    // what is left out stays; null clears the day
+    expect((await plan(api.taskId, { dueOn: null })).statusCode).toBe(204);
+    expect((await open())[0]).toEqual({ id: api.taskId, urgent: true, dueOn: null });
+    expect((await plan(api.taskId, { dueOn: 'next week' })).statusCode).toBe(422);
+    expect((await plan(api.taskId, { urgent: false }, as.viewer)).statusCode).toBe(403);
+    expect((await api.request('POST', `${O}/tasks/${api.taskId}/plan`, { cookie: as.owner, body: { urgent: false } })).statusCode).toBe(404);
+    expect((await audit('task.planned')).map((r) => r.entity_id)).toEqual([api.taskId, api.taskId]);
+    expect((await plan(api.taskId, { urgent: false })).statusCode).toBe(204);
+  });
+
   it('closes with an outcome, and refuses one that is not on the list', async () => {
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'emailed them' } })).json().error).toBe('invalid_request');
     expect((await api.request('POST', `${C}/tasks/${callback}/done`, { cookie: as.staff, body: { outcome: 'left_message' } })).statusCode).toBe(204);
@@ -94,6 +110,8 @@ describe('requests', () => {
     expect(again.statusCode).toBe(409);
     expect(again.json().message).toBe('Someone else holds this request, or it is already done.');
     expect((await list('?status=done&type=callback'))[0]).toMatchObject({ outcome: 'left_message', doneAt: expect.any(String), doneByName: 'Ana Front' });
+    // a done request is not planned any more
+    expect((await api.request('POST', `${C}/tasks/${callback}/plan`, { cookie: as.staff, body: { urgent: true } })).statusCode).toBe(409);
   });
 });
 

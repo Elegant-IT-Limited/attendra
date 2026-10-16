@@ -263,6 +263,8 @@ export const TaskSearch = TaskQuery.extend({
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
+/** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
+export const TaskPlan = z.object({ urgent: z.boolean().optional(), dueOn: z.iso.date().nullable().optional() });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({
   id: z.string(),
@@ -278,6 +280,10 @@ export const Task = z.object({
   patientId: z.string().nullable(),
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
+  /** Set by staff: urgent requests come first in the open queue. */
+  urgent: z.boolean(),
+  /** The clinic's day it is due, set by staff. */
+  dueOn: z.iso.date().nullable(),
   assigneeName: z.string().nullable(),
   /** Who closed a done request, by name; null while it is open, or for someone no longer on the team. */
   doneByName: z.string().nullable(),

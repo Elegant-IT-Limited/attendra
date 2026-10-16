@@ -4,7 +4,7 @@ import { type Database, type FrontDeskRepository, staffNames, staffRole, taskFac
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -126,6 +126,17 @@ export class TasksController {
     this.outcome(isUuid(taskId) ? await this.desk.assignTask(clinicId, taskId, body.userId, staff.userId) : 'not_found');
   }
 
+  @Post(':taskId/plan')
+  @HttpCode(204)
+  @Requires('tasks:work')
+  @ApiOperation({ summary: 'Mark an open request urgent or not, and set or clear the day it is due. Audited.' })
+  @ApiBody({ schema: schemaOf(TaskPlan) })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ description: 'The request is already done' })
+  async plan(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskPlan)) body: z.infer<typeof TaskPlan>, @CurrentStaff() staff: Staff) {
+    this.outcome(isUuid(taskId) ? await this.desk.planTask(clinicId, taskId, body, staff.userId) : 'not_found');
+  }
+
   @Post(':taskId/release')
   @HttpCode(204)
   @Requires('tasks:work')
@@ -137,7 +148,7 @@ export class TasksController {
     this.outcome(isUuid(taskId) ? await this.desk.releaseTask(clinicId, taskId, staff.userId, override) : 'not_found');
   }
 
-  private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'taken' | 'not_found') {
+  private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'planned' | 'taken' | 'not_found') {
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result === 'taken') throw new ConflictException({ error: 'task_taken', message: 'Someone else holds this request, or it is already done.' });
   }
