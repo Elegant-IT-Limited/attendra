@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, ClinicConfig, localDateOf, readCustomValues, readPatients } from '@attendra/core';
+import { ageOn, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -37,9 +37,17 @@ export class PatientsController {
    * date, and a patient under 18 has a parent or guardian on file.
    */
   private async check(clinicId: string, body: z.infer<typeof PatientInput>) {
-    const today = localDateOf(this.now(), (await this.clinic(clinicId)).timezone);
+    const clinic = await this.clinic(clinicId);
+    const today = localDateOf(this.now(), clinic.timezone);
     if (body.dob > today) {
       throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'dob', message: 'a date of birth cannot be in the future' }] });
+    }
+    // a pet is found on a call by its owner's full name, so every pet has one; age does not matter
+    if (industryPack(clinic.industry).identity === 'pet') {
+      if ((body.guardianName?.trim().split(/\s+/).length ?? 0) < 2) {
+        throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'a pet needs its owner\'s first and last name' }] });
+      }
+      return;
     }
     if (ageOn(body.dob, today) < 18 && !body.guardianName?.trim()) {
       throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'a patient under 18 needs a parent or guardian' }] });
