@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets } from '@attendra/core';
+import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -122,7 +122,7 @@ export class PatientsController {
   @ApiConflictResponse({ description: 'The same person (name, date of birth and phone) is already on file; `id` is theirs' })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
     await this.check(clinicId, body);
-    return this.answer(await this.records.create(clinicId, body, staff.userId));
+    return this.answer(await this.records.create(clinicId, { ...body, phone: asE164(await this.clinic(clinicId), body.phone) }, staff.userId));
   }
 
   @Patch(':patientId')
@@ -134,7 +134,7 @@ export class PatientsController {
   async update(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(PatientInput)) body: z.infer<typeof PatientInput>, @CurrentStaff() staff: Staff): Promise<PatientSaved> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     await this.check(clinicId, body);
-    return this.answer(await this.records.update(clinicId, id, body, staff.userId));
+    return this.answer(await this.records.update(clinicId, id, { ...body, phone: asE164(await this.clinic(clinicId), body.phone) }, staff.userId));
   }
 
   @Put(':patientId/fields')
@@ -183,7 +183,7 @@ export class PatientsController {
     await withClinic(this.db, clinicId, async (tx) => {
       for (const r of rows) {
         if (!r.ok) { report.rows.push({ line: r.line, name: r.name, status: 'error', message: r.message }); continue; }
-        const saved = await this.records.insert(tx, clinicId, r.value, `user:${staff.userId}`);
+        const saved = await this.records.insert(tx, clinicId, { ...r.value, phone: asE164(clinic, r.value.phone) }, `user:${staff.userId}`);
         if (saved.status === 'exists') report.rows.push({ line: r.line, name: r.name, status: 'skip', message: 'already on file with this name, date of birth and phone' });
         else report.rows.push({ line: r.line, name: r.name, status: 'add', message: saved.status === 'saved' && saved.similar ? 'someone else has this name and date of birth, on another phone' : null });
       }

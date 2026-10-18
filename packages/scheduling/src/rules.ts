@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, type Slot } from '@attendra/core';
+import { bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, type Slot } from '@attendra/core';
 
 /** Why a time cannot be booked, in the words the API and the dashboard use. */
 export type SlotProblem =
@@ -30,7 +30,7 @@ export interface OpenSlotQuery {
 export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery): Slot[] {
   const visitType = clinic.visitTypes.find((v) => v.id === q.visitTypeId);
   if (!visitType) return [];
-  const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId) : clinic.providers;
+  const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId) : bookableProviders(clinic.providers);
   return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: 0, limit: q.limit ?? 200 });
 }
 

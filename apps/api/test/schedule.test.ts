@@ -230,3 +230,20 @@ describe('a call and what it booked', () => {
     expect(call.appointments).toEqual([]);
   });
 });
+
+describe('visits left on a day off or a holiday', () => {
+  it('counts them by day and provider, with no names', async () => {
+    const c = await startApi({ demoMode: false, now: () => zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone) });
+    const cookie = await c.signIn('omar@maple.example', true);
+    const S = `/api/v1/clinics/${DEMO_CLINIC.id}`;
+    const slot = (await c.request('GET', `${S}/appointments/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=2026-10-06&days=1`, { cookie })).json().slots[0];
+    expect((await c.request('POST', `${S}/appointments`, { cookie, body: { patientId: c.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: slot.startsAt, idempotencyKey: 'conflict-1' } })).statusCode).toBe(201);
+    expect((await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json().conflicts).toEqual([]);
+    const settings = (await c.request('GET', `${S}/settings`, { cookie })).json();
+    await c.request('PUT', `${S}/settings`, { cookie, body: { ...settings, holidays: [...settings.holidays, '2026-10-06'] } });
+    const res = (await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json();
+    expect(res.conflicts).toEqual([{ date: '2026-10-06', providerId: 'prov_okafor', reason: 'holiday', count: 1 }]);
+    expect(JSON.stringify(res)).not.toMatch(/Maria|Delgado/);
+    await c.close();
+  });
+});

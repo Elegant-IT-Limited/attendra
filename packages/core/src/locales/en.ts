@@ -49,7 +49,8 @@ export const en: LanguagePack = {
     ['allergic', /\b(throat (is )?(closing|swelling)|anaphyla(xis|ctic)|tongue (is )?swelling)\b/],
     ['general', /\b(emergency|call (an )?ambulance|911)\b/],
   ],
-  notAnEmergency: /\b(not an? emergency|isn'?t an emergency|no emergency|not urgent)\b/,
+  // also a question about emergencies, not a report of one: "is this an emergency?", "what counts as an emergency?"
+  notAnEmergency: /\b(not an? emergency|isn'?t an emergency|no emergency|not urgent|is (this|that|it) an emergency|counts? as an emergency|emergency (fees?|charges?|prices?|costs?|policy))\b/,
   yes: /\b(yes|yeah|yep|yup|correct|that'?s (right|correct|fine|good|perfect)|sounds good|perfect|please do|go ahead|book it|do it|sure)\b/,
   yesAlone: /^(ok|okay|confirm|confirmed)$/,
   hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,

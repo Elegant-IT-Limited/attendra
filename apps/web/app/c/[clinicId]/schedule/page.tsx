@@ -11,6 +11,7 @@ import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, ScheduleList } from '@/components/schedule/calendar';
 import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
+import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -97,6 +98,7 @@ function ScheduleScreen() {
     <>
       <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.</>}
         actions={writable && <Button onClick={() => setBooking(true)}><Plus /> New booking</Button>} />
+      <ConflictsAlert clinicId={clinicId} className="mb-4" />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={() => set({ date: addDays(date, -step) })} aria-label={view === 'week' ? 'Previous week' : 'Previous day'}><ChevronLeft /></Button>

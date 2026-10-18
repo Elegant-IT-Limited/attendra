@@ -294,7 +294,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));
         return parsed.success ? parsed.data : null;
       };
-      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, now, log: deps.log }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, now, log: deps.log, channel }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       if (web) {

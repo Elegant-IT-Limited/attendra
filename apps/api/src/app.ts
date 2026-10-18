@@ -24,7 +24,7 @@ import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, type VoiceClient } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PatientsController } from './patients/patients.controller';
@@ -33,6 +33,7 @@ import { QualityController } from './quality/quality.controller';
 import { AppointmentsController } from './schedule/appointments.controller';
 import { EmergencyReviewController } from './settings/emergency-review.controller';
 import { SettingsController } from './settings/settings.controller';
+import { VoiceSamplesController } from './voice-samples/voice-samples.controller';
 import { TasksController } from './tasks/tasks.controller';
 import { TeamController } from './team/team.controller';
 import pkg from '../package.json' with { type: 'json' };
@@ -61,6 +62,8 @@ export interface ApiDeps {
   now?: () => Date;
   /** Change notices from Postgres, so the dashboard updates without a refresh. Without it, screens refresh on a timer. */
   changes?: ChangeFeed | null;
+  /** Speaks the greeting in a voice, so Settings can play it. Without it the Listen button says samples are off. */
+  voiceSamples?: VoiceSampler | null;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
@@ -78,7 +81,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -91,6 +94,7 @@ class ApiModule {
         { provide: EVENTS, useValue: eventSink(deps.jobs ?? noJobs, (err) => deps.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) },
         { provide: WEBHOOK_GUARD, useValue: deps.webhooks ?? {} },
         { provide: CHANGES, useValue: deps.changes ?? null },
+        { provide: VOICE_SAMPLES, useValue: deps.voiceSamples ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },

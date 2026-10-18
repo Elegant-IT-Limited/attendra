@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, type EventSink, localDateOf, normalizeName, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, ClinicConfig, type EventSink, localDateOf, normalizeName, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -7,7 +7,7 @@ import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNot
 import { z } from 'zod';
 import {
   type Appointment, AppointmentChange, AppointmentDetail, BookAppointment, type BookedBy, CancelAppointment, CancelledList, CancelledQuery, RescheduleAppointment, Schedule,
-  ScheduleQuery, SlotList, SlotQuery,
+  ScheduleConflicts, ScheduleQuery, SlotList, SlotQuery,
 } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -99,6 +99,35 @@ export class AppointmentsController {
     });
     const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now });
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) };
+  }
+
+  /**
+   * Visits still booked on a day their provider is now away, or the clinic now closed
+   * for a holiday: what a change to days off or holidays left behind. Counts by day and
+   * provider only, so no patient data and no audit row.
+   */
+  @Get('conflicts')
+  @Requires('schedule:read')
+  @ApiOperation({ summary: 'Booked visits on a provider\'s days off or a holiday, from today: counts by day and provider. No patient data.' })
+  @ApiOkResponse({ schema: schemaOf(ScheduleConflicts) })
+  async conflicts(@Param('clinicId') clinicId: string): Promise<ScheduleConflicts> {
+    const clinic = await this.clinic(clinicId);
+    const now = this.now();
+    const today = localDateOf(now, clinic.timezone);
+    const booked = await this.desk.busy(clinicId, { from: now, to: zonedInstant(addDays(today, 366), '00:00', clinic.timezone) });
+    const found = new Map<string, { date: string; providerId: string; reason: 'holiday' | 'away'; count: number }>();
+    for (const b of booked) {
+      if (b.start < now) continue;
+      const date = localDateOf(b.start, clinic.timezone);
+      const provider = clinic.providers.find((p) => p.id === b.providerId);
+      const reason = clinic.holidays.includes(date) ? 'holiday' : provider && awayOn(provider, date) ? 'away' : null;
+      if (!reason) continue;
+      const key = `${date}|${b.providerId}`;
+      const entry = found.get(key) ?? { date, providerId: b.providerId, reason, count: 0 };
+      entry.count++;
+      found.set(key, entry);
+    }
+    return { conflicts: [...found.values()].sort((a, b) => a.date.localeCompare(b.date)) };
   }
 
   @Get(':appointmentId')

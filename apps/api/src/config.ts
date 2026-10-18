@@ -31,6 +31,8 @@ const Env = z.object({
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  // the text-to-speech model behind Settings' voice samples
+  ATTENDRA_TTS_MODEL: z.preprocess(blank, z.string().default('gpt-4o-mini-tts')),
   // Two-step sign-in: required for everyone (the default), or optional, for a hosted service whose
   // accounts hold no patient health information (veterinary clinics). Demo mode skips it either way.
   ATTENDRA_TWO_FACTOR: z.preprocess(blank, z.enum(['required', 'optional']).default('required')),

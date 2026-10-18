@@ -1,16 +1,15 @@
 id: vet-after-hours-request
-title: After hours the clinic books nothing; the owner's visit becomes a request for the team in the morning
+title: After hours the clinic books nothing and offers no times; the owner's visit becomes a request for the team in the morning
 clinic: riverbend
 turns:
   - caller: Hi, it's Linh Nguyen, I'd like to book a check-up for Biscuit next week.
-    reply: "Thanks, Linh. I've found Biscuit. The first openings next week are {offered.0}, or {offered.1}."
+    reply: "Thanks, Linh. We're closed right now and book during opening hours, so I can ask the team to call you in the morning to book Biscuit's check-up. Is this the best number to reach you?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
       - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "$next_week", part_of_day: any }
-  - caller: The first one is great.
-    reply: "We're closed right now and book during opening hours, so I've asked the team to call you in the morning to book Biscuit's check-up."
+  - caller: Yes, this number is fine.
+    reply: "Done. The team will call you in the morning to book Biscuit's check-up."
     delegate:
-      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
       - create_callback: { reason: Book a wellness exam for Biscuit next week, callback_number: "+17205550172" }
 expect:
   outcome: task_created

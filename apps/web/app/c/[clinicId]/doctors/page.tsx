@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import { type FormEvent, useMemo, useState } from 'react';
 import { ImportPanel } from '@/components/import-panel';
 import { LocalNames } from '@/components/settings/assistant';
+import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,7 +52,7 @@ export default function DoctorsPage() {
   const [sort, setSort] = useState<'added' | 'name' | 'specialty'>('added');
   const doctors = useQuery({ queryKey: ['doctors', clinicId], queryFn: () => api<DoctorList>(`/clinics/${clinicId}/doctors`), enabled: can('settings:read') });
   const manager = can('settings:write');
-  const refresh = () => { void queries.invalidateQueries({ queryKey: ['doctors', clinicId] }); void queries.invalidateQueries({ queryKey: ['settings', clinicId] }); };
+  const refresh = () => { void queries.invalidateQueries({ queryKey: ['doctors', clinicId] }); void queries.invalidateQueries({ queryKey: ['settings', clinicId] }); void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] }); };
   const tz = config.data?.timezone ?? 'UTC';
   const today = localDateOf(new Date(), tz);
   const clinicHours = config.data?.hours ?? {};
@@ -84,6 +85,7 @@ export default function DoctorsPage() {
             <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add {terms.provider}</Button>
           </>
         )} />
+      <ConflictsAlert clinicId={clinicId} className="mb-4" />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative w-full max-w-md">
           <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
@@ -117,6 +119,7 @@ export default function DoctorsPage() {
                 <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.name}</p>
+                    {p.placeholder && <p className="mt-1"><Badge tone="warn">A stand-in: offered only until you add your own</Badge></p>}
                     <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
                   </div>
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
