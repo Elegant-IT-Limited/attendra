@@ -314,6 +314,8 @@ export const Task = z.object({
   doneByName: z.string().nullable(),
   /** What the call's summary suggests staff do, for a request the assistant created. */
   followUp: z.string().nullable(),
+  /** The clinic's own details on the request (Settings, Fields and lists). */
+  custom: z.record(z.string(), z.string()),
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
@@ -425,6 +427,8 @@ export const PatientCard = z.object({
   /** new: added by the assistant on a call; the front desk checks the details and confirms them. */
   status: PatientStatus,
   createdAt: z.iso.datetime(),
+  /** The clinic's own details on the record, for the fields it still has. */
+  custom: z.record(z.string(), z.string()),
 });
 export const PatientList = z.object({
   patients: z.array(PatientCard),
@@ -449,7 +453,14 @@ export const PatientSaved = z.object({
   similar: z.boolean().optional(),
 });
 /** The clinic's own details on a record, the whole set: an empty value leaves a field blank. */
+/** A POST: a field's value can be anything staff wrote, and URLs end up in logs. */
+export const PatientFilter = z.object({
+  species: z.string().trim().min(1).max(40).optional(),
+  field: z.object({ id: z.string().max(40), value: z.string().trim().min(1).max(200) }).optional(),
+});
 export const CustomFieldValues = z.object({ values: z.record(z.string().max(40), z.string().max(400)) });
+/** A managed list saved whole, in order; renamed: { old value: new value }, carried to every doctor. */
+export const ListChange = z.object({ values: z.array(z.string().trim().min(1).max(40)).max(60), renamed: z.record(z.string().max(40), z.string().max(40)).default({}) });
 
 export const PatientProfile = PatientCard.extend({
   /** The call the assistant added them on, for a patient it added. */

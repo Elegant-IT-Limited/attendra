@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { ageOn, countryCopy, type Gender, industryPack, localDateOf } from '@attendra/core';
+import { ageOn, countryCopy, DEFAULT_SPECIES, type Gender, industryPack, localDateOf, managedList } from '@attendra/core';
 import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -84,7 +84,8 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           <div className="space-y-1.5">
             <Label htmlFor="species">Kind of animal</Label>
             <Input id="species" required maxLength={40} autoComplete="off" list="species-list" value={form.species ?? ''} onChange={set('species')} placeholder="Dog, cat, rabbit…" />
-            <datalist id="species-list">{['dog', 'cat', 'rabbit', 'bird', 'guinea pig', 'ferret', 'reptile', 'horse'].map((k) => <option key={k} value={k} />)}</datalist>
+            {/* the clinic's own list, in its order (Settings, Fields and lists) */}
+            <datalist id="species-list">{(config.data ? managedList(config.data, 'species') : [...DEFAULT_SPECIES]).map((k) => <option key={k} value={k.toLowerCase()} />)}</datalist>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="dob">Birthday</Label>

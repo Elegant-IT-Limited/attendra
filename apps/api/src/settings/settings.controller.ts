@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, emergencyNumberProblem } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, LIST_NAMES, type ListName } from '@attendra/core';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, staffNames } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -7,7 +7,9 @@ import type { FastifyReply } from 'fastify';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, DB, FRONT_DESK } from '../http/tokens';
-import { issuesOf } from '../http/zod.pipe';
+import { issuesOf, ZodPipe } from '../http/zod.pipe';
+import { ListChange } from '../contracts';
+import type { z } from 'zod';
 
 @ApiTags('settings')
 @ApiCookieAuth()
@@ -35,6 +37,28 @@ export class SettingsController {
     const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     return { version: stored.version, ...(await this.who(clinicId, stored)) };
+  }
+
+  /**
+   * One of the clinic's lists, saved whole and in order, with renames: a renamed
+   * specialty or category is renamed on every doctor, a removed one taken off them,
+   * in the same change. Row-locked like the Doctors page, so it never undoes a save.
+   */
+  @Put('lists/:list')
+  @Requires('settings:write')
+  @ApiOperation({ summary: 'Save one list (specialties, categories, species) in order, with renames carried to every doctor. Audited.' })
+  @ApiBody({ schema: schemaOf(ListChange) })
+  @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
+  async list(@Param('clinicId') clinicId: string, @Param('list') list: string, @Body(new ZodPipe(ListChange)) body: z.infer<typeof ListChange>, @CurrentStaff() staff: Staff): Promise<ClinicConfig> {
+    if (!(LIST_NAMES as readonly string[]).includes(list)) throw new NotFoundException({ error: 'not_found' });
+    const out = await this.desk.updateSettings<ClinicConfig | { issues: { path: string; message: string }[] }>(clinicId, staff.userId, `clinic.list.updated.${list}`, clinicId, (stored) => {
+      const next = ClinicConfig.safeParse(applyListChange(ClinicConfig.parse(stored), list as ListName, body.values, body.renamed));
+      if (!next.success) return { result: { issues: issuesOf(next.error) } };
+      return { save: next.data, result: next.data };
+    });
+    if (!out) throw new NotFoundException({ error: 'not_found' });
+    if ('issues' in out) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: out.issues });
+    return out;
   }
 
   /** 409 with the newer settings, so the page can show what changed and merge. */

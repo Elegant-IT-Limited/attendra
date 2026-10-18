@@ -16,7 +16,7 @@ import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { Switch } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shell';
-import { Button } from '@/components/ui/button';
+import { Button, buttonStyles } from '@/components/ui/button';
 import { type Conflict, SettingsConflict } from '@/components/settings/settings-conflict';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -43,8 +43,7 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'vip', label: () => 'VIP callers' },
   { id: 'answers', label: () => 'Common questions' },
   { id: 'offers', label: () => 'Offers' },
-  { id: 'requests', label: () => 'Kinds of request' },
-  { id: 'fields', label: (t) => `Fields on each ${t.patient}` },
+  { id: 'fields', label: () => 'Fields and lists' },
   { id: 'links', label: () => 'Menu links' },
   { id: 'records', label: () => 'Call records' },
   { id: 'numbers', label: () => 'Phone numbers' },
@@ -484,34 +483,12 @@ export default function Settings() {
           ))}
         </Section>
 
-        <Section id="requests" title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => addOrFocus(c.requestTopics ?? [], BLANK.named, (t) => `item-${t.id}`, () => { const id = newId('topic', 'topic'); set({ requestTopics: [{ id, name: '' }, ...(c.requestTopics ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Kind of request</Button>}>
-          {!c.requestTopics?.length && <EmptyNote>None yet. Requests are still taken; they are just not labelled.</EmptyNote>}
-          {(c.requestTopics ?? []).map((t, i) => (
-            <Item key={t.id} id={`item-${t.id}`} removeLabel="Remove kind of request" onRemove={() => remove('requestTopics', i)}>
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
-                <Field label="Name"><Input maxLength={60} value={t.name} placeholder="e.g. Boarding inquiry" onChange={(e) => upd('requestTopics', i, { name: e.target.value })} /></Field>
-                <Field label="What to ask the caller" hint="Optional."><Input maxLength={300} value={t.collect ?? ''} placeholder="e.g. The dates, the pet, and whether vaccines are current" onChange={(e) => upd('requestTopics', i, { collect: e.target.value || undefined })} /></Field>
-              </div>
-            </Item>
-          ))}
-        </Section>
-
-        <Section id="fields" title={`Fields on each ${terms.patient}`} description={`Details you keep that Attendra has no place for, like a microchip number, an insurer or a reminder date. Your team fills them in under Details on each ${terms.patient}'s record. Removing a field hides what was filled in.`}
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => addOrFocus(c.customFields ?? [], (f) => !f.label.trim(), (f) => `item-${f.id}`, () => { const id = newId('field', 'field'); set({ customFields: [{ id, label: '', kind: 'text' }, ...(c.customFields ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Field</Button>}>
-          {!c.customFields?.length && <EmptyNote>No fields yet.</EmptyNote>}
-          {(c.customFields ?? []).map((f, i) => (
-            <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove field" onRemove={() => remove('customFields', i)}>
-              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                <Field label="Label"><Input maxLength={40} value={f.label} placeholder={pet ? 'e.g. Microchip' : 'e.g. Insurance member ID'} onChange={(e) => upd('customFields', i, { label: e.target.value })} /></Field>
-                <Field label="Kind">
-                  <Select value={f.kind} onChange={(e) => upd('customFields', i, { kind: e.target.value as typeof f.kind })}>
-                    <option value="text">Text</option><option value="yesno">Yes or no</option><option value="date">Date</option>
-                  </Select>
-                </Field>
-              </div>
-            </Item>
-          ))}
+        <Section id="fields" title="Fields and lists" description={`Your own fields on ${terms.patients}, ${terms.providers} and requests, the kinds of request the assistant labels, and the lists they pick from have their own tab.`}>
+          <div className="flex flex-wrap gap-2">
+            <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>Fields on {terms.patients}</Link>
+            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>{terms.title('providers')} and their lists</Link>
+            <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>Requests and kinds of request</Link>
+          </div>
         </Section>
 
         <Section id="links" title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."

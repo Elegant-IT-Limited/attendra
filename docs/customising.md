@@ -19,6 +19,8 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Clinic address and website | Settings | Gives them to a caller who asks. |
 | Links in your menu | Settings | Not used on calls. Your own tools in everyone's menu, opened in a new tab. |
 | Team members and their roles | Team | Not used on calls. No limit on members. |
+| Your own fields on pets or patients, doctors or veterinarians, and requests: text, number, yes or no, date, dropdowns; required; shown as a column | Settings, Fields and lists | Not used on calls. Filled in on each record; dropdowns and yes-or-no fields filter the list pages. |
+| Lists in your order: specialties, what doctors see, kinds of animal | Settings, Fields and lists | Specialties and what doctors see are what callers are matched on. A rename reaches every doctor. |
 | Texting during calls: on or off, which kinds (address and map, hours, emergency hospital, a doctor's details, answers, your links), your map link and links | Settings, Texting | Offers to text something the caller just heard; asks the exact question the backend gives it and sends only after a clear yes in the caller's own words, to the number they are calling from or the one on file. In an animal emergency, only the hospital's details. At most 3 per call. |
 | Appointment changes by text | Settings, Texting | A moved or cancelled visit is confirmed by text, like a booking. |
 | Greetings in your other languages | Settings, Assistant and languages | Said once when the caller switches to that language. Must say it is an AI assistant, in that language. |

@@ -59,6 +59,8 @@ export const Provider = z.object({
   placeholder: z.boolean().optional(),
   // qualifications a caller may hear when they ask: "DVM", "Fear Free Certified", "Board-certified surgeon"
   credentials: z.array(z.string().trim().min(2).max(60)).max(8).optional(),
+  // the clinic's own details on this doctor (Settings, Fields and lists)
+  custom: z.record(z.string(), z.string().max(400)).optional(),
 });
 
 export const VisitType = z.object({
@@ -114,11 +116,35 @@ export const MenuLink = z.object({
 });
 
 /** A detail the clinic keeps on each pet or patient that Attendra has no field for: microchip, insurer, a note. Staff fill it in. */
+export const CUSTOM_FIELD_KINDS = ['text', 'number', 'yesno', 'date', 'choice', 'multi'] as const;
+/** One choice a dropdown offers: a few words, never the separator multi-choice values are stored with. */
+const FieldOption = z.string().trim().min(1).max(40).regex(/^[^|]*$/, 'an option cannot contain |');
 export const CustomField = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,40}$/),
   label: z.string().trim().min(1).max(40),
-  kind: z.enum(['text', 'yesno', 'date']),
+  kind: z.enum(CUSTOM_FIELD_KINDS),
+  // a dropdown's choices, in the order shown; one (choice) or several (multi) are picked
+  options: z.array(FieldOption).max(30).optional(),
+  // staff must fill it in before the record's details are saved
+  required: z.boolean().optional(),
+  // shown as a column on the list page
+  column: z.boolean().optional(),
+}).superRefine((f, ctx) => {
+  if ((f.kind === 'choice' || f.kind === 'multi') && (f.options?.length ?? 0) < 2) ctx.addIssue({ code: 'custom', path: ['options'], message: 'a dropdown needs at least two choices' });
+  const seen = new Set<string>();
+  for (const o of f.options ?? []) {
+    const k = o.toLowerCase();
+    if (seen.has(k)) ctx.addIssue({ code: 'custom', path: ['options'], message: `"${o}" is listed twice` });
+    seen.add(k);
+  }
 });
+
+/** A list the clinic keeps in order: specialties, what vets see, kinds of animal. */
+export const ManagedList = z.array(z.string().trim().min(1).max(40)).max(60).refine((l) => new Set(l.map((x) => x.toLowerCase())).size === l.length, 'a value is listed twice');
+export const LIST_NAMES = ['specialties', 'categories', 'species'] as const;
+/** The kinds of animal a vet clinic starts with, until it keeps its own list. */
+export const DEFAULT_SPECIES = ['Dog', 'Cat', 'Rabbit', 'Bird', 'Guinea pig', 'Ferret', 'Reptile', 'Horse'] as const;
+export type ListName = (typeof LIST_NAMES)[number];
 
 /**
  * An emergency hospital the assistant sends an owner to. Without hours it is open
@@ -227,6 +253,11 @@ const ClinicConfigShape = z.object({
   menuLinks: z.array(MenuLink).max(8).optional(),
   // the clinic's own details on each pet or patient, filled in by staff on the record
   customFields: z.array(CustomField).max(20).optional(),
+  // and on each doctor or veterinarian, and each request
+  providerFields: z.array(CustomField).max(20).optional(),
+  requestFields: z.array(CustomField).max(20).optional(),
+  // lists the clinic keeps in order; absent, they are what the records already say
+  lists: z.object({ specialties: ManagedList.optional(), categories: ManagedList.optional(), species: ManagedList.optional() }).optional(),
   // texts during a call and change confirmations
   texting: Texting.optional(),
   // numbers that go straight to the front desk while it takes transfers
@@ -264,8 +295,10 @@ const ClinicConfigShape = z.object({
   const visit = dupe(c.visitTypes.map((v) => v.id));
   if (visit) ctx.addIssue({ code: 'custom', path: ['visitTypes'], message: `two visit types have the id ${visit}` });
   // a value on a record is kept under its field's id
-  const field = dupe((c.customFields ?? []).map((f) => f.id));
-  if (field) ctx.addIssue({ code: 'custom', path: ['customFields'], message: `two fields have the id ${field}` });
+  for (const key of ['customFields', 'providerFields', 'requestFields'] as const) {
+    const field = dupe((c[key] ?? []).map((f) => f.id));
+    if (field) ctx.addIssue({ code: 'custom', path: [key], message: `two fields have the id ${field}` });
+  }
   const link = dupe((c.texting?.links ?? []).map((l) => l.id));
   if (link) ctx.addIssue({ code: 'custom', path: ['texting', 'links'], message: `two links have the id ${link}` });
   // each other language's greeting discloses the AI in that language, like the main one
@@ -368,3 +401,50 @@ export function greetingFor(c: Pick<ClinicConfig, 'greeting' | 'greetings' | 'pr
 
 /** The clinic's texting settings, with every default filled in. */
 export const textingOf = (c: Pick<ClinicConfig, 'texting'>): Texting => c.texting ?? Texting.parse({});
+
+/**
+ * A list as the clinic keeps it, or, before it has kept one, what its records say:
+ * every specialty and category its doctors have, in alphabetical order.
+ */
+export function managedList(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListName): string[] {
+  const kept = c.lists?.[name];
+  if (kept) return kept;
+  if (name === 'species') return [...DEFAULT_SPECIES];
+  const found = name === 'specialties' ? c.providers.map((p) => p.specialty ?? '') : c.providers.flatMap((p) => p.categories);
+  const byKey = new Map<string, string>();
+  for (const v of found.map((x) => x.trim()).filter(Boolean)) if (!byKey.has(v.toLowerCase())) byKey.set(v.toLowerCase(), v);
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * A list saved with renames and removals: the new list, and every doctor's specialty
+ * and categories brought in line with it. A renamed value is renamed on every doctor;
+ * a removed one is taken off them. Species are only a list (each pet keeps its own).
+ */
+export function applyListChange(c: ClinicConfig, name: ListName, values: string[], renamed: Record<string, string>): ClinicConfig {
+  const next = { ...c, lists: { ...c.lists, [name]: values } };
+  if (name === 'species') return next;
+  const before = managedList(c, name);
+  const keep = new Map(values.map((v) => [v.toLowerCase(), v]));
+  const map = (v: string): string | null => {
+    const to = renamed[v] ?? Object.entries(renamed).find(([from]) => from.toLowerCase() === v.toLowerCase())?.[1];
+    if (to !== undefined) return keep.get(to.toLowerCase()) ?? null;
+    if (keep.has(v.toLowerCase())) return keep.get(v.toLowerCase())!;
+    // a value no list had is the doctor's own and stays; one the list had and lost is removed
+    return before.some((b) => b.toLowerCase() === v.toLowerCase()) ? null : v;
+  };
+  next.providers = c.providers.map((p) => name === 'specialties'
+    ? { ...p, specialty: p.specialty ? map(p.specialty) ?? undefined : undefined }
+    : { ...p, categories: [...new Set(p.categories.map(map).filter((x): x is string => !!x))] });
+  return next;
+}
+
+/** How many doctors use each value of a list: before a value is removed, the clinic sees what it touches. */
+export function listUsage(c: Pick<ClinicConfig, 'providers'>, name: ListName): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const p of c.providers) {
+    const vals = name === 'specialties' ? (p.specialty ? [p.specialty] : []) : name === 'categories' ? p.categories : [];
+    for (const v of vals) out[v.toLowerCase()] = (out[v.toLowerCase()] ?? 0) + 1;
+  }
+  return out;
+}

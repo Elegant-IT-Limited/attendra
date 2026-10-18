@@ -312,10 +312,22 @@ export class FrontDeskRepository {
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
         : null,
       details: JSON.parse(this.cipher.decrypt(task.detailsEnc, ctx('tasks.details'))) as Record<string, string>,
+      custom: task.customEnc ? JSON.parse(this.cipher.decrypt(task.customEnc, ctx('tasks.custom'))) as Record<string, string> : {},
       // what the call's summary suggests staff do, for a request the assistant created
       followUp: summary ? decryptSummary(this.cipher, clinicId, summary).followUp : null,
       notes: notes.filter((n) => n.taskId === task.id).map((n) => ({ id: n.id, authorUserId: n.authorUserId, at: n.createdAt, body: this.cipher.decrypt(n.bodyEnc, ctx('task_notes.body')) })),
     }));
+  }
+
+  /** The clinic's own details on a request: the whole set, encrypted, audited without the values. */
+  async setTaskFields(clinicId: string, taskId: string, values: Record<string, string>, userId: string): Promise<'saved' | 'not_found'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const customEnc = Object.keys(values).length ? this.cipher.encrypt(JSON.stringify(values), phiContext(clinicId, 'tasks.custom')) : null;
+      const [row] = await tx.update(tasks).set({ customEnc }).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId))).returning({ id: tasks.id, callId: tasks.callId });
+      if (!row) return 'not_found';
+      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.fields.updated', entity: 'task', entityId: taskId, callId: row.callId });
+      return 'saved';
+    });
   }
 
   /** Adds an internal note to a request. Notes are never edited or removed. */
