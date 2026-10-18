@@ -106,7 +106,27 @@ export interface AuditLog {
   record(clinicId: string, entry: { actor: string; action: string; entity: string; entityId: string | null; callId?: string }): Promise<void>;
 }
 
+export type SmsTemplate = 'booking_confirmed' | 'request_ready';
+/** Why a text did not go: refused before the carrier, or refused by it. */
+export type TextRefusal = 'opted_out' | 'rate_limited' | 'no_number' | 'texting_off' | 'unregistered' | 'carrier';
+
+export interface TextRequest {
+  to: string; template: SmsTemplate; vars: Record<string, string>; idempotencyKey: string; language?: Language;
+  /** 'auto' a confirmation, 'asked' sent in a call after the caller said yes, 'reminder'. */
+  kind?: 'auto' | 'asked' | 'reminder';
+  /** What the text is about, so staff can see it was sent. Ids only. */
+  about?: { callId?: string | null; patientId?: string | null; taskId?: string | null; appointmentId?: string | null };
+  /** Where on the call the caller said yes (kind 'asked'). */
+  consentAtMs?: number | null;
+}
+
+export type TextResult =
+  | { status: 'sent'; messageId: string }
+  | { status: 'already'; messageId: string } // the same key was already sent
+  | { status: 'not_sent'; reason: TextRefusal; messageId: string | null };
+
 export interface Messenger {
-  // templates only: free text could carry PHI to a carrier that has no BAA
-  sendTemplate(clinicId: string, input: { to: string; template: 'booking_confirmed' | 'request_ready'; vars: Record<string, string>; idempotencyKey: string; language?: Language }): Promise<void>;
+  // templates only: free text could carry PHI to a carrier that has no BAA.
+  // Never throws: the caller (a booking, a job) decides what to say about a text that did not go.
+  sendTemplate(clinicId: string, input: TextRequest): Promise<TextResult>;
 }

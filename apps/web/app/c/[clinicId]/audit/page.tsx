@@ -82,6 +82,19 @@ const ACTIONS: Record<string, string> = {
   'clinic.doctor.updated': 'Changed a provider\'s details',
   'clinic.doctor.removed': 'Removed a provider',
   'clinic.doctors.imported': 'Imported providers from a spreadsheet',
+  'sms.opt_out': 'A number replied STOP: no more texts to it',
+  'sms.opt_in': 'A number replied START: texts to it again',
+  'patient.texts.viewed': 'Looked at the texts sent to a patient',
+  'task.done.refill_ready': 'Approved a refill (ready to pick up)',
+  'task.done.refill_declined': 'Declined a refill',
+  'member.refill_approval.on': 'Allowed someone to approve refills',
+  'member.refill_approval.off': 'Stopped someone approving refills',
+  'clinic.settings.conflict': 'Tried to save Settings over someone else\'s newer save',
+};
+const TEXTS: Record<string, string> = { booking_confirmed: 'a booking confirmation', request_ready: 'that a request is ready to pick up' };
+const NOT_SENT: Record<string, string> = {
+  opted_out: 'the number opted out', rate_limited: 'too many texts to that number today', no_number: 'no mobile number',
+  texting_off: 'texting is off', unregistered: 'text registration is not approved yet', carrier: 'the carrier refused it',
 };
 
 // what an agent did through an API key, by MCP tool
@@ -96,8 +109,9 @@ const ROLE_WORDS: Record<string, string> = { owner: 'owner', admin: 'practice ma
 // actions that carry a detail after the last dot: sms.sent.<template>, call.transferred.<target>
 function describe(action: string) {
   if (ACTIONS[action]) return ACTIONS[action];
-  if (action.startsWith('sms.sent.')) return 'Sent a text confirmation';
-  if (action.startsWith('sms.status.')) return `A text confirmation was ${SMS_STATUSES[action.slice(11)] ?? action.slice(11).replaceAll('_', ' ')}`;
+  if (action.startsWith('sms.sent.')) return `Texted ${TEXTS[action.slice(9)] ?? action.slice(9).replaceAll('_', ' ')}`;
+  if (action.startsWith('sms.not_sent.')) return `Did not send a text: ${NOT_SENT[action.slice(13)] ?? action.slice(13).replaceAll('_', ' ')}`;
+  if (action.startsWith('sms.status.')) return `A text was ${SMS_STATUSES[action.slice(11)] ?? action.slice(11).replaceAll('_', ' ')}`;
   if (action.startsWith('mcp.')) {
     const [, tool = '', outcome] = action.split('.');
     const did = `An agent ${MCP_TOOLS[tool] ?? `used ${tool.replaceAll('_', ' ')}`}`;
@@ -133,7 +147,7 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
 
 const ENTITIES: Record<string, string> = {
   call: 'Call', patient: 'Patient', task: 'Request', appointment: 'Appointment', clinic: 'Clinic', member: 'Team member',
-  api_key: 'API key', webhook_endpoint: 'Webhook endpoint', schedule: 'Schedule', knowledge_document: 'Document',
+  api_key: 'API key', webhook_endpoint: 'Webhook endpoint', schedule: 'Schedule', knowledge_document: 'Document', sms: 'Text',
 };
 const LISTS: Record<string, string> = { 'calls.listed': 'Call list', 'calls.live.listed': 'Live calls', 'patient.recent.viewed': 'Recent patients', 'calls.searched': 'Call search', 'patient.searched': 'Patient search' };
 // "29 Sep", the dashboard's own day-first format, whatever the browser's locale

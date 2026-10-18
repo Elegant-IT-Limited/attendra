@@ -35,10 +35,10 @@ export async function findAccount(auth: Auth, email: string) {
  * working after 72 hours: whoever typed it knows it. An existing account keeps its
  * own password and only gains the membership.
  */
-export async function addMember(auth: Auth, db: Database, m: { email: string; name: string; password: string; orgId: string; role: StaffRole; temporary?: boolean }) {
+export async function addMember(auth: Auth, db: Database, m: { email: string; name: string; password: string; orgId: string; role: StaffRole; temporary?: boolean; approvesRefills?: boolean }) {
   const found = await findAccount(auth, m.email);
   const userId = found?.id ?? await createAccount(auth, m);
-  await addMembership(db, m.orgId, userId, m.role);
+  await addMembership(db, m.orgId, userId, m.role, m.approvesRefills);
   if (!found && m.temporary) await markTemporaryPassword(db, userId);
   return userId;
 }

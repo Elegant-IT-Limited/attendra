@@ -41,6 +41,8 @@ export interface LanguagePack {
     /** A request the team approved is ready to pick up: never what it is. */
     request_ready: (v: Record<string, string>) => string;
   };
+  /** The answer to a text sent to the clinic's number that is not STOP or START: replies are not read. */
+  smsNoReplies: (v: { clinicPhone: string }) => string;
 
   /** The fixed emergency instruction, with the clinic's emergency number. */
   emergencyScript: (emergencyNumber: string) => string;

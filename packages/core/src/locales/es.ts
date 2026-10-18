@@ -31,6 +31,7 @@ export const es: LanguagePack = {
     booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
   },
+  smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +

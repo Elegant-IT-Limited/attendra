@@ -22,6 +22,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+/** The same call, with the response's ETag: the version to send back as If-Match when saving. */
+export async function apiTagged<T>(path: string, init: RequestInit = {}): Promise<{ body: T; etag: string | null }> {
+  const res = await fetch(`/api/v1${path}`, {
+    ...init,
+    credentials: 'same-origin',
+    headers: { ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
+  });
+  const body = await res.json().catch(() => ({ error: 'bad_response' }));
+  if (!res.ok) throw new ApiFailure(res.status, body as ApiError);
+  return { body: body as T, etag: res.headers.get('etag') };
+}
+
 /** Where a failed request should send the browser, if anywhere. */
 export function redirectFor(error: unknown): string | null {
   if (!(error instanceof ApiFailure)) return null;

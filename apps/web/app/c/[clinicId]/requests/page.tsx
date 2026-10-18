@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { PageHeader } from '@/components/shell';
+import { TextStatus } from '@/components/calls/text-status';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,6 +29,8 @@ const DETAIL_LABELS: Record<string, string> = {
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
 };
+/** Approving or declining a refill: only members marked as approving refills on the Team page. */
+const DECISIONS = new Set(['refill_ready', 'refill_declined']);
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 /** What an action sends: the teammate, a note, an outcome, or the urgency and due day. */
@@ -170,6 +173,11 @@ function Requests() {
       </div>
       <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
+      {team.data && !team.data.members.some((m) => m.approvesRefills) && tasks.data?.tasks.some((t) => t.type === 'refill' && t.status === 'open') && (
+        <Alert tone="warn" className="mb-5">
+          Nobody can approve refills yet. On the <Link href={`/c/${clinicId}/team`} className="underline">Team page</Link>, tick Approves refills for your {terms.patient === 'pet' ? 'veterinarians' : 'prescribers'}.
+        </Alert>
+      )}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
           {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
@@ -178,7 +186,7 @@ function Requests() {
         <div className="grid gap-4 md:grid-cols-2">
           {tasks.data.tasks.map((t) => (
             <RequestCard key={t.id} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
-              canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')}
+              canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')} canApprove={!!clinic?.approvesRefills}
               onAct={(action, body) => act.mutate({ task: t, action, body })} />
           ))}
         </div>
@@ -188,9 +196,9 @@ function Requests() {
   );
 }
 
-function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, onAct }: {
+function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct }: {
   task: Task; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
-  canWork: boolean; canReassign: boolean; canOpenPatient: boolean;
+  canWork: boolean; canReassign: boolean; canOpenPatient: boolean; canApprove: boolean;
   onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
 }) {
   const [note, setNote] = useState('');
@@ -229,6 +237,7 @@ function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, te
         ))}
         {open && t.followUp && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
+        {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
       </dl>
       {(t.notes.length > 0 || (open && canWork)) && (
@@ -254,8 +263,12 @@ function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, te
             <>
               <Label htmlFor={`outcome-${t.id}`} className="sr-only">Outcome</Label>
               <Select id={`outcome-${t.id}`} className="h-8 flex-1" value={outcome} onChange={(e) => setOutcome(e.target.value)} aria-label="Outcome">
-                {Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review')).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                {Object.entries(TASK_OUTCOMES).filter(([k]) => (!k.startsWith('refill_') || t.type === 'refill') && (k !== 'details_confirmed' || t.type === 'review'))
+                  .map(([k, v]) => <option key={k} value={k} disabled={DECISIONS.has(k) && !canApprove}>{v}</option>)}
               </Select>
+              {t.type === 'refill' && !canApprove && (
+                <p className="w-full text-xs text-text-muted">A {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills approves or declines this one; you can add a note or call the {patientWord === 'pet' ? 'owner' : 'patient'}.</p>
+              )}
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
               <Button size="sm" disabled={busy} onClick={() => { onAct('done', { outcome }); setClosing(false); }}>Mark done</Button>
             </>

@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Outcome } from '@/components/calls/outcome';
 import { SummaryCard } from '@/components/calls/summary-card';
+import { TextStatus } from '@/components/calls/text-status';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -175,7 +176,10 @@ export default function CallPage() {
                   })}
                 </ol>
               )}
-              <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
+              <div className="mt-4 border-t border-border pt-3">
+                <TextStatus clinicId={clinicId} filter={{ callId }} timeZone={tz} />
+              </div>
+              <p className="mt-3 text-xs text-text-muted">
                 Only argument names are stored here, never the values a caller said. The transcript holds what was said.
               </p>
             </CardContent>

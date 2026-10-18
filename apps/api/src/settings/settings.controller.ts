@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig, emergencyNumberProblem } from '@attendra/core';
-import type { FrontDeskRepository } from '@attendra/db';
-import { Body, Controller, Get, Inject, NotFoundException, Param, Put, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import { type Database, type FrontDeskRepository, PostgresAuditLog, staffNames } from '@attendra/db';
+import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Res, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import type { FastifyReply } from 'fastify';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, FRONT_DESK } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, DB, FRONT_DESK } from '../http/tokens';
 import { issuesOf } from '../http/zod.pipe';
 
 @ApiTags('settings')
@@ -13,16 +14,39 @@ import { issuesOf } from '../http/zod.pipe';
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/settings')
 export class SettingsController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database) {}
 
   @Get()
   @Requires('settings:read')
-  @ApiOperation({ summary: 'The clinic configuration the voice agent runs with' })
+  @ApiOperation({ summary: 'The clinic configuration the voice agent runs with. The ETag is its version: send it back as If-Match when saving.' })
   @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
-  async get(@Param('clinicId') clinicId: string): Promise<ClinicConfig> {
-    const stored = await this.desk.settings(clinicId);
+  async get(@Param('clinicId') clinicId: string, @Res({ passthrough: true }) reply: FastifyReply): Promise<ClinicConfig> {
+    const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
-    return ClinicConfig.parse(stored);
+    reply.header('etag', etag(stored.version)).header('cache-control', 'no-store');
+    if (stored.updatedAt) reply.header('last-modified', stored.updatedAt.toUTCString());
+    return ClinicConfig.parse(stored.config);
+  }
+
+  @Get('meta')
+  @Requires('settings:read')
+  @ApiOperation({ summary: 'The settings\' version, when they were last saved and by whom' })
+  async meta(@Param('clinicId') clinicId: string) {
+    const stored = await this.desk.settingsVersioned(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    return { version: stored.version, ...(await this.who(clinicId, stored)) };
+  }
+
+  /** 409 with the newer settings, so the page can show what changed and merge. */
+  private async conflict(clinicId: string, userId: string): Promise<never> {
+    await new PostgresAuditLog(this.db).record(clinicId, { actor: `user:${userId}`, action: 'clinic.settings.conflict', entity: 'clinic', entityId: clinicId });
+    const theirs = (await this.desk.settingsVersioned(clinicId))!;
+    throw new ConflictException({ error: 'settings_changed', version: theirs.version, ...(await this.who(clinicId, theirs)), current: ClinicConfig.parse(theirs.config) });
+  }
+
+  private async who(clinicId: string, s: { updatedAt: Date | null; updatedBy: string | null }) {
+    const names = s.updatedBy ? await staffNames(this.db, clinicId, [s.updatedBy]) : new Map<string, string>();
+    return { updatedAt: s.updatedAt?.toISOString() ?? null, updatedBy: s.updatedBy ? { name: names.get(s.updatedBy) ?? 'A former team member' } : null };
   }
 
   /**
@@ -37,10 +61,18 @@ export class SettingsController {
   @ApiBody({ schema: schemaOf(ClinicConfig) })
   @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
   @ApiUnprocessableEntityResponse({ description: 'The configuration failed validation' })
-  async put(@Param('clinicId') clinicId: string, @Body() body: unknown, @CurrentStaff() staff: Staff): Promise<ClinicConfig> {
+  @ApiConflictResponse({ description: 'settings_changed: someone saved since the If-Match version; the body has theirs as `current`' })
+  async put(@Param('clinicId') clinicId: string, @Body() body: unknown, @CurrentStaff() staff: Staff, @Headers('if-match') ifMatch: string | undefined, @Res({ passthrough: true }) reply: FastifyReply): Promise<ClinicConfig> {
+    // without If-Match (older clients, scripts) the save goes through as before
+    const expectedVersion = ifMatch ? versionOf(ifMatch) : undefined;
+    if (ifMatch && expectedVersion === undefined) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'If-Match', message: 'expected the ETag from the last read, like "v3"' }] });
     const parsed = ClinicConfig.safeParse(body);
     if (!parsed.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(parsed.error) });
-    const current = ClinicConfig.parse(await this.desk.settings(clinicId));
+    const stored = await this.desk.settingsVersioned(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    // a stale copy is a conflict before anything else: its problems may already be fixed in the newer one
+    if (expectedVersion !== undefined && stored.version !== expectedVersion) await this.conflict(clinicId, staff.userId);
+    const current = ClinicConfig.parse(stored.config);
     // Doctors are changed on the Doctors page. Settings keeps the ones on file, so a
     // Settings page opened before a doctor was added cannot remove them; a visit type
     // removed here is taken off every doctor who offered it.
@@ -65,7 +97,16 @@ export class SettingsController {
     if (this.options.demoMode && JSON.stringify(next.routing) !== JSON.stringify(current.routing)) {
       throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'routing', message: 'transfer numbers cannot be changed in demo mode' }] });
     }
-    await this.desk.saveSettings(clinicId, next, staff.userId);
+    const saved = await this.desk.saveSettings(clinicId, next, staff.userId, undefined, { expectedVersion });
+    if (saved.status === 'conflict') return this.conflict(clinicId, staff.userId);
+    reply.header('etag', etag(saved.version));
     return next;
   }
 }
+
+const etag = (version: number) => `"v${version}"`;
+/** "v3", W/"v3" or v3: the version a client read. */
+const versionOf = (header: string) => {
+  const m = /^(?:W\/)?"?v(\d{1,9})"?$/.exec(header.trim());
+  return m ? Number(m[1]) : undefined;
+};
