@@ -54,7 +54,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed
 
-- **Every voice can be heard before it is chosen.** The speech model has only 10 of the 23 phone voices; the other 13 (Tempo, Willow, Beacon and the rest) now play a sample made by the Live model the calls use (`GPT_LIVE_MODEL` on the API), as WAV. A sample that fails says to try again, and the reason is logged.
+- **Voice previews say which voices have one.** OpenAI's speech model has 10 of the 23 phone voices; those play a preview. The other 13 (Tempo, Willow, Beacon and the rest) exist only in the Live model, which speaks only on a call, so Settings marks them "no preview" and offers a test call instead of a Listen button that failed (`PREVIEW_VOICES`, refusal `calls_only`). A preview that fails says to try again, and the reason is logged.
 - **The Settings menu follows the page**: the section being read is highlighted as you scroll.
 - **One empty row at a time in Settings.** With an empty visit type, question, hospital, transfer number or other row already there, its add button takes you to that row (outlined for a moment) instead of adding another; rows left empty are left out when you save, so they never block it.
 - **The ready-to-pick-up text is in the language of the call**, not always the clinic's first language (`calls.language`).

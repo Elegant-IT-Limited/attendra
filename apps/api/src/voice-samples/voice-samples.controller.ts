@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { BUILT_IN_VOICES, ClinicConfig } from '@attendra/core';
+import { BUILT_IN_VOICES, ClinicConfig, hasPreview } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
 import { Controller, Get, HttpException, Inject, NotFoundException, Optional, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -32,6 +32,8 @@ export class VoiceSamplesController {
   @ApiOperation({ summary: 'The clinic\'s greeting, spoken in one of the built-in voices (audio/mpeg). Not audited: no patient data.' })
   async sample(@Param('clinicId') clinicId: string, @Query('voice') voice: string, @Res() reply: FastifyReply) {
     if (!(BUILT_IN_VOICES as readonly string[]).includes(voice)) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'voice', message: 'not a built-in voice' }] });
+    // checked before the rate limit and the model: nothing to make
+    if (!hasPreview(voice)) throw new UnprocessableEntityException({ error: 'calls_only', message: 'This voice is only on calls, so it has no preview. Hear it in a test call.' });
     if (!this.sampler) throw new HttpException({ error: 'voice_samples_off', message: 'Voice samples are not switched on here. Try the voice in a test call.' }, 503);
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
@@ -53,7 +55,6 @@ export class VoiceSamplesController {
       if (this.cache.size >= CACHE) this.cache.delete(this.cache.keys().next().value!);
       this.cache.set(key, audio);
     }
-    // the speech model answers MP3, the Live model WAV
-    return reply.header('content-type', audio.subarray(0, 4).toString('latin1') === 'RIFF' ? 'audio/wav' : 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
+    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
   }
 }

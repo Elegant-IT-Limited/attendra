@@ -108,7 +108,7 @@ if (realCalls || simulated) {
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
 // with a key, Settings' Listen button speaks the greeting in each voice
 const tts = realCalls ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const voiceSamples = tts ? openAiVoiceSampler(tts, { tts: process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts', live: process.env.GPT_LIVE_MODEL || 'gpt-live-1' }) : null;
+const voiceSamples = tts ? openAiVoiceSampler(tts, process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts') : null;
 const changes = await pgliteChangeFeed(client);
 const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken }, voiceSamples });
 await app.listen({ port, host: '127.0.0.1' });
