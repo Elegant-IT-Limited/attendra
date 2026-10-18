@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { BUILT_IN_VOICES, callingCode, hasPreview, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { callingCode, hasPreview, PREVIEW_VOICES, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -225,12 +225,13 @@ export default function Settings() {
               <div className="flex items-start gap-2">
                 <Select id="voice" aria-describedby="voice-hint" value={c.voice} onChange={(e) => set({ voice: e.target.value })}>
                   {/* a voice saved before this list keeps working, and stays selected */}
-                  {!(BUILT_IN_VOICES as readonly string[]).includes(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)}</option>}
-                  {BUILT_IN_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}{hasPreview(v) ? '' : ' (no preview)'}</option>)}
+                  {/* only voices that can be heard here are offered; a clinic that already uses another keeps it */}
+                  {!hasPreview(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)} (no preview)</option>}
+                  {PREVIEW_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}</option>)}
                 </Select>
                 <VoicePreview clinicId={clinicId} voice={c.voice} />
               </div>
-              <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here. Voices marked no preview are only on calls: save one, then hear it in a test call.</p>
+              <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here.</p>
             </div>
             <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
