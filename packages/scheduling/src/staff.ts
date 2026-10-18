@@ -34,7 +34,7 @@ const actorOf = (userId: string) => `user:${userId}`;
 export class StaffScheduler {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly now = () => new Date()) {}
 
-  async book(clinic: ClinicConfig, input: { patientId: string; providerId: string; visitTypeId: string; start: Date; note?: string | null; idempotencyKey: string }, userId: string): Promise<StaffChange> {
+  async book(clinic: ClinicConfig, input: { patientId: string; providerId: string; visitTypeId: string; start: Date; note?: string | null; idempotencyKey: string; overrideReason?: string | null }, userId: string): Promise<StaffChange> {
     const key = `staff:${userId}:${input.idempotencyKey}`;
     const existing = await byKey(this.db, clinic.id, key);
     if (existing) {
@@ -46,7 +46,7 @@ export class StaffScheduler {
     const check = await withClinic(this.db, clinic.id, async (tx) => {
       const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, input.patientId)));
       if (!patient) return { kind: 'no_patient' } as const;
-      const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now());
+      const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now(), { override: !!input.overrideReason });
       if (problem) return { kind: 'problem', problem } as const;
       const end = new Date(input.start.getTime() + (visitType?.minutes ?? 0) * 60_000);
       if (await this.patientBusy(tx, clinic.id, input.patientId, input.start, end)) {
@@ -64,13 +64,14 @@ export class StaffScheduler {
       startsAt: input.start, endsAt: new Date(input.start.getTime() + visitType!.minutes * 60_000),
       idempotencyKey: key, createdByUserId: userId,
       noteEnc: note ? this.cipher.encrypt(note, phiContext(clinic.id, 'appointments.note')) : null,
-    }, { actor: actorOf(userId), action: 'appointment.booked.staff' });
+      overrideReason: input.overrideReason?.trim() || null,
+    }, { actor: actorOf(userId), action: input.overrideReason ? 'appointment.booked.staff.override' : 'appointment.booked.staff' });
     if (result.status === 'slot_taken') return { status: 'refused', reason: 'taken' };
     return { status: result.status === 'booked' ? 'done' : 'already_done', appointmentId: result.row.id };
   }
 
   /** Moves a booking to a new time, and optionally a new provider. The appointment keeps its id, its patient and its visit type. */
-  async reschedule(clinic: ClinicConfig, appointmentId: string, input: { start: Date; providerId?: string | null }, userId: string): Promise<StaffChange> {
+  async reschedule(clinic: ClinicConfig, appointmentId: string, input: { start: Date; providerId?: string | null; overrideReason?: string | null }, userId: string): Promise<StaffChange> {
     try {
       return await withClinic(this.db, clinic.id, async (tx) => {
         const [row] = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId)));
@@ -79,7 +80,7 @@ export class StaffScheduler {
         const providerId = input.providerId ?? row.providerId;
         if (providerId === row.providerId && input.start.getTime() === row.startsAt.getTime()) return { status: 'already_done', appointmentId } as const;
         if (row.startsAt.getTime() <= this.now().getTime()) return { status: 'refused', reason: 'past' } as const;
-        const problem = slotProblem(clinic, await this.busy(tx, clinic, providerId, input.start, row.id), { providerId, visitTypeId: row.visitTypeId, start: input.start }, this.now());
+        const problem = slotProblem(clinic, await this.busy(tx, clinic, providerId, input.start, row.id), { providerId, visitTypeId: row.visitTypeId, start: input.start }, this.now(), { override: !!input.overrideReason });
         if (problem) return { status: 'refused', reason: problem } as const;
         const minutes = (row.endsAt.getTime() - row.startsAt.getTime()) / 60_000;
         const end = new Date(input.start.getTime() + minutes * 60_000);
@@ -89,10 +90,12 @@ export class StaffScheduler {
           return { status: 'refused', reason: 'patient_busy', patientName: this.nameOf(clinic.id, patient!) } as const;
         }
         // only a row that is still booked: someone may have cancelled it since it was read
-        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date() })
+        // a move made outside the hours keeps its reason; a move back inside them clears it.
+        // the new time gets its own reminder and its own confirmation
+        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date(), overrideReason: input.overrideReason?.trim() || null, reminderSentAt: null, reminderSmsId: null, confirmedAt: null, confirmedVia: null })
           .where(and(eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
         if (!moved.length) return { status: 'refused', reason: 'just_cancelled' } as const;
-        await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: 'appointment.rescheduled.staff', entity: 'appointment', entityId: row.id });
+        await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: input.overrideReason ? 'appointment.rescheduled.staff.override' : 'appointment.rescheduled.staff', entity: 'appointment', entityId: row.id });
         return { status: 'done', appointmentId } as const;
       });
     } catch (err) {

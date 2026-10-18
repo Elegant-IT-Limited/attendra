@@ -85,6 +85,7 @@ export default function PatientPage() {
             <span>{p.gender ? `${sexLabel(p.gender, pet)}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
             {!p.gender && <Badge tone="warn">{pet ? 'Sex' : 'Gender'} not recorded: add it under Details</Badge>}
             {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
+            {p.textsOk && <Badge tone="ok">Texts OK{p.textsOkSource === 'call' ? ' (said yes on a call)' : p.textsOkSource === 'import' ? ' (from an import)' : ''}</Badge>}
             {p.species && <span className="capitalize">{p.species}</span>}
             {p.guardianName && <span>{p.species ? 'Owner' : 'Parent or guardian'} {p.guardianName}</span>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
@@ -190,7 +191,7 @@ export default function PatientPage() {
               {saved && <Alert className="mb-4">Saved. The assistant verifies them with these details from the next call on.</Alert>}
               {can('patients:write') ? (
                 <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}|${p.species}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '' }} onSaved={() => setSaved(true)} />
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '', textsOk: p.textsOk }} onSaved={() => setSaved(true)} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>

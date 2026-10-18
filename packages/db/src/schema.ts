@@ -53,6 +53,9 @@ export const patients = pgTable('patients', {
   genderEnc: text('gender_enc'),
   speciesEnc: text('species_enc'),
   customEnc: text('custom_enc'),
+  /** They agreed to reminder texts: when, and how (on a call, at the desk, in an import). */
+  smsConsentAt: timestamp('sms_consent_at', { withTimezone: true }),
+  smsConsentSource: text('sms_consent_source', { enum: ['call', 'staff', 'import'] }),
   status: text('status', { enum: ['active', 'new'] }).notNull().default('active'),
   createdByCallId: uuid('created_by_call_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -75,6 +78,14 @@ export const appointments = pgTable('appointments', {
   cancelledByUserId: text('cancelled_by_user_id'),
   cancelReason: text('cancel_reason', { enum: ['patient_asked', 'clinic_asked', 'booked_in_error', 'other'] }),
   noteEnc: text('note_enc'),
+  /** The reminder text, once claimed and sent. */
+  reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
+  reminderSmsId: uuid('reminder_sms_id'),
+  /** The owner confirmed the visit (replied C to the reminder), or staff marked it. */
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+  confirmedVia: text('confirmed_via', { enum: ['text', 'staff'] }),
+  /** Why the front desk booked it outside the hours, when it did. */
+  overrideReason: text('override_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

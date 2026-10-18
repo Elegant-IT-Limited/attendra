@@ -35,10 +35,13 @@ export const en: LanguagePack = {
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
     answer: (v) => `${v.clinic}: ${v.answer} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
     link: (v) => `${v.clinic}: ${v.label}: ${v.url} Reply STOP to opt out.`,
+    reminder: (v) => `${v.clinic}: a reminder of ${v.pet ? `${v.pet}'s` : 'your'} visit on ${v.when}. Reply C to confirm, or call ${v.clinicPhone} to change it. Reply STOP to opt out.`,
   },
   textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
   textSent: "Done, I've just sent it.",
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
+  reminderOffer: 'Would you like a reminder text before the visit?',
+  smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
   shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   smsNoReplies: ({ clinicPhone }) => `This number does not read replies. Please call ${clinicPhone}.`,
   emergencyScript: (n) =>

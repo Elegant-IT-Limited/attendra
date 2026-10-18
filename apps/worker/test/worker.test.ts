@@ -1,5 +1,5 @@
-import { DEMO_CLINIC } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { DEMO_CLINIC, Texting, zonedInstant } from '@attendra/core';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -7,7 +7,7 @@ import { Writable } from 'node:stream';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bossQueue, createBoss, jobId, QUEUES } from '../src/queue';
-import { handlers, startWorker } from '../src/runtime';
+import { handlers, quiet, startWorker } from '../src/runtime';
 import { JobError, LocalSummariser, type Summariser } from '../src/summarise';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -326,5 +326,47 @@ describe('a refill ready to pick up', () => {
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent');
     expect(bodies[0]).toContain('listo para recoger');
     expect(await textFor(id)).toMatchObject({ language: 'es', callId, status: 'sent' });
+  });
+});
+
+describe('appointment reminders', () => {
+  const REM = { ...DEMO_CLINIC, id: 'clinic_reminders', name: 'Reminder Vets', industry: 'vet' as const, phoneNumbers: ['+13035550300'],
+    texting: Texting.parse({ reminders: { enabled: true, hoursBefore: 24 } }) };
+  const tz = DEMO_CLINIC.timezone;
+  let patientId: string;
+  const visit = async (start: Date) => (await withClinic(t.db, REM.id, (tx) => tx.insert(schema.appointments).values({
+    clinicId: REM.id, patientId, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: start, endsAt: new Date(start.getTime() + 20 * 60_000),
+    idempotencyKey: `rem-${start.toISOString()}`, createdByUserId: 'u_ana',
+  }).returning({ id: schema.appointments.id })))[0]!.id;
+  beforeAll(async () => {
+    await saveClinic(t.db, 'org_reminders', REM);
+    patientId = await new PostgresPatientDirectory(t.db, cipher, 'seed').create(REM.id, { firstName: 'Biscuit', lastName: 'Okoye', dob: '2019-05-01', phone: '+13035550181' });
+  });
+
+  it('texts the visits coming up, once, only to people who said yes, and not in quiet hours', async () => {
+    const bodies: string[] = [];
+    const texts = { send: async (m: { body: string }) => { bodies.push(m.body); return { sid: `SM${'r'.repeat(31)}${bodies.length}` }; } };
+    const at = (time: string) => () => zonedInstant('2026-10-06', time, tz);
+    const soon = await visit(zonedInstant('2026-10-07', '10:00', tz));
+    await visit(zonedInstant('2026-10-08', '15:00', tz)); // more than 24 hours away
+    const h = (time: string) => handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts, now: at(time) });
+    // no consent yet
+    expect(await h('10:30').appointmentReminders()).toEqual({ sent: 0 });
+    await withClinic(t.db, REM.id, (tx) => tx.update(schema.patients).set({ smsConsentAt: new Date(), smsConsentSource: 'staff' }).where(eq(schema.patients.id, patientId)));
+    expect(await h('21:00').appointmentReminders()).toEqual({ sent: 0 }); // quiet hours
+    expect(await h('10:30').appointmentReminders()).toEqual({ sent: 1 });
+    expect(await h('10:40').appointmentReminders()).toEqual({ sent: 0 }); // claimed once
+    expect(bodies).toEqual([expect.stringMatching(/^Reminder Vets: a reminder of Biscuit's visit on Wednesday, October 7 at 10:00 AM\. Reply C to confirm/)]);
+    const [row] = await withClinic(t.db, REM.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, soon)));
+    expect(row!.reminderSentAt).toBeInstanceOf(Date);
+    expect(row!.reminderSmsId).toEqual(expect.any(String));
+  });
+
+  it('knows quiet hours that run past midnight', () => {
+    expect(quiet(21 * 60, '20:00', '08:00')).toBe(true);
+    expect(quiet(7 * 60, '20:00', '08:00')).toBe(true);
+    expect(quiet(8 * 60, '20:00', '08:00')).toBe(false);
+    expect(quiet(13 * 60, '12:00', '14:00')).toBe(true);
+    expect(quiet(13 * 60, '09:00', '09:00')).toBe(false);
   });
 });

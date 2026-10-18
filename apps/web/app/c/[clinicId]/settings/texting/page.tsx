@@ -57,6 +57,8 @@ export default function TextingSettings() {
   const hosted = !!clinic?.accountLinks.length;
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const kind = (k: TextKind, on: boolean) => set({ kinds: { ...draft.kinds, [k]: on } });
+  const r = draft.reminders;
+  const rem = (patch: Partial<Draft['reminders']>) => set({ reminders: { ...r, ...patch } });
   const dirty = JSON.stringify(draft) !== JSON.stringify(Texting.parse(c.texting ?? {}));
   const kinds: { k: TextKind; label: string; hint: string; show?: boolean; disabled?: string }[] = [
     { k: 'change_confirmed', label: 'Appointment changes', hint: 'A confirmation when a visit is moved or cancelled on the phone, like the booking confirmation. Sent without asking.' },
@@ -112,6 +114,25 @@ export default function TextingSettings() {
               </Item>
             );
           })}
+        </Section>
+
+        <Section id="reminders" title="Reminders" description="A text before each visit, to owners who said yes: on a call, on their record, or in an import. They reply C to confirm, and the Schedule shows it.">
+          <Switch id="reminders-on" label="Send appointment reminders" checked={r.enabled} onCheckedChange={(enabled) => rem({ enabled })} />
+          {r.enabled && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Hours before the visit" htmlFor="reminder-hours" hint="Between 2 and 168. 24 is the day before.">
+                <Input id="reminder-hours" type="number" min={2} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
+              </Field>
+              <Field label="Quiet hours" htmlFor="quiet-from" hint="No texts between these times, in your time zone. One that would fall in them goes out when they end." className="sm:col-span-2">
+                <div className="flex items-center gap-2">
+                  <Input id="quiet-from" type="time" className="w-32" value={r.quietFrom} onChange={(e) => rem({ quietFrom: e.target.value })} />
+                  <span className="text-sm text-text-muted">to</span>
+                  <Input aria-label="Quiet hours end" type="time" className="w-32" value={r.quietTo} onChange={(e) => rem({ quietTo: e.target.value })} />
+                </div>
+              </Field>
+            </div>
+          )}
+          {r.enabled && <Switch id="reminders-ask" label="Ask callers when booking" hint={'After a booking, the assistant asks once: "Would you like a reminder text before the visit?" A clear yes is kept on their record.'} checked={r.askOnBooking} onCheckedChange={(askOnBooking) => rem({ askOnBooking })} />}
         </Section>
       </fieldset>
 

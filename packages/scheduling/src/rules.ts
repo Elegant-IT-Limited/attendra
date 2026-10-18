@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, type Slot } from '@attendra/core';
+import { awayOn, awayWindows, bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, localParts, type Slot, specialDayOf } from '@attendra/core';
 
 /** Why a time cannot be booked, in the words the API and the dashboard use. */
 export type SlotProblem =
   | 'unknown_provider'
   | 'unknown_visit_type'
   | 'not_offered' // the provider does not do this visit type
-  | 'holiday'
+  | 'holiday' // a holiday, or a special day the clinic is closed
+  | 'away' // the provider is away then, all day or part of it
   | 'closed' // outside the provider's hours, or not on the visit's time grid
   | 'past'
   | 'taken';
 
-type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'providers' | 'visitTypes'>;
+type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'providers' | 'visitTypes' | 'specialDays'>;
 
 export interface OpenSlotQuery {
   visitTypeId: string;
@@ -39,18 +40,30 @@ export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery
  * slot search's own: a time is bookable exactly when openSlots would offer it, so a
  * booking made at the desk follows the same rules as one made on the phone. The
  * checks before that only name the reason.
+ *
+ * With `override` (the front desk squeezing someone in, with a reason) the clinic's
+ * hours, holidays, special days, the provider's absences and the time grid are not
+ * checked; who, which visit, the past and a clash still are. The assistant never
+ * overrides.
  */
-export function slotProblem(clinic: Clinic, busy: BusyInterval[], req: { providerId: string; visitTypeId: string; start: Date }, now: Date): SlotProblem | null {
+export function slotProblem(clinic: Clinic, busy: BusyInterval[], req: { providerId: string; visitTypeId: string; start: Date }, now: Date, opts: { override?: boolean } = {}): SlotProblem | null {
   const provider = clinic.providers.find((p) => p.id === req.providerId);
   if (!provider) return 'unknown_provider';
   const visitType = clinic.visitTypes.find((v) => v.id === req.visitTypeId);
   if (!visitType) return 'unknown_visit_type';
   if (!provider.visitTypeIds.includes(visitType.id)) return 'not_offered';
   const date = localDateOf(req.start, clinic.timezone);
-  if (clinic.holidays.includes(date)) return 'holiday';
-  if (req.start.getTime() <= now.getTime()) return 'past';
-  const grid = openSlots(clinic, [], { visitTypeId: visitType.id, providerId: provider.id, from: date, days: 1, now, limit: 1000 });
-  if (!grid.some((s) => s.start.getTime() === req.start.getTime())) return 'closed';
   const end = new Date(req.start.getTime() + visitType.minutes * 60_000);
+  if (!opts.override) {
+    const special = specialDayOf(clinic, date);
+    if (special ? !special.windows.length : clinic.holidays.includes(date)) return 'holiday';
+  }
+  if (req.start.getTime() <= now.getTime()) return 'past';
+  if (!opts.override) {
+    const m = localParts(req.start, clinic.timezone).minutes;
+    if (awayOn(provider, date) || awayWindows(provider, date).some((a) => m < a.end && m + visitType.minutes > a.start)) return 'away';
+    const grid = openSlots(clinic, [], { visitTypeId: visitType.id, providerId: provider.id, from: date, days: 1, now, limit: 1000 });
+    if (!grid.some((s) => s.start.getTime() === req.start.getTime())) return 'closed';
+  }
   return clashes(busy, clinic.visitTypes, provider.id, req.start, end, visitType.bufferMinutes ?? 0) ? 'taken' : null;
 }

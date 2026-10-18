@@ -10,7 +10,9 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Offers and announcements, with optional dates | Settings | Answers callers who ask, only while each one runs. |
 | Kinds of request, with what to ask for each | Settings | Asks for what you listed and labels the callback request with the kind, shown on Requests. |
 | Answers to common questions, and documents | Settings, Knowledge | Answers from your words, and never invents the rest. |
-| Hours, holidays, what happens while you are closed, the emergency hospital | Settings | Books inside your hours; takes requests or books after hours, as you chose. |
+| Hours, holidays and special days (closed, or shorter hours, with a note), what happens while you are closed, the emergency hospital | Settings | Books inside your hours and tells callers about a special day; takes requests or books after hours, as you chose. |
+| A doctor away for part of a day | Doctors, Days off | Offers no times between the two times. |
+| Reminder texts: hours before, quiet hours, asking on calls | Settings → Texting | Asks after a booking; texts only people who said yes. |
 | Fields on each patient or pet: a label and a kind (text, yes or no, date), up to 20 | Settings; filled in under Details on each record (`PUT /api/v1/clinics/:clinicId/patients/:patientId/fields`) | Not used on calls. Encrypted like the rest of the record; saving is in the audit log, without the values. Removing a field hides what was filled in. |
 | Urgent and a due day on each open request | Requests (`POST /api/v1/clinics/:clinicId/tasks/:taskId/plan`) | Not used on calls. Urgent requests lead the open queue; a due day shows as Due or Overdue. Audited. |
 | VIP callers: a name and a phone number, up to 50 | Settings | While a front desk route applies (Routing), the assistant greets a VIP caller, says it is connecting them, and transfers the call once it has finished speaking. Outside those hours, or with no front desk route, it answers them like anyone else. A failed transfer is handled as any failed transfer: the assistant offers a callback. |

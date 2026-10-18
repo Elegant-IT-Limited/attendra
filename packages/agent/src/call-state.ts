@@ -69,6 +69,9 @@ export class CallState {
   textsSent = 0;
   /** Where on the call the last yes to a text was asked: an offer counts once. */
   lastTextConsentMs = -1;
+  /** After a booking, the question about reminder texts: asked once, answered once. */
+  reminderOffer: { patientId: string; offeredAtMs: number; askedAtMs: number | null } | null = null;
+  remindersAsked = false;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
@@ -83,6 +86,9 @@ export class CallState {
     // the same for a text offer: the question is the first thing said after it
     if (speaker === 'agent' && this.textOffer && this.textOffer.askedAtMs === null && endMs > this.textOffer.offeredAtMs) {
       this.textOffer.askedAtMs = Math.max(startMs, this.textOffer.offeredAtMs);
+    }
+    if (speaker === 'agent' && this.reminderOffer && this.reminderOffer.askedAtMs === null && endMs > this.reminderOffer.offeredAtMs) {
+      this.reminderOffer.askedAtMs = Math.max(startMs, this.reminderOffer.offeredAtMs);
     }
     if (last && last.speaker === speaker) {
       last.text = `${last.text}${delta.startsWith(' ') || last.text.endsWith(' ') ? '' : ' '}${delta}`.replace(/\s+/g, ' ');
