@@ -411,7 +411,7 @@ export class FrontDeskRepository {
         .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId, callId: tasks.callId });
       if (updated.length) {
         // an approval or a refusal of a refill is named in the log, with who made it
-        const decision = updated[0]!.type === 'refill' && (outcome === 'refill_ready' || outcome === 'refill_declined') ? `.${outcome}` : '';
+        const decision = updated[0]!.type === 'refill' && (outcome === 'refill_sent' || outcome === 'refill_ready' || outcome === 'refill_declined') ? `.${outcome}` : '';
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: `task.done${decision}`, entity: 'task', entityId: taskId });
         // checking a patient the assistant added makes them an ordinary patient
         const { type, patientId, callId } = updated[0]!;

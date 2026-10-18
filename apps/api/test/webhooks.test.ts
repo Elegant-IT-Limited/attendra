@@ -172,6 +172,8 @@ describe('events from the front desk', () => {
     const refused = await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });
     expect(refused.statusCode).toBe(403);
     expect(refused.json().error).toBe('refill_approval_required');
+    // sent to the pharmacy is an approval too
+    expect((await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_sent' } })).statusCode).toBe(403);
     expect(ready).toEqual([]);
     expect((await api.request('PATCH', `${C}/members/${api.users.staff}`, { cookie: as.admin, body: { approvesRefills: true } })).statusCode).toBe(204);
     await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });

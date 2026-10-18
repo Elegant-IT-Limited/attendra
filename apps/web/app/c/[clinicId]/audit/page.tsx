@@ -85,6 +85,7 @@ const ACTIONS: Record<string, string> = {
   'sms.opt_out': 'A number replied STOP: no more texts to it',
   'sms.opt_in': 'A number replied START: texts to it again',
   'patient.texts.viewed': 'Looked at the texts sent to a patient',
+  'task.done.refill_sent': 'Approved a refill (sent to the pharmacy)',
   'task.done.refill_ready': 'Approved a refill (ready to pick up)',
   'task.done.refill_declined': 'Declined a refill',
   'member.refill_approval.on': 'Allowed someone to approve refills',
