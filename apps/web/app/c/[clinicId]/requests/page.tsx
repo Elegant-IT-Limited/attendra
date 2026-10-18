@@ -29,8 +29,8 @@ const DETAIL_LABELS: Record<string, string> = {
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
 };
-/** Approving or declining a refill: only members marked as approving refills on the Team page. */
-const DECISIONS = new Set(['refill_ready', 'refill_declined']);
+/** Sent to the pharmacy, ready to pick up, or not approved: only members marked as approving refills on the Team page. */
+const DECISIONS = new Set(['refill_sent', 'refill_ready', 'refill_declined']);
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
 type Who = 'everyone' | 'me' | 'unassigned';
 /** What an action sends: the teammate, a note, an outcome, or the urgency and due day. */
@@ -203,7 +203,7 @@ function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, te
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
-  const [outcome, setOutcome] = useState(t.type === 'refill' ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : 'called_back');
+  const [outcome, setOutcome] = useState(t.type === 'refill' && canApprove ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : 'called_back');
   const Icon = ICONS[t.type] ?? Phone;
   const mine = t.assigneeUserId === meId;
   const heldByOther = !!t.assigneeUserId && !mine;
@@ -267,7 +267,7 @@ function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, te
                   .map(([k, v]) => <option key={k} value={k} disabled={DECISIONS.has(k) && !canApprove}>{v}</option>)}
               </Select>
               {t.type === 'refill' && !canApprove && (
-                <p className="w-full text-xs text-text-muted">A {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills approves or declines this one; you can add a note or call the {patientWord === 'pet' ? 'owner' : 'patient'}.</p>
+                <p className="w-full text-xs text-text-muted">A {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills decides this one (sent, ready or not approved); you can add a note or call the {patientWord === 'pet' ? 'owner' : 'patient'}.</p>
               )}
               <Button size="sm" variant="ghost" onClick={() => setClosing(false)}>Back</Button>
               <Button size="sm" disabled={busy} onClick={() => { onAct('done', { outcome }); setClosing(false); }}>Mark done</Button>

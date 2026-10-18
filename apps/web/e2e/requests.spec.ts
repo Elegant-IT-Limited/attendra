@@ -21,13 +21,16 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(card.getByText(/Jordan \(front desk\),/)).toBeVisible();
 
   await card.getByRole('button', { name: 'Mark done' }).click();
-  await card.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
+  // the front desk is not marked as approving refills: a vet decides
+  await expect(card.getByLabel('Outcome').locator('option', { hasText: 'Refill sent to the pharmacy' })).toBeDisabled();
+  await expect(card.getByText(/decides this one/)).toBeVisible();
+  await card.getByLabel('Outcome').selectOption({ label: 'Called back' });
   await card.getByRole('button', { name: 'Mark done' }).click();
   await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'Done' }).click();
   const done = page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' });
-  await expect(done.getByText('Refill sent to the pharmacy')).toBeVisible();
+  await expect(done.getByText('Called back', { exact: true })).toBeVisible();
   // when it was closed and by whom, not when it came in
   await expect(done.getByText(/^Prescription refill, closed \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M by Jordan \(front desk\)$/)).toBeVisible();
 

@@ -122,7 +122,7 @@ export default function Team() {
             </Table>
           )}
       </Card>
-      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can mark a refill approved (which texts the caller) or declined; tick it for your veterinarians. Every change is in the audit log.</p>
+      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
 
       <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
       <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}

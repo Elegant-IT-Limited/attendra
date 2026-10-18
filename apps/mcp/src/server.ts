@@ -127,14 +127,14 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('mark_request_done', {
     title: 'Close a request',
-    description: 'Mark an open request done, with what came of it. Needs requests:write. It fails if someone else holds the request, and approving or declining a refill needs the key\'s maker to be marked as approving refills.',
+    description: 'Mark an open request done, with what came of it. Needs requests:write. It fails if someone else holds the request, and closing a refill as sent, ready or not approved needs the key\'s maker to be marked as approving refills.',
     inputSchema: { requestId: z.uuid(), outcome: z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed']) },
     // not idempotent: a second call finds the request already closed and answers held_by_someone_else
     annotations: { destructiveHint: false, idempotentHint: false },
   }, tool('mark_request_done', 'requests:write', async (a: { requestId: string; outcome: 'called_back' | 'left_message' | 'refill_sent' | 'refill_ready' | 'refill_declined' | 'not_needed' }) => {
     // closed in the name of the person who made the key: a key never acts on its own authority,
     // so it approves or declines a refill only if that person is marked as approving refills
-    if ((a.outcome === 'refill_ready' || a.outcome === 'refill_declined') && (await taskFacts(d.db, caller.clinicId, a.requestId))?.type === 'refill'
+    if ((a.outcome === 'refill_sent' || a.outcome === 'refill_ready' || a.outcome === 'refill_declined') && (await taskFacts(d.db, caller.clinicId, a.requestId))?.type === 'refill'
       && !(await approvesRefills(d.db, caller.createdByUserId, caller.clinicId))) {
       return { result: { requestId: a.requestId, status: 'refill_approval_required' } };
     }

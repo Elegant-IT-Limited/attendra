@@ -60,7 +60,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(first.getByText('Unclaimed')).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await first.getByLabel('Outcome').selectOption({ label: 'Refill sent to the pharmacy' });
+    await first.getByLabel('Outcome').selectOption({ label: 'Called back' });
     await first.getByRole('button', { name: 'Mark done' }).click();
     await expect(tasks).toHaveCount(10);
     await page.getByRole('tab', { name: 'Done' }).click();
