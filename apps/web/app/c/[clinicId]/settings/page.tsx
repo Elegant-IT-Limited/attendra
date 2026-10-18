@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
+import { BookingRulesSection } from '@/components/settings/booking-rules';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SpecialDaysEditor } from '@/components/settings/special-days';
@@ -40,6 +41,7 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'holidays', label: () => 'Holidays and special days' },
   { id: 'emergency', label: () => 'Emergency hospitals' },
   { id: 'visits', label: () => 'Visit types' },
+  { id: 'booking', label: () => 'Booking rules' },
   { id: 'transfers', label: () => 'Transfers' },
   { id: 'vip', label: () => 'VIP callers' },
   { id: 'answers', label: () => 'Common questions' },
@@ -58,7 +60,7 @@ function issueLabel(path: string) {
     requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
     hours: 'Opening hours', holidays: 'Holidays', specialDays: 'Special days', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
-    averageVisitValue: 'Average visit value', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
+    averageVisitValue: 'Average visit value', booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
     emergencyReview: 'Emergency list review',
   };
   return names[top] ?? (top || 'Settings');
@@ -416,6 +418,8 @@ export default function Settings() {
             <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open {terms.title('providers')}</Link>
           </p>
         </Section>
+
+        <BookingRulesSection c={c} set={set} disabled={!writable || save.isPending} terms={terms} />
 
         <Section id="transfers" title="Transfers" description="Where the assistant sends a caller who asks for a person, and when. It transfers only to these numbers. Once the call is passed on, that line's own phone system handles it, voicemail included; if the transfer itself fails, the assistant stays on and offers a callback."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.routing, (r) => BLANK.number(r.uri, c), (_r, i) => `item-routing-${i}`, () => { set({ routing: [{ target: 'front_desk', uri: `tel:+${callingCode(c.phoneNumbers[0] ?? '') ?? ''}`, when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); })}><Plus /> Transfer number</Button>}>

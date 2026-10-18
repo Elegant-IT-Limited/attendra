@@ -75,4 +75,15 @@ export class BuiltinScheduler implements SchedulerAdapter {
       return rows.map(summary);
     });
   }
+
+  /** Past visits that took place (not cancelled), for the patient's usual provider: the last two years. */
+  async history(clinicId: string, patientId: string, now: Date) {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select({ providerId: appointments.providerId, start: appointments.startsAt }).from(appointments).where(and(
+        eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), eq(appointments.status, 'booked'),
+        lt(appointments.startsAt, now), gt(appointments.startsAt, new Date(now.getTime() - 730 * 86_400_000)),
+      ));
+      return rows;
+    });
+  }
 }

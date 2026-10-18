@@ -25,6 +25,10 @@ export interface SlotQuery {
   now: Date;
   leadMinutes?: number; // no same-hour surprises for the front desk
   limit?: number;
+  /** Several free at the same moment: the one with the fewest visits that day ('fewest'), or the list's order (the default). */
+  tieBreak?: 'order' | 'fewest';
+  /** One slot per start time: the first of those free then, so a caller hears three different times, not one time three times. */
+  distinctTimes?: boolean;
 }
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
@@ -80,8 +84,13 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
         }
       }
     });
-    day.sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime() || a.order - b.order);
+    // the visits each one already has that day, for a tie broken by the fewest
+    const load = (providerId: string) => (q.tieBreak === 'fewest'
+      ? busy.filter((b) => b.providerId === providerId && localParts(b.start, clinic.timezone).date === date).length : 0);
+    const loads = new Map(q.providers.map((p) => [p.id, load(p.id)]));
+    day.sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime() || loads.get(a.slot.providerId)! - loads.get(b.slot.providerId)! || a.order - b.order);
     for (const { slot } of day) {
+      if (q.distinctTimes && out.some((s) => s.start.getTime() === slot.start.getTime())) continue;
       out.push(slot);
       if (out.length >= limit) return out;
     }
