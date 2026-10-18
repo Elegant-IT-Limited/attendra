@@ -26,7 +26,7 @@ const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border bo
 /** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
 export default function Today() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { can, data: me } = useClinic(clinicId);
+  const { can, data: me, clinic: account } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
@@ -80,7 +80,7 @@ export default function Today() {
           <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
         </div>
         <div className="space-y-6">
-          <AssistantDid overview={overview} />
+          <AssistantDid overview={overview} hosted={!!account?.accountLinks.length} />
           <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} canTest={can('calls:test') && !!me?.testCalls} />
         </div>
       </div>
@@ -245,7 +245,7 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
   );
 }
 
-function AssistantDid({ overview }: { overview: Q<Overview> }) {
+function AssistantDid({ overview, hosted }: { overview: Q<Overview>; hosted: boolean }) {
   const o = overview.data;
   const n = (v: number, f?: (x: number) => string) => <AnimatedNumber value={v} format={f} />;
   const rows: [string, (a: Overview['today']) => ReactNode][] = [
@@ -256,7 +256,8 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
     ['Handed to staff', (a) => n(a.handedToStaff)],
     ['After hours', (a) => n(a.afterHours)],
     ['Talk time', (a) => n(a.talkMinutes, (x) => `${x.toFixed(1).replace(/\.0$/, '')} min`)],
-    ['Estimated cost', (a) => n(a.estimatedCost, usd)],
+    // a hosted clinic pays a plan, not the voice minutes: the estimate is for people who run Attendra themselves
+    ...(hosted ? [] : [['Estimated cost', (a: Overview['today']) => n(a.estimatedCost, usd)] as [string, (a: Overview['today']) => ReactNode]]),
   ];
   return (
     <Card>
@@ -275,7 +276,7 @@ function AssistantDid({ overview }: { overview: Q<Overview> }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-3 text-xs text-text-muted">Phone calls only; browser tests are not counted. Cost is talk time at ${o.costPerMinute.toFixed(2)} a minute.</p>
+          <p className="mt-3 text-xs text-text-muted">Phone calls only; browser tests are not counted.{hosted ? '' : ` Cost is talk time at $${o.costPerMinute.toFixed(2)} a minute.`}</p>
         </CardContent>
       )}
     </Card>

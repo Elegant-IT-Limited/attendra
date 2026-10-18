@@ -100,6 +100,10 @@
   --visit-3-soft: oklch(0.95 0.035 310);
   --visit-4: oklch(0.62 0.13 60);
   --visit-4-soft: oklch(0.95 0.04 70);
+  --visit-5: oklch(0.56 0.15 15);
+  --visit-5-soft: oklch(0.95 0.03 15);
+  --visit-6: oklch(0.55 0.1 120);
+  --visit-6-soft: oklch(0.95 0.04 120);
 }
 
 [data-theme=dark] {
@@ -135,6 +139,10 @@
   --visit-3-soft: oklch(0.3 0.05 310);
   --visit-4: oklch(0.75 0.12 70);
   --visit-4-soft: oklch(0.32 0.05 70);
+  --visit-5: oklch(0.74 0.13 15);
+  --visit-5-soft: oklch(0.32 0.05 15);
+  --visit-6: oklch(0.76 0.11 120);
+  --visit-6-soft: oklch(0.32 0.05 120);
 }
 
 /* one focus ring, everywhere: a 2 px ring in the focus colour, offset from the element */

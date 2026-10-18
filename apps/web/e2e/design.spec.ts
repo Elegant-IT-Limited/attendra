@@ -52,7 +52,7 @@ for (const theme of ['light', 'dark'] as const) {
       ['Today', `/c/${c}`, 'Calls answered'],
       ['Schedule', `/c/${c}/schedule?view=week`, 'Week of'],
       ['Patients', `/c/${c}/patients`, 'Find a patient'],
-      ['Requests', `/c/${c}/requests`, 'Prescription refill'],
+      ['Requests', `/c/${c}/requests`, 'What each kind of request means'],
       ['Calls', `/c/${c}/calls`, 'What the assistant did'],
       ['Team', `/c/${c}/team`, 'Add a person'],
       ['Settings', `/c/${c}/settings`, 'Greeting'],

@@ -149,7 +149,7 @@ export default function CallPage() {
                   </span>
                   <Badge tone="ok">Verified</Badge>
                 </div>
-              ) : <p className="text-text-muted">Not verified. The assistant links a call to a patient only after checking their name, date of birth and phone.</p>}
+              ) : <p className="text-text-muted">{terms.patient === 'pet' ? 'Not verified. The assistant links a call to a pet only after checking the owner\'s name, the pet\'s name and the phone.' : 'Not verified. The assistant links a call to a patient only after checking their name, date of birth and phone.'}</p>}
             </CardContent>
           </Card>
           <Card>

@@ -21,7 +21,7 @@ import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
 
 const SCOPES: { scope: ApiKeyView['scopes'][number]; label: string; hint: string }[] = [
-  { scope: 'schedule:read', label: 'Read the schedule', hint: 'Open times, and today\'s appointments with patient names.' },
+  { scope: 'schedule:read', label: 'Read the schedule', hint: 'Open times, and today\'s appointments with the names on them.' },
   { scope: 'requests:read', label: 'Read requests', hint: 'The open refill and callback requests, with their details.' },
   { scope: 'requests:write', label: 'Close requests', hint: 'Mark a request done, with its outcome.' },
   { scope: 'quality:read', label: 'Read quality numbers', hint: 'The last 7 days from the Quality page. Counts only.' },

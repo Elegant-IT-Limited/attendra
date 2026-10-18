@@ -155,7 +155,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       <div className="min-w-0 pb-20 md:pb-0">
         {me?.demoMode && (
           <div className="border-b border-warning/30 bg-warning-soft px-6 py-2 text-sm" role="note">
-            Demo mode. Every patient and call here is synthetic, and two-step sign-in is switched off.
+            Demo mode. Every record and call here is made up, and two-step sign-in is switched off.
           </div>
         )}
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>

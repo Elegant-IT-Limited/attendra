@@ -22,13 +22,13 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
   const toggle = (l: Language, on: boolean) => set({ languages: on ? LANGUAGES.filter((x) => x === l || c.languages.includes(x)) : c.languages.filter((x) => x !== l) });
 
   return (
-    <Section title="Assistant and languages" description="What the assistant is called, which languages it answers in, and the emergency number it gives. The dashboard stays in English.">
+    <Section id="assistant" title="Assistant and languages" description="What the assistant is called, which languages it answers in, and the emergency number it gives. The dashboard stays in English.">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Assistant name" htmlFor="assistant-name" hint={`One word, 2 to 24 letters. Without one it is "${DEFAULT_ASSISTANT_NAME}". A name never replaces the AI disclosure.`}>
-          <Input id="assistant-name" value={c.assistantName ?? ''} placeholder="Maya" maxLength={24}
+          <Input id="assistant-name" value={c.assistantName ?? ''} placeholder="e.g. Maya" maxLength={24}
             onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
-        <Field label="Emergency number" htmlFor="emergency-number" hint={`What the emergency script tells callers to ring. Leave empty for ${defaultNumber}, from the clinic's country${allowed.length > 1 ? `; ${allowed.join(' or ')} are allowed` : ''}.`}>
+        <Field label="Emergency number" htmlFor="emergency-number" hint={`Set from your clinic's country: ${defaultNumber}. Leave it empty unless your area uses another number${allowed.length > 1 ? ` (${allowed.join(' or ')})` : ''}.`}>
           <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={defaultNumber} maxLength={4}
             onChange={(e) => set({ emergencyNumber: e.target.value.trim() || undefined })} />
         </Field>
@@ -48,7 +48,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
       </fieldset>
 
       <Field label="Primary language" htmlFor="primary-language" hint="Calls start in this language. The assistant switches when the caller speaks another one from the list, and back again.">
-        <Select id="primary-language" className="w-56" value={c.primaryLanguage} onChange={(e) => set({ primaryLanguage: e.target.value as Language })}>
+        <Select id="primary-language" className="sm:w-64" value={c.primaryLanguage} onChange={(e) => set({ primaryLanguage: e.target.value as Language })}>
           {c.languages.map((l) => <option key={l} value={l}>{PACKS[l].name}</option>)}
         </Select>
       </Field>
@@ -86,7 +86,7 @@ export function LocalNames({ thing, languages, onChange, what }: {
     <>
       {others.map((l) => (
         <Field key={l} label={`In ${PACKS[l].name}`}>
-          <Input className="w-56" lang={PACKS[l].locale} value={thing.names?.[l] ?? ''} placeholder={thing.name} aria-label={`${what} ${thing.name} in ${PACKS[l].name}`}
+          <Input lang={PACKS[l].locale} value={thing.names?.[l] ?? ''} placeholder={thing.name} aria-label={`${what} ${thing.name} in ${PACKS[l].name}`}
             onChange={(e) => {
               const names = { ...thing.names, [l]: e.target.value || undefined };
               const kept = Object.fromEntries(Object.entries(names).filter(([, v]) => v)) as Partial<Record<Language, string>>;
