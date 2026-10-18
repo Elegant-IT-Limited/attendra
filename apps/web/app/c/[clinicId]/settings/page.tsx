@@ -27,7 +27,7 @@ type T = Terms & { title: (t: keyof Terms) => string };
 
 /** The parts of this page, in order, for its own menu. */
 const PARTS: { id: string; label: (t: T) => string }[] = [
-  { id: 'greeting', label: () => 'Greeting and voice' },
+  { id: 'greeting-voice', label: () => 'Greeting and voice' },
   { id: 'assistant', label: () => 'Assistant and languages' },
   { id: 'hours', label: () => 'Opening hours' },
   { id: 'holidays', label: () => 'Holidays' },
@@ -130,7 +130,7 @@ export default function Settings() {
           </ul>
         </nav>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
-        <Section id="greeting" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
+        <Section id="greeting-voice" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
           <Field label="Clinic name" htmlFor="name"><Input id="name" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
