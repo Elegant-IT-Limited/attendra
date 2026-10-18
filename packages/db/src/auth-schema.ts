@@ -77,6 +77,8 @@ export const memberships = pgTable('memberships', {
   createdAt: ts('created_at').notNull().defaultNow(),
   // a staff member's own number for taking over a live call, if they gave one
   transferNumber: text('transfer_number'),
+  // may approve or decline a refill; set on the Team page
+  approvesRefills: boolean('approves_refills').notNull().default(false),
 });
 
 export const invitations = pgTable('invitations', {

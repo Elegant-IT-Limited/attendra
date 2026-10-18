@@ -18,6 +18,9 @@ const Env = z.object({
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
+  // this service's public https address: Twilio sends text replies (STOP) and delivery reports to it
+  ATTENDRA_VOICE_PUBLIC_URL: optional(z.string().url()),
+  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(500)),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
   BROWSER_CALL_MAX_SECONDS: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(300)),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),

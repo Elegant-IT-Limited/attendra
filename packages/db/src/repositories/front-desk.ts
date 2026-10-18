@@ -4,7 +4,7 @@ import { memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
-import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, patients, taskNotes, tasks } from '../schema';
+import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, patients, smsMessages, taskNotes, tasks } from '../schema';
 import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
@@ -17,7 +17,7 @@ type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
  * withClinic for the clinic it returns.
  */
 export async function clinicsForUser(db: Database, userId: string) {
-  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, role: memberships.role })
+  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, role: memberships.role, approvesRefills: memberships.approvesRefills })
     .from(memberships).innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
     .where(eq(memberships.userId, userId)).orderBy(clinics.name);
 }
@@ -30,9 +30,9 @@ export async function staffRole(db: Database, userId: string, clinicId: string):
 }
 
 /** Adds or changes one person's role in one organization. Owner connection; used by the member CLI and the demo seed. */
-export async function addMembership(db: Database, orgId: string, userId: string, role: StaffRole) {
-  await db.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId, role })
-    .onConflictDoUpdate({ target: [memberships.organizationId, memberships.userId], set: { role } });
+export async function addMembership(db: Database, orgId: string, userId: string, role: StaffRole, approvesRefills?: boolean) {
+  await db.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId, role, approvesRefills: !!approvesRefills })
+    .onConflictDoUpdate({ target: [memberships.organizationId, memberships.userId], set: { role, ...(approvesRefills === undefined ? {} : { approvesRefills }) } });
 }
 
 /** The organization a clinic belongs to. Owner connection; no PHI. */
@@ -42,6 +42,8 @@ export async function orgOfClinic(db: Database, clinicId: string): Promise<strin
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
+/** Every save of the settings: one more on the version, and when and by whom. */
+const bump = (userId: string) => ({ configVersion: sql`${clinics.configVersion} + 1`, configUpdatedAt: new Date(), configUpdatedBy: userId });
 
 /** What a settings change hands back: the config to save with a result, or a result alone. */
 export type SettingsChange<T> = { save: { name: string; timezone: string }; result: T } | { result: T };
@@ -75,6 +77,14 @@ export async function transferNumber(db: Database, userId: string, clinicId: str
     .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
     .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
   return row?.n ?? null;
+}
+
+/** Whether this person may approve or decline a refill at this clinic: marked on the Team page. Owner connection. */
+export async function approvesRefills(db: Database, userId: string, clinicId: string): Promise<boolean> {
+  const [row] = await db.select({ ok: memberships.approvesRefills }).from(memberships)
+    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+  return !!row?.ok;
 }
 
 /** Sets or clears it, audited in the clinic: a take-over rings this number, so a change to it is a change to where calls can go. */
@@ -400,7 +410,9 @@ export class FrontDeskRepository {
           or(isNull(tasks.assigneeUserId), eq(tasks.assigneeUserId, userId))))
         .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId, callId: tasks.callId });
       if (updated.length) {
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.done', entity: 'task', entityId: taskId });
+        // an approval or a refusal of a refill is named in the log, with who made it
+        const decision = updated[0]!.type === 'refill' && (outcome === 'refill_ready' || outcome === 'refill_declined') ? `.${outcome}` : '';
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: `task.done${decision}`, entity: 'task', entityId: taskId });
         // checking a patient the assistant added makes them an ordinary patient
         const { type, patientId, callId } = updated[0]!;
         // getting back to the caller is the review the call was flagged for
@@ -465,6 +477,15 @@ export class FrontDeskRepository {
     });
   }
 
+  /** The settings with their version: one more on every save, so a save made from an older copy can be refused. */
+  async settingsVersioned(clinicId: string): Promise<{ config: unknown; version: number; updatedAt: Date | null; updatedBy: string | null } | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [row] = await tx.select({ config: clinics.config, version: clinics.configVersion, updatedAt: clinics.configUpdatedAt, updatedBy: clinics.configUpdatedBy })
+        .from(clinics).where(eq(clinics.id, clinicId));
+      return row ?? null;
+    });
+  }
+
   /**
    * Reads the clinic's settings, applies a change and saves it, with the row locked so
    * two people editing doctors at once cannot undo each other. `change` returns the
@@ -477,7 +498,7 @@ export class FrontDeskRepository {
       if (!row) return null;
       const out = await change(row.config, tx);
       if ('save' in out) {
-        await tx.update(clinics).set({ name: out.save.name, timezone: out.save.timezone, config: out.save }).where(eq(clinics.id, clinicId));
+        await tx.update(clinics).set({ name: out.save.name, timezone: out.save.timezone, config: out.save, ...bump(userId) }).where(eq(clinics.id, clinicId));
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId });
       }
       return out.result;
@@ -494,11 +515,42 @@ export class FrontDeskRepository {
     return within ? count(within) : withClinic(this.db, clinicId, count);
   }
 
-  /** Saves a validated ClinicConfig. The caller checks that the id and phone numbers are unchanged. */
-  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string, action = 'clinic.settings.updated') {
-    await withClinic(this.db, clinicId, async (tx) => {
-      await tx.update(clinics).set({ name: config.name, timezone: config.timezone, config }).where(eq(clinics.id, clinicId));
+  /**
+   * Saves a validated ClinicConfig. The caller checks that the id and phone numbers are
+   * unchanged. With `expectedVersion`, it saves only over that version: someone else's
+   * save in between is a conflict, and nothing is written.
+   */
+  async saveSettings(clinicId: string, config: { name: string; timezone: string }, userId: string, action = 'clinic.settings.updated', opts: { expectedVersion?: number } = {}):
+    Promise<{ status: 'saved'; version: number } | { status: 'conflict' }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const match = opts.expectedVersion === undefined ? eq(clinics.id, clinicId) : and(eq(clinics.id, clinicId), eq(clinics.configVersion, opts.expectedVersion));
+      const [row] = await tx.update(clinics).set({ name: config.name, timezone: config.timezone, config, ...bump(userId) }).where(match).returning({ version: clinics.configVersion });
+      if (!row) return { status: 'conflict' as const };
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action, entity: 'clinic', entityId: clinicId });
+      return { status: 'saved' as const, version: row.version };
+    });
+  }
+
+  /**
+   * The texts about one call, request, pet or patient, or visit, newest first. Only
+   * the last four digits of the number, and only when the text is about a patient
+   * (the stored hash is one way). Listing a patient's texts is audited as a view.
+   */
+  async texts(clinicId: string, filter: { callId?: string; taskId?: string; patientId?: string; appointmentId?: string }, userId?: string) {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const where = filter.callId ? eq(smsMessages.callId, filter.callId) : filter.taskId ? eq(smsMessages.taskId, filter.taskId)
+        : filter.patientId ? eq(smsMessages.patientId, filter.patientId) : eq(smsMessages.appointmentId, filter.appointmentId ?? '');
+      const rows = await tx.select().from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), where)).orderBy(desc(smsMessages.createdAt)).limit(20);
+      let last4: string | null = null;
+      if (filter.patientId) {
+        const [p] = await tx.select({ phoneEnc: patients.phoneEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, filter.patientId)));
+        last4 = p?.phoneEnc ? this.cipher.decrypt(p.phoneEnc, phiContext(clinicId, 'patients.phone')).replace(/\D/g, '').slice(-4) : null;
+        if (userId) await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.texts.viewed', entity: 'patient', entityId: filter.patientId }, 5);
+      }
+      return rows.map((r) => ({
+        id: r.id, template: r.template, kind: r.kind, status: r.status, failureReason: r.failureReason, errorCode: r.errorCode, language: r.language,
+        callId: r.callId, createdAt: r.createdAt, sentAt: r.sentAt, deliveredAt: r.deliveredAt, consentAtMs: r.consentAtMs, toLast4: last4,
+      }));
     });
   }
 

@@ -56,8 +56,8 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null; authorization?: string } = {}) => {
-    const headers: Record<string, string> = {};
+  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null; authorization?: string; headers?: Record<string, string> } = {}) => {
+    const headers: Record<string, string> = { ...o.headers };
     if (o.cookie) headers.cookie = o.cookie;
     if (o.authorization) headers.authorization = o.authorization;
     if (o.origin !== null) headers.origin = o.origin ?? ORIGIN;

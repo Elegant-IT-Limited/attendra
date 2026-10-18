@@ -17,11 +17,12 @@ import { Switch } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
+import { type Conflict, SettingsConflict } from '@/components/settings/settings-conflict';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { api, ApiFailure, useClinic } from '@/lib/api';
-import { DAYS, dayTitle } from '@/lib/format';
+import { ApiFailure, apiTagged, useClinic } from '@/lib/api';
+import { clinicTime, DAYS, dayTitle } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 
 type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
@@ -54,6 +55,9 @@ function issueLabel(path: string) {
     greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
     requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
     hours: 'Opening hours', holidays: 'Holidays', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
+    address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
+    averageVisitValue: 'Average visit value', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
+    emergencyReview: 'Emergency list review',
   };
   return names[top] ?? (top || 'Settings');
 }
@@ -66,11 +70,19 @@ export default function Settings() {
   const { can, clinic } = useClinic(clinicId);
   const queries = useQueryClient();
   const toast = useToast();
-  const saved = useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`) });
+  // its own copy with the version it was read at, read fresh each time the page opens and
+  // never swapped under a draft: a save is refused if someone else saved since
+  const loaded = useQuery({ queryKey: ['settings-versioned', clinicId], queryFn: () => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`), gcTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const saved = { ...loaded, data: loaded.data?.body };
   const [draft, setDraft] = useState<ClinicConfig | null>(null);
   const [issues, setIssues] = useState<ApiError['issues']>([]);
+  const [conflict, setConflict] = useState<Conflict<ClinicConfig> | null>(null);
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
+  const keep = (config: ClinicConfig, etag: string | null) => {
+    queries.setQueryData(['settings-versioned', clinicId], { body: config, etag });
+    queries.setQueryData(['settings', clinicId], config);
+  };
   // a new row goes to the top of its list, under the button that made it: bring it into view and put the cursor in its first field
   const [added, setAdded] = useState<string | null>(null);
   useEffect(() => {
@@ -82,17 +94,27 @@ export default function Settings() {
   }, [added, draft]);
 
   const save = useMutation({
-    mutationFn: (config: ClinicConfig) => api<ClinicConfig>(`/clinics/${clinicId}/settings`, { method: 'PUT', body: JSON.stringify(config) }),
-    onMutate: () => setIssues([]),
-    onSuccess: (config) => {
-      queries.setQueryData(['settings', clinicId], config);
+    mutationFn: (config: ClinicConfig) => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`, {
+      method: 'PUT', body: JSON.stringify(config), headers: loaded.data?.etag ? { 'if-match': loaded.data.etag } : {},
+    }),
+    onMutate: () => { setIssues([]); setConflict(null); },
+    onSuccess: ({ body: config, etag }) => {
+      keep(config, etag);
       void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] });
       // the clinic's name and time zone also come with who you are, for every other page
       void queries.invalidateQueries({ queryKey: ['me'] });
       setDraft(config);
       toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
     },
-    onError: (e) => { if (e instanceof ApiFailure) setIssues(e.body.issues ?? [{ path: '', message: e.message }]); },
+    onError: (e) => {
+      if (!(e instanceof ApiFailure)) return;
+      if (e.status === 409 && e.body.error === 'settings_changed') {
+        const b = e.body as unknown as { current: ClinicConfig; version: number; updatedAt: string | null; updatedBy: { name: string } | null };
+        setConflict({ theirs: b.current, version: b.version, updatedAt: b.updatedAt, updatedBy: b.updatedBy });
+        return;
+      }
+      setIssues(e.body.issues ?? [{ path: '', message: e.message }]);
+    },
   });
 
   if (saved.isError) return <><PageHeader title="Settings" /><Alert tone="danger">The clinic settings did not load. Refresh the page; if it keeps failing, check that the API is running.</Alert></>;
@@ -123,6 +145,10 @@ export default function Settings() {
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
       <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
+      {conflict && saved.data && (
+        <SettingsConflict base={saved.data} mine={c} conflict={conflict} label={issueLabel} timeLabel={(iso) => clinicTime(iso, c.timezone)}
+          onResolved={(next) => { keep(conflict.theirs, `"v${conflict.version}"`); setDraft(next); setConflict(null); }} />
+      )}
       {issues && issues.length > 0 && (
         <Alert tone="danger" title="Not saved. Fix these first:" className="mb-6">
           <ul className="list-disc pl-4">{issues.map((i, n) => <li key={n}><span className="font-medium">{issueLabel(i.path)}</span>: {i.message}</li>)}</ul>

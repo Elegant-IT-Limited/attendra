@@ -111,7 +111,7 @@ describe('a simulated live call, over HTTP', () => {
       engine,
       backend: {
         patients: new PostgresPatientDirectory(t.db, cipher), scheduler: new BuiltinScheduler(t.db), tasks: new PostgresTaskQueue(t.db, cipher),
-        audit: new PostgresAuditLog(t.db), messenger: { sendTemplate: async () => {} },
+        audit: new PostgresAuditLog(t.db), messenger: { sendTemplate: async () => ({ status: 'sent' as const, messageId: 'sms-1' }) },
       },
       planner: { plan: async () => ({ say: null }) },
       log, internalToken: TOKEN, liveHeartbeatSeconds: 1,

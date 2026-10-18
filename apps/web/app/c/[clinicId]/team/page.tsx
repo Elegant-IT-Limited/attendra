@@ -40,6 +40,16 @@ export default function Team() {
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
+  const refills = useMutation({
+    mutationFn: ({ m, on }: { m: Member; on: boolean }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ approvesRefills: on }) }),
+    onMutate: () => setNotice(null),
+    onSuccess: (_r, { m, on }) => {
+      setNotice({ tone: 'info', text: on ? `${m.name} can now approve and decline refills.` : `${m.name} no longer approves refills.` });
+      void queries.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
+    onSettled: refresh,
+  });
   const [issued, setIssued] = useState<{ name: string; email: string; password: string } | null>(null);
   const [resetting, setResetting] = useState<Member | null>(null);
   const reset = useMutation({
@@ -71,7 +81,7 @@ export default function Team() {
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
             <Table>
-              <THead><tr><TH>Name</TH><TH>Role</TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
+              <THead><tr><TH>Name</TH><TH>Role</TH><TH><span title="A veterinarian or prescriber who may approve or decline refill requests">Approves refills</span></TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
               <tbody>
                 {members.data!.members.map((m) => {
                   const locked = m.you || (m.role === 'owner' && myRole !== 'owner');
@@ -91,6 +101,11 @@ export default function Team() {
                           </>
                         )}
                       </TD>
+                      <TD>
+                        <input id={`refills-${m.userId}`} type="checkbox" className="focus-ring size-4 accent-primary disabled:opacity-50" checked={m.approvesRefills}
+                          disabled={refills.isPending || (m.role === 'owner' && myRole !== 'owner') || (m.you && myRole !== 'owner')}
+                          aria-label={`${m.name} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
+                      </TD>
                       <TD className="hidden md:table-cell">
                         {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-text-muted"><KeyRound className="size-4" /> Has not chosen a password yet</span>
                           : m.twoFactorEnabled ? <span className="inline-flex items-center gap-1 text-sm"><ShieldCheck className="size-4 text-primary" /> Two-step on</span>
@@ -107,7 +122,7 @@ export default function Team() {
             </Table>
           )}
       </Card>
-      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Every change is in the audit log.</p>
+      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can mark a refill approved (which texts the caller) or declined; tick it for your veterinarians. Every change is in the audit log.</p>
 
       <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
       <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}

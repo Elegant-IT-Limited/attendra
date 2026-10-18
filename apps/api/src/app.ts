@@ -36,6 +36,7 @@ import { SettingsController } from './settings/settings.controller';
 import { VoiceSamplesController } from './voice-samples/voice-samples.controller';
 import { TasksController } from './tasks/tasks.controller';
 import { TeamController } from './team/team.controller';
+import { TextsController } from './texts/texts.controller';
 import pkg from '../package.json' with { type: 'json' };
 
 const { version } = pkg;
@@ -81,7 +82,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

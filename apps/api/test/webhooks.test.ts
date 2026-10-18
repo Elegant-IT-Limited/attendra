@@ -22,7 +22,7 @@ beforeAll(async () => {
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   api = await startApi({
     demoMode: false,
-    jobs: { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async (e) => { events.push(e); }, requestReady: async (j) => { ready.push(j); } },
+    jobs: { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async (e) => { events.push(e); }, requestReady: async (j) => { ready.push(j); }, smsStatus: async () => {} },
     // plain HTTP to this machine for the local receiver, and a resolver the tests control
     webhooks: { allowLoopback: true, resolve: async (host) => [{ address: host === 'internal.example.com' ? '10.1.2.3' : '93.184.216.34', family: 4 }] },
   });
@@ -168,6 +168,12 @@ describe('events from the front desk', () => {
 
   it('closing a request is request.done, with its outcome, and a refill ready to pick up queues one text', async () => {
     await api.request('POST', `${C}/tasks/${api.taskId}/claim`, { cookie: as.staff });
+    // only someone marked as approving refills may approve one
+    const refused = await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json().error).toBe('refill_approval_required');
+    expect(ready).toEqual([]);
+    expect((await api.request('PATCH', `${C}/members/${api.users.staff}`, { cookie: as.admin, body: { approvesRefills: true } })).statusCode).toBe(204);
     await api.request('POST', `${C}/tasks/${api.taskId}/done`, { cookie: as.staff, body: { outcome: 'refill_ready' } });
     expect(events.at(-1)).toMatchObject({ type: 'request.done', data: { requestId: api.taskId, type: 'refill', outcome: 'refill_ready' } });
     expect(ready).toEqual([{ clinicId: DEMO_CLINIC.id, taskId: api.taskId }]);

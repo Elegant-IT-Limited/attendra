@@ -4,11 +4,11 @@ import {
   CallRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
-import type { KnowledgeBase } from '@attendra/core';
+import { type KnowledgeBase, PACKS } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { eventSink, type JobQueue, noJobs } from '@attendra/worker/queue';
+import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
-import { type SmsSender, twilioSender, TwilioMessenger } from '@attendra/telephony';
+import { recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
 import { GptLiveEngine, SimulatedEngine } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
@@ -26,6 +26,10 @@ export interface VoiceRuntime {
   backendModel: string;
   /** Without it, texts are recorded as not sent and the call carries on. */
   twilio?: { accountSid: string; authToken: string };
+  /** This service's public address, which Twilio calls with replies and delivery reports. Without it they are not taken. */
+  publicUrl?: string;
+  /** Texts one clinic may send in 24 hours. */
+  smsDailyCap?: number;
   internalToken?: string;
   browserCallMaxSeconds?: number;
   /** Where a closed call is announced, so the worker summarises it. */
@@ -35,8 +39,6 @@ export interface VoiceRuntime {
   /** The clinic's own documents, searched by the assistant. */
   knowledge?: KnowledgeBase;
 }
-
-const noSms: SmsSender = { send: async () => { throw new Error('SMS is not configured'); } };
 
 /** The voice service wired to Postgres, OpenAI and Twilio. main.ts and the local demo both use it. */
 export function createVoiceApp(rt: VoiceRuntime) {
@@ -97,12 +99,29 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendMode
       audit: new PostgresAuditLog(db),
       knowledge: rt.knowledge,
       events: rt.jobs ? eventSink(rt.jobs, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event')) : undefined,
-      messenger: new TwilioMessenger(db, cipher, rt.twilio ? twilioSender(twilio(rt.twilio.accountSid, rt.twilio.authToken)) : noSms, (clinicId) => {
+      messenger: new TwilioMessenger(db, cipher, rt.twilio ? twilioSender(twilio(rt.twilio.accountSid, rt.twilio.authToken, { timeout: 5000 })) : null, (clinicId) => {
         const from = clinicNumbers.get(clinicId);
         if (!from) throw new Error(`no sending number known for clinic ${clinicId}`);
         return from;
-      }),
+      }, { dailyCap: rt.smsDailyCap, log: rt.log, statusCallback: rt.publicUrl ? (clinicId) => smsStatusUrl(rt.publicUrl!, clinicId) : undefined }),
     },
+    sms: rt.twilio && rt.publicUrl ? {
+      authToken: rt.twilio.authToken,
+      publicUrl: rt.publicUrl,
+      inbound: async ({ to, from, body }) => {
+        const clinic = (await clinicForNumber(db, to)) as { id: string; phoneNumbers: string[]; primaryLanguage: keyof typeof PACKS } | null;
+        if (!clinic) return undefined;
+        const word = smsKeyword(body);
+        // Twilio answers STOP and START itself on these numbers: one reply is enough
+        if (word === 'stop' || word === 'start') { await recordSmsStanding(db, cipher, clinic.id, from, word === 'stop' ? 'opted_out' : 'opted_in', 'keyword'); return undefined; }
+        if (word === 'confirm') return undefined; // appointment reminders come later
+        return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: clinic.phoneNumbers[0]! });
+      },
+      status: async (job) => {
+        if (!(SMS_STATUSES as readonly string[]).includes(job.status)) return;
+        await (rt.jobs ?? noJobs).smsStatus({ ...job, status: job.status as (typeof SMS_STATUSES)[number] });
+      },
+    } : undefined,
     log: rt.log,
     internalToken: rt.internalToken,
     browserCallMaxSeconds: rt.browserCallMaxSeconds,

@@ -11,7 +11,9 @@ const Env = z.object({
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_SUMMARY_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
-  ATTENDRA_SMS_STATUS: z.preprocess(blank, z.enum(['on', 'off']).default('off')),
+  // where Twilio reports delivery of texts: the voice service's public address
+  ATTENDRA_VOICE_PUBLIC_URL: optional(z.string().url()),
+  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(500)),
   // texts the team's decisions (a refill ready to pick up); without both, nothing is texted
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),

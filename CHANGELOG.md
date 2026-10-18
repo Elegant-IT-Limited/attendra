@@ -43,8 +43,19 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Clinic address and website** in Settings; the assistant gives them when asked (`get_clinic_info`).
 - **More countries.** Emergency numbers for New Zealand, Ireland, Mexico, Japan, Singapore, Hong Kong, South Africa, India and Brazil (2 to 5 digits); the clinic's currency on the visit value; phone numbers staff type are kept as E.164 in the clinic's country so texts reach them (`asE164`); transfer and VIP examples in the clinic's own format.
 
+### Added (texting foundation and platform)
+
+- **Whether a text went, everywhere it may have.** Every text is linked to its call, request, pet or patient and visit, and keeps its language, when it was sent and delivered, the carrier's error code, and why one was not sent (`not_sent`: opted out, too many to that number today, no number, texting off, carrier). The call page, a refill marked ready to pick up, and a pet's or patient's record show them (`GET /clinics/:clinicId/texts`, one filter; a patient's texts are audited as a view). Migration 0029.
+- **STOP is kept.** Texts to a clinic's number arrive at the voice service (`POST /webhooks/twilio/sms-inbound`, signed by Twilio): STOP and its usual words (also ALTO, PARAR) mark the number opted out for that clinic, START opts it back in, anything else gets "This number does not read replies" in the clinic's language. A number the carrier refuses as opted out (21610) is marked too. No text is sent to an opted-out number. Only a hash of the number is stored.
+- **Delivery reports.** Twilio reports each text's delivery to `POST /webhooks/twilio/sms-status`; the worker records it and never moves a status backwards. Set `ATTENDRA_VOICE_PUBLIC_URL` on the voice service and the worker; the old `ATTENDRA_SMS_STATUS` switch is gone.
+- **Limits on texts:** at most 8 a day to one number from one clinic, and `ATTENDRA_SMS_DAILY_CAP` (500) from a clinic, with a warning at 80%. Numbers are sent as E.164 in the clinic's country.
+- **Two people saving Settings at once no longer undo each other.** Settings carries a version (`ETag`, migration 0030); a save made from an older copy is refused (409 `settings_changed`, with the newer settings and who saved them, audited). The Settings page then says which sections each of you changed and lets you keep yours where they do not clash, choose where they do, or load theirs. Saves without `If-Match` work as before. `GET /settings/meta`.
+- **Who may approve refills.** "Approves refills" on the Team page (migration 0031): only those people can mark a refill approved (which texts the caller) or declined; anyone on the front desk can still call back, leave a message or add a note. A manager can mark anyone but an owner; an owner can mark themselves. Audited, and the log names approvals and refusals of refills. Requests says when nobody can approve yet.
+
 ### Fixed
 
+- **The ready-to-pick-up text is in the language of the call**, not always the clinic's first language (`calls.language`).
+- **CI**: the eval report is run once more when Node crashes on its own (exit by signal), not when a scenario fails.
 - **After hours at a clinic that takes requests, the assistant looks up no times** (refusal `after_hours` on `find_slots` too) and the prompts say so, so it never reads out a time it then refuses; cancelling an existing visit is allowed after hours.
 - **A calm owner is no longer stuck after an animal emergency.** Once the script has been said, "he's fine now, it's not an emergency" lets the call go on (booking a check-up); the emergency stays on the record, a new emergency holds the call again, and a person in danger never clears it. A question about emergencies ("is this an emergency?") is not one.
 - **Transfers:** a clinic with no transfer line hears that, not "nobody is available"; a browser test call says where it would have connected the caller; Settings warns when a transfer number is one the assistant itself answers (a loop).
@@ -63,6 +74,8 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - Request outcomes `refill_ready` and `refill_declined`, in the API, the `request.done` webhook and the MCP `mark_request_done` tool.
 - `GET /clinics/:clinicId/test-calls/allowance`. `QualityWeek` adds `afterHoursBookings`, `emergencies` and `refillRequests`; the overview's periods add `emergencies`; waiting tasks add `byType`; each clinic in `/me` adds `accountLinks`. Settings add `averageVisitValue` (default 150).
 - `/me` adds `twoFactorRequired`.
+- `GET /clinics/:clinicId/texts?callId=|taskId=|patientId=|appointmentId=`. `GET /settings` returns an `ETag`; `PUT /settings` takes `If-Match` and may answer 409 `settings_changed`. `PATCH /members/:userId` takes `approvesRefills` as well as `role` (either or both); members and each clinic in `/me` carry `approvesRefills`. Closing a refill as `refill_ready` or `refill_declined` answers 403 `refill_approval_required` for anyone not marked; MCP `mark_request_done` answers `status: refill_approval_required`.
+- The `Messenger` port returns a result (`sent`, `already`, or `not_sent` with a reason) and never throws.
 
 ## [0.7.0] - 2026-10-16
 
