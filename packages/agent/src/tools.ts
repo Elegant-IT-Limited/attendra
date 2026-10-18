@@ -46,9 +46,9 @@ export interface ToolResult {
 
 const MAX_VERIFY_ATTEMPTS = 3;
 const MAX_REGISTRATIONS = 3;
-const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request']);
+const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'set_reminder_consent']);
 // tools that change something; they refuse to run for an outdated request
-const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'send_text', 'transfer_call', 'end_call']);
+const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'send_text', 'set_reminder_consent', 'transfer_call', 'end_call']);
 // after an emergency the only things left to do are to hand the caller to a person
 // (send_text narrows itself: in an emergency, only the hospital's details)
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
@@ -405,11 +405,20 @@ export async function runTool(
       const smsSent = result.status === 'booked'
         ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id)
         : false;
+      // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
+      const reminders = textingOf(clinic).reminders;
+      const askReminder = result.status === 'booked' && reminders.enabled && reminders.askOnBooking && !patient.textsOk && !!patient.phone
+        && !!backend.patients.setTextConsent && !state.remindersAsked;
+      if (askReminder) {
+        state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
+        state.remindersAsked = true;
+      }
       return {
         ok: true,
         data: {
           booked: true, when: pending.readback, sms_sent: smsSent,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
+          ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
         },
       };
     }
@@ -438,6 +447,20 @@ export async function runTool(
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
+    }
+
+    case 'set_reminder_consent': {
+      const offer = state.reminderOffer;
+      if (!offer || offer.patientId !== state.verifiedPatient!.id) return refuse('not_offered', 'Only after a booking, when you asked about reminder texts. Carry on with the call.');
+      if (offer.askedAtMs === null) return refuse('not_asked', `Ask first: "${pack.reminderOffer}"`);
+      state.reminderOffer = null; // asked once, answered once
+      // a yes is the caller's own clear words after the question, never the model's reading of them
+      if (!args.agreed || !isClearYes(state.latestCallerWordsAfter(offer.askedAtMs), clinic.languages)) {
+        return { ok: true, data: { reminders: false, say: 'No reminder texts. Carry on with the call.' } };
+      }
+      await backend.patients.setTextConsent!(clinic.id, offer.patientId, ctx.callId);
+      state.verifiedPatient!.textsOk = true;
+      return { ok: true, data: { reminders: true, say: 'Say they will get a reminder text before the visit.' } };
     }
 
     case 'send_text': {

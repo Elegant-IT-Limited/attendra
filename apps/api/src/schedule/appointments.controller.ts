@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, awayOn, ClinicConfig, type EventSink, localDateOf, normalizeName, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
-import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { can } from '../access';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
@@ -19,8 +20,9 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 /** What the front desk is told when a time cannot be booked. */
 const REFUSED: Record<SlotProblem | 'cancelled' | 'just_cancelled', string> = {
   taken: 'That time was just taken. Pick another one.',
-  closed: 'That time is outside the provider\'s hours.',
-  holiday: 'The clinic is closed that day for a holiday.',
+  closed: 'That time is outside the provider\'s hours, or not on the visit\'s time grid. The front desk can squeeze it in with Override.',
+  holiday: 'The clinic is closed that day. The front desk can squeeze it in with Override.',
+  away: 'The provider is away then. The front desk can squeeze it in with Override.',
   past: 'That time has already passed.',
   not_offered: 'This provider does not do that visit type.',
   unknown_provider: 'There is no such provider at this clinic.',
@@ -36,6 +38,7 @@ const toAppointment = (a: ScheduleEntry): Appointment => ({
   id: a.id, patientId: a.patientId, patientName: a.patientName, providerId: a.providerId, visitTypeId: a.visitTypeId,
   startsAt: a.startsAt.toISOString(), endsAt: a.endsAt.toISOString(), status: a.status,
   cancelReason: a.cancelReason as Appointment['cancelReason'], bookedBy: by(a.bookedBy)!, cancelledBy: by(a.cancelledBy), createdAt: a.createdAt.toISOString(),
+  overrideReason: a.overrideReason, confirmedAt: a.confirmedAt?.toISOString() ?? null, confirmedVia: a.confirmedVia, reminderSentAt: a.reminderSentAt?.toISOString() ?? null,
 });
 
 @ApiTags('schedule')
@@ -120,7 +123,12 @@ export class AppointmentsController {
       if (b.start < now) continue;
       const date = localDateOf(b.start, clinic.timezone);
       const provider = clinic.providers.find((p) => p.id === b.providerId);
-      const reason = clinic.holidays.includes(date) ? 'holiday' : provider && awayOn(provider, date) ? 'away' : null;
+      const special = specialDayOf(clinic, date);
+      const minutes = localParts(b.start, clinic.timezone).minutes;
+      const closedDay = special ? !special.windows.length : clinic.holidays.includes(date);
+      // a booking inside a part-day absence counts too
+      const awayThen = !!provider && (awayOn(provider, date) || awayWindows(provider, date).some((a) => minutes >= a.start && minutes < a.end));
+      const reason = closedDay ? 'holiday' : awayThen ? 'away' : null;
       if (!reason) continue;
       const key = `${date}|${b.providerId}`;
       const entry = found.get(key) ?? { date, providerId: b.providerId, reason, count: 0 };
@@ -153,7 +161,8 @@ export class AppointmentsController {
   @ApiConflictResponse({ description: 'The time cannot be booked; `reason` says why' })
   async book(@Param('clinicId') clinicId: string, @Body(new ZodPipe(BookAppointment)) body: z.infer<typeof BookAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     const clinic = await this.clinic(clinicId);
-    return this.announce(clinicId, 'appointment.booked', this.answer(await this.scheduler.book(clinic, { ...body, start: new Date(body.startsAt) }, staff.userId)));
+    this.mayOverride(body.override, staff);
+    return this.announce(clinicId, 'appointment.booked', this.answer(await this.scheduler.book(clinic, { ...body, start: new Date(body.startsAt), overrideReason: body.override ? body.overrideReason : null }, staff.userId)));
   }
 
   @Post(':appointmentId/reschedule')
@@ -166,7 +175,8 @@ export class AppointmentsController {
   async reschedule(@Param('clinicId') clinicId: string, @Param('appointmentId') id: string, @Body(new ZodPipe(RescheduleAppointment)) body: z.infer<typeof RescheduleAppointment>, @CurrentStaff() staff: Staff): Promise<AppointmentChange> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
     const clinic = await this.clinic(clinicId);
-    return this.announce(clinicId, 'appointment.rescheduled', this.answer(await this.scheduler.reschedule(clinic, id, { start: new Date(body.startsAt), providerId: body.providerId }, staff.userId)));
+    this.mayOverride(body.override, staff);
+    return this.announce(clinicId, 'appointment.rescheduled', this.answer(await this.scheduler.reschedule(clinic, id, { start: new Date(body.startsAt), providerId: body.providerId, overrideReason: body.override ? body.overrideReason : null }, staff.userId)));
   }
 
   @Post(':appointmentId/cancel')
@@ -194,6 +204,10 @@ export class AppointmentsController {
     // each move is its own event, even back to a time the appointment had before
     await this.events.emit(clinicId, { type, key: type === 'appointment.rescheduled' ? `${a.appointmentId}|${a.startsAt}|${a.updatedAt}` : a.appointmentId, data });
     return change;
+  }
+
+  private mayOverride(override: boolean, staff: Staff) {
+    if (override && (!staff.role || !can(staff.role, 'schedule:override'))) throw new ForbiddenException({ error: 'forbidden', message: 'Your role cannot book outside the hours.' });
   }
 
   private answer(result: StaffChange): AppointmentChange {

@@ -144,7 +144,17 @@ export class PostgresPatientDirectory implements PatientDirectory {
       isNew: r.status === 'new',
       gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
       species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, ctx('species')) : null,
+      textsOk: !!r.smsConsentAt,
     };
+  }
+
+  /** They said yes to reminder texts on a call: kept on the record, audited with the call. */
+  async setTextConsent(clinicId: string, patientId: string, callId: string): Promise<void> {
+    await withClinic(this.db, clinicId, async (tx) => {
+      const done = await tx.update(patients).set({ smsConsentAt: new Date(), smsConsentSource: 'call' })
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId))).returning({ id: patients.id });
+      if (done.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.texts_ok.call', entity: 'patient', entityId: patientId, callId });
+    });
   }
 }
 

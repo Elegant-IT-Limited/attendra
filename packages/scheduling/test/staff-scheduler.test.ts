@@ -239,3 +239,35 @@ describe('the daylight saving change on 2026-11-01', () => {
       .toEqual({ status: 'refused', reason: 'closed' });
   });
 });
+
+describe('special days, part-day absences and the desk override', () => {
+  const rule = (clinic: typeof DEMO_CLINIC, start: Date, override = false) =>
+    slotProblem(clinic, [], { providerId: 'prov_okafor', visitTypeId: 'vt_sick', start }, NOW, { override });
+  const shut = { ...DEMO_CLINIC, specialDays: [{ date: '2026-09-29', windows: [], note: 'training' }] };
+  const away = { ...DEMO_CLINIC, providers: DEMO_CLINIC.providers.map((p) => (p.id === 'prov_okafor' ? { ...p, timeOff: [{ from: '2026-09-29', to: '2026-09-29', start: '09:00', end: '11:00' }] } : p)) };
+
+  it('refuses a closed special day as a holiday, and a part-day absence as away', () => {
+    expect(rule(shut, at('2026-09-29', '09:00'))).toBe('holiday');
+    expect(rule(away, at('2026-09-29', '09:40'))).toBe('away');
+    expect(rule(away, at('2026-09-29', '08:20'))).toBeNull();
+  });
+
+  it('lets the desk book outside the hours with an override, never into the past or a clash', () => {
+    expect(rule(shut, at('2026-09-29', '09:00'), true)).toBeNull();
+    expect(rule(DEMO_CLINIC, at('2026-09-29', '18:05'), true)).toBeNull();
+    expect(slotProblem(DEMO_CLINIC, [{ providerId: 'prov_okafor', start: at('2026-09-29', '18:00'), end: at('2026-09-29', '18:20') }],
+      { providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-09-29', '18:05') }, NOW, { override: true })).toBe('taken');
+    expect(rule(DEMO_CLINIC, at('2026-09-28', '10:00'), true)).toBe('past');
+  });
+
+  it('keeps the reason on the booking and audits it as an override', async () => {
+    const r = await staff.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-10-03', '10:00'), idempotencyKey: 'ovr-1', overrideReason: 'Owner can only come Saturday' }, 'u_ana');
+    if (r.status !== 'done') throw new Error(r.status);
+    const row = (await t.db.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string };
+    expect(row.override_reason).toBe('Owner can only come Saturday');
+    expect(await audit('appointment.booked.staff.override')).toEqual([{ actor: 'user:u_ana', entity_id: r.appointmentId }]);
+    // moved back inside the hours, the reason goes
+    expect(await staff.reschedule(DEMO_CLINIC, r.appointmentId, { start: at('2026-10-05', '10:00') }, 'u_ana')).toMatchObject({ status: 'done' });
+    expect(((await t.db.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string | null }).override_reason).toBeNull();
+  });
+});

@@ -46,6 +46,7 @@ That is not the same as no PHI. A patient id with an appointment's times says wh
 | `appointment.booked` | The assistant or the front desk books. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `providerId`, `visitTypeId`, `startsAt`, `endsAt`, `by` (`assistant` or `staff`), `callId` |
 | `appointment.rescheduled` | An appointment moves. | As booked, plus `previousAppointmentId` when the assistant booked a new one in its place (the front desk moves it in place, so that is `null`). |
 | `appointment.cancelled` | An appointment is cancelled. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `by`, `callId`, `reason` (a code, like `patient_asked`) |
+| `appointment.confirmed` | The owner or patient replied C to the visit's reminder text. | `appointmentId`, `patientId` (unless the endpoint leaves patient ids out), `via` (`text`) |
 | `request.created` | The assistant takes a refill or callback request. | `requestId`, `type` (`refill`, `callback`), `patientId` or `null` (left out when the endpoint leaves patient ids out), `callId` |
 | `request.done` | Staff close a request. | `requestId`, `type`, `outcome` (`called_back`, `left_message`, `refill_sent`, `not_needed`), `callId` |
 

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig } from '@attendra/core';
+import { ClinicConfig, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
 import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
 import { type SmsSender, smsStatusUrl, TwilioMessenger } from '@attendra/telephony';
@@ -55,6 +55,14 @@ const SMS_STATUS_MAP: Partial<Record<SmsStatusJob['status'], 'sent' | 'delivered
   sent: 'sent', delivered: 'delivered', read: 'delivered', undelivered: 'undelivered', failed: 'failed', canceled: 'failed',
 };
 const STATUS_RANK: Record<string, number> = { queued: 0, sent: 1, undelivered: 2, failed: 2, delivered: 3 };
+
+/** Whether a clinic-local minute of the day falls in quiet hours, which may run past midnight (20:00 to 08:00). */
+export function quiet(minute: number, from: string, to: string): boolean {
+  const f = toMinutes(from);
+  const t = toMinutes(to);
+  if (f === t) return false;
+  return f < t ? minute >= f && minute < t : minute >= f || minute < t;
+}
 
 /** The job handlers, apart from pg-boss, so tests can run them one at a time. */
 export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'send'> }) {
@@ -112,6 +120,58 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const total = (k: 'transcriptLines' | 'summaries' | 'callActions' | 'webhookEvents' | 'webhookAttempts') => results.reduce((n, r) => n + r[k], 0);
       d.log.info({ clinics: results.length, transcript_lines: total('transcriptLines'), summaries: total('summaries'), call_actions: total('callActions'), webhook_events: total('webhookEvents'), webhook_attempts: total('webhookAttempts') }, 'retention purge done');
       return results;
+    },
+
+    /**
+     * Reminder texts, for every clinic that sends them: each booked visit between 2 and
+     * `hoursBefore` hours away that has had none, for someone who said yes to them. Not
+     * in the clinic's quiet hours: those wait for the next run after them, while the visit
+     * is still 2 hours away. Each visit is claimed before its text goes, so two workers
+     * never send two.
+     */
+    async appointmentReminders() {
+      const at = now();
+      let sent = 0;
+      for (const row of await allClinics(d.db)) {
+        const parsed = ClinicConfig.safeParse(row.config);
+        if (!parsed.success) continue;
+        const config = parsed.data;
+        const r = textingOf(config).reminders;
+        if (!r.enabled || quiet(localParts(at, config.timezone).minutes, r.quietFrom, r.quietTo)) continue;
+        const clinicId = config.id;
+        const due = await withClinic(d.db, clinicId, (tx) => tx.select({ a: schema.appointments, p: schema.patients, language: schema.calls.language })
+          .from(schema.appointments)
+          .innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
+          .leftJoin(schema.calls, eq(schema.calls.id, schema.appointments.createdByCallId))
+          .where(and(
+            eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.status, 'booked'), isNull(schema.appointments.reminderSentAt),
+            gt(schema.appointments.startsAt, new Date(at.getTime() + 2 * 3_600_000)), lte(schema.appointments.startsAt, new Date(at.getTime() + r.hoursBefore * 3_600_000)),
+            isNotNull(schema.patients.smsConsentAt), isNotNull(schema.patients.phoneEnc),
+          )));
+        if (!due.length) continue;
+        const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
+          actor: 'worker', dailyCap: d.sms?.dailyCap, log: d.log,
+          statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
+        });
+        for (const { a, p, language } of due) {
+          const claimed = await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSentAt: now() })
+            .where(and(eq(schema.appointments.id, a.id), isNull(schema.appointments.reminderSentAt))).returning({ id: schema.appointments.id }));
+          if (!claimed.length) continue;
+          const lang = config.languages.includes(language as never) ? (language as typeof config.primaryLanguage) : config.primaryLanguage;
+          const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+          // a pet is named; a person is not
+          const pet = config.industry === 'vet' ? d.cipher.decrypt(p.firstNameEnc, ctx('first_name')) : '';
+          const result = await messenger.sendTemplate(clinicId, {
+            to: d.cipher.decrypt(p.phoneEnc!, ctx('phone')), template: 'reminder', language: lang, kind: 'reminder',
+            vars: { clinic: config.name, pet, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: config.phoneNumbers[0]! },
+            idempotencyKey: `reminder:${a.id}:${a.startsAt.toISOString()}`, about: { patientId: p.id, appointmentId: a.id },
+          });
+          if (result.messageId) await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSmsId: result.messageId }).where(eq(schema.appointments.id, a.id)));
+          if (result.status === 'sent') sent++;
+        }
+      }
+      if (sent) d.log.info({ sent }, 'reminder texts sent');
+      return { sent };
     },
 
     /** Indexes one uploaded document. Unchanged content with the same model is left as it is. */
@@ -234,12 +294,16 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<DeliveryJob>(QUEUES.deliverWebhook, { ...poll, localConcurrency: 4 }, each((data, job) => h.deliverWebhook(data, { retryCount: job.retryCount, retryLimit })));
   await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, poll, each((data) => h.smsStatus(data)));
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
+  await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
     d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
   }));
   // 03:00 UTC every day
-  if (d.schedulePurge !== false) await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
+  if (d.schedulePurge !== false) {
+    await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
+    await d.boss.schedule(QUEUES.appointmentReminders, '*/10 * * * *');
+  }
   d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');
   return h;
 }

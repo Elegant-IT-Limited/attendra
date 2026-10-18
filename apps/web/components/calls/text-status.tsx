@@ -19,6 +19,7 @@ export const TEXT_TEMPLATES: Record<string, string> = {
   provider: 'Doctor\'s details',
   answer: 'Answer to a question',
   link: 'Link',
+  reminder: 'Appointment reminder',
 };
 
 const REASONS: Record<string, string> = {

@@ -29,8 +29,15 @@ export interface PatientCard {
   createdAt: Date;
   /** The clinic's own details on the record (Settings, Fields and lists). */
   custom: Record<string, string>;
+  /** They agreed to reminder texts: on a call, at the desk, or in an import. */
+  textsOk: boolean;
+  textsOkSource: 'call' | 'staff' | 'import' | null;
 }
-export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null }
+export interface PatientFields {
+  firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null;
+  /** Reminder texts: true they agreed, false they did not; left out, an edit keeps what was there. */
+  textsOk?: boolean;
+}
 
 /** `similar`: someone else has this name and date of birth with another phone, which is allowed and worth a look. */
 export type SaveResult = { status: 'saved'; id: string; similar: boolean } | { status: 'exists'; id: string } | { status: 'not_found' };
@@ -207,18 +214,19 @@ export class PatientRecords {
    * or a stranger with the same name and birthday on another phone, is not.
    */
   async create(clinicId: string, p: PatientFields, userId: string): Promise<SaveResult> {
-    return withClinic(this.db, clinicId, (tx) => this.insert(tx, clinicId, p, actorOf(userId)));
+    return withClinic(this.db, clinicId, (tx) => this.insert(tx, clinicId, p, actorOf(userId), 'staff'));
   }
 
   /** The import's way in: the same checks as one patient added by hand, in the caller's transaction. */
-  async insert(tx: Tx, clinicId: string, p: PatientFields, actor: string): Promise<SaveResult> {
+  async insert(tx: Tx, clinicId: string, p: PatientFields, actor: string, source: 'staff' | 'import' = 'import'): Promise<SaveResult> {
     const same = await findSameIdentity(tx, this.cipher, clinicId, p);
     if (same) return { status: 'exists', id: same };
     const similar = await this.similar(tx, clinicId, p);
     try {
       // in a savepoint, so the same person added by someone else a moment ago ends this insert, not the whole import
       const row = await tx.transaction(async (sp) => {
-        const [r] = await sp.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p) }).returning({ id: patients.id });
+        const consent = p.textsOk ? { smsConsentAt: new Date(), smsConsentSource: source } : {};
+        const [r] = await sp.insert(patients).values({ clinicId, ...sealPatient(this.cipher, clinicId, p), ...consent }).returning({ id: patients.id });
         await sp.insert(auditLogs).values({ clinicId, actor, action: 'patient.created', entity: 'patient', entityId: r!.id });
         return r!;
       });
@@ -232,12 +240,15 @@ export class PatientRecords {
   /** Replaces a patient's details, recomputing every hash. */
   async update(clinicId: string, patientId: string, p: PatientFields, userId: string): Promise<SaveResult> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      const [row] = await tx.select({ id: patients.id, smsConsentAt: patients.smsConsentAt }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
       if (!row) return { status: 'not_found' };
       const same = await findSameIdentity(tx, this.cipher, clinicId, p, patientId);
       if (same) return { status: 'exists', id: same };
       const similar = await this.similar(tx, clinicId, p, patientId);
-      await tx.update(patients).set(sealPatient(this.cipher, clinicId, p)).where(eq(patients.id, patientId));
+      // a yes already on file keeps when and how it was given
+      const consent = p.textsOk === undefined || p.textsOk === !!row.smsConsentAt ? {}
+        : p.textsOk ? { smsConsentAt: new Date(), smsConsentSource: 'staff' as const } : { smsConsentAt: null, smsConsentSource: null };
+      await tx.update(patients).set({ ...sealPatient(this.cipher, clinicId, p), ...consent }).where(eq(patients.id, patientId));
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.updated', entity: 'patient', entityId: patientId });
       return { status: 'saved', id: patientId, similar };
     });
@@ -310,6 +321,8 @@ export class PatientRecords {
       status: r.status,
       createdAt: r.createdAt,
       custom: r.customEnc ? JSON.parse(this.cipher.decrypt(r.customEnc, ctx('custom'))) as Record<string, string> : {},
+      textsOk: !!r.smsConsentAt,
+      textsOkSource: r.smsConsentAt ? r.smsConsentSource : null,
     };
   }
 }

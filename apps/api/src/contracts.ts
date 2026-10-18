@@ -159,7 +159,7 @@ export const KnowledgeAnswer = z.object({
   refusal: z.enum(['medical', 'no_information']).nullable(),
 });
 
-export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'request.created', 'request.done'] as const;
+export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'request.created', 'request.done'] as const;
 export const WebhookEndpoint = z.object({
   id: z.string(), url: z.string(), description: z.string(), events: z.array(z.enum(WEBHOOK_EVENTS)), enabled: z.boolean(),
   /** repeated_failures when Attendra turned it off, turned_off when someone did. */
@@ -362,6 +362,10 @@ export const Appointment = z.object({
   bookedBy: BookedBy,
   cancelledBy: BookedBy.nullable(),
   createdAt: z.iso.datetime(),
+  overrideReason: z.string().nullable(),
+  confirmedAt: z.iso.datetime().nullable(),
+  confirmedVia: z.enum(['text', 'staff']).nullable(),
+  reminderSentAt: z.iso.datetime().nullable(),
 });
 export const Schedule = z.object({ from: isoDate, days: z.number(), appointments: z.array(Appointment) });
 export const CancelledList = z.object({
@@ -398,8 +402,15 @@ export const BookAppointment = z.object({
   note: z.string().trim().max(500).optional(),
   /** A new one per booking attempt: the same key twice is one booking. */
   idempotencyKey: z.string().min(8).max(100),
-});
-export const RescheduleAppointment = z.object({ startsAt: instant, providerId: z.string().max(64).optional() });
+  /** Squeeze it in outside the hours or on a day off, with why. Front desk and up; never the assistant. */
+  override: z.boolean().default(false),
+  overrideReason: z.string().trim().min(3).max(120).optional(),
+}).refine((b) => !b.override || !!b.overrideReason, { path: ['overrideReason'], message: 'say why it is booked outside the hours' });
+export const RescheduleAppointment = z.object({
+  startsAt: instant, providerId: z.string().max(64).optional(),
+  override: z.boolean().default(false),
+  overrideReason: z.string().trim().min(3).max(120).optional(),
+}).refine((b) => !b.override || !!b.overrideReason, { path: ['overrideReason'], message: 'say why it is moved outside the hours' });
 export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
 
@@ -429,6 +440,9 @@ export const PatientCard = z.object({
   createdAt: z.iso.datetime(),
   /** The clinic's own details on the record, for the fields it still has. */
   custom: z.record(z.string(), z.string()),
+  /** They agreed to reminder texts, and where: on a call, at the desk, in an import. */
+  textsOk: z.boolean(),
+  textsOkSource: z.enum(['call', 'staff', 'import']).nullable(),
 });
 export const PatientList = z.object({
   patients: z.array(PatientCard),
@@ -446,6 +460,8 @@ export const PatientInput = z.object({
   guardianName: z.string().trim().max(120).nullable().optional(),
   /** The kind of animal, for a pet. Left out, an edit keeps what was there. */
   species: z.string().trim().max(40).nullable().optional(),
+  /** They agreed to reminder texts. Left out, an edit keeps what was there. */
+  textsOk: z.boolean().optional(),
 });
 export const PatientSaved = z.object({
   id: z.string(),

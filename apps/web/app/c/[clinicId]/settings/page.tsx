@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
+import { SpecialDaysEditor } from '@/components/settings/special-days';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { VoicePreview } from '@/components/settings/voice-preview';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
@@ -36,7 +37,7 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'greeting-voice', label: () => 'Greeting and voice' },
   { id: 'assistant', label: () => 'Assistant and languages' },
   { id: 'hours', label: () => 'Opening hours' },
-  { id: 'holidays', label: () => 'Holidays' },
+  { id: 'holidays', label: () => 'Holidays and special days' },
   { id: 'emergency', label: () => 'Emergency hospitals' },
   { id: 'visits', label: () => 'Visit types' },
   { id: 'transfers', label: () => 'Transfers' },
@@ -55,7 +56,7 @@ function issueLabel(path: string) {
   const names: Record<string, string> = {
     greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
     requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
-    hours: 'Opening hours', holidays: 'Holidays', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
+    hours: 'Opening hours', holidays: 'Holidays', specialDays: 'Special days', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
     averageVisitValue: 'Average visit value', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
     emergencyReview: 'Emergency list review',
@@ -313,7 +314,7 @@ export default function Settings() {
           </div>
         </Section>
 
-        <Section id="holidays" title="Holidays" description="Closed all day. Nothing is offered on these dates. Adding one never moves a visit already booked: the Schedule lists any to move.">
+        <Section id="holidays" title="Holidays and special days" description="Days that differ from the weekly hours: a holiday, closed all day, or a special day, closed with a reason or open shorter hours. Nothing is offered outside them, and the assistant tells callers. Adding one never moves a visit already booked: the Schedule lists any to move.">
           <ConflictsAlert clinicId={clinicId} />
           {c.holidays.length === 0 ? <EmptyNote>No holidays set.</EmptyNote> : (
             <div className="flex flex-wrap gap-2">
@@ -327,8 +328,10 @@ export default function Settings() {
           )}
           <div className="flex flex-wrap gap-2">
             <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
-            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
+            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday) || !!c.specialDays?.some((d) => d.date === newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
           </div>
+          <h3 className="pt-2 text-base font-medium">Special days</h3>
+          <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} onChange={(specialDays) => set({ specialDays })} />
         </Section>
 
         {(pet || c.emergencyHospital) && (

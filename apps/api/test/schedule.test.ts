@@ -149,6 +149,23 @@ describe('booking', () => {
   });
 });
 
+describe('booking outside the hours', () => {
+  it('needs a reason, then books with it and shows it on the appointment', async () => {
+    const sat = bookBody('10:00', 'ovr-1', { startsAt: at('2026-10-03', '10:00'), override: true });
+    expect((await api.request('POST', C, { cookie: as.staff, body: sat })).json().error).toBe('invalid_request');
+    const res = await api.request('POST', C, { cookie: as.staff, body: { ...sat, overrideReason: 'Only free on Saturday' } });
+    expect(res.json()).toMatchObject({ status: 'done' });
+    const appt = (await api.request('GET', `${C}/${res.json().appointmentId}`, { cookie: as.staff })).json();
+    expect(appt).toMatchObject({ overrideReason: 'Only free on Saturday', confirmedAt: null });
+    expect(await audit('appointment.booked.staff.override')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: res.json().appointmentId }]);
+  });
+
+  it('still refuses a clash and the past, and a viewer cannot', async () => {
+    expect((await api.request('POST', C, { cookie: as.staff, body: bookBody('09:00', 'ovr-2', { override: true, overrideReason: 'squeeze in' }) })).json()).toMatchObject({ reason: 'taken' });
+    expect((await api.request('POST', C, { cookie: as.viewer, body: bookBody('18:00', 'ovr-3', { override: true, overrideReason: 'squeeze in' }) })).statusCode).toBe(403);
+  });
+});
+
 describe('moving and cancelling', () => {
   let id: string;
   beforeAll(async () => {

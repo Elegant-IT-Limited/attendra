@@ -76,6 +76,7 @@ export const PATIENT_GUIDE = [
   'gender: female, male, other or prefer not to say. Required.',
   'phone: with the area code. A family may share one number: a parent and each child get a row of their own with the same phone.',
   'guardian_name: required for anyone under 18, the parent or guardian who books for them.',
+  'texts_ok (optional): yes when the patient agreed to reminder texts. Empty means no.',
   'A patient already on file with the same name, date of birth and phone is skipped, so the same file can be uploaded twice safely.',
 ];
 
@@ -183,7 +184,9 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
   });
 }
 
-export interface PatientRow { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null }
+export interface PatientRow { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; /** They agreed to reminder texts (texts_ok). */ textsOk?: boolean }
+/** An optional yes-or-no cell: yes, y, true or 1 is a yes; anything else, or no column, is not. */
+const agreed = (v: string) => /^(yes|y|true|1|s[ií])$/i.test(v);
 
 /**
  * Patient rows checked on their own: required fields, a real date of birth, a phone
@@ -215,7 +218,7 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this patient is in the file twice');
     seen.add(key);
-    return { line: r.line, name, ok: true, value: { firstName, lastName, dob, gender, phone, guardianName } };
+    return { line: r.line, name, ok: true, value: { firstName, lastName, dob, gender, phone, guardianName, textsOk: agreed(r.get('texts_ok')) } };
   });
 }
 
@@ -229,6 +232,7 @@ export const PET_GUIDE = [
   'birthday: YYYY-MM-DD, like 2021-05-14, or month/day/year. If only the age is known, use the same day that many years ago.',
   'owner_name: the owner\'s first and last name. The assistant finds the pet by it, the pet\'s name and the phone.',
   'owner_phone: with the area code. One owner\'s pets share a number: each pet gets a row of its own.',
+  'texts_ok (optional): yes when the owner agreed to reminder texts. Empty means no.',
   'A pet already on file with the same name, owner, birthday and phone is skipped, so the same file can be uploaded twice safely.',
 ];
 
@@ -267,6 +271,6 @@ export function readPets(text: string, today: string, northAmerica = true): RowR
     const key = `${pet.toLowerCase()}|${owner.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this pet is in the file twice');
     seen.add(key);
-    return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species } };
+    return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species, textsOk: agreed(r.get('texts_ok')) } };
   });
 }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment } from '@attendra/api/contracts';
-import { type ClinicConfig, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
-import { Bot, User } from 'lucide-react';
+import { type ClinicConfig, localParts, specialDayOf, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
+import { Bot, Check, User } from 'lucide-react';
 import { Empty } from '@/components/ui/feedback';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,14 @@ import { cn } from '@/lib/utils';
 const PX = 1.3; // pixels per minute: a 20-minute visit is 26 pixels tall
 type Provider = ClinicConfig['providers'][number];
 
-const hoursFor = (clinic: ClinicConfig, p: Provider, date: string) => windowsOn(p.hours ?? clinic.hours, weekdayOf(date));
+// a special day's own hours stand in for the week's
+const hoursFor = (clinic: ClinicConfig, p: Provider, date: string) => specialDayOf(clinic, date)?.windows ?? windowsOn(p.hours ?? clinic.hours, weekdayOf(date));
+/** Closed all day: a holiday, or a special day with no hours. What the calendar says instead of hours. */
+const closedDay = (clinic: ClinicConfig, date: string) => {
+  const special = specialDayOf(clinic, date);
+  if (special) return special.windows.length ? null : special.note || 'Closed';
+  return clinic.holidays.includes(date) ? 'Holiday' : null;
+};
 const minutesOf = (iso: string, tz: string) => localParts(new Date(iso), tz).minutes;
 /** "Okafor" for "Dr. Nkem Okafor": what fits a week column. The full name is on hover. */
 const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(/\s+/).at(-1) ?? name;
@@ -48,12 +55,12 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
         <div className="sticky top-0 z-20 grid border-b border-border bg-surface" style={{ gridTemplateColumns: `3.5rem repeat(${week ? dates.length : providers.length}, minmax(0, 1fr))` }}>
           <div />
           {week ? dates.map((d) => {
-            const holiday = clinic.holidays.includes(d);
+            const holiday = closedDay(clinic, d);
             return (
               <div key={d} className={cn('border-l border-border px-2 py-2 text-sm', d === today && 'bg-primary-soft')}>
                 <p className={cn('font-medium', d === today && 'text-primary')}>{dayTitle(d, 'short')}</p>
                 <div className="mt-1 flex gap-1 text-xs text-text-muted">
-                  {holiday ? <span>Holiday, closed</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={p.name}><abbr title={p.name} className="no-underline">{shortName(p.name)}</abbr></span>)}
+                  {holiday ? <span>{holiday === 'Holiday' ? 'Holiday, closed' : holiday}</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={p.name}><abbr title={p.name} className="no-underline">{shortName(p.name)}</abbr></span>)}
                 </div>
               </div>
             );
@@ -92,7 +99,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
   onOpen: (id: string) => void; visitIndex: (id: string) => number; nowMin: number | null; divided: boolean;
 }) {
   const tz = clinic.timezone;
-  const holiday = clinic.holidays.includes(date);
+  const holiday = closedDay(clinic, date);
   const open = holiday ? [] : hoursFor(clinic, provider, date).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
   // closed stretches between the opening windows, shaded
   const closed: [number, number][] = [];
@@ -106,7 +113,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
         <div key={s} className="absolute inset-x-0 bg-[repeating-linear-gradient(135deg,var(--muted),var(--muted)_6px,transparent_6px,transparent_12px)] opacity-80"
           style={{ top: (s - start) * PX, height: (e - s) * PX }} aria-hidden />
       ))}
-      {holiday && <p className="absolute inset-x-0 top-3 text-center text-xs font-medium text-text-muted">Holiday</p>}
+      {holiday && <p className="absolute inset-x-0 top-3 text-center text-xs font-medium text-text-muted">{holiday}</p>}
       {nowMin !== null && nowMin >= start && nowMin <= end && (
         <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-danger" style={{ top: (nowMin - start) * PX }} aria-hidden />
       )}
@@ -118,7 +125,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
         const h = Math.max((e - s) * PX - 2, 18);
         return (
           <button key={a.id} type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
-            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
+            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
             className={cn('absolute overflow-hidden rounded-md border border-border/60 border-l-4 px-1.5 text-left text-xs leading-tight shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring',
               VISIT_TONES[visitIndex(a.visitTypeId) % VISIT_TONES.length],
               cancelled ? 'right-0.5 left-1/2 z-0 border-dashed text-text-muted' : 'inset-x-0.5 z-10')}
@@ -127,6 +134,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
               <Icon className="size-3 shrink-0 text-text-muted" aria-hidden />
               {/* too short for a second line: the time goes on the first, and both truncate together */}
               <span className={cn('truncate font-medium', cancelled && 'line-through')}>
+                {a.confirmedAt && !cancelled && <Check className="mr-0.5 inline size-3 text-success" aria-hidden />}
                 {a.patientName}{h > 30 ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
               </span>
             </span>
@@ -151,7 +159,7 @@ export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: 
       {days.map(({ date, items }) => (
         <section key={date} className="py-3">
           <h3 className="px-4 pb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-            {dayTitle(date)}{clinic.holidays.includes(date) ? ', holiday' : ''}
+            {dayTitle(date)}{closedDay(clinic, date) ? `, ${closedDay(clinic, date)!.toLowerCase()}` : ''}
           </h3>
           {items.length === 0 ? <p className="px-4 text-sm text-text-muted">Nothing booked.</p> : (
             <ul>
