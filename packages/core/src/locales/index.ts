@@ -25,6 +25,8 @@ export function detectLanguage(callerText: string, offered: readonly Language[],
 }
 
 // European Union country codes, where 112 is the emergency number
+// the euro area, by calling code
+const EURO = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '+357', '+358', '+370', '+371', '+372', '+385', '+386', '+39', '+421', '+43', '+49'];
 const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '+357', '+358', '+359', '+36', '+370', '+371', '+372', '+385', '+386', '+39', '+40', '+420', '+421', '+43', '+45', '+46', '+48', '+49'];
 
 /**
@@ -35,12 +37,30 @@ const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '
  */
 export function allowedEmergencyNumbers(phoneNumbers: readonly string[]): string[] {
   const first = phoneNumbers[0] ?? '';
-  if (first.startsWith('+1')) return ['911']; // the United States and Canada
-  if (first.startsWith('+44')) return ['999', '112']; // the United Kingdom
-  if (first.startsWith('+61')) return ['000', '112']; // Australia
+  const listed = EMERGENCY_NUMBERS.find(([prefix]) => first.startsWith(prefix));
+  if (listed) return listed[1];
   if (EU.some((c) => first.startsWith(c))) return ['112'];
   return ['112'];
 }
+
+/**
+ * The emergency (ambulance first) numbers of the countries Attendra is used in most,
+ * by calling code; longer codes before the shorter ones they start with.
+ */
+const EMERGENCY_NUMBERS: [string, string[]][] = [
+  ['+353', ['112', '999']], // Ireland
+  ['+852', ['999']], // Hong Kong
+  ['+1', ['911']], // the United States and Canada
+  ['+44', ['999', '112']], // the United Kingdom
+  ['+61', ['000', '112']], // Australia
+  ['+64', ['111']], // New Zealand
+  ['+65', ['995', '999']], // Singapore: ambulance, then police
+  ['+52', ['911']], // Mexico
+  ['+81', ['119', '110']], // Japan: ambulance, then police
+  ['+27', ['10177', '112']], // South Africa: ambulance, then mobile
+  ['+91', ['112', '108']], // India
+  ['+55', ['192', '190']], // Brazil: ambulance, then police
+];
 
 /** The emergency number a clinic's scripts use: the one it set, if its country allows it, otherwise the country's. */
 export function emergencyNumberFor(clinic: { emergencyNumber?: string | null; phoneNumbers: string[] }): string {
@@ -77,9 +97,13 @@ export function countryCopy(clinic: { phoneNumbers: string[] }) {
     : first.startsWith('+44') ? { e164: '+442079460123', local: '020 7946 0123' } // Ofcom's range for drama
         : first.startsWith('+61') ? { e164: '+61491570123', local: '0491 570 123' } // ACMA's range for fiction
           : { e164: '+<country code><number>', local: '' };
+  // the symbol money is shown with: the visit value in Settings, the weekly report
+  const currency = us ? '$' : first.startsWith('+44') ? '£' : first.startsWith('+61') ? 'A$' : first.startsWith('+64') ? 'NZ$'
+    : EURO.some((c) => first.startsWith(c)) ? '€' : '';
   return {
     us,
     phone,
+    currency,
     exampleDob: us ? '03/04/1985' : '04/03/1985',
     recordingHint: us
       ? 'Off by default. Several US states require every party to consent, so a notice plays first.'

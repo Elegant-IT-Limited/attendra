@@ -14,6 +14,9 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Fields on each patient or pet: a label and a kind (text, yes or no, date), up to 20 | Settings; filled in under Details on each record (`PUT /api/v1/clinics/:clinicId/patients/:patientId/fields`) | Not used on calls. Encrypted like the rest of the record; saving is in the audit log, without the values. Removing a field hides what was filled in. |
 | Urgent and a due day on each open request | Requests (`POST /api/v1/clinics/:clinicId/tasks/:taskId/plan`) | Not used on calls. Urgent requests lead the open queue; a due day shows as Due or Overdue. Audited. |
 | VIP callers: a name and a phone number, up to 50 | Settings | While a front desk route applies (Routing), the assistant greets a VIP caller, says it is connecting them, and transfers the call once it has finished speaking. Outside those hours, or with no front desk route, it answers them like anyone else. A failed transfer is handled as any failed transfer: the assistant offers a callback. |
+| Voice, with a Listen button | Settings, Greeting and voice | Speaks in that voice. Listen plays the saved greeting in it (needs an OpenAI key on the API; a voice the speech model lacks says so). |
+| Emergency hospitals: up to 5, in order of preference, each open 24 hours or between set times | Settings | Sends an animal in danger to the first choice open at that moment; with none open, to the nearest 24-hour emergency vet. |
+| Clinic address and website | Settings | Gives them to a caller who asks. |
 | Links in your menu | Settings | Not used on calls. Your own tools in everyone's menu, opened in a new tab. |
 | Team members and their roles | Team | Not used on calls. No limit on members. |
 

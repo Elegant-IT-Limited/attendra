@@ -1,4 +1,4 @@
-import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
@@ -545,6 +545,80 @@ describe('what the clinic customised', () => {
     const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
     expect(slots!.ok).toBe(false);
     expect(slots!.data.error).toBe('staff_books');
+  });
+});
+
+describe('what the review found on calls', () => {
+  it('looks up no times after hours at a clinic that takes requests', async () => {
+    const c = await w.call('+17205550172', { clinic: RIVERBEND_CLINIC }); // Monday 8 pm: closed
+    const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
+    expect(slots!.data.error).toBe('after_hours');
+    expect(c.state.offered.size).toBe(0);
+  });
+
+  it('lets a calm owner carry on after an animal emergency they say is over, and never after a person in danger', async () => {
+    const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
+    const c = await w.call('+17205550172', { clinic: open });
+    expect(c.caller('my dog swallowed a sock last week')[0]).toMatchObject({ type: 'instructions' });
+    expect(c.state.emergencyLocked).toBe(true);
+    // not before the script has been said
+    expect(c.caller("he's fine now")).toEqual([]);
+    c.assistant('Please take your pet to Front Range Pet Emergency right away.');
+    const cleared = c.caller("he's fine now, it's not an emergency, I just want a check-up");
+    expect(cleared[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('animal is safe') });
+    expect(c.state.emergencyLocked).toBe(false);
+    expect(c.state.emergency?.kind).toBe('pet_toxin'); // still on the record
+    const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
+    expect(slots!.ok).toBe(true);
+    // a new emergency holds the call again
+    c.caller('oh no, now he is having a seizure');
+    expect(c.state.emergencyLocked).toBe(true);
+
+    const person = await w.call('+17205550172', { clinic: open });
+    person.caller('my dog died and I want to kill myself');
+    person.assistant('Please call or text 988 now.');
+    expect(person.caller("I'm fine, it's not an emergency")).toEqual([]);
+    expect(person.state.emergencyLocked).toBe(true);
+  });
+
+  it('names the emergency hospital that is open at the time of the call', async () => {
+    // Monday 8 pm: the day hospital is closed, the night one is open
+    const clinic = { ...RIVERBEND_CLINIC, emergencyHospital: { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } },
+      moreEmergencyHospitals: [{ name: 'Night Vets', phone: '+17205550101', address: '1 Night Road, Denver' }] };
+    const c = await w.call('+17205550172', { clinic });
+    const out = c.caller('my cat ate a lily');
+    const script = out[0]!.type === 'instructions' ? out[0]!.content : '';
+    expect(script).toContain('Night Vets');
+    expect(script).not.toContain('Day Referral');
+  });
+
+  it('offers times for a rabbit at a new clinic that lists no specialties yet', async () => {
+    const starter = { ...starterClinic({ id: DEMO_CLINIC.id, name: 'Oak Vets', timezone: 'America/Denver', industry: 'vet', phone: '+13035550100' }), afterHours: 'book' as const };
+    const c = await w.call('+13035550147', { clinic: starter });
+    const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, specialty: 'rabbit', from_date: null, part_of_day: 'any' } }])).results;
+    expect(slots!.ok).toBe(true);
+  });
+
+  it('answers an ordinary question after a refill named with its dose', async () => {
+    const c = await w.call();
+    c.caller('I need a refill of lisinopril 10 mg please');
+    c.caller('and what time do you close today?');
+    const [info] = (await c.delegate([{ tool: 'get_clinic_info', args: { question: 'what time do you close today' } }])).results;
+    expect(info!.ok).toBe(true);
+    c.caller('how much lisinopril should I take?');
+    const [dose] = (await c.delegate([{ tool: 'get_clinic_info', args: { question: 'opening hours' } }])).results;
+    expect(dose!.data.error).toBe('medical_question');
+  });
+
+  it('says the clinic has no transfer line rather than that nobody is there, and a browser test call says where it would connect', async () => {
+    const none = await w.call('+13035550147', { clinic: { ...DEMO_CLINIC, routing: [] } });
+    const [r] = (await none.delegate([{ tool: 'transfer_call', args: { target: 'front_desk' } }])).results;
+    expect(r!.data.error).toBe('no_rule');
+    expect(String(r!.data.say)).not.toContain('Nobody is available');
+    const web = await w.call(null, { channel: 'web' });
+    const [t] = (await web.delegate([{ tool: 'transfer_call', args: { target: 'on_call' } }])).results;
+    expect(t).toMatchObject({ ok: true, data: { test_call: true } });
+    expect(t!.action).toBeUndefined();
   });
 });
 

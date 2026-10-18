@@ -115,5 +115,12 @@ export const vet: IndustryPack = {
       phone,
     }),
   },
-  emergency: { phrases: { en: EN, es: ES }, script: (language, to) => script(language, to) },
+  emergency: {
+    phrases: { en: EN, es: ES },
+    script: (language, to) => script(language, to),
+    safe: {
+      en: w("not an? emergency|isn'?t an emergency|no emergency|not urgent|(?:he|she|it|they)(?:'?s| is| are|'?re) (?:fine|ok|okay|alright|all right|safe|doing (?:fine|well|ok|okay|great)|totally fine|completely fine)(?: now)?|(?:he|she|it|they) seems? (?:fine|ok|okay|alright|all right)"),
+      es: w('no es (?:una )?emergencia|no es urgente|(?:ya )?esta (?:bien|perfecto|tranquilo|tranquila)|(?:el|ella) esta bien'),
+    },
+  },
 };

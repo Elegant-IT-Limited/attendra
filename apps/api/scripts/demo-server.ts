@@ -105,8 +105,11 @@ if (realCalls || simulated) {
 
 // Ask a question answers with the model when test calls are on, and from the best passage otherwise (the e2e suite)
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
+// with a key, Settings' Listen button speaks the greeting in each voice
+const tts = realCalls ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const voiceSamples = tts ? { sample: async (voice: string, text: string) => Buffer.from(await (await tts.audio.speech.create({ model: process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts', voice, input: text, response_format: 'mp3' })).arrayBuffer()) } : null;
 const changes = await pgliteChangeFeed(client);
-const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken } });
+const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken }, voiceSamples });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

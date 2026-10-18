@@ -52,6 +52,21 @@ export function callingCode(e164: string): string | null {
   return TWO_DIGITS.has(digits.slice(0, 2)) ? digits.slice(0, 2) : digits.slice(0, 3);
 }
 
+/**
+ * A number as staff typed it ("(303) 555-0100", "020 7946 0123"), as E.164 in the
+ * clinic's own country, so texts reach it. A number typed with its own + is kept; one
+ * that cannot be read is left as typed, and matching on its digits still works.
+ */
+export function asE164(clinic: { phoneNumbers: string[] }, typed: string): string {
+  const t = typed.trim();
+  const digits = t.replace(/\D/g, '');
+  if (t.startsWith('+')) return digits.length >= 8 ? `+${digits}` : t;
+  const code = callingCode(clinic.phoneNumbers[0] ?? '') ?? '1';
+  if (code === '1') return digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : t;
+  const national = digits.startsWith('0') ? digits.slice(1) : digits;
+  return national.length >= 7 && national.length + code.length <= 15 ? `+${code}${national}` : t;
+}
+
 /** Whether a number is in the same country as the clinic's own first number. */
 export function inClinicCountry(clinic: { phoneNumbers: string[] }, e164: string): boolean {
   const code = callingCode(e164);
