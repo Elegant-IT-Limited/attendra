@@ -30,18 +30,22 @@ export function wav(pcm: Buffer, rate = RATE): Buffer {
 /**
  * The greeting spoken by the Live model itself, in a voice only it has: one short
  * session over a WebSocket that reads the text and is closed. Nothing is stored on
- * OpenAI's side. The speech ends when no audio has come for `quietMs`.
+ * OpenAI's side. The session has client delegation, like a call, so it cannot take
+ * response.create: the model starts speaking from its instructions, as it greets a
+ * caller, and is nudged once with speakable commentary if it has not begun after
+ * `nudgeMs`. The speech ends when no audio has come for `quietMs`.
  */
-export function liveSample(open: () => LiveSocket, model: string, voice: string, text: string, opts: { quietMs?: number; timeoutMs?: number } = {}): Promise<Buffer> {
+export function liveSample(open: () => LiveSocket, model: string, voice: string, text: string, opts: { quietMs?: number; timeoutMs?: number; nudgeMs?: number } = {}): Promise<Buffer> {
   const ws = open();
   const chunks: Buffer[] = [];
   return new Promise((resolve, reject) => {
     let quiet: ReturnType<typeof setTimeout> | undefined;
+    let nudge: ReturnType<typeof setTimeout> | undefined;
     let done = false;
     const finish = (err?: Error) => {
       if (done) return;
       done = true;
-      clearTimeout(overall); clearTimeout(quiet);
+      clearTimeout(overall); clearTimeout(quiet); clearTimeout(nudge);
       try { ws.close(); } catch { /* already closed */ }
       if (err) reject(err);
       else if (!chunks.length) reject(new Error('no audio'));
@@ -49,12 +53,20 @@ export function liveSample(open: () => LiveSocket, model: string, voice: string,
     };
     const overall = setTimeout(() => (chunks.length ? finish() : finish(new Error('timed out'))), opts.timeoutMs ?? 20_000);
     ws.on('event', (e) => {
-      if (e.type === 'session.started') ws.send({ type: 'response.create' });
-      else if (e.type === 'session.output_audio.delta') {
+      if (e.type === 'session.started') {
+        nudge = setTimeout(() => {
+          if (!chunks.length) ws.send({ type: 'session.commentary.append', delegation_id: null, content: `Say exactly this now, once: ${text}` });
+        }, opts.nudgeMs ?? 2500);
+      } else if (e.type === 'session.output_audio.delta') {
+        clearTimeout(nudge);
         chunks.push(Buffer.from(e.delta, 'base64'));
         clearTimeout(quiet);
         quiet = setTimeout(() => finish(), opts.quietMs ?? 1500);
-      } else if (e.type === 'error') finish(new Error(`live error: ${(e as { error?: { code?: string } }).error?.code ?? 'unknown'}`));
+      } else if (e.type === 'error') {
+        // OpenAI's message says which field it refused; it never holds patient data here
+        const err = (e as { error?: { code?: string; message?: string } }).error;
+        finish(new Error(`live error: ${err?.code ?? 'unknown'}${err?.message ? `: ${err.message}` : ''}`));
+      }
       else if (e.type === 'session.closed') finish();
     });
     ws.on('error', (err) => finish(err));
@@ -62,9 +74,9 @@ export function liveSample(open: () => LiveSocket, model: string, voice: string,
       type: 'session.start',
       session: {
         model, store: false,
-        instructions: 'You read text aloud for a voice preview. Say the developer\'s text exactly as written, once, in a warm and natural phone voice, and nothing else.',
+        // the same opening a call uses (voice-engine prompt.ts), with nothing after it
+        instructions: `You are reading a short voice preview. Start with exactly this greeting: "${text}" Say it once, in a warm and natural phone voice, then stop and say nothing else.`,
         audio: { format: { type: 'audio/pcm', rate: RATE }, output: { voice } },
-        input: [{ role: 'developer', content: [{ type: 'input_text', text }] }],
       },
     });
   });

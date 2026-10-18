@@ -51,11 +51,19 @@ describe('without a voice sampler', () => {
 });
 
 describe('voices only the Live model has', () => {
-  const fakeLive = (script: (send: (e: object) => void) => void) => {
+  const fakeLive = (script: (send: (e: object) => void) => void, speaksFirst = true) => {
     const handlers: Record<string, ((x: never) => void)[]> = {};
     const sent: { type: string; session?: { audio?: { output?: { voice?: string } }; input?: unknown[]; store?: boolean } }[] = [];
     const socket = {
-      send: (e: never) => { sent.push(e); if ((e as { type: string }).type === 'session.start') queueMicrotask(() => emit({ type: 'session.started' })); if ((e as { type: string }).type === 'response.create') script(emit); },
+      // like OpenAI: a client-delegation session refuses response.create; the model speaks from its instructions,
+      // or after speakable commentary
+      send: (e: never) => {
+        sent.push(e);
+        const type = (e as { type: string }).type;
+        if (type === 'session.start') queueMicrotask(() => { emit({ type: 'session.started' }); if (speaksFirst) script(emit); });
+        if (type === 'response.create') emit({ type: 'error', error: { code: 'invalid_request_error', message: 'response.create requires a session with Responses delegation.' } });
+        if (type === 'session.commentary.append') script(emit);
+      },
       on: (name: string, h: (x: never) => void) => { (handlers[name] ??= []).push(h); },
       close: vi.fn(),
     };
@@ -69,14 +77,23 @@ describe('voices only the Live model has', () => {
     const audio = await liveSample(() => socket, 'gpt-live-1', 'tempo', 'Thanks for calling.', { quietMs: 10 });
     expect(audio.subarray(0, 4).toString()).toBe('RIFF');
     expect(audio.length).toBe(44 + 960);
-    expect(sent[0]).toMatchObject({ type: 'session.start', session: { store: false, audio: { output: { voice: 'tempo' } }, input: [{ role: 'developer', content: [{ text: 'Thanks for calling.' }] }] } });
-    expect(sent[1]).toEqual({ type: 'response.create' });
+    expect(sent[0]).toMatchObject({ type: 'session.start', session: { store: false, audio: { output: { voice: 'tempo' } }, instructions: expect.stringContaining('Start with exactly this greeting: "Thanks for calling."') } });
+    // never response.create, which a client-delegation session refuses; no nudge once it speaks
+    expect(sent.map((e) => e.type)).toEqual(['session.start']);
     expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('nudges once with speakable commentary when the model has not started', async () => {
+    const pcm = Buffer.alloc(240, 2);
+    const { socket, sent } = fakeLive((emit) => emit({ type: 'session.output_audio.delta', delta: pcm.toString('base64') }), false);
+    const audio = await liveSample(() => socket, 'gpt-live-1', 'willow', 'Hello.', { quietMs: 10, nudgeMs: 10 });
+    expect(audio.length).toBe(44 + 240);
+    expect(sent.map((e) => e.type)).toEqual(['session.start', 'session.commentary.append']);
   });
 
   it('fails cleanly on an error or no audio, so Settings says to try again', async () => {
     await expect(liveSample(() => fakeLive((emit) => emit({ type: 'error', error: { code: 'invalid_voice' } })).socket, 'gpt-live-1', 'tempo', 'Hi.')).rejects.toThrow('invalid_voice');
-    await expect(liveSample(() => fakeLive(() => {}).socket, 'gpt-live-1', 'tempo', 'Hi.', { timeoutMs: 20 })).rejects.toThrow('timed out');
+    await expect(liveSample(() => fakeLive(() => {}, false).socket, 'gpt-live-1', 'tempo', 'Hi.', { timeoutMs: 40, nudgeMs: 10 })).rejects.toThrow('timed out');
   });
 
   it('uses the speech model for the voices it has and the Live model for the rest', async () => {
