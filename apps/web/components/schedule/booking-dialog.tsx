@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange } from '@attendra/api/contracts';
-import { type ClinicConfig, localDateOf } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf } from '@attendra/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 
 export interface PatientChoice { id: string; name: string; detail?: string }
 
-const STEPS = ['Patient', 'Time', 'Note', 'Confirm'] as const;
+const STEPS = (pets: boolean) => [pets ? 'Pet' : 'Patient', 'Time', 'Note', 'Confirm'];
 
 /**
  * Books an appointment in four steps: who, when (from real open times), an optional
@@ -37,6 +37,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
   const today = localDateOf(new Date(), clinic.timezone);
   const [step, setStep] = useState(0);
   const [patient, setPatient] = useState<PatientChoice | null>(null);
+  const pets = industryPack(clinic.industry).identity === 'pet';
   const [visitTypeId, setVisitTypeId] = useState(clinic.visitTypes[0]?.id ?? '');
   const [providerId, setProviderId] = useState<string | null>(null);
   const [from, setFrom] = useState(today);
@@ -83,7 +84,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
 
   return (
     <Panel open={open} onOpenChange={onOpenChange} title="New booking" className="max-w-2xl"
-      description={<Stepper step={step} />}
+      description={<Stepper step={step} pets={pets} />}
       footer={<>
         {step > (fixed ? 1 : 0) && <Button variant="ghost" onClick={() => setStep(step - 1)} disabled={book.isPending}>Back</Button>}
         {step < 3
@@ -103,9 +104,9 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="provider">Provider</Label>
+              <Label htmlFor="provider">{pets ? 'Veterinarian' : 'Provider'}</Label>
               <Select id="provider" value={providerId ?? ''} onChange={(e) => { setProviderId(e.target.value || null); setSlot(null); }}>
-                <option value="">Any provider</option>
+                <option value="">{pets ? 'Any veterinarian' : 'Any provider'}</option>
                 {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </div>
@@ -116,13 +117,13 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
       {step === 2 && (
         <div className="space-y-1.5">
           <Label htmlFor="note">Note for the team (optional)</Label>
-          <Textarea id="note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Anything the provider or front desk should know" />
+          <Textarea id="note" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder={pets ? 'Anything the vet or front desk should know' : 'Anything the provider or front desk should know'} />
           <p className="text-xs text-text-muted">Only staff see this note. It is stored encrypted.</p>
         </div>
       )}
       {step === 3 && slot && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-text-muted">Patient</dt><dd className="font-medium">{patient?.name}</dd>
+          <dt className="text-text-muted">{pets ? 'Pet' : 'Patient'}</dt><dd className="font-medium">{patient?.name}</dd>
           <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(slot.startsAt), clinic.timezone))} at {timeOf(slot.startsAt, clinic.timezone)}</dd>
           <dt className="text-text-muted">With</dt><dd>{provider?.name}</dd>
           <dt className="text-text-muted">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
@@ -133,10 +134,10 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
   );
 }
 
-function Stepper({ step }: { step: number }) {
+function Stepper({ step, pets }: { step: number; pets: boolean }) {
   return (
     <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-      {STEPS.map((s, i) => (
+      {STEPS(pets).map((s, i) => (
         <span key={s} className={cn('inline-flex items-center gap-1', i === step ? 'font-medium text-text' : 'text-text-muted')} aria-current={i === step ? 'step' : undefined}>
           <span className={cn('flex size-4 items-center justify-center rounded-full text-xs', i < step ? 'bg-primary text-on-primary' : i === step ? 'border border-primary' : 'border border-border')}>
             {i < step ? <Check className="size-2.5" /> : i + 1}

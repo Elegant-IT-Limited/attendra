@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Kbd } from '@/components/ui/bits';
 import { api } from '@/lib/api';
+import { usePets } from '@/lib/terms';
 import { dob } from '@/lib/format';
 import type { NavItem } from '@/lib/nav';
 import { useTheme } from '@/lib/theme';
@@ -25,6 +26,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, canSearchP
   clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; pages: NavItem[];
   canSearchPatients: boolean; canBook: boolean; canTestCall: boolean; onShortcuts: () => void;
 }) {
+  const pets = usePets(clinicId);
   const router = useRouter();
   const theme = useTheme();
   const [text, setText] = useState('');
@@ -62,7 +64,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, canSearchP
           <Command shouldFilter={false} label="Search and jump" loop>
             <div className="flex items-center gap-2 border-b border-border px-3">
               <Search className="size-4 text-text-muted" aria-hidden />
-              <Command.Input value={text} onValueChange={setText} autoFocus placeholder={canSearchPatients ? 'Go to a page, find a patient, or do something' : 'Go to a page, or do something'}
+              <Command.Input value={text} onValueChange={setText} autoFocus placeholder={canSearchPatients ? `Go to a page, find a ${pets ? 'pet' : 'patient'}, or do something` : 'Go to a page, or do something'}
                 className="h-12 flex-1 bg-transparent text-md text-text outline-none placeholder:text-text-muted" />
               <Kbd>Esc</Kbd>
             </div>

@@ -2,7 +2,7 @@
 'use client';
 import type { CallList, CallSummary } from '@attendra/api/contracts';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { CheckCircle2, CircleDashed, Search } from 'lucide-react';
+import { CheckCircle2, CircleDashed, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
@@ -18,6 +18,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
 import { clinicTime, duration, OUTCOMES, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
+import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
 const FILTERS = {
@@ -36,6 +37,7 @@ export default function CallsPage() {
 
 function Calls() {
   const { clinicId } = useParams<{ clinicId: string }>();
+  const pets = usePets(clinicId);
   const router = useRouter();
   const { clinic, can } = useClinic(clinicId);
   // the quality page links here with its filters in the address: dates, outcome, a refusal code, the review flag
@@ -90,38 +92,40 @@ function Calls() {
     <>
       <PageHeader title="Calls" description={<>Every call the assistant answered. Open one to read the transcript and see what it did. Times are {zoneLabel(tz)}.</>} />
       <LiveNow clinicId={clinicId} canWatch={openable} />
-      <Card className="mb-4 px-4 py-3">
-        <div className="flex flex-wrap items-end gap-3">
+      <Card className="mb-4 space-y-3 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
           {can('calls:read') && (
-            <div className="min-w-56 flex-1 space-y-1">
-              <Label htmlFor="call-search" className="block text-xs text-text-muted">Patient</Label>
+            <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+              <Label htmlFor="call-search" className="text-xs text-text-muted">Caller</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-                <Input id="call-search" type="search" autoComplete="off" className="h-8 pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name of a verified caller" />
+                <Input id="call-search" type="search" autoComplete="off" className="pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Name of a verified pet or owner' : 'Name of a verified caller'} />
               </div>
             </div>
           )}
-          <div className="space-y-1"><Label htmlFor="call-from" className="block text-xs text-text-muted">From</Label><Input id="call-from" type="date" className="h-8 w-38" aria-describedby="call-dates-hint" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="call-to" className="block text-xs text-text-muted">To</Label><Input id="call-to" type="date" className="h-8 w-38" aria-describedby="call-dates-hint" value={to} onChange={(e) => setTo(e.target.value)} /></div>
-          <p id="call-dates-hint" className="self-end pb-1.5 text-xs text-text-muted">Times and dates are the clinic&rsquo;s.</p>
+          <div className="space-y-1"><Label htmlFor="call-from" className="text-xs text-text-muted">From</Label><Input id="call-from" type="date" aria-describedby="call-dates-hint" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="call-to" className="text-xs text-text-muted">To</Label><Input id="call-to" type="date" aria-describedby="call-dates-hint" value={to} onChange={(e) => setTo(e.target.value)} /></div>
           <div className="space-y-1">
-            <Label htmlFor="call-outcome" className="block text-xs text-text-muted">Outcome</Label>
-            <Select id="call-outcome" className="h-8 w-40" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+            <Label htmlFor="call-outcome" className="text-xs text-text-muted">Outcome</Label>
+            <Select id="call-outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
               <option value="">Any outcome</option>
               {Object.entries(OUTCOMES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </Select>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="call-channel" className="block text-xs text-text-muted">Channel</Label>
-            <Select id="call-channel" className="h-8 w-36" value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <Label htmlFor="call-channel" className="text-xs text-text-muted">Channel</Label>
+            <Select id="call-channel" value={channel} onChange={(e) => setChannel(e.target.value)}>
               <option value="">Any channel</option>
               <option value="phone">Phone</option>
               <option value="web">Browser test</option>
             </Select>
           </div>
-          <label className="flex h-8 items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={emergencyOnly} onChange={(e) => setEmergencyOnly(e.target.checked)} /> Emergencies only</label>
-          {refusal && <Badge tone="warn" className="h-8 px-2 text-sm">Refused: {REFUSALS[refusal] ?? refusal}</Badge>}
-          {filtered && <Button size="sm" variant="ghost" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setText(''); setRefusal(''); }}>Clear</Button>}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={emergencyOnly} onChange={(e) => setEmergencyOnly(e.target.checked)} /> Emergencies only</label>
+          {refusal && <Badge tone="warn" className="px-2 text-sm">Refused: {REFUSALS[refusal] ?? refusal}</Badge>}
+          <p id="call-dates-hint" className="text-xs text-text-muted">Times and dates are the clinic&rsquo;s.</p>
+          {filtered && <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { setFrom(''); setTo(''); setOutcome(''); setChannel(''); setEmergencyOnly(false); setText(''); setRefusal(''); }}><X /> Clear filters</Button>}
         </div>
       </Card>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

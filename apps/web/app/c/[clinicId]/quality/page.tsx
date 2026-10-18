@@ -12,8 +12,8 @@ import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
 import { dayTitle, REFUSALS, usd } from '@/lib/format';
 
-const pct = (n: number | null) => (n === null ? 'no calls' : `${Math.round(n * 100)}%`);
-const money = (n: number | null) => (n === null ? 'none' : usd(n));
+const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`);
+const money = (n: number | null) => (n === null ? '—' : usd(n));
 // "29 Sep", day first like every other date in the dashboard
 const short = (d: string) => dayTitle(d, 'short').replace(/^\w+ /, '');
 
@@ -25,18 +25,20 @@ type Metric = { key: string; label: string; explain: string; value: (w: QualityW
  */
 export default function QualityPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { can, isPending } = useClinic(clinicId);
+  const { can, isPending, clinic } = useClinic(clinicId);
+  // a hosted clinic pays a plan, not the voice minutes: the cost estimates are for people who run Attendra themselves
+  const hosted = !!clinic?.accountLinks.length;
   const allowed = can('quality:read');
   const q = useQuery({ queryKey: ['quality', clinicId], queryFn: () => api<Quality>(`/clinics/${clinicId}/quality?weeks=8`), enabled: allowed, refetchInterval: 60_000 });
   const calls = (params: Record<string, string>) => `/c/${clinicId}/calls?${new URLSearchParams(params)}`;
   const week = (w: QualityWeek, extra: Record<string, string> = {}) => calls({ from: w.start, to: w.end, ...extra });
 
-  const METRICS: Metric[] = [
+  const ALL: Metric[] = [
     { key: 'containment', label: 'Handled without staff', explain: 'Calls the assistant finished itself: booked, moved, cancelled or answered.', value: (w) => pct(w.containmentRate), trend: (w) => w.containmentRate, href: (w) => week(w) },
-    { key: 'booking', label: 'Booking success', explain: 'Bookings made, out of calls where the assistant proposed a time.', value: (w) => (w.bookingAttempts ? `${pct(w.bookingSuccess)} (${w.bookings} of ${w.bookingAttempts})` : 'no attempts'), trend: (w) => w.bookingSuccess, href: (w) => week(w, { outcome: 'booked' }) },
-    { key: 'turns', label: 'Turns to a booking', explain: 'How many times the caller spoke, on calls that ended in a booking.', value: (w) => (w.avgTurnsToBooking === null ? 'no bookings' : String(w.avgTurnsToBooking)), trend: (w) => w.avgTurnsToBooking, href: (w) => week(w, { outcome: 'booked' }) },
-    { key: 'transferred', label: 'Transferred to a person', explain: 'Share of calls that went to a person.', value: (w) => `${pct(w.transferredShare)} (${w.transferred})`, trend: (w) => w.transferredShare, href: (w) => week(w, { outcome: 'transferred' }) },
-    { key: 'flagged', label: 'Flagged for review', explain: 'Share of calls whose summary said someone should look at them.', value: (w) => `${pct(w.flaggedShare)} (${w.flagged})`, trend: (w) => w.flaggedShare, href: (w) => week(w, { review: 'needed' }) },
+    { key: 'booking', label: 'Booking success', explain: 'Bookings made, out of calls where the assistant proposed a time.', value: (w) => (w.bookingAttempts ? `${pct(w.bookingSuccess)} (${w.bookings} of ${w.bookingAttempts})` : '—'), trend: (w) => w.bookingSuccess, href: (w) => week(w, { outcome: 'booked' }) },
+    { key: 'turns', label: 'Turns to a booking', explain: 'How many times the caller spoke, on calls that ended in a booking.', value: (w) => (w.avgTurnsToBooking === null ? '—' : String(w.avgTurnsToBooking)), trend: (w) => w.avgTurnsToBooking, href: (w) => week(w, { outcome: 'booked' }) },
+    { key: 'transferred', label: 'Transferred to a person', explain: 'Share of calls that went to a person.', value: (w) => (w.transferredShare === null ? '—' : `${pct(w.transferredShare)} (${w.transferred})`), trend: (w) => w.transferredShare, href: (w) => week(w, { outcome: 'transferred' }) },
+    { key: 'flagged', label: 'Flagged for review', explain: 'Share of calls whose summary said someone should look at them.', value: (w) => (w.flaggedShare === null ? '—' : `${pct(w.flaggedShare)} (${w.flagged})`), trend: (w) => w.flaggedShare, href: (w) => week(w, { review: 'needed' }) },
     { key: 'after', label: 'After-hours calls answered', explain: 'Calls outside opening hours, all answered.', value: (w) => String(w.afterHours), trend: (w) => w.afterHours, href: (w) => week(w) },
     { key: 'afterBooked', label: 'Bookings made after hours', explain: 'Visits booked while the clinic was closed: calls that would have gone to voicemail.', value: (w) => String(w.afterHoursBookings), trend: (w) => w.afterHoursBookings, href: (w) => week(w, { outcome: 'booked' }) },
     { key: 'emergencies', label: 'Emergencies sent on', explain: 'Calls where the emergency script ran.', value: (w) => String(w.emergencies), trend: (w) => w.emergencies, href: (w) => week(w, { emergency: 'true' }) },
@@ -44,6 +46,7 @@ export default function QualityPage() {
     { key: 'cost', label: 'Cost per call', explain: 'Voice minutes at the list price, an estimate. The planner and summaries are extra.', value: (w) => money(w.costPerCall), trend: (w) => w.costPerCall, href: (w) => week(w) },
     { key: 'costBooking', label: 'Cost per booking', explain: 'The week\'s voice cost, divided by its bookings.', value: (w) => money(w.costPerBooking), trend: (w) => w.costPerBooking, href: (w) => week(w, { outcome: 'booked' }) },
   ];
+  const METRICS = ALL.filter((m) => !hosted || !m.key.startsWith('cost'));
 
   if (!isPending && !allowed) return <><PageHeader title="Quality" /><Empty title="Not available">Only owners and practice managers see quality.</Empty></>;
   const weeks = q.data?.weeks ?? [];
@@ -56,6 +59,7 @@ export default function QualityPage() {
       {q.isError && <Alert tone="danger">The numbers did not load. They try again every minute.</Alert>}
       {q.isPending || !now ? <Skeleton className="h-96" /> : (
         <div className="space-y-6">
+          {now.calls === 0 && <Alert>No calls this week yet. The numbers fill in as calls come in; a dash means there is nothing to count.</Alert>}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="This week">
             {METRICS.map((m) => (
               <Link key={m.key} href={m.href(now)} className="focus-ring block rounded-lg border border-border bg-surface p-4 shadow-xs hover:border-border-strong" data-testid={`quality-${m.key}`}>
@@ -102,7 +106,13 @@ export default function QualityPage() {
               </tbody>
             </Table>
           </Card>
-          <p className="text-xs text-text-muted">{METRICS.map((m) => `${m.label}: ${m.explain}`).join(' ')} Cost uses ${q.data!.costPerMinute.toFixed(2)} a minute.</p>
+          <details className="group rounded-lg border border-border bg-surface text-sm shadow-xs">
+            <summary className="focus-ring cursor-pointer list-none rounded-lg px-4 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">What each number means</summary>
+            <dl className="grid gap-x-6 gap-y-3 border-t border-border px-4 py-3 md:grid-cols-2">
+              {METRICS.map((m) => <div key={m.key}><dt className="font-medium">{m.label}</dt><dd className="text-text-muted">{m.explain}</dd></div>)}
+              {!hosted && <div><dt className="font-medium">Price per minute</dt><dd className="text-text-muted">Costs use ${q.data!.costPerMinute.toFixed(2)} a minute.</dd></div>}
+            </dl>
+          </details>
         </div>
       )}
     </>

@@ -8,3 +8,9 @@ export function useTerms(clinicId: string): Terms & { title: (t: keyof Terms) =>
   const terms = industryPack(config.data?.industry).terms;
   return { ...terms, title: (t) => capitalized(terms[t]) };
 }
+
+/** Whether this account's records are pets (the veterinary pack): owners call, pets are booked. */
+export function usePets(clinicId: string): boolean {
+  const config = useClinicConfig(clinicId);
+  return industryPack(config.data?.industry).identity === 'pet';
+}

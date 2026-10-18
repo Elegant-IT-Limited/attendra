@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients } from '@attendra/core';
+import { ageOn, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -174,7 +174,9 @@ export class PatientsController {
   @ApiOkResponse({ schema: schemaOf(ImportResult) })
   async import(@Param('clinicId') clinicId: string, @Body(new ZodPipe(ImportInput)) body: z.infer<typeof ImportInput>, @CurrentStaff() staff: Staff): Promise<ImportResult> {
     const clinic = await this.clinic(clinicId);
-    const rows = readPatients(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'));
+    // a vet clinic's file is one row per pet, with its owner
+    const read = industryPack(clinic.industry).identity === 'pet' ? readPets : readPatients;
+    const rows = read(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'));
     const report: ImportResult = { dryRun: body.dryRun, rows: [], counts: { add: 0, update: 0, skip: 0, error: 0 } };
     // one transaction: a dry run rolls it back, so it checks against the database exactly as the import would
     const dryRun = Symbol('dry run');

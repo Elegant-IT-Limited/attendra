@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { BUILT_IN_VOICES, type ClinicConfig, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { BUILT_IN_VOICES, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
-import { Field, Section } from '@/components/settings/section';
+import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { Switch } from '@/components/ui/controls';
@@ -18,18 +18,49 @@ import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { DAYS } from '@/lib/format';
+import { DAYS, dayTitle } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 
 type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
-const select = 'h-9 rounded-md border border-border-strong bg-surface px-2 text-sm';
+type ListKey = 'routing' | 'faqs' | 'offers' | 'requestTopics' | 'customFields' | 'vipCallers' | 'menuLinks' | 'visitTypes';
+type T = Terms & { title: (t: keyof Terms) => string };
+
+/** The parts of this page, in order, for its own menu. */
+const PARTS: { id: string; label: (t: T) => string }[] = [
+  { id: 'greeting', label: () => 'Greeting and voice' },
+  { id: 'assistant', label: () => 'Assistant and languages' },
+  { id: 'hours', label: () => 'Opening hours' },
+  { id: 'holidays', label: () => 'Holidays' },
+  { id: 'emergency', label: () => 'Emergency hospital' },
+  { id: 'visits', label: () => 'Visit types' },
+  { id: 'transfers', label: () => 'Transfers' },
+  { id: 'vip', label: () => 'VIP callers' },
+  { id: 'answers', label: () => 'Common questions' },
+  { id: 'offers', label: () => 'Offers' },
+  { id: 'requests', label: () => 'Kinds of request' },
+  { id: 'fields', label: (t) => `Fields on each ${t.patient}` },
+  { id: 'links', label: () => 'Menu links' },
+  { id: 'records', label: () => 'Call records' },
+  { id: 'numbers', label: () => 'Phone numbers' },
+];
+
+/** Where a save problem is, in the page's words rather than the setting's path. */
+function issueLabel(path: string) {
+  const top = path.split('.')[0] ?? '';
+  const names: Record<string, string> = {
+    greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
+    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospital',
+    hours: 'Opening hours', holidays: 'Holidays', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
+  };
+  return names[top] ?? (top || 'Settings');
+}
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'new';
 const newId = (prefix: string, name: string) => `${prefix}_${slug(name)}_${Math.random().toString(36).slice(2, 6)}`;
 
 export default function Settings() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const terms = useTerms(clinicId);
-  const { can } = useClinic(clinicId);
+  const { can, clinic } = useClinic(clinicId);
   const queries = useQueryClient();
   const toast = useToast();
   const saved = useQuery({ queryKey: ['settings', clinicId], queryFn: () => api<ClinicConfig>(`/clinics/${clinicId}/settings`) });
@@ -37,6 +68,15 @@ export default function Settings() {
   const [issues, setIssues] = useState<ApiError['issues']>([]);
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
+  // a new row goes to the top of its list, under the button that made it: bring it into view and put the cursor in its first field
+  const [added, setAdded] = useState<string | null>(null);
+  useEffect(() => {
+    if (!added) return;
+    const el = document.getElementById(added);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.querySelector<HTMLInputElement>('input, select, textarea')?.focus({ preventScroll: true });
+    setAdded(null);
+  }, [added, draft]);
 
   const save = useMutation({
     mutationFn: (config: ClinicConfig) => api<ClinicConfig>(`/clinics/${clinicId}/settings`, { method: 'PUT', body: JSON.stringify(config) }),
@@ -61,6 +101,16 @@ export default function Settings() {
   const windows = (d: Day) => c.hours[d] ?? [];
   const setWindows = (d: Day, w: { open: string; close: string }[]) => set({ hours: { ...c.hours, [d]: w } });
 
+  const pet = c.industry === 'vet';
+  const upd = <K extends ListKey>(key: K, i: number, patch: Partial<NonNullable<ClinicConfig[K]>[number]>) =>
+    set({ [key]: ((c[key] ?? []) as object[]).map((x, j) => (j === i ? { ...x, ...patch } : x)) } as Partial<ClinicConfig>);
+  const remove = <K extends ListKey>(key: K, i: number) => set({ [key]: ((c[key] ?? []) as object[]).filter((_, j) => j !== i) } as Partial<ClinicConfig>);
+  const visit = (i: number, patch: Partial<ClinicConfig['visitTypes'][number]>) => upd('visitTypes', i, patch);
+  const num = (v: string) => (v === '' ? undefined : Number(v));
+  // shown as a plain phone number; stored as the tel: address a transfer dials (a sip: address is kept as typed)
+  const shownUri = (uri: string) => (uri.startsWith('tel:') ? uri.slice(4) : uri);
+  const storedUri = (v: string) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${v.replace(/[^\d+]/g, '')}`);
+
   return (
     <>
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
@@ -68,11 +118,19 @@ export default function Settings() {
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       {issues && issues.length > 0 && (
         <Alert tone="danger" title="Not saved. Fix these first:" className="mb-6">
-          <ul className="list-disc pl-4">{issues.map((i, n) => <li key={n}><span className="font-mono text-xs">{i.path || 'settings'}</span>: {i.message}</li>)}</ul>
+          <ul className="list-disc pl-4">{issues.map((i, n) => <li key={n}><span className="font-medium">{issueLabel(i.path)}</span>: {i.message}</li>)}</ul>
         </Alert>
       )}
-      <fieldset disabled={!writable || save.isPending} className="space-y-6 pb-24">
-        <Section title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
+      <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
+        <nav aria-label="On this page" className="hidden lg:block">
+          <ul className="sticky top-6 space-y-0.5 text-sm">
+            {PARTS.filter((part) => part.id !== 'emergency' || pet || c.emergencyHospital).map((part) => (
+              <li key={part.id}><a href={`#${part.id}`} className="focus-ring block rounded-md px-2.5 py-1.5 text-text-muted hover:bg-surface-sunken hover:text-text">{part.label(terms)}</a></li>
+            ))}
+          </ul>
+        </nav>
+      <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
+        <Section id="greeting" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
           <Field label="Clinic name" htmlFor="name"><Input id="name" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
@@ -90,257 +148,259 @@ export default function Settings() {
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
             </Field>
           </div>
-          <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
-            hint={`After the ${emergencyNumberFor(c)} script, ring the on-call line from Routing. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
-          <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
-            hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
-          {c.recording.enabled && (
-            <Field label="Recording notice" htmlFor="notice"><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
-          )}
+          <div className="space-y-4 border-t border-border pt-5">
+            <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
+              hint={`After the ${emergencyNumberFor(c)} script, ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
+            <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
+              hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
+            {c.recording.enabled && (
+              <Field label="Recording notice" htmlFor="notice" hint="Played before anything else, so every caller hears it."><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
+            )}
+          </div>
         </Section>
 
         <AssistantSection c={c} set={set} disabled={!writable || save.isPending} />
 
-        <Section title="Opening hours" description={c.afterHours === 'requests'
+        <Section id="hours" title="Opening hours" description={c.afterHours === 'requests'
           ? 'Outside these hours the assistant still answers and takes requests and callbacks, but books nothing and does not transfer to the front desk.'
           : 'Outside these hours the assistant still answers, takes callbacks and books, but does not transfer to the front desk.'}>
-          <Field label="While you are closed" htmlFor="after-hours" hint="Taking requests lets the team book in the morning, after a person has looked at each one.">
-            <Select id="after-hours" className="w-80" value={c.afterHours} onChange={(e) => set({ afterHours: e.target.value as ClinicConfig['afterHours'] })}>
-              <option value="book">Book visits, as during opening hours</option>
-              <option value="requests">Take requests; the team books in the morning</option>
-            </Select>
-          </Field>
-          <Field label="Average visit value" htmlFor="visit-value" hint="The weekly report counts bookings made after hours as visits saved, at this value each.">
-            <Input id="visit-value" type="number" min={0} max={100000} className="w-28" value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
-          </Field>
-          {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
-            <div key={d} className="flex flex-wrap items-center gap-3 border-b border-border pb-3 last:border-0 last:pb-0">
-              <span className="w-24 text-sm font-medium">{DAYS[Number(d)]}</span>
-              {windows(d).length === 0 && <span className="text-sm text-text-muted">Closed</span>}
-              {windows(d).map((w, i) => (
-                <span key={i} className="flex items-center gap-1.5">
-                  <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-36" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
-                  <span className="text-text-muted">to</span>
-                  <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-36" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
-                  <Button type="button" size="sm" variant="ghost" aria-label="Remove hours" onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
-                </span>
-              ))}
-              <Button type="button" size="sm" variant="ghost" onClick={() => setWindows(d, [...windows(d), { open: '08:00', close: '17:00' }])}><Plus /> Hours</Button>
-            </div>
-          ))}
+          <div className="divide-y divide-border rounded-lg border border-border">
+            {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
+              <div key={d} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+                <span className="w-24 text-base font-medium">{DAYS[Number(d)]}</span>
+                <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+                  {windows(d).length === 0 && <span className="text-base text-text-muted">Closed</span>}
+                  {windows(d).map((w, i) => (
+                    <span key={i} className="flex items-center gap-1.5">
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-32" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
+                      <span className="text-sm text-text-muted">to</span>
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-32" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
+                      <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove these ${DAYS[Number(d)]} hours`} onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
+                    </span>
+                  ))}
+                </div>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setWindows(d, [...windows(d), windows(d).length ? { open: '13:00', close: '17:00' } : { open: '08:00', close: '17:00' }])}>
+                  <Plus /> {windows(d).length ? 'More hours' : 'Open this day'}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="While you are closed" htmlFor="after-hours" hint="Taking requests lets the team book in the morning, after a person has looked at each one.">
+              <Select id="after-hours" value={c.afterHours} onChange={(e) => set({ afterHours: e.target.value as ClinicConfig['afterHours'] })}>
+                <option value="book">Book visits, as during opening hours</option>
+                <option value="requests">Take requests; the team books in the morning</option>
+              </Select>
+            </Field>
+            <Field label="Average visit value" htmlFor="visit-value" hint="The weekly report counts visits booked after hours at this value, as money saved.">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-muted" aria-hidden>$</span>
+                <Input id="visit-value" type="number" min={0} max={100000} className="pl-7" value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
+              </div>
+            </Field>
+          </div>
         </Section>
 
-        {(c.industry === 'vet' || c.emergencyHospital) && (
-          <Section title="Emergency hospital" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. Without one, callers are told to go to the nearest 24-hour emergency vet.">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Name" htmlFor="er-name"><Input id="er-name" value={c.emergencyHospital?.name ?? ''} placeholder="Front Range Pet Emergency"
+        <Section id="holidays" title="Holidays" description="Closed all day. Nothing is offered on these dates.">
+          {c.holidays.length === 0 ? <EmptyNote>No holidays set.</EmptyNote> : (
+            <div className="flex flex-wrap gap-2">
+              {c.holidays.map((h) => (
+                <span key={h} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-sunken/60 py-1 pl-3 pr-1.5 text-sm">
+                  {dayTitle(h, 'short')} {h.slice(0, 4)}
+                  <button type="button" aria-label={`Remove ${h}`} className="focus-ring rounded-full p-0.5 text-text-muted hover:text-danger" onClick={() => set({ holidays: c.holidays.filter((x) => x !== h) })}><X className="size-3.5" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
+            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
+          </div>
+        </Section>
+
+        {(pet || c.emergencyHospital) && (
+          <Section id="emergency" title="Emergency hospital" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. Without one, callers are told to go to the nearest 24-hour emergency vet.">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Hospital name" htmlFor="er-name"><Input id="er-name" value={c.emergencyHospital?.name ?? ''} placeholder="e.g. City Pet Emergency"
                 onChange={(e) => set({ emergencyHospital: { name: e.target.value, phone: c.emergencyHospital?.phone ?? '', address: c.emergencyHospital?.address ?? '' } })} /></Field>
-              <Field label="Phone" htmlFor="er-phone" hint="With the country code, like +17205550188."><Input id="er-phone" value={c.emergencyHospital?.phone ?? ''} placeholder="+1"
+              <Field label="Phone" htmlFor="er-phone" hint="With the country code, like +17205550188."><Input id="er-phone" type="tel" value={c.emergencyHospital?.phone ?? ''} placeholder="+1"
                 onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: e.target.value, address: c.emergencyHospital?.address ?? '' } })} /></Field>
             </div>
-            <Field label="Address" htmlFor="er-address"><Input id="er-address" value={c.emergencyHospital?.address ?? ''} placeholder="1200 Larkspur Avenue, Denver"
+            <Field label="Address" htmlFor="er-address" hint="Read to callers as written."><Input id="er-address" value={c.emergencyHospital?.address ?? ''} placeholder="e.g. 1200 Main Street, Denver"
               onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: c.emergencyHospital?.phone ?? '', address: e.target.value } })} /></Field>
-            {c.emergencyHospital && <Button type="button" size="sm" variant="ghost" onClick={() => set({ emergencyHospital: undefined })}><Trash2 /> Remove the emergency hospital</Button>}
+            {c.emergencyHospital && <Button type="button" size="sm" variant="ghost" className="text-text-muted hover:text-danger" onClick={() => set({ emergencyHospital: undefined })}><Trash2 /> Remove the emergency hospital</Button>}
           </Section>
         )}
 
-        <Section title="Holidays" description="Closed all day. Nothing is offered on these dates.">
-          <div className="flex flex-wrap gap-2">
-            {c.holidays.length === 0 && <span className="text-sm text-text-muted">None set.</span>}
-            {c.holidays.map((h) => (
-              <span key={h} className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-sm">
-                {h}
-                <button type="button" aria-label={`Remove ${h}`} className="text-text-muted hover:text-danger" onClick={() => set({ holidays: c.holidays.filter((x) => x !== h) })}><Trash2 className="size-3.5" /></button>
-              </span>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
-            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}>Add holiday</Button>
-          </div>
-        </Section>
-
-        <Section title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ visitTypes: [...c.visitTypes, { id: newId('vt', 'visit'), name: 'New visit type', minutes: 20, audience: 'all' }] })}><Plus /> Visit type</Button>}>
+        <Section id="visits" title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); }}><Plus /> Visit type</Button>}>
           {c.visitTypes.map((v, i) => (
-            <div key={v.id} className="flex flex-wrap items-end gap-3">
-              <Field label="Name"><Input className="w-64" value={v.name} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
-              <LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, names } : x)) })} />
-              <Field label="Minutes"><Input type="number" min={5} max={240} className="w-24" value={v.minutes} onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) } : x)) })} /></Field>
-              <Field label="What it is, for callers" hint="Optional. Said when a caller asks.">
-                <Input className="w-80" maxLength={300} value={v.description ?? ''} placeholder="Core vaccines and a full check-up"
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, description: e.target.value || undefined } : x)) })} />
-              </Field>
-              <label className="flex h-9 items-center gap-2 text-sm">
-                <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={!!v.staffOnly}
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, staffOnly: e.target.checked || undefined } : x)) })} />
-                Team books it
-              </label>
-              <Field label="Who can book it">
-                <Select className="w-52" value={v.audience} aria-label={`${v.name}: who can book it`}
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, audience: e.target.value as 'all' | 'new' | 'existing' } : x)) })}>
-                  <option value="all">Anyone</option><option value="new">New patients only</option><option value="existing">Patients on file only</option>
-                </Select>
-              </Field>
-              <Field label="Notice, hours" hint="On calls. Empty: 2 hours.">
-                <Input type="number" min={0} max={720} className="w-24" value={v.noticeHours ?? ''} aria-label={`${v.name}: notice in hours`}
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, noticeHours: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
-              </Field>
-              <Field label="Up to, days ahead" hint="On calls. Empty: no limit.">
-                <Input type="number" min={1} max={365} className="w-24" value={v.maxDaysAhead ?? ''} aria-label={`${v.name}: days ahead`}
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, maxDaysAhead: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
-              </Field>
-              <Field label="Free after, minutes" hint="On calls and at the desk.">
-                <Input type="number" min={0} max={120} className="w-24" value={v.bufferMinutes ?? ''} aria-label={`${v.name}: minutes free after`}
-                  onChange={(e) => set({ visitTypes: c.visitTypes.map((x, j) => (j === i ? { ...x, bufferMinutes: e.target.value === '' ? undefined : Number(e.target.value) } : x)) })} />
-              </Field>
-              <Button type="button" size="sm" variant="ghost" aria-label={`Remove ${v.name}`} onClick={() => set({
-                visitTypes: c.visitTypes.filter((_, j) => j !== i),
-                // taken off every doctor who offered it, on the server too
-                providers: c.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => id !== v.id) })),
-              })}><Trash2 /></Button>
-            </div>
+            <Item key={v.id} id={`item-${v.id}`} removeLabel={`Remove ${v.name || 'this visit type'}`} onRemove={() => set({
+              visitTypes: c.visitTypes.filter((_, j) => j !== i),
+              // taken off every provider who offered it, on the server too
+              providers: c.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => id !== v.id) })),
+            })}>
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,14rem)]">
+                  <Field label="Name"><Input value={v.name} placeholder="e.g. Dental cleaning" onChange={(e) => visit(i, { name: e.target.value })} /></Field>
+                  <Field label="Minutes"><Input type="number" min={5} max={240} value={v.minutes} onChange={(e) => visit(i, { minutes: Number(e.target.value) })} /></Field>
+                  <Field label="Who can book it">
+                    <Select value={v.audience} aria-label={`${v.name}: who can book it`} onChange={(e) => visit(i, { audience: e.target.value as 'all' | 'new' | 'existing' })}>
+                      <option value="all">Anyone</option>
+                      <option value="new">{pet ? 'New clients only' : 'New patients only'}</option>
+                      <option value="existing">{pet ? 'Pets already on file' : 'Patients on file only'}</option>
+                    </Select>
+                  </Field>
+                </div>
+                {c.languages.some((l) => l !== 'en') && <div className="grid gap-4 sm:grid-cols-2"><LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => visit(i, { names })} /></div>}
+                <Field label="What it is, for callers" hint="Optional. Said when a caller asks what it includes.">
+                  <Input maxLength={300} value={v.description ?? ''} placeholder={pet ? 'e.g. Core vaccines and a full check-up' : 'e.g. A full check-up and any tests due'}
+                    onChange={(e) => visit(i, { description: e.target.value || undefined })} />
+                </Field>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <Field label="Notice, in hours" hint="Booked at least this far ahead. Empty: 2 hours.">
+                    <Input type="number" min={0} max={720} value={v.noticeHours ?? ''} placeholder="2" aria-label={`${v.name}: notice in hours`} onChange={(e) => visit(i, { noticeHours: num(e.target.value) })} />
+                  </Field>
+                  <Field label="Up to, days ahead" hint="Booked at most this far out. Empty: no limit.">
+                    <Input type="number" min={1} max={365} value={v.maxDaysAhead ?? ''} placeholder="No limit" aria-label={`${v.name}: days ahead`} onChange={(e) => visit(i, { maxDaysAhead: num(e.target.value) })} />
+                  </Field>
+                  <Field label="Free after, in minutes" hint="Kept free after each one, on calls and at the desk.">
+                    <Input type="number" min={0} max={120} value={v.bufferMinutes ?? ''} placeholder="0" aria-label={`${v.name}: minutes free after`} onChange={(e) => visit(i, { bufferMinutes: num(e.target.value) })} />
+                  </Field>
+                </div>
+                <Switch id={`staff-only-${v.id}`} label="Team books it" hint="The assistant never offers times for it. It takes a request for the team instead."
+                  checked={!!v.staffOnly} onCheckedChange={(on) => visit(i, { staffOnly: on || undefined })} disabled={!writable || save.isPending} />
+              </div>
+            </Item>
           ))}
-        </Section>
-
-        <Section title={terms.title('providers')} description="Who can be booked, their specialties, the ages they see, their weekly hours and days off.">
           <p className="text-sm text-text-muted">
-            Doctors have a page of their own, where managers add them, set their hours and days off, or import a list. Saving these settings never changes them.{' '}
-            <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open Doctors</Link>
+            {terms.title('providers')} have a page of their own, where you add them, set their hours and days off, and choose which visits each one does.{' '}
+            <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open {terms.title('providers')}</Link>
           </p>
         </Section>
 
-        <Section title="Routing" description="Where transfers go. The assistant transfers only to these numbers."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ routing: [...c.routing, { target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }] })}><Plus /> Rule</Button>}>
-          {c.routing.length === 0 && <p className="text-sm text-text-muted">No transfers set up. Callers who ask for a person get a callback request.</p>}
-          {c.routing.map((r, i) => {
-            const upd = (patch: Partial<typeof r>) => set({ routing: c.routing.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={i} className="flex flex-wrap items-end gap-3">
-                <Field label="Target">
-                  <select className={select} value={r.target} onChange={(e) => upd({ target: e.target.value as typeof r.target })}>
-                    <option value="front_desk">Front desk</option><option value="billing">Billing</option><option value="on_call">On-call provider</option>
-                  </select>
+        <Section id="transfers" title="Transfers" description="Where the assistant sends a caller who asks for a person, and when. It transfers only to these numbers."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => { set({ routing: [{ target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); }}><Plus /> Transfer number</Button>}>
+          {c.routing.length === 0 && <EmptyNote>No transfer numbers yet. Callers who ask for a person get a callback request.</EmptyNote>}
+          {c.routing.map((r, i) => (
+            <Item key={i} id={`item-routing-${i}`} removeLabel="Remove this transfer number" onRemove={() => remove('routing', i)}>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,11rem)]">
+                <Field label="Who it reaches">
+                  <Select value={r.target} onChange={(e) => upd('routing', i, { target: e.target.value as typeof r.target })}>
+                    <option value="front_desk">Front desk</option><option value="billing">Billing</option><option value="on_call">On-call {terms.provider}</option>
+                  </Select>
                 </Field>
-                <Field label="Number or SIP address"><Input className="w-56 font-mono" value={r.uri} onChange={(e) => upd({ uri: e.target.value })} /></Field>
+                <Field label="Phone number" hint="With the country code.">
+                  <Input type="tel" value={shownUri(r.uri)} placeholder="+13035550100" onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} />
+                </Field>
                 <Field label="When">
-                  <select className={select} value={r.when} onChange={(e) => upd({ when: e.target.value as typeof r.when })}>
-                    <option value="open">Open hours</option><option value="closed">Closed hours</option><option value="always">Always</option>
-                  </select>
+                  <Select value={r.when} onChange={(e) => upd('routing', i, { when: e.target.value as typeof r.when })}>
+                    <option value="open">While open</option><option value="closed">While closed</option><option value="always">Always</option>
+                  </Select>
                 </Field>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove rule" onClick={() => set({ routing: c.routing.filter((_, j) => j !== i) })}><Trash2 /></Button>
               </div>
-            );
-          })}
-        </Section>
-
-        <Section title="Answers to common questions" description="The assistant answers from these, in your words, and does not make up the rest."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ faqs: [...c.faqs, { id: newId('faq', 'question'), question: '', answer: '' }] })}><Plus /> Question</Button>}>
-          {c.faqs.map((f, i) => (
-            <div key={f.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
-              <div className="flex items-end gap-3">
-                <div className="flex-1"><Field label="Question"><Input value={f.question} onChange={(e) => set({ faqs: c.faqs.map((x, j) => (j === i ? { ...x, question: e.target.value } : x)) })} /></Field></div>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove question" onClick={() => set({ faqs: c.faqs.filter((_, j) => j !== i) })}><Trash2 /></Button>
-              </div>
-              <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} onChange={(e) => set({ faqs: c.faqs.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)) })} /></Field>
-            </div>
+            </Item>
           ))}
         </Section>
 
-        <Section title="Offers and announcements" description="What you are running now, like a vaccine clinic or a dental month. The assistant tells callers who ask, only between the dates you set."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => set({ offers: [...(c.offers ?? []), { id: newId('offer', 'offer'), title: '', details: '' }] })}><Plus /> Offer</Button>}>
-          {!c.offers?.length && <p className="text-sm text-text-muted">No offers running.</p>}
-          {(c.offers ?? []).map((o, i) => {
-            const upd = (patch: Partial<typeof o>) => set({ offers: (c.offers ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={o.id} className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0">
-                <div className="flex flex-wrap items-end gap-3">
-                  <Field label="Title"><Input className="w-72" maxLength={80} value={o.title} placeholder="Vaccine clinic Saturday" onChange={(e) => upd({ title: e.target.value })} /></Field>
-                  <Field label="From"><Input type="date" className="w-40" value={o.from ?? ''} onChange={(e) => upd({ from: e.target.value || undefined })} /></Field>
-                  <Field label="To"><Input type="date" className="w-40" value={o.to ?? ''} min={o.from} onChange={(e) => upd({ to: e.target.value || undefined })} /></Field>
-                  <Button type="button" size="sm" variant="ghost" aria-label="Remove offer" onClick={() => set({ offers: (c.offers ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+        <Section id="vip" title="VIP callers" description="Callers who should always reach a person. While your front desk number (under Transfers) takes calls, the assistant greets them, says it is connecting them, and passes the call to that number. If the transfer does not go through, the assistant stays on and offers a callback; if it rings and nobody answers, your own phone system takes it from there. Outside front desk hours the assistant answers them as usual."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => { set({ vipCallers: [{ name: '', phone: '' }, ...(c.vipCallers ?? [])] }); setAdded('item-vip-0'); }}><Plus /> VIP caller</Button>}>
+          {!c.routing.some((r) => r.target === 'front_desk') && !!c.vipCallers?.length && <Alert tone="warn">Add a front desk number under Transfers, or VIP callers reach the assistant like anyone else.</Alert>}
+          {!c.vipCallers?.length && <EmptyNote>No VIP callers yet.</EmptyNote>}
+          {(c.vipCallers ?? []).map((v, i) => (
+            <Item key={i} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
+                <Field label="Phone number" hint="With the country code."><Input type="tel" value={v.phone} placeholder="+13035550100" onChange={(e) => upd('vipCallers', i, { phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+              </div>
+            </Item>
+          ))}
+        </Section>
+
+        <Section id="answers" title="Answers to common questions" description="The assistant answers from these, in your words, and does not make up the rest."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('faq', 'question'); set({ faqs: [{ id, question: '', answer: '' }, ...c.faqs] }); setAdded(`item-${id}`); }}><Plus /> Question</Button>}>
+          {c.faqs.length === 0 && <EmptyNote>No answers yet. Add the questions callers ask most, like parking, payment or what to bring.</EmptyNote>}
+          {c.faqs.map((f, i) => (
+            <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
+              <div className="space-y-4">
+                <Field label="Question"><Input value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
+                <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} placeholder="e.g. Free parking behind the building, entrance on 5th Street." onChange={(e) => upd('faqs', i, { answer: e.target.value })} /></Field>
+              </div>
+            </Item>
+          ))}
+        </Section>
+
+        <Section id="offers" title="Offers and announcements" description="What you are running now, like a vaccine clinic or a dental month. The assistant tells callers who ask, only between the dates you set."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('offer', 'offer'); set({ offers: [{ id, title: '', details: '' }, ...(c.offers ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Offer</Button>}>
+          {!c.offers?.length && <EmptyNote>No offers running.</EmptyNote>}
+          {(c.offers ?? []).map((o, i) => (
+            <Item key={o.id} id={`item-${o.id}`} removeLabel="Remove offer" onRemove={() => remove('offers', i)}>
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+                  <Field label="Title"><Input maxLength={80} value={o.title} placeholder="e.g. Saturday vaccine clinic" onChange={(e) => upd('offers', i, { title: e.target.value })} /></Field>
+                  <Field label="From" hint="Optional."><Input type="date" value={o.from ?? ''} onChange={(e) => upd('offers', i, { from: e.target.value || undefined })} /></Field>
+                  <Field label="To" hint="Optional."><Input type="date" value={o.to ?? ''} min={o.from} onChange={(e) => upd('offers', i, { to: e.target.value || undefined })} /></Field>
                 </div>
-                <Field label="Details" hint={`${o.details.length}/400`}><Textarea maxLength={400} value={o.details} placeholder="Core vaccines for dogs and cats, 9 to 1, no appointment needed." onChange={(e) => upd({ details: e.target.value })} /></Field>
+                <Field label="Details" hint={`${o.details.length}/400`}><Textarea maxLength={400} value={o.details} placeholder="e.g. Core vaccines for dogs and cats, 9 to 1, no appointment needed." onChange={(e) => upd('offers', i, { details: e.target.value })} /></Field>
               </div>
-            );
-          })}
+            </Item>
+          ))}
         </Section>
 
-        <Section title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => set({ requestTopics: [...(c.requestTopics ?? []), { id: newId('topic', 'topic'), name: '' }] })}><Plus /> Kind of request</Button>}>
-          {!c.requestTopics?.length && <p className="text-sm text-text-muted">None yet. Requests are still taken; they are just not labelled.</p>}
-          {(c.requestTopics ?? []).map((t, i) => {
-            const upd = (patch: Partial<typeof t>) => set({ requestTopics: (c.requestTopics ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={t.id} className="flex flex-wrap items-end gap-3">
-                <Field label="Name"><Input className="w-56" maxLength={60} value={t.name} placeholder="Boarding inquiry" onChange={(e) => upd({ name: e.target.value })} /></Field>
-                <Field label="What to ask the caller"><Input className="w-96" maxLength={300} value={t.collect ?? ''} placeholder="The dates, the pet, and whether vaccines are current" onChange={(e) => upd({ collect: e.target.value || undefined })} /></Field>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove kind of request" onClick={() => set({ requestTopics: (c.requestTopics ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+        <Section id="requests" title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => { const id = newId('topic', 'topic'); set({ requestTopics: [{ id, name: '' }, ...(c.requestTopics ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Kind of request</Button>}>
+          {!c.requestTopics?.length && <EmptyNote>None yet. Requests are still taken; they are just not labelled.</EmptyNote>}
+          {(c.requestTopics ?? []).map((t, i) => (
+            <Item key={t.id} id={`item-${t.id}`} removeLabel="Remove kind of request" onRemove={() => remove('requestTopics', i)}>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+                <Field label="Name"><Input maxLength={60} value={t.name} placeholder="e.g. Boarding inquiry" onChange={(e) => upd('requestTopics', i, { name: e.target.value })} /></Field>
+                <Field label="What to ask the caller" hint="Optional."><Input maxLength={300} value={t.collect ?? ''} placeholder="e.g. The dates, the pet, and whether vaccines are current" onChange={(e) => upd('requestTopics', i, { collect: e.target.value || undefined })} /></Field>
               </div>
-            );
-          })}
+            </Item>
+          ))}
         </Section>
 
-        <Section title={`Fields on each ${terms.patient}`} description={`Details you keep that Attendra has no place for, like a microchip number, an insurer or a reminder date. Your team fills them in under Details on each ${terms.patient}'s record. Removing a field hides what was filled in.`}
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => set({ customFields: [...(c.customFields ?? []), { id: newId('field', 'field'), label: '', kind: 'text' }] })}><Plus /> Field</Button>}>
-          {!c.customFields?.length && <p className="text-sm text-text-muted">No fields yet.</p>}
-          {(c.customFields ?? []).map((f, i) => {
-            const upd = (patch: Partial<typeof f>) => set({ customFields: (c.customFields ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={f.id} className="flex flex-wrap items-end gap-3">
-                <Field label="Label"><Input className="w-56" maxLength={40} value={f.label} placeholder="Microchip" onChange={(e) => upd({ label: e.target.value })} /></Field>
+        <Section id="fields" title={`Fields on each ${terms.patient}`} description={`Details you keep that Attendra has no place for, like a microchip number, an insurer or a reminder date. Your team fills them in under Details on each ${terms.patient}'s record. Removing a field hides what was filled in.`}
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => { const id = newId('field', 'field'); set({ customFields: [{ id, label: '', kind: 'text' }, ...(c.customFields ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Field</Button>}>
+          {!c.customFields?.length && <EmptyNote>No fields yet.</EmptyNote>}
+          {(c.customFields ?? []).map((f, i) => (
+            <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove field" onRemove={() => remove('customFields', i)}>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <Field label="Label"><Input maxLength={40} value={f.label} placeholder={pet ? 'e.g. Microchip' : 'e.g. Insurance member ID'} onChange={(e) => upd('customFields', i, { label: e.target.value })} /></Field>
                 <Field label="Kind">
-                  <select className={select} value={f.kind} onChange={(e) => upd({ kind: e.target.value as typeof f.kind })}>
+                  <Select value={f.kind} onChange={(e) => upd('customFields', i, { kind: e.target.value as typeof f.kind })}>
                     <option value="text">Text</option><option value="yesno">Yes or no</option><option value="date">Date</option>
-                  </select>
+                  </Select>
                 </Field>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove field" onClick={() => set({ customFields: (c.customFields ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
               </div>
-            );
-          })}
+            </Item>
+          ))}
         </Section>
 
-        <Section title="VIP callers" description="Numbers that always reach a person. While your front desk takes transfers, the assistant greets them, says it is connecting them, and transfers the call. Outside those hours the assistant answers them as usual."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => set({ vipCallers: [...(c.vipCallers ?? []), { name: '', phone: '' }] })}><Plus /> VIP caller</Button>}>
-          {!c.routing.some((r) => r.target === 'front_desk') && !!c.vipCallers?.length && <Alert tone="warn">Add a front desk number under Routing, or VIP callers reach the assistant like anyone else.</Alert>}
-          {!c.vipCallers?.length && <p className="text-sm text-text-muted">No VIP callers yet.</p>}
-          {(c.vipCallers ?? []).map((v, i) => {
-            const upd = (patch: Partial<typeof v>) => set({ vipCallers: (c.vipCallers ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={i} className="flex flex-wrap items-end gap-3">
-                <Field label="Who"><Input className="w-56" maxLength={60} value={v.name} placeholder="Partner clinic, Dr. Ruiz's mobile" onChange={(e) => upd({ name: e.target.value })} /></Field>
-                <Field label="Phone, with country code"><Input className="w-48" type="tel" value={v.phone} placeholder="+13035550100" onChange={(e) => upd({ phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove VIP caller" onClick={() => set({ vipCallers: (c.vipCallers ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
+        <Section id="links" title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); }}><Plus /> Link</Button>}>
+          {!c.menuLinks?.length && <EmptyNote>No links yet.</EmptyNote>}
+          {(c.menuLinks ?? []).map((l, i) => (
+            <Item key={i} id={`item-link-${i}`} removeLabel="Remove link" onRemove={() => remove('menuLinks', i)}>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
+                <Field label="Label"><Input maxLength={30} value={l.label} placeholder="e.g. Practice software" onChange={(e) => upd('menuLinks', i, { label: e.target.value })} /></Field>
+                <Field label="Web address"><Input type="url" value={l.url} placeholder="https://" onChange={(e) => upd('menuLinks', i, { url: e.target.value })} /></Field>
               </div>
-            );
-          })}
+            </Item>
+          ))}
         </Section>
 
-        <Section title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => set({ menuLinks: [...(c.menuLinks ?? []), { label: '', url: 'https://' }] })}><Plus /> Link</Button>}>
-          {!c.menuLinks?.length && <p className="text-sm text-text-muted">No links yet.</p>}
-          {(c.menuLinks ?? []).map((l, i) => {
-            const upd = (patch: Partial<typeof l>) => set({ menuLinks: (c.menuLinks ?? []).map((x, j) => (j === i ? { ...x, ...patch } : x)) });
-            return (
-              <div key={i} className="flex flex-wrap items-end gap-3">
-                <Field label="Label"><Input className="w-48" maxLength={30} value={l.label} placeholder="ezyVet" onChange={(e) => upd({ label: e.target.value })} /></Field>
-                <Field label="Address"><Input className="w-96" value={l.url} onChange={(e) => upd({ url: e.target.value })} /></Field>
-                <Button type="button" size="sm" variant="ghost" aria-label="Remove link" onClick={() => set({ menuLinks: (c.menuLinks ?? []).filter((_, j) => j !== i) })}><Trash2 /></Button>
-              </div>
-            );
-          })}
-        </Section>
-
-        <Section title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
-          <Field label="Keep transcripts, summaries, call actions and webhook events for (days)" htmlFor="retention" hint={`${c.retentionDays} days is about ${(c.retentionDays / 365).toFixed(1)} years. The default, 2555 days, is about 7 years. Between 30 and 3650.`}>
-            <Input id="retention" type="number" min={30} max={3650} className="w-28" value={c.retentionDays} onChange={(e) => set({ retentionDays: Number(e.target.value) })} />
+        <Section id="records" title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
+          <Field label="Keep transcripts and summaries for (days)" htmlFor="retention" hint={`About ${(c.retentionDays / 365).toFixed(1)} years. Between 30 and 3650; the default, 2555 days, is 7 years.`}>
+            <Input id="retention" type="number" min={30} max={3650} className="w-32" value={c.retentionDays} onChange={(e) => set({ retentionDays: Number(e.target.value) })} />
           </Field>
         </Section>
 
-        <Section title="Phone numbers" description="Managed by your Attendra operator, who connects them to the SIP trunk.">
-          <p className="font-mono text-sm">{c.phoneNumbers.join(', ')}</p>
+        <Section id="numbers" title="Phone numbers" description={clinic?.accountLinks.length ? 'The numbers this clinic answers on. To get a number or change it, open Phone number under Account in the menu.' : 'The numbers this clinic answers on. Your Attendra operator sets them up.'}>
+          <ul className="flex flex-wrap gap-2">{c.phoneNumbers.map((n) => <li key={n} className="rounded-md border border-border bg-surface-sunken/60 px-3 py-1.5 font-mono text-sm">{n}</li>)}</ul>
         </Section>
       </fieldset>
+      </div>
 
       {writable && dirty && (
         <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">

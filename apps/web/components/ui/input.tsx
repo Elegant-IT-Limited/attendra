@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import { type ComponentProps, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from 'react';
 import { cn } from '@/lib/utils';
 
-const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11';
+const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted/60 hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11';
 
 /** A text field. It takes a ref, like the input it renders (a file field needs one to be cleared). */
 export function Input({ className, ...props }: ComponentProps<'input'>) {
@@ -25,7 +25,7 @@ export function Select({ className, children, ...props }: SelectHTMLAttributes<H
 }
 
 export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn('text-sm font-medium text-text', className)} {...props} />;
+  return <label className={cn('block text-sm font-medium text-text', className)} {...props} />;
 }
 
 /**
