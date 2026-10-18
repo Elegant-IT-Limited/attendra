@@ -27,7 +27,7 @@ const message = (e: unknown) => (e instanceof ApiFailure ? (e.body.message ?? e.
 
 export default function Team() {
   const { clinicId } = useParams<{ clinicId: string }>();
-  const { clinic, can, isPending } = useClinic(clinicId);
+  const { data: me, clinic, can, isPending } = useClinic(clinicId);
   const queries = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Member | null>(null);
@@ -75,7 +75,7 @@ export default function Team() {
 
   return (
     <>
-      <PageHeader title="Team" description="Who can sign in to this clinic, and what each person can do."
+      <PageHeader title="Team" description={`Who can sign in to this clinic, and what each person can do.${(me?.clinics.length ?? 0) > 1 ? ' Everyone on the team sees all your locations.' : ''}`}
         actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add a person</Button>} />
       {notice && <Alert tone={notice.tone} className="mb-4">{notice.text}</Alert>}
       <Card>

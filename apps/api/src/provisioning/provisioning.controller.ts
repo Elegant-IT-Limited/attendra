@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
-  addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
+  addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   phoneUsage, qualityRows, releaseNumber, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
@@ -30,6 +30,7 @@ const NewAccount = z.object({
   testCallMinutes: z.number().int().min(0).max(600).optional(),
   plan: z.string().trim().min(1).max(40).default('hosted'),
 });
+const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes: z.number().int().min(0).max(600).optional() });
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
@@ -88,6 +89,23 @@ export class ProvisioningController {
       throw new HttpException({ error: 'not_opened' }, 500);
     }
     return { organizationId, clinicId: config.id, userId };
+  }
+
+  /** Another location in an organization: its own clinic, with the first one's assistant settings. Everyone in the organization sees it. */
+  @Post('organizations/:organizationId/clinics')
+  @HttpCode(201)
+  async addLocation(@Headers('authorization') authorization: string | undefined, @Param('organizationId') organizationId: string, @Body(new ZodPipe(NewLocation)) body: z.infer<typeof NewLocation>) {
+    this.check(authorization);
+    let config: ClinicConfig;
+    try {
+      config = starterClinic({ id: newId('clinic'), ...body.clinic });
+    } catch {
+      throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
+    }
+    const clinicId = await addClinicToOrganization(this.db, organizationId, config);
+    if (!clinicId) throw new NotFoundException({ error: 'not_found' });
+    if (body.testCallMinutes !== undefined) await setTestCallLimit(this.db, clinicId, body.testCallMinutes * 60);
+    return { clinicId };
   }
 
   @Post('email-confirmations')

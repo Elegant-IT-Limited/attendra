@@ -96,6 +96,9 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // the clinic's own links, from Settings, for everyone on the team
   const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
   const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
+  // other locations: the same page there, without a record id that belongs to this one
+  const others = (me?.clinics ?? []).filter((c) => c.id !== clinicId);
+  const toClinic = (id: string) => router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[64px_1fr] xl:grid-cols-[240px_1fr]">
@@ -108,7 +111,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           <span className="font-semibold tracking-tight max-xl:sr-only">Attendra</span>
         </div>
         <div className="px-5 pb-3 max-xl:hidden">
-          <p className="truncate text-base font-medium">{clinic.name}</p>
+          {others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}
           <p className="text-xs text-text-muted">{clinic.timezone.replaceAll('_', ' ')}</p>
         </div>
         <div className="px-3 pb-3 max-xl:px-2">
@@ -147,7 +150,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       {/* phone: a top bar */}
       <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
         <PhoneCall className="size-5 text-primary" aria-hidden />
-        <p className="min-w-0 flex-1 truncate text-base font-medium">{clinic.name}</p>
+        <div className="min-w-0 flex-1">{others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}</div>
         <button type="button" aria-label="Search and jump" onClick={() => setPalette(true)} className="focus-ring flex size-11 items-center justify-center rounded-md text-text-muted hover:bg-surface-sunken"><Search className="size-5" /></button>
         <UserMenu compact user={user} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
       </header>
@@ -269,5 +272,15 @@ export function PageHeader({ title, description, actions }: { title: string; des
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
+  );
+}
+
+/** The clinic this screen is for, and the others the person works at: picking one opens the same page there. */
+function ClinicSwitcher({ current, others, onPick }: { current: { id: string; name: string }; others: { id: string; name: string }[]; onPick: (id: string) => void }) {
+  return (
+    <select aria-label="Location" value={current.id} onChange={(e) => onPick(e.target.value)}
+      className="focus-ring -ml-1 w-full truncate rounded-md border-none bg-transparent py-0.5 pl-1 pr-6 text-base font-medium hover:bg-surface-sunken">
+      {[current, ...others].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+    </select>
   );
 }
