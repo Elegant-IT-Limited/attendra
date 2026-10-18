@@ -109,6 +109,12 @@ export const TASK_EXPLAINED: Record<string, string> = {
   follow_up: 'A call ended with the caller\'s request unfinished, or the caller upset. Read the call, then get back to them.',
 };
 
+/** What a request type means, for a vet clinic or any other. */
+export const taskExplained = (type: string, pets: boolean) => (!pets ? TASK_EXPLAINED[type] : ({
+  refill: 'An owner asked for a refill. A vet approves or declines it, then the team lets the owner know.',
+  review: 'The assistant added a new pet on a call. Check the pet\'s name, kind and birthday, the owner and the phone, then confirm them.',
+} as Record<string, string>)[type] ?? TASK_EXPLAINED[type]);
+
 export const TASK_OUTCOMES: Record<string, string> = {
   called_back: 'Called back',
   left_message: 'No answer, left a message',
@@ -181,8 +187,10 @@ export const VISIT_TONES = [
   'border-l-[var(--visit-2)] bg-[var(--visit-2-soft)]',
   'border-l-[var(--visit-3)] bg-[var(--visit-3-soft)]',
   'border-l-[var(--visit-4)] bg-[var(--visit-4-soft)]',
+  'border-l-[var(--visit-5)] bg-[var(--visit-5-soft)]',
+  'border-l-[var(--visit-6)] bg-[var(--visit-6-soft)]',
 ];
-export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]'];
+export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]', 'bg-[var(--visit-5)]', 'bg-[var(--visit-6)]'];
 
 /** Whole years on `today`, the clinic's date (YYYY-MM-DD), not the browser's: a birthday turns over at the clinic's midnight. */
 export function age(dateOfBirth: string, today: string) {

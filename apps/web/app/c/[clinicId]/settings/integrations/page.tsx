@@ -128,7 +128,7 @@ export default function Integrations() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never names or what was said, and no patient ids unless you turn that on for an endpoint." />
+      <PageHeader title="Settings" description="Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never names or what was said, and no record ids unless you turn that on for an endpoint." />
       <SettingsNav clinicId={clinicId} />
       {failed.map((e) => (
         <Alert key={e.id} tone="danger" title="An endpoint was turned off" className="mb-6">
@@ -152,7 +152,7 @@ export default function Integrations() {
                 ))}
               </fieldset>
               <Checkbox id="omit-patient-ids" checked={omitPatientIds} onCheckedChange={setOmitPatientIds}
-                label="Leave out patient ids" hint="A patient id with appointment times is patient data. Turn this off only for a receiver covered by a BAA." />
+                label="Leave out record ids" hint="A record id with appointment times is personal data. Turn this off only for a receiver you trust with it, covered by a BAA where that applies." />
               {problem && <Alert tone="danger">{problem}</Alert>}
               <Button type="submit" loading={create.isPending} disabled={!url.trim() || !events.length}><Plus /> Add endpoint</Button>
             </form>
@@ -169,7 +169,7 @@ export default function Integrations() {
                       {e.description && <p className="text-sm text-text-muted">{e.description}</p>}
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <Badge tone={e.enabled ? 'ok' : 'danger'}>{e.enabled ? 'Active' : e.disabledReason === 'repeated_failures' ? 'Turned off after failures' : 'Turned off'}</Badge>
-                        {!e.omitPatientIds && <Badge tone="warn">Sends patient ids</Badge>}
+                        {!e.omitPatientIds && <Badge tone="warn">Sends record ids</Badge>}
                         {e.rotating && <Badge tone="info"><KeyRound aria-hidden /> Signing with two secrets for a day</Badge>}
                         {e.events.map((x) => <Badge key={x} className="font-mono">{x}</Badge>)}
                       </div>
@@ -180,7 +180,7 @@ export default function Integrations() {
                     <Button size="sm" variant="outline" loading={test.isPending && test.variables?.id === e.id} onClick={() => test.mutate(e)}><Send /> Send test event</Button>
                     <Button size="sm" variant="outline" onClick={() => setConfirm({ kind: 'rotate', endpoint: e })}><KeyRound /> Rotate secret</Button>
                     <Button size="sm" variant="ghost" onClick={() => setConfirm({ kind: 'delete', endpoint: e })}><Trash2 /> Delete</Button>
-                    <Checkbox id={`omit-${e.id}`} checked={e.omitPatientIds} label="Leave out patient ids" onCheckedChange={(on) => update.mutate({ e, patch: { omitPatientIds: on } })} />
+                    <Checkbox id={`omit-${e.id}`} checked={e.omitPatientIds} label="Leave out record ids" onCheckedChange={(on) => update.mutate({ e, patch: { omitPatientIds: on } })} />
                   </div>
                   <DeliveryLog clinicId={clinicId} endpoint={e} tz={tz} />
                 </Card>

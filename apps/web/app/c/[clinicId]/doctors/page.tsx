@@ -77,7 +77,7 @@ export default function DoctorsPage() {
 
   return (
     <>
-      <PageHeader title={terms.title('providers')} description="Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks."
+      <PageHeader title={terms.title('providers')} description={terms.patient === 'pet' ? 'Who can be booked, the animals and services they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.' : 'Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.'}
         actions={manager && (
           <>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
@@ -88,14 +88,14 @@ export default function DoctorsPage() {
         <div className="relative w-full max-w-md">
           <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-          <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name, specialty or what they see people for" />
+          <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={terms.patient === 'pet' ? 'Name, specialty or what they see' : 'Name, specialty or what they see people for'} />
         </div>
         <Label htmlFor="doctor-specialty" className="sr-only">Specialty</Label>
         <Select id="doctor-specialty" className="w-48" value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
           <option value="">All specialties</option>
           {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <Label htmlFor="doctor-category" className="sr-only">Sees people for</Label>
+        <Label htmlFor="doctor-category" className="sr-only">{terms.patient === 'pet' ? 'Sees' : 'Sees people for'}</Label>
         <Select id="doctor-category" className="w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Any category</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -122,7 +122,7 @@ export default function DoctorsPage() {
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
-                  <dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd>
+                  {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
@@ -155,6 +155,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   onClose: () => void; onSaved: () => void;
 }) {
   const terms = useTerms(clinicId);
+  const pets = terms.patient === 'pet';
   const [d, setD] = useState<Draft>(editing.draft);
   const [categories, setCategories] = useState(editing.draft.categories.join(', '));
   const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
@@ -227,20 +228,20 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
             <option value="" disabled>Choose</option>
             <option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="undisclosed">Prefers not to say</option>
           </Select>
-          <p className="text-xs text-text-muted">A caller can ask for a female or a male doctor.</p>
+          <p className="text-xs text-text-muted">A caller can ask for a female or a male {terms.provider}.</p>
         </div>
-        <div className="space-y-1.5"><Label htmlFor="doc-specialty">Specialty</Label><Input id="doc-specialty" maxLength={60} value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder="Family medicine, Pediatrics…" /></div>
+        <div className="space-y-1.5"><Label htmlFor="doc-specialty">Specialty</Label><Input id="doc-specialty" maxLength={60} value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder={pets ? 'e.g. General practice, Surgery' : 'e.g. Family medicine, Pediatrics'} /></div>
         <div className="space-y-1.5">
-          <Label htmlFor="doc-categories">What they see people for</Label>
-          <Input id="doc-categories" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="Children, Vaccinations, Diabetes care" />
+          <Label htmlFor="doc-categories">{pets ? 'Animals and services they see' : 'What they see people for'}</Label>
+          <Input id="doc-categories" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder={pets ? 'e.g. Dogs, Cats, Exotics, Dentistry' : 'e.g. Children, Vaccinations, Diabetes care'} />
           <p className="text-xs text-text-muted">Separated by commas. The assistant tells callers, so they pick the right doctor.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-credentials">Qualifications and certifications</Label>
-          <Input id="doc-credentials" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder="DVM, Fear Free Certified, Board-certified surgeon" />
+          <Input id="doc-credentials" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder={pets ? 'e.g. DVM, Fear Free Certified' : 'e.g. MD, Board-certified in family medicine'} />
           <p className="text-xs text-text-muted">Separated by commas. Shown on this page, and the assistant mentions them when a caller asks.</p>
         </div>
-        <fieldset className="space-y-1.5">
+        {!pets && <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium">Ages they see</legend>
           <div className="flex items-center gap-2 text-sm">
             <Label htmlFor="doc-age-min" className="text-text-muted">From</Label>
@@ -251,7 +252,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
               onChange={(e) => set({ ages: e.target.value === '' && !d.ages?.min ? undefined : { min: d.ages?.min ?? 0, max: e.target.value === '' ? null : Number(e.target.value) } })} />
             <span className="text-text-muted">years. Empty means every age.</span>
           </div>
-        </fieldset>
+        </fieldset>}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={d.acceptingNewPatients} onChange={(e) => set({ acceptingNewPatients: e.target.checked })} />
           Takes new {terms.patients}

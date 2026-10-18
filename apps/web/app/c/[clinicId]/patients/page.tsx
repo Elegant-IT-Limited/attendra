@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientList } from '@attendra/api/contracts';
-import { PATIENT_GUIDE, patientTemplate } from '@attendra/core';
+import { PATIENT_GUIDE, PET_GUIDE, patientTemplate, petTemplate } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { FileUp, UserPlus } from 'lucide-react';
 import Link from 'next/link';
@@ -86,7 +86,7 @@ export default function Patients() {
           <CardHeader><CardTitle>Opened recently</CardTitle></CardHeader>
           {recent.isPending ? <div className="space-y-2 p-4"><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
             : recent.isError ? <Alert tone="warn" className="m-4">This list did not load. Refresh to try again.</Alert>
-              : !recent.data?.patients.length ? <Empty title="Nobody yet">Patients you open appear here, so you can get back to them quickly.</Empty>
+              : !recent.data?.patients.length ? <Empty title="None yet">{pet ? 'Pets' : 'Patients'} you open appear here, so you can get back to them quickly.</Empty>
                 : (
                   <ul className="divide-y divide-border">
                     {recent.data.patients.map((p) => <li key={p.id}><Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} /></Link></li>)}
@@ -94,8 +94,8 @@ export default function Patients() {
                 )}
         </Card>
       </div>
-      <ImportPanel open={importing} onOpenChange={setImporting} title="Import patients" what="patients" endpoint={`/clinics/${clinicId}/patients/import`}
-        template={{ name: 'attendra-patients-template.csv', csv: patientTemplate() }} guide={PATIENT_GUIDE} />
+      <ImportPanel open={importing} onOpenChange={setImporting} title={`Import ${terms.patients}`} what={terms.patients} endpoint={`/clinics/${clinicId}/patients/import`}
+        template={pet ? { name: 'attendra-pets-template.csv', csv: petTemplate() } : { name: 'attendra-patients-template.csv', csv: patientTemplate() }} guide={pet ? PET_GUIDE : PATIENT_GUIDE} />
       <Panel open={adding} onOpenChange={setAdding} title={`Add ${terms.patient}`} description={pet ? 'The assistant can find them on the owner\'s next call, by the owner\'s name, the pet\'s name and the phone.' : 'The assistant can verify them on their next call, by name, date of birth and phone.'}>
         <PatientForm clinicId={clinicId} submitLabel={`Add ${terms.patient}`} onCancel={() => setAdding(false)}
           onSaved={(id) => { setAdding(false); router.push(`/c/${clinicId}/patients/${id}`); }} />

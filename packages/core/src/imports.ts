@@ -218,3 +218,55 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     return { line: r.line, name, ok: true, value: { firstName, lastName, dob, gender, phone, guardianName } };
   });
 }
+
+/** A vet clinic's spreadsheet: one row per pet, with its owner. */
+export const PET_COLUMNS = ['pet_name', 'species', 'sex', 'birthday', 'owner_name', 'owner_phone'] as const;
+
+export const PET_GUIDE = [
+  'One row per pet. pet_name, species, birthday, owner_name and owner_phone are required.',
+  'species: the kind of animal, like dog, cat or rabbit.',
+  'sex: female, male or unknown. Empty means unknown.',
+  'birthday: YYYY-MM-DD, like 2021-05-14, or month/day/year. If only the age is known, use the same day that many years ago.',
+  'owner_name: the owner\'s first and last name. The assistant finds the pet by it, the pet\'s name and the phone.',
+  'owner_phone: with the area code. One owner\'s pets share a number: each pet gets a row of its own.',
+  'A pet already on file with the same name, owner, birthday and phone is skipped, so the same file can be uploaded twice safely.',
+];
+
+export function petTemplate(): string {
+  return toCsv([[...PET_COLUMNS], ['Biscuit', 'dog', 'female', '2021-05-14', 'Jordan Rivera', '(303) 555-0142'], ['Mochi', 'cat', 'unknown', '2019-09-02', 'Jordan Rivera', '(303) 555-0142']]);
+}
+
+/**
+ * Pets from a spreadsheet, stored as the assistant stores a pet it adds on a call:
+ * its own name, the owner's last name, the owner as the guardian, the owner's phone.
+ */
+export function readPets(text: string, today: string, northAmerica = true): RowResult<PatientRow & { species: string }>[] {
+  const rows = records(text);
+  if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
+  if (rows.length && !['pet_name', 'species', 'birthday', 'owner_name', 'owner_phone'].every((c) => rows[0]!.headers.includes(c))) {
+    return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names: pet_name, species, sex, birthday, owner_name, owner_phone; download the template' }];
+  }
+  const seen = new Set<string>();
+  const todayDate = new Date(`${today}T12:00:00Z`);
+  return rows.map((r) => {
+    const pet = r.get('pet_name');
+    const owner = r.get('owner_name').replace(/\s+/g, ' ').trim();
+    const name = `${pet} (${owner})`.trim();
+    const fail = (message: string) => ({ line: r.line, name, ok: false as const, message });
+    if (!pet) return fail('pet_name is required');
+    const species = r.get('species').toLowerCase();
+    if (!species) return fail('species is required, like dog or cat');
+    if (owner.split(' ').length < 2) return fail('owner_name needs the owner\'s first and last name');
+    const dob = parseDob(r.get('birthday'), todayDate, northAmerica ? 'mdy' : 'dmy');
+    if (!dob) return fail(`birthday "${r.get('birthday')}" is not a full date like 2021-05-14 or a date in the future`);
+    const sex = r.get('sex').toLowerCase();
+    const gender: Gender = sex === 'female' || sex === 'f' ? 'female' : sex === 'male' || sex === 'm' ? 'male' : 'undisclosed';
+    const phone = r.get('owner_phone');
+    if (phone.replace(/\D/g, '').length < (northAmerica ? 10 : 7)) return fail('owner_phone is required, with the area code');
+    const lastName = owner.split(' ').at(-1)!;
+    const key = `${pet.toLowerCase()}|${owner.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
+    if (seen.has(key)) return fail('this pet is in the file twice');
+    seen.add(key);
+    return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species } };
+  });
+}

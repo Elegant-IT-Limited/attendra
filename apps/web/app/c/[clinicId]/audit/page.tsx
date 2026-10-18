@@ -73,6 +73,15 @@ const ACTIONS: Record<string, string> = {
   'webhook.endpoint.secret_rotated': 'Rotated a webhook signing secret',
   'webhook.endpoint.disabled': 'Turned off a webhook endpoint that kept failing',
   'webhook.test': 'Sent a test event to a webhook endpoint',
+  'patient.list.viewed': 'Looked at the patient list',
+  'patient.confirmed': 'Confirmed a new patient\'s details',
+  'patient.fields.updated': 'Changed the extra details on a patient\'s record',
+  'task.planned': 'Changed a request\'s urgency or due day',
+  'appointment.rescheduled': 'Moved an appointment',
+  'clinic.doctor.added': 'Added a provider',
+  'clinic.doctor.updated': 'Changed a provider\'s details',
+  'clinic.doctor.removed': 'Removed a provider',
+  'clinic.doctors.imported': 'Imported providers from a spreadsheet',
 };
 
 // what an agent did through an API key, by MCP tool
@@ -97,8 +106,16 @@ function describe(action: string) {
   if (action.startsWith('member.added:')) return `Added a person to the team, as ${ROLE_WORDS[action.slice(13)] ?? action.slice(13)}`;
   if (action.startsWith('member.role.changed:')) return `Changed someone's role to ${ROLE_WORDS[action.slice(20)] ?? action.slice(20)}`;
   if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replaceAll('_', ' ')})`;
-  return action;
+  // something newer than this list: its name in words, never the raw code
+  const words = action.replace(/[._:]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** The log in a vet clinic's words: pets, not patients; veterinarians, not providers. */
+const forPets = (text: string) => text
+  .replace(/\bpatient's\b/g, 'pet\'s').replace(/\bpatients\b/g, 'pets').replace(/\bpatient\b/g, 'pet')
+  .replace(/\bPatients\b/g, 'Pets').replace(/\bPatient\b/g, 'Pet')
+  .replace(/\bproviders\b/g, 'veterinarians').replace(/\bprovider's\b/g, 'veterinarian\'s').replace(/\bprovider\b/g, 'veterinarian');
 
 function actor(a: string, meId: string | undefined, names: Map<string, string>) {
   if (a === 'voice-agent') return <Badge tone="accent">Assistant</Badge>;
@@ -161,6 +178,7 @@ export default function Audit() {
   });
   const rows = entries.data?.pages.flatMap((p) => p.entries) ?? [];
   const tz = clinic?.timezone ?? 'UTC';
+  const say = (text: string) => (config.data?.industry === 'vet' ? forPets(text) : text);
 
   if (!meLoading && !allowed) {
     return <><PageHeader title="Audit log" /><Card><Empty title="Not available">Only owners and practice managers read the audit log.</Empty></Card></>;
@@ -168,7 +186,7 @@ export default function Audit() {
 
   return (
     <>
-      <PageHeader title="Audit log" description={<>Every time someone, or the assistant, looked at patient data or changed something. Rows can be added, never edited or removed. Times are {zoneLabel(tz)}.</>} />
+      <PageHeader title="Audit log" description={<>Every time someone, or the assistant, looked at {config.data?.industry === 'vet' ? 'client and pet' : 'patient'} data or changed something. Rows can be added, never edited or removed. Times are {zoneLabel(tz)}.</>} />
       <Card>
         {entries.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : entries.isError ? <Alert tone="danger" className="m-4">The audit log did not load. Refresh the page to try again.</Alert>
@@ -181,9 +199,9 @@ export default function Audit() {
                     <TRow key={e.id}>
                       <TD className="whitespace-nowrap">{clinicTime(e.at, tz)}</TD>
                       <TD>{actor(e.actor, me?.user.id, names)}</TD>
-                      <TD>{describe(e.action)}</TD>
+                      <TD>{say(describe(e.action))}</TD>
                       <TD className="hidden text-text-muted md:table-cell">
-                        {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">{record(e, providers)}</Link> : record(e, providers)}
+                        {e.callId ? <Link href={`/c/${clinicId}/calls/${e.callId}`} className="hover:underline">{say(record(e, providers))}</Link> : say(record(e, providers))}
                       </TD>
                     </TRow>
                   ))}

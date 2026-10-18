@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment, Schedule } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, localDateOf, weekdayOf, windowsOn } from '@attendra/core';
+import { addDays, type ClinicConfig, industryPack, localDateOf, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -118,7 +118,7 @@ function ScheduleScreen() {
         <div className="space-y-1">
           <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
           <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-            <option value="">All providers</option>
+            <option value="">{industryPack(clinic.industry).identity === 'pet' ? 'All veterinarians' : 'All providers'}</option>
             {clinic.providers.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${p.name}, ${p.specialty}` : p.name}</option>)}
           </Select>
         </div>

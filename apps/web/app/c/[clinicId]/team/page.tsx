@@ -18,8 +18,8 @@ import { api, ApiFailure, useClinic } from '@/lib/api';
 const ROLES: { id: Member['role']; label: string; detail: string }[] = [
   { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
   { id: 'admin', label: 'Practice manager', detail: 'Settings, the audit log, the team, and handing out requests.' },
-  { id: 'staff', label: 'Front desk', detail: 'Calls, the schedule, patients and requests.' },
-  { id: 'viewer', label: 'Viewer', detail: 'The call list and settings, with no patient details.' },
+  { id: 'staff', label: 'Front desk', detail: 'Calls, the schedule, the records and requests.' },
+  { id: 'viewer', label: 'Viewer', detail: 'The call list and settings, with no names or records.' },
 ];
 const label = (role: string) => ROLES.find((r) => r.id === role)?.label ?? role;
 const message = (e: unknown) => (e instanceof ApiFailure ? (e.body.message ?? e.body.issues?.[0]?.message ?? 'That did not save.') : 'That did not save. Check your connection and try again.');
