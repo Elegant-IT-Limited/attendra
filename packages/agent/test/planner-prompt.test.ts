@@ -1,4 +1,4 @@
-import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, RIVERBEND_CLINIC, Texting } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
 import { ResponsesPlanner, systemPrompt } from '../src/planner';
 import { CallState } from '../src';
@@ -28,7 +28,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
   });
 
   it('offers send_text, and says how texting works, only at a clinic that texts', async () => {
-    const texting = { ...DEMO_CLINIC, texting: { enabled: true, kinds: { change_confirmed: true, directions: true, hours: true, emergency_hospital: true, provider: false, answer: true, link: true }, links: [] } };
+    const texting = { ...DEMO_CLINIC, texting: Texting.parse({ enabled: true }) };
     const toolsFor = async (clinic: typeof DEMO_CLINIC) => {
       let tools: { name: string; strict: boolean }[] = [];
       const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };

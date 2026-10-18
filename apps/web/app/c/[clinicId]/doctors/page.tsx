@@ -137,7 +137,7 @@ export default function DoctorsPage() {
                   {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
                   <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
-                  {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t) => <span key={t.from} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
+                  {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t, i) => <span key={`${t.from}-${i}`} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start ? `, ${t.start} to ${t.end}` : ''}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
                 </dl>
                 {manager && (
                   <div className="flex justify-end border-t border-border px-5 py-3">
@@ -330,14 +330,30 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Days off</legend>
-          <p className="text-xs text-text-muted">Leave, a conference, a holiday of their own. Nobody is booked with them on these days, by the assistant or at the desk.</p>
+          <p className="text-xs text-text-muted">Leave, a conference, a holiday of their own. Nobody is booked with them on these days, by the assistant or at the desk. Away for part of a day: no times are offered between these, visits outside them are unchanged.</p>
           {d.timeOff.map((t, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
-              <Input type="date" aria-label="First day off" className="h-8 w-38" value={t.from} min={editing.id ? undefined : today}
-                onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, from: e.target.value, to: x.to < e.target.value ? e.target.value : x.to } : x)) })} />
-              <span>to</span>
-              <Input type="date" aria-label="Last day off" className="h-8 w-38" value={t.to} min={t.from}
-                onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)) })} />
+              <Input type="date" aria-label={t.start ? 'Day' : 'First day off'} className="h-8 w-38" value={t.from} min={editing.id ? undefined : today}
+                onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, from: e.target.value, to: x.start || x.to < e.target.value ? e.target.value : x.to } : x)) })} />
+              {t.start ? (
+                <>
+                  <span>from</span>
+                  <Input type="time" aria-label="Away from" className="h-8 w-28" value={t.start} onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)) })} />
+                  <span>to</span>
+                  <Input type="time" aria-label="Back at" className="h-8 w-28" value={t.end ?? ''} onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)) })} />
+                </>
+              ) : (
+                <>
+                  <span>to</span>
+                  <Input type="date" aria-label="Last day off" className="h-8 w-38" value={t.to} min={t.from}
+                    onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, to: e.target.value } : x)) })} />
+                </>
+              )}
+              <label className="flex items-center gap-1.5 text-xs">
+                <input type="checkbox" className="size-4 accent-primary" checked={!!t.start}
+                  onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? (e.target.checked ? { ...x, to: x.from, start: '12:00', end: '17:00' } : { from: x.from, to: x.to, note: x.note }) : x)) })} />
+                Part of the day
+              </label>
               <Input aria-label="Note" className="h-8 flex-1" maxLength={80} value={t.note ?? ''} placeholder="Note (optional)"
                 onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, note: e.target.value || undefined } : x)) })} />
               <Button type="button" size="sm" variant="ghost" aria-label="Remove these days off" onClick={() => set({ timeOff: d.timeOff.filter((_, j) => j !== i) })}><X /></Button>

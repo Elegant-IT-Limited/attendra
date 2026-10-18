@@ -33,6 +33,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   create_refill_request: 'Log a prescription refill request for the care team. Never approve or promise a refill.',
   create_callback: 'Ask staff to call the caller back. When the request matches one of the clinic\'s request_topics from get_clinic_info, ask for what that topic says and pass its name as topic; otherwise topic is null.',
   send_text: 'Text the caller something they just heard: directions, hours, the emergency hospital, a doctor\'s details (ref: provider id), the answer you just gave (ref: its source id), or one of the clinic\'s links (ref: link id from get_clinic_info). The first call tells you the exact question to ask; after the caller clearly says yes, call it again with the same details. Only after they asked for it or you offered and they said yes. to: null for the number they are calling from.',
+  set_reminder_consent: 'After a booking, when commit_pending told you to ask about reminder texts: the caller\'s answer. agreed: true only when they clearly said yes.',
   transfer_call: 'Transfer the call to a person: front_desk, billing or on_call.',
   end_call: 'End the call, only after you have asked "Is there anything else I can help you with?" and the caller said no or goodbye. Refused otherwise.',
 };
@@ -76,8 +77,10 @@ export class ResponsesPlanner implements Planner {
     // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
     const trade = industryPack(input.clinic.industry);
     const args = toolArgsFor(input.clinic.industry);
-    // send_text is offered only to a clinic that texts
-    const tools = TOOL_NAMES.filter((name) => name !== 'send_text' || textingOf(input.clinic).enabled).map((name) => ({
+    // send_text is offered only to a clinic that texts, and the reminder question only to one that sends reminders
+    const reminders = textingOf(input.clinic).reminders;
+    const tools = TOOL_NAMES.filter((name) => (name !== 'send_text' || textingOf(input.clinic).enabled)
+      && (name !== 'set_reminder_consent' || (reminders.enabled && reminders.askOnBooking))).map((name) => ({
       type: 'function' as const, name, description: trade.planner.descriptions?.[name] ?? DESCRIPTIONS[name], strict: true,
       parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
     }));

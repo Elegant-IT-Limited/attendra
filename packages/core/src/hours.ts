@@ -9,21 +9,35 @@ export function windowsOn(hours: Hours, weekday: number) {
   return hours[String(weekday) as keyof Hours] ?? [];
 }
 
-/** Open right now, in the clinic's zone, with holidays counted as closed all day. */
-export function isOpen(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'>, at: Date): boolean {
+type Days = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { specialDays?: ClinicConfig['specialDays'] };
+
+/** A date's own hours, when the clinic set some: a half day, or closed with a reason. */
+export const specialDayOf = (clinic: Pick<ClinicConfig, 'specialDays'>, date: string) => clinic.specialDays?.find((d) => d.date === date);
+
+/** The clinic's hours on one date: a special day's own, none on a holiday, else the week's. */
+export function windowsOnDate(clinic: Days, date: string) {
+  const special = specialDayOf(clinic, date);
+  if (special) return special.windows;
+  if (clinic.holidays.includes(date)) return [];
+  return windowsOn(clinic.hours, weekdayOf(date));
+}
+
+/** Open right now, in the clinic's zone, with holidays counted as closed all day and special days by their own hours. */
+export function isOpen(clinic: Days, at: Date): boolean {
   const local = localParts(at, clinic.timezone);
-  if (clinic.holidays.includes(local.date)) return false;
-  return windowsOn(clinic.hours, local.weekday)
+  return windowsOnDate(clinic, local.date)
     .some((w) => local.minutes >= toMinutes(w.open) && local.minutes < toMinutes(w.close));
 }
 
 /** One short line the voice model can say: "Today we are open 8:00 to 12:00 and 13:00 to 17:00." */
-export function todaysHoursLine(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'>, at: Date): string {
+export function todaysHoursLine(clinic: Days, at: Date): string {
   const local = localParts(at, clinic.timezone);
-  if (clinic.holidays.includes(local.date)) return 'The clinic is closed today for a holiday.';
-  const windows = windowsOn(clinic.hours, local.weekday);
-  if (!windows.length) return 'The clinic is closed today.';
-  return `Today the clinic is open ${windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}.`;
+  const special = specialDayOf(clinic, local.date);
+  const why = special?.note ? ` (${special.note})` : '';
+  if (!special && clinic.holidays.includes(local.date)) return 'The clinic is closed today for a holiday.';
+  const windows = windowsOnDate(clinic, local.date);
+  if (!windows.length) return `The clinic is closed today${why}.`;
+  return `Today the clinic is open ${windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}${why}.`;
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -36,14 +50,16 @@ export function todayLine(clinic: Pick<ClinicConfig, 'timezone'>, at: Date): str
 }
 
 /** The next seven days of opening hours, today first, holidays marked: for "are you open tomorrow?". */
-export function weekHours(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'>, at: Date): string {
+export function weekHours(clinic: Days, at: Date): string {
   const today = localParts(at, clinic.timezone).date;
   return Array.from({ length: 7 }, (_, i) => {
     const date = addDays(today, i);
     const day = `${DAY_NAMES[weekdayOf(date)]} ${date}`;
-    if (clinic.holidays.includes(date)) return `${day}: closed for a holiday`;
-    const windows = windowsOn(clinic.hours, weekdayOf(date));
-    return `${day}: ${windows.length ? windows.map((w) => `${w.open} to ${w.close}`).join(' and ') : 'closed'}`;
+    const special = specialDayOf(clinic, date);
+    if (!special && clinic.holidays.includes(date)) return `${day}: closed for a holiday`;
+    const windows = windowsOnDate(clinic, date);
+    const why = special?.note ? ` (${special.note})` : special ? ' (special hours)' : '';
+    return `${day}: ${windows.length ? windows.map((w) => `${w.open} to ${w.close}`).join(' and ') : 'closed'}${why}`;
   }).join('; ');
 }
 
@@ -75,7 +91,7 @@ function clockText(hhmm: string, twelveHour: boolean) {
  * together, Monday first: "Mon–Fri 8 AM–5 PM, Sat 9 AM–12 PM; closed Oct 22". The
  * holidays in the next two weeks are added at the end.
  */
-export function hoursSummary(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'phoneNumbers'>, at: Date, language: Language): string {
+export function hoursSummary(clinic: Days & Pick<ClinicConfig, 'phoneNumbers'>, at: Date, language: Language): string {
   const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
   const days = PACKS[language].shortDays;
   const line = (weekday: number) => windowsOn(clinic.hours, weekday).map((w) => `${clockText(w.open, twelve)}–${clockText(w.close, twelve)}`).join(', ');
@@ -90,7 +106,11 @@ export function hoursSummary(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | '
   });
   const open = groups.map((g) => `${g.from === g.to ? days[g.from] : `${days[g.from]}–${days[g.to]}`} ${g.text}`).join(', ');
   const today = localParts(at, clinic.timezone).date;
-  const soon = clinic.holidays.filter((d) => d >= today && d <= addDays(today, 14)).sort();
-  const closed = soon.map((d) => `${days[(weekdayOf(d) + 6) % 7]} ${d.slice(5)}`);
-  return [open || '-', ...(closed.length ? [`${language === 'es' ? 'cerrado' : 'closed'} ${closed.join(', ')}`] : [])].join('; ');
+  const inTwoWeeks = (d: string) => d >= today && d <= addDays(today, 14);
+  const dayName = (d: string) => `${days[(weekdayOf(d) + 6) % 7]} ${d.slice(5)}`;
+  const closedDays = [...clinic.holidays, ...(clinic.specialDays ?? []).filter((s) => !s.windows.length).map((s) => s.date)].filter(inTwoWeeks).sort();
+  const closed = [...new Set(closedDays)].map(dayName);
+  const shorter = (clinic.specialDays ?? []).filter((s) => s.windows.length && inTwoWeeks(s.date)).sort((a, b) => a.date.localeCompare(b.date))
+    .map((s) => `${dayName(s.date)} ${s.windows.map((w) => `${clockText(w.open, twelve)}–${clockText(w.close, twelve)}`).join(', ')}`);
+  return [open || '-', ...(shorter.length ? [shorter.join(', ')] : []), ...(closed.length ? [`${language === 'es' ? 'cerrado' : 'closed'} ${closed.join(', ')}`] : [])].join('; ');
 }

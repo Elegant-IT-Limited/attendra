@@ -1,5 +1,5 @@
 import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, Texting, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
@@ -161,7 +161,7 @@ describe('the conversation prompt', () => {
     const own = 'Gracias por llamar. Soy Maya, la asistente virtual. ¿En qué le puedo ayudar?';
     expect(conversationPrompt({ ...DEMO_CLINIC, greetings: { es: own } }, NOW)).toContain(`If the caller speaks Spanish, switch to it and introduce yourself once with exactly: "${own}"`);
     expect(conversationPrompt(DEMO_CLINIC, NOW)).not.toMatch(/text the caller/i);
-    expect(conversationPrompt({ ...DEMO_CLINIC, texting: { enabled: true, kinds: { change_confirmed: true, directions: true, hours: true, emergency_hospital: true, provider: false, answer: true, link: true }, links: [] } }, NOW)).toMatch(/You can text the caller/);
+    expect(conversationPrompt({ ...DEMO_CLINIC, texting: Texting.parse({ enabled: true }) }, NOW)).toMatch(/You can text the caller/);
   });
 
   it('carries the greeting, the AI disclosure and today\'s hours, and nothing about any patient', () => {

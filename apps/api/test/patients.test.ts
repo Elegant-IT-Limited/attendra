@@ -167,6 +167,16 @@ describe('adding and editing', () => {
     expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Maria', lastName: 'Delgado', dob: '1985-03-04', phone: '+13035550147', gender: 'female' } })).statusCode).toBe(409);
   });
 
+  it('keeps a yes to reminder texts from the desk, with where it came from; an edit without it keeps it', async () => {
+    const body = { firstName: 'Tess', lastName: 'Remind', dob: '1980-02-02', phone: '303-555-0131', gender: 'female' };
+    const tess = (await api.request('POST', C, { cookie: as.staff, body: { ...body, textsOk: true } })).json().id;
+    expect((await api.request('GET', `${C}/${tess}`, { cookie: as.staff })).json()).toMatchObject({ textsOk: true, textsOkSource: 'staff' });
+    await api.request('PATCH', `${C}/${tess}`, { cookie: as.staff, body });
+    expect((await api.request('GET', `${C}/${tess}`, { cookie: as.staff })).json()).toMatchObject({ textsOk: true });
+    await api.request('PATCH', `${C}/${tess}`, { cookie: as.staff, body: { ...body, textsOk: false } });
+    expect((await api.request('GET', `${C}/${tess}`, { cookie: as.staff })).json()).toMatchObject({ textsOk: false, textsOkSource: null });
+  });
+
   it('judges a date of birth "in the future" by the clinic\'s date, not the server\'s', async () => {
     // 8 pm on Monday 28 September in Denver is already Tuesday the 29th in UTC
     const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29', phone: '303-555-0140', gender: 'female', guardianName: 'Pat Early' } });

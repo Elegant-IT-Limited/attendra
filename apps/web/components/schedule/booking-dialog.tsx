@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange } from '@attendra/api/contracts';
-import { type ClinicConfig, industryPack, localDateOf } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf, zonedInstant } from '@attendra/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/controls';
 import { Alert } from '@/components/ui/feedback';
-import { Label, Select, Textarea } from '@/components/ui/input';
+import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { api, ApiFailure, newKey } from '@/lib/api';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -45,25 +46,34 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
   const [note, setNote] = useState('');
   const [key, setKey] = useState(newKey);
   const [error, setError] = useState<string | null>(null);
+  // the front desk squeezing someone in outside the hours: any time, with why
+  const [override, setOverride] = useState<{ on: boolean; providerId: string; date: string; time: string; reason: string }>({ on: false, providerId: '', date: '', time: '', reason: '' });
+  const squeezed = override.on && override.providerId && override.date && /^\d{2}:\d{2}$/.test(override.time)
+    ? { providerId: override.providerId, startsAt: zonedInstant(override.date, override.time, clinic.timezone).toISOString() } : null;
+  const picked = override.on ? squeezed : slot;
 
   // every time the dialog opens it starts over, with a new idempotency key
   useEffect(() => {
     if (!open) return;
     setPatient(fixed ?? null); setStep(fixed ? 1 : 0); setSlot(null); setNote(''); setError(null); setFrom(today); setKey(newKey());
+    setOverride({ on: false, providerId: '', date: today, time: '', reason: '' });
   }, [open, fixed?.id, today]);
 
   const providers = clinic.providers.filter((p) => p.visitTypeIds.includes(visitTypeId));
   const book = useMutation({
     mutationFn: () => api<AppointmentChange>(`/clinics/${clinicId}/appointments`, {
       method: 'POST',
-      body: JSON.stringify({ patientId: patient!.id, providerId: slot!.providerId, visitTypeId, startsAt: slot!.startsAt, note: note.trim() || undefined, idempotencyKey: key }),
+      body: JSON.stringify({
+        patientId: patient!.id, providerId: picked!.providerId, visitTypeId, startsAt: picked!.startsAt, note: note.trim() || undefined, idempotencyKey: key,
+        ...(override.on ? { override: true, overrideReason: override.reason.trim() } : {}),
+      }),
     }),
     onMutate: () => setError(null),
     onSuccess: (r) => {
       void queries.invalidateQueries({ queryKey: ['schedule', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
       onOpenChange(false);
-      onBooked?.(r.appointmentId, slot!.startsAt);
+      onBooked?.(r.appointmentId, picked!.startsAt);
     },
     onError: (e) => {
       if (e instanceof ApiFailure && e.status === 409) {
@@ -78,9 +88,9 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
     },
   });
 
-  const provider = clinic.providers.find((p) => p.id === slot?.providerId);
+  const provider = clinic.providers.find((p) => p.id === picked?.providerId);
   const visit = clinic.visitTypes.find((v) => v.id === visitTypeId);
-  const canNext = [!!patient, !!slot, true, true][step];
+  const canNext = [!!patient, !!picked && (!override.on || override.reason.trim().length >= 3), true, true][step];
 
   return (
     <Panel open={open} onOpenChange={onOpenChange} title="New booking" className="max-w-2xl"
@@ -111,7 +121,28 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               </Select>
             </div>
           </div>
-          <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} />
+          {!override.on && <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} />}
+          <Checkbox id="override" label="Squeeze in outside the hours (override)" checked={override.on}
+            hint="For a time no slot offers: before opening, on a closed day, or while the vet is away. Still refused if it clashes with another visit."
+            onCheckedChange={(on) => setOverride({ ...override, on, providerId: override.providerId || providerId || providers[0]?.id || '' })} />
+          {override.on && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="override-provider">{pets ? 'Veterinarian' : 'Provider'}</Label>
+                <Select id="override-provider" value={override.providerId} onChange={(e) => setOverride({ ...override, providerId: e.target.value })}>
+                  {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5"><Label htmlFor="override-date">Date</Label><Input id="override-date" type="date" min={today} value={override.date} onChange={(e) => setOverride({ ...override, date: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label htmlFor="override-time">Time</Label><Input id="override-time" type="time" value={override.time} onChange={(e) => setOverride({ ...override, time: e.target.value })} /></div>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="override-reason">Why (required)</Label>
+                <Input id="override-reason" maxLength={120} placeholder="e.g. Sick visit, the vet agreed" value={override.reason} onChange={(e) => setOverride({ ...override, reason: e.target.value })} />
+              </div>
+            </div>
+          )}
         </div>
       )}
       {step === 2 && (
@@ -121,13 +152,14 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
           <p className="text-xs text-text-muted">Only staff see this note. It is stored encrypted.</p>
         </div>
       )}
-      {step === 3 && slot && (
+      {step === 3 && picked && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-text-muted">{pets ? 'Pet' : 'Patient'}</dt><dd className="font-medium">{patient?.name}</dd>
-          <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(slot.startsAt), clinic.timezone))} at {timeOf(slot.startsAt, clinic.timezone)}</dd>
+          <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(picked.startsAt), clinic.timezone))} at {timeOf(picked.startsAt, clinic.timezone)}</dd>
           <dt className="text-text-muted">With</dt><dd>{provider?.name}</dd>
           <dt className="text-text-muted">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
           {note.trim() && <><dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{note.trim()}</dd></>}
+          {override.on && <><dt className="text-text-muted">Override</dt><dd>{override.reason.trim()}</dd></>}
         </dl>
       )}
     </Panel>

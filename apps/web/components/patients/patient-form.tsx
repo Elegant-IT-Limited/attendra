@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/controls';
 import { Alert } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
@@ -60,7 +61,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
       const owner = (form.guardianName ?? '').trim().replace(/\s+/g, ' ');
       if (owner.split(' ').length < 2) { setProblem({ text: 'Add the owner\'s first and last name.' }); return; }
       // stored as the assistant stores a pet: its own name, the owner's last name, the owner as the guardian
-      save.mutate({ firstName: form.firstName.trim(), lastName: owner.split(' ').at(-1)!, dob: form.dob, gender: form.gender, phone: form.phone.trim(), guardianName: owner, species: form.species?.trim().toLowerCase() || null });
+      save.mutate({ firstName: form.firstName.trim(), lastName: owner.split(' ').at(-1)!, dob: form.dob, gender: form.gender, phone: form.phone.trim(), guardianName: owner, species: form.species?.trim().toLowerCase() || null, textsOk: form.textsOk });
       return;
     }
     save.mutate({ ...form, species: undefined, gender: form.gender, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
@@ -144,6 +145,8 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         )}
       </fieldset>
       )}
+      <Checkbox id="texts-ok" label="Texts OK (reminders)" checked={!!form.textsOk} disabled={save.isPending} onCheckedChange={(textsOk) => setForm({ ...form, textsOk })}
+        hint="Set when they said yes on a call. Tick it if they agreed in person. Reminder texts go only to people who said yes." />
       <div className="flex justify-end gap-2">
         {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={save.isPending}>Cancel</Button>}
         <Button type="submit" disabled={save.isPending}>{save.isPending ? 'Saving…' : submitLabel}</Button>

@@ -38,10 +38,13 @@ export const es: LanguagePack = {
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     answer: (v) => `${v.clinic}: ${v.answer} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     link: (v) => `${v.clinic}: ${v.label}: ${v.url} Responda STOP para no recibir más mensajes.`,
+    reminder: (v) => `${v.clinic}: le recordamos ${v.pet ? `la cita de ${v.pet}` : 'su cita'} el ${v.when}. Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
   },
   textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
   textSent: 'Listo, se lo acabo de enviar.',
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
+  reminderOffer: '¿Quiere un recordatorio por mensaje de texto antes de la cita?',
+  smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   emergencyScript: (n) =>

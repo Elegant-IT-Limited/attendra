@@ -50,6 +50,8 @@ export const ToolArgs = {
     // null: the number they are calling from; a number only when it is the one on their file
     to: z.string().min(7).max(30).nullable().default(null),
   }),
+  // after a booking, the caller's answer to the question about reminder texts
+  set_reminder_consent: z.object({ agreed: z.boolean() }),
   transfer_call: z.object({ target: TransferTarget }),
   end_call: z.object({ reason: z.string().max(100) }),
 } as const;

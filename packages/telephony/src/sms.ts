@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { asE164, type Language, type Messenger, PACKS, type TextRefusal, type TextRequest, type TextResult } from '@attendra/core';
-import { type Database, type PhiCipher, schema, withClinic } from '@attendra/db';
-import { and, eq, gt, ne, sql } from 'drizzle-orm';
+import { type Database, type PhiCipher, phoneKey, schema, withClinic } from '@attendra/db';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 
 /**
  * SMS goes out from fixed templates only. A carrier message is outside the BAA
@@ -156,5 +156,28 @@ export async function recordSmsStanding(db: Database, cipher: PhiCipher, clinicI
     await tx.insert(smsOptOuts).values({ clinicId, toHash, status, source })
       .onConflictDoUpdate({ target: [smsOptOuts.clinicId, smsOptOuts.toHash], set: { status, source, at: new Date() } });
     await tx.insert(auditLogs).values({ clinicId, actor, action: status === 'opted_out' ? 'sms.opt_out' : 'sms.opt_in', entity: 'sms', entityId: toHash.slice(0, 8) });
+  });
+}
+
+/**
+ * A reply of C to a reminder: the next visit within 7 days that had a reminder, for
+ * whoever has this number on file, is marked confirmed. Null when there is none.
+ */
+export async function confirmByReply(db: Database, cipher: PhiCipher, clinicId: string, from: string, now = new Date()) {
+  const { appointments, patients, auditLogs } = schema;
+  return withClinic(db, clinicId, async (tx) => {
+    const people = await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, cipher.hash(phoneKey(clinicId, from)))));
+    if (!people.length) return null;
+    const [next] = await tx.select({ id: appointments.id, patientId: appointments.patientId, startsAt: appointments.startsAt }).from(appointments)
+      .where(and(
+        eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'), inArray(appointments.patientId, people.map((p) => p.id)),
+        gt(appointments.startsAt, now), lte(appointments.startsAt, new Date(now.getTime() + 7 * 86_400_000)),
+        isNotNull(appointments.reminderSentAt), isNull(appointments.confirmedAt),
+      ))
+      .orderBy(asc(appointments.startsAt)).limit(1);
+    if (!next) return null;
+    await tx.update(appointments).set({ confirmedAt: now, confirmedVia: 'text' }).where(eq(appointments.id, next.id));
+    await tx.insert(auditLogs).values({ clinicId, actor: 'sms', action: 'appointment.confirmed.text', entity: 'appointment', entityId: next.id });
+    return next;
   });
 }

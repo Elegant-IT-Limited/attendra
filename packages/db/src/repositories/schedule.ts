@@ -20,6 +20,12 @@ export interface ScheduleEntry {
   bookedBy: BookedBy;
   cancelledBy: BookedBy | null;
   createdAt: Date;
+  /** Why the front desk booked it outside the hours. */
+  overrideReason: string | null;
+  /** When the owner confirmed it (replied C to the reminder), and how. */
+  confirmedAt: Date | null;
+  confirmedVia: 'text' | 'staff' | null;
+  reminderSentAt: Date | null;
 }
 
 const actorOf = (userId: string) => `user:${userId}`;
@@ -110,6 +116,7 @@ export class ScheduleRepository {
       patientName: `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`,
       providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, status: a.status,
       cancelReason: a.cancelReason, createdAt: a.createdAt,
+      overrideReason: a.overrideReason, confirmedAt: a.confirmedAt, confirmedVia: a.confirmedVia, reminderSentAt: a.reminderSentAt,
       bookedBy: by(a.createdByCallId, a.createdByUserId)!,
       cancelledBy: a.status === 'cancelled' ? by(a.cancelledByCallId, a.cancelledByUserId) : null,
     }));

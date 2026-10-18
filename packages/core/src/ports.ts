@@ -16,7 +16,7 @@ import type { Slot } from './slots';
  * codes and counts only: never a name, a number, a date of birth or free text.
  */
 export interface DomainEvent {
-  type: 'call.completed' | 'call.summary.ready' | 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled' | 'request.created' | 'request.done';
+  type: 'call.completed' | 'call.summary.ready' | 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled' | 'appointment.confirmed' | 'request.created' | 'request.done';
   key: string;
   occurredAt?: Date;
   data: Record<string, string | number | boolean | null>;
@@ -35,7 +35,7 @@ export interface KnowledgeBase {
 }
 
 /** A verified patient as a call knows them: enough to book, confirm by text and pick a doctor who sees their age. */
-export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null; /** The kind of animal, for a pet. */ species?: string | null }
+export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null; /** The kind of animal, for a pet. */ species?: string | null; /** They agreed to reminder texts. */ textsOk?: boolean }
 
 export type PatientLookup =
   | { status: 'found'; patient: CallPatient } // phone on file, for confirmations
@@ -68,6 +68,8 @@ export interface PatientDirectory {
    * can tell apart.
    */
   findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup>;
+  /** Records that they said yes to reminder texts on a call. */
+  setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
 }
 
 export interface AppointmentSummary {

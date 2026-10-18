@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   'patients:import': ['owner', 'admin'],
   'schedule:read': ['owner', 'admin', 'staff'],
   'schedule:write': ['owner', 'admin', 'staff'],
+  // book outside the hours, on a holiday or when a provider is away, with a reason
+  'schedule:override': ['owner', 'admin', 'staff'],
   'tasks:read': ['owner', 'admin', 'staff'],
   'tasks:work': ['owner', 'admin', 'staff'],
   'tasks:reassign': ['owner', 'admin'],

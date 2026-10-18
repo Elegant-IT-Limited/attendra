@@ -36,6 +36,10 @@ const ACTIONS: Record<string, string> = {
   'schedule.viewed': 'Looked at the schedule',
   'appointment.viewed': 'Opened an appointment',
   'appointment.booked.staff': 'Booked an appointment at the desk',
+  'appointment.booked.staff.override': 'Booked an appointment outside the hours, with a reason',
+  'appointment.rescheduled.staff.override': 'Moved an appointment outside the hours, with a reason',
+  'appointment.confirmed.text': 'A visit was confirmed by a reply to its reminder',
+  'patient.texts_ok.call': 'Said yes to reminder texts on a call',
   'appointment.rescheduled.staff': 'Moved an appointment',
   'appointment.cancelled.staff': 'Cancelled an appointment at the desk',
   'patient.searched': 'Searched for a patient',
@@ -101,7 +105,7 @@ const ACTIONS: Record<string, string> = {
 };
 const TEXTS: Record<string, string> = {
   booking_confirmed: 'a booking confirmation', request_ready: 'that a request is ready to pick up', change_confirmed: 'that a visit moved', cancel_confirmed: 'that a visit was cancelled',
-  directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a doctor\'s details', answer: 'an answer', link: 'one of the clinic\'s links',
+  directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a doctor\'s details', answer: 'an answer', link: 'one of the clinic\'s links', reminder: 'an appointment reminder',
 };
 const NOT_SENT: Record<string, string> = {
   opted_out: 'the number opted out', rate_limited: 'too many texts to that number today', no_number: 'no mobile number',

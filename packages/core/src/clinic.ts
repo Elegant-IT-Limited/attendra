@@ -26,8 +26,22 @@ export type Gender = z.infer<typeof Gender>;
 export const genderWord = (g: Gender) => (g === 'undisclosed' ? 'prefers not to say' : g);
 
 /** Whole days a provider is away: leave, a conference, a day off. Both ends included. */
-export const TimeOff = z.object({ from: isoDate, to: isoDate, note: z.string().trim().max(80).optional() })
-  .refine((t) => t.from <= t.to, 'time off must end on or after the day it starts');
+export const TimeOff = z.object({
+  from: isoDate, to: isoDate, note: z.string().trim().max(80).optional(),
+  // a part of one day only: away between these times
+  start: hhmm.optional(), end: hhmm.optional(),
+})
+  .refine((t) => t.from <= t.to, 'time off must end on or after the day it starts')
+  .refine((t) => (!t.start && !t.end) || (!!t.start && !!t.end && t.from === t.to && t.start < t.end), 'a part-day absence is one day, with a start before its end');
+
+/** One date's own hours: a half day before a holiday, a training afternoon. No windows is closed all day. */
+export const SpecialDay = z.object({
+  date: isoDate,
+  windows: z.array(OpeningWindow).max(4),
+  // "Christmas Eve", "staff training"
+  note: z.string().trim().max(60).optional(),
+});
+export type SpecialDay = z.infer<typeof SpecialDay>;
 
 /** The ages a provider sees, in whole years. No upper limit means every age from `min`. */
 export const AgeRange = z.object({ min: z.number().int().min(0).max(120), max: z.number().int().min(0).max(120).nullable() })
@@ -189,6 +203,15 @@ export const Texting = z.object({
   // the clinic's own map link; without one, a Google Maps search of the address
   mapUrl: z.string().trim().max(300).regex(/^https:\/\//, 'a link starts with https://').optional(),
   links: z.array(TextLink).max(10).default([]),
+  reminders: z.object({
+    enabled: z.boolean().default(false),
+    hoursBefore: z.number().int().min(2).max(168).default(24),
+    // no texts between these clinic-local times; one that would fall in them goes out when they end, if still 2 hours before the visit
+    quietFrom: hhmm.default('20:00'),
+    quietTo: hhmm.default('08:00'),
+    // after a booking, the assistant asks once whether the caller would like one
+    askOnBooking: z.boolean().default(true),
+  }).default({ enabled: false, hoursBefore: 24, quietFrom: '20:00', quietTo: '08:00', askOnBooking: true }),
 });
 export type Texting = z.infer<typeof Texting>;
 
@@ -227,6 +250,8 @@ const ClinicConfigShape = z.object({
   phoneNumbers: z.array(e164).min(1),
   hours: WeeklyHours,
   holidays: z.array(isoDate).default([]),
+  // days whose hours differ from the week's: shorter, or closed with a reason
+  specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)
   greeting: z.string().max(400),
   // the greeting in each other language the assistant speaks; absent: that language's suggested greeting
@@ -288,6 +313,12 @@ const ClinicConfigShape = z.object({
     ctx.addIssue({ code: 'custom', path: ['languages'], message: 'the primary language must be one of the languages the assistant speaks' });
   }
   if (new Set(c.languages).size !== c.languages.length) ctx.addIssue({ code: 'custom', path: ['languages'], message: 'a language is listed twice' });
+  for (const d of c.specialDays ?? []) {
+    if (c.holidays.includes(d.date)) ctx.addIssue({ code: 'custom', path: ['specialDays'], message: `${d.date} is both a holiday and a special day` });
+    if (d.windows.some((w) => w.open >= w.close)) ctx.addIssue({ code: 'custom', path: ['specialDays'], message: `on ${d.date}, a window must close after it opens` });
+  }
+  const specialDupe = (c.specialDays ?? []).map((d) => d.date).find((d, i, all) => all.indexOf(d) !== i);
+  if (specialDupe) ctx.addIssue({ code: 'custom', path: ['specialDays'], message: `${specialDupe} is listed twice` });
   // ids are what bookings and the assistant refer to, so each one names exactly one thing
   const dupe = (ids: string[]) => ids.find((id, i) => ids.indexOf(id) !== i);
   const provider = dupe(c.providers.map((p) => p.id));

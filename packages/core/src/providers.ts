@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { toMinutes } from './time';
 import { type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
 import { windowsOn } from './hours';
 import type { Language } from './locales';
@@ -16,8 +17,11 @@ export function ageOn(dob: string, date: string): number {
 /** Whether a provider sees someone of this age. No range means everyone. */
 export const seesAge = (p: Pick<Provider, 'ages'>, age: number) => !p.ages || (age >= p.ages.min && (p.ages.max === null || age <= p.ages.max));
 
-/** Whether a provider is away on a clinic-local day. */
-export const awayOn = (p: Pick<Provider, 'timeOff'>, date: string) => p.timeOff.some((t) => date >= t.from && date <= t.to);
+/** Away the whole of a date. A part-day absence is not: see awayWindows. */
+export const awayOn = (p: Pick<Provider, 'timeOff'>, date: string) => p.timeOff.some((t) => !t.start && date >= t.from && date <= t.to);
+/** The parts of a date a provider is away, in clinic-local minutes. */
+export const awayWindows = (p: Pick<Provider, 'timeOff'>, date: string) =>
+  p.timeOff.filter((t) => t.start && t.end && t.from === date).map((t) => ({ start: toMinutes(t.start!), end: toMinutes(t.end!) }));
 
 /** "all ages", "ages 0 to 17", "ages 18 and over". */
 export function agesLine(p: Pick<Provider, 'ages'>): string {

@@ -131,3 +131,50 @@ describe('texting during a call', () => {
     expect(w.sms.map((s) => s.template)).toEqual(['booking_confirmed', 'cancel_confirmed']);
   });
 });
+
+describe('the reminder question after a booking', () => {
+  const REMINDERS = ClinicConfig.parse({ ...DEMO_CLINIC, texting: { reminders: { enabled: true } } });
+  const book = async (c: Awaited<ReturnType<typeof w.call>>) => {
+    c.caller('Maria Delgado, March 4th 1985. I need to see a doctor.');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
+    ]);
+    await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
+    c.assistant('Shall I book it?');
+    c.caller('Yes.');
+    return (await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!;
+  };
+  const textsOk = async () => {
+    const found = await w.backend.patients.findByIdentity(DEMO_CLINIC.id, 'Maria Delgado', '1985-03-04', '+13035550147');
+    return found.status === 'found' && !!found.patient.textsOk;
+  };
+
+  it('is asked once after a booking; a hedge records nothing', async () => {
+    const c = await w.call('+13035550147', { clinic: REMINDERS });
+    expect(said(await book(c))).toContain('Would you like a reminder text before the visit?');
+    expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).errors).toEqual(['not_asked']);
+    c.assistant("You're booked. Would you like a reminder text before the visit?");
+    c.caller('Hmm, I am not sure.');
+    expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).results[0]!.data).toMatchObject({ reminders: false });
+    expect(await textsOk()).toBe(false);
+    // answered once: not asked again
+    expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).errors).toEqual(['not_offered']);
+  });
+
+  it('keeps a clear yes on the record, and does not ask someone who already said yes', async () => {
+    const c = await w.call('+13035550147', { clinic: REMINDERS });
+    await book(c);
+    c.assistant("You're booked. Would you like a reminder text before the visit?");
+    c.caller('Yes please.');
+    expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).results[0]!.data).toMatchObject({ reminders: true });
+    expect(await textsOk()).toBe(true);
+    const next = await w.call('+13035550147', { clinic: REMINDERS });
+    expect(said(await book(next))).not.toContain('reminder');
+  });
+
+  it('is never asked when the clinic does not send reminders', async () => {
+    const c = await w.call('+13035550147');
+    expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).errors).toEqual(['identity_required']);
+  });
+});
