@@ -24,6 +24,7 @@ import { parseEnv } from 'node:util';
 import { createApi } from '../src/app';
 import { createAuth } from '../src/auth';
 import { httpVoiceClient } from '../src/voice';
+import { openAiVoiceSampler } from '../src/voice-samples/samplers';
 import { DEMO_LOGINS, LOCAL_DEMO_PASSWORD, seedDemoWorkspace } from './demo-data';
 
 // Only the voice settings come from .env: the rest of it may describe a deployment
@@ -107,7 +108,7 @@ if (realCalls || simulated) {
 const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna') : new LocalAnswerer();
 // with a key, Settings' Listen button speaks the greeting in each voice
 const tts = realCalls ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const voiceSamples = tts ? { sample: async (voice: string, text: string) => Buffer.from(await (await tts.audio.speech.create({ model: process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts', voice, input: text, response_format: 'mp3' })).arrayBuffer()) } : null;
+const voiceSamples = tts ? openAiVoiceSampler(tts, { tts: process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts', live: process.env.GPT_LIVE_MODEL || 'gpt-live-1' }) : null;
 const changes = await pgliteChangeFeed(client);
 const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken }, voiceSamples });
 await app.listen({ port, host: '127.0.0.1' });

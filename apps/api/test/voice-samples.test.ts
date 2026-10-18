@@ -1,4 +1,5 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { BUILT_IN_VOICES, DEMO_CLINIC } from '@attendra/core';
+import { liveSample, TTS_VOICES } from '../src/voice-samples/samplers';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OTHER, startApi } from './helpers';
@@ -46,5 +47,40 @@ describe('without a voice sampler', () => {
     const res = await off.request('GET', `${C}?voice=cedar`, { cookie });
     expect(res.statusCode).toBe(503);
     await off.close();
+  });
+});
+
+describe('voices only the Live model has', () => {
+  const fakeLive = (script: (send: (e: object) => void) => void) => {
+    const handlers: Record<string, ((x: never) => void)[]> = {};
+    const sent: { type: string; session?: { audio?: { output?: { voice?: string } }; input?: unknown[]; store?: boolean } }[] = [];
+    const socket = {
+      send: (e: never) => { sent.push(e); if ((e as { type: string }).type === 'session.start') queueMicrotask(() => emit({ type: 'session.started' })); if ((e as { type: string }).type === 'response.create') script(emit); },
+      on: (name: string, h: (x: never) => void) => { (handlers[name] ??= []).push(h); },
+      close: vi.fn(),
+    };
+    const emit = (e: object) => { for (const h of handlers.event ?? []) h(e as never); };
+    return { socket, sent };
+  };
+
+  it('reads the greeting in the voice over a Live WebSocket and answers a WAV, storing nothing', async () => {
+    const pcm = Buffer.alloc(480, 1);
+    const { socket, sent } = fakeLive((emit) => { emit({ type: 'session.output_audio.delta', delta: pcm.toString('base64') }); emit({ type: 'session.output_audio.delta', delta: pcm.toString('base64') }); });
+    const audio = await liveSample(() => socket, 'gpt-live-1', 'tempo', 'Thanks for calling.', { quietMs: 10 });
+    expect(audio.subarray(0, 4).toString()).toBe('RIFF');
+    expect(audio.length).toBe(44 + 960);
+    expect(sent[0]).toMatchObject({ type: 'session.start', session: { store: false, audio: { output: { voice: 'tempo' } }, input: [{ role: 'developer', content: [{ text: 'Thanks for calling.' }] }] } });
+    expect(sent[1]).toEqual({ type: 'response.create' });
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('fails cleanly on an error or no audio, so Settings says to try again', async () => {
+    await expect(liveSample(() => fakeLive((emit) => emit({ type: 'error', error: { code: 'invalid_voice' } })).socket, 'gpt-live-1', 'tempo', 'Hi.')).rejects.toThrow('invalid_voice');
+    await expect(liveSample(() => fakeLive(() => {}).socket, 'gpt-live-1', 'tempo', 'Hi.', { timeoutMs: 20 })).rejects.toThrow('timed out');
+  });
+
+  it('uses the speech model for the voices it has and the Live model for the rest', async () => {
+    expect([...TTS_VOICES].every((v) => (BUILT_IN_VOICES as readonly string[]).includes(v))).toBe(true);
+    expect(TTS_VOICES.has('marin') && !TTS_VOICES.has('tempo')).toBe(true);
   });
 });
