@@ -55,6 +55,7 @@ export class VoiceSamplesController {
       if (this.cache.size >= CACHE) this.cache.delete(this.cache.keys().next().value!);
       this.cache.set(key, audio);
     }
-    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
+    // never kept by the browser: the address is the same after the greeting changes, and the server keeps its own copy
+    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'no-store').send(audio);
   }
 }

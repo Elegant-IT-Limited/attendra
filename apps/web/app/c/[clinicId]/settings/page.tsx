@@ -231,7 +231,7 @@ export default function Settings() {
                 </Select>
                 <VoicePreview clinicId={clinicId} voice={c.voice} />
               </div>
-              <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here.</p>
+              <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here: save a changed greeting first to hear it.</p>
             </div>
             <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />

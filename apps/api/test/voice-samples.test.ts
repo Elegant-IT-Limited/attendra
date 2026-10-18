@@ -22,6 +22,7 @@ describe('hearing a voice before choosing it', () => {
     const res = await api.request('GET', `${C}?voice=cedar`, { cookie: owner });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('audio/mpeg');
+    expect(res.headers['cache-control']).toBe('no-store'); // a changed greeting is never heard from an old copy
     expect(sample).toHaveBeenCalledWith('cedar', DEMO_CLINIC.greeting.slice(0, 300));
     await api.request('GET', `${C}?voice=cedar`, { cookie: viewer }); // anyone who can read Settings
     expect(sample).toHaveBeenCalledTimes(1); // the second one came from the cache
