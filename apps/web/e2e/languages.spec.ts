@@ -39,7 +39,8 @@ test.describe.serial('languages and a second clinic', () => {
     // a name is not a disclosure
     await page.getByLabel('Greeting').fill("Thanks for calling Maple Street. I'm Lena. How can I help?");
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('the greeting must disclose that the caller is speaking with an AI assistant')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Not saved. Fix these first' }).getByText('the greeting must disclose that the caller is speaking with an AI assistant')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
 
     await page.getByRole('button', { name: 'Use the suggested greeting' }).click();
     await page.getByRole('button', { name: 'Save changes' }).click();

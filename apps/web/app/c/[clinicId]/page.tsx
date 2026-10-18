@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
 import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -104,10 +105,10 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const terms = useTerms(clinicId);
   const router = useRouter();
   const queries = useQueryClient();
-  const [taken, setTaken] = useState<string | null>(null);
+  const problem = useProblem();
+  const setTaken = (message: string | null) => { if (message) problem({ title: 'Not claimed', message }); };
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
-    onMutate: () => setTaken(null),
     onSuccess: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); router.push(`/c/${clinicId}/requests`); },
     onError: (e) => { setTaken(e instanceof ApiFailure && e.status === 409 ? 'Someone else claimed that one first.' : 'That did not work. Try again.'); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
   });
@@ -156,7 +157,6 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
         <CardTitle>Needs attention</CardTitle>
         {!loading && <span className="text-sm text-text-muted">{items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : 'All clear'}</span>}
       </CardHeader>
-      {taken && <Alert tone="warn" className="mx-5 mt-4">{taken}</Alert>}
       {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every 30 seconds.</Alert>}
       {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
         : items.length === 0 ? (

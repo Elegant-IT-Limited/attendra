@@ -105,8 +105,14 @@ describe('reading', () => {
     expect(moving.json().slots.map((s: { startsAt: string }) => s.startsAt)).toContain(at('2026-09-29', '09:00'));
   });
 
+  it('reads a month view: six weeks in one request', async () => {
+    const res = await api.request('GET', `${C}?from=2026-09-28&days=42`, { cookie: as.staff });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ from: '2026-09-28', days: 42 });
+  });
+
   it('validates the query', async () => {
-    for (const q of ['', '?from=tomorrow', '?from=2026-09-29&days=30', '?from=2026-09-29&days=0']) {
+    for (const q of ['', '?from=tomorrow', '?from=2026-09-29&days=43', '?from=2026-09-29&days=0']) {
       expect((await api.request('GET', `${C}${q}`, { cookie: as.staff })).json().error, q).toBe('invalid_request');
     }
     expect((await api.request('GET', `${C}/slots`, { cookie: as.staff })).json().error).toBe('invalid_request');

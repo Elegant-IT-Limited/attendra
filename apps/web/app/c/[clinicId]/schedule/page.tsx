@@ -8,7 +8,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
-import { Calendar, ScheduleList } from '@/components/schedule/calendar';
+import { Calendar, MonthGrid, ScheduleList } from '@/components/schedule/calendar';
 import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
@@ -26,6 +26,14 @@ export default function SchedulePage() {
 }
 
 const mondayOf = (date: string) => addDays(date, -((weekdayOf(date) + 6) % 7));
+/** The first of the month a date is in, and of the months before and after it. */
+const monthOf = (date: string) => `${date.slice(0, 7)}-01`;
+const shiftMonth = (date: string, by: number) => {
+  const [y, m] = date.split('-').map(Number) as [number, number];
+  const n = new Date(Date.UTC(y, m - 1 + by, 1));
+  return `${n.getUTCFullYear()}-${String(n.getUTCMonth() + 1).padStart(2, '0')}-01`;
+};
+const monthTitle = (date: string) => new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${monthOf(date)}T12:00:00Z`));
 
 /** The days a week view shows: Monday to Friday, and a weekend day only when the clinic opens or something is booked. */
 function weekDays(clinic: ClinicConfig, monday: string, appointments: Appointment[]) {
@@ -48,14 +56,14 @@ function ScheduleScreen() {
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
   const today = localDateOf(new Date(), tz);
-  const view = params.get('view') === 'week' ? 'week' : 'day';
+  const view: 'day' | 'week' | 'month' = params.get('view') === 'week' ? 'week' : params.get('view') === 'month' ? 'month' : 'day';
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') ?? '') ? params.get('date')! : today;
   const open = params.get('appointment');
   const [providerId, setProviderId] = useState('');
   // booked only, booked and cancelled, or cancelled only (a history list). In a week the columns are narrow
   // and a cancelled block sits on top of the booking that replaced it, so a week starts with booked only
   const shown = params.get('show');
-  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'week' ? 'booked' : 'all';
+  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'day' ? 'all' : 'booked';
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
@@ -69,8 +77,9 @@ function ScheduleScreen() {
     router.replace(`${pathname}?${q}`, { scroll: false });
   };
 
-  const from = view === 'week' ? mondayOf(date) : date;
-  const days = view === 'week' ? 7 : 1;
+  // a month is six whole weeks, from the Monday before the 1st
+  const from = view === 'month' ? mondayOf(monthOf(date)) : view === 'week' ? mondayOf(date) : date;
+  const days = view === 'month' ? 42 : view === 'week' ? 7 : 1;
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
@@ -89,8 +98,11 @@ function ScheduleScreen() {
   }
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
-  const dates = view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
+  const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i))
+    : view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
   const step = view === 'week' ? 7 : 1;
+  const go = (by: 1 | -1) => set({ date: view === 'month' ? shiftMonth(date, by) : addDays(date, by * step) });
+  const unit = view === 'month' ? 'month' : view === 'week' ? 'week' : 'day';
   const booked = appointments.filter((a) => a.status === 'booked').length;
   const writable = can('schedule:write');
 
@@ -101,19 +113,19 @@ function ScheduleScreen() {
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => set({ date: addDays(date, -step) })} aria-label={view === 'week' ? 'Previous week' : 'Previous day'}><ChevronLeft /></Button>
-          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'day' ? date === today : mondayOf(today) === from}>Today</Button>
-          <Button variant="outline" size="sm" onClick={() => set({ date: addDays(date, step) })} aria-label={view === 'week' ? 'Next week' : 'Next day'}><ChevronRight /></Button>
+          <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
+          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'day' ? date === today : view === 'month' ? monthOf(today) === monthOf(date) : mondayOf(today) === from}>Today</Button>
+          <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
         </div>
         <div className="space-y-1">
           <Label htmlFor="schedule-date" className="sr-only">Date</Label>
           <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
         </div>
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
-          {(['day', 'week'] as const).map((v) => (
+          {(['day', 'week', 'month'] as const).map((v) => (
             <button key={v} id={`schedule-tab-${v}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
               className={cn('rounded px-3 py-1 text-sm focus-ring', view === v ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
-              {v === 'day' ? 'Day' : 'Week'}
+              {v === 'day' ? 'Day' : v === 'week' ? 'Week' : 'Month'}
             </button>
           ))}
         </div>
@@ -147,7 +159,7 @@ function ScheduleScreen() {
       <Card className="overflow-hidden" data-testid="schedule" role="tabpanel" id="schedule-panel" aria-labelledby={`schedule-tab-${view}`} aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
-            <h2 className="font-semibold">{view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
+            <h2 className="font-semibold">{view === 'month' ? monthTitle(date) : view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
               {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
             </p>
@@ -158,12 +170,14 @@ function ScheduleScreen() {
         {schedule.isPending ? <div className="space-y-3 p-5">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-10" />)}</div> : (
           <>
             <div className="hidden md:block">
-              <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => set({ appointment: id })} />
+              {view === 'month'
+                ? <MonthGrid clinic={clinic} month={date.slice(0, 7)} dates={dates} appointments={appointments} today={today} onOpen={(id) => set({ appointment: id })} onDay={(d) => set({ view: 'day', date: d })} />
+                : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => set({ appointment: id })} />}
             </div>
             <div className="md:hidden">
-              <ScheduleList clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
+              <ScheduleList clinic={clinic} dates={view === 'month' ? dates.filter((d) => d.startsWith(date.slice(0, 7))) : dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
             </div>
-            {appointments.length === 0 && (hidden > 0 ? (
+            {appointments.length === 0 && view !== 'month' && (hidden > 0 ? (
               <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Choose Booked and cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
             ) : (
               <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.</Empty></div>

@@ -43,7 +43,11 @@ All in `apps/web/components/ui`.
 | `Tabs` | Views of one thing, like a patient's appointments, calls and requests. |
 | `Panel` | A side panel (`side="right"`) for one record, or a centred dialog for a short task or a confirmation. Focus is trapped, Escape closes, focus returns. |
 | `Popover`, `Menu`, `Tooltip` | Extra detail by its trigger; a few actions on one thing; a name for an icon or the exact time behind "12 min ago". |
-| `useToast` | What just happened, in a live region, with Undo where undoing makes sense. |
+| `useToast` | Something done ("Saved."): a note at the bottom of the screen, wherever the page is scrolled, with Undo where undoing makes sense. |
+| `useProblem` | Something not done, or worth a look: a dialog in the middle of the screen, read and closed with OK. Save errors list each thing to fix. |
+| `useConfirm` | A question before something that cannot be taken back, or that changes other records. |
+| `Combobox` | A value from one of the clinic's lists that can also be typed new (a specialty, a kind of animal). Never a bare `datalist`, which hides the list once something is typed. |
+| `Sortable` | Every list the clinic puts in order (fields, choices, visit types, hospitals, transfers, links, kinds of request, lists): drag the handle with a mouse or a finger, or focus it and press the up and down arrows. |
 | `Skeleton`, `Empty` | Loading; nothing here yet. An empty state says what will appear and offers one next step. |
 | `Avatar`, `Kbd`, `StatCard`, `Sparkline`, `RelativeTime`, `AnimatedNumber` | People, keys, figures with a trend in plain SVG, and times. |
 
@@ -51,7 +55,12 @@ All in `apps/web/components/ui`.
 
 Every page starts with `PageHeader`: a title, one line saying what the page is for, and its main action on the right. Content sits in one column width. The sidebar is full from 1280 px, icons only from 1024 px to a tablet, and on a phone a bottom bar with Today, Schedule, Requests and More. Touch targets are at least 44 px on a phone.
 
-Changes show at once and put themselves back if the server refuses (claim, done, assign, notes). Anything destructive asks first, or offers Undo in the toast.
+Changes show at once and put themselves back if the server refuses (claim, done, assign, notes). Anything destructive asks first (`useConfirm`), or offers Undo in the toast.
+
+The same everywhere:
+- **Adding to a list**: the + button is at the top, and the new, empty row appears at the top with the cursor in it, outlined for a moment. With an empty row already there, the button goes to that one instead of adding a second. A list kept in date order (special days, holidays) adds from the top and then shows the row in its place.
+- **Ordering**: by dragging (`Sortable`), never by up and down buttons. A dropdown's choices are one row each, with + to add a row under it and − to remove it.
+- **Messages**: what happened after an action is never only at the top of the page. Done: a toast. Not done: a dialog (`useProblem`). A message about one field stays next to that field; a note about the page itself (read only, did not load, a setting to check) stays on the page. Sign-in pages keep their errors in the form.
 
 ## Writing
 
