@@ -16,7 +16,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
 
@@ -95,14 +95,15 @@ export default function Integrations() {
   const [description, setDescription] = useState('');
   const [events, setEvents] = useState<WebhookEndpoint['events']>(['appointment.booked', 'request.created']);
   const [omitPatientIds, setOmitPatientIds] = useState(true);
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Endpoint not added', message }); };
   const [secret, setSecret] = useState<WebhookSecret | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'rotate' | 'delete'; endpoint: WebhookEndpoint } | null>(null);
   const refresh = () => void queries.invalidateQueries({ queryKey: ['webhooks', clinicId] });
 
   const create = useMutation({
     mutationFn: () => api<WebhookSecret>(`/clinics/${clinicId}/webhooks`, { method: 'POST', body: JSON.stringify({ url: url.trim(), description, events, omitPatientIds }) }),
-    onMutate: () => setProblem(null),
     onSuccess: (s) => { setSecret(s); setUrl(''); setDescription(''); refresh(); },
     onError: (e) => setProblem(e instanceof ApiFailure ? e.body.issues?.[0]?.message ?? 'That did not save.' : 'That did not save.'),
   });
@@ -154,7 +155,6 @@ export default function Integrations() {
               </fieldset>
               <Checkbox id="omit-patient-ids" checked={omitPatientIds} onCheckedChange={setOmitPatientIds}
                 label="Leave out record ids" hint="A record id with appointment times is personal data. Turn this off only for a receiver you trust with it, covered by a BAA where that applies." />
-              {problem && <Alert tone="danger">{problem}</Alert>}
               <Button type="submit" loading={create.isPending} disabled={!url.trim() || !events.length}><Plus /> Add endpoint</Button>
             </form>
           </CardContent>

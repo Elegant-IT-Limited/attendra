@@ -186,3 +186,76 @@ export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: 
     </div>
   );
 }
+
+const MONTH_SHOWN = 3;
+
+/**
+ * A month at a glance: six weeks from the Monday before the 1st, a box per day with
+ * its first visits (time, name, visit colour) and how many more. A day's number opens
+ * that day; a visit opens its panel. Days of other months are dimmed, closed days say so.
+ */
+export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, onDay }: {
+  clinic: ClinicConfig;
+  /** "2026-10" */
+  month: string;
+  dates: string[];
+  appointments: Appointment[];
+  today: string;
+  onOpen: (id: string) => void;
+  onDay: (date: string) => void;
+}) {
+  const tz = clinic.timezone;
+  const idx = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
+  const byDate = new Map<string, Appointment[]>();
+  for (const a of [...appointments].sort((x, y) => x.startsAt.localeCompare(y.startsAt))) {
+    const d = localParts(new Date(a.startsAt), tz).date;
+    byDate.set(d, [...(byDate.get(d) ?? []), a]);
+  }
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[640px]" role="grid" aria-label="Month">
+        <div className="grid grid-cols-7 border-b border-border text-xs font-medium text-text-muted" role="row">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} role="columnheader" className="px-2 py-2">{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7">
+          {dates.map((d) => {
+            const items = byDate.get(d) ?? [];
+            const other = !d.startsWith(month);
+            const closed = closedDay(clinic, d);
+            return (
+              <div key={d} role="gridcell" data-testid="month-day" aria-label={`${dayTitle(d)}, ${items.length} booked`}
+                className={cn('min-h-28 border-b border-l border-border p-1.5 [&:nth-child(7n+1)]:border-l-0', other && 'bg-surface-sunken/50', d === today && 'bg-primary-soft/40')}>
+                <div className="mb-1 flex items-center justify-between gap-1">
+                  <button type="button" onClick={() => onDay(d)} aria-label={`Open ${dayTitle(d)}`}
+                    className={cn('focus-ring flex size-7 items-center justify-center rounded-full text-sm tabular-nums hover:bg-surface-sunken',
+                      d === today ? 'bg-primary font-semibold text-on-primary hover:bg-primary' : other ? 'text-text-muted' : 'font-medium')}>
+                    {Number(d.slice(8))}
+                  </button>
+                  {closed && <span className="truncate text-xs text-text-muted" title={closed}>{closed}</span>}
+                </div>
+                <ul className="space-y-0.5">
+                  {items.slice(0, MONTH_SHOWN).map((a) => (
+                    <li key={a.id}>
+                      <button type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
+                        className="focus-ring flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-xs hover:bg-surface-sunken">
+                        <span className={cn('size-2 shrink-0 rounded-full', VISIT_DOTS[idx(a.visitTypeId) % VISIT_DOTS.length])} aria-hidden />
+                        <span className="shrink-0 tabular-nums text-text-muted">{timeOf(a.startsAt, tz)}</span>
+                        <span className={cn('truncate', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
+                        {a.confirmedAt && a.status === 'booked' && <Check className="size-3 shrink-0 text-success" aria-label="confirmed" />}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {items.length > MONTH_SHOWN && (
+                  <button type="button" onClick={() => onDay(d)} className="focus-ring mt-0.5 rounded px-1 text-xs font-medium text-primary hover:underline">
+                    {items.length - MONTH_SHOWN} more
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

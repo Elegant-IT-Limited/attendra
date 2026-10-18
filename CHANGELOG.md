@@ -66,6 +66,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Lists the clinic keeps in order**: specialties, what doctors see, kinds of animal. Rename, remove, reorder and add; a rename is carried to every doctor, a removal takes it off them after saying how many use it (`PUT /settings/lists/:list`). Before a clinic keeps a list, it is what the records say.
 - **On the records**: a doctor's form picks what they see as chips from the list and has the clinic's fields; a request card has its own details (`PUT /tasks/:id/fields`, encrypted, migration 0032); the Pets list filters by kind of animal or by a dropdown or yes-or-no field, read on the server (`POST /patients/filter`), and shows the fields marked as columns; Requests filter by a request field. "Manage fields" on each list page opens its tab. Kinds of request moved from General to the Requests tab.
 
+### Changed (one way of working everywhere)
+
+- **Drag to order** every list the clinic orders: fields, a dropdown's choices, kinds of animal, specialties and what doctors see, kinds of request, visit types, emergency hospitals, transfers, VIP callers, common questions, offers, menu links and texting links. Drag the handle with a mouse or a finger, or focus it and use the arrow keys. The up and down buttons are gone.
+- **A dropdown's choices** are one row each, with + to add a row under it, − to remove it, and Enter for the next one; a choice typed twice is marked on its row.
+- **New rows at the top**, under the button that adds them, everywhere: emergency hospitals, days off, list values and choices too; date lists add from the top.
+- **Lists you pick from open as real dropdowns**: a vet's specialty and a pet's kind of animal show the clinic's whole list on a click or the down arrow (the browser's own suggestions showed only what matched the text already there), and still take a new value typed in. A vet's "Animals and services they see" offers every value of the list as a button.
+- **Schedule → Month**: six weeks at a glance, each day with its first visits and how many more; a day opens its own view, a visit its panel. The schedule API reads up to 42 days at once.
+- **Messages you can see**: what did not work opens in a dialog in the middle of the screen (save errors list each thing to fix); what worked is a note at the bottom; questions before removing something used are dialogs too. A Settings save that crossed someone else's opens as a dialog. Nothing is said only at the top of a long page.
+
 ### Added (locations)
 
 - **More than one location.** A hosting layer adds a clinic to an organization (`POST /provisioning/organizations/:id/clinics`), copying the first clinic's assistant settings; hours, doctors and transfers are its own. Someone who works at more than one clinic switches between them from the clinic name in the menu, landing on the same page. The Team page says that everyone sees every location.

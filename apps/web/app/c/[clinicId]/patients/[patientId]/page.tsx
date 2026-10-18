@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import { useToast } from '@/components/ui/toast';
 import type { PatientProfile } from '@attendra/api/contracts';
 import { industryPack, localDateOf } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -40,7 +41,7 @@ export default function PatientPage() {
   const [tab, setTab] = useState<Tab>('appointments');
   const [open, setOpen] = useState<string | null>(null);
   const [booking, setBooking] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
   const queries = useQueryClient();
   const confirm = useMutation({
     mutationFn: () => api<void>(`/clinics/${clinicId}/patients/${patientId}/confirm`, { method: 'POST' }),
@@ -188,10 +189,9 @@ export default function PatientPage() {
         {tab === 'details' && (
           <Card>
             <CardContent className="py-5">
-              {saved && <Alert className="mb-4">Saved. The assistant verifies them with these details from the next call on.</Alert>}
               {can('patients:write') ? (
                 <PatientForm key={`${p.firstName}|${p.lastName}|${p.dob}|${p.phone}|${p.guardianName}|${p.gender}|${p.species}`} clinicId={clinicId} patientId={p.id} submitLabel="Save changes"
-                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '', textsOk: p.textsOk }} onSaved={() => setSaved(true)} />
+                  initial={{ firstName: p.firstName, lastName: p.lastName, dob: p.dob, phone: p.phone ?? '', guardianName: p.guardianName ?? '', gender: p.gender, species: p.species ?? '', textsOk: p.textsOk }} onSaved={() => toast({ tone: 'success', message: 'Saved. The assistant verifies them with these details from the next call on.' })} />
               ) : <p className="text-sm text-text-muted">You can read this record. The front desk or a manager can change it.</p>}
             </CardContent>
           </Card>

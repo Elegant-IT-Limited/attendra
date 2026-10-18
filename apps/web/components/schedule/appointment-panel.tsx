@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
 import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, timeOf } from '@/lib/format';
 
@@ -35,7 +36,13 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   const [slot, setSlot] = useState<PickedSlot | null>(null);
   const [from, setFrom] = useState(() => localDateOf(new Date(), clinic.timezone));
   const [reason, setReason] = useState('patient_asked');
-  const [message, setMessage] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
+  // done: a note at the bottom of the screen; not done: a dialog over the panel
+  const toast = useToast();
+  const problem = useProblem();
+  const setMessage = (m: { tone: 'info' | 'warn'; text: string } | null) => {
+    if (m?.tone === 'info') toast({ tone: 'success', message: m.text });
+    else if (m) problem({ title: 'Not changed', message: m.text });
+  };
   const tz = clinic.timezone;
 
   const detail = useQuery({
@@ -98,7 +105,6 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
           <Alert tone="warn">{detail.error instanceof ApiFailure && detail.error.status === 404 ? 'This appointment is not on this clinic\'s schedule.' : 'The appointment did not load. Close this and try again.'}</Alert>
         ) : (
           <div className="space-y-5">
-            {message && <Alert tone={message.tone}>{message.text}</Alert>}
             {a.status === 'cancelled' && (
               <Alert tone="warn" title="Cancelled">
                 {a.cancelReason ? CANCEL_REASONS[a.cancelReason] : 'No reason given'}{a.cancelledBy ? `, by ${who(a.cancelledBy)}` : ''}.

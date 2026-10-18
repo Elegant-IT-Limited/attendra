@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useState } from 'react';
-import { Alert } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
+import { Panel } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/input';
 import { type Change, changes, merge } from '@/lib/merge';
 
@@ -11,10 +11,10 @@ export interface Conflict<T> { theirs: T; version: number; updatedAt: string | n
 const WHO: Record<Exclude<Change, 'same'>, (name: string) => string> = { mine: () => 'changed by you', theirs: (n) => `changed by ${n}`, both: () => 'changed by both of you' };
 
 /**
- * Someone saved Settings while this page was open. Says which sections each of you
- * changed, and lets you take their version or keep yours where it does not clash
- * (choosing per section where you both changed the same one). Nothing is saved until
- * Save changes.
+ * Someone saved Settings while this page was open: a dialog in the middle of the
+ * screen says which sections each of you changed, and lets you take their version or
+ * keep yours where it does not clash (choosing per section where you both changed the
+ * same one). Closing it keeps your changes. Nothing is saved until Save changes.
  */
 export function SettingsConflict<T extends object>({ base, mine, conflict, label, timeLabel, onResolved }: {
   base: T; mine: T; conflict: Conflict<T>; label: (key: string) => string; timeLabel: (iso: string) => string;
@@ -28,11 +28,18 @@ export function SettingsConflict<T extends object>({ base, mine, conflict, label
   const sections = new Map<string, Exclude<Change, 'same'>>();
   for (const [k, c] of shown) sections.set(label(k), sections.has(label(k)) && sections.get(label(k)) !== c ? 'both' : c);
   const clashes = shown.filter(([, c]) => c === 'both').map(([k]) => k);
+  const keepMine = () => onResolved(merge(mine, conflict.theirs, found, (k) => (pick[k] ?? 'mine') === 'mine'));
 
   return (
-    <Alert tone="warn" title={`${name} saved Settings${conflict.updatedAt ? ` at ${timeLabel(conflict.updatedAt)}` : ''} while you were editing. Your changes are not saved yet.`} className="mb-6">
+    <Panel open onOpenChange={(open) => { if (!open) keepMine(); }} className="max-w-xl"
+      title={`${name} saved Settings${conflict.updatedAt ? ` at ${timeLabel(conflict.updatedAt)}` : ''} while you were editing`}
+      description="Your changes are not saved yet. Choose what to keep, then check the page and press Save changes."
+      footer={<>
+        <Button variant="outline" onClick={() => onResolved(conflict.theirs)}>Load their version</Button>
+        <Button onClick={keepMine}>Keep my changes{clashes.length ? ' as chosen' : ''}</Button>
+      </>}>
       {sections.size > 0 && (
-        <ul className="mt-1 list-disc pl-4">
+        <ul className="list-disc space-y-1 pl-4">
           {[...sections].map(([section, c]) => <li key={section}><span className="font-medium">{section}</span>: {WHO[c](name)}</li>)}
         </ul>
       )}
@@ -50,11 +57,6 @@ export function SettingsConflict<T extends object>({ base, mine, conflict, label
           ))}
         </div>
       )}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => onResolved(merge(mine, conflict.theirs, found, (k) => (pick[k] ?? 'mine') === 'mine'))}>Keep my changes{clashes.length ? ' as chosen' : ''}</Button>
-        <Button size="sm" variant="outline" onClick={() => onResolved(conflict.theirs)}>Load their version</Button>
-      </div>
-      <p className="mt-2 text-xs">Then check the page and press Save changes.</p>
-    </Alert>
+    </Panel>
   );
 }

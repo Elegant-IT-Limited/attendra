@@ -83,13 +83,13 @@ test.describe.serial('the schedule', () => {
     await panel.getByRole('button', { name: 'Later week' }).click();
     await panel.getByRole('radio').first().click();
     await panel.getByRole('button', { name: 'Move appointment' }).click();
-    await expect(panel.getByText('Moved. The schedule shows the new time.')).toBeVisible();
+    await expect(page.locator('[aria-live=polite]').getByText('Moved. The schedule shows the new time.')).toBeVisible();
     await expect(panel.getByText(/^\w+day \d+ \w+, \d/)).not.toHaveText(before!);
 
     await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
     await panel.getByLabel('Why is it cancelled?').selectOption({ label: 'The patient asked' });
     await panel.getByRole('button', { name: 'Cancel appointment' }).click();
-    await expect(panel.getByText('Cancelled. The time is free again.')).toBeVisible();
+    await expect(page.locator('[aria-live=polite]').getByText('Cancelled. The time is free again.')).toBeVisible();
     await expect(panel.getByText('The patient asked, by Jordan (front desk).')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
@@ -153,8 +153,9 @@ test.describe.serial('the schedule', () => {
     await dialog.getByRole('button', { name: 'Next', exact: true }).click();
     await dialog.getByRole('button', { name: 'Next', exact: true }).click(); // past the note
     await dialog.getByRole('button', { name: 'Book appointment' }).click();
-    await expect(dialog.getByText('The booking was not saved: that time is outside the provider\'s hours.')).toBeVisible();
-    await expect(dialog.getByText(/Check your connection/)).toHaveCount(0);
+    const refused = page.getByRole('dialog', { name: 'Not booked' });
+    await expect(refused.getByText('The booking was not saved: that time is outside the provider\'s hours.')).toBeVisible();
+    await expect(refused.getByText(/Check your connection/)).toHaveCount(0);
   });
 
   test('a visit cancelled from the panel stays on the week, marked cancelled, until the panel closes', async ({ browser }) => {
@@ -166,7 +167,7 @@ test.describe.serial('the schedule', () => {
     await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
     await panel.getByLabel('Why is it cancelled?').selectOption({ label: 'The patient asked' });
     await panel.getByRole('button', { name: 'Cancel appointment' }).click();
-    await expect(panel.getByText('Cancelled. The time is free again.')).toBeVisible();
+    await expect(page.locator('[aria-live=polite]').getByText('Cancelled. The time is free again.')).toBeVisible();
     // the week hides cancelled visits, but not the one open in the panel
     const cancelled = page.locator(`[data-testid=appointment][aria-label="${label.replace(', booked by', ', cancelled, booked by')}"]`);
     await expect(cancelled).toHaveCount(1);
@@ -183,7 +184,7 @@ test.describe.serial('the schedule', () => {
     await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
     await panel.getByLabel('Why is it cancelled?').selectOption({ label: 'The patient asked' });
     await panel.getByRole('button', { name: 'Cancel appointment' }).click();
-    await expect(panel.getByText('Cancelled. The time is free again.')).toBeVisible();
+    await expect(page.locator('[aria-live=polite]').getByText('Cancelled. The time is free again.')).toBeVisible();
     await panel.getByRole('link', { name: 'Open the call and its transcript' }).click();
     await expect(page).toHaveURL(/\/calls\/[^/]+$/);
     await expect(page.getByText('Booking since cancelled')).toBeVisible();

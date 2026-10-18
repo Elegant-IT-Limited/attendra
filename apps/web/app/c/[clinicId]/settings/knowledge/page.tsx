@@ -14,7 +14,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { usePets } from '@/lib/terms';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
@@ -54,7 +54,9 @@ export default function Knowledge() {
   const file = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
   const [chosen, setChosen] = useState<File | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not uploaded', message }); };
   const [removing, setRemoving] = useState<KnowledgeDocument | null>(null);
   const [question, setQuestion] = useState('');
 
@@ -62,7 +64,6 @@ export default function Knowledge() {
     mutationFn: (f: File) => api<KnowledgeDocument>(`/clinics/${clinicId}/knowledge/documents?${new URLSearchParams({ title: title.trim() || f.name.replace(/\.[^.]+$/, ''), name: f.name })}`, {
       method: 'POST', body: f, headers: { 'content-type': mediaType(f) },
     }),
-    onMutate: () => setProblem(null),
     onSuccess: () => {
       setTitle(''); setChosen(null); if (file.current) file.current.value = '';
       void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] });
@@ -75,7 +76,10 @@ export default function Knowledge() {
     mutationFn: (d: KnowledgeDocument) => api<void>(`/clinics/${clinicId}/knowledge/documents/${d.id}`, { method: 'DELETE' }),
     onSuccess: () => { setRemoving(null); void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] }); toast({ tone: 'success', message: 'Deleted. The assistant no longer answers from it.' }); },
   });
-  const ask = useMutation({ mutationFn: (q: string) => api<KnowledgeAnswer>(`/clinics/${clinicId}/knowledge/ask`, { method: 'POST', body: JSON.stringify({ question: q }) }) });
+  const ask = useMutation({
+    mutationFn: (q: string) => api<KnowledgeAnswer>(`/clinics/${clinicId}/knowledge/ask`, { method: 'POST', body: JSON.stringify({ question: q }) }),
+    onError: () => showProblem({ title: 'No answer', message: 'The question did not reach the assistant. Try again.' }),
+  });
   const tz = clinic?.timezone ?? 'UTC';
 
   const choose = (f: File | null) => {
@@ -105,7 +109,6 @@ export default function Knowledge() {
                   <Button type="submit" disabled={!chosen} loading={upload.isPending}><Upload /> Upload</Button>
                 </form>
                 <p className="text-xs text-text-muted">PDF, text or markdown, up to 5 MB. A document with the same title replaces the old one.</p>
-                {problem && <Alert tone="danger">{problem}</Alert>}
               </CardContent>
             </Card>
           )}
@@ -142,7 +145,6 @@ export default function Knowledge() {
               <Input aria-label="Question" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="Where do I park?" className="flex-1" />
               <Button type="submit" variant="outline" loading={ask.isPending} disabled={question.trim().length < 2}><Search /> Ask</Button>
             </form>
-            {ask.isError && <Alert tone="danger">That did not work. Try again.</Alert>}
             {ask.data && (
               <div className="space-y-3" data-testid="knowledge-answer">
                 <div className="rounded-md border border-border bg-surface-sunken px-3 py-2">
