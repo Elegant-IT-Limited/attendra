@@ -5,7 +5,7 @@ import {
   fold, industryPack, isOpen, matchesSpecialty, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
-  hospitalFor, hoursSummary, type SmsTemplate, textingOf,
+  hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -297,6 +297,16 @@ export async function runTool(
             : 'None of the clinic\'s doctors can see this patient for that visit. Offer a callback.');
         }
       }
+      // the clinic's rules for whoever the caller did not name (Settings, Booking rules)
+      const rules = bookingOf(clinic);
+      const named = !!args.provider_id;
+      const asked = named || !!args.specialty || !!args.provider_gender;
+      // a pet goes to a vet who sees its kind of animal; a vet who lists no animals sees them all
+      if (!named && trade.identity === 'pet' && rules.matchAnimal && patient?.species) {
+        const fit = providers.filter((p) => seesAnimal(p, patient.species!));
+        if (!fit.length) return refuse('no_provider_for_animal', `None of the clinic's vets is listed for a ${patient.species}. Say so, without guessing why, and offer a callback for the team to arrange it.`);
+        providers = fit;
+      }
       const now = ctx.now();
       const today = localDateOf(now, clinic.timezone);
       const requested = (args.from_date as string | null) ?? today;
@@ -312,13 +322,35 @@ export async function runTool(
       const leadMinutes = Math.max(120, (visitType.noticeHours ?? 0) * 60);
       // busy time must cover the whole search window, however far out it starts
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
-      const slots = findSlots(clinic, busy, { visitType, providers, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any' });
+      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
+      // with anyone: three different times, each with the vet the clinic's rule picks for it
+      const anyone = findSlots(clinic, busy, { ...query, providers, distinctTimes: !named });
+      let slots = anyone;
+      let note = anyone.length ? 'Offer these as written. Do not invent other times.' : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
+      // nobody named: their usual vet first, when that vet is free soon enough
+      if (!asked && patient && rules.noPreference === 'usual_first' && backend.scheduler.history) {
+        const usualId = usualProviderOf(await backend.scheduler.history(clinic.id, patient.id, now), now);
+        const usual = providers.find((p) => p.id === usualId);
+        if (usual) {
+          const until = addDays(from, rules.usualWithinDays - 1);
+          const theirs = findSlots(clinic, busy, { ...query, providers: [usual] }).filter((s) => localDateOf(s.start, clinic.timezone) <= until);
+          const name = providerName(usual.id);
+          if (theirs.length) {
+            const sooner = anyone.find((s) => s.providerId !== usual.id && s.start.getTime() < theirs[0]!.start.getTime());
+            slots = sooner ? [...theirs, sooner] : theirs;
+            note = `The first ${theirs.length === 1 ? 'time is' : `${theirs.length} times are`} with ${name}, who usually sees ${patient.firstName}: offer ${theirs.length === 1 ? 'it' : 'them'} first.`
+              + (sooner ? ` The last one, with ${providerName(sooner.providerId)}, is sooner: mention it only if none of ${name}'s suit.` : '') + ' Do not invent other times.';
+          } else if (anyone.length) {
+            note = `${name}, who usually sees ${patient.firstName}, has nothing in the next ${rules.usualWithinDays} ${rules.usualWithinDays === 1 ? 'day' : 'days'}. Say so, offer these with other ${trade.identity === 'pet' ? 'vets' : 'doctors'}, and offer to look later for ${name} if they would rather wait.`;
+          }
+        }
+      }
       for (const s of slots) state.offered.set(s.id, s);
       return {
         ok: true,
         data: {
           slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null })),
-          note: slots.length ? 'Offer these as written. Do not invent other times.' : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`,
+          note,
         },
       };
     }
