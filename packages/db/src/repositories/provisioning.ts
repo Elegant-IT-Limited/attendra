@@ -2,11 +2,11 @@
 // What a hosting layer needs to open and run accounts: a new organization with its
 // clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
 // none of it reads patient data.
-import { ClinicConfig } from '@attendra/core';
-import { and, eq, sql } from 'drizzle-orm';
+import { ClinicConfig, PACKS } from '@attendra/core';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { authUsers, memberships } from '../auth-schema';
 import type { Database } from '../client';
-import { clinics, organizations } from '../schema';
+import { auditLogs, clinics, organizations } from '../schema';
 
 /**
  * A new organization and its first clinic. The clinic's own number is not pointed at
@@ -17,6 +17,29 @@ export async function createOrganizationWithClinic(db: Database, org: { id: stri
   await db.transaction(async (tx) => {
     await tx.insert(organizations).values({ id: org.id, name: org.name, slug: org.id, plan: org.plan });
     await tx.insert(clinics).values({ id: c.id, orgId: org.id, name: c.name, timezone: c.timezone, config: c });
+  });
+}
+
+/** What a new location takes from the organization's first clinic: the same assistant. Hours, doctors, address, transfers and hospitals are its own. */
+const SHARED = ['texting', 'languages', 'primaryLanguage', 'assistantName', 'voice', 'retentionDays', 'faqs', 'requestTopics', 'customFields', 'menuLinks', 'talk'] as const;
+
+/**
+ * Another clinic (a second location) in an organization, with the settings the first
+ * one shares. Audited on the first clinic as `clinic.created`. Null when there is no
+ * such organization.
+ */
+export async function addClinicToOrganization(db: Database, orgId: string, config: ClinicConfig): Promise<string | null> {
+  return db.transaction(async (tx) => {
+    const [first] = await tx.select({ id: clinics.id, config: clinics.config }).from(clinics).where(eq(clinics.orgId, orgId)).orderBy(asc(clinics.createdAt)).limit(1);
+    if (!first) return null;
+    const from = ClinicConfig.parse(first.config);
+    const shared = Object.fromEntries(SHARED.filter((k) => from[k] !== undefined).map((k) => [k, from[k]]));
+    // a greeting names the clinic: the new one gets the suggested greeting with its own name, in the shared main language
+    const lang = from.primaryLanguage;
+    const c = ClinicConfig.parse({ ...config, ...shared, greeting: PACKS[lang].greeting({ assistantName: from.assistantName ?? null, clinicName: config.name }) });
+    await tx.insert(clinics).values({ id: c.id, orgId, name: c.name, timezone: c.timezone, config: c });
+    await tx.insert(auditLogs).values({ clinicId: first.id, actor: 'provisioning', action: 'clinic.created', entity: 'clinic', entityId: c.id });
+    return c.id;
   });
 }
 

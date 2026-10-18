@@ -59,6 +59,26 @@ describe('provisioning', () => {
     expect(bad.statusCode).toBe(422);
   });
 
+  it('adds a second location with the first one\'s assistant, seen by the owner at once', async () => {
+    const opened = (await api.request('POST', `${P}/accounts`, { body: { ...account, owner: { ...account.owner, email: 'two@oakhill.example' } }, authorization: auth })).json();
+    const location = { clinic: { name: 'Oak Hill South', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550111' }, testCallMinutes: 5 };
+    expect((await api.request('POST', `${P}/organizations/org_none/clinics`, { body: location, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('POST', `${P}/organizations/${opened.organizationId}/clinics`, { body: location })).statusCode).toBe(401);
+    const res = await api.request('POST', `${P}/organizations/${opened.organizationId}/clinics`, { body: location, authorization: auth });
+    expect(res.statusCode).toBe(201);
+    const { clinicId } = res.json();
+    expect(clinicId).not.toBe(opened.clinicId);
+    await api.request('POST', `${P}/email-confirmations`, { body: { email: 'two@oakhill.example' }, authorization: auth });
+    const ok = await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'two@oakhill.example', password: account.owner.password } });
+    const cookie = ([] as string[]).concat(ok.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]).join('; ');
+    const me = (await api.request('GET', '/api/v1/me', { cookie })).json();
+    expect(me.clinics.map((c: { id: string }) => c.id).sort()).toEqual([opened.clinicId, clinicId].sort());
+    const settings = (await api.request('GET', `/api/v1/clinics/${clinicId}/settings`, { cookie })).json();
+    expect(settings).toMatchObject({ name: 'Oak Hill South', industry: 'vet' });
+    expect(settings.greeting).toContain('Oak Hill South');
+    expect((await api.t.db.execute(sql`select entity_id from audit_logs where action = 'clinic.created' and clinic_id = ${opened.clinicId}`)).rows).toEqual([{ entity_id: clinicId }]);
+  });
+
   it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('PUT', `${P}/clinics/clinic_none/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(404);
