@@ -74,6 +74,8 @@ describe('SMS confirmations', () => {
     expect(await row('sms:stop')).toMatchObject({ status: 'not_sent', failureReason: 'opted_out' });
     const off = new TwilioMessenger(t.db, cipher, null, () => '+13035550100');
     expect(await off.sendTemplate(DEMO_CLINIC.id, { to: '+13035550173', template: 'request_ready', idempotencyKey: 'sms:off', vars })).toMatchObject({ status: 'not_sent', reason: 'texting_off' });
+    expect(await messenger.sendTemplate(DEMO_CLINIC.id, { to: '+13035550173', template: 'request_ready', idempotencyKey: 'sms:test-call', vars, testCall: true })).toMatchObject({ status: 'not_sent', reason: 'test_call' });
+    expect(await row('sms:test-call')).toMatchObject({ status: 'not_sent', failureReason: 'test_call' });
     expect(calls).toBe(0);
     // START again: texts go
     await recordSmsStanding(t.db, cipher, DEMO_CLINIC.id, '+13035550172', 'opted_in', 'keyword');
@@ -100,9 +102,9 @@ describe('SMS confirmations', () => {
     expect(calls).toBe(1);
   });
 
-  it('every template renders from the same three variables, nothing clinical', () => {
-    for (const render of Object.values(TEMPLATES)) {
-      expect(render({ clinic: 'C', when: 'W', clinicPhone: 'P' })).not.toMatch(/undefined/);
+  it('the confirmations render from the same three variables, nothing clinical', () => {
+    for (const name of ['booking_confirmed', 'request_ready', 'change_confirmed', 'cancel_confirmed'] as const) {
+      expect(TEMPLATES[name]({ clinic: 'C', when: 'W', clinicPhone: 'P' })).not.toMatch(/undefined/);
     }
   });
 });

@@ -64,6 +64,11 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/clinic_none/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(404);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: null }, authorization: auth })).statusCode).toBe(204);
 
+    // texting during calls, switched by the hosting layer when the texting registration is approved
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/texting`, { body: { enabled: true }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', `/api/v1/clinics/${DEMO_CLINIC.id}/settings/meta`, { cookie: await api.signIn('omar@maple.example', true) })).json()).toMatchObject({ updatedBy: { name: 'Attendra' } });
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/texting`, { body: { enabled: true }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/texting`, { body: { enabled: false }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
     expect(await clinicForNumber(api.t.db, '+13035550177')).toMatchObject({ id: DEMO_CLINIC.id });
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/12345`, { authorization: auth })).statusCode).toBe(422);

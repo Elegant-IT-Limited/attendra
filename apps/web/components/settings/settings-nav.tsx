@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 /** The parts of Settings: what the assistant is and does, what it knows, and where its events go. */
 export const SETTINGS_PAGES: { href: string; label: string; permission?: string }[] = [
   { href: '', label: 'General' },
+  { href: '/texting', label: 'Texting' },
   { href: '/knowledge', label: 'Knowledge' },
   { href: '/integrations', label: 'Integrations', permission: 'integrations:manage' },
   { href: '/api-keys', label: 'API keys', permission: 'integrations:manage' },

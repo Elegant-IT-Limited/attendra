@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ClinicConfig, EmergencyHospital } from './clinic';
+import { type Language, PACKS } from './locales';
 import { addDays, localParts, toMinutes, weekdayOf } from './time';
 
 type Hours = ClinicConfig['hours'];
@@ -60,4 +61,36 @@ export function hospitalFor(clinic: Pick<ClinicConfig, 'emergencyHospital' | 'mo
     return from < to ? minutes >= from && minutes < to : minutes >= from || minutes < to;
   };
   return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].find((h): h is EmergencyHospital => !!h && open(h)) ?? null;
+}
+
+/** "8 AM" or "5:30 PM" in North America, "08:00" elsewhere. */
+function clockText(hhmm: string, twelveHour: boolean) {
+  if (!twelveHour) return hhmm;
+  const [h, m] = hhmm.split(':').map(Number) as [number, number];
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * The weekly hours in one short line for a text, days with the same hours run
+ * together, Monday first: "Mon–Fri 8 AM–5 PM, Sat 9 AM–12 PM; closed Oct 22". The
+ * holidays in the next two weeks are added at the end.
+ */
+export function hoursSummary(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'phoneNumbers'>, at: Date, language: Language): string {
+  const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
+  const days = PACKS[language].shortDays;
+  const line = (weekday: number) => windowsOn(clinic.hours, weekday).map((w) => `${clockText(w.open, twelve)}–${clockText(w.close, twelve)}`).join(', ');
+  // Monday (1) to Sunday (0)
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const groups: { from: number; to: number; text: string }[] = [];
+  order.forEach((weekday, i) => {
+    const text = line(weekday);
+    const last = groups.at(-1);
+    if (text && last && last.text === text && last.to === i - 1) last.to = i;
+    else if (text) groups.push({ from: i, to: i, text });
+  });
+  const open = groups.map((g) => `${g.from === g.to ? days[g.from] : `${days[g.from]}–${days[g.to]}`} ${g.text}`).join(', ');
+  const today = localParts(at, clinic.timezone).date;
+  const soon = clinic.holidays.filter((d) => d >= today && d <= addDays(today, 14)).sort();
+  const closed = soon.map((d) => `${days[(weekdayOf(d) + 6) % 7]} ${d.slice(5)}`);
+  return [open || '-', ...(closed.length ? [`${language === 'es' ? 'cerrado' : 'closed'} ${closed.join(', ')}`] : [])].join('; ');
 }

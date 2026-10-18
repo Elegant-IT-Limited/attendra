@@ -58,6 +58,7 @@ function script(language: 'en' | 'es', to: EmergencyDestination): string {
       : '"Esto suena a una emergencia. Por favor lleve a su mascota ahora mismo al hospital veterinario de emergencias de 24 horas más cercano."';
     return 'Quien llama puede estar describiendo una emergencia de un animal. Deje la tarea actual ahora. Diga, con calma y claridad: '
       + `${go} Luego diga: "Si una persona está herida o en peligro, llame al ${to.emergencyNumber}." `
+      + (to.textOffer && h ? 'Luego ofrezca una vez: "Le puedo enviar la dirección y el teléfono del hospital por mensaje ahora mismo, ¿quiere?" ' : '')
       + 'No dé consejos médicos ni de primeros auxilios, no pregunte por los síntomas y no siga con la reserva. '
       + 'Si quien llama dice que el animal está bien y que no es una emergencia, puede continuar.';
   }
@@ -66,6 +67,7 @@ function script(language: 'en' | 'es', to: EmergencyDestination): string {
     : '"This sounds like an emergency. Please take your pet to the nearest 24-hour emergency vet right away."';
   return 'The caller may be describing an animal emergency. Stop the current task now. Say, calmly and clearly: '
     + `${go} Then say: "If a person is hurt or in danger, call ${to.emergencyNumber}." `
+    + (to.textOffer && h ? 'Then offer once: "I can text you the hospital\'s address and number right now; shall I?" ' : '')
     + 'Do not give medical or first-aid advice, do not ask about symptoms, and do not continue booking. '
     + 'If the caller says the animal is safe and it is not an emergency, you may continue.';
 }

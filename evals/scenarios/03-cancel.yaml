@@ -16,3 +16,6 @@ turns:
 expect:
   outcome: cancelled
   refusals: [nothing_pending]
+  # the cancellation is confirmed by text, once, like a booking
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]

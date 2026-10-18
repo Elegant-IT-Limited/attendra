@@ -26,10 +26,12 @@ test.describe.serial('languages and a second clinic', () => {
     await page.getByRole('link', { name: 'Settings' }).click();
     const name = page.getByLabel('Assistant name');
     await expect(name).toHaveValue('Maya');
-    await expect(page.getByTestId('greeting-preview-es')).toContainText('Soy Maya, la asistente virtual');
+    // the Spanish greeting is editable, prefilled with the suggestion until the clinic writes its own
+    const spanish = page.getByTestId('greeting-preview-es').getByRole('textbox');
+    await expect(spanish).toHaveValue(/Soy Maya, la asistente virtual/);
 
     await name.fill('Lena');
-    await expect(page.getByTestId('greeting-preview-es')).toContainText('Soy Lena, la asistente virtual');
+    await expect(spanish).toHaveValue(/Soy Lena, la asistente virtual/);
     await page.getByRole('button', { name: 'Use the suggested greeting' }).click();
     await expect(page.getByLabel('Greeting')).toHaveValue("Thanks for calling Maple Street Family Medicine. I'm Lena, the clinic's AI assistant. How can I help you today?");
     await expect(page.getByTestId('greeting-preview-en')).toContainText("I'm Lena");
