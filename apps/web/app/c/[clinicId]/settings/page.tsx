@@ -63,6 +63,31 @@ function issueLabel(path: string) {
   };
   return names[top] ?? (top || 'Settings');
 }
+/** A row nobody has typed in yet: the button that made it points to it again instead of adding another, and Save leaves it out. */
+const BLANK = {
+  named: (x: { name: string }) => !x.name.trim(),
+  hospital: (h: { name: string; phone: string; address?: string }) => !h.name.trim() && !h.phone.replace(/\D/g, '') && !h.address?.trim(),
+  /** Empty, or only the country code the new row started with. */
+  number: (n: string, c: { phoneNumbers: string[] }) => { const d = n.replace(/\D/g, ''); return !d || d === (callingCode(c.phoneNumbers[0] ?? '') ?? ''); },
+};
+
+/** The settings without rows left empty, so a forgotten new row never blocks a save. */
+function withoutBlankRows(c: ClinicConfig): ClinicConfig {
+  const hospitals = [...(c.emergencyHospital ? [c.emergencyHospital] : []), ...(c.moreEmergencyHospitals ?? [])].filter((h) => !BLANK.hospital(h));
+  return {
+    ...c,
+    emergencyHospital: hospitals[0], moreEmergencyHospitals: hospitals.length > 1 ? hospitals.slice(1) : undefined,
+    visitTypes: c.visitTypes.filter((v) => !BLANK.named(v)),
+    routing: c.routing.filter((r) => !BLANK.number(r.uri, c)),
+    vipCallers: c.vipCallers?.filter((v) => v.name.trim() || !BLANK.number(v.phone, c)),
+    faqs: c.faqs.filter((f) => f.question.trim() || f.answer.trim()),
+    offers: c.offers?.filter((o) => o.title.trim() || o.details.trim()),
+    requestTopics: c.requestTopics?.filter((t) => !BLANK.named(t)),
+    customFields: c.customFields?.filter((f) => f.label.trim()),
+    menuLinks: c.menuLinks?.filter((l) => l.label.trim() || !/^(https?:\/\/)?$/.test(l.url.trim())),
+  };
+}
+
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 24) || 'new';
 const newId = (prefix: string, name: string) => `${prefix}_${slug(name)}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -96,8 +121,18 @@ export default function Settings() {
     const el = document.getElementById(added);
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el?.querySelector<HTMLInputElement>('input, select, textarea')?.focus({ preventScroll: true });
+    // a brief outline, so the eye finds the row the button pointed to
+    el?.classList.add('ring-2', 'ring-primary');
+    const t = el ? setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1200) : undefined;
     setAdded(null);
+    return () => clearTimeout(t);
   }, [added, draft]);
+  /** One empty row at a time: with an empty one already there, the button takes you to it instead of adding another. */
+  const addOrFocus = <T,>(list: T[], blank: (x: T) => boolean, idOf: (x: T, i: number) => string, add: () => void) => {
+    const i = list.findIndex(blank);
+    if (i >= 0) setAdded(idOf(list[i]!, i));
+    else add();
+  };
 
   const save = useMutation({
     mutationFn: (config: ClinicConfig) => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`, {
@@ -274,7 +309,7 @@ export default function Settings() {
 
         {(pet || c.emergencyHospital) && (
           <Section id="emergency" title="Emergency hospitals" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. It names your first choice that is open at that moment. With none set or none open, callers are told to go to the nearest 24-hour emergency vet."
-            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => { setHospitals([...hospitals, { name: '', phone: '', address: '' }]); setAdded(`item-hospital-${hospitals.length}`); }}><Plus /> Hospital</Button>}>
+            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => addOrFocus(hospitals, BLANK.hospital, (_h, i) => `item-hospital-${i}`, () => { setHospitals([...hospitals, { name: '', phone: '', address: '' }]); setAdded(`item-hospital-${hospitals.length}`); })}><Plus /> Hospital</Button>}>
             {hospitals.length === 0 && <EmptyNote>No emergency hospital yet. Add the one you send clients to at night.</EmptyNote>}
             {hospitals.map((h, i) => {
               const upd = (patch: Partial<typeof h>) => setHospitals(hospitals.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -309,7 +344,7 @@ export default function Settings() {
         )}
 
         <Section id="visits" title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); }}><Plus /> Visit type</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.visitTypes, BLANK.named, (v) => `item-${v.id}`, () => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); })}><Plus /> Visit type</Button>}>
           {c.visitTypes.map((v, i) => (
             <Item key={v.id} id={`item-${v.id}`} removeLabel={`Remove ${v.name || 'this visit type'}`} onRemove={() => set({
               visitTypes: c.visitTypes.filter((_, j) => j !== i),
@@ -356,7 +391,7 @@ export default function Settings() {
         </Section>
 
         <Section id="transfers" title="Transfers" description="Where the assistant sends a caller who asks for a person, and when. It transfers only to these numbers. Once the call is passed on, that line's own phone system handles it, voicemail included; if the transfer itself fails, the assistant stays on and offers a callback."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => { set({ routing: [{ target: 'front_desk', uri: `tel:+${callingCode(c.phoneNumbers[0] ?? '') ?? ''}`, when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); }}><Plus /> Transfer number</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.routing, (r) => BLANK.number(r.uri, c), (_r, i) => `item-routing-${i}`, () => { set({ routing: [{ target: 'front_desk', uri: `tel:+${callingCode(c.phoneNumbers[0] ?? '') ?? ''}`, when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); })}><Plus /> Transfer number</Button>}>
           {clinicWarnings(c).filter((w) => w.path === 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           {c.routing.length === 0 && <EmptyNote>No transfer numbers yet. Callers who ask for a person get a callback request.</EmptyNote>}
           {c.routing.map((r, i) => (
@@ -381,7 +416,7 @@ export default function Settings() {
         </Section>
 
         <Section id="vip" title="VIP callers" description="Callers who should always reach a person. While your front desk number (under Transfers) takes calls, the assistant greets them, says it is connecting them, and passes the call to that number. If the transfer does not go through, the assistant stays on and offers a callback; if it rings and nobody answers, your own phone system takes it from there. Outside front desk hours the assistant answers them as usual."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => { set({ vipCallers: [{ name: '', phone: '' }, ...(c.vipCallers ?? [])] }); setAdded('item-vip-0'); }}><Plus /> VIP caller</Button>}>
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => addOrFocus(c.vipCallers ?? [], (v) => !v.name.trim() && BLANK.number(v.phone, c), (_v, i) => `item-vip-${i}`, () => { set({ vipCallers: [{ name: '', phone: '' }, ...(c.vipCallers ?? [])] }); setAdded('item-vip-0'); })}><Plus /> VIP caller</Button>}>
           {!c.routing.some((r) => r.target === 'front_desk') && !!c.vipCallers?.length && <Alert tone="warn">Add a front desk number under Transfers, or VIP callers reach the assistant like anyone else.</Alert>}
           {!c.vipCallers?.length && <EmptyNote>No VIP callers yet.</EmptyNote>}
           {(c.vipCallers ?? []).map((v, i) => (
@@ -395,7 +430,7 @@ export default function Settings() {
         </Section>
 
         <Section id="answers" title="Answers to common questions" description="The assistant answers from these, in your words, and does not make up the rest."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('faq', 'question'); set({ faqs: [{ id, question: '', answer: '' }, ...c.faqs] }); setAdded(`item-${id}`); }}><Plus /> Question</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.faqs, (f) => !f.question.trim() && !f.answer.trim(), (f) => `item-${f.id}`, () => { const id = newId('faq', 'question'); set({ faqs: [{ id, question: '', answer: '' }, ...c.faqs] }); setAdded(`item-${id}`); })}><Plus /> Question</Button>}>
           {c.faqs.length === 0 && <EmptyNote>No answers yet. Add the questions callers ask most, like parking, payment or what to bring.</EmptyNote>}
           {c.faqs.map((f, i) => (
             <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
@@ -408,7 +443,7 @@ export default function Settings() {
         </Section>
 
         <Section id="offers" title="Offers and announcements" description="What you are running now, like a vaccine clinic or a dental month. The assistant tells callers who ask, only between the dates you set."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => { const id = newId('offer', 'offer'); set({ offers: [{ id, title: '', details: '' }, ...(c.offers ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Offer</Button>}>
+          action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.offers ?? [], (o) => !o.title.trim() && !o.details.trim(), (o) => `item-${o.id}`, () => { const id = newId('offer', 'offer'); set({ offers: [{ id, title: '', details: '' }, ...(c.offers ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Offer</Button>}>
           {!c.offers?.length && <EmptyNote>No offers running.</EmptyNote>}
           {(c.offers ?? []).map((o, i) => (
             <Item key={o.id} id={`item-${o.id}`} removeLabel="Remove offer" onRemove={() => remove('offers', i)}>
@@ -425,7 +460,7 @@ export default function Settings() {
         </Section>
 
         <Section id="requests" title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => { const id = newId('topic', 'topic'); set({ requestTopics: [{ id, name: '' }, ...(c.requestTopics ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Kind of request</Button>}>
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.requestTopics?.length ?? 0) >= 20} onClick={() => addOrFocus(c.requestTopics ?? [], BLANK.named, (t) => `item-${t.id}`, () => { const id = newId('topic', 'topic'); set({ requestTopics: [{ id, name: '' }, ...(c.requestTopics ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Kind of request</Button>}>
           {!c.requestTopics?.length && <EmptyNote>None yet. Requests are still taken; they are just not labelled.</EmptyNote>}
           {(c.requestTopics ?? []).map((t, i) => (
             <Item key={t.id} id={`item-${t.id}`} removeLabel="Remove kind of request" onRemove={() => remove('requestTopics', i)}>
@@ -438,7 +473,7 @@ export default function Settings() {
         </Section>
 
         <Section id="fields" title={`Fields on each ${terms.patient}`} description={`Details you keep that Attendra has no place for, like a microchip number, an insurer or a reminder date. Your team fills them in under Details on each ${terms.patient}'s record. Removing a field hides what was filled in.`}
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => { const id = newId('field', 'field'); set({ customFields: [{ id, label: '', kind: 'text' }, ...(c.customFields ?? [])] }); setAdded(`item-${id}`); }}><Plus /> Field</Button>}>
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.customFields?.length ?? 0) >= 20} onClick={() => addOrFocus(c.customFields ?? [], (f) => !f.label.trim(), (f) => `item-${f.id}`, () => { const id = newId('field', 'field'); set({ customFields: [{ id, label: '', kind: 'text' }, ...(c.customFields ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Field</Button>}>
           {!c.customFields?.length && <EmptyNote>No fields yet.</EmptyNote>}
           {(c.customFields ?? []).map((f, i) => (
             <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove field" onRemove={() => remove('customFields', i)}>
@@ -455,7 +490,7 @@ export default function Settings() {
         </Section>
 
         <Section id="links" title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
-          action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); }}><Plus /> Link</Button>}>
+          action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => addOrFocus(c.menuLinks ?? [], (l) => !l.label.trim() && /^(https?:\/\/)?$/.test(l.url.trim()), (_l, i) => `item-link-${i}`, () => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); })}><Plus /> Link</Button>}>
           {!c.menuLinks?.length && <EmptyNote>No links yet.</EmptyNote>}
           {(c.menuLinks ?? []).map((l, i) => (
             <Item key={i} id={`item-link-${i}`} removeLabel="Remove link" onRemove={() => remove('menuLinks', i)}>
@@ -485,7 +520,7 @@ export default function Settings() {
             <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { setDraft(saved.data ?? null); setIssues([]); }}>Discard</Button>
-              <Button onClick={() => save.mutate(c)} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
+              <Button onClick={() => save.mutate(withoutBlankRows(c))} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
             </div>
           </div>
         </div>
