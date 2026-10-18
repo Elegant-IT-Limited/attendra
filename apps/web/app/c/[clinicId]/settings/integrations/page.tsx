@@ -26,6 +26,7 @@ export const EVENTS: { type: WebhookEndpoint['events'][number]; label: string }[
   { type: 'appointment.booked', label: 'An appointment was booked' },
   { type: 'appointment.rescheduled', label: 'An appointment was moved' },
   { type: 'appointment.cancelled', label: 'An appointment was cancelled' },
+  { type: 'appointment.confirmed', label: 'An owner confirmed a visit by text' },
   { type: 'request.created', label: 'A request came in' },
   { type: 'request.done', label: 'A request was closed' },
 ];

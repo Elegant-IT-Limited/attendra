@@ -4,11 +4,11 @@ import {
   CallRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
-import { type KnowledgeBase, PACKS } from '@attendra/core';
+import { type KnowledgeBase, PACKS, speakSlot } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
-import { recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
+import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
 import { GptLiveEngine, SimulatedEngine } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
@@ -109,12 +109,21 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendMode
       authToken: rt.twilio.authToken,
       publicUrl: rt.publicUrl,
       inbound: async ({ to, from, body }) => {
-        const clinic = (await clinicForNumber(db, to)) as { id: string; phoneNumbers: string[]; primaryLanguage: keyof typeof PACKS } | null;
+        const clinic = (await clinicForNumber(db, to)) as { id: string; name: string; timezone: string; phoneNumbers: string[]; primaryLanguage: keyof typeof PACKS } | null;
         if (!clinic) return undefined;
         const word = smsKeyword(body);
         // Twilio answers STOP and START itself on these numbers: one reply is enough
         if (word === 'stop' || word === 'start') { await recordSmsStanding(db, cipher, clinic.id, from, word === 'stop' ? 'opted_out' : 'opted_in', 'keyword'); return undefined; }
-        if (word === 'confirm') return undefined; // appointment reminders come later
+        if (word === 'confirm') {
+          // C to a reminder: the next visit it was about is confirmed, and the clinic's webhooks hear of it
+          const visit = await confirmByReply(db, cipher, clinic.id, from);
+          if (!visit) return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: clinic.phoneNumbers[0]! });
+          if (rt.jobs) {
+            await eventSink(rt.jobs, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event'))
+              .emit(clinic.id, { type: 'appointment.confirmed', key: visit.id, data: { appointmentId: visit.id, patientId: visit.patientId, via: 'text' } });
+          }
+          return PACKS[clinic.primaryLanguage].smsConfirmed({ clinic: clinic.name, when: speakSlot(visit.startsAt, clinic.timezone, clinic.primaryLanguage) });
+        }
         return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: clinic.phoneNumbers[0]! });
       },
       status: async (job) => {

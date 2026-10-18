@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 
 /** What a clinic can subscribe to. */
 export const EVENT_TYPES = [
-  'call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'request.created', 'request.done',
+  'call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'request.created', 'request.done',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

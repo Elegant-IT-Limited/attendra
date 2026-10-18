@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { type ReactNode, useState } from 'react';
 import { capital } from '@/components/schedule/booking-dialog';
 import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -132,6 +133,12 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                     <dt className="text-text-muted">With</dt><dd>{provider(a.providerId)}</dd>
                     <dt className="text-text-muted">Type</dt><dd>{capital(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
                     <dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{a.note ?? <span className="text-text-muted">None</span>}</dd>
+                    {a.overrideReason && <><dt className="text-text-muted">Hours</dt><dd><Badge tone="warn">Override</Badge> {a.overrideReason}</dd></>}
+                    {(a.reminderSentAt || a.confirmedAt) && (
+                      <><dt className="text-text-muted">Reminder</dt><dd>{a.confirmedAt
+                        ? <><Badge tone="ok">Confirmed</Badge> {a.confirmedVia === 'text' ? 'replied C to the reminder' : 'at the desk'}, {clinicTime(a.confirmedAt, tz)}</>
+                        : `Texted ${clinicTime(a.reminderSentAt!, tz)}`}</dd></>
+                    )}
                   </dl>
                 </section>
                 <section className="space-y-2">

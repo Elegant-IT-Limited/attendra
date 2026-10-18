@@ -3,12 +3,13 @@ import { createPhiCipher, schema, seedDemo, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { callerNumber, dialledNumber, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
+import { callerNumber, confirmByReply, dialledNumber, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
 import twilio from 'twilio';
 
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 const cipher = createPhiCipher(TEST_DATA_KEY);
-beforeAll(async () => { t = await openTestDatabase(); await seedDemo(t.db, cipher); });
+let ids: Record<string, string>;
+beforeAll(async () => { t = await openTestDatabase(); ({ patientIds: ids } = await seedDemo(t.db, cipher)); });
 afterAll(() => t.close());
 
 describe('SIP headers from a Twilio Elastic SIP Trunk', () => {
@@ -139,5 +140,23 @@ describe('Twilio requests and replies', () => {
   it('escapes the reply it sends', () => {
     expect(twiml()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     expect(twiml('a <b> & c')).toContain('<Message>a &lt;b&gt; &amp; c</Message>');
+  });
+});
+
+describe('a reply of C to a reminder', () => {
+  it('confirms the next visit that had a reminder, once, for whoever has the number on file', async () => {
+    const now = new Date('2026-09-28T16:00:00Z');
+    const visit = async (hours: number, reminded: boolean) => (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
+      clinicId: DEMO_CLINIC.id, patientId: ids.maria!, providerId: 'prov_okafor', visitTypeId: 'vt_sick',
+      startsAt: new Date(now.getTime() + hours * 3_600_000), endsAt: new Date(now.getTime() + hours * 3_600_000 + 1_200_000),
+      idempotencyKey: `reply-c-${hours}`, createdByUserId: 'u_ana', reminderSentAt: reminded ? now : null,
+    }).returning({ id: schema.appointments.id })))[0]!.id;
+    await visit(20, false);
+    const reminded = await visit(26, true);
+    expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+1 (303) 555-0147', now)).toMatchObject({ id: reminded, patientId: ids.maria });
+    const [row] = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, reminded)));
+    expect(row).toMatchObject({ confirmedVia: 'text', confirmedAt: now });
+    expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+13035550147', now)).toBeNull(); // nothing left to confirm
+    expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+13035550999', now)).toBeNull(); // nobody with that number
   });
 });

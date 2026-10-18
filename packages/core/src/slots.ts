@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Language, PACKS } from './locales';
 import type { ClinicConfig, Provider, VisitType } from './clinic';
-import { windowsOn } from './hours';
-import { awayOn } from './providers';
+import { specialDayOf, windowsOn } from './hours';
+import { awayOn, awayWindows } from './providers';
 import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
 
 /** Booked time. With its visit type, a visit that keeps a buffer after it blocks that too. */
@@ -48,7 +48,7 @@ export function clashes(busy: BusyInterval[], visitTypes: Pick<VisitType, 'id' |
  * so results are deterministic. The step is the visit length: a 30-minute visit
  * offers 9:00, 9:30, 10:00, and with a 10-minute buffer after it 9:00, 9:40, 10:20.
  */
-export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[] }, busy: BusyInterval[], q: SlotQuery): Slot[] {
+export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[]; specialDays?: ClinicConfig['specialDays'] }, busy: BusyInterval[], q: SlotQuery): Slot[] {
   const limit = q.limit ?? 3;
   const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * MINUTE;
   const buffer = q.visitType.bufferMinutes ?? 0;
@@ -56,15 +56,22 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
   const out: Slot[] = [];
   for (let i = 0; i < q.days && out.length < limit; i++) {
     const date = addDays(q.from, i);
-    if (clinic.holidays.includes(date)) continue;
+    // a special day has its own hours; a holiday, none
+    const special = specialDayOf(clinic, date);
+    if (special ? !special.windows.length : clinic.holidays.includes(date)) continue;
     const weekday = weekdayOf(date);
     const day: { slot: Slot; order: number }[] = [];
     q.providers.forEach((provider, order) => {
       if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
-      for (const w of windowsOn(provider.hours ?? clinic.hours, weekday)) {
+      const away = awayWindows(provider, date);
+      // on a special day, a provider's own hours are kept inside the clinic's for that date
+      const windows = special ? intersect(provider.hours ? windowsOn(provider.hours, weekday) : special.windows, special.windows) : windowsOn(provider.hours ?? clinic.hours, weekday);
+      for (const w of windows) {
         for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += step) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;
           if (q.partOfDay === 'afternoon' && m < 12 * 60) continue;
+          // away for part of the day: nothing that overlaps it
+          if (away.some((a) => m < a.end && m + q.visitType.minutes > a.start)) continue;
           const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
           const end = new Date(start.getTime() + q.visitType.minutes * MINUTE);
           if (start.getTime() < earliest) continue;
@@ -78,6 +85,17 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
       out.push(slot);
       if (out.length >= limit) return out;
     }
+  }
+  return out;
+}
+
+/** The parts of two lists of windows that overlap. */
+function intersect(a: { open: string; close: string }[], b: { open: string; close: string }[]) {
+  const out: { open: string; close: string }[] = [];
+  for (const x of a) for (const y of b) {
+    const open = Math.max(toMinutes(x.open), toMinutes(y.open));
+    const close = Math.min(toMinutes(x.close), toMinutes(y.close));
+    if (open < close) out.push({ open: fromMinutes(open), close: fromMinutes(close) });
   }
   return out;
 }

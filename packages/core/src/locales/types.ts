@@ -50,6 +50,8 @@ export interface LanguagePack {
     provider: (v: Record<string, string>) => string;
     answer: (v: Record<string, string>) => string;
     link: (v: Record<string, string>) => string;
+    /** Sent before a visit to someone who said yes to reminders: when, and how to confirm. A pet is named; a person is not. */
+    reminder: (v: Record<string, string>) => string;
   };
   /** The question before an in-call text: to the number they are calling from, or the one on their file. */
   textOffer: (v: { target: 'this' | 'file' }) => string;
@@ -59,6 +61,10 @@ export interface LanguagePack {
   textRefused: (v: { reason: 'opted_out' | 'off' }) => string;
   /** Monday first: "Mon" … "Sun", for a short hours text. */
   shortDays: [string, string, string, string, string, string, string];
+  /** Asked once after a booking, when the clinic sends reminders and the caller has not agreed yet. */
+  reminderOffer: string;
+  /** The answer to a reply of C to a reminder. */
+  smsConfirmed: (v: { clinic: string; when: string }) => string;
   /** The answer to a text sent to the clinic's number that is not STOP or START: replies are not read. */
   smsNoReplies: (v: { clinicPhone: string }) => string;
 
