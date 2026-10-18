@@ -2,13 +2,14 @@
 'use client';
 import type { AddedMember, Member, MemberList } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
@@ -102,9 +103,15 @@ export default function Team() {
                         )}
                       </TD>
                       <TD>
-                        <input id={`refills-${m.userId}`} type="checkbox" className="focus-ring size-4 accent-primary disabled:opacity-50" checked={m.approvesRefills}
-                          disabled={refills.isPending || (m.role === 'owner' && myRole !== 'owner') || (m.you && myRole !== 'owner')}
-                          aria-label={`${m.name} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
+                        {(m.role === 'owner' && myRole !== 'owner') || (m.you && myRole !== 'owner') ? (
+                          // not theirs to change here: said in words, not a greyed-out box
+                          <span className="inline-flex items-center gap-1 text-sm" title={m.you ? 'An owner changes this for you.' : 'Only an owner changes this for an owner.'}>
+                            {m.approvesRefills ? <><Check className="size-4 text-primary" aria-hidden /> Yes</> : <span className="text-text-muted">No</span>}
+                          </span>
+                        ) : (
+                          <input id={`refills-${m.userId}`} type="checkbox" className="focus-ring size-4 accent-primary disabled:opacity-50" checked={m.approvesRefills}
+                            disabled={refills.isPending} aria-label={`${m.name} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
+                        )}
                       </TD>
                       <TD className="hidden md:table-cell">
                         {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-text-muted"><KeyRound className="size-4" /> Has not chosen a password yet</span>
@@ -144,13 +151,13 @@ export default function Team() {
 }
 
 function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
-  const [form, setForm] = useState({ name: '', email: '', role: 'staff' });
+  const [form, setForm] = useState({ name: '', email: '', role: 'staff', approvesRefills: false });
   const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
   const add = useMutation({
-    mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify(form) }),
+    mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ ...form, approvesRefills: form.role !== 'viewer' && form.approvesRefills }) }),
     onSuccess: (r) => { setAdded({ ...r, name: form.name, email: form.email }); onAdded(); },
   });
-  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff' }); add.reset(); } onOpenChange(o); };
+  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff', approvesRefills: false }); add.reset(); } onOpenChange(o); };
   const submit = (e: FormEvent) => { e.preventDefault(); add.mutate(); };
 
   return (
@@ -172,6 +179,12 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
               </Select>
               <p className="text-xs text-text-muted">{ROLES.find((r) => r.id === form.role)?.detail}</p>
             </div>
+            {/* a viewer never closes requests, so the question is not asked for one */}
+            {form.role !== 'viewer' && (
+              <Checkbox id="member-refills" label="Approves refills" checked={form.approvesRefills}
+                hint="A veterinarian who may close a refill as sent to the pharmacy, ready to pick up or not approved."
+                onCheckedChange={(v) => setForm({ ...form, approvesRefills: v })} />
+            )}
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => close(false)}>Cancel</Button>
