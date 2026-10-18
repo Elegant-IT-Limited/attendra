@@ -23,6 +23,8 @@ import { Input, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { ApiFailure, apiTagged, useClinic } from '@/lib/api';
 import { clinicTime, DAYS, dayTitle } from '@/lib/format';
+import { useActiveSection } from '@/lib/scroll-spy';
+import { cn } from '@/lib/utils';
 import { useTerms } from '@/lib/terms';
 
 type Day = '0' | '1' | '2' | '3' | '4' | '5' | '6';
@@ -79,6 +81,10 @@ export default function Settings() {
   const [conflict, setConflict] = useState<Conflict<ClinicConfig> | null>(null);
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
+  const pet = draft?.industry === 'vet';
+  const parts = PARTS.filter((part) => part.id !== 'emergency' || pet || !!draft?.emergencyHospital);
+  // the section being read, highlighted in the menu as the page scrolls
+  const reading = useActiveSection(draft ? parts.map((p) => p.id) : []);
   const keep = (config: ClinicConfig, etag: string | null) => {
     queries.setQueryData(['settings-versioned', clinicId], { body: config, etag });
     queries.setQueryData(['settings', clinicId], config);
@@ -127,7 +133,6 @@ export default function Settings() {
   const windows = (d: Day) => c.hours[d] ?? [];
   const setWindows = (d: Day, w: { open: string; close: string }[]) => set({ hours: { ...c.hours, [d]: w } });
 
-  const pet = c.industry === 'vet';
   // the first hospital is the clinic's first choice; the rest, in order, its next ones
   const hospitals = [...(c.emergencyHospital ? [c.emergencyHospital] : []), ...(c.moreEmergencyHospitals ?? [])];
   const setHospitals = (list: typeof hospitals) => set({ emergencyHospital: list[0], moreEmergencyHospitals: list.length > 1 ? list.slice(1) : undefined });
@@ -157,8 +162,14 @@ export default function Settings() {
       <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
         <nav aria-label="On this page" className="hidden lg:block">
           <ul className="sticky top-6 space-y-0.5 text-sm">
-            {PARTS.filter((part) => part.id !== 'emergency' || pet || c.emergencyHospital).map((part) => (
-              <li key={part.id}><a href={`#${part.id}`} className="focus-ring block rounded-md px-2.5 py-1.5 text-text-muted hover:bg-surface-sunken hover:text-text">{part.label(terms)}</a></li>
+            {parts.map((part) => (
+              <li key={part.id}>
+                <a href={`#${part.id}`} aria-current={reading === part.id ? 'location' : undefined}
+                  className={cn('focus-ring block rounded-md border-l-2 px-2.5 py-1.5 transition-colors', reading === part.id
+                    ? 'border-primary bg-primary-soft font-medium text-primary' : 'border-transparent text-text-muted hover:bg-surface-sunken hover:text-text')}>
+                  {part.label(terms)}
+                </a>
+              </li>
             ))}
           </ul>
         </nav>

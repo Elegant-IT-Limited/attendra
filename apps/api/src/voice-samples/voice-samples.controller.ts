@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { BUILT_IN_VOICES, ClinicConfig } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
-import { Controller, Get, HttpException, Inject, NotFoundException, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
+import { Controller, Get, HttpException, Inject, NotFoundException, Optional, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { Requires } from '../http/staff.guard';
-import { FRONT_DESK, VOICE_SAMPLES, type VoiceSampler } from '../http/tokens';
+import { FRONT_DESK, LOGGER, VOICE_SAMPLES, type VoiceSampler } from '../http/tokens';
+import type { Logger } from '@attendra/observability';
 
 const PER_CLINIC = 30; // samples per clinic in ten minutes: enough to try every voice, not to run up a bill
 const WINDOW_MS = 10 * 60_000;
@@ -24,7 +25,7 @@ export class VoiceSamplesController {
   private readonly cache = new Map<string, Buffer>();
   private readonly recent = new Map<string, number[]>();
 
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(VOICE_SAMPLES) private readonly sampler: VoiceSampler | null) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(VOICE_SAMPLES) private readonly sampler: VoiceSampler | null, @Optional() @Inject(LOGGER) private readonly log?: Logger) {}
 
   @Get()
   @Requires('settings:read')
@@ -44,12 +45,15 @@ export class VoiceSamplesController {
       this.recent.set(clinicId, [...times, now]);
       try {
         audio = await this.sampler.sample(voice, text);
-      } catch {
-        throw new UnprocessableEntityException({ error: 'no_sample', message: 'This voice has no sample yet. Try it in a test call.' });
+      } catch (err) {
+        // the greeting is the clinic's, not a caller's: the reason is safe to log
+        this.log?.warn({ clinic_id: clinicId, voice, err: { message: (err as Error).message } }, 'voice sample failed');
+        throw new UnprocessableEntityException({ error: 'no_sample', message: 'This voice could not be sampled right now. Try again, or hear it in a test call.' });
       }
       if (this.cache.size >= CACHE) this.cache.delete(this.cache.keys().next().value!);
       this.cache.set(key, audio);
     }
-    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
+    // the speech model answers MP3, the Live model WAV
+    return reply.header('content-type', audio.subarray(0, 4).toString('latin1') === 'RIFF' ? 'audio/wav' : 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
   }
 }
