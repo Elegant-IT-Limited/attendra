@@ -24,7 +24,7 @@ const embedder = embedderFromEnv(env);
 const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 const answerer = openai ? new ModelAnswerer(openai, env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
 // the greeting in a voice, for Settings' Listen button
-const voiceSamples = openai ? openAiVoiceSampler(openai, { tts: env.ATTENDRA_TTS_MODEL, live: env.GPT_LIVE_MODEL }) : null;
+const voiceSamples = openai ? openAiVoiceSampler(openai, env.ATTENDRA_TTS_MODEL) : null;
 const app = await createApi({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),

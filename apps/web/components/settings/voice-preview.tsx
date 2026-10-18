@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { Loader2, Play, Square } from 'lucide-react';
+import { hasPreview } from '@attendra/core';
+import { Loader2, Phone, Play, Square } from 'lucide-react';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonStyles } from '@/components/ui/button';
 
 /**
  * Plays the clinic's saved greeting in a voice, so the person choosing hears it first.
@@ -38,6 +40,13 @@ export function VoicePreview({ clinicId, voice }: { clinicId: string; voice: str
       setState('idle');
     }
   };
+
+  // a voice only the Live model has is heard on a call, not in a preview
+  if (!hasPreview(voice)) {
+    return (
+      <Link href={`/c/${clinicId}/test-call`} className={buttonStyles({ variant: 'outline' })} title="This voice is only on calls, so it has no preview. Save it, then hear it in a test call."><Phone /> Test call</Link>
+    );
+  }
 
   return (
     <div className="space-y-1">
