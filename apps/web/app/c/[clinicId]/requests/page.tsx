@@ -3,7 +3,7 @@
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { localDateOf } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Flag, Hand, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -16,7 +16,7 @@ import { useSettled } from '@/components/patients/patient-search';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
-import { clinicTime, dayTitle, phone, TASK_EXPLAINED, TASK_OUTCOMES, TASK_TYPES, taskType, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, phone, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
 import { cn } from '@/lib/utils';
@@ -116,21 +116,25 @@ function Requests() {
 
   if (isPending) return <><PageHeader title="Requests" /><Skeleton className="h-64" /></>;
   if (!can('tasks:read')) {
-    return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role can see calls and settings, not requests, because they name patients.</Empty></Card></>;
+    return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role can see calls and settings, not requests, because they name {terms.patients}.</Empty></Card></>;
   }
   const teammates = (team.data?.members ?? []).filter((m) => m.role !== 'viewer');
 
   return (
     <>
       <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>} />
-      <Card className="mb-5 px-5 py-3">
-        <dl className="grid gap-x-6 gap-y-1.5 text-sm md:grid-cols-2 xl:grid-cols-4">
+      <details className="group mb-5 rounded-lg border border-border bg-surface text-sm shadow-xs">
+        <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
+          <Info className="size-4" aria-hidden /> What each kind of request means
+          <ChevronDown className="ml-auto size-4 transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <dl className="grid gap-x-6 gap-y-3 border-t border-border px-4 py-3 md:grid-cols-2">
           {(['refill', 'callback', 'review', 'follow_up'] as const).map((t) => (
-            <div key={t}><dt className="inline font-medium">{taskType(t, terms.patient)}: </dt><dd className="inline text-text-muted">{TASK_EXPLAINED[t]}</dd></div>
+            <div key={t}><dt className="font-medium">{taskType(t, terms.patient)}</dt><dd className="text-text-muted">{taskExplained(t, terms.patient === 'pet')}</dd></div>
           ))}
         </dl>
-      </Card>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
+      </details>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="Status">
           {(['open', 'done'] as const).map((s) => (
             <button key={s} id={`requests-tab-${s}`} aria-controls="requests-panel" role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
@@ -156,7 +160,7 @@ function Requests() {
           <Input id="request-search" type="search" className="h-8 pl-8" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
             placeholder="Name, medication, phone digits…" />
         </div>
-        <div className="flex items-center gap-1.5 text-sm">
+        <div className="flex items-center gap-1.5 text-sm" role="group" aria-label="Came in between">
           <Label htmlFor="request-from" className="text-text-muted">From</Label>
           <Input id="request-from" type="date" className="h-8 w-38" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
           <Label htmlFor="request-to" className="text-text-muted">to</Label>
@@ -168,7 +172,7 @@ function Requests() {
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
-          {filtered ? 'Nothing matches these filters.' : status === 'open' ? 'New refill and callback requests, and new patients to check, appear here as calls come in.' : 'Requests you mark done appear here, with what came of them.'}
+          {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">

@@ -11,6 +11,7 @@ import { Input, Label } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { api, useClinicConfig } from '@/lib/api';
 import { age, dob, GENDER_LABEL, phone } from '@/lib/format';
+import { usePets } from '@/lib/terms';
 
 /** A short pause after each key, so a fast typist sends one request, not ten. Short enough to feel instant. */
 export function useSettled<T>(value: T, ms = 150) {
@@ -39,7 +40,10 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
   const [text, setText] = useState('');
   const config = useClinicConfig(clinicId);
   const copy = countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] });
-  const hint = `Results show as you type: a few letters of a name, a few digits of a phone number, or a date of birth like ${copy.exampleDob}.`;
+  const pets = usePets(clinicId);
+  const hint = pets
+    ? `Results show as you type: a few letters of the pet's or the owner's name, a few digits of a phone number, or a birthday like ${copy.exampleDob}.`
+    : `Results show as you type: a few letters of a name, a few digits of a phone number, or a date of birth like ${copy.exampleDob}.`;
   const query = useSettled(text.trim());
   const ready = query.length >= 1;
   const results = useQuery({
@@ -54,20 +58,20 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="patient-search">Find a patient</Label>
+        <Label htmlFor="patient-search">{pets ? 'Find a pet' : 'Find a patient'}</Label>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="patient-search" type="search" autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
-            onChange={(e) => setText(e.target.value)} placeholder="Name, date of birth, or phone number" />
+            onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet or owner name, phone, or birthday' : 'Name, date of birth, or phone number'} />
         </div>
         <p className="text-xs text-text-muted">{hint}</p>
       </div>
       {!text.trim() ? empty : results.isPending ? <Skeleton className="h-24" /> : results.isError ? (
         <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
       ) : !results.data?.patients.length ? (
-        <p className="text-sm text-text-muted">No patient matches. Check the spelling, or add them as a new patient.</p>
+        <p className="text-sm text-text-muted">{pets ? 'No pet matches. Check the spelling, or add it as a new pet.' : 'No patient matches. Check the spelling, or add them as a new patient.'}</p>
       ) : (
-        <ul className="divide-y divide-border rounded-md border border-border" aria-label="Matching patients" aria-busy={results.isFetching}>
+        <ul className="divide-y divide-border rounded-md border border-border" aria-label={pets ? 'Matching pets' : 'Matching patients'} aria-busy={results.isFetching}>
           {results.data.patients.map((p) => (
             <li key={p.id}>
               {renderResult ? renderResult(p) : (

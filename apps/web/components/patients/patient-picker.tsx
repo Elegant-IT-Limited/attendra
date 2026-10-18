@@ -9,17 +9,19 @@ import { PatientLine, PatientSearch } from '@/components/patients/patient-search
 import type { PatientChoice } from '@/components/schedule/booking-dialog';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { usePets } from '@/lib/terms';
 
 /** The first step of a booking: find the patient, pick someone opened recently, or add them there and then. */
 export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; onPick: (p: PatientChoice) => void; canAdd: boolean }) {
   const [adding, setAdding] = useState(false);
+  const pets = usePets(clinicId);
   const recent = useQuery({ queryKey: ['patient', clinicId, 'recent'], queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/recent`) });
   const pick = (p: { id: string; name: string }) => onPick({ id: p.id, name: p.name });
 
   if (adding) {
     return (
       <div className="space-y-3">
-        <p className="text-sm font-medium">New patient</p>
+        <p className="text-sm font-medium">{pets ? 'New pet' : 'New patient'}</p>
         <PatientForm clinicId={clinicId} submitLabel="Add and continue" onCancel={() => setAdding(false)}
           onSaved={(id, input) => pick({ id, name: `${input.firstName} ${input.lastName}` })} />
       </div>
@@ -42,7 +44,7 @@ export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; 
             </ul>
           </div>
         ) : null} />
-      {canAdd && <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}><UserPlus /> Add a new patient</Button>}
+      {canAdd && <Button type="button" variant="outline" size="sm" onClick={() => setAdding(true)}><UserPlus /> {pets ? 'Add a new pet' : 'Add a new patient'}</Button>}
     </div>
   );
 }

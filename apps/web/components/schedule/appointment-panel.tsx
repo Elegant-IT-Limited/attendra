@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange, AppointmentDetail, BookedBy } from '@attendra/api/contracts';
-import { type ClinicConfig, localDateOf } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -62,14 +62,15 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   const close = (open: boolean) => { if (!open) { setMode('view'); setMessage(null); setSlot(null); onClose(); } };
   const a = detail.data;
   const provider = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? id;
+  const pets = industryPack(clinic.industry).identity === 'pet';
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id);
   const upcoming = a && a.status === 'booked' && new Date(a.startsAt) > new Date();
 
-  let footer: ReactNode = a && patientHref ? <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>Open patient</Link> : null;
+  let footer: ReactNode = a && patientHref ? <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>{pets ? 'Open pet' : 'Open patient'}</Link> : null;
   if (a && canWrite && upcoming) {
     footer = mode === 'view' ? (
       <>
-        {patientHref && <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>Open patient</Link>}
+        {patientHref && <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>{pets ? 'Open pet' : 'Open patient'}</Link>}
         <Button variant="outline" onClick={() => { setMode('cancel'); setMessage(null); }}><XCircle /> Cancel</Button>
         <Button onClick={() => { setMode('reschedule'); setMessage(null); setFrom(localDateOf(new Date(), tz)); }}><CalendarClock /> Reschedule</Button>
       </>
@@ -118,7 +119,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
             ) : (
               <>
                 <section className="space-y-2">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">Patient</h3>
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">{pets ? 'Pet' : 'Patient'}</h3>
                   <div className="text-sm">
                     {patientHref ? <Link href={patientHref(a.patient.id)} className="font-medium hover:underline">{a.patient.name}</Link> : <p className="font-medium">{a.patient.name}</p>}
                     <p className="text-text-muted">Born {dob(a.patient.dob)}</p>

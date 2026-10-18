@@ -15,6 +15,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { useToast } from '@/components/ui/toast';
+import { usePets } from '@/lib/terms';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
 
@@ -40,6 +41,7 @@ const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.rou
 export default function Knowledge() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { clinic, can } = useClinic(clinicId);
+  const pets = usePets(clinicId);
   const queries = useQueryClient();
   const toast = useToast();
   const writable = can('settings:write');
@@ -93,12 +95,12 @@ export default function Knowledge() {
             <Card>
               <CardHeader><CardTitle>Add a document</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Alert tone="warn">Clinic information only: policies, insurance, visit preparation, provider bios, directions. Never upload anything about a patient.</Alert>
+                <Alert tone="warn">{pets ? 'Clinic information only: policies, prices, visit preparation, vet bios, directions. Never upload anything about a client or a pet.' : 'Clinic information only: policies, insurance, visit preparation, provider bios, directions. Never upload anything about a patient.'}</Alert>
                 <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); if (chosen) upload.mutate(chosen); }}>
                   <div className="space-y-1.5"><Label htmlFor="doc-title">Title</Label><Input id="doc-title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="Parking and directions" /></div>
                   <div className="space-y-1.5">
                     <Label htmlFor="doc-file">File</Label>
-                    <Input id="doc-file" ref={file} type="file" accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown" onChange={(e) => choose(e.target.files?.[0] ?? null)} className="pt-1.5" />
+                    <Input id="doc-file" ref={file} type="file" accept=".pdf,.txt,.md,.markdown,application/pdf,text/plain,text/markdown" onChange={(e) => choose(e.target.files?.[0] ?? null)} className="py-1 file:mr-3 file:h-7 file:cursor-pointer file:rounded-sm file:border-0 file:bg-surface-sunken file:px-3 file:text-sm file:font-medium file:text-text" />
                   </div>
                   <Button type="submit" disabled={!chosen} loading={upload.isPending}><Upload /> Upload</Button>
                 </form>
@@ -135,7 +137,7 @@ export default function Knowledge() {
         <Card className="self-start">
           <CardHeader><CardTitle>Ask a question</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-text-muted">Ask the way a caller would, to see what the assistant would answer and where it comes from. Do not type patient details.</p>
+            <p className="text-sm text-text-muted">Ask the way a caller would, to see what the assistant would answer and where it comes from. Do not type {pets ? 'client or pet details' : 'patient details'}.</p>
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (question.trim().length >= 2) ask.mutate(question.trim()); }}>
               <Input aria-label="Question" value={question} maxLength={300} onChange={(e) => setQuestion(e.target.value)} placeholder="Where do I park?" className="flex-1" />
               <Button type="submit" variant="outline" loading={ask.isPending} disabled={question.trim().length < 2}><Search /> Ask</Button>
