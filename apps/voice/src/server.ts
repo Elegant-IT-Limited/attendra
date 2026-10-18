@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { callerNumber, dialledNumber, twilioSignatureValid, twiml } from '@attendra/telephony';
+import { callerNumber, dialledNumber, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { CallRunner, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -127,7 +127,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     // fast and see only numbers, which are hashed before they are stored.
     const fromTwilio = (req: { url: string; body: unknown; headers: Record<string, unknown> }) => {
       const fields = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, string>;
-      const ok = !!deps.sms && twilioSignatureValid(`${deps.sms.publicUrl.replace(/\/+$/, '')}${req.url}`, fields, deps.sms.authToken, req.headers['x-twilio-signature'] as string | undefined);
+      const ok = !!deps.sms && twilioSignatureValid(`${trimEnd(deps.sms.publicUrl, '/')}${req.url}`, fields, deps.sms.authToken, req.headers['x-twilio-signature'] as string | undefined);
       return ok ? fields : null;
     };
     webhooks.post('/webhooks/twilio/sms-inbound', async (req, reply) => {

@@ -15,9 +15,20 @@ const STOP = /^(stop|stopall|unsubscribe|cancel|end|quit|alto|parar)$/i;
 const START = /^(start|yes|unstop|iniciar)$/i;
 const CONFIRM = /^(c|confirm|confirmar|si|sí|s)$/i;
 
+/**
+ * The text without these characters at its end. A loop, not an end-anchored regex:
+ * a reply's body comes from anyone who texts the clinic, and a regex like /[.!]+$/
+ * retries from every one of a long run of them.
+ */
+export function trimEnd(text: string, chars: string): string {
+  let end = text.length;
+  while (end > 0 && chars.includes(text[end - 1]!)) end--;
+  return text.slice(0, end);
+}
+
 export type SmsKeyword = 'stop' | 'start' | 'confirm' | 'other';
 export function smsKeyword(body: string): SmsKeyword {
-  const t = body.trim().replace(/[.!]+$/, '');
+  const t = trimEnd(body.trim(), '.!');
   return STOP.test(t) ? 'stop' : START.test(t) ? 'start' : CONFIRM.test(t) ? 'confirm' : 'other';
 }
 
@@ -26,4 +37,4 @@ export const twiml = (message?: string) =>
   `<?xml version="1.0" encoding="UTF-8"?><Response>${message ? `<Message>${message.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c]!)}</Message>` : ''}</Response>`;
 
 /** Where Twilio reports a text's delivery: the voice service, with the clinic in the query. */
-export const smsStatusUrl = (publicUrl: string, clinicId: string) => `${publicUrl.replace(/\/+$/, '')}/webhooks/twilio/sms-status?clinic=${encodeURIComponent(clinicId)}`;
+export const smsStatusUrl = (publicUrl: string, clinicId: string) => `${trimEnd(publicUrl, '/')}/webhooks/twilio/sms-status?clinic=${encodeURIComponent(clinicId)}`;
