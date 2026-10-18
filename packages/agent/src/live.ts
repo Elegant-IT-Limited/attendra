@@ -28,6 +28,7 @@ export const DOING: Record<ToolName, string> = {
   commit_pending: 'making the change',
   create_refill_request: 'taking a refill request',
   create_callback: 'taking a callback request',
+  send_text: 'sending a text',
   transfer_call: 'transferring the call',
   end_call: 'ending the call',
 };

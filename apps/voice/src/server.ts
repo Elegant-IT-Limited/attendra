@@ -70,8 +70,8 @@ const Simulate = z.object({ clinicId: z.string().min(1).max(64), userId: z.strin
 const jsonBody = (raw: unknown) => { try { return JSON.parse(raw as string); } catch { return null; } };
 const ACTION_STATUS: Record<Exclude<ActionResult, { ok: true }>['error'], number> = { not_live: 404, already_taken: 409, web_call: 409, emergency_script: 409 };
 
-/** Test calls never text anyone: the number a tester reads out may be a real patient's. */
-const NO_TEXTS: Backend['messenger'] = { sendTemplate: async () => ({ status: 'not_sent', reason: 'texting_off', messageId: null }) };
+/** Test calls never text anyone: the number a tester reads out may be a real patient's. What would have gone is recorded as not sent. */
+const testCallTexts = (messenger: Backend['messenger']): Backend['messenger'] => ({ sendTemplate: (clinicId, input) => messenger.sendTemplate(clinicId, { ...input, testCall: true }) });
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
@@ -326,7 +326,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     let agent: CallAgent | null = null;
     const hangup = () => { hungUp = true; return engine.hangup(sessionId).catch(() => {}); };
     try {
-      const backend = web ? { ...deps.backend, messenger: NO_TEXTS } : deps.backend;
+      const backend = web ? { ...deps.backend, messenger: testCallTexts(deps.backend.messenger) } : deps.backend;
       // before each request the agent reads the clinic again, so the doctors and their hours are the ones in the dashboard now
       const reloadClinic = async () => {
         const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));

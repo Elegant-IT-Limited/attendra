@@ -27,7 +27,19 @@ export const en: LanguagePack = {
   sms: {
     booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     request_ready: (v) => `${v.clinic}: your request is ready to pick up. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    change_confirmed: (v) => `${v.clinic}: your appointment has moved to ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    cancel_confirmed: (v) => `${v.clinic}: your appointment on ${v.when} is cancelled. To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,
+    hours: (v) => `${v.clinic} hours: ${v.hours}. Reply STOP to opt out.`,
+    emergency_hospital: (v) => `${v.clinic}: emergency vet: ${v.hospital}, ${v.hospitalAddress}, ${v.hospitalPhone}. If a person is hurt or in danger, call ${v.emergencyNumber}. Reply STOP to opt out.`,
+    provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    answer: (v) => `${v.clinic}: ${v.answer} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    link: (v) => `${v.clinic}: ${v.label}: ${v.url} Reply STOP to opt out.`,
   },
+  textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
+  textSent: "Done, I've just sent it.",
+  textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
+  shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
   smsNoReplies: ({ clinicPhone }) => `This number does not read replies. Please call ${clinicPhone}.`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +

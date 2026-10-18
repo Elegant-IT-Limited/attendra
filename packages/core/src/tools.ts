@@ -42,6 +42,14 @@ export const ToolArgs = {
     // one of the clinic's own request topics, as get_clinic_info lists them, when one fits
     topic: z.string().max(80).nullable().default(null),
   }),
+  // text the caller something they just heard: the clinic's address, hours, emergency hospital, a doctor's details,
+  // the answer just given (ref: its source id), or one of the clinic's links (ref: its id). Sent only after a spoken yes.
+  send_text: z.object({
+    kind: z.enum(['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link']),
+    ref: z.string().max(80).nullable().default(null),
+    // null: the number they are calling from; a number only when it is the one on their file
+    to: z.string().min(7).max(30).nullable().default(null),
+  }),
   transfer_call: z.object({ target: TransferTarget }),
   end_call: z.object({ reason: z.string().max(100) }),
 } as const;

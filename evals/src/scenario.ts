@@ -39,6 +39,7 @@ export const Scenario = z.object({
     verified: z.boolean().optional(),
     bookings_created: z.number().int().default(0),
     sms_sent: z.number().int().default(0),
+    sms_templates: z.array(z.string()).default([]), // the texts' templates, in order, when the scenario names them
     transfer_to: z.string().nullable().default(null),
     emergency_instruction: z.boolean().default(false),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in

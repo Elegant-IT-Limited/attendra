@@ -1,0 +1,20 @@
+id: vet-text-needs-a-yes
+title: A text the planner tries to send without a clear yes is refused, and an owner who only half agrees gets nothing
+clinic: riverbend
+local_time: "10:00"
+turns:
+  - caller: Where are you? What's the address?
+    reply: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+      - send_text: { kind: directions, ref: null, to: null }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "Would you like me to text that to the number you're calling from?"
+  - caller: Hmm, maybe later, I'll just remember it.
+    reply: "No problem. Anything else I can help with?"
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: [consent_required, consent_required, no_clear_yes]
+  sms_sent: 0

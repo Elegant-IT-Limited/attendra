@@ -11,9 +11,12 @@ interface PendingBase {
   readbackAtMs: number | null;
 }
 
+/** A text the assistant offered: what, and where, and when the question was spoken. */
+export interface TextOffer { kind: string; ref: string | null; to: 'this' | 'file'; offeredAtMs: number; askedAtMs: number | null }
+
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
-  | (PendingBase & { kind: 'cancel'; appointmentId: string });
+  | (PendingBase & { kind: 'cancel'; appointmentId: string; start: Date });
 
 /**
  * Everything the backend knows about one call. GPT-Live keeps the conversation;
@@ -58,6 +61,14 @@ export class CallState {
    * follow it.
    */
   language: Language = 'en';
+  /** A text waiting for the caller's yes. A new offer replaces it; an emergency clears it. */
+  textOffer: TextOffer | null = null;
+  /** The FAQ answers given on this call, by id: only those may be texted. */
+  readonly answersGiven = new Set<string>();
+  /** Texts sent on this call after a yes; confirmations do not count. */
+  textsSent = 0;
+  /** Where on the call the last yes to a text was asked: an offer counts once. */
+  lastTextConsentMs = -1;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
@@ -68,6 +79,10 @@ export class CallState {
     // proposal counts as the read-back, not only a new turn.
     if (speaker === 'agent' && this.pending && this.pending.readbackAtMs === null && endMs > this.pending.proposedAtMs) {
       this.pending.readbackAtMs = Math.max(startMs, this.pending.proposedAtMs);
+    }
+    // the same for a text offer: the question is the first thing said after it
+    if (speaker === 'agent' && this.textOffer && this.textOffer.askedAtMs === null && endMs > this.textOffer.offeredAtMs) {
+      this.textOffer.askedAtMs = Math.max(startMs, this.textOffer.offeredAtMs);
     }
     if (last && last.speaker === speaker) {
       last.text = `${last.text}${delta.startsWith(' ') || last.text.endsWith(' ') ? '' : ' '}${delta}`.replace(/\s+/g, ' ');
@@ -86,6 +101,30 @@ export class CallState {
   answerToReadback(): string {
     const at = this.pending?.readbackAtMs;
     if (at === null || at === undefined) return '';
+    const said = this.turns
+      .filter((t) => t.speaker === 'caller' && t.startMs > at)
+      .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return said.at(-1) ?? '';
+  }
+
+  /** The caller's latest words since the text offer was asked, like answerToReadback. */
+  answerToTextOffer(): string {
+    return this.latestCallerWordsAfter(this.textOffer?.askedAtMs ?? null);
+  }
+
+  /**
+   * When the assistant offered a text on its own (the emergency script ends with one),
+   * before any send_text: the start of its latest turn that mentions a text, among its
+   * last two, or null. The caller's answer after it is the consent.
+   */
+  spokenTextOfferMs(marker: RegExp): number | null {
+    const agent = this.turns.filter((t) => t.speaker === 'agent').slice(-2).reverse();
+    return agent.find((t) => marker.test(t.text))?.startMs ?? null;
+  }
+
+  latestCallerWordsAfter(at: number | null): string {
+    if (at === null) return '';
     const said = this.turns
       .filter((t) => t.speaker === 'caller' && t.startMs > at)
       .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())

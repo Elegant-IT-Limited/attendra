@@ -58,6 +58,14 @@ export class TwilioMessenger implements Messenger {
     private readonly options: MessengerOptions = {},
   ) {}
 
+  /** Whether this number replied STOP to this clinic (or the carrier said so). */
+  async optedOut(clinicId: string, to: string): Promise<boolean> {
+    const { smsOptOuts } = schema;
+    const toHash = smsNumberHash(this.cipher, clinicId, to);
+    const [row] = await withClinic(this.db, clinicId, (tx) => tx.select({ status: smsOptOuts.status }).from(smsOptOuts).where(and(eq(smsOptOuts.clinicId, clinicId), eq(smsOptOuts.toHash, toHash))));
+    return row?.status === 'opted_out';
+  }
+
   async sendTemplate(clinicId: string, input: TextRequest): Promise<TextResult> {
     const { smsMessages, smsOptOuts, auditLogs } = schema;
     const actor = this.options.actor ?? 'voice-agent';
@@ -95,6 +103,8 @@ export class TwilioMessenger implements Messenger {
       return { status: 'not_sent', reason, messageId: id };
     };
 
+    // a test call never texts anyone: the number a tester reads out may be a real patient's
+    if (input.testCall) return refuse('test_call');
     if (!/^\+[1-9]\d{7,14}$/.test(to)) return refuse('no_number');
     if (!this.sender || !from) return refuse('texting_off');
 
