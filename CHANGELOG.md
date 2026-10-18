@@ -66,6 +66,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Lists the clinic keeps in order**: specialties, what doctors see, kinds of animal. Rename, remove, reorder and add; a rename is carried to every doctor, a removal takes it off them after saying how many use it (`PUT /settings/lists/:list`). Before a clinic keeps a list, it is what the records say.
 - **On the records**: a doctor's form picks what they see as chips from the list and has the clinic's fields; a request card has its own details (`PUT /tasks/:id/fields`, encrypted, migration 0032); the Pets list filters by kind of animal or by a dropdown or yes-or-no field, read on the server (`POST /patients/filter`), and shows the fields marked as columns; Requests filter by a request field. "Manage fields" on each list page opens its tab. Kinds of request moved from General to the Requests tab.
 
+### Added (locations)
+
+- **More than one location.** A hosting layer adds a clinic to an organization (`POST /provisioning/organizations/:id/clinics`), copying the first clinic's assistant settings; hours, doctors and transfers are its own. Someone who works at more than one clinic switches between them from the clinic name in the menu, landing on the same page. The Team page says that everyone sees every location.
+
 ### Added (scheduling and reminders)
 
 - **Special days** (Settings, "Holidays and special days"): a date closed with a reason, or open shorter hours (up to two windows), with a note the assistant says ("Today the clinic is open 08:00 to 12:00 (Christmas Eve)."). Slots, the hours the assistant reads, the hours text and the Schedule all follow them; a doctor's own hours are kept inside the clinic's for that date. A date cannot be both a holiday and a special day.
