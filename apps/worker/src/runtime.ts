@@ -8,7 +8,7 @@ import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/
 import { and, eq } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { type SmsSender, TwilioMessenger } from '@attendra/telephony';
+import { type SmsSender, smsStatusUrl, TwilioMessenger } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
@@ -21,8 +21,6 @@ export interface WorkerDeps {
   embedder?: Embedder;
   log: Logger;
   now?: () => Date;
-  /** Twilio delivery statuses. Off until Twilio sends them (ATTENDRA_SMS_STATUS=on). */
-  smsStatus?: boolean;
   /** Runs the daily purge on a schedule. Tests call it directly instead. */
   schedulePurge?: boolean;
   /** The retry policy, for tests that cannot wait for the real backoff. */
@@ -33,6 +31,8 @@ export interface WorkerDeps {
   webhooks?: GuardOptions & { resolve?: Resolver; timeoutMs?: number };
   /** Sends texts (Twilio). Without it, nothing is texted and the request stays as it was closed. */
   texts?: SmsSender;
+  /** The voice service's public address, where Twilio reports delivery; and the clinic's daily text limit. */
+  sms?: { publicUrl?: string; dailyCap?: number };
 }
 
 /**
@@ -49,6 +49,12 @@ export function embedderFromEnv(env: { OPENAI_API_KEY?: string; ATTENDRA_EMBEDDI
   if (!env.OPENAI_API_KEY) return new LocalEmbedder();
   return new OpenAIEmbedder(new OpenAI({ apiKey: env.OPENAI_API_KEY }), env.ATTENDRA_EMBEDDING_MODEL || 'text-embedding-3-small');
 }
+
+/** Twilio's message statuses, as the few a clinic needs to see. The rest change nothing. */
+const SMS_STATUS_MAP: Partial<Record<SmsStatusJob['status'], 'sent' | 'delivered' | 'undelivered' | 'failed'>> = {
+  sent: 'sent', delivered: 'delivered', read: 'delivered', undelivered: 'undelivered', failed: 'failed', canceled: 'failed',
+};
+const STATUS_RANK: Record<string, number> = { queued: 0, sent: 1, undelivered: 2, failed: 2, delivered: 3 };
 
 /** The job handlers, apart from pg-boss, so tests can run them one at a time. */
 export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'send'> }) {
@@ -152,35 +158,58 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
      * A refill the team approved: one text to the number the caller left, from the
      * clinic's own number, saying it is ready to pick up and never what it is.
      */
-    async requestReady(job: RequestJob): Promise<'sent' | 'off' | 'skipped'> {
+    async requestReady(job: RequestJob): Promise<'sent' | 'off' | 'not_sent' | 'skipped'> {
       const { clinicId, taskId } = RequestJob.parse(job);
-      if (!d.texts) { d.log.info({ clinic_id: clinicId, task_id: taskId }, 'texts are off: no ready-to-pick-up text sent'); return 'off'; }
       const found = await withClinic(d.db, clinicId, async (tx) => {
         const [task] = await tx.select().from(schema.tasks).where(and(eq(schema.tasks.clinicId, clinicId), eq(schema.tasks.id, taskId)));
         const [clinic] = await tx.select({ config: schema.clinics.config }).from(schema.clinics).where(eq(schema.clinics.id, clinicId));
-        return task && clinic ? { task, config: ClinicConfig.parse(clinic.config) } : null;
+        // the text goes in the language the call was held in
+        const [call] = task?.callId ? await tx.select({ language: schema.calls.language }).from(schema.calls).where(and(eq(schema.calls.clinicId, clinicId), eq(schema.calls.id, task.callId))) : [];
+        return task && clinic ? { task, config: ClinicConfig.parse(clinic.config), language: call?.language ?? null } : null;
       });
       if (!found || found.task.type !== 'refill' || found.task.outcome !== 'refill_ready') return 'skipped';
       const details = JSON.parse(d.cipher.decrypt(found.task.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>;
-      const to = details.callback_number;
-      if (!to) return 'skipped';
       const { config } = found;
-      const messenger = new TwilioMessenger(d.db, d.cipher, d.texts, () => config.phoneNumbers[0]!);
-      await messenger.sendTemplate(clinicId, {
-        to, template: 'request_ready', vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]! },
-        idempotencyKey: `request-ready:${taskId}`, language: config.primaryLanguage,
+      const language = config.languages.includes(found.language as never) ? (found.language as typeof config.primaryLanguage) : config.primaryLanguage;
+      const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
+        actor: 'worker', dailyCap: d.sms?.dailyCap, log: d.log,
+        statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
       });
-      return 'sent';
+      // a refusal (texts off, opted out, no number) is kept on the request for staff to see
+      const result = await messenger.sendTemplate(clinicId, {
+        to: details.callback_number ?? '', template: 'request_ready', vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]! },
+        idempotencyKey: `request-ready:${taskId}`, language, kind: 'auto',
+        about: { callId: found.task.callId, patientId: found.task.patientId, taskId },
+      });
+      if (result.status !== 'not_sent') return 'sent';
+      if (result.reason === 'carrier') throw new JobError('sms_failed'); // the carrier may take it on a retry
+      if (result.reason === 'texting_off') d.log.info({ clinic_id: clinicId, task_id: taskId }, 'texts are off: no ready-to-pick-up text sent');
+      return result.reason === 'texting_off' ? 'off' : 'not_sent';
     },
 
-    /** Records a text's delivery status from Twilio. A placeholder until Twilio status callbacks are wired to the queue. */
+    /**
+     * A delivery report from Twilio, by its message id. A status never goes backwards
+     * (a late "sent" after "delivered"), and a number the carrier says opted out is
+     * marked so the clinic does not try it again.
+     */
     async smsStatus(job: SmsStatusJob) {
-      const { clinicId, messageSid, status } = SmsStatusJob.parse(job);
+      const { clinicId, messageSid, status, errorCode } = SmsStatusJob.parse(job);
+      const next = SMS_STATUS_MAP[status];
       return withClinic(d.db, clinicId, async (tx) => {
-        const rows = await tx.update(schema.smsMessages).set({ status })
-          .where(and(eq(schema.smsMessages.clinicId, clinicId), eq(schema.smsMessages.providerSid, messageSid))).returning({ id: schema.smsMessages.id });
-        if (rows.length) await tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `sms.status.${status}`, entity: 'sms', entityId: messageSid });
-        return rows.length ? 'updated' : 'unknown';
+        const where = and(eq(schema.smsMessages.clinicId, clinicId), eq(schema.smsMessages.providerSid, messageSid));
+        const [row] = await tx.select().from(schema.smsMessages).where(where);
+        if (!row) return 'unknown';
+        if (next && (STATUS_RANK[next] ?? 0) > (STATUS_RANK[row.status] ?? 0)) {
+          await tx.update(schema.smsMessages).set({
+            status: next, ...(next === 'delivered' ? { deliveredAt: now() } : {}), ...(errorCode ? { errorCode, failureReason: 'carrier' } : {}),
+          }).where(where);
+          await tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `sms.status.${next}`, entity: 'sms', entityId: messageSid });
+        }
+        if (errorCode === '21610') {
+          await tx.insert(schema.smsOptOuts).values({ clinicId, toHash: row.toHash, status: 'opted_out', source: 'carrier' })
+            .onConflictDoUpdate({ target: [schema.smsOptOuts.clinicId, schema.smsOptOuts.toHash], set: { status: 'opted_out', source: 'carrier', at: now() } });
+        }
+        return 'updated';
       });
     },
   };
@@ -203,7 +232,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<WebhookEventJob>(QUEUES.webhookEvent, poll, each((data) => h.webhookEvent(data)));
   const retryLimit = d.retry?.retryLimit ?? WEBHOOK_RETRY.retryLimit;
   await d.boss.work<DeliveryJob>(QUEUES.deliverWebhook, { ...poll, localConcurrency: 4 }, each((data, job) => h.deliverWebhook(data, { retryCount: job.retryCount, retryLimit })));
-  if (d.smsStatus) await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, each((data) => h.smsStatus(data)));
+  await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, poll, each((data) => h.smsStatus(data)));
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
@@ -211,7 +240,7 @@ export async function startWorker(d: WorkerDeps) {
   }));
   // 03:00 UTC every day
   if (d.schedulePurge !== false) await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
-  d.log.info({ summariser: d.summariser.model, sms_status: !!d.smsStatus }, 'worker started');
+  d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');
   return h;
 }
 

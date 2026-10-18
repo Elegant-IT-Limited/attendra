@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { callerNumber, dialledNumber } from '@attendra/telephony';
+import { callerNumber, dialledNumber, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { CallRunner, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -44,6 +44,18 @@ export interface VoiceDeps {
    * set, POST /internal/simulated-calls starts one; nothing else changes.
    */
   simulator?: { engine: SimulatedEngine; callFor(clinic: ClinicConfig): { script: SimulatedScript; planner: Planner } | null };
+  /**
+   * Texts sent to a clinic's number and Twilio's delivery reports, both signed with
+   * the Twilio auth token over this service's public address. Without it both routes
+   * answer 503.
+   */
+  sms?: {
+    authToken: string;
+    publicUrl: string;
+    /** A text to a clinic's number. Returns the reply to send, if any. */
+    inbound(m: { to: string; from: string; body: string }): Promise<string | undefined>;
+    status(job: { clinicId: string; messageSid: string; status: string; errorCode: string | null }): Promise<void>;
+  };
 }
 
 const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024), maxSeconds: z.number().int().positive().optional() });
@@ -59,7 +71,7 @@ const jsonBody = (raw: unknown) => { try { return JSON.parse(raw as string); } c
 const ACTION_STATUS: Record<Exclude<ActionResult, { ok: true }>['error'], number> = { not_live: 404, already_taken: 409, web_call: 409, emergency_script: 409 };
 
 /** Test calls never text anyone: the number a tester reads out may be a real patient's. */
-const NO_TEXTS: Backend['messenger'] = { sendTemplate: async () => { throw new Error('texts are not sent on test calls'); } };
+const NO_TEXTS: Backend['messenger'] = { sendTemplate: async () => ({ status: 'not_sent', reason: 'texting_off', messageId: null }) };
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
@@ -82,6 +94,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   // keep the exact bytes: the signature is computed over the raw body
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => done(null, body));
+  // Twilio posts forms; the signature is over the decoded fields
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))));
 
   app.get('/healthz', async () => ({ ok: true }));
 
@@ -107,6 +121,30 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
       track(handleIncoming(event));
       return reply.code(200).send({ accepted: true });
+    });
+
+    // Twilio: texts to a clinic's number (STOP, START) and delivery reports. Both answer
+    // fast and see only numbers, which are hashed before they are stored.
+    const fromTwilio = (req: { url: string; body: unknown; headers: Record<string, unknown> }) => {
+      const fields = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, string>;
+      const ok = !!deps.sms && twilioSignatureValid(`${trimEnd(deps.sms.publicUrl, '/')}${req.url}`, fields, deps.sms.authToken, req.headers['x-twilio-signature'] as string | undefined);
+      return ok ? fields : null;
+    };
+    webhooks.post('/webhooks/twilio/sms-inbound', async (req, reply) => {
+      if (!deps.sms) return reply.code(503).send({ error: 'sms_webhooks_off' });
+      const f = fromTwilio(req);
+      if (!f) { deps.log.warn({ path: '/webhooks/twilio/sms-inbound' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' }); }
+      const message = f.To && f.From ? await deps.sms.inbound({ to: f.To, from: f.From, body: f.Body ?? '' }) : undefined;
+      return reply.code(200).header('content-type', 'text/xml').send(twiml(message));
+    });
+    webhooks.post('/webhooks/twilio/sms-status', async (req, reply) => {
+      if (!deps.sms) return reply.code(503).send({ error: 'sms_webhooks_off' });
+      const f = fromTwilio(req);
+      if (!f) { deps.log.warn({ path: '/webhooks/twilio/sms-status' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' }); }
+      const clinicId = (req.query as { clinic?: string }).clinic;
+      if (!clinicId || !/^SM[0-9a-f]{32}$/i.test(f.MessageSid ?? '') || !f.MessageStatus) return reply.code(400).send({ error: 'bad_request' });
+      await deps.sms.status({ clinicId, messageSid: f.MessageSid!, status: f.MessageStatus, errorCode: /^\d{1,6}$/.test(f.ErrorCode ?? '') ? f.ErrorCode! : null });
+      return reply.code(204).send();
     });
   });
 

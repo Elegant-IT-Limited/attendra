@@ -34,11 +34,11 @@ export async function assignNumber(db: Database, clinicId: string, e164: string)
     const [prev] = (await tx.execute(sql`select c.id, c.config from phone_numbers p join clinics c on c.id = p.clinic_id where p.e164 = ${e164} and c.id <> ${clinicId}`)).rows as [{ id: string; config: { phoneNumbers: string[] } }?];
     if (prev) {
       const left = prev.config.phoneNumbers.filter((n) => n !== e164);
-      await tx.execute(sql`update clinics set config = jsonb_set(config, '{phoneNumbers}', ${JSON.stringify(left)}::jsonb) where id = ${prev.id}`);
+      await tx.execute(sql`update clinics set config = jsonb_set(config, '{phoneNumbers}', ${JSON.stringify(left)}::jsonb), config_version = config_version + 1 where id = ${prev.id}`);
     }
     await tx.execute(sql`insert into phone_numbers (e164, clinic_id) values (${e164}, ${clinicId}) on conflict (e164) do update set clinic_id = excluded.clinic_id, status = 'active'`);
     const phoneNumbers = [e164, ...config.phoneNumbers.filter((n) => n !== e164)];
-    await tx.execute(sql`update clinics set config = ${JSON.stringify({ ...config, phoneNumbers })}::jsonb where id = ${clinicId}`);
+    await tx.execute(sql`update clinics set config = ${JSON.stringify({ ...config, phoneNumbers })}::jsonb, config_version = config_version + 1 where id = ${clinicId}`);
     return true;
   });
 }

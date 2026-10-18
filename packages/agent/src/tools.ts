@@ -370,11 +370,13 @@ export async function runTool(
       const textable = !!patient.phone && (!patient.isNew || (!!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone)));
       if (textable && patient.phone) {
         try {
-          await backend.messenger.sendTemplate(clinic.id, {
+          const text = await backend.messenger.sendTemplate(clinic.id, {
             to: patient.phone, template: 'booking_confirmed', idempotencyKey: key(ctx.callId, 'sms', result.appointment.id), language: lang,
             vars: { clinic: clinic.name, when: when(result.appointment.start), clinicPhone: clinic.phoneNumbers[0]! },
+            kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId: result.appointment.id },
           });
-          smsSent = true;
+          smsSent = text.status !== 'not_sent';
+          if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the booking stands');
         } catch (err) {
           ctx.log?.warn({ call_id: ctx.callId, err }, 'confirmation text failed; the booking stands');
         }

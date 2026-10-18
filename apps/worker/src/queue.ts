@@ -46,7 +46,7 @@ export type RequestJob = z.infer<typeof RequestJob>;
 
 /** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
 export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
-export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(SMS_STATUSES) });
+export const SmsStatusJob = z.object({ clinicId: z.string().min(1), messageSid: z.string().regex(/^SM[0-9a-f]{32}$/i), status: z.enum(SMS_STATUSES), errorCode: z.string().regex(/^\d{1,6}$/).nullable().optional() });
 export type SmsStatusJob = z.infer<typeof SmsStatusJob>;
 
 /** Retries back off from 15 seconds to an hour, five times, then the job is dead-lettered. */
@@ -76,9 +76,11 @@ export interface JobQueue {
   webhookEvent(job: WebhookEventJob): Promise<void>;
   /** Once per request: closing it again does not text twice. */
   requestReady(job: RequestJob): Promise<void>;
+  /** A delivery report from Twilio: once per text and status. */
+  smsStatus(job: SmsStatusJob): Promise<void>;
 }
 
-export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {}, requestReady: async () => {} };
+export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {}, requestReady: async () => {}, smsStatus: async () => {} };
 
 /**
  * Domain events as webhook jobs. Emitting never fails the thing that happened: a
@@ -105,6 +107,9 @@ export function bossQueue(boss: PgBoss): JobQueue {
     },
     async requestReady(job) {
       await boss.send(QUEUES.requestReady, RequestJob.parse(job), { id: jobId(QUEUES.requestReady, job.taskId) });
+    },
+    async smsStatus(job) {
+      await boss.send(QUEUES.smsStatus, SmsStatusJob.parse(job), { id: jobId(QUEUES.smsStatus, `${job.messageSid}|${job.status}`) });
     },
   };
 }

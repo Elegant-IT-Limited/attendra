@@ -24,6 +24,8 @@ export const Me = z.object({
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()),
+    /** May approve or decline refills: marked on the Team page. */
+    approvesRefills: z.boolean(),
     /** Links the deployment adds to the menu (billing, setup), for owners only. */
     accountLinks: z.array(z.object({ label: z.string(), href: z.string() })) })),
 });
@@ -261,6 +263,28 @@ export const TaskSearch = TaskQuery.extend({
   /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(100).default(''),
 });
+/** Texts about one thing: exactly one of a call, a request, a pet or patient, or a visit. */
+export const TextQuery = z.object({ callId: z.uuid().optional(), taskId: z.uuid().optional(), patientId: z.uuid().optional(), appointmentId: z.uuid().optional() })
+  .refine((q) => [q.callId, q.taskId, q.patientId, q.appointmentId].filter(Boolean).length === 1, 'give exactly one of callId, taskId, patientId, appointmentId');
+export const TextItem = z.object({
+  id: z.string(),
+  template: z.string(),
+  kind: z.enum(['auto', 'asked', 'reminder']),
+  /** not_sent: refused before the carrier, with failureReason */
+  status: z.enum(['queued', 'sent', 'delivered', 'undelivered', 'failed', 'not_sent']),
+  failureReason: z.string().nullable(),
+  errorCode: z.string().nullable(),
+  language: z.string(),
+  callId: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  sentAt: z.iso.datetime().nullable(),
+  deliveredAt: z.iso.datetime().nullable(),
+  consentAtMs: z.number().int().nullable(),
+  /** The last four digits, only when the text is about a patient. */
+  toLast4: z.string().nullable(),
+});
+export const TextList = z.object({ texts: z.array(TextItem) });
+
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
@@ -472,12 +496,16 @@ export const Member = z.object({
   /** Still on the temporary password they were given. */
   mustChangePassword: z.boolean(),
   addedAt: z.iso.datetime(), you: z.boolean(),
+  /** May approve or decline refills. */
+  approvesRefills: z.boolean(),
 });
 export const MemberList = z.object({ members: z.array(Member) });
-export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role });
+export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
-export const ChangeRole = z.object({ role: Role });
+/** A new role, whether they may approve refills, or both. */
+export const ChangeMember = z.object({ role: Role.optional(), approvesRefills: z.boolean().optional() })
+  .refine((b) => b.role !== undefined || b.approvesRefills !== undefined, 'give a role or approvesRefills');
 
 export const OverviewQuery = z.object({ days: z.coerce.number().int().min(1).max(31).default(7) });
 const Activity = z.object({
@@ -542,6 +570,8 @@ export type WebhookAttempts = z.infer<typeof WebhookAttempts>;
 export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
+export type TextItem = z.infer<typeof TextItem>;
+export type TextList = z.infer<typeof TextList>;
 export type TestCall = z.infer<typeof TestCall>;
 export type EmergencyReview = z.infer<typeof EmergencyReview>;
 export type TestCallAllowance = z.infer<typeof TestCallAllowance>;

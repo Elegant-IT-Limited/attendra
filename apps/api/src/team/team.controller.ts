@@ -4,7 +4,7 @@ import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, H
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
 import type { Auth } from '../auth';
-import { AddedMember, AddMember, ChangeRole, MemberList } from '../contracts';
+import { AddedMember, AddMember, ChangeMember, MemberList } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { AUTH, CLOCK, DB } from '../http/tokens';
@@ -69,7 +69,7 @@ export class TeamController {
     // membership would answer account_exists to every later try, so it is removed
     let result: TeamResult;
     try {
-      result = await this.change(orgId, staff, { type: 'add', userId, role: body.role, temporary: true });
+      result = await this.change(orgId, staff, { type: 'add', userId, role: body.role, temporary: true, approvesRefills: body.approvesRefills });
     } catch (err) {
       await deleteNewAccount(this.auth, userId);
       throw err;
@@ -95,12 +95,14 @@ export class TeamController {
   @Patch(':userId')
   @HttpCode(204)
   @Requires('members:manage')
-  @ApiOperation({ summary: 'Change someone\'s role. Audited with the new role.' })
-  @ApiBody({ schema: schemaOf(ChangeRole) })
+  @ApiOperation({ summary: 'Change someone\'s role, or whether they may approve refills. Audited.' })
+  @ApiBody({ schema: schemaOf(ChangeMember) })
   @ApiNoContentResponse()
-  @ApiForbiddenResponse({ description: 'A manager changing an owner, or anyone changing their own role' })
-  async changeRole(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @Body(new ZodPipe(ChangeRole)) body: z.infer<typeof ChangeRole>, @CurrentStaff() staff: Staff) {
-    this.check(await this.change(await this.org(clinicId), staff, { type: 'role', userId, role: body.role }));
+  @ApiForbiddenResponse({ description: 'A manager changing an owner, or anyone changing their own role (an owner may mark themselves as approving refills)' })
+  async changeMember(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @Body(new ZodPipe(ChangeMember)) body: z.infer<typeof ChangeMember>, @CurrentStaff() staff: Staff) {
+    const orgId = await this.org(clinicId);
+    if (body.role !== undefined) this.check(await this.change(orgId, staff, { type: 'role', userId, role: body.role }));
+    if (body.approvesRefills !== undefined) this.check(await this.change(orgId, staff, { type: 'refills', userId, approves: body.approvesRefills }));
   }
 
   @Delete(':userId')

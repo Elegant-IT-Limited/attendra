@@ -2,6 +2,7 @@ import { ScriptedPlanner } from '@attendra/agent';
 import { DEMO_CLINIC } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
+import twilio from 'twilio';
 import { describe, expect, it, vi } from 'vitest';
 import type { Sideband, SidebandEvent } from '@attendra/voice-engine';
 import { buildServer, type IncomingCall, type VoiceDeps } from '../src/server';
@@ -241,5 +242,51 @@ describe('browser test calls', () => {
   it('refuses a time limit that would switch the limit off', () => {
     expect(() => buildServer(deps({ browserCallMaxSeconds: Number.NaN }).d)).toThrow('browserCallMaxSeconds');
     expect(() => buildServer(deps({ browserCallMaxSeconds: 0 }).d)).toThrow('browserCallMaxSeconds');
+  });
+});
+
+describe('Twilio text webhooks', () => {
+  const TOKEN_T = 'twilio-auth-token';
+  const BASE = 'https://voice.example.com';
+  const form = (f: Record<string, string>) => new URLSearchParams(f).toString();
+  const signed = (path: string, f: Record<string, string>) => twilio.getExpectedTwilioSignature(TOKEN_T, `${BASE}${path}`, f);
+  const sms = () => ({
+    authToken: TOKEN_T, publicUrl: BASE,
+    inbound: vi.fn(async ({ body }: { body: string }) => (/^stop$/i.test(body) ? undefined : 'This number does not read replies.')),
+    status: vi.fn(async () => {}),
+  });
+  const send = (app: ReturnType<typeof buildServer>, path: string, f: Record<string, string>, signature = signed(path, f)) =>
+    app.inject({ method: 'POST', url: path, headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': signature }, payload: form(f) });
+
+  it('takes STOP with an empty reply, and answers anything else with the clinic line', async () => {
+    const s = sms();
+    const app = buildServer(deps({ sms: s }).d);
+    const stop = await send(app, '/webhooks/twilio/sms-inbound', { From: '+13035550147', To: '+13035550100', Body: 'STOP' });
+    expect(stop.statusCode).toBe(200);
+    expect(stop.headers['content-type']).toContain('text/xml');
+    expect(stop.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+    expect(s.inbound).toHaveBeenCalledWith({ to: '+13035550100', from: '+13035550147', body: 'STOP' });
+    const other = await send(app, '/webhooks/twilio/sms-inbound', { From: '+13035550147', To: '+13035550100', Body: 'is my dog ok?' });
+    expect(other.body).toContain('<Message>This number does not read replies.</Message>');
+  });
+
+  it('refuses a request whose signature does not match, and is off without Twilio', async () => {
+    const s = sms();
+    const app = buildServer(deps({ sms: s }).d);
+    const f = { From: '+13035550147', To: '+13035550100', Body: 'STOP' };
+    expect((await send(app, '/webhooks/twilio/sms-inbound', f, 'forged')).statusCode).toBe(403);
+    expect((await send(app, '/webhooks/twilio/sms-inbound', { ...f, Body: 'START' }, signed('/webhooks/twilio/sms-inbound', f))).statusCode).toBe(403);
+    expect(s.inbound).not.toHaveBeenCalled();
+    expect((await send(buildServer(deps().d), '/webhooks/twilio/sms-inbound', f)).statusCode).toBe(503);
+  });
+
+  it('queues a delivery report for the clinic in the query', async () => {
+    const s = sms();
+    const app = buildServer(deps({ sms: s }).d);
+    const path = `/webhooks/twilio/sms-status?clinic=${DEMO_CLINIC.id}`;
+    const sid = `SM${'c'.repeat(32)}`;
+    expect((await send(app, path, { MessageSid: sid, MessageStatus: 'undelivered', ErrorCode: '30007' })).statusCode).toBe(204);
+    expect(s.status).toHaveBeenCalledWith({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'undelivered', errorCode: '30007' });
+    expect((await send(app, path, { MessageSid: 'nope', MessageStatus: 'sent' })).statusCode).toBe(400);
   });
 });

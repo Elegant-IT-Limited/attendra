@@ -191,8 +191,24 @@ describe('text delivery status', () => {
     for (const status of ['accepted', 'scheduled', 'sending', 'canceled', 'partially_delivered', 'read'] as const) {
       expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status })).toBe('updated');
     }
+    const [row] = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.smsMessages).where(eq(schema.smsMessages.providerSid, sid)));
+    // a late report never moves it backwards
+    expect(row).toMatchObject({ status: 'delivered', deliveredAt: expect.any(Date) });
     expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: `SM${'b'.repeat(32)}`, status: 'delivered' })).toBe('unknown');
     await expect(h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: 'not-a-sid', status: 'delivered' })).rejects.toThrow();
+  });
+
+  it('keeps the carrier\'s error, and a number the carrier says opted out is not texted again', async () => {
+    const sid = `SM${'d'.repeat(32)}`;
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.smsMessages).values({ clinicId: DEMO_CLINIC.id, template: 'request_ready', toHash: 'h-21610', idempotencyKey: 'k-sms-21610', status: 'sent', providerSid: sid }));
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
+    expect(await h.smsStatus({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'undelivered', errorCode: '21610' })).toBe('updated');
+    const rows = await withClinic(t.db, DEMO_CLINIC.id, async (tx) => ({
+      text: (await tx.select().from(schema.smsMessages).where(eq(schema.smsMessages.providerSid, sid)))[0],
+      opt: (await tx.select().from(schema.smsOptOuts).where(eq(schema.smsOptOuts.toHash, 'h-21610')))[0],
+    }));
+    expect(rows.text).toMatchObject({ status: 'undelivered', errorCode: '21610', failureReason: 'carrier' });
+    expect(rows.opt).toMatchObject({ status: 'opted_out', source: 'carrier' });
   });
 });
 
@@ -286,8 +302,29 @@ describe('a refill ready to pick up', () => {
     expect(await audits(DEMO_CLINIC.id, 'sms.sent.request_ready')).toHaveLength(1);
   });
 
-  it('sends nothing when texts are off', async () => {
+  const approvedRefill = async (key: string, callId: string) => {
+    const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId, patientId: null, idempotencyKey: key, details: { medication: 'x', pharmacy: 'y', callback_number: '+13035550177' } });
+    await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
+    return id;
+  };
+  const textFor = (taskId: string) => withClinic(t.db, DEMO_CLINIC.id, async (tx) => (await tx.select().from(schema.smsMessages).where(eq(schema.smsMessages.taskId, taskId)))[0]);
+
+  it('sends nothing when texts are off, and keeps why on the request', async () => {
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
-    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: '00000000-0000-4000-8000-000000000000' })).toBe('off');
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: '00000000-0000-4000-8000-000000000000' })).toBe('skipped');
+    const id = await approvedRefill('refill-ready-off', await closedCall());
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('off');
+    expect(await textFor(id)).toMatchObject({ status: 'not_sent', failureReason: 'texting_off', template: 'request_ready' });
+  });
+
+  it('texts in the language the call was held in', async () => {
+    const bodies: string[] = [];
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts: { send: async (m) => { bodies.push(m.body); return { sid: `SM${'e'.repeat(32)}` }; } } });
+    const callId = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '+13035550147');
+    await calls.close(DEMO_CLINIC.id, callId, { reason: 'caller_hangup', voiceSeconds: 30, outcome: 'task_created', emergency: false, language: 'es' });
+    const id = await approvedRefill('refill-ready-es', callId);
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent');
+    expect(bodies[0]).toContain('listo para recoger');
+    expect(await textFor(id)).toMatchObject({ language: 'es', callId, status: 'sent' });
   });
 });

@@ -109,7 +109,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const { livePlanner } = opts;
   const scheduler = new BuiltinScheduler(db);
   const sms: string[] = [];
-  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); } };
+  const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
   const knowledge = new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder());
   const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };

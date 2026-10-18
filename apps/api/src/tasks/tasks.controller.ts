@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, type EventSink, zonedInstant } from '@attendra/core';
-import { type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
-import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { approvesRefills, type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
@@ -13,6 +13,8 @@ import type { JobQueue } from '@attendra/worker/queue';
 import { ZodPipe } from '../http/zod.pipe';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
+/** Sent to the pharmacy, ready to pick up, or not approved: each one says a vet decided. */
+const REFILL_DECISIONS = new Set<string>(['refill_sent', 'refill_ready', 'refill_declined']);
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
 @ApiTags('tasks')
@@ -91,12 +93,18 @@ export class TasksController {
   @Post(':taskId/done')
   @HttpCode(204)
   @Requires('tasks:work')
-  @ApiOperation({ summary: 'Close a request you hold, or one nobody holds, with what came of it. Audited.' })
+  @ApiOperation({ summary: 'Close a request you hold, or one nobody holds, with what came of it. Closing a refill as sent to the pharmacy, ready to pick up or not approved needs a member marked as approving refills (403 refill_approval_required). Audited.' })
   @ApiBody({ schema: schemaOf(TaskDone), required: false })
   @ApiNoContentResponse()
   @ApiConflictResponse({ description: 'Someone else holds the task, or it is already done' })
   async done(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(TaskDone)) body: z.infer<typeof TaskDone>, @CurrentStaff() staff: Staff) {
-    this.outcome(isUuid(taskId) ? await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null) : 'not_found');
+    if (!isUuid(taskId)) this.outcome('not_found');
+    // approving or declining a refill is a clinical decision: only someone marked for it on the Team page
+    if (body.outcome && REFILL_DECISIONS.has(body.outcome) && (await taskFacts(this.db, clinicId, taskId))?.type === 'refill'
+      && !(await approvesRefills(this.db, staff.userId, clinicId))) {
+      throw new ForbiddenException({ error: 'refill_approval_required', message: 'Only a member marked as approving refills can do this.' });
+    }
+    this.outcome(await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null));
     const facts = await taskFacts(this.db, clinicId, taskId);
     // a refill the team approved: the caller hears by text, once, that it is ready to pick up
     if (body.outcome === 'refill_ready' && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId });

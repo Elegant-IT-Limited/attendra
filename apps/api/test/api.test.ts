@@ -197,6 +197,26 @@ describe('task queue', () => {
 });
 
 describe('settings', () => {
+  it('refuses a save made from an older copy, with the newer settings and who saved them, audited', async () => {
+    const owner = await api.signIn('omar@maple.example', true);
+    const read = await api.request('GET', `${C}/settings`, { cookie: admin });
+    const tag = read.headers.etag as string;
+    expect(tag).toMatch(/^"v\d+"$/);
+    const mine = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...(read.json() as object), greeting: `${DEMO_CLINIC.greeting} Mine.` }, headers: { 'if-match': tag } });
+    expect(mine.statusCode).toBe(200);
+    expect(mine.headers.etag).not.toBe(tag);
+    // a second person still holding the first copy
+    const stale = await api.request('PUT', `${C}/settings`, { cookie: owner, body: { ...(read.json() as object), greeting: `${DEMO_CLINIC.greeting} Theirs.` }, headers: { 'if-match': tag } });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({ error: 'settings_changed', version: Number(String(mine.headers.etag).replace(/\D/g, '')), updatedBy: { name: 'Olga Admin' }, current: { greeting: `${DEMO_CLINIC.greeting} Mine.` } });
+    expect((await api.request('GET', `${C}/settings/meta`, { cookie: admin })).json()).toMatchObject({ updatedBy: { name: 'Olga Admin' } });
+    const conflicts = await api.t.db.execute(sql`select count(*)::int as n from audit_logs where action = 'clinic.settings.conflict'`);
+    expect((conflicts.rows[0] as { n: number }).n).toBe(1);
+    // without If-Match it saves, as before
+    expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: DEMO_CLINIC })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: DEMO_CLINIC, headers: { 'if-match': 'nonsense' } })).statusCode).toBe(422);
+  });
+
   it('refuses a greeting that hides the AI, with the reason', async () => {
     const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, greeting: 'Hi, Maple Street, how can I help?' } });
     expect(res.statusCode).toBe(422);

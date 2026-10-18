@@ -26,7 +26,7 @@ export async function world() {
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds, clinic } = await seedDemo(t.db, cipher);
   const sms: { to: string; template: string; language?: string; when?: string }[] = [];
-  const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); } };
+  const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   const events: DomainEvent[] = [];
   const backend = {
     events: { emit: async (_clinicId: string, e: DomainEvent) => { events.push(e); } },

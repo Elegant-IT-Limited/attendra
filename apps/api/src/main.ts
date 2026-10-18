@@ -9,6 +9,7 @@ import { createApi } from './app';
 import { createAuth } from './auth';
 import { loadEnv } from './config';
 import { httpVoiceClient } from './voice';
+import { openAiVoiceSampler } from './voice-samples/samplers';
 
 const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
@@ -23,9 +24,7 @@ const embedder = embedderFromEnv(env);
 const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 const answerer = openai ? new ModelAnswerer(openai, env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
 // the greeting in a voice, for Settings' Listen button
-const voiceSamples = openai ? {
-  sample: async (voice: string, text: string) => Buffer.from(await (await openai.audio.speech.create({ model: env.ATTENDRA_TTS_MODEL, voice, input: text, response_format: 'mp3' })).arrayBuffer()),
-} : null;
+const voiceSamples = openai ? openAiVoiceSampler(openai, env.ATTENDRA_TTS_MODEL) : null;
 const app = await createApi({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
