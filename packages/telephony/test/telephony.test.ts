@@ -3,7 +3,7 @@ import { createPhiCipher, schema, seedDemo, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { callerNumber, dialledNumber, MAX_TEXTS_PER_NUMBER_PER_DAY, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
+import { callerNumber, dialledNumber, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
 import twilio from 'twilio';
 
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
@@ -123,6 +123,15 @@ describe('Twilio requests and replies', () => {
     for (const w of ['START', 'unstop', 'Iniciar', 'yes']) expect(smsKeyword(w)).toBe('start');
     for (const w of ['C', 'confirm', 'Sí']) expect(smsKeyword(w)).toBe('confirm');
     for (const w of ['please stop calling me', 'stopped', 'hello']) expect(smsKeyword(w)).toBe('other');
+  });
+
+  it('reads a long run of punctuation from anyone in linear time', () => {
+    const started = performance.now();
+    expect(smsKeyword(`${'!'.repeat(100_000)}x`)).toBe('other');
+    expect(smsKeyword(`STOP${'.'.repeat(100_000)}`)).toBe('stop');
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(trimEnd('https://voice.example.com///', '/')).toBe('https://voice.example.com');
+    expect(trimEnd('', '/')).toBe('');
   });
 
   it('escapes the reply it sends', () => {
