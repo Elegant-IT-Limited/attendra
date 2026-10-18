@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { callingCode, hasPreview, PREVIEW_VOICES, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { callingCode, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -58,11 +58,14 @@ function issueLabel(path: string) {
     requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
     hours: 'Opening hours', holidays: 'Holidays', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
-    averageVisitValue: 'Average visit value', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
+    averageVisitValue: 'Average visit value', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
     emergencyReview: 'Emergency list review',
   };
   return names[top] ?? (top || 'Settings');
 }
+/** The clinic's talk settings with defaults, so one change keeps the other two. */
+const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal', style: c.talk?.style ?? 'efficient', acknowledgements: c.talk?.acknowledgements ?? true });
+
 /** A row nobody has typed in yet: the button that made it points to it again instead of adding another, and Save leaves it out. */
 const BLANK = {
   named: (x: { name: string }) => !x.name.trim(),
@@ -236,6 +239,27 @@ export default function Settings() {
             <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
             </Field>
+          </div>
+          <div className="space-y-4 border-t border-border pt-5" id="talk">
+            <div>
+              <h3 className="text-sm font-medium">How the assistant talks</h3>
+              <p className="text-xs text-text-muted">It always sounds like a friendly front desk: short turns, everyday words. These set its pace and manner. They never change what it may do. Hear the difference in a test call.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Pace" htmlFor="talk-pace">
+                <Select id="talk-pace" value={c.talk?.pace ?? 'normal'} onChange={(e) => set({ talk: { ...talkOf(c), pace: e.target.value as TalkStyle['pace'] } })}>
+                  <option value="relaxed">Relaxed</option><option value="normal">Normal</option><option value="brisk">Brisk</option>
+                </Select>
+              </Field>
+              <Field label="Style" htmlFor="talk-style">
+                <Select id="talk-style" value={c.talk?.style ?? 'efficient'} onChange={(e) => set({ talk: { ...talkOf(c), style: e.target.value as TalkStyle['style'] } })}>
+                  <option value="warm">Warm and chatty</option><option value="efficient">Friendly and efficient</option><option value="professional">Calm and professional</option>
+                </Select>
+              </Field>
+            </div>
+            <Switch id="talk-acks" label="Small acknowledgements" checked={c.talk?.acknowledgements ?? true} disabled={!writable || save.isPending}
+              hint={'"Sure", "Got it", "One moment while I check": no silence while it looks something up.'}
+              onCheckedChange={(v) => set({ talk: { ...talkOf(c), acknowledgements: v } })} />
           </div>
           <div className="space-y-4 border-t border-border pt-5">
             <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}

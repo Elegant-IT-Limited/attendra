@@ -26,4 +26,18 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(verify.description).toContain('Find the pet');
     expect(Object.keys(tools.find((t) => t.name === 'register_patient')!.parameters.properties)).toContain('species');
   });
+
+  it('offers send_text, and says how texting works, only at a clinic that texts', async () => {
+    const texting = { ...DEMO_CLINIC, texting: { enabled: true, kinds: { change_confirmed: true, directions: true, hours: true, emergency_hospital: true, provider: false, answer: true, link: true }, links: [] } };
+    const toolsFor = async (clinic: typeof DEMO_CLINIC) => {
+      let tools: { name: string; strict: boolean }[] = [];
+      const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };
+      await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic, state: new CallState(), nowLine: 'Today is Monday.' }, async () => ({ ok: true, data: {} }));
+      return tools;
+    };
+    expect((await toolsFor(DEMO_CLINIC)).some((t) => t.name === 'send_text')).toBe(false);
+    expect((await toolsFor(texting)).find((t) => t.name === 'send_text')).toMatchObject({ strict: true });
+    expect(systemPrompt(DEMO_CLINIC, 'Today is Monday.')).not.toContain('Texting:');
+    expect(systemPrompt(texting, 'Today is Monday.')).toContain('Texting: after giving the address');
+  });
 });

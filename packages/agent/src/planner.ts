@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, audienceLine, type ClinicConfig, industryPack, NO_INFORMATION, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, audienceLine, type ClinicConfig, industryPack, NO_INFORMATION, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -32,6 +32,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   commit_pending: 'Perform the staged change. Only after the caller clearly said yes to the read-back.',
   create_refill_request: 'Log a prescription refill request for the care team. Never approve or promise a refill.',
   create_callback: 'Ask staff to call the caller back. When the request matches one of the clinic\'s request_topics from get_clinic_info, ask for what that topic says and pass its name as topic; otherwise topic is null.',
+  send_text: 'Text the caller something they just heard: directions, hours, the emergency hospital, a doctor\'s details (ref: provider id), the answer you just gave (ref: its source id), or one of the clinic\'s links (ref: link id from get_clinic_info). The first call tells you the exact question to ask; after the caller clearly says yes, call it again with the same details. Only after they asked for it or you offered and they said yes. to: null for the number they are calling from.',
   transfer_call: 'Transfer the call to a person: front_desk, billing or on_call.',
   end_call: 'End the call, only after you have asked "Is there anything else I can help you with?" and the caller said no or goodbye. Refused otherwise.',
 };
@@ -46,6 +47,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
     ...(clinic.afterHours === 'requests' ? ['While the clinic is closed it books nothing: do not look up or offer times; take a request with create_callback for the team to book in the morning. Cancelling an existing visit is still fine.'] : []),
     ...planner.limits,
+    ...(textingOf(clinic).enabled ? ['Texting: after giving the address, hours, a doctor\'s details or an answer from get_clinic_info, or when one of its links fits, you may offer to text it with send_text; it tells you the question to ask and sends only after the caller says yes. In an animal emergency the only text is emergency_hospital, offered once after the script. Never text anything else, and never to another person\'s number.'] : []),
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
     'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
@@ -74,7 +76,8 @@ export class ResponsesPlanner implements Planner {
     // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
     const trade = industryPack(input.clinic.industry);
     const args = toolArgsFor(input.clinic.industry);
-    const tools = TOOL_NAMES.map((name) => ({
+    // send_text is offered only to a clinic that texts
+    const tools = TOOL_NAMES.filter((name) => name !== 'send_text' || textingOf(input.clinic).enabled).map((name) => ({
       type: 'function' as const, name, description: trade.planner.descriptions?.[name] ?? DESCRIPTIONS[name], strict: true,
       parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
     }));

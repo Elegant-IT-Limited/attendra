@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Gender } from './clinic';
-import type { Language } from './locales';
+import type { Language, LanguagePack } from './locales';
 import type { Slot } from './slots';
 
 /**
@@ -106,9 +106,9 @@ export interface AuditLog {
   record(clinicId: string, entry: { actor: string; action: string; entity: string; entityId: string | null; callId?: string }): Promise<void>;
 }
 
-export type SmsTemplate = 'booking_confirmed' | 'request_ready';
+export type SmsTemplate = keyof LanguagePack['sms'];
 /** Why a text did not go: refused before the carrier, or refused by it. */
-export type TextRefusal = 'opted_out' | 'rate_limited' | 'no_number' | 'texting_off' | 'unregistered' | 'carrier';
+export type TextRefusal = 'opted_out' | 'rate_limited' | 'no_number' | 'texting_off' | 'unregistered' | 'carrier' | 'test_call';
 
 export interface TextRequest {
   to: string; template: SmsTemplate; vars: Record<string, string>; idempotencyKey: string; language?: Language;
@@ -118,6 +118,8 @@ export interface TextRequest {
   about?: { callId?: string | null; patientId?: string | null; taskId?: string | null; appointmentId?: string | null };
   /** Where on the call the caller said yes (kind 'asked'). */
   consentAtMs?: number | null;
+  /** A browser test call: recorded as not sent, never sent, so staff see what a caller would have got. */
+  testCall?: boolean;
 }
 
 export type TextResult =
@@ -129,4 +131,6 @@ export interface Messenger {
   // templates only: free text could carry PHI to a carrier that has no BAA.
   // Never throws: the caller (a booking, a job) decides what to say about a text that did not go.
   sendTemplate(clinicId: string, input: TextRequest): Promise<TextResult>;
+  /** Whether a number has opted out of this clinic's texts (replied STOP), so the assistant does not offer one. */
+  optedOut?(clinicId: string, to: string): Promise<boolean>;
 }

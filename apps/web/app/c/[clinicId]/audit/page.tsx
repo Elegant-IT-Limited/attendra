@@ -90,12 +90,18 @@ const ACTIONS: Record<string, string> = {
   'task.done.refill_declined': 'Declined a refill',
   'member.refill_approval.on': 'Allowed someone to approve refills',
   'member.refill_approval.off': 'Stopped someone approving refills',
+  'clinic.texting.on': 'Texting during calls was turned on (text registration approved)',
+  'clinic.texting.off': 'Texting during calls was turned off',
+  'sms.consent.asked': 'A caller said yes to a text',
   'clinic.settings.conflict': 'Tried to save Settings over someone else\'s newer save',
 };
-const TEXTS: Record<string, string> = { booking_confirmed: 'a booking confirmation', request_ready: 'that a request is ready to pick up' };
+const TEXTS: Record<string, string> = {
+  booking_confirmed: 'a booking confirmation', request_ready: 'that a request is ready to pick up', change_confirmed: 'that a visit moved', cancel_confirmed: 'that a visit was cancelled',
+  directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a doctor\'s details', answer: 'an answer', link: 'one of the clinic\'s links',
+};
 const NOT_SENT: Record<string, string> = {
   opted_out: 'the number opted out', rate_limited: 'too many texts to that number today', no_number: 'no mobile number',
-  texting_off: 'texting is off', unregistered: 'text registration is not approved yet', carrier: 'the carrier refused it',
+  texting_off: 'texting is off', test_call: 'a test call never texts anyone', unregistered: 'text registration is not approved yet', carrier: 'the carrier refused it',
 };
 
 // what an agent did through an API key, by MCP tool

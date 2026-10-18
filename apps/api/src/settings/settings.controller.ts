@@ -46,7 +46,8 @@ export class SettingsController {
 
   private async who(clinicId: string, s: { updatedAt: Date | null; updatedBy: string | null }) {
     const names = s.updatedBy ? await staffNames(this.db, clinicId, [s.updatedBy]) : new Map<string, string>();
-    return { updatedAt: s.updatedAt?.toISOString() ?? null, updatedBy: s.updatedBy ? { name: names.get(s.updatedBy) ?? 'A former team member' } : null };
+    // the hosting layer switches texting on itself; it is not a person on the team
+    return { updatedAt: s.updatedAt?.toISOString() ?? null, updatedBy: s.updatedBy ? { name: s.updatedBy === 'provisioning' ? 'Attendra' : names.get(s.updatedBy) ?? 'A former team member' } : null };
   }
 
   /**

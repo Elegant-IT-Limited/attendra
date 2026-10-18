@@ -203,6 +203,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (e.verified !== undefined) check(!!state.verifiedPatient === e.verified, `verified ${!!state.verifiedPatient}, expected ${e.verified}`);
   check(created === e.bookings_created, `${created} bookings created, expected ${e.bookings_created}`);
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
+  if (e.sms_templates.length) check(JSON.stringify(sms) === JSON.stringify(e.sms_templates), `texts ${JSON.stringify(sms)}, expected ${JSON.stringify(e.sms_templates)}`);
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
   check(outbound.some((o) => o.type === 'instructions') === e.emergency_instruction, `emergency instruction ${outbound.some((o) => o.type === 'instructions')}, expected ${e.emergency_instruction}`);
   if (e.cites) {

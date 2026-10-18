@@ -26,6 +26,8 @@ export interface Terms {
 export interface EmergencyDestination {
   hospital: { name: string; phone: string; address: string } | null;
   emergencyNumber: string;
+  /** The clinic texts the hospital's details: offer it once, after the script. */
+  textOffer?: boolean;
 }
 
 /**

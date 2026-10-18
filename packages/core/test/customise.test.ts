@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asE164, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { asE164, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -105,5 +105,34 @@ describe('phone numbers staff type', () => {
     expect(asE164({ phoneNumbers: ['+442079460123'] }, '07700 900123')).toBe('+447700900123');
     expect(asE164({ phoneNumbers: ['+442079460123'] }, '+1 303 555 0142')).toBe('+13035550142');
     expect(asE164({ phoneNumbers: ['+13035550100'] }, '555-0142')).toBe('555-0142');
+  });
+});
+
+describe('texting and greetings in other languages', () => {
+  it('reads an older configuration with texting off and every kind at its default', () => {
+    const c = ClinicConfig.parse(DEMO_CLINIC);
+    expect(c.texting).toBeUndefined();
+    expect(textingOf(c)).toMatchObject({ enabled: false, kinds: { change_confirmed: true, directions: true, provider: false }, links: [] });
+  });
+
+  it('refuses two links with one id, and a link that is not https', () => {
+    const link = { id: 'form', label: 'New client form', url: 'https://x.example/form', when: 'a new client asks' };
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, texting: { enabled: true, links: [link, link] } }).success).toBe(false);
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, texting: { enabled: true, links: [{ ...link, url: 'http://x.example' }] } }).success).toBe(false);
+  });
+
+  it('warns when directions are texted with no address', () => {
+    expect(clinicWarnings({ ...DEMO_CLINIC, texting: { ...textingOf(DEMO_CLINIC), enabled: true } }).some((w) => w.path === 'texting')).toBe(true);
+    expect(clinicWarnings({ ...DEMO_CLINIC, address: '214 Maple Street', texting: { ...textingOf(DEMO_CLINIC), enabled: true } }).some((w) => w.path === 'texting')).toBe(false);
+  });
+
+  it('takes a Spanish greeting only when it says it is an AI assistant, and falls back to the suggestion', () => {
+    const ok = ClinicConfig.parse({ ...DEMO_CLINIC, greetings: { es: 'Gracias por llamar. Soy Maya, la asistente virtual de la clínica. ¿En qué le puedo ayudar?' } });
+    expect(greetingFor(ok, 'es')).toContain('asistente virtual');
+    expect(greetingFor(ok, 'en')).toBe(DEMO_CLINIC.greeting);
+    const hidden = ClinicConfig.safeParse({ ...DEMO_CLINIC, greetings: { es: 'Gracias por llamar a la clínica. ¿En qué le puedo ayudar?' } });
+    expect(hidden.success).toBe(false);
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, greetings: { en: 'Thanks for calling, I am the AI assistant here.' } }).success).toBe(false); // the main language uses the greeting
+    expect(greetingFor({ ...DEMO_CLINIC, greetings: undefined }, 'es')).toBe(PACKS.es.greeting({ assistantName: DEMO_CLINIC.assistantName ?? null, clinicName: DEMO_CLINIC.name }));
   });
 });

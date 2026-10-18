@@ -145,6 +145,25 @@ it('counts the call as over when the socket drops and the final write fails', as
 });
 
 describe('the conversation prompt', () => {
+  it('sounds like a front desk by default, and follows the clinic\'s pace, style and acknowledgements', () => {
+    const plain = conversationPrompt(DEMO_CLINIC, NOW);
+    expect(plain).toContain('short turns of one or two sentences');
+    expect(plain).toContain('Speak at a natural, conversational pace.');
+    expect(plain).toContain('one moment while I check');
+    const set = conversationPrompt({ ...DEMO_CLINIC, talk: { pace: 'relaxed', style: 'professional', acknowledgements: false } }, NOW);
+    expect(set).toContain('relaxed, unhurried pace');
+    expect(set).toContain('calm and professional');
+    expect(set).toContain('without filler acknowledgements');
+    expect(set).not.toContain('one moment while I check');
+  });
+
+  it('switches to another language with that language\'s greeting, and mentions texts only when the clinic texts', () => {
+    const own = 'Gracias por llamar. Soy Maya, la asistente virtual. ¿En qué le puedo ayudar?';
+    expect(conversationPrompt({ ...DEMO_CLINIC, greetings: { es: own } }, NOW)).toContain(`If the caller speaks Spanish, switch to it and introduce yourself once with exactly: "${own}"`);
+    expect(conversationPrompt(DEMO_CLINIC, NOW)).not.toMatch(/text the caller/i);
+    expect(conversationPrompt({ ...DEMO_CLINIC, texting: { enabled: true, kinds: { change_confirmed: true, directions: true, hours: true, emergency_hospital: true, provider: false, answer: true, link: true }, links: [] } }, NOW)).toMatch(/You can text the caller/);
+  });
+
   it('carries the greeting, the AI disclosure and today\'s hours, and nothing about any patient', () => {
     const prompt = conversationPrompt(DEMO_CLINIC, NOW);
     expect(prompt).toContain("I'm Maya, the clinic's AI assistant");

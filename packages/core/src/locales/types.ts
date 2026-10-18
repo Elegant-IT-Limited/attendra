@@ -40,7 +40,25 @@ export interface LanguagePack {
     booking_confirmed: (v: Record<string, string>) => string;
     /** A request the team approved is ready to pick up: never what it is. */
     request_ready: (v: Record<string, string>) => string;
+    /** A visit moved or cancelled on the phone: sent without asking, like the booking one. */
+    change_confirmed: (v: Record<string, string>) => string;
+    cancel_confirmed: (v: Record<string, string>) => string;
+    /** Texted during a call, only after the caller said yes to the offer. */
+    directions: (v: Record<string, string>) => string;
+    hours: (v: Record<string, string>) => string;
+    emergency_hospital: (v: Record<string, string>) => string;
+    provider: (v: Record<string, string>) => string;
+    answer: (v: Record<string, string>) => string;
+    link: (v: Record<string, string>) => string;
   };
+  /** The question before an in-call text: to the number they are calling from, or the one on their file. */
+  textOffer: (v: { target: 'this' | 'file' }) => string;
+  /** Said once the text has gone. */
+  textSent: string;
+  /** Said instead of texting. */
+  textRefused: (v: { reason: 'opted_out' | 'off' }) => string;
+  /** Monday first: "Mon" … "Sun", for a short hours text. */
+  shortDays: [string, string, string, string, string, string, string];
   /** The answer to a text sent to the clinic's number that is not STOP or START: replies are not read. */
   smsNoReplies: (v: { clinicPhone: string }) => string;
 

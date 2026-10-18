@@ -11,6 +11,14 @@ import { shortWhen } from '@/lib/format';
 export const TEXT_TEMPLATES: Record<string, string> = {
   booking_confirmed: 'Booking confirmation',
   request_ready: 'Ready to pick up',
+  change_confirmed: 'Visit moved',
+  cancel_confirmed: 'Visit cancelled',
+  directions: 'Address and map',
+  hours: 'Opening hours',
+  emergency_hospital: 'Emergency hospital',
+  provider: 'Doctor\'s details',
+  answer: 'Answer to a question',
+  link: 'Link',
 };
 
 const REASONS: Record<string, string> = {
@@ -20,6 +28,7 @@ const REASONS: Record<string, string> = {
   texting_off: 'texting is off',
   unregistered: 'text registration (A2P) is not approved yet',
   carrier: 'the carrier refused it',
+  test_call: 'a test call never texts anyone',
 };
 
 /** One line per text: a status, and what it was with when or why not. */
@@ -54,12 +63,14 @@ export function TextStatus({ clinicId, filter, timeZone, empty, last4 = false }:
     <ul className="space-y-1.5" aria-label="Texts">
       {rows.map((t) => {
         const line = textLine(t, timeZone);
+        // a text asked for on the call: when the caller said yes, to find it in the transcript
+        const yes = t.kind === 'asked' && t.consentAtMs !== null ? ` · asked for at ${Math.floor(t.consentAtMs / 60_000)}:${String(Math.floor((t.consentAtMs % 60_000) / 1000)).padStart(2, '0')} into the call` : '';
         return (
           <li key={t.id} className="flex items-start gap-2 text-sm">
             <MessageSquare className="mt-0.5 size-4 shrink-0 text-text-muted" aria-hidden />
             <span className="min-w-0">
               <StatusPill tone={line.tone} className="mr-1.5 align-middle">{line.label}</StatusPill>
-              {line.detail}
+              {line.detail}{yes}
               {last4 && t.toLast4 ? <span className="text-text-muted"> · to the number ending {t.toLast4}</span> : null}
             </span>
           </li>

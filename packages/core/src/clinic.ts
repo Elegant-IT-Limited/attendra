@@ -133,6 +133,48 @@ export const EmergencyHospital = z.object({
 });
 export type EmergencyHospital = z.infer<typeof EmergencyHospital>;
 
+/** What the assistant may text a caller during a call, after a spoken yes; and the automatic change confirmations. */
+export const TEXT_KINDS = ['change_confirmed', 'directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] as const;
+export type TextKind = (typeof TEXT_KINDS)[number];
+
+/** A link the clinic lets the assistant text: new-client paperwork, a price list, a form. */
+export const TextLink = z.object({
+  id: z.string().regex(/^[a-z0-9_-]{1,40}$/),
+  // what the text calls it: "New client form"
+  label: z.string().trim().min(2).max(40),
+  url: z.string().trim().max(300).regex(/^https:\/\//, 'a link starts with https://'),
+  // when to offer it, in the clinic's words: "a new client asks about paperwork"
+  when: z.string().trim().min(2).max(120),
+});
+
+export const Texting = z.object({
+  // the switch for texts asked for on a call; a hosted clinic has it turned on when its texting registration is approved
+  enabled: z.boolean().default(false),
+  kinds: z.object({
+    // a confirmation when a visit is moved or cancelled on the phone, sent without asking, like the booking one
+    change_confirmed: z.boolean().default(true),
+    directions: z.boolean().default(true),
+    hours: z.boolean().default(true),
+    emergency_hospital: z.boolean().default(true),
+    provider: z.boolean().default(false),
+    answer: z.boolean().default(true),
+    link: z.boolean().default(true),
+  }).default({ change_confirmed: true, directions: true, hours: true, emergency_hospital: true, provider: false, answer: true, link: true }),
+  // the clinic's own map link; without one, a Google Maps search of the address
+  mapUrl: z.string().trim().max(300).regex(/^https:\/\//, 'a link starts with https://').optional(),
+  links: z.array(TextLink).max(10).default([]),
+});
+export type Texting = z.infer<typeof Texting>;
+
+/** How the assistant talks: a few lines in its instructions. The rules it follows are in code and do not change with these. */
+export const TalkStyle = z.object({
+  pace: z.enum(['relaxed', 'normal', 'brisk']).default('normal'),
+  style: z.enum(['warm', 'efficient', 'professional']).default('efficient'),
+  // short acknowledgements ("Got it", "Sure, one moment") instead of silence
+  acknowledgements: z.boolean().default(true),
+});
+export type TalkStyle = z.infer<typeof TalkStyle>;
+
 /** A caller the clinic always wants a person to answer: a partner vet, a breeder, the owner's family. */
 export const VipCaller = z.object({
   name: z.string().trim().min(1).max(60),
@@ -161,6 +203,10 @@ const ClinicConfigShape = z.object({
   holidays: z.array(isoDate).default([]),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)
   greeting: z.string().max(400),
+  // the greeting in each other language the assistant speaks; absent: that language's suggested greeting
+  greetings: z.partialRecord(LanguageSchema, z.string().trim().min(10).max(400)).optional(),
+  // how it talks: pace, style, acknowledgements
+  talk: TalkStyle.optional(),
   // a first name the assistant introduces itself with ("Maya"); without one it is "the clinic's assistant"
   assistantName: z.string().trim().regex(/^[\p{L}\p{M}]{2,24}$/u, 'the assistant name is one word of 2 to 24 letters').optional(),
   // the languages the assistant speaks on this clinic's calls; the primary one is spoken first
@@ -181,6 +227,8 @@ const ClinicConfigShape = z.object({
   menuLinks: z.array(MenuLink).max(8).optional(),
   // the clinic's own details on each pet or patient, filled in by staff on the record
   customFields: z.array(CustomField).max(20).optional(),
+  // texts during a call and change confirmations
+  texting: Texting.optional(),
   // numbers that go straight to the front desk while it takes transfers
   vipCallers: z.array(VipCaller).max(50).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
@@ -218,6 +266,16 @@ const ClinicConfigShape = z.object({
   // a value on a record is kept under its field's id
   const field = dupe((c.customFields ?? []).map((f) => f.id));
   if (field) ctx.addIssue({ code: 'custom', path: ['customFields'], message: `two fields have the id ${field}` });
+  const link = dupe((c.texting?.links ?? []).map((l) => l.id));
+  if (link) ctx.addIssue({ code: 'custom', path: ['texting', 'links'], message: `two links have the id ${link}` });
+  // each other language's greeting discloses the AI in that language, like the main one
+  for (const [l, text] of Object.entries(c.greetings ?? {}) as [Language, string][]) {
+    if (l === c.primaryLanguage || !c.languages.includes(l)) {
+      ctx.addIssue({ code: 'custom', path: ['greetings', l], message: `a ${PACKS[l].name} greeting is only for a language the assistant also speaks, other than the main one` });
+    } else if (!PACKS[l].disclosure.test(normalise(text))) {
+      ctx.addIssue({ code: 'custom', path: ['greetings', l], message: `the ${PACKS[l].name} greeting must say that the caller is speaking with an AI assistant` });
+    }
+  }
 
   // A name is never a disclosure: "Hi, I'm Maya" sounds like a person. The greeting
   // must say AI assistant (or the same in one of the clinic's languages) whatever the
@@ -244,6 +302,7 @@ function withoutRetiredLanguages(raw: unknown): unknown {
   for (const key of ['providers', 'visitTypes'] as const) {
     if (Array.isArray(c[key])) c[key] = (c[key] as Record<string, unknown>[]).map((x) => (x && typeof x === 'object' && 'names' in x ? { ...x, names: knownNames(x.names) } : x));
   }
+  if (c.greetings && typeof c.greetings === 'object') c.greetings = knownNames(c.greetings);
   const listed = Array.isArray(c.languages) ? (c.languages as unknown[]) : null;
   const retired = !!listed?.some((l) => !isLanguage(l)) || (c.primaryLanguage !== undefined && !isLanguage(c.primaryLanguage));
   if (!retired) return c;
@@ -267,8 +326,9 @@ export type ClinicConfig = z.infer<typeof ClinicConfig>;
  * callers should not hear it; but a clinic may be called something like it, so
  * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
  */
-export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers'>>): { path: 'greeting' | 'assistantName' | 'routing'; message: string }[] {
-  const out: { path: 'greeting' | 'assistantName' | 'routing'; message: string }[] = [];
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting'; message: string }[] {
+  const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting'; message: string }[] = [];
+  if (c.texting?.enabled && c.texting.kinds.directions && !c.address?.trim()) out.push({ path: 'texting', message: 'Directions texts are on, but the clinic has no address. Add it under General.' });
   if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });
   if (c.assistantName && /attendra/i.test(c.assistantName)) out.push({ path: 'assistantName', message: 'The assistant is named after the software. Callers should hear a name of the clinic\'s own.' });
   // a transfer to a line that is forwarded to the assistant comes straight back to the assistant
@@ -299,3 +359,12 @@ export type RoutingRule = z.infer<typeof RoutingRule>;
 /** The name a provider or visit type is said with in a language, falling back to the clinic's own. */
 export const localName = (thing: { name: string; names?: Partial<Record<Language, string>> }, language: Language) =>
   thing.names?.[language] ?? thing.name;
+
+/** The greeting for a language: the main greeting, the clinic's own for another language, or that language's suggestion. */
+export function greetingFor(c: Pick<ClinicConfig, 'greeting' | 'greetings' | 'primaryLanguage' | 'assistantName' | 'name'>, language: Language): string {
+  if (language === c.primaryLanguage) return c.greeting;
+  return c.greetings?.[language] ?? PACKS[language].greeting({ assistantName: c.assistantName ?? null, clinicName: c.name });
+}
+
+/** The clinic's texting settings, with every default filled in. */
+export const textingOf = (c: Pick<ClinicConfig, 'texting'>): Texting => c.texting ?? Texting.parse({});
