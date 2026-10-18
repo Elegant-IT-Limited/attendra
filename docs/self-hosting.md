@@ -14,6 +14,7 @@ This guide takes a fresh checkout to a phone number that answers. Use synthetic 
 2. Create an Elastic SIP Trunk. Under **Origination**, add the OpenAI SIP URI above as the origination URI. Enable secure trunking (TLS and SRTP).
 3. Point the number's voice configuration at the trunk.
 4. For SMS confirmations, register the number for A2P 10DLC before sending to US mobiles.
+5. Under the number's **Messaging** configuration, set "A message comes in" to `https://<voice service>/webhooks/twilio/sms-inbound` (HTTP POST), and set `ATTENDRA_VOICE_PUBLIC_URL` to `https://<voice service>` for the voice service and the worker. Replies like STOP are then kept, so nobody who opted out is texted again, and each text's delivery is reported back (the status address is set on every text). Requests are checked against Twilio's signature with `TWILIO_AUTH_TOKEN`.
 
 Twilio's walkthrough of the same trunk setup: <https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking>.
 
@@ -28,7 +29,7 @@ Compose starts Postgres, applies the migrations, loads the demo clinic ("Maple S
 
 Optional services, each off until you want it: `--profile voice` for calls, `--profile mcp` for other AI agents over MCP ([mcp.md](mcp.md)). The worker always runs.
 
-**New in v0.4, in `.env`:** `ATTENDRA_SUMMARY_MODEL` (call summaries), `ATTENDRA_EMBEDDING_MODEL` (the clinic's documents, the same value for the worker, voice and API), `ATTENDRA_SMS_STATUS` (not wired yet: nothing produces the status jobs, so leave it off), `ATTENDRA_JUDGE_MODEL` and `ATTENDRA_SIM_MODEL` (quality tools you run by hand), and `MCP_PORT` (MCP; the stdio bridge takes its URL and key in the desktop client's config). `.env.example` explains each one. Without `OPENAI_API_KEY` the worker still runs: summaries are written from each call's facts, and documents are embedded locally.
+**New in v0.4, in `.env`:** `ATTENDRA_SUMMARY_MODEL` (call summaries), `ATTENDRA_EMBEDDING_MODEL` (the clinic's documents, the same value for the worker, voice and API), `ATTENDRA_JUDGE_MODEL` and `ATTENDRA_SIM_MODEL` (quality tools you run by hand), and `MCP_PORT` (MCP; the stdio bridge takes its URL and key in the desktop client's config). `.env.example` explains each one. Without `OPENAI_API_KEY` the worker still runs: summaries are written from each call's facts, and documents are embedded locally.
 
 Then add yourself and point your number at the clinic:
 

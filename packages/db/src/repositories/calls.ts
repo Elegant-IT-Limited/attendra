@@ -54,11 +54,11 @@ export class CallRepository {
     });
   }
 
-  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean }) {
+  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string }) {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
-        outcome: c.outcome, emergencyFlag: c.emergency,
+        outcome: c.outcome, emergencyFlag: c.emergency, ...(c.language ? { language: c.language } : {}),
       }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
       // what the call wrote, as counts on one row: a row per line or step would bury staff access in the log
       const [lines] = await tx.select({ n: sql<number>`count(*)::int` }).from(callSegments).where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId)));

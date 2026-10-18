@@ -17,8 +17,15 @@ jobs:
       - run: pnpm typecheck
       - name: unit, integration and eval scenarios (Postgres in-process)
         run: pnpm test
+      # The same scenarios already passed in the step above; this prints the report. Node
+      # 24.21.0 has twice crashed inside V8 here (exit 133, a signal) under the in-process
+      # Postgres, so a crash by signal is tried once more. A failed scenario is not.
       - name: eval report
-        run: pnpm eval
+        run: |
+          set +e
+          pnpm eval; code=$?
+          if [ "$code" -ge 128 ]; then echo "::warning::eval report crashed (exit $code); running it once more"; pnpm eval; code=$?; fi
+          exit $code
         env: { FORCE_COLOR: '1' }
       - name: dashboard builds
         run: pnpm --filter @attendra/web build

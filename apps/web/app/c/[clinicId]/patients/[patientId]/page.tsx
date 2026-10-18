@@ -12,6 +12,7 @@ import { CustomFieldsForm } from '@/components/patients/custom-fields';
 import { PatientForm } from '@/components/patients/patient-form';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
+import { TextStatus } from '@/components/calls/text-status';
 import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -154,6 +155,14 @@ export default function PatientPage() {
                 ))}
               </ul>
             )}
+          </Card>
+        )}
+        {tab === 'calls' && (
+          <Card className="mt-4">
+            <CardContent className="py-5">
+              <h2 className="mb-3 text-sm font-semibold">Texts</h2>
+              <TextStatus clinicId={clinicId} filter={{ patientId: p.id }} timeZone={tz} last4 empty={`No texts to ${pet ? 'this owner' : 'this patient'} yet. Booking confirmations and ready-to-pick-up texts appear here, with whether they arrived.`} />
+            </CardContent>
           </Card>
         )}
         {tab === 'requests' && (

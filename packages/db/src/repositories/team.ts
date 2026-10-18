@@ -17,7 +17,7 @@ export const TEMPORARY_PASSWORD_HOURS = 72;
 export async function listMembers(db: Database, orgId: string) {
   return db.select({
     userId: authUsers.id, name: authUsers.name, email: authUsers.email, role: memberships.role, twoFactorEnabled: authUsers.twoFactorEnabled,
-    mustChangePassword: authUsers.mustChangePassword, addedAt: memberships.createdAt,
+    mustChangePassword: authUsers.mustChangePassword, addedAt: memberships.createdAt, approvesRefills: memberships.approvesRefills,
   }).from(memberships).innerJoin(authUsers, eq(authUsers.id, memberships.userId))
     .where(eq(memberships.organizationId, orgId)).orderBy(authUsers.name);
 }
@@ -40,8 +40,9 @@ export async function clearTemporaryPassword(db: Database, userId: string) {
 }
 
 export type TeamChange =
-  | { type: 'add'; userId: string; role: StaffRole; temporary: boolean }
+  | { type: 'add'; userId: string; role: StaffRole; temporary: boolean; approvesRefills?: boolean }
   | { type: 'role'; userId: string; role: StaffRole }
+  | { type: 'refills'; userId: string; approves: boolean }
   | { type: 'remove'; userId: string }
   | { type: 'reset'; userId: string; passwordHash: string };
 
@@ -54,13 +55,14 @@ export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' |
  * checks below and the change see the same team: two managers removing the last
  * two owners at once end with one owner, not none. The rules: nobody changes,
  * removes or resets themselves here; only an owner touches an owner or makes one;
- * the last owner stays. Every clinic of the organization gets the audit row, with
+ * the last owner stays. Who may approve refills follows the same rules, except that
+ * an owner may mark themselves. Every clinic of the organization gets the audit row, with
  * the clinic set for its row-level policy before each insert.
  */
 export async function changeTeam(db: Database, orgId: string, actor: { userId: string; role: StaffRole }, change: TeamChange, now = new Date()): Promise<TeamResult> {
   return db.transaction(async (tx) => {
-    const team = await tx.execute(sql`select user_id, role from memberships where organization_id = ${orgId} for update`);
-    const rows = team.rows as { user_id: string; role: StaffRole }[];
+    const team = await tx.execute(sql`select user_id, role, approves_refills from memberships where organization_id = ${orgId} for update`);
+    const rows = team.rows as { user_id: string; role: StaffRole; approves_refills: boolean }[];
     const target = rows.find((r) => r.user_id === change.userId);
     const owners = rows.filter((r) => r.role === 'owner').length;
     const isOwner = actor.role === 'owner';
@@ -68,13 +70,22 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
     if (change.type === 'add') {
       if (target) return 'already_member';
       if (change.role === 'owner' && !isOwner) return 'owner_grant';
-      await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId: change.userId, role: change.role });
+      await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId: change.userId, role: change.role, approvesRefills: !!change.approvesRefills });
       if (change.temporary) await markTemporaryPassword(tx, change.userId, now);
       await audit(tx, orgId, actor.userId, `member.added:${change.role}`, change.userId);
+      if (change.approvesRefills) await audit(tx, orgId, actor.userId, 'member.refill_approval.on', change.userId);
       return 'done';
     }
 
     if (!target) return 'not_found';
+    if (change.type === 'refills') {
+      if (change.userId === actor.userId && !isOwner) return 'self';
+      if (target.role === 'owner' && !isOwner) return 'owner_protected';
+      if (target.approves_refills === change.approves) return 'unchanged';
+      await tx.update(memberships).set({ approvesRefills: change.approves }).where(and(eq(memberships.organizationId, orgId), eq(memberships.userId, change.userId)));
+      await audit(tx, orgId, actor.userId, `member.refill_approval.${change.approves ? 'on' : 'off'}`, change.userId);
+      return 'done';
+    }
     if (change.userId === actor.userId) return 'self';
     if (target.role === 'owner' && !isOwner) return 'owner_protected';
 

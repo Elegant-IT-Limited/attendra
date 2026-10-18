@@ -165,8 +165,12 @@ describe('the tools', () => {
     expect(list.data.requests).toEqual([expect.objectContaining({ requestId: taskId, type: 'refill', urgent: false, dueOn: null, patient: 'James Whitaker', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
     expect(await call(reader, 'mark_request_done', { requestId: taskId, outcome: 'refill_sent' })).toMatchObject({ error: true, text: expect.stringContaining('requests:write') });
     const writer = await clientFor((await make(['requests:write'])).key);
-    expect((await call(writer, 'mark_request_done', { requestId: taskId, outcome: 'refill_sent' })).data).toEqual({ requestId: taskId, status: 'done' });
-    expect(done.at(-1)).toMatchObject({ requestId: taskId, type: 'refill', outcome: 'refill_sent' });
+    // the key's maker is not marked as approving refills: an agent cannot approve one in their name
+    for (const outcome of ['refill_sent', 'refill_ready', 'refill_declined']) {
+      expect((await call(writer, 'mark_request_done', { requestId: taskId, outcome })).data).toEqual({ requestId: taskId, status: 'refill_approval_required' });
+    }
+    expect((await call(writer, 'mark_request_done', { requestId: taskId, outcome: 'called_back' })).data).toEqual({ requestId: taskId, status: 'done' });
+    expect(done.at(-1)).toMatchObject({ requestId: taskId, type: 'refill', outcome: 'called_back' });
     expect((await call(writer, 'mark_request_done', { requestId: '00000000-0000-4000-8000-000000000000', outcome: 'not_needed' })).data.status).toBe('not_found');
     expect((await call(reader, 'list_open_requests')).data.requests).toEqual([]);
   });

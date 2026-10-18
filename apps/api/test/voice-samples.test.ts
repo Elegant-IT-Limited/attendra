@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { BUILT_IN_VOICES, DEMO_CLINIC, hasPreview, PREVIEW_VOICES } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OTHER, startApi } from './helpers';
@@ -22,6 +22,7 @@ describe('hearing a voice before choosing it', () => {
     const res = await api.request('GET', `${C}?voice=cedar`, { cookie: owner });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('audio/mpeg');
+    expect(res.headers['cache-control']).toBe('no-store'); // a changed greeting is never heard from an old copy
     expect(sample).toHaveBeenCalledWith('cedar', DEMO_CLINIC.greeting.slice(0, 300));
     await api.request('GET', `${C}?voice=cedar`, { cookie: viewer }); // anyone who can read Settings
     expect(sample).toHaveBeenCalledTimes(1); // the second one came from the cache
@@ -32,8 +33,8 @@ describe('hearing a voice before choosing it', () => {
   it('refuses a voice that is not built in, another clinic, and says when a voice has no sample', async () => {
     expect((await api.request('GET', `${C}?voice=nobody`, { cookie: owner })).statusCode).toBe(422);
     expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/voice-sample?voice=cedar`, { cookie: owner })).statusCode).toBe(404);
-    sample.mockRejectedValueOnce(new Error('unsupported voice'));
-    const res = await api.request('GET', `${C}?voice=tempo`, { cookie: owner });
+    sample.mockRejectedValueOnce(new Error('model unavailable'));
+    const res = await api.request('GET', `${C}?voice=ash`, { cookie: owner });
     expect(res.statusCode).toBe(422);
     expect(res.json().error).toBe('no_sample');
   });
@@ -46,5 +47,20 @@ describe('without a voice sampler', () => {
     const res = await off.request('GET', `${C}?voice=cedar`, { cookie });
     expect(res.statusCode).toBe(503);
     await off.close();
+  });
+});
+
+describe('voices only the Live model has', () => {
+  it('say they are heard in a test call, without asking any model', async () => {
+    sample.mockClear();
+    const res = await api.request('GET', `${C}?voice=tempo`, { cookie: owner });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error).toBe('calls_only');
+    expect(sample).not.toHaveBeenCalled();
+  });
+
+  it('the preview list is the speech model\'s voices, all of them phone voices', () => {
+    expect(PREVIEW_VOICES.every((v) => (BUILT_IN_VOICES as readonly string[]).includes(v))).toBe(true);
+    expect(hasPreview('marin') && !hasPreview('tempo')).toBe(true);
   });
 });

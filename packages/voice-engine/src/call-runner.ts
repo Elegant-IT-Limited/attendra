@@ -6,7 +6,7 @@ import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
-  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean }): Promise<void>;
+  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string }): Promise<void>;
 }
 
 /**
@@ -144,7 +144,7 @@ export class CallRunner {
     const state = this.agent.state;
     // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
     if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';
-    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome: state.outcome, emergency: !!state.emergency });
+    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome: state.outcome, emergency: !!state.emergency, language: state.language });
     this.log.info({ session_id: this.sessionId, reason, outcome: state.outcome, voice_seconds: voiceSeconds }, 'call finished');
     this.sideband.close();
   }

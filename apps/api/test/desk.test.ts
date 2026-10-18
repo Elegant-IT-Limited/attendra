@@ -256,6 +256,22 @@ describe('the team', () => {
     expect(await audit('member.role.changed:owner')).toEqual(expect.arrayContaining([{ actor: `user:${api.users.owner}`, entity_id: api.users.admin }]));
   });
 
+  it('marks who may approve refills: managers on anyone but an owner, an owner on themselves, nobody else on themselves; audited', async () => {
+    const set = (cookie: string, userId: string, approvesRefills: boolean) => api.request('PATCH', `${M}/${userId}`, { cookie, body: { approvesRefills } });
+    expect((await set(as.admin, api.users.owner, true)).statusCode).toBe(403);
+    expect((await set(as.admin, api.users.admin, true)).statusCode).toBe(403);
+    expect((await set(as.owner, api.users.owner, true)).statusCode).toBe(204);
+    expect((await set(as.admin, api.users.viewer, true)).statusCode).toBe(204);
+    const members = (await api.request('GET', M, { cookie: as.owner })).json().members as { userId: string; approvesRefills: boolean }[];
+    expect(members.find((m) => m.userId === api.users.viewer)?.approvesRefills).toBe(true);
+    const me = (await api.request('GET', '/api/v1/me', { cookie: as.owner })).json();
+    expect(me.clinics.find((c: { id: string }) => c.id === DEMO_CLINIC.id).approvesRefills).toBe(true);
+    expect((await set(as.admin, api.users.viewer, false)).statusCode).toBe(204);
+    const rows = await api.t.db.execute(sql`select action from audit_logs where action like 'member.refill_approval.%' and clinic_id = ${DEMO_CLINIC.id} order by id`);
+    expect((rows.rows as { action: string }[]).map((r) => r.action)).toEqual(['member.refill_approval.on', 'member.refill_approval.on', 'member.refill_approval.off']);
+    await set(as.owner, api.users.owner, false);
+  });
+
   it('changes a role, audited with the new role, and it applies at once', async () => {
     expect((await api.request('PATCH', `${M}/${api.users.viewer}`, { cookie: as.admin, body: { role: 'staff' } })).statusCode).toBe(204);
     expect((await api.request('GET', `${C}/tasks`, { cookie: as.viewer })).statusCode).toBe(200);

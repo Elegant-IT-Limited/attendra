@@ -2,13 +2,14 @@
 'use client';
 import type { AddedMember, Member, MemberList } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
@@ -37,6 +38,16 @@ export default function Team() {
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
     onMutate: () => setNotice(null),
     onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: `${m.name} is now ${label(role).toLowerCase()}. It applies to their next click.` }),
+    onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
+    onSettled: refresh,
+  });
+  const refills = useMutation({
+    mutationFn: ({ m, on }: { m: Member; on: boolean }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ approvesRefills: on }) }),
+    onMutate: () => setNotice(null),
+    onSuccess: (_r, { m, on }) => {
+      setNotice({ tone: 'info', text: on ? `${m.name} can now approve and decline refills.` : `${m.name} no longer approves refills.` });
+      void queries.invalidateQueries({ queryKey: ['me'] });
+    },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
@@ -71,7 +82,7 @@ export default function Team() {
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
             <Table>
-              <THead><tr><TH>Name</TH><TH>Role</TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
+              <THead><tr><TH>Name</TH><TH>Role</TH><TH><span title="A veterinarian or prescriber who may approve or decline refill requests">Approves refills</span></TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
               <tbody>
                 {members.data!.members.map((m) => {
                   const locked = m.you || (m.role === 'owner' && myRole !== 'owner');
@@ -91,6 +102,17 @@ export default function Team() {
                           </>
                         )}
                       </TD>
+                      <TD>
+                        {(m.role === 'owner' && myRole !== 'owner') || (m.you && myRole !== 'owner') ? (
+                          // not theirs to change here: said in words, not a greyed-out box
+                          <span className="inline-flex items-center gap-1 text-sm" title={m.you ? 'An owner changes this for you.' : 'Only an owner changes this for an owner.'}>
+                            {m.approvesRefills ? <><Check className="size-4 text-primary" aria-hidden /> Yes</> : <span className="text-text-muted">No</span>}
+                          </span>
+                        ) : (
+                          <input id={`refills-${m.userId}`} type="checkbox" className="focus-ring size-4 accent-primary disabled:opacity-50" checked={m.approvesRefills}
+                            disabled={refills.isPending} aria-label={`${m.name} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
+                        )}
+                      </TD>
                       <TD className="hidden md:table-cell">
                         {m.mustChangePassword ? <span className="inline-flex items-center gap-1 text-sm text-text-muted"><KeyRound className="size-4" /> Has not chosen a password yet</span>
                           : m.twoFactorEnabled ? <span className="inline-flex items-center gap-1 text-sm"><ShieldCheck className="size-4 text-primary" /> Two-step on</span>
@@ -107,7 +129,7 @@ export default function Team() {
             </Table>
           )}
       </Card>
-      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Every change is in the audit log.</p>
+      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
 
       <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
       <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}
@@ -129,13 +151,13 @@ export default function Team() {
 }
 
 function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
-  const [form, setForm] = useState({ name: '', email: '', role: 'staff' });
+  const [form, setForm] = useState({ name: '', email: '', role: 'staff', approvesRefills: false });
   const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
   const add = useMutation({
-    mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify(form) }),
+    mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ ...form, approvesRefills: form.role !== 'viewer' && form.approvesRefills }) }),
     onSuccess: (r) => { setAdded({ ...r, name: form.name, email: form.email }); onAdded(); },
   });
-  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff' }); add.reset(); } onOpenChange(o); };
+  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff', approvesRefills: false }); add.reset(); } onOpenChange(o); };
   const submit = (e: FormEvent) => { e.preventDefault(); add.mutate(); };
 
   return (
@@ -157,6 +179,12 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
               </Select>
               <p className="text-xs text-text-muted">{ROLES.find((r) => r.id === form.role)?.detail}</p>
             </div>
+            {/* a viewer never closes requests, so the question is not asked for one */}
+            {form.role !== 'viewer' && (
+              <Checkbox id="member-refills" label="Approves refills" checked={form.approvesRefills}
+                hint="A veterinarian who may close a refill as sent to the pharmacy, ready to pick up or not approved."
+                onCheckedChange={(v) => setForm({ ...form, approvesRefills: v })} />
+            )}
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => close(false)}>Cancel</Button>

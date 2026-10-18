@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { BUILT_IN_VOICES, ClinicConfig } from '@attendra/core';
+import { BUILT_IN_VOICES, ClinicConfig, hasPreview } from '@attendra/core';
 import type { FrontDeskRepository } from '@attendra/db';
-import { Controller, Get, HttpException, Inject, NotFoundException, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
+import { Controller, Get, HttpException, Inject, NotFoundException, Optional, Param, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiCookieAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { Requires } from '../http/staff.guard';
-import { FRONT_DESK, VOICE_SAMPLES, type VoiceSampler } from '../http/tokens';
+import { FRONT_DESK, LOGGER, VOICE_SAMPLES, type VoiceSampler } from '../http/tokens';
+import type { Logger } from '@attendra/observability';
 
 const PER_CLINIC = 30; // samples per clinic in ten minutes: enough to try every voice, not to run up a bill
 const WINDOW_MS = 10 * 60_000;
@@ -24,13 +25,15 @@ export class VoiceSamplesController {
   private readonly cache = new Map<string, Buffer>();
   private readonly recent = new Map<string, number[]>();
 
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(VOICE_SAMPLES) private readonly sampler: VoiceSampler | null) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(VOICE_SAMPLES) private readonly sampler: VoiceSampler | null, @Optional() @Inject(LOGGER) private readonly log?: Logger) {}
 
   @Get()
   @Requires('settings:read')
   @ApiOperation({ summary: 'The clinic\'s greeting, spoken in one of the built-in voices (audio/mpeg). Not audited: no patient data.' })
   async sample(@Param('clinicId') clinicId: string, @Query('voice') voice: string, @Res() reply: FastifyReply) {
     if (!(BUILT_IN_VOICES as readonly string[]).includes(voice)) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'voice', message: 'not a built-in voice' }] });
+    // checked before the rate limit and the model: nothing to make
+    if (!hasPreview(voice)) throw new UnprocessableEntityException({ error: 'calls_only', message: 'This voice is only on calls, so it has no preview. Hear it in a test call.' });
     if (!this.sampler) throw new HttpException({ error: 'voice_samples_off', message: 'Voice samples are not switched on here. Try the voice in a test call.' }, 503);
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
@@ -44,12 +47,15 @@ export class VoiceSamplesController {
       this.recent.set(clinicId, [...times, now]);
       try {
         audio = await this.sampler.sample(voice, text);
-      } catch {
-        throw new UnprocessableEntityException({ error: 'no_sample', message: 'This voice has no sample yet. Try it in a test call.' });
+      } catch (err) {
+        // the greeting is the clinic's, not a caller's: the reason is safe to log
+        this.log?.warn({ clinic_id: clinicId, voice, err: { message: (err as Error).message } }, 'voice sample failed');
+        throw new UnprocessableEntityException({ error: 'no_sample', message: 'This voice could not be sampled right now. Try again, or hear it in a test call.' });
       }
       if (this.cache.size >= CACHE) this.cache.delete(this.cache.keys().next().value!);
       this.cache.set(key, audio);
     }
-    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'private, max-age=3600').send(audio);
+    // never kept by the browser: the address is the same after the greeting changes, and the server keeps its own copy
+    return reply.header('content-type', 'audio/mpeg').header('cache-control', 'no-store').send(audio);
   }
 }

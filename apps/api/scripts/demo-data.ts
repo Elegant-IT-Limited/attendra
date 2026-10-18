@@ -14,9 +14,9 @@ import { addMember } from '../src/members';
 /** The demo logins. Cedar Park and Riverbend (the veterinary clinic) each have an organization of their own and see only their own clinic. */
 export const DEMO_LOGINS = [
   { email: 'frontdesk@maple-demo.test', name: 'Jordan (front desk)', label: 'Front desk', role: 'staff' as const, orgId: 'org_demo' },
-  { email: 'manager@maple-demo.test', name: 'Priya (practice manager)', label: 'Practice manager', role: 'admin' as const, orgId: 'org_demo' },
+  { email: 'manager@maple-demo.test', name: 'Priya (practice manager)', label: 'Practice manager', role: 'admin' as const, orgId: 'org_demo', approvesRefills: true },
   { email: 'frontdesk@cedarpark-demo.test', name: 'Casey (front desk)', label: 'Cedar Park front desk', role: 'staff' as const, orgId: 'org_cedar_park' },
-  { email: 'manager@riverbend-demo.test', name: 'Robin (practice manager)', label: 'Vet clinic manager', role: 'admin' as const, orgId: 'org_riverbend' },
+  { email: 'manager@riverbend-demo.test', name: 'Robin (practice manager)', label: 'Vet clinic manager', role: 'admin' as const, orgId: 'org_riverbend', approvesRefills: true },
 ];
 
 /** The local demo's password (`pnpm demo`, gone when the process stops). A deployed demo gets its own. */
@@ -34,7 +34,7 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   // the veterinary clinic: its pets, its manager's login, and its call scenarios as calls from the past week
   const riverbend = await seedRiverbend(db, cipher);
   const staff: Record<string, string[]> = {};
-  for (const l of DEMO_LOGINS) (staff[l.orgId] ??= []).push(await addMember(auth, db, { email: l.email, name: l.name, role: l.role, password, orgId: l.orgId }));
+  for (const l of DEMO_LOGINS) (staff[l.orgId] ??= []).push(await addMember(auth, db, { email: l.email, name: l.name, role: l.role, password, orgId: l.orgId, approvesRefills: 'approvesRefills' in l ? l.approvesRefills : false }));
   // the clinic's documents, indexed with local embeddings: the demo needs no key for them
   await seedDemoKnowledge(db, new LocalEmbedder(), staff.org_demo![1]);
   const results = await recordDemoCalls(db, cipher, maple.patientIds, now, { bookedBy: staff.org_demo![0] });

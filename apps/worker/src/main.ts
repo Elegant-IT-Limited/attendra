@@ -17,8 +17,9 @@ const summariser = summariserFromEnv(env);
 if (summariser.model === 'local') log.warn('no OPENAI_API_KEY: calls are summarised from their facts, without a model');
 await startWorker({
   boss, db: connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') }), cipher: createPhiCipher(env.ATTENDRA_DATA_KEY), summariser, embedder: embedderFromEnv(env), log,
-  smsStatus: env.ATTENDRA_SMS_STATUS === 'on', events: eventSink(bossQueue(boss)),
-  texts: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? twilioSender(twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN)) : undefined,
+  events: eventSink(bossQueue(boss)),
+  texts: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? twilioSender(twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN, { timeout: 5000 })) : undefined,
+  sms: { publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL, dailyCap: env.ATTENDRA_SMS_DAILY_CAP },
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
