@@ -54,7 +54,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed
 
-- **Voice previews say which voices have one.** OpenAI's speech model has 10 of the 23 phone voices; those play a preview. The other 13 (Tempo, Willow, Beacon and the rest) exist only in the Live model, which speaks only on a call, so Settings offers only the 10 that can be heard (`PREVIEW_VOICES`); a clinic that already uses one of the other 13 keeps it, marked "no preview", with a Test call button instead of Listen (refusal `calls_only`). A preview that fails says to try again, and the reason is logged.
+- **Voice previews say which voices have one.** OpenAI's speech model has 10 of the 23 phone voices; those play a preview. The other 13 (Tempo, Willow, Beacon and the rest) exist only in the Live model, which speaks only on a call, so Settings offers only the 10 that can be heard (`PREVIEW_VOICES`); a clinic that already uses one of the other 13 keeps it, marked "no preview", with a Test call button instead of Listen (refusal `calls_only`). A preview that fails says to try again, and the reason is logged. A changed greeting is heard in the preview once saved; the browser no longer replays the earlier one for an hour.
 - **The Settings menu follows the page**: the section being read is highlighted as you scroll.
 - **One empty row at a time in Settings.** With an empty visit type, question, hospital, transfer number or other row already there, its add button takes you to that row (outlined for a moment) instead of adding another; rows left empty are left out when you save, so they never block it.
 - **The ready-to-pick-up text is in the language of the call**, not always the clinic's first language (`calls.language`).

@@ -24,7 +24,7 @@ export function VoicePreview({ clinicId, voice }: { clinicId: string; voice: str
     setProblem(null);
     setState('loading');
     try {
-      const res = await fetch(`/api/v1/clinics/${clinicId}/voice-sample?voice=${encodeURIComponent(voice)}`, { credentials: 'same-origin' });
+      const res = await fetch(`/api/v1/clinics/${clinicId}/voice-sample?voice=${encodeURIComponent(voice)}`, { credentials: 'same-origin', cache: 'no-store' });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as { message?: string };
         throw new Error(body.message ?? 'The sample could not be played right now.');
