@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, demoHolidays, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
+import { DEMO_CLINIC, demoHolidays, hoursSummary, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 describe('clinic-local time', () => {
   it('turns a Denver wall-clock time into the right UTC instant, on both sides of DST', () => {
@@ -62,5 +62,16 @@ describe('the date and the week, for the planner', () => {
     expect(week).toHaveLength(7);
     expect(week[0]).toMatch(/^Tuesday 2026-09-29: \d/);
     expect(week[4]).toBe('Saturday 2026-10-03: closed');
+  });
+});
+
+describe('the hours in one line, for a text', () => {
+  it('runs days with the same hours together, Monday first, and names a holiday soon', () => {
+    const at = zonedInstant('2026-09-28', '10:00', DEMO_CLINIC.timezone);
+    const line = hoursSummary({ ...DEMO_CLINIC, holidays: ['2026-10-02'] }, at, 'en');
+    expect(line).toMatch(/^Mon–/);
+    expect(line).toMatch(/AM–\d{1,2}(:\d\d)? PM/);
+    expect(line).toContain('closed Fri 10-02');
+    expect(hoursSummary({ ...DEMO_CLINIC, holidays: [] }, at, 'es')).toMatch(/^lun/);
   });
 });

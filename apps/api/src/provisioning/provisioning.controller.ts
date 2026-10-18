@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   phoneUsage, qualityRows, releaseNumber, setTestCallLimit,
@@ -32,6 +32,7 @@ const NewAccount = z.object({
 });
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
+const TextingSwitch = z.object({ enabled: z.boolean() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
 
@@ -101,6 +102,19 @@ export class ProvisioningController {
   async limit(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(Limit)) body: z.infer<typeof Limit>) {
     this.check(authorization);
     if (!(await setTestCallLimit(this.db, clinicId, body.seconds))) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /** Texting during calls on or off: the hosting layer turns it on when the clinic's texting registration (A2P) is approved. */
+  @Put('clinics/:clinicId/texting')
+  @HttpCode(204)
+  async texting(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(TextingSwitch)) body: z.infer<typeof TextingSwitch>) {
+    this.check(authorization);
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', 'clinic.texting.' + (body.enabled ? 'on' : 'off'), clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if ((c.texting?.enabled ?? false) === body.enabled) return { result: true };
+      return { save: { ...c, texting: { ...textingOf(c), enabled: body.enabled } }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
   }
 
   @Put('clinics/:clinicId/numbers/:number')

@@ -127,6 +127,9 @@ export const RIVERBEND_CLINIC = ClinicConfig.parse({
   emergencyTransferEnabled: true,
   emergencyHospital: { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' },
   afterHours: 'requests',
+  address: '88 Riverbend Road, Denver',
+  // texts during a call, after a yes: the demo shows them as not sent, since it has no Twilio
+  texting: { enabled: true, links: [{ id: 'new_client', label: 'New client form', url: 'https://riverbend.example/new-client', when: 'a new client asks about paperwork or forms' }] },
 });
 
 /** The demo clinics, for the seed and the evals. */

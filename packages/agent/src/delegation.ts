@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
@@ -86,6 +86,7 @@ export class CallAgent {
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
     this.state.outcome = 'emergency';
     this.state.pending = null; // nothing half-booked survives an emergency
+    this.state.textOffer = null; // nor a text offered before it
     this.state.revision++; // and any request already in flight is dropped, not spoken over the script
     this.log.warn({ call_id: this.ctx.callId, emergency_kind: match.kind }, 'emergency guardrail triggered');
     this.emit({ type: 'emergency', kind: match.kind });
@@ -101,7 +102,7 @@ export class CallAgent {
     // the clinic's first choice of hospital that is open now; none open, the nearest 24-hour one
     const hospital = hospitalFor(clinic, this.ctx.now());
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic))
-      : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number })
+      : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number, textOffer: textingOf(clinic).enabled && textingOf(clinic).kinds.emergency_hospital })
         : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     // what the caller must hear before anyone may end the call: the hospital's name, or the number
@@ -282,7 +283,7 @@ export class CallAgent {
         await this.actions?.record({
           tool: name,
           argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring']) },
+          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms']) },
           revision,
           patientId: this.state.verifiedPatient?.id ?? null,
         });

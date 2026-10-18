@@ -22,15 +22,38 @@ describe('language packs', () => {
     for (const code of LANGUAGES) {
       expect(Object.keys(PACKS[code].sms).sort()).toEqual(Object.keys(PACKS.en.sms).sort());
       for (const [name, render] of Object.entries(PACKS[code].sms)) {
-        const text = render({ clinic: 'C', when: 'W', clinicPhone: 'P' });
+        const text = render({ clinic: 'C', when: 'W', clinicPhone: 'P', ...SAMPLE });
         expect(text).toContain('C');
         if (name === 'booking_confirmed') expect(text).toContain('W');
-        expect(text).toContain('P');
+        if (['booking_confirmed', 'request_ready', 'change_confirmed', 'cancel_confirmed', 'provider', 'answer'].includes(name)) expect(text).toContain('P');
         expect(text).not.toMatch(/undefined|refill|medic|prescri|receta|medicamento/i);
       }
     }
   });
+
+  it('every text ends with how to opt out, fits two messages, and leaves no gap unfilled', () => {
+    const real = { clinic: 'Riverbend Animal Hospital', when: 'Tuesday, September 29 at 9:00 AM', clinicPhone: '(303) 555-0100', ...SAMPLE };
+    for (const code of LANGUAGES) {
+      const stop = code === 'es' ? 'Responda STOP para no recibir más mensajes.' : 'Reply STOP to opt out.';
+      for (const [name, render] of Object.entries(PACKS[code].sms)) {
+        const text = render(real);
+        expect(text.endsWith(stop), `${code} ${name}`).toBe(true);
+        expect(text.length, `${code} ${name}`).toBeLessThanOrEqual(320);
+        expect(text, `${code} ${name}`).not.toMatch(/[{}]|undefined/);
+      }
+      expect(PACKS[code].textOffer({ target: 'this' })).toMatch(/\?$/);
+      expect(PACKS[code].textOffer({ target: 'file' })).not.toBe(PACKS[code].textOffer({ target: 'this' }));
+      expect(PACKS[code].textSent.length).toBeGreaterThan(3);
+      expect(PACKS[code].shortDays).toHaveLength(7);
+    }
+  });
 });
+
+const SAMPLE = {
+  address: '400 Main Street, Denver, CO 80202', mapUrl: 'https://maps.google.com/?q=400%20Main%20Street%2C%20Denver', hours: 'Mon–Fri 8 AM–5 PM, Sat 9 AM–12 PM',
+  hospital: 'Front Range Pet Emergency', hospitalAddress: '1200 Colfax Avenue, Denver', hospitalPhone: '+13035550199', emergencyNumber: '911',
+  provider: 'Dr. Priya Shah', details: 'DVM, Exotics, Dentistry', answer: 'Please bring your pet\'s vaccine records to the first visit.', label: 'New client form', url: 'https://riverbend.example/new-client',
+};
 
 describe('speaking dates and numbers', () => {
   it('Spanish uses the article with the hour', () => {

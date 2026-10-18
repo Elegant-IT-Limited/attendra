@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, PACKS } from '@attendra/core';
+import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
-import { Input, Select } from '@/components/ui/input';
+import { Input, Select, Textarea } from '@/components/ui/input';
 
 /** Whatever a language pack says, marked with its language so screen readers pick it up. */
 export function Spoken({ language, children }: { language: Language; children: string }) {
@@ -54,19 +54,36 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
       </Field>
 
       <div className="space-y-3">
-        <h3 className="text-sm font-medium">Greeting preview</h3>
+        <h3 className="text-sm font-medium">Greetings</h3>
         {c.languages.map((l) => {
           const primary = l === c.primaryLanguage;
           const suggested = PACKS[l].greeting({ assistantName: name, clinicName: c.name });
+          const own = c.greetings?.[l];
+          // the greeting in another language: the clinic's own words, or the suggestion until it writes some
+          const setOther = (text: string | undefined) => {
+            const next = { ...c.greetings, [l]: text };
+            const kept = Object.fromEntries(Object.entries(next).filter(([, v]) => v)) as Partial<Record<Language, string>>;
+            set({ greetings: Object.keys(kept).length ? kept : undefined });
+          };
+          const missing = !!own && !PACKS[l].disclosure.test(normalise(own));
           return (
             <div key={l} className="space-y-1.5" data-testid={`greeting-preview-${l}`}>
               <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-text-muted">{primary ? `${PACKS[l].name}: the first thing every caller hears (the greeting above)` : `${PACKS[l].name}: when a caller speaks ${PACKS[l].name}`}</p>
+                <label htmlFor={`greeting-${l}`} className="text-xs text-text-muted">{primary ? `${PACKS[l].name}: the first thing every caller hears (the greeting above)` : `${PACKS[l].name}: said once when a caller speaks ${PACKS[l].name}`}</label>
                 {primary && c.greeting !== suggested && (
                   <Button type="button" size="sm" variant="ghost" onClick={() => set({ greeting: suggested })}>Use the suggested greeting</Button>
                 )}
+                {!primary && own && own !== suggested && (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setOther(undefined)}>Use the suggested greeting</Button>
+                )}
               </div>
-              <Spoken language={l}>{primary ? c.greeting : suggested}</Spoken>
+              {primary ? <Spoken language={l}>{c.greeting}</Spoken> : (
+                <>
+                  <Textarea id={`greeting-${l}`} lang={PACKS[l].locale} maxLength={400} rows={2} value={own ?? suggested} disabled={disabled}
+                    aria-invalid={missing || undefined} onChange={(e) => setOther(e.target.value === suggested ? undefined : e.target.value)} />
+                  {missing && <p className="text-xs text-danger">The {PACKS[l].name} greeting must say the caller is speaking with an AI assistant.</p>}
+                </>
+              )}
             </div>
           );
         })}

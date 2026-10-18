@@ -30,7 +30,19 @@ export const es: LanguagePack = {
   sms: {
     booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    change_confirmed: (v) => `${v.clinic}: su cita se cambió al ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    cancel_confirmed: (v) => `${v.clinic}: su cita del ${v.when} quedó cancelada. Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
+    hours: (v) => `Horario de ${v.clinic}: ${v.hours}. Responda STOP para no recibir más mensajes.`,
+    emergency_hospital: (v) => `${v.clinic}: urgencias veterinarias: ${v.hospital}, ${v.hospitalAddress}, tel. ${v.hospitalPhone}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,
+    provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    answer: (v) => `${v.clinic}: ${v.answer} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    link: (v) => `${v.clinic}: ${v.label}: ${v.url} Responda STOP para no recibir más mensajes.`,
   },
+  textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
+  textSent: 'Listo, se lo acabo de enviar.',
+  textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
+  shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +

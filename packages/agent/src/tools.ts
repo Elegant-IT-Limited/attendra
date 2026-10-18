@@ -5,6 +5,7 @@ import {
   fold, industryPack, isOpen, matchesSpecialty, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
+  hospitalFor, hoursSummary, type SmsTemplate, textingOf,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -47,9 +48,14 @@ const MAX_VERIFY_ATTEMPTS = 3;
 const MAX_REGISTRATIONS = 3;
 const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request']);
 // tools that change something; they refuse to run for an outdated request
-const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'transfer_call', 'end_call']);
+const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'send_text', 'transfer_call', 'end_call']);
 // after an emergency the only things left to do are to hand the caller to a person
-const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info']);
+// (send_text narrows itself: in an emergency, only the hospital's details)
+const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
+/** Texts the assistant may send on one call after a yes. Confirmations do not count. */
+export const MAX_TEXTS_PER_CALL = 3;
+/** The assistant's own words that offered a text: "I can text you…", "…por mensaje". */
+const TEXT_OFFER_MARKER = /\btext|mensaje/i;
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
@@ -113,6 +119,32 @@ export async function runTool(
   const pack = PACKS[lang];
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang);
   const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
+  /**
+   * A confirmation text for a change just made, sent without asking. The change stands
+   * whatever happens to the text; it is never reported as failed. A patient the assistant
+   * just added is texted only at the number they are calling from, until the front desk
+   * checks them: nobody can have visits texted to someone else's phone by making up a patient.
+   * Changes and cancellations follow the clinic's switch for them.
+   */
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string): Promise<boolean> => {
+    const patient = state.verifiedPatient;
+    if (!patient?.phone) return false;
+    if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return false;
+    const textable = !patient.isNew || (!!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone));
+    if (!textable) return false;
+    try {
+      const text = await backend.messenger.sendTemplate(clinic.id, {
+        to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
+        vars: { clinic: clinic.name, when: when(start), clinicPhone: clinic.phoneNumbers[0]! },
+        kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
+      });
+      if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
+      return text.status !== 'not_sent';
+    } catch (err) {
+      ctx.log?.warn({ call_id: ctx.callId, err }, 'confirmation text failed; the change stands');
+      return false;
+    }
+  };
 
   switch (name) {
     case 'verify_caller': {
@@ -192,6 +224,9 @@ export async function runTool(
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
       // a question answered from the clinic's own words is a call the assistant handled
       if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
+      // an answer from the clinic's own list may be texted afterwards, by its id
+      if (answer) state.answersGiven.add(answer.id);
+      const texting = textingOf(clinic);
       const today = localDateOf(ctx.now(), clinic.timezone);
       return {
         ok: true,
@@ -202,6 +237,8 @@ export async function runTool(
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
           ...(clinic.requestTopics?.length ? { request_topics: requestTopicFacts(clinic) } : {}),
+          // what may be texted on request: offered only after the caller has heard it
+          ...(texting.enabled ? { texting: { kinds: (['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] as const).filter((k) => texting.kinds[k]), links: texting.links.map((l) => ({ id: l.id, label: l.label, when: l.when })) } } : {}),
           ...(passages.length ? { passages: passages.map((p) => ({ title: p.title, text: p.text })) } : {}),
         },
       };
@@ -315,7 +352,7 @@ export async function runTool(
       const appt = upcoming.find((a) => a.id === args.appointment_id);
       if (!appt) return refuse('unknown_appointment', 'Use list_appointments to find the appointment first.');
       const readback = pack.readbackCancel({ when: when(appt.start) });
-      state.pending = { kind: 'cancel', appointmentId: appt.id, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
     }
 
@@ -334,7 +371,8 @@ export async function runTool(
         if (cancelled.status === 'cancelled') {
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
-        return { ok: true, data: { cancelled: true } };
+        const smsSent = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId);
+        return { ok: true, data: { cancelled: true, sms_sent: smsSent } };
       }
 
       const result = await backend.scheduler.book(clinic.id, {
@@ -363,24 +401,10 @@ export async function runTool(
           ? { type: 'appointment.rescheduled', key: `${a.id}|${facts.startsAt}`, data: { ...facts, previousAppointmentId: pending.replacesAppointmentId } }
           : { type: 'appointment.booked', key: a.id, data: facts });
       }
-      // the booking stands whatever happens to the text message; never report it as failed
-      let smsSent = false;
-      // a patient the assistant just added gets texts only at the number they are calling from, until the front desk checks them:
-      // nobody can have bookings texted to someone else's phone by making up a patient
-      const textable = !!patient.phone && (!patient.isNew || (!!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone)));
-      if (textable && patient.phone) {
-        try {
-          const text = await backend.messenger.sendTemplate(clinic.id, {
-            to: patient.phone, template: 'booking_confirmed', idempotencyKey: key(ctx.callId, 'sms', result.appointment.id), language: lang,
-            vars: { clinic: clinic.name, when: when(result.appointment.start), clinicPhone: clinic.phoneNumbers[0]! },
-            kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId: result.appointment.id },
-          });
-          smsSent = text.status !== 'not_sent';
-          if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the booking stands');
-        } catch (err) {
-          ctx.log?.warn({ call_id: ctx.callId, err }, 'confirmation text failed; the booking stands');
-        }
-      }
+      // a move is confirmed as a move, a new booking as a booking
+      const smsSent = result.status === 'booked'
+        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id)
+        : false;
       return {
         ok: true,
         data: {
@@ -414,6 +438,67 @@ export async function runTool(
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
+    }
+
+    case 'send_text': {
+      const texting = textingOf(clinic);
+      const kind = args.kind as 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link';
+      const ref = (args.ref as string | null) ?? null;
+      if (!texting.enabled || !texting.kinds[kind]) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
+      // in an emergency the only text is where to take the animal, and only then
+      if (state.emergencyLocked && kind !== 'emergency_hospital') return refuse('emergency_in_progress', 'Do not text anything else now. Repeat where to take the animal.');
+      if (!state.emergencyLocked && kind === 'emergency_hospital') return refuse('not_an_emergency', 'That text is only for an animal emergency. Read the hospital\'s details out instead if they ask.');
+      // only to the number they are calling from, or the one on their file: never another person's
+      const asked = (args.to as string | null) ?? null;
+      const onFile = state.verifiedPatient?.phone ?? null;
+      let to: string | null = null;
+      let target: 'this' | 'file' = 'this';
+      if (asked) {
+        if (ctx.callerNumber && samePhone(asked, ctx.callerNumber)) to = ctx.callerNumber;
+        else if (onFile && samePhone(asked, onFile)) { to = onFile; target = 'file'; } else return refuse('number_not_allowed', 'Texts go only to the number they are calling from or the number on their file. Offer those; never another number.');
+      } else if (ctx.callerNumber) to = ctx.callerNumber;
+      if (!to) return refuse('no_number', 'Say you can\'t see the number they\'re calling from, and ask whether they\'d like it sent to the number on their file.');
+      if (backend.messenger.optedOut && await backend.messenger.optedOut(clinic.id, to)) {
+        return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
+      }
+      if (state.textsSent >= MAX_TEXTS_PER_CALL) return refuse('rate_limited', 'You have sent what can be sent by text on this call. Read it out instead.');
+      const content = textContent(kind, ref, clinic, state, ctx.now(), lang);
+      if (!content) return refuse('nothing_to_send', 'Say you can\'t text that one, and say it out loud instead.');
+
+      // consent, in the caller's own words, after the question was spoken: like a booking
+      const offer = state.textOffer;
+      const same = !!offer && offer.kind === kind && offer.ref === ref && offer.to === target;
+      let consentAtMs: number;
+      if (same && offer.askedAtMs !== null) {
+        if (!isClearYes(state.answerToTextOffer(), clinic.languages)) return refuse('no_clear_yes', 'Do not send it. Carry on with the call.');
+        consentAtMs = offer.askedAtMs;
+      } else {
+        // the assistant may have offered on its own (the emergency script ends with an offer): the yes after that counts
+        const spoken = same ? null : state.spokenTextOfferMs(TEXT_OFFER_MARKER);
+        // an offer whose yes already sent a text does not send another
+        if (spoken !== null && spoken > state.lastTextConsentMs && isClearYes(state.latestCallerWordsAfter(spoken), clinic.languages)) consentAtMs = spoken;
+        else {
+          if (!same) state.textOffer = { kind, ref, to: target, offeredAtMs: state.lastMs(), askedAtMs: null };
+          return refuse('consent_required', `Ask exactly: "${pack.textOffer({ target })}" Then call send_text again with the same details once they say yes.`);
+        }
+      }
+      state.textOffer = null; // a yes counts once
+      const sent = await backend.messenger.sendTemplate(clinic.id, {
+        to, template: content.template, vars: { clinic: clinic.name, ...content.vars }, language: lang,
+        idempotencyKey: key(ctx.callId, 'text', kind, ref ?? '', to.replace(/\D/g, '')),
+        kind: 'asked', about: { callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null }, consentAtMs,
+      }).catch((err: unknown) => { ctx.log?.warn({ call_id: ctx.callId, err }, 'text failed'); return null; });
+      if (!sent || sent.status === 'not_sent') {
+        if (sent?.reason === 'opted_out') return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
+        if (sent?.reason === 'rate_limited') return refuse('rate_limited', 'Say the text can\'t be sent right now, and read it out instead.');
+        return refuse('not_sent', 'Say the text didn\'t go through, and read it out instead.');
+      }
+      if (sent.status === 'sent') state.textsSent++;
+      state.lastTextConsentMs = consentAtMs;
+      // the text has gone: a failed audit row is logged, never turned into "I couldn't do that"
+      await backend.audit.record(clinic.id, { actor: 'voice-agent', action: 'sms.consent.asked', entity: 'call', entityId: ctx.callId, callId: ctx.callId })
+        .catch((err: unknown) => ctx.log?.error({ call_id: ctx.callId, err }, 'text consent not audited'));
+      return { ok: true, data: { texted: true, template: content.template, consent_at_ms: consentAtMs, say: `Say: "${pack.textSent}"` } };
     }
 
     case 'transfer_call': {
@@ -511,4 +596,50 @@ async function registerPet(
   if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
   const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
   return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. They can book: ${newVisits.join(', ')}.` } };
+}
+
+/**
+ * What a text says, by kind: public clinic facts only, never a caller's details. Null
+ * when there is nothing to send: no address, an unknown link or doctor, or an answer
+ * that was not given on this call.
+ */
+export function textContent(
+  kind: 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link', ref: string | null,
+  clinic: ClinicConfig, state: Pick<CallState, 'answersGiven'>, now: Date, lang: keyof typeof PACKS,
+): { template: SmsTemplate; vars: Record<string, string> } | null {
+  const texting = textingOf(clinic);
+  const clinicPhone = clinic.phoneNumbers[0]!;
+  switch (kind) {
+    case 'directions': {
+      const address = clinic.address?.trim();
+      if (!address) return null;
+      return { template: 'directions', vars: { address, mapUrl: texting.mapUrl ?? `https://maps.google.com/?q=${encodeURIComponent(address)}` } };
+    }
+    case 'hours':
+      return { template: 'hours', vars: { hours: hoursSummary(clinic, now, lang) } };
+    case 'emergency_hospital': {
+      const h = hospitalFor(clinic, now);
+      if (!h) return null;
+      return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic) } };
+    }
+    case 'provider': {
+      const p = clinic.providers.find((x) => x.id === ref && !x.placeholder);
+      if (!p) return null;
+      const details = [...(p.credentials ?? []), ...(p.specialty ? [p.specialty] : []), ...p.categories].join(', ');
+      return { template: 'provider', vars: { provider: localName(p, lang), details, clinicPhone } };
+    }
+    case 'answer': {
+      const faq = ref && state.answersGiven.has(ref) ? clinic.faqs.find((f) => f.id === ref) : undefined;
+      if (!faq) return null;
+      // whole sentences, at most 300 characters
+      const text = faq.answer.trim();
+      const cut = text.length <= 300 ? text : (() => { const head = text.slice(0, 300); const end = Math.max(head.lastIndexOf('. '), head.lastIndexOf('? '), head.lastIndexOf('! ')); return end > 40 ? head.slice(0, end + 1) : `${head.slice(0, 297).trimEnd()}...`; })();
+      return { template: 'answer', vars: { answer: /[.!?]$/.test(cut) ? cut : `${cut}.`, clinicPhone } };
+    }
+    case 'link': {
+      const link = texting.links.find((l) => l.id === ref);
+      if (!link) return null;
+      return { template: 'link', vars: { label: link.label, url: link.url } };
+    }
+  }
 }

@@ -1,0 +1,21 @@
+id: vet-text-directions
+title: An owner asks where the clinic is, is offered a text, says yes, and gets the address and a map link; nothing is sent before the yes
+clinic: riverbend
+local_time: "10:00"
+turns:
+  - caller: Hi, where exactly are you? I've never been to the clinic.
+    reply: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+      - send_text: { kind: directions, ref: null, to: null }
+  - assistant: "We're at 88 Riverbend Road in Denver. Would you like me to text that to the number you're calling from?"
+  - caller: Yes please, that would help.
+    reply: "Done, I've just sent it."
+    delegate:
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: [consent_required]
+  sms_sent: 1
+  sms_templates: [directions]
+  spoken_contains: ["Would you like me to text that to the number you're calling from?"]
