@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, INDUSTRIES, localDateOf, starterClinic, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, zonedInstant } from '@attendra/core';
 import {
   addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   phoneUsage, qualityRows, releaseNumber, setTestCallLimit,
@@ -139,7 +139,7 @@ export class ProvisioningController {
     // the weeks that have ended, newest first: a report on Monday is about last week
     const weeks = qualityWeeks(rows, clinic, now, q.weeks + 1, COST_PER_MINUTE).slice(1);
     return {
-      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, averageVisitValue: clinic.averageVisitValue },
+      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, averageVisitValue: clinic.averageVisitValue, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
       owners: (await clinicOwners(this.db, clinicId)).filter((o) => o.emailVerified).map(({ name, email }) => ({ name, email })),
       weeks,
     };

@@ -46,7 +46,7 @@ export const audienceLine = (v: Pick<VisitType, 'audience'>) =>
  */
 export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'hours'>, today: string, language: Language) {
   const horizon = addDays(today, 28);
-  return clinic.providers.map((p) => ({
+  return bookableProviders(clinic.providers).map((p) => ({
     provider_id: p.id,
     name: localName(p, language),
     kind: p.kind,
@@ -74,11 +74,27 @@ const near = (a: string, b: string) => {
   return a === b || (n >= 5 && a.slice(0, n) === b.slice(0, n));
 };
 
+/** Animals a clinic lists under a group: a caller says "rabbit", the vet is listed for "exotics". */
+const KINDS: Record<string, string[]> = {
+  rabbit: ['exotic', 'exotics', 'small', 'mammal', 'mammals', 'pocket'], bunny: ['rabbit', 'exotic', 'exotics', 'small', 'mammal'],
+  guinea: ['exotic', 'exotics', 'small', 'mammal', 'pocket'], hamster: ['exotic', 'exotics', 'small', 'mammal', 'pocket'], ferret: ['exotic', 'exotics', 'small', 'mammal'],
+  chinchilla: ['exotic', 'exotics', 'small', 'mammal', 'pocket'], gerbil: ['exotic', 'exotics', 'small', 'mammal', 'pocket'],
+  parrot: ['bird', 'birds', 'avian', 'exotic', 'exotics'], budgie: ['bird', 'birds', 'avian', 'exotic', 'exotics'], cockatiel: ['bird', 'birds', 'avian', 'exotic', 'exotics'],
+  snake: ['reptile', 'reptiles', 'exotic', 'exotics'], lizard: ['reptile', 'reptiles', 'exotic', 'exotics'], gecko: ['reptile', 'reptiles', 'exotic', 'exotics'],
+  turtle: ['reptile', 'reptiles', 'exotic', 'exotics'], tortoise: ['reptile', 'reptiles', 'exotic', 'exotics'], puppy: ['dog', 'dogs'], kitten: ['cat', 'cats'],
+};
+
 /** Whether a doctor is listed for what the caller asked for: their specialty or one of their categories. */
 export function matchesSpecialty(p: Pick<Provider, 'specialty' | 'categories'>, asked: string): boolean {
   const want = wordsOf(asked);
   const have = wordsOf([p.specialty ?? '', ...p.categories].join(' '));
-  return want.length > 0 && want.every((w) => have.some((h) => near(w, h)));
+  return want.length > 0 && want.every((w) => [w, ...(KINDS[w] ?? [])].some((alt) => have.some((h) => near(alt, h))));
+}
+
+/** The providers a caller can be offered: the stand-in a new clinic starts with steps aside once anyone else is listed. */
+export function bookableProviders<P extends Pick<Provider, 'placeholder'>>(providers: P[]): P[] {
+  const real = providers.filter((p) => !p.placeholder);
+  return real.length ? real : providers;
 }
 
 /** Each specialty and the doctors in it, as a caller may hear them. */

@@ -35,7 +35,22 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **VIP callers** (Settings): up to 50 numbers that always reach a person. While the front desk takes transfers, the assistant greets them, says it is connecting them, and transfers once it is quiet (`vipRoute` in core, `CallAgent.vip`, a `quiet` transfer in the call runner); otherwise it answers them as usual. The live view says so.
 - **Links in your menu** (Settings): up to 8 of the clinic's own links (practice software, booking page, forms), shown to the whole team and opened in a new tab.
 
+### Added (from the product review)
+
+- **Hear a voice before choosing it.** Settings has a Listen button that plays the clinic's saved greeting in the chosen voice (`GET /clinics/:id/voice-sample`, text to speech with `ATTENDRA_TTS_MODEL`, cached, 30 samples per clinic in ten minutes, no audit row since no patient data). A voice the speech model does not have says so and suggests a test call.
+- **Emergency hospitals, more than one, with hours.** `moreEmergencyHospitals` (up to 4 more) and optional daily `hours` on each (overnight allowed); the script names the clinic's first choice that is open at the time (`hospitalFor`), and falls back to the nearest 24-hour hospital when none is.
+- **Visits left on a day off or a holiday** are listed on Schedule, Veterinarians and Settings (`GET /appointments/conflicts`, counts only); a change to days off or holidays never moves anyone, so the team is told.
+- **Clinic address and website** in Settings; the assistant gives them when asked (`get_clinic_info`).
+- **More countries.** Emergency numbers for New Zealand, Ireland, Mexico, Japan, Singapore, Hong Kong, South Africa, India and Brazil (2 to 5 digits); the clinic's currency on the visit value; phone numbers staff type are kept as E.164 in the clinic's country so texts reach them (`asE164`); transfer and VIP examples in the clinic's own format.
+
 ### Fixed
+
+- **After hours at a clinic that takes requests, the assistant looks up no times** (refusal `after_hours` on `find_slots` too) and the prompts say so, so it never reads out a time it then refuses; cancelling an existing visit is allowed after hours.
+- **A calm owner is no longer stuck after an animal emergency.** Once the script has been said, "he's fine now, it's not an emergency" lets the call go on (booking a check-up); the emergency stays on the record, a new emergency holds the call again, and a person in danger never clears it. A question about emergencies ("is this an emergency?") is not one.
+- **Transfers:** a clinic with no transfer line hears that, not "nobody is available"; a browser test call says where it would have connected the caller; Settings warns when a transfer number is one the assistant itself answers (a loop).
+- **A refill named with its dose** ("Apoquel 16 mg") no longer turns the next ordinary question into a medical one.
+- **A rabbit at a new clinic** gets times: with no specialties listed, everyone sees everything, and animals match the groups vets are listed for (rabbit to Exotics, parrot to Birds). The starter "our veterinarian" is a stand-in (`placeholder`) that is never offered once a real vet is listed.
+- **The weekly value for clinics that take requests after hours** counts the requests taken while closed (`afterHoursRequests`), and Quality shows them, instead of a permanent zero.
 
 - **The dashboard reads as one product.** Settings has a menu of its own parts, every list item (visit types, transfer numbers, offers, questions, kinds of request, fields, VIP callers, links) is a card with stacked, full-width fields and a remove button in its corner, a new item goes to the top of its list with the cursor in it, placeholders read as examples, empty lists say so, opening hours are a table, and the average visit value shows its dollar sign. Routing is now "Transfers" and takes a plain phone number. Call filters are a grid; the Requests legend and the Quality explanations fold away; Quality shows a dash, not "no calls", for a week with nothing to count, and a hosted clinic no longer sees per-minute cost estimates. A vet clinic's screens say pet, owner and veterinarian everywhere (search, booking, the call page, Knowledge, the audit log) and import pets from a pet spreadsheet (`readPets`, `petTemplate`). Record ids, not "patient ids", in Integrations. The audit log names every action in words.
 

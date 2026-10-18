@@ -9,7 +9,7 @@ import { Sparkline } from '@/components/ui/bits';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, REFUSALS, usd } from '@/lib/format';
 
 const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`);
@@ -28,6 +28,8 @@ export default function QualityPage() {
   const { can, isPending, clinic } = useClinic(clinicId);
   // a hosted clinic pays a plan, not the voice minutes: the cost estimates are for people who run Attendra themselves
   const hosted = !!clinic?.accountLinks.length;
+  // a clinic that books in the morning counts what it kept after hours as requests, not bookings
+  const takesRequests = useClinicConfig(clinicId).data?.afterHours === 'requests';
   const allowed = can('quality:read');
   const q = useQuery({ queryKey: ['quality', clinicId], queryFn: () => api<Quality>(`/clinics/${clinicId}/quality?weeks=8`), enabled: allowed, refetchInterval: 60_000 });
   const calls = (params: Record<string, string>) => `/c/${clinicId}/calls?${new URLSearchParams(params)}`;
@@ -40,7 +42,9 @@ export default function QualityPage() {
     { key: 'transferred', label: 'Transferred to a person', explain: 'Share of calls that went to a person.', value: (w) => (w.transferredShare === null ? '—' : `${pct(w.transferredShare)} (${w.transferred})`), trend: (w) => w.transferredShare, href: (w) => week(w, { outcome: 'transferred' }) },
     { key: 'flagged', label: 'Flagged for review', explain: 'Share of calls whose summary said someone should look at them.', value: (w) => (w.flaggedShare === null ? '—' : `${pct(w.flaggedShare)} (${w.flagged})`), trend: (w) => w.flaggedShare, href: (w) => week(w, { review: 'needed' }) },
     { key: 'after', label: 'After-hours calls answered', explain: 'Calls outside opening hours, all answered.', value: (w) => String(w.afterHours), trend: (w) => w.afterHours, href: (w) => week(w) },
-    { key: 'afterBooked', label: 'Bookings made after hours', explain: 'Visits booked while the clinic was closed: calls that would have gone to voicemail.', value: (w) => String(w.afterHoursBookings), trend: (w) => w.afterHoursBookings, href: (w) => week(w, { outcome: 'booked' }) },
+    takesRequests
+      ? { key: 'afterRequests', label: 'Requests taken after hours', explain: 'Calls while the clinic was closed that left a request for the team to book in the morning: calls that would have gone to voicemail.', value: (w) => String(w.afterHoursRequests), trend: (w) => w.afterHoursRequests, href: (w) => week(w, { outcome: 'task_created' }) }
+      : { key: 'afterBooked', label: 'Bookings made after hours', explain: 'Visits booked while the clinic was closed: calls that would have gone to voicemail.', value: (w) => String(w.afterHoursBookings), trend: (w) => w.afterHoursBookings, href: (w) => week(w, { outcome: 'booked' }) },
     { key: 'emergencies', label: 'Emergencies sent on', explain: 'Calls where the emergency script ran.', value: (w) => String(w.emergencies), trend: (w) => w.emergencies, href: (w) => week(w, { emergency: 'true' }) },
     { key: 'refills', label: 'Refill requests', explain: 'Refill requests the assistant took for the team.', value: (w) => String(w.refillRequests), trend: (w) => w.refillRequests, href: (w) => week(w) },
     { key: 'cost', label: 'Cost per call', explain: 'Voice minutes at the list price, an estimate. The planner and summaries are extra.', value: (w) => money(w.costPerCall), trend: (w) => w.costPerCall, href: (w) => week(w) },

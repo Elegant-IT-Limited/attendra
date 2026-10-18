@@ -44,6 +44,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
+    ...(clinic.afterHours === 'requests' ? ['While the clinic is closed it books nothing: do not look up or offer times; take a request with create_callback for the team to book in the morning. Cancelling an existing visit is still fine.'] : []),
     ...planner.limits,
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
     'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',

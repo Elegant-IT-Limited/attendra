@@ -20,7 +20,12 @@ const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
 const embedder = embedderFromEnv(env);
-const answerer = env.OPENAI_API_KEY ? new ModelAnswerer(new OpenAI({ apiKey: env.OPENAI_API_KEY }), env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
+const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
+const answerer = openai ? new ModelAnswerer(openai, env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
+// the greeting in a voice, for Settings' Listen button
+const voiceSamples = openai ? {
+  sample: async (voice: string, text: string) => Buffer.from(await (await openai.audio.speech.create({ model: env.ATTENDRA_TTS_MODEL, voice, input: text, response_format: 'mp3' })).arrayBuffer()),
+} : null;
 const app = await createApi({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
@@ -32,6 +37,7 @@ const app = await createApi({
   jobs: bossQueue(boss),
   changes: pgChangeFeed(env.DATABASE_URL, (code) => log.warn({ code }, 'change notices: connection error')),
   knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
+  voiceSamples,
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

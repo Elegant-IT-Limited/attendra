@@ -204,6 +204,7 @@ export const QualityWeek = z.object({
   afterHours: z.number(),
   /** Bookings made while the clinic was closed. */
   afterHoursBookings: z.number(),
+  afterHoursRequests: z.number(),
   emergencies: z.number(), refillRequests: z.number(),
   voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
 });
@@ -357,6 +358,10 @@ export const SlotQuery = z.object({
   /** The appointment being moved, so its own time counts as free. */
   excluding: z.uuid().optional(),
 });
+/** Visits booked on a provider's day off or a holiday, by day and provider. */
+export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
+export type ScheduleConflicts = z.infer<typeof ScheduleConflicts>;
+
 export const SlotList = z.object({ slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime() })) });
 
 export const BookAppointment = z.object({

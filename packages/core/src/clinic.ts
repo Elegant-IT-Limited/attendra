@@ -55,6 +55,8 @@ export const Provider = z.object({
   hours: WeeklyHours.optional(),
   timeOff: z.array(TimeOff).max(100).default([]),
   visitTypeIds: z.array(z.string()).min(1),
+  // the stand-in a new clinic starts with, so a test call can book before the team adds its own; never offered once there is anyone else
+  placeholder: z.boolean().optional(),
   // qualifications a caller may hear when they ask: "DVM", "Fear Free Certified", "Board-certified surgeon"
   credentials: z.array(z.string().trim().min(2).max(60)).max(8).optional(),
 });
@@ -118,6 +120,19 @@ export const CustomField = z.object({
   kind: z.enum(['text', 'yesno', 'date']),
 });
 
+/**
+ * An emergency hospital the assistant sends an owner to. Without hours it is open
+ * around the clock; with them, every day between open and close (a close earlier than
+ * the open runs past midnight: 18:00 to 08:00 is overnight).
+ */
+export const EmergencyHospital = z.object({
+  name: z.string().trim().min(2).max(80),
+  phone: e164,
+  address: z.string().trim().min(5).max(200),
+  hours: z.object({ open: hhmm, close: hhmm }).optional(),
+});
+export type EmergencyHospital = z.infer<typeof EmergencyHospital>;
+
 /** A caller the clinic always wants a person to answer: a partner vet, a breeder, the owner's family. */
 export const VipCaller = z.object({
   name: z.string().trim().min(1).max(60),
@@ -133,6 +148,9 @@ export const Faq = z.object({
 const ClinicConfigShape = z.object({
   id: z.string(),
   name: z.string(),
+  // where the clinic is and its website: the assistant gives them to a caller who asks
+  address: z.string().trim().max(200).optional(),
+  website: z.string().trim().max(200).regex(/^https?:\/\//, 'a website starts with https://').optional(),
   // the trade the assistant works in: what things are called and the prompt lines that depend on it
   industry: z.enum(INDUSTRIES).default('clinic'),
   timezone: z.string().refine((tz) => {
@@ -149,7 +167,7 @@ const ClinicConfigShape = z.object({
   languages: z.array(LanguageSchema).min(1).default(['en']),
   primaryLanguage: LanguageSchema.default('en'),
   // the number the emergency script tells callers to ring; defaults from the clinic's country (911, 999)
-  emergencyNumber: z.string().regex(/^\d{2,4}$/, 'an emergency number is 2 to 4 digits, like 911 or 999').optional(),
+  emergencyNumber: z.string().regex(/^\d{2,5}$/, 'an emergency number is 2 to 5 digits, like 911 or 999').optional(),
   voice: z.string().default('marin'),
   providers: z.array(Provider).min(1),
   visitTypes: z.array(VisitType).min(1),
@@ -166,12 +184,10 @@ const ClinicConfigShape = z.object({
   // numbers that go straight to the front desk while it takes transfers
   vipCallers: z.array(VipCaller).max(50).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
-  // where the veterinary pack sends an animal in danger: the clinic's chosen 24-hour emergency hospital
-  emergencyHospital: z.object({
-    name: z.string().trim().min(2).max(80),
-    phone: e164,
-    address: z.string().trim().min(5).max(200),
-  }).optional(),
+  // where the veterinary pack sends an animal in danger: the clinic's first choice of emergency hospital
+  emergencyHospital: EmergencyHospital.optional(),
+  // and its next choices, in order, for the hours the first one is closed or too far
+  moreEmergencyHospitals: z.array(EmergencyHospital).max(4).optional(),
   // while the clinic is closed: book as usual, or take requests for the team to book in the morning
   afterHours: z.enum(['book', 'requests']).default('book'),
   // what a visit is worth on average, in the clinic's currency: the weekly report multiplies the bookings made after hours by it
@@ -251,10 +267,14 @@ export type ClinicConfig = z.infer<typeof ClinicConfig>;
  * callers should not hear it; but a clinic may be called something like it, so
  * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
  */
-export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'>): { path: 'greeting' | 'assistantName'; message: string }[] {
-  const out: { path: 'greeting' | 'assistantName'; message: string }[] = [];
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers'>>): { path: 'greeting' | 'assistantName' | 'routing'; message: string }[] {
+  const out: { path: 'greeting' | 'assistantName' | 'routing'; message: string }[] = [];
   if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });
   if (c.assistantName && /attendra/i.test(c.assistantName)) out.push({ path: 'assistantName', message: 'The assistant is named after the software. Callers should hear a name of the clinic\'s own.' });
+  // a transfer to a line that is forwarded to the assistant comes straight back to the assistant
+  const own = new Set((c.phoneNumbers ?? []).map((n) => n.replace(/\D/g, '').slice(-10)));
+  const loop = (c.routing ?? []).find((r) => r.uri.startsWith('tel:') && own.has(r.uri.replace(/\D/g, '').slice(-10)));
+  if (loop) out.push({ path: 'routing', message: `A transfer number (${loop.uri.slice(4)}) is a number this clinic answers with the assistant. A caller sent there would come straight back to the assistant. Use a direct line or a mobile that a person answers.` });
   return out;
 }
 export type Provider = z.infer<typeof Provider>;

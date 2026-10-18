@@ -76,5 +76,10 @@ export interface IndustryPack {
     phrases: EmergencyPhrases;
     /** The fixed instruction for the trade's emergencies, in the caller's language. */
     script: (language: Language, to: EmergencyDestination) => string;
+    /**
+     * What a caller says when the animal is safe after all ("he's fine now", "it's not an
+     * emergency"). Heard after the script, it lets the call go on. Never for a person in danger.
+     */
+    safe?: Partial<Record<Language, RegExp>>;
   };
 }
