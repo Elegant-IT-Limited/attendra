@@ -5,7 +5,7 @@ import { type FrontDeskRepository, staffNames, type Database, withClinic } from 
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
+import { CustomFieldValues, PatientFilter, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
@@ -59,7 +59,28 @@ export class PatientsController {
   @ApiOperation({ summary: 'The newest patients first, before anything is typed. status=new lists the ones the assistant added that nobody has checked. Audited.' })
   @ApiOkResponse({ schema: schemaOf(PatientList) })
   async newest(@Param('clinicId') clinicId: string, @Query(new ZodPipe(PatientListQuery)) q: z.infer<typeof PatientListQuery>, @CurrentStaff() staff: Staff): Promise<PatientList> {
-    return { patients: (await this.records.newest(clinicId, staff.userId, { status: q.status })).map(toCard) };
+    const fields = (await this.clinic(clinicId)).customFields ?? [];
+    return { patients: (await this.records.newest(clinicId, staff.userId, { status: q.status })).map((p) => this.withFields(p, fields)) };
+  }
+
+  @Post('filter')
+  @HttpCode(200)
+  @Requires('patients:read')
+  @ApiOperation({ summary: 'Patients of one kind of animal, or with one value in one of the clinic\'s own fields, newest first, at most 100. Audited like the list.' })
+  @ApiBody({ schema: schemaOf(PatientFilter) })
+  @ApiOkResponse({ schema: schemaOf(PatientList) })
+  async filter(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientFilter)) body: z.infer<typeof PatientFilter>, @CurrentStaff() staff: Staff): Promise<PatientList> {
+    const fields = (await this.clinic(clinicId)).customFields ?? [];
+    const field = body.field ? fields.find((f) => f.id === body.field!.id) : undefined;
+    if (body.field && !field) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'field.id', message: 'this clinic has no such field' }] });
+    const found = await this.records.filtered(clinicId, staff.userId, { species: body.species, field: field && body.field ? { id: field.id, value: body.field.value, multi: field.kind === 'multi' } : undefined });
+    return { patients: found.patients.map((p) => this.withFields(p, fields)), truncated: found.truncated };
+  }
+
+  /** A card shows only the fields the clinic still has. */
+  private withFields(p: Card, fields: { id: string }[]): PatientCard {
+    const ids = new Set(fields.map((f) => f.id));
+    return toCard({ ...p, custom: Object.fromEntries(Object.entries(p.custom).filter(([id]) => ids.has(id))) });
   }
 
   /** A POST, not a GET: what is typed can be a name or a date of birth, and URLs end up in logs. */
@@ -72,7 +93,8 @@ export class PatientsController {
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientSearch)) body: z.infer<typeof PatientSearch>, @CurrentStaff() staff: Staff): Promise<PatientList> {
     const found = await this.records.search(clinicId, body.query, staff.userId, this.now(), { status: body.status });
     if (!found) return { patients: [], truncated: false };
-    return { patients: found.patients.map(toCard), truncated: found.truncated };
+    const fields = (await this.clinic(clinicId)).customFields ?? [];
+    return { patients: found.patients.map((p) => this.withFields(p, fields)), truncated: found.truncated };
   }
 
   @Get('recent')
@@ -146,7 +168,7 @@ export class PatientsController {
   @ApiNotFoundResponse()
   async fields(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(CustomFieldValues)) body: z.infer<typeof CustomFieldValues>, @CurrentStaff() staff: Staff): Promise<void> {
     if (!isUuid(id)) throw new NotFoundException({ error: 'not_found' });
-    const read = readCustomValues((await this.clinic(clinicId)).customFields ?? [], body.values);
+    const read = readCustomValues((await this.clinic(clinicId)).customFields ?? [], body.values, { complete: true });
     if (!read.ok) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: `values.${read.field}`, message: read.message }] });
     if ((await this.records.setCustomFields(clinicId, id, read.values, staff.userId)) === 'not_found') throw new NotFoundException({ error: 'not_found' });
   }

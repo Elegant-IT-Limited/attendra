@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, type EventSink, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
 import { approvesRefills, type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
-import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { CustomFieldValues, TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -132,6 +132,20 @@ export class TasksController {
     const role = await staffRole(this.db, body.userId, clinicId);
     if (!role || role === 'viewer') throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'userId', message: 'assign requests to someone who works the front desk here' }] });
     this.outcome(isUuid(taskId) ? await this.desk.assignTask(clinicId, taskId, body.userId, staff.userId) : 'not_found');
+  }
+
+  @Put(':taskId/fields')
+  @HttpCode(204)
+  @Requires('tasks:work')
+  @ApiOperation({ summary: 'The clinic\'s own details on a request (Settings, Fields and lists): the whole set, checked against the fields. Stored encrypted; audited without the values.' })
+  @ApiBody({ schema: schemaOf(CustomFieldValues) })
+  @ApiNoContentResponse()
+  async fields(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @Body(new ZodPipe(CustomFieldValues)) body: z.infer<typeof CustomFieldValues>, @CurrentStaff() staff: Staff) {
+    if (!isUuid(taskId)) this.outcome('not_found');
+    const config = ClinicConfig.parse(await this.desk.settings(clinicId));
+    const read = readCustomValues(config.requestFields ?? [], body.values, { complete: true });
+    if (!read.ok) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: `values.${read.field}`, message: read.message }] });
+    if ((await this.desk.setTaskFields(clinicId, taskId, read.values, staff.userId)) === 'not_found') this.outcome('not_found');
   }
 
   @Post(':taskId/plan')

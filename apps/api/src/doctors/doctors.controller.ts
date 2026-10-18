@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, configProblems, newProviderId, type Provider, readDoctors } from '@attendra/core';
+import { ClinicConfig, configProblems, newProviderId, type Provider, readCustomValues, readDoctors } from '@attendra/core';
 import type { FrontDeskRepository, Tx } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -11,7 +11,7 @@ import { CLOCK, FRONT_DESK } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
 
 type Issues = ReturnType<typeof issuesOf>;
-type Change = { config: ClinicConfig } | { error: string; status: 404 | 409 } | { issues: Issues };
+type Change = { config: ClinicConfig } | { error: string; status: 404 | 409 | 422 } | { issues: Issues };
 
 /**
  * The clinic's doctors, and rooms booked like one: who they are, what they see people
@@ -19,6 +19,17 @@ type Change = { config: ClinicConfig } | { error: string; status: 404 | 409 } | 
  * clinic's settings, which the voice service reads again before every request on a
  * call, so the assistant knows a change from the next thing a caller asks.
  */
+/**
+ * A doctor's own details, checked against the clinic's fields for doctors. A form that
+ * sends none (an older page, an import) keeps what the doctor had.
+ */
+function customOf(c: ClinicConfig, sent: Record<string, string> | undefined, kept: Record<string, string> | undefined): { values: Record<string, string> | undefined } | { error: string; status: 422 } {
+  if (sent === undefined) return { values: kept };
+  const read = readCustomValues(c.providerFields ?? [], sent, { complete: true });
+  if (!read.ok) return { error: `${(c.providerFields ?? []).find((f) => f.id === read.field)?.label ?? 'A field'}: ${read.message}`, status: 422 };
+  return { values: Object.keys(read.values).length ? read.values : undefined };
+}
+
 @ApiTags('doctors')
 @ApiCookieAuth()
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
@@ -47,7 +58,9 @@ export class DoctorsController {
     const id = body.id ?? newProviderId(body.name);
     return this.change(clinicId, staff, 'clinic.doctor.added', id, (c) => {
       if (c.providers.some((p) => p.id === id)) return { error: `a doctor with the id ${id} is already on file`, status: 409 };
-      return { config: { ...c, providers: [...c.providers, { ...body, id } as Provider] } };
+      const custom = customOf(c, body.custom, undefined);
+      if ('error' in custom) return custom;
+      return { config: { ...c, providers: [...c.providers, { ...body, id, custom: custom.values } as Provider] } };
     });
   }
 
@@ -58,8 +71,11 @@ export class DoctorsController {
   @ApiOkResponse({ schema: schemaOf(DoctorList) })
   async update(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @Body(new ZodPipe(DoctorInput)) body: z.infer<typeof DoctorInput>, @CurrentStaff() staff: Staff): Promise<DoctorList> {
     return this.change(clinicId, staff, 'clinic.doctor.updated', providerId, (c) => {
-      if (!c.providers.some((p) => p.id === providerId)) return { error: 'not_found', status: 404 };
-      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, id: providerId } as Provider : p)) } };
+      const current = c.providers.find((p) => p.id === providerId);
+      if (!current) return { error: 'not_found', status: 404 };
+      const custom = customOf(c, body.custom, current.custom);
+      if ('error' in custom) return custom;
+      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, id: providerId, custom: custom.values } as Provider : p)) } };
     });
   }
 
@@ -128,6 +144,7 @@ export class DoctorsController {
     if ('issues' in out) throw new UnprocessableEntityException({ error: 'invalid_doctor', issues: out.issues });
     if ('error' in out) {
       if (out.status === 404) throw new NotFoundException({ error: 'not_found' });
+      if (out.status === 422) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'custom', message: out.error }] });
       throw new ConflictException({ error: out.error.startsWith('They have') ? 'has_upcoming_visits' : 'conflict', message: out.error });
     }
     return { providers: out.config.providers, visitTypes: out.config.visitTypes };

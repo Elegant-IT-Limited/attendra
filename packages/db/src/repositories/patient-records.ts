@@ -27,6 +27,8 @@ export interface PatientCard {
   /** new: added by the assistant on a call, waiting for the front desk to check the details. */
   status: PatientStatus;
   createdAt: Date;
+  /** The clinic's own details on the record (Settings, Fields and lists). */
+  custom: Record<string, string>;
 }
 export interface PatientFields { firstName: string; lastName: string; dob: string; phone: string; guardianName?: string | null; gender?: Gender | null; species?: string | null }
 
@@ -122,6 +124,26 @@ export class PatientRecords {
       const cards = rows.map((r) => this.card(clinicId, r));
       await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.list.viewed', entity: 'patient', entityId: patientSetKey(cards.map((c) => c.id)) }, 5);
       return cards;
+    });
+  }
+
+  /**
+   * Patients by kind of animal or by one of the clinic's own fields, newest first: the
+   * details are encrypted, so the newest few thousand are read and checked here. At
+   * most 100 are shown; audited like the list.
+   */
+  async filtered(clinicId: string, userId: string, f: { species?: string; field?: { id: string; value: string; multi: boolean } }): Promise<{ patients: PatientCard[]; truncated: boolean }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(desc(patients.createdAt), desc(patients.id)).limit(this.scanLimit);
+      const want = (v: string | undefined) => (v ?? '').trim().toLowerCase();
+      const match = (c: PatientCard) => (!f.species || want(c.species ?? '') === want(f.species))
+        && (!f.field || (f.field.multi
+          ? (c.custom[f.field.id] ?? '').split('|').map(want).includes(want(f.field.value))
+          : want(c.custom[f.field.id]) === want(f.field.value)));
+      const all = rows.map((r) => this.card(clinicId, r)).filter(match);
+      const shown = all.slice(0, 100);
+      await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.list.viewed', entity: 'patient', entityId: patientSetKey(shown.map((c) => c.id)) }, 5);
+      return { patients: shown, truncated: all.length > shown.length || rows.length >= this.scanLimit };
     });
   }
 
@@ -287,6 +309,7 @@ export class PatientRecords {
       species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, ctx('species')) : null,
       status: r.status,
       createdAt: r.createdAt,
+      custom: r.customEnc ? JSON.parse(this.cipher.decrypt(r.customEnc, ctx('custom'))) as Record<string, string> : {},
     };
   }
 }

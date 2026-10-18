@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
+import { shownValue } from '@/components/patients/custom-fields';
 import { Badge } from '@/components/ui/badge';
 import { api, useClinicConfig } from '@/lib/api';
 import { age, dob, GENDER_LABEL, phone } from '@/lib/format';
@@ -102,6 +103,11 @@ export function PatientLine({ p }: { p: PatientCard }) {
             ? `${p.species.charAt(0).toUpperCase()}${p.species.slice(1)}${p.gender && p.gender !== 'undisclosed' ? `, ${(GENDER_LABEL[p.gender] ?? p.gender).toLowerCase()}` : ''}, born ${dob(p.dob)}, age ${age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}${p.guardianName ? `, owner ${p.guardianName}` : ''}`
             : <>{p.gender ? `${GENDER_LABEL[p.gender]}, born` : 'Born'} {dob(p.dob)}, age {age(p.dob, localDateOf(new Date(), config.data?.timezone ?? 'UTC'))}{p.guardianName ? `, parent or guardian ${p.guardianName}` : ''}</>}
         </span>
+        {/* the clinic's own fields it chose to show as columns (Settings, Fields and lists) */}
+        {(() => {
+          const shownFields = (config.data?.customFields ?? []).filter((f) => f.column && p.custom?.[f.id]);
+          return shownFields.length ? <span className="block text-xs text-text-muted">{shownFields.map((f) => `${f.label}: ${shownValue(f, p.custom[f.id])}`).join(' · ')}</span> : null;
+        })()}
       </span>
       {p.phone ? <span className="shrink-0 text-xs tabular-nums text-text-muted">{phone(p.phone)}</span> : <Badge tone="danger">No phone</Badge>}
     </>

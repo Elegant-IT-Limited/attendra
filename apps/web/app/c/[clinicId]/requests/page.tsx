@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
-import { localDateOf } from '@attendra/core';
+import { type CustomField, localDateOf, multiValues } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Search, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { TextStatus } from '@/components/calls/text-status';
+import { CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { useSettled } from '@/components/patients/patient-search';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { api, ApiFailure, useClinic } from '@/lib/api';
+import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, dayTitle, phone, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
@@ -61,11 +62,17 @@ function Requests() {
   const [text, setText] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  // one of the clinic's own request fields, a dropdown or yes-or-no, and its value
+  const [fieldFilter, setFieldFilter] = useState<{ id: string; value: string }>({ id: '', value: '' });
+  const config = useClinicConfig(clinicId);
+  const requestFields = config.data?.requestFields ?? [];
+  const filterable = requestFields.filter((f) => f.kind === 'choice' || f.kind === 'multi' || f.kind === 'yesno');
+  const filterField = filterable.find((f) => f.id === fieldFilter.id);
   const q = useSettled(text.trim());
   const queries = useQueryClient();
   // a POST body: what is typed can be a name or a phone number, and never goes in an address
   const filters = { status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}), q, ...(from ? { from } : {}), ...(to ? { to } : {}) };
-  const filtered = !!(type || who !== 'everyone' || q || from || to);
+  const filtered = !!(type || who !== 'everyone' || q || from || to || fieldFilter.value);
   const tasks = useQuery({
     queryKey: ['tasks', clinicId, status, type, who, q, from, to],
     queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify(filters) }),
@@ -122,10 +129,14 @@ function Requests() {
     return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role can see calls and settings, not requests, because they name {terms.patients}.</Empty></Card></>;
   }
   const teammates = (team.data?.members ?? []).filter((m) => m.role !== 'viewer');
+  // the clinic's own field, filtered here: the values are already on the cards
+  const shown = (tasks.data?.tasks ?? []).filter((t) => !filterField || !fieldFilter.value
+    || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value));
 
   return (
     <>
-      <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>} />
+      <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>}
+        actions={can('settings:write') ? <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link> : undefined} />
       <details className="group mb-5 rounded-lg border border-border bg-surface text-sm shadow-xs">
         <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
           <Info className="size-4" aria-hidden /> What each kind of request means
@@ -169,7 +180,25 @@ function Requests() {
           <Label htmlFor="request-to" className="text-text-muted">to</Label>
           <Input id="request-to" type="date" className="h-8 w-38" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
         </div>
-        {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); }}><X /> Clear</Button>}
+        {filterable.length > 0 && (
+          <div className="flex items-center gap-1.5" role="group" aria-label="Filter by a field">
+            <Label htmlFor="request-field" className="sr-only">Field</Label>
+            <Select id="request-field" className="h-8 w-40" value={fieldFilter.id} onChange={(e) => setFieldFilter({ id: e.target.value, value: '' })}>
+              <option value="">Any field</option>
+              {filterable.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </Select>
+            {filterField && (
+              <>
+                <Label htmlFor="request-field-value" className="sr-only">Value</Label>
+                <Select id="request-field-value" className="h-8 w-40" value={fieldFilter.value} onChange={(e) => setFieldFilter({ ...fieldFilter, value: e.target.value })}>
+                  <option value="">Any value</option>
+                  {(filterField.kind === 'yesno' ? ['yes', 'no'] : filterField.options ?? []).map((o) => <option key={o} value={o}>{filterField.kind === 'yesno' ? (o === 'yes' ? 'Yes' : 'No') : o}</option>)}
+                </Select>
+              </>
+            )}
+          </div>
+        )}
+        {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); setFieldFilter({ id: '', value: '' }); }}><X /> Clear</Button>}
       </div>
       <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
@@ -178,14 +207,14 @@ function Requests() {
           Nobody can approve refills yet. On the <Link href={`/c/${clinicId}/team`} className="underline">Team page</Link>, tick Approves refills for your {terms.patient === 'pet' ? 'veterinarians' : 'prescribers'}.
         </Alert>
       )}
-      {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !tasks.data?.tasks.length ? (
+      {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !shown.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
           {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {tasks.data.tasks.map((t) => (
-            <RequestCard key={t.id} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
+          {shown.map((t) => (
+            <RequestCard key={t.id} fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
               canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')} canApprove={!!clinic?.approvesRefills}
               onAct={(action, body) => act.mutate({ task: t, action, body })} />
           ))}
@@ -196,13 +225,14 @@ function Requests() {
   );
 }
 
-function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct }: {
-  task: Task; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
+function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct }: {
+  task: Task; fields: CustomField[]; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean; canApprove: boolean;
   onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
 }) {
   const [note, setNote] = useState('');
   const [closing, setClosing] = useState(false);
+  const [editingFields, setEditingFields] = useState(false);
   const [outcome, setOutcome] = useState(t.type === 'refill' && canApprove ? 'refill_sent' : t.type === 'review' ? 'details_confirmed' : 'called_back');
   const Icon = ICONS[t.type] ?? Phone;
   const mine = t.assigneeUserId === meId;
@@ -238,8 +268,18 @@ function RequestCard({ task: t, patientWord, clinicId, tz, today, meId, busy, te
         {open && t.followUp && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
         {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
+        {fields.filter((f) => t.custom[f.id]).map((f) => (
+          <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, t.custom[f.id])}</dd></div>
+        ))}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
       </dl>
+      {fields.length > 0 && canWork && (
+        <div className="border-t border-border px-5 py-3">
+          {editingFields
+            ? <CustomFieldsForm compact clinicId={clinicId} fields={fields} values={t.custom} canWrite saveUrl={`/clinics/${clinicId}/tasks/${t.id}/fields`} queryKey={['tasks', clinicId]} />
+            : <Button size="sm" variant="ghost" onClick={() => setEditingFields(true)}>{fields.some((f) => t.custom[f.id]) ? 'Edit details' : 'Add details'}</Button>}
+        </div>
+      )}
       {(t.notes.length > 0 || (open && canWork)) && (
         <div className="space-y-2 border-t border-border px-5 py-3">
           {t.notes.map((n) => (

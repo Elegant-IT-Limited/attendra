@@ -134,6 +134,8 @@ export const tasks = pgTable('tasks', {
   assignedByUserId: text('assigned_by_user_id'),
   urgent: boolean('urgent').notNull().default(false),
   dueOn: date('due_on', { mode: 'string' }),
+  /** The clinic's own details on the request, encrypted JSON. */
+  customEnc: text('custom_enc'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
