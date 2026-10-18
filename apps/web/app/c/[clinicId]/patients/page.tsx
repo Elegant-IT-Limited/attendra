@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientList } from '@attendra/api/contracts';
-import { PATIENT_GUIDE, PET_GUIDE, patientTemplate, petTemplate } from '@attendra/core';
+import { managedList, PATIENT_GUIDE, PET_GUIDE, patientTemplate, petTemplate } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
-import { FileUp, UserPlus } from 'lucide-react';
+import { FileUp, SlidersHorizontal, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -11,11 +11,12 @@ import { PatientForm } from '@/components/patients/patient-form';
 import { PatientLine, PatientSearch } from '@/components/patients/patient-search';
 import { ImportPanel } from '@/components/import-panel';
 import { PageHeader } from '@/components/shell';
-import { Button } from '@/components/ui/button';
+import { Button, buttonStyles } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { Label, Select } from '@/components/ui/input';
 import { useTerms } from '@/lib/terms';
 
 const row = 'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none';
@@ -35,6 +36,19 @@ export default function Patients() {
     queryKey: ['patients', clinicId, onlyNew ? 'new' : 'all'],
     queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients${onlyNew ? '?status=new' : ''}`),
     enabled: allowed,
+  });
+  // by kind of animal, or by one of the clinic's own dropdown or yes-or-no fields: read on the server, newest first
+  const config = useClinicConfig(clinicId);
+  const [species, setSpecies] = useState('');
+  const [fieldFilter, setFieldFilter] = useState<{ id: string; value: string }>({ id: '', value: '' });
+  const filterable = (config.data?.customFields ?? []).filter((f) => f.kind === 'choice' || f.kind === 'multi' || f.kind === 'yesno');
+  const filterField = filterable.find((f) => f.id === fieldFilter.id);
+  const speciesList = config.data ? managedList(config.data, 'species') : [];
+  const filtering = !!species || (!!filterField && !!fieldFilter.value);
+  const byFilter = useQuery({
+    queryKey: ['patients', clinicId, 'filter', species, fieldFilter.id, fieldFilter.value],
+    queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/filter`, { method: 'POST', body: JSON.stringify({ ...(species ? { species } : {}), ...(filterField && fieldFilter.value ? { field: fieldFilter } : {}) }) }),
+    enabled: allowed && filtering,
   });
   const recent = useQuery({
     queryKey: ['patient', clinicId, 'recent'],
@@ -57,6 +71,7 @@ export default function Patients() {
       <PageHeader title={terms.title('patients')} description={pet ? 'Find a pet by its name, its owner\'s name, a phone number or a birthday as you type, and see its visits, calls and requests. The newest are at the top.' : 'Find a patient by name, phone or date of birth as you type, and see their visits, calls and requests. The newest are at the top.'}
         actions={(
           <>
+            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link>}
             {can('patients:import') && <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>}
             {can('patients:write') && <Button onClick={() => setAdding(true)}><UserPlus /> Add {terms.patient}</Button>}
           </>
@@ -68,6 +83,50 @@ export default function Patients() {
               <Button size="sm" variant={onlyNew ? 'ghost' : 'outline'} aria-pressed={!onlyNew} onClick={() => setOnlyNew(false)}>All {terms.patients}</Button>
               <Button size="sm" variant={onlyNew ? 'outline' : 'ghost'} aria-pressed={onlyNew} onClick={() => setOnlyNew(true)}>Added by the assistant, to check</Button>
             </div>
+            {(pet && speciesList.length > 0) || filterable.length > 0 ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+                {pet && speciesList.length > 0 && (
+                  <>
+                    <Label htmlFor="pet-species" className="sr-only">Kind of animal</Label>
+                    <Select id="pet-species" className="h-8 w-40" value={species} onChange={(e) => setSpecies(e.target.value)}>
+                      <option value="">Any kind</option>
+                      {speciesList.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                  </>
+                )}
+                {filterable.length > 0 && (
+                  <>
+                    <Label htmlFor="patient-field" className="sr-only">Field</Label>
+                    <Select id="patient-field" className="h-8 w-44" value={fieldFilter.id} onChange={(e) => setFieldFilter({ id: e.target.value, value: '' })}>
+                      <option value="">Any field</option>
+                      {filterable.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+                    </Select>
+                    {filterField && (
+                      <>
+                        <Label htmlFor="patient-field-value" className="sr-only">Value</Label>
+                        <Select id="patient-field-value" className="h-8 w-40" value={fieldFilter.value} onChange={(e) => setFieldFilter({ ...fieldFilter, value: e.target.value })}>
+                          <option value="">Any value</option>
+                          {(filterField.kind === 'yesno' ? ['yes', 'no'] : filterField.options ?? []).map((o) => <option key={o} value={o}>{filterField.kind === 'yesno' ? (o === 'yes' ? 'Yes' : 'No') : o}</option>)}
+                        </Select>
+                      </>
+                    )}
+                  </>
+                )}
+                {filtering && <Button size="sm" variant="ghost" onClick={() => { setSpecies(''); setFieldFilter({ id: '', value: '' }); }}>Clear</Button>}
+              </div>
+            ) : null}
+            {filtering ? (
+              byFilter.isPending ? <Skeleton className="h-40" /> : byFilter.isError ? <Alert tone="warn">This list did not load. Refresh to try again.</Alert>
+                : !byFilter.data?.patients.length ? <Empty title="Nobody matches">Try another kind or value, or clear the filter.</Empty>
+                  : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-text-muted">{byFilter.data.truncated ? 'The newest matches first, up to 100. Narrow the filter to see others.' : 'Every match, newest first.'}</p>
+                      <ul className="divide-y divide-border rounded-md border border-border">
+                        {byFilter.data.patients.map((p) => <li key={p.id}><Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} /></Link></li>)}
+                      </ul>
+                    </div>
+                  )
+            ) : (
             <PatientSearch clinicId={clinicId} autoFocus status={onlyNew ? 'new' : undefined}
               renderResult={(p) => <Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} /></Link>}
               empty={newest.isPending ? <Skeleton className="h-40" /> : newest.isError ? <Alert tone="warn">This list did not load. Refresh to try again.</Alert>
@@ -80,6 +139,7 @@ export default function Patients() {
                       </ul>
                     </div>
                   )} />
+            )}
           </CardContent>
         </Card>
         <Card>

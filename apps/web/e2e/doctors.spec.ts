@@ -15,7 +15,13 @@ test('a manager adds a doctor with hours and days off, and the front desk sees t
   await panel.getByLabel('Name').fill('Dr. Lena Ortiz');
   await panel.getByLabel('Gender').selectOption({ label: 'Female' });
   await panel.getByLabel('Specialty').fill('Dermatology');
-  await panel.getByLabel('What they see people for').fill('Skin, Allergies');
+  // categories are chips now: type one, Enter, then the next
+  const categories = panel.getByRole('combobox', { name: 'What they see people for' });
+  await categories.fill('Skin');
+  await categories.press('Enter');
+  await categories.fill('Allergies');
+  await categories.press('Enter');
+  await expect(panel.getByRole('list', { name: 'What they see people for' })).toContainText('Allergies');
   await panel.getByLabel('Their own hours, not the clinic\'s').check();
   await panel.getByRole('button', { name: 'Days off' }).click();
   await panel.getByRole('button', { name: 'Save' }).click();
