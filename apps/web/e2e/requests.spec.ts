@@ -5,6 +5,8 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   const page = await openAs(browser, 'frontdesk');
   await page.getByRole('link', { name: /^Requests/ }).click();
   await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible();
+  // what each kind means folds away; open it to read the refill line
+  await page.getByText('What each kind of request means').click();
   await expect(page.getByText('The patient asked for a refill. Check with the care team, then call them back.')).toBeVisible();
 
   await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
