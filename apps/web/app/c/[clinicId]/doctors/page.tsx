@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarOff, FileUp, Plus, Search, Trash2, X } from 'lucide-react';
+import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useMemo, useState } from 'react';
 import { ImportPanel } from '@/components/import-panel';
+import { CustomFieldInputs, shownValue } from '@/components/patients/custom-fields';
+import { ChipsPicker } from '@/components/ui/chips';
 import { LocalNames } from '@/components/settings/assistant';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -67,8 +70,10 @@ export default function DoctorsPage() {
     if (sort === 'specialty') return [...found].sort((a, b) => (a.specialty || '\uffff').localeCompare(b.specialty || '\uffff') || a.name.localeCompare(b.name));
     return found;
   }, [doctors.data, text, specialty, category, sort]);
-  const specialties = useMemo(() => [...new Set((doctors.data?.providers ?? []).flatMap((p) => (p.specialty ? [p.specialty] : [])))].sort(), [doctors.data]);
-  const categories = useMemo(() => [...new Set((doctors.data?.providers ?? []).flatMap((p) => p.categories))].sort(), [doctors.data]);
+  // the clinic's own order when it keeps the lists (Settings, Fields and lists), else what the records say
+  const specialties = useMemo(() => (config.data ? managedList({ ...config.data, providers: doctors.data?.providers ?? config.data.providers }, 'specialties') : []), [config.data, doctors.data]);
+  const categories = useMemo(() => (config.data ? managedList({ ...config.data, providers: doctors.data?.providers ?? config.data.providers }, 'categories') : []), [config.data, doctors.data]);
+  const providerFields = config.data?.providerFields ?? [];
   const filtered = !!(text || specialty || category);
 
   if (isPending || doctors.isPending) return <><PageHeader title={terms.title('providers')} /><Skeleton className="h-64" /></>;
@@ -81,6 +86,7 @@ export default function DoctorsPage() {
       <PageHeader title={terms.title('providers')} description={terms.patient === 'pet' ? 'Who can be booked, the animals and services they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.' : 'Who can be booked, what they see people for, the ages they see, their weekly hours and days off. The assistant uses this list from the next thing a caller asks.'}
         actions={manager && (
           <>
+            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields and lists</Link>
             <Button variant="outline" onClick={() => setImporting(true)}><FileUp /> Import</Button>
             <Button onClick={() => setEditing({ id: null, draft: blank(visitTypes) })}><Plus /> Add {terms.provider}</Button>
           </>
@@ -128,6 +134,7 @@ export default function DoctorsPage() {
                   {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
+                  {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
                   <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
                   {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t) => <span key={t.from} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
@@ -160,7 +167,11 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const terms = useTerms(clinicId);
   const pets = terms.patient === 'pet';
   const [d, setD] = useState<Draft>(editing.draft);
-  const [categories, setCategories] = useState(editing.draft.categories.join(', '));
+  const [categories, setCategories] = useState<string[]>(editing.draft.categories);
+  const [custom, setCustom] = useState<Record<string, string>>(editing.draft.custom ?? {});
+  const config = useClinicConfig(clinicId);
+  const lists = config.data ? { specialties: managedList(config.data, 'specialties'), categories: managedList(config.data, 'categories') } : { specialties: [], categories: [] };
+  const providerFields = config.data?.providerFields ?? [];
   const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -192,7 +203,9 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       gender,
       name: d.name.trim(),
       specialty: d.specialty?.trim() || undefined,
-      categories: categories.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
+      categories,
+      // the clinic's own fields, all of them, so a required one left empty is caught
+      ...(providerFields.length ? { custom: Object.fromEntries(providerFields.map((f) => [f.id, custom[f.id] ?? ''])) } : {}),
       credentials: credentials.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
       hours: ownHours ? Object.fromEntries(Object.entries(hours).filter(([, w]) => w && w.length)) : undefined,
       timeOff: d.timeOff.filter((t) => t.from && t.to),
@@ -233,17 +246,28 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           </Select>
           <p className="text-xs text-text-muted">A caller can ask for a female or a male {terms.provider}.</p>
         </div>
-        <div className="space-y-1.5"><Label htmlFor="doc-specialty">Specialty</Label><Input id="doc-specialty" maxLength={60} value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder={pets ? 'e.g. General practice, Surgery' : 'e.g. Family medicine, Pediatrics'} /></div>
+        <div className="space-y-1.5">
+          <Label htmlFor="doc-specialty">Specialty</Label>
+          <Input id="doc-specialty" maxLength={60} list="doc-specialty-list" value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder={pets ? 'e.g. General practice, Surgery' : 'e.g. Family medicine, Pediatrics'} />
+          <datalist id="doc-specialty-list">{lists.specialties.map((s) => <option key={s} value={s} />)}</datalist>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-categories">{pets ? 'Animals and services they see' : 'What they see people for'}</Label>
-          <Input id="doc-categories" value={categories} onChange={(e) => setCategories(e.target.value)} placeholder={pets ? 'e.g. Dogs, Cats, Exotics, Dentistry' : 'e.g. Children, Vaccinations, Diabetes care'} />
-          <p className="text-xs text-text-muted">Separated by commas. The assistant tells callers, so they pick the right doctor.</p>
+          <ChipsPicker id="doc-categories" label={pets ? 'Animals and services they see' : 'What they see people for'} values={categories} suggestions={lists.categories} onChange={setCategories}
+            placeholder={pets ? 'Type, or pick below: Dogs, Exotics…' : 'Type, or pick below: Children…'} />
+          <p className="text-xs text-text-muted">The assistant tells callers, so they pick the right {terms.provider}. Rename or order the list under Settings, Fields and lists.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-credentials">Qualifications and certifications</Label>
           <Input id="doc-credentials" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder={pets ? 'e.g. DVM, Fear Free Certified' : 'e.g. MD, Board-certified in family medicine'} />
           <p className="text-xs text-text-muted">Separated by commas. Shown on this page, and the assistant mentions them when a caller asks.</p>
         </div>
+        {providerFields.length > 0 && (
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
+            <legend className="px-1 text-sm font-medium">More details</legend>
+            <CustomFieldInputs idPrefix="doc-cf" fields={providerFields} values={custom} onChange={(id, v) => setCustom((c) => ({ ...c, [id]: v }))} />
+          </fieldset>
+        )}
         {!pets && <fieldset className="space-y-1.5">
           <legend className="text-sm font-medium">Ages they see</legend>
           <div className="flex items-center gap-2 text-sm">

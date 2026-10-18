@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asE164, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { applyListChange, asE164, listUsage, managedList, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -134,5 +134,44 @@ describe('texting and greetings in other languages', () => {
     expect(hidden.success).toBe(false);
     expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, greetings: { en: 'Thanks for calling, I am the AI assistant here.' } }).success).toBe(false); // the main language uses the greeting
     expect(greetingFor({ ...DEMO_CLINIC, greetings: undefined }, 'es')).toBe(PACKS.es.greeting({ assistantName: DEMO_CLINIC.assistantName ?? null, clinicName: DEMO_CLINIC.name }));
+  });
+});
+
+describe('fields and lists of the clinic\'s own', () => {
+  const fields = [
+    { id: 'insurer', label: 'Insurer', kind: 'choice' as const, options: ['Trupanion', 'Nationwide', 'None'], required: true },
+    { id: 'diet', label: 'Diet', kind: 'multi' as const, options: ['Dry', 'Wet', 'Raw'] },
+    { id: 'weight', label: 'Weight (kg)', kind: 'number' as const },
+  ];
+
+  it('needs choices for a dropdown, once each, and no separator in them', () => {
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, customFields: [{ id: 'x', label: 'X', kind: 'choice', options: ['Only'] }] }).success).toBe(false);
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, customFields: [{ id: 'x', label: 'X', kind: 'choice', options: ['A', 'a'] }] }).success).toBe(false);
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, customFields: [{ id: 'x', label: 'X', kind: 'multi', options: ['A|B', 'C'] }] }).success).toBe(false);
+    expect(ClinicConfig.safeParse({ ...DEMO_CLINIC, customFields: fields, providerFields: [fields[2]], requestFields: [fields[0]] }).success).toBe(true);
+  });
+
+  it('reads a dropdown in the clinic\'s spelling, several choices in its order, numbers, and a required field', () => {
+    expect(readCustomValues(fields, { insurer: 'trupanion', diet: 'Raw | dry', weight: '4.5' })).toEqual({ ok: true, values: { insurer: 'Trupanion', diet: 'Dry | Raw', weight: '4.5' } });
+    expect(readCustomValues(fields, { insurer: 'Petplan' })).toMatchObject({ ok: false, field: 'insurer' });
+    expect(readCustomValues(fields, { diet: 'Kibble' })).toMatchObject({ ok: false, field: 'diet' });
+    expect(readCustomValues(fields, { weight: 'heavy' })).toMatchObject({ ok: false, field: 'weight' });
+    expect(readCustomValues(fields, { weight: '4' }, { complete: true })).toMatchObject({ ok: false, field: 'insurer', message: 'required' });
+    expect(readCustomValues(fields, { weight: '4' })).toMatchObject({ ok: true }); // a partial save does not ask for the rest
+  });
+
+  it('keeps a list as the records have it until the clinic orders its own, and carries renames and removals to every doctor', () => {
+    const c = ClinicConfig.parse(RIVERBEND_CLINIC);
+    const derived = managedList(c, 'categories');
+    expect(derived.length).toBeGreaterThan(0);
+    expect([...derived].sort((a, b) => a.localeCompare(b))).toEqual(derived);
+    const [first, second] = derived as [string, string];
+    const next = applyListChange(c, 'categories', [`${first} care`, ...derived.slice(2)], { [first]: `${first} care` });
+    expect(managedList(next, 'categories')[0]).toBe(`${first} care`);
+    expect(next.providers.flatMap((p) => p.categories)).not.toContain(first);
+    expect(next.providers.flatMap((p) => p.categories)).not.toContain(second);
+    expect(next.providers.some((p) => p.categories.includes(`${first} care`))).toBe(true);
+    expect(Object.values(listUsage(c, 'categories')).every((n) => n > 0)).toBe(true);
+    expect(managedList(c, 'species')).toContain('Dog');
   });
 });

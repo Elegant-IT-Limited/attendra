@@ -60,6 +60,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **How the assistant talks**: a more natural default (short turns, everyday words, a brief "Sure, one moment" instead of silence), and the clinic's choice of pace, style and acknowledgements (`talk`). These change how it sounds, never what it may do.
 - **Hosting:** `PUT /provisioning/clinics/:id/texting` turns texting during calls on or off; the cloud does it when the texting registration is approved or rejected. The Riverbend demo clinic texts (its texts show as not sent, with no Twilio).
 
+### Added (fields and lists)
+
+- **Settings → Fields and lists**, one tab each for pets (or patients), veterinarians (or doctors) and requests. Each has the clinic's own fields: text, number, yes or no, date, a dropdown to pick one or several (with the choices in order), "must be filled in", "show as a column", and up and down to order them. A new field goes to the top; with an empty one there, the button goes to it.
+- **Lists the clinic keeps in order**: specialties, what doctors see, kinds of animal. Rename, remove, reorder and add; a rename is carried to every doctor, a removal takes it off them after saying how many use it (`PUT /settings/lists/:list`). Before a clinic keeps a list, it is what the records say.
+- **On the records**: a doctor's form picks what they see as chips from the list and has the clinic's fields; a request card has its own details (`PUT /tasks/:id/fields`, encrypted, migration 0032); the Pets list filters by kind of animal or by a dropdown or yes-or-no field, read on the server (`POST /patients/filter`), and shows the fields marked as columns; Requests filter by a request field. "Manage fields" on each list page opens its tab. Kinds of request moved from General to the Requests tab.
+
 ### Fixed
 
 - **Voice previews say which voices have one.** OpenAI's speech model has 10 of the 23 phone voices; those play a preview. The other 13 (Tempo, Willow, Beacon and the rest) exist only in the Live model, which speaks only on a call, so Settings offers only the 10 that can be heard (`PREVIEW_VOICES`); a clinic that already uses one of the other 13 keeps it, marked "no preview", with a Test call button instead of Listen (refusal `calls_only`). A preview that fails says to try again, and the reason is logged. A changed greeting is heard in the preview once saved; the browser no longer replays the earlier one for an hour.
