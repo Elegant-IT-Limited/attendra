@@ -26,7 +26,6 @@ const PATTERNS = [
   // giving a medicine to someone else: a child, or a pet at a veterinary clinic
   words(`(should|can|could|is it (ok|okay|safe) to) (i|we) give (him|her|it|them|my \\w+|the \\w+|our \\w+)? ?(some |a little )?(of )?(my |his |her |the |our )?(${DRUGS})`),
   words('(should|can|could) (i|we) give (him|her|it|them) (something|anything)'),
-  words('\\d+ ?(mg|milligrams?|ml|units?|tablets?|pills?)'),
   // Spanish, without accents: text is normalised first
   words('cuant(o|a|os|as) (debo|puedo|tengo que) tomar|que dosis|la dosis|puedo tomar|debo tomar|efectos secundarios|dejar de tomar'),
 ];
@@ -36,7 +35,15 @@ export const NO_INFORMATION = "I don't have that information, I can have someone
 /** And when the question is one only a clinician may answer. */
 export const MEDICAL_REFUSAL = "I can't give medical advice, but I can have someone from the care team call you back.";
 
-export function isMedicalQuestion(text: string): boolean {
+/** A bare amount ("16 mg", "two tablets"): a dose question when asked, but also how a refill is named. */
+const QUANTITY = words('\\d+ ?(mg|milligrams?|ml|units?|tablets?|pills?)');
+
+/**
+ * Whether a question is one only a clinician may answer. `quantities: false` leaves out
+ * a bare amount, for the caller's recent turns: "a refill of Apoquel 16 mg" must not
+ * make the next question, "what time do you close?", a medical one.
+ */
+export function isMedicalQuestion(text: string, opts: { quantities?: boolean } = {}): boolean {
   const t = normalise(text);
-  return PATTERNS.some((p) => p.test(t));
+  return PATTERNS.some((p) => p.test(t)) || (opts.quantities !== false && QUANTITY.test(t));
 }

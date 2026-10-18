@@ -46,7 +46,7 @@ export function starterClinic(input: StarterInput): ClinicConfig {
     greeting: PACKS.en.greeting({ assistantName: null, clinicName: input.name }),
     languages: ['en'],
     primaryLanguage: 'en',
-    providers: [{ id: 'prov_1', name: vet ? 'our veterinarian' : 'our doctor', visitTypeIds: visitTypes.map((v) => v.id) }],
+    providers: [{ id: 'prov_1', name: vet ? 'our veterinarian' : 'our doctor', visitTypeIds: visitTypes.map((v) => v.id), placeholder: true }],
     visitTypes,
     // a vet clinic books in the morning what came in overnight, after a person has looked at it
     afterHours: vet ? 'requests' : 'book',

@@ -29,7 +29,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
             onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
         <Field label="Emergency number" htmlFor="emergency-number" hint={`Set from your clinic's country: ${defaultNumber}. Leave it empty unless your area uses another number${allowed.length > 1 ? ` (${allowed.join(' or ')})` : ''}.`}>
-          <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={defaultNumber} maxLength={4}
+          <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={defaultNumber} maxLength={5}
             onChange={(e) => set({ emergencyNumber: e.target.value.trim() || undefined })} />
         </Field>
       </div>

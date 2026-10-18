@@ -27,6 +27,8 @@ export interface QualityNumbers {
   afterHours: number;
   /** Bookings made while the clinic was closed: the visits the weekly report counts as saved. */
   afterHoursBookings: number;
+  /** Calls while the clinic was closed that left a request for the team: the visits a clinic that books in the morning keeps. */
+  afterHoursRequests: number;
   emergencies: number;
   refillRequests: number;
   voiceMinutes: number; cost: number; costPerCall: number | null; costPerBooking: number | null;
@@ -60,6 +62,7 @@ export function qualityOf(calls: QualityCall[], costPerMinute: number): QualityN
     transferred, transferredShare: rate(transferred, calls.length), flagged, flaggedShare: rate(flagged, calls.length),
     afterHours: calls.filter((c) => c.afterHours).length,
     afterHoursBookings: booked.filter((c) => c.afterHours).length,
+    afterHoursRequests: calls.filter((c) => c.afterHours && c.outcome === 'task_created').length,
     emergencies: calls.filter((c) => c.emergency).length,
     refillRequests: calls.reduce((n, c) => n + (c.refillRequests ?? 0), 0),
     voiceMinutes: Math.round(minutes * 10) / 10, cost: money(cost), costPerCall: calls.length ? money(cost / calls.length) : null, costPerBooking: booked.length ? money(cost / booked.length) : null,

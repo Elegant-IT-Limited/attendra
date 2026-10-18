@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { BUILT_IN_VOICES, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { BUILT_IN_VOICES, callingCode, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -11,7 +11,10 @@ import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
+import { VoicePreview } from '@/components/settings/voice-preview';
+import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { Switch } from '@/components/ui/controls';
+import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -31,7 +34,7 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'assistant', label: () => 'Assistant and languages' },
   { id: 'hours', label: () => 'Opening hours' },
   { id: 'holidays', label: () => 'Holidays' },
-  { id: 'emergency', label: () => 'Emergency hospital' },
+  { id: 'emergency', label: () => 'Emergency hospitals' },
   { id: 'visits', label: () => 'Visit types' },
   { id: 'transfers', label: () => 'Transfers' },
   { id: 'vip', label: () => 'VIP callers' },
@@ -49,7 +52,7 @@ function issueLabel(path: string) {
   const top = path.split('.')[0] ?? '';
   const names: Record<string, string> = {
     greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
-    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospital',
+    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
     hours: 'Opening hours', holidays: 'Holidays', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
   };
   return names[top] ?? (top || 'Settings');
@@ -83,6 +86,7 @@ export default function Settings() {
     onMutate: () => setIssues([]),
     onSuccess: (config) => {
       queries.setQueryData(['settings', clinicId], config);
+      void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] });
       // the clinic's name and time zone also come with who you are, for every other page
       void queries.invalidateQueries({ queryKey: ['me'] });
       setDraft(config);
@@ -102,6 +106,9 @@ export default function Settings() {
   const setWindows = (d: Day, w: { open: string; close: string }[]) => set({ hours: { ...c.hours, [d]: w } });
 
   const pet = c.industry === 'vet';
+  // the first hospital is the clinic's first choice; the rest, in order, its next ones
+  const hospitals = [...(c.emergencyHospital ? [c.emergencyHospital] : []), ...(c.moreEmergencyHospitals ?? [])];
+  const setHospitals = (list: typeof hospitals) => set({ emergencyHospital: list[0], moreEmergencyHospitals: list.length > 1 ? list.slice(1) : undefined });
   const upd = <K extends ListKey>(key: K, i: number, patch: Partial<NonNullable<ClinicConfig[K]>[number]>) =>
     set({ [key]: ((c[key] ?? []) as object[]).map((x, j) => (j === i ? { ...x, ...patch } : x)) } as Partial<ClinicConfig>);
   const remove = <K extends ListKey>(key: K, i: number) => set({ [key]: ((c[key] ?? []) as object[]).filter((_, j) => j !== i) } as Partial<ClinicConfig>);
@@ -132,18 +139,27 @@ export default function Settings() {
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="greeting-voice" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
           <Field label="Clinic name" htmlFor="name"><Input id="name" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
+            <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
+          </div>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={400} onChange={(e) => set({ greeting: e.target.value })} />
           </Field>
-          {clinicWarnings(c).map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
+          {clinicWarnings(c).filter((w) => w.path !== 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Voice" htmlFor="voice" hint="How the assistant sounds on the phone.">
-              <Select id="voice" value={c.voice} onChange={(e) => set({ voice: e.target.value })}>
-                {/* a voice saved before this list keeps working, and stays selected */}
-                {!(BUILT_IN_VOICES as readonly string[]).includes(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)}</option>}
-                {BUILT_IN_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}</option>)}
-              </Select>
-            </Field>
+            <div className="min-w-0 space-y-1.5">
+              <label htmlFor="voice" className="block text-sm font-medium">Voice</label>
+              <div className="flex items-start gap-2">
+                <Select id="voice" aria-describedby="voice-hint" value={c.voice} onChange={(e) => set({ voice: e.target.value })}>
+                  {/* a voice saved before this list keeps working, and stays selected */}
+                  {!(BUILT_IN_VOICES as readonly string[]).includes(c.voice) && <option value={c.voice}>{voiceLabel(c.voice)}</option>}
+                  {BUILT_IN_VOICES.map((v) => <option key={v} value={v}>{voiceLabel(v)}</option>)}
+                </Select>
+                <VoicePreview clinicId={clinicId} voice={c.voice} />
+              </div>
+              <p id="voice-hint" className="text-xs text-text-muted">How the assistant sounds on the phone. Listen plays your saved greeting in the voice chosen here.</p>
+            </div>
             <Field label="Time zone" htmlFor="tz" hint="Times on every page, the opening hours and read-backs use it.">
               <TimeZonePicker id="tz" value={c.timezone} onChange={(timezone) => set({ timezone })} disabled={!writable || save.isPending} />
             </Field>
@@ -162,8 +178,8 @@ export default function Settings() {
         <AssistantSection c={c} set={set} disabled={!writable || save.isPending} />
 
         <Section id="hours" title="Opening hours" description={c.afterHours === 'requests'
-          ? 'Outside these hours the assistant still answers and takes requests and callbacks, but books nothing and does not transfer to the front desk.'
-          : 'Outside these hours the assistant still answers, takes callbacks and books, but does not transfer to the front desk.'}>
+          ? 'Outside these hours the assistant still answers and takes requests and callbacks, but books nothing. It transfers only to numbers set for closed hours under Transfers.'
+          : 'Outside these hours the assistant still answers, takes callbacks and books. It transfers only to numbers set for closed hours under Transfers.'}>
           <div className="divide-y divide-border rounded-lg border border-border">
             {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
               <div key={d} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
@@ -192,16 +208,17 @@ export default function Settings() {
                 <option value="requests">Take requests; the team books in the morning</option>
               </Select>
             </Field>
-            <Field label="Average visit value" htmlFor="visit-value" hint="The weekly report counts visits booked after hours at this value, as money saved.">
+            <Field label="Average visit value" htmlFor="visit-value" hint={c.afterHours === 'requests' ? 'The weekly report counts each request taken while you were closed as a visit kept, at this value.' : 'The weekly report counts visits booked after hours at this value, as money saved.'}>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-muted" aria-hidden>$</span>
-                <Input id="visit-value" type="number" min={0} max={100000} className="pl-7" value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-muted" aria-hidden>{countryCopy(c).currency}</span>
+                <Input id="visit-value" type="number" min={0} max={100000} className={countryCopy(c).currency.length > 1 ? 'pl-11' : 'pl-7'} value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
               </div>
             </Field>
           </div>
         </Section>
 
-        <Section id="holidays" title="Holidays" description="Closed all day. Nothing is offered on these dates.">
+        <Section id="holidays" title="Holidays" description="Closed all day. Nothing is offered on these dates. Adding one never moves a visit already booked: the Schedule lists any to move.">
+          <ConflictsAlert clinicId={clinicId} />
           {c.holidays.length === 0 ? <EmptyNote>No holidays set.</EmptyNote> : (
             <div className="flex flex-wrap gap-2">
               {c.holidays.map((h) => (
@@ -219,16 +236,38 @@ export default function Settings() {
         </Section>
 
         {(pet || c.emergencyHospital) && (
-          <Section id="emergency" title="Emergency hospital" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. Without one, callers are told to go to the nearest 24-hour emergency vet.">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Hospital name" htmlFor="er-name"><Input id="er-name" value={c.emergencyHospital?.name ?? ''} placeholder="e.g. City Pet Emergency"
-                onChange={(e) => set({ emergencyHospital: { name: e.target.value, phone: c.emergencyHospital?.phone ?? '', address: c.emergencyHospital?.address ?? '' } })} /></Field>
-              <Field label="Phone" htmlFor="er-phone" hint="With the country code, like +17205550188."><Input id="er-phone" type="tel" value={c.emergencyHospital?.phone ?? ''} placeholder="+1"
-                onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: e.target.value, address: c.emergencyHospital?.address ?? '' } })} /></Field>
-            </div>
-            <Field label="Address" htmlFor="er-address" hint="Read to callers as written."><Input id="er-address" value={c.emergencyHospital?.address ?? ''} placeholder="e.g. 1200 Main Street, Denver"
-              onChange={(e) => set({ emergencyHospital: { name: c.emergencyHospital?.name ?? '', phone: c.emergencyHospital?.phone ?? '', address: e.target.value } })} /></Field>
-            {c.emergencyHospital && <Button type="button" size="sm" variant="ghost" className="text-text-muted hover:text-danger" onClick={() => set({ emergencyHospital: undefined })}><Trash2 /> Remove the emergency hospital</Button>}
+          <Section id="emergency" title="Emergency hospitals" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. It names your first choice that is open at that moment. With none set or none open, callers are told to go to the nearest 24-hour emergency vet."
+            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => { setHospitals([...hospitals, { name: '', phone: '', address: '' }]); setAdded(`item-hospital-${hospitals.length}`); }}><Plus /> Hospital</Button>}>
+            {hospitals.length === 0 && <EmptyNote>No emergency hospital yet. Add the one you send clients to at night.</EmptyNote>}
+            {hospitals.map((h, i) => {
+              const upd = (patch: Partial<typeof h>) => setHospitals(hospitals.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              return (
+                <Item key={i} id={`item-hospital-${i}`} removeLabel={`Remove ${h.name || 'this hospital'}`} onRemove={() => setHospitals(hospitals.filter((_, j) => j !== i))}>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={i === 0 ? 'accent' : 'neutral'}>{i === 0 ? 'First choice' : `Choice ${i + 1}`}</Badge>
+                      {i > 0 && <Button type="button" size="sm" variant="ghost" onClick={() => setHospitals([h, ...hospitals.filter((_, j) => j !== i)])}>Make first choice</Button>}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field label="Hospital name"><Input value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
+                      <Field label="Phone" hint="With the country code."><Input type="tel" value={h.phone} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd({ phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+                    </div>
+                    <Field label="Address" hint="Read to callers as written."><Input value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
+                    <Switch id={`hospital-24h-${i}`} label="Open 24 hours" checked={!h.hours} onCheckedChange={(on) => upd({ hours: on ? undefined : { open: '18:00', close: '08:00' } })} disabled={!writable || save.isPending}
+                      hint="Turn off for a hospital that only takes emergencies part of the day, like evenings and nights." />
+                    {h.hours && (
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-text-muted">Every day from</span>
+                        <Input type="time" aria-label={`${h.name || 'Hospital'} opens`} className="w-32" value={h.hours.open} onChange={(e) => upd({ hours: { ...h.hours!, open: e.target.value } })} />
+                        <span className="text-text-muted">to</span>
+                        <Input type="time" aria-label={`${h.name || 'Hospital'} closes`} className="w-32" value={h.hours.close} onChange={(e) => upd({ hours: { ...h.hours!, close: e.target.value } })} />
+                        <span className="text-xs text-text-muted">A closing time before the opening time runs past midnight.</span>
+                      </div>
+                    )}
+                  </div>
+                </Item>
+              );
+            })}
           </Section>
         )}
 
@@ -279,8 +318,9 @@ export default function Settings() {
           </p>
         </Section>
 
-        <Section id="transfers" title="Transfers" description="Where the assistant sends a caller who asks for a person, and when. It transfers only to these numbers."
-          action={<Button type="button" size="sm" variant="outline" onClick={() => { set({ routing: [{ target: 'front_desk', uri: 'tel:+1', when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); }}><Plus /> Transfer number</Button>}>
+        <Section id="transfers" title="Transfers" description="Where the assistant sends a caller who asks for a person, and when. It transfers only to these numbers. Once the call is passed on, that line's own phone system handles it, voicemail included; if the transfer itself fails, the assistant stays on and offers a callback."
+          action={<Button type="button" size="sm" variant="outline" onClick={() => { set({ routing: [{ target: 'front_desk', uri: `tel:+${callingCode(c.phoneNumbers[0] ?? '') ?? ''}`, when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); }}><Plus /> Transfer number</Button>}>
+          {clinicWarnings(c).filter((w) => w.path === 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           {c.routing.length === 0 && <EmptyNote>No transfer numbers yet. Callers who ask for a person get a callback request.</EmptyNote>}
           {c.routing.map((r, i) => (
             <Item key={i} id={`item-routing-${i}`} removeLabel="Remove this transfer number" onRemove={() => remove('routing', i)}>
@@ -291,7 +331,7 @@ export default function Settings() {
                   </Select>
                 </Field>
                 <Field label="Phone number" hint="With the country code.">
-                  <Input type="tel" value={shownUri(r.uri)} placeholder="+13035550100" onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} />
+                  <Input type="tel" value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} />
                 </Field>
                 <Field label="When">
                   <Select value={r.when} onChange={(e) => upd('routing', i, { when: e.target.value as typeof r.when })}>
@@ -311,7 +351,7 @@ export default function Settings() {
             <Item key={i} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
-                <Field label="Phone number" hint="With the country code."><Input type="tel" value={v.phone} placeholder="+13035550100" onChange={(e) => upd('vipCallers', i, { phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+                <Field label="Phone number" hint="With the country code."><Input type="tel" value={v.phone} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('vipCallers', i, { phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
               </div>
             </Item>
           ))}

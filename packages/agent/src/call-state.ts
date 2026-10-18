@@ -38,6 +38,14 @@ export class CallState {
   /** Bumped on every delegation. Work finishing under an old revision is discarded. */
   revision = 0;
   emergency: { kind: string; atMs: number } | null = null;
+  /**
+   * The caller said the animal is safe after hearing the emergency script, so the call
+   * may go on (a booking for a check-up, say). The emergency stays on the record. Never
+   * set for a person in danger; a new emergency later in the call locks it again.
+   */
+  emergencyCleared = false;
+  /** An emergency is holding the call: only the script, a transfer, a callback or the end. */
+  get emergencyLocked() { return !!this.emergency && !this.emergencyCleared; }
   /** The on-call transfer an emergency asks for has been queued: it rings once per call. */
   emergencyTransferSent = false;
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
+  bookableProviders,
   addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, matchesSpecialty, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
@@ -31,6 +32,8 @@ export interface CallContext {
   callerNumber: string | null;
   now: () => Date;
   log?: Logger;
+  /** A browser test call cannot be transferred: the assistant says where it would have connected the caller. */
+  channel?: 'phone' | 'web';
 }
 
 /** What a tool hands back: data for the planner, and optionally a call-control action. */
@@ -82,7 +85,7 @@ export async function runTool(
   const trade = industryPack(ctx.clinic.industry);
   const parsed = toolArgsFor(ctx.clinic.industry)[name].safeParse(rawArgs);
   if (!parsed.success) return refuse('invalid_arguments', 'Ask the caller to repeat that detail.');
-  if (state.emergency && !EMERGENCY_ALLOWED.has(name)) {
+  if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
     return refuse('emergency_in_progress', trade.identity === 'pet'
       ? 'Do not continue the task. Repeat where to take the animal now, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic) + '.'
       : `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic)}.`);
@@ -95,9 +98,11 @@ export async function runTool(
       ? 'Before that, ask for the owner\'s full name and the pet\'s name.'
       : 'Before that, ask for the caller\'s full name and date of birth.');
   }
-  // closed, at a clinic that takes requests out of hours: the team books in the morning
-  if ((name === 'propose_booking' || name === 'propose_cancellation') && ctx.clinic.afterHours === 'requests' && !isOpen(ctx.clinic, ctx.now())) {
-    return refuse('after_hours', 'The clinic is closed and books during opening hours only. Say so, and offer to take a request for the team to call back in the morning with create_callback: what they want, and the best number.');
+  // closed, at a clinic that takes requests out of hours: the team books in the morning. No
+  // times are looked up either, so none is ever read out and then refused. A cancellation
+  // still goes ahead: it frees a slot and needs no one's judgement.
+  if ((name === 'find_slots' || name === 'propose_booking') && ctx.clinic.afterHours === 'requests' && !isOpen(ctx.clinic, ctx.now())) {
+    return refuse('after_hours', 'The clinic is closed and books during opening hours only. Do not offer any times. Say so, and offer to take a request for the team to call back in the morning with create_callback: what they want, and the best number. Cancelling an existing visit is still fine.');
   }
   const { clinic } = ctx;
   const args = parsed.data as Record<string, unknown>;
@@ -181,7 +186,7 @@ export async function runTool(
       const question = String(args.question);
       // the medical-advice rule wins over anything the FAQ or a document says. It checks
       // what the caller said too: the model may pass on a question it has softened
-      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
       const hours = todaysHoursLine(clinic, ctx.now());
       const answer = answerFromFaqs(clinic.faqs, question);
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
@@ -192,6 +197,7 @@ export async function runTool(
         ok: true,
         data: {
           today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
+          ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
@@ -203,7 +209,7 @@ export async function runTool(
 
     case 'search_knowledge': {
       const question = String(args.question);
-      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText())) return MEDICAL();
+      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
       const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
       if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
       if (state.outcome === 'abandoned') state.outcome = 'info';
@@ -228,10 +234,11 @@ export async function runTool(
       if (patient && !patient.isNew && visitType.audience === 'new') {
         return refuse('existing_patient_visit_type', `They are already a patient. Offer one of these: ${clinic.visitTypes.filter((v) => v.audience !== 'new').map((v) => localName(v, lang)).join(', ')}.`);
       }
-      let providers = args.provider_id ? clinic.providers.filter((p) => p.id === args.provider_id) : clinic.providers;
+      let providers = args.provider_id ? clinic.providers.filter((p) => p.id === args.provider_id) : bookableProviders(clinic.providers);
       if (args.provider_id && !providers.length) return refuse('unknown_provider', 'Use a provider_id from get_clinic_info.');
       // the kind of doctor or department the caller asked for, matched to the clinic's own list only
-      if (args.specialty) {
+      // a clinic that lists no specialties or categories for anyone: everyone sees everything
+      if (args.specialty && providers.some((p) => p.specialty || p.categories.length)) {
         providers = providers.filter((p) => matchesSpecialty(p, String(args.specialty)));
         if (!providers.length) {
           const list = specialtyFacts(clinic, lang).map((s) => `${s.specialty} (${s.doctors.join(', ')})`).join('; ');
@@ -402,7 +409,7 @@ export async function runTool(
         idempotencyKey: key(ctx.callId, 'callback', String(args.reason).toLowerCase()),
         details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: String(args.callback_number) },
       });
-      if (!state.emergency) state.outcome = 'task_created';
+      if (!state.emergencyLocked) state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
     }
@@ -410,9 +417,17 @@ export async function runTool(
     case 'transfer_call': {
       const target = args.target as 'front_desk' | 'billing' | 'on_call';
       const resolved = resolveTransfer(clinic, target, ctx.now());
-      if (!resolved.ok) return refuse(resolved.reason, 'Nobody is available on that line right now. Offer to take a callback.');
+      if (!resolved.ok) {
+        return refuse(resolved.reason, resolved.reason === 'no_rule'
+          ? 'The clinic has no phone line set up for transfers. Do not say nobody is there. Offer to take a callback request for the team, with the reason and the best number.'
+          : 'That line only takes calls at other times. Offer to take a callback request for the team, with the reason and the best number.');
+      }
+      // a browser test call cannot be transferred: say what would happen on a real call
+      if (ctx.channel === 'web') {
+        return { ok: true, data: { test_call: true, say: `This is a test call from the browser, so it cannot be transferred. Say that on a real phone call you would connect them now to the ${target.replace('_', ' ')} line.` } };
+      }
       await backend.audit.record(clinic.id, { actor: 'voice-agent', action: `call.transferred.${target}`, entity: 'call', entityId: ctx.callId, callId: ctx.callId });
-      if (!state.emergency) state.outcome = 'transferred';
+      if (!state.emergencyLocked) state.outcome = 'transferred';
       return { ok: true, data: { transferring: target, say: 'Tell them you are connecting them now.' }, action: { type: 'transfer', uri: resolved.uri } };
     }
 

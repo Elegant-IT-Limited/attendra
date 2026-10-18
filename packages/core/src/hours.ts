@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig } from './clinic';
+import type { ClinicConfig, EmergencyHospital } from './clinic';
 import { addDays, localParts, toMinutes, weekdayOf } from './time';
 
 type Hours = ClinicConfig['hours'];
@@ -44,4 +44,20 @@ export function weekHours(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     const windows = windowsOn(clinic.hours, weekdayOf(date));
     return `${day}: ${windows.length ? windows.map((w) => `${w.open} to ${w.close}`).join(' and ') : 'closed'}`;
   }).join('; ');
+}
+
+/**
+ * The emergency hospital to send a caller to now: the clinic's choices in order, the
+ * first one open at this moment in the clinic's time. Null when none is open, so the
+ * script falls back to "the nearest 24-hour emergency vet".
+ */
+export function hospitalFor(clinic: Pick<ClinicConfig, 'emergencyHospital' | 'moreEmergencyHospitals' | 'timezone'>, at: Date): EmergencyHospital | null {
+  const minutes = localParts(at, clinic.timezone).minutes;
+  const open = (h: EmergencyHospital) => {
+    if (!h.hours) return true;
+    const from = toMinutes(h.hours.open);
+    const to = toMinutes(h.hours.close);
+    return from < to ? minutes >= from && minutes < to : minutes >= from || minutes < to;
+  };
+  return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].find((h): h is EmergencyHospital => !!h && open(h)) ?? null;
 }

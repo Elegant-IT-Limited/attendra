@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, industryPack, isPetEmergency, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
@@ -79,7 +79,8 @@ export class CallAgent {
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return [];
+    if (!match) return this.maybeClearEmergency(delta);
+    this.state.emergencyCleared = false; // a new emergency holds the call again
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
@@ -97,7 +98,8 @@ export class CallAgent {
     const number = emergencyNumberFor(clinic);
     // an animal in danger (or the bare word "emergency" at a clinic for animals) gets the trade's script
     const forTrade = trade.emergency && (isPetEmergency(match.kind) || match.kind === 'general');
-    const hospital = clinic.emergencyHospital ?? null;
+    // the clinic's first choice of hospital that is open now; none open, the nearest 24-hour one
+    const hospital = hospitalFor(clinic, this.ctx.now());
     const script = match.kind === 'self_harm' ? pack.selfHarmScript(number, crisisLineFor(clinic))
       : forTrade ? trade.emergency!.script(language, { hospital, emergencyNumber: number })
         : pack.emergencyScript(number);
@@ -114,6 +116,28 @@ export class CallAgent {
       }
     }
     return out;
+  }
+
+  /**
+   * After an animal emergency's script has been said, a caller who says the animal is
+   * safe ("he's fine now, I just want a check-up") may carry on: a broad list sends some
+   * calm owners to the script by mistake, and they must not be stuck. Only when every
+   * emergency on the call was an animal's (or the bare word "emergency" at a vet clinic):
+   * never after a person in danger. The emergency stays on the call's record.
+   */
+  private maybeClearEmergency(delta: string): Outbound[] {
+    const s = this.state;
+    const safe = industryPack(this.ctx.clinic.industry).emergency?.safe;
+    if (!s.emergencyLocked || !safe || !this.canEndByStaff()) return [];
+    if (![...s.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) return [];
+    const text = normalise(delta);
+    if (!this.ctx.clinic.languages.some((l) => safe[l]?.test(text))) return [];
+    s.emergencyCleared = true;
+    s.revision++;
+    this.log.info({ call_id: this.ctx.callId, emergency_kind: s.emergency?.kind }, 'caller said the animal is safe; the call goes on');
+    this.emit({ type: 'emergency', kind: 'cleared' });
+    this.emitState();
+    return [{ type: 'instructions', delegationId: null, content: 'The caller says the animal is safe and it is not an emergency. You may help with what they ask now, including booking a visit. If anything they say sounds urgent again, repeat where to take the animal.' }];
   }
 
   onAgentTranscript(delta: string, startMs: number, endMs: number) {
@@ -147,7 +171,7 @@ export class CallAgent {
     this.emit({ type: 'staff', action: 'coached', by, note });
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
     // a note never replaces the emergency script: it is sent again after the note
-    if (this.state.emergency && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
+    if (this.state.emergencyLocked && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
     return out;
   }
 
@@ -165,7 +189,7 @@ export class CallAgent {
         ? 'The transfer did not go through: the caller is still with you. Apologise briefly, and offer to have someone from the clinic call them back. If they want that, take a callback with create_callback.'
         : 'The call could not be ended: the caller is still with you. Ask if there is anything else, and offer to have someone from the clinic call them back.',
     }];
-    if (this.state.emergency && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
+    if (this.state.emergencyLocked && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
     return out;
   }
 
@@ -173,7 +197,7 @@ export class CallAgent {
   takeOver(uri: string, by: string | null = null): Outbound[] {
     this.state.revision++;
     this.state.pending = null;
-    if (!this.state.emergency) this.state.outcome = 'transferred';
+    if (!this.state.emergencyLocked) this.state.outcome = 'transferred';
     this.emit({ type: 'staff', action: 'taken_over', by });
     this.emitState();
     return [

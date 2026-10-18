@@ -120,7 +120,7 @@ describe('adding and editing', () => {
     const res = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Nora', lastName: 'Quinlan', dob: '1971-06-18', phone: '(303) 555-0188', gender: 'female' } });
     expect(res.statusCode).toBe(201);
     id = res.json().id;
-    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0188' } });
+    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toMatchObject({ status: 'found', patient: { id, phone: '+13035550188' } }); // kept as E.164, so a text reaches it
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
     expect((await audit('patient.created')).filter((a) => a.entity_id === id)).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
     const stored = JSON.stringify((await api.t.db.execute(sql`select * from patients where id = ${id}`)).rows);
@@ -160,7 +160,7 @@ describe('adding and editing', () => {
   it('edits a patient and keeps the voice lookup right: the new name and phone verify, the old ones do not', async () => {
     const res = await api.request('PATCH', `${C}/${id}`, { cookie: as.owner, body: { firstName: 'Nora', lastName: 'Quinlan-Hart', dob: '1971-06-18', phone: '(303) 555-0189', gender: 'female' } });
     expect(res.json()).toEqual({ id, similar: false });
-    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan-Hart', '1971-06-18', '3035550189')).toMatchObject({ status: 'found', patient: { id, phone: '(303) 555-0189' } });
+    expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan-Hart', '1971-06-18', '3035550189')).toMatchObject({ status: 'found', patient: { id, phone: '+13035550189' } });
     expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toEqual({ status: 'not_found' });
     expect(await names('3035550188')).toEqual([]);
     expect(await audit('patient.updated')).toEqual([{ actor: `user:${api.users.owner}`, entity_id: id }]);

@@ -19,6 +19,9 @@ export const EVENTS = Symbol('events');
 export const WEBHOOK_GUARD = Symbol('webhook-guard');
 /** Change notices from Postgres, for the live dashboard. Null when the deployment does not listen. */
 export const CHANGES = Symbol('changes');
+/** Speaks a short text in a built-in voice, for Settings. Null when the deployment has no OpenAI key. */
+export const VOICE_SAMPLES = Symbol('voice-samples');
+export interface VoiceSampler { sample(voice: string, text: string): Promise<Buffer> }
 
 /** Starts and ends browser test calls on the voice service. Null when the deployment has none. */
 export interface LiveCallSummary {
