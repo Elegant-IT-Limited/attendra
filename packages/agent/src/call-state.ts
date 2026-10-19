@@ -72,6 +72,8 @@ export class CallState {
   /** After a booking, the question about reminder texts: asked once, answered once. */
   reminderOffer: { patientId: string; offeredAtMs: number; askedAtMs: number | null } | null = null;
   remindersAsked = false;
+  /** How many times the assistant had to be told to answer a caller left waiting in silence. */
+  silenceNudges = 0;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */

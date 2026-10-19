@@ -3,14 +3,15 @@ import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner }
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { callerNumber, dialledNumber, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
-import { CallRunner, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
+import { CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
 
-export interface IncomingCall { id: string; type: string; data: { session_id: string; sip_headers?: { name: string; value: string }[] } }
+/** An incoming phone call: GPT-Live sends a session id, the Realtime API a call id. */
+export interface IncomingCall { id: string; type: string; data: { session_id?: string; call_id?: string; sip_headers?: { name: string; value: string }[] } }
 
 export interface VoiceDeps {
   /** Verifies the OpenAI webhook signature and parses the event; throws when it is not genuine. */
@@ -75,7 +76,9 @@ const testCallTexts = (messenger: Backend['messenger']): Backend['messenger'] =>
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
-const INCOMING = new Set(['live.transport.incoming', 'live.call.incoming']); // the second is deprecated but still delivered during migration
+// GPT-Live's calls (the second name is deprecated but still delivered during migration), and the Realtime API's
+const INCOMING = new Set(['live.transport.incoming', 'live.call.incoming', 'realtime.call.incoming']);
+const sessionOf = (e: IncomingCall) => e.data.session_id ?? e.data.call_id ?? '';
 
 /**
  * The voice service's HTTP surface: the webhook, a health check, and the internal
@@ -115,7 +118,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       if (!INCOMING.has(event.type)) return reply.code(200).send({ ignored: event.type });
       // Claim the delivery (retries) and the session (the same call can arrive as both
       // live.transport.incoming and the deprecated live.call.incoming). First one wins.
-      if (!(await deps.claimDelivery(event.id)) || !(await deps.claimDelivery(`session:${event.data.session_id}`))) {
+      if (!sessionOf(event) || !(await deps.claimDelivery(event.id)) || !(await deps.claimDelivery(`session:${sessionOf(event)}`))) {
         return reply.code(200).send({ duplicate: true });
       }
 
@@ -380,20 +383,33 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
    * with SIP 503 (the carrier plays its own message), a failure after accepting hangs up.
    */
   async function handleIncoming(event: IncomingCall) {
-    const sessionId = event.data.session_id;
+    const sessionId = sessionOf(event);
     const headers = event.data.sip_headers ?? [];
+    // OpenAI decides which kind of call it is (a GPT-Live or a Realtime one): it is answered with that engine
+    const came = event.type.startsWith('realtime.') ? 'gpt-realtime' : 'gpt-live';
+    const router = deps.engine instanceof EngineRouter ? deps.engine : null;
+    const via = router ? router.named(came) : deps.engine;
     let accepted = false;
     try {
+      if (!via) {
+        deps.log.error({ session_id: sessionId, engine: came }, 'a call came in for an engine this server does not run; rejecting with 503');
+        await deps.engine.reject(sessionId, 503);
+        return;
+      }
       const dialled = dialledNumber(headers);
       const stored = dialled ? await deps.clinicForNumber(dialled) : null;
       if (!stored) {
         deps.log.warn({ session_id: sessionId }, 'no clinic for the dialled number; rejecting with 404');
-        await deps.engine.reject(sessionId, 404);
+        await via.reject(sessionId, 404);
         return;
       }
       const clinic = ClinicConfig.parse(stored);
       const from = callerNumber(headers);
-      await deps.engine.accept(sessionId, clinic, now());
+      if (router && clinic.voiceEngine && clinic.voiceEngine !== came) {
+        deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: clinic.voiceEngine, came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
+      }
+      if (router) await router.acceptWith(via, sessionId, clinic, now());
+      else await deps.engine.accept(sessionId, clinic, now());
       accepted = true;
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
       const vip = vipRoute(clinic, from, now());
@@ -402,7 +418,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       // best effort: the call is already failing, and a second error must not escape
-      await Promise.resolve().then(() => (accepted ? deps.engine.hangup(sessionId) : deps.engine.reject(sessionId, 503))).catch(() => {});
+      await Promise.resolve().then(() => (accepted ? deps.engine.hangup(sessionId) : (via ?? deps.engine).reject(sessionId, 503))).catch(() => {});
     }
   }
 

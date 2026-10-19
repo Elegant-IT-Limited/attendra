@@ -194,6 +194,22 @@ export class CallAgent {
     return out;
   }
 
+  /**
+   * The caller finished speaking and the assistant has said nothing since, with no tool
+   * at work: a word to answer now. The first time, answer, or ask them to repeat what
+   * was missed; the second, apologise for the wait too. Counted for the call's quality.
+   */
+  onSilence(nth: number): Outbound[] {
+    this.state.silenceNudges++;
+    this.log.info({ call_id: this.ctx.callId, nth }, 'assistant nudged after a silence');
+    return [{
+      type: 'instructions', delegationId: null,
+      content: nth <= 1
+        ? 'The caller finished speaking and is waiting for you. Answer them now, in one or two short sentences. If you did not catch what they said, say so briefly and ask them to say it again.'
+        : 'The caller has been waiting in silence. Apologise briefly for the wait, then answer them, or ask them to repeat what they said.',
+    }];
+  }
+
   /** A person takes the call: the assistant says so, then the call is transferred. Work in flight is dropped. */
   takeOver(uri: string, by: string | null = null): Outbound[] {
     this.state.revision++;

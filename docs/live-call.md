@@ -39,6 +39,14 @@ attendra-demo.example.com {
 1. In the project settings, create a webhook for the event `live.transport.incoming` at `https://attendra-demo.example.com/webhooks/openai`. Copy the signing secret (`whsec_...`).
 2. Note the project id. Calls reach it at `sip:<project-id>@sip.api.openai.com;transport=tls`.
 
+### Two engines
+
+GPT-Live answers by default. OpenAI's Realtime API (`ATTENDRA_REALTIME_MODEL`, gpt-realtime-2.1) is the second engine, on the same project, key and webhook. Both run the same backend: identity checks, booking rules, texts and transfers are identical; the Realtime model reaches them through one tool, `ask_backend`.
+
+- **Test calls** use the clinic's engine: `PUT /provisioning/clinics/:clinicId/voice-engine` with `{ "engine": "gpt-realtime" }` (or `null` for the default, `ATTENDRA_VOICE_ENGINE`). Clinics never see this setting.
+- **Phone calls** are answered with the engine OpenAI sends them as: a `live.transport.incoming` call by GPT-Live, a `realtime.call.incoming` call by the Realtime engine. Subscribe the webhook to both. A clinic set to one engine whose call arrives as the other is answered anyway, and the log says so.
+- Either engine: if a caller finishes speaking and nothing comes back for 6 seconds (no answer, no tool at work), the assistant is told to answer, and again at 14 seconds; and once the assistant has said goodbye after the two steps `end_call` needs ("anything else?", then the caller's no or goodbye), a line quiet for 6 seconds is hung up, in case the model forgot to end it.
+
 ## 3. Twilio
 
 1. Create an Elastic SIP Trunk. Under **Origination**, add `sip:<project-id>@sip.api.openai.com;transport=tls`. Turn on secure trunking.

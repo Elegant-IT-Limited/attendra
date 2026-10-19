@@ -34,6 +34,7 @@ const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes:
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
+const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
 
@@ -131,6 +132,19 @@ export class ProvisioningController {
       const c = ClinicConfig.parse(current);
       if ((c.texting?.enabled ?? false) === body.enabled) return { result: true };
       return { save: { ...c, texting: { ...textingOf(c), enabled: body.enabled } }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */
+  @Put('clinics/:clinicId/voice-engine')
+  @HttpCode(204)
+  async voiceEngine(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(EngineChoice)) body: z.infer<typeof EngineChoice>) {
+    this.check(authorization);
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.voice_engine.${body.engine ?? 'default'}`, clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if ((c.voiceEngine ?? null) === body.engine) return { result: true };
+      return { save: { ...c, voiceEngine: body.engine ?? undefined }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
   }

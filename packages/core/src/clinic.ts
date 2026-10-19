@@ -269,6 +269,8 @@ const ClinicConfigShape = z.object({
   holidays: z.array(isoDate).default([]),
   // who the assistant books with when the caller names nobody
   booking: BookingRules.optional(),
+  // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default
+  voiceEngine: z.enum(['gpt-live', 'gpt-realtime']).optional(),
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)

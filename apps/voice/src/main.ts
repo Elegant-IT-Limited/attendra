@@ -21,6 +21,8 @@ const app = createVoiceApp({
   webhookSecret: env.OPENAI_WEBHOOK_SECRET,
   log,
   liveModel: env.GPT_LIVE_MODEL,
+  realtimeModel: env.ATTENDRA_REALTIME_MODEL,
+  defaultEngine: env.ATTENDRA_VOICE_ENGINE,
   backendModel: env.ATTENDRA_BACKEND_MODEL,
   twilio: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN } : undefined,
   publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL,
