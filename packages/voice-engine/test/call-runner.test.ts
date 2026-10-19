@@ -230,6 +230,19 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     vi.useRealTimers();
   });
 
+  it('is not fooled by the caller\'s words arriving while the reply is still being spoken', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    // the reply's words arrive at once, its audio plays for several seconds, and the caller's
+    // words before it are transcribed late: the caller is listening, not waiting
+    await h.runner.handle(delta('out', 'e1', 'Sure. I can add Biscuit as a new patient. First, I need the owner\'s full name. What is it?', 100));
+    await vi.advanceTimersByTimeAsync(1500);
+    await h.runner.handle(delta('in', 'e2', 'He is a new patient.', 1600));
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(h.sent.filter((e) => (e as { type: string }).type === 'session.instructions.append')).toEqual([]);
+    vi.useRealTimers();
+  });
+
   it('says nothing while the assistant is answering, or while a tool is at work', async () => {
     vi.useFakeTimers();
     let release!: () => void;
@@ -252,13 +265,18 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     vi.useFakeTimers();
     const h = harness(new ScriptedPlanner([]));
     await h.runner.handle(delta('out', 'e0', 'You are booked for Tuesday at nine. Is there anything else I can help you with?', 50));
+    await vi.advanceTimersByTimeAsync(7000); // the question is spoken
     await h.runner.handle(delta('in', 'e1', 'No, that is all, thanks.', 100));
     await h.runner.handle(delta('out', 'e2', 'You are welcome. Have a great day!', 800));
+    // 6 seconds after the goodbye has been spoken, not after its words arrived
     await vi.advanceTimersByTimeAsync(7000);
+    expect(h.engine.hangup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(3000);
     expect(h.engine.hangup).toHaveBeenCalledTimes(1);
 
     const other = harness(new ScriptedPlanner([]));
     await other.runner.handle(delta('out', 'e0', 'Is there anything else I can help you with?', 50));
+    await vi.advanceTimersByTimeAsync(4000);
     await other.runner.handle(delta('in', 'e1', 'Thanks.', 100));
     await other.runner.handle(delta('out', 'e2', 'Goodbye.', 800));
     await vi.advanceTimersByTimeAsync(2000);

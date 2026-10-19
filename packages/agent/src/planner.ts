@@ -45,6 +45,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
     ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
+    'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
     ...(clinic.afterHours === 'requests' ? ['While the clinic is closed it books nothing: do not look up or offer times; take a request with create_callback for the team to book in the morning. Cancelling an existing visit is still fine.'] : []),
     ...planner.limits,
