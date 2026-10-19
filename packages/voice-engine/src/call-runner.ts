@@ -22,6 +22,12 @@ const HANGUP_MAX_WAIT_MS = 20_000;
 export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
+/**
+ * The words of a reply arrive well before its audio has played, so "quiet" is counted
+ * from when the voice should have finished: about this long per character, on the slow
+ * side, so a long answer is never mistaken for silence.
+ */
+export const SPOKEN_MS_PER_CHAR = 80;
 /** An assistant turn that ends the call in words: "Goodbye.", "Have a great day!", "Adiós." */
 const GOODBYE = /\b(good ?bye|bye(-bye| now)?|have a (good|great|nice|lovely|wonderful) (day|evening|night|weekend|afternoon|morning)|take care|adi[oó]s|hasta (luego|pronto)|que tenga (un )?(buen|feliz|lindo) (d[ií]a|tarde|noche|fin de semana)|cu[ií]dese)\W*$/i;
 
@@ -32,6 +38,8 @@ export class CallRunner {
   private readonly timers = new Set<NodeJS.Timeout>();
   /** When the assistant last said something: a hang-up waits until it has finished. */
   private agentSpokeAt = 0;
+  /** When the assistant's voice should have finished what it has said so far. */
+  private speakingUntil = 0;
   /** When the caller last said something, and how many nudges that turn has had. */
   private callerSaidAt = 0;
   private nudged = 0;
@@ -84,6 +92,7 @@ export class CallRunner {
         const e = event as Extract<SidebandEvent, { delta: string }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
         this.agentSpokeAt = Date.now();
+        this.speakingUntil = Math.max(this.speakingUntil, this.agentSpokeAt) + e.delta.length * SPOKEN_MS_PER_CHAR;
         return this.flushFinishedTurns();
       }
       case 'session.delegation.created': {
@@ -167,12 +176,14 @@ export class CallRunner {
     const last = turns.at(-1);
     // the assistant said goodbye, nobody has spoken since, and the call was allowed to end:
     // the same two steps end_call needs ("anything else?", then the caller's no or goodbye)
-    if (last?.speaker === 'agent' && GOODBYE.test(last.text.trim()) && this.agentSpokeAt >= this.callerSaidAt && now - this.agentSpokeAt >= GOODBYE_HANGUP_MS && !this.pending && this.mayEnd()) {
+    if (last?.speaker === 'agent' && GOODBYE.test(last.text.trim()) && this.agentSpokeAt >= this.callerSaidAt && now - this.speakingUntil >= GOODBYE_HANGUP_MS && !this.pending && this.mayEnd()) {
       this.log.info({ session_id: this.sessionId }, 'ending the call after the assistant\'s goodbye');
       return this.dispatch([{ type: 'hangup' }]);
     }
-    // the caller spoke last, the assistant has said nothing since, and no tool is at work
-    if (this.callerSaidAt > this.agentSpokeAt && !this.pending && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
+    // the caller spoke after the assistant's voice had finished, nothing has come back, and
+    // no tool is at work. A caller's words that arrive while the reply is still playing
+    // (transcription can lag the reply) are not a wait.
+    if (this.callerSaidAt > this.speakingUntil && !this.pending && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
       this.log.info({ session_id: this.sessionId, nudge: this.nudged }, 'the caller is waiting in silence: nudging the assistant');
       return this.dispatch(this.agent.onSilence(this.nudged));

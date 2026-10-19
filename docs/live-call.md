@@ -45,7 +45,7 @@ GPT-Live answers by default. OpenAI's Realtime API (`ATTENDRA_REALTIME_MODEL`, g
 
 - **Test calls** use the clinic's engine: `PUT /provisioning/clinics/:clinicId/voice-engine` with `{ "engine": "gpt-realtime" }` (or `null` for the default, `ATTENDRA_VOICE_ENGINE`). Clinics never see this setting.
 - **Phone calls** are answered with the engine OpenAI sends them as: a `live.transport.incoming` call by GPT-Live, a `realtime.call.incoming` call by the Realtime engine. Subscribe the webhook to both. A clinic set to one engine whose call arrives as the other is answered anyway, and the log says so.
-- Either engine: if a caller finishes speaking and nothing comes back for 6 seconds (no answer, no tool at work), the assistant is told to answer, and again at 14 seconds; and once the assistant has said goodbye after the two steps `end_call` needs ("anything else?", then the caller's no or goodbye), a line quiet for 6 seconds is hung up, in case the model forgot to end it.
+- Either engine: if a caller finishes speaking after the assistant's voice has finished (estimated from its words, 80 ms a character, because the words arrive before the audio), and nothing comes back for 6 seconds (no answer, no tool at work), the assistant is told to answer, and again at 14 seconds; and once the assistant has said goodbye after the two steps `end_call` needs ("anything else?", then the caller's no or goodbye), a line quiet for 6 seconds is hung up, in case the model forgot to end it.
 
 ## 3. Twilio
 

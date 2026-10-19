@@ -21,7 +21,11 @@ export const ASK_BACKEND = {
 const REALTIME_LINES = [
   'Whenever the instructions say to delegate to the backend or to wait for the backend, call ask_backend and wait for its result.',
   'You know nothing about this clinic, its staff, its times or its callers except what these instructions say and what ask_backend returns. Never invent a time, a name, a price or a fact.',
+  'ask_backend is part of you, not someone else: never mention a backend or a system, never say you are asking or checking with anyone, and never say someone could not hear the caller. Say "let me check", then give what it returns as your own words. A callback from the clinic\'s team is fine to offer.',
 ];
+
+/** The longest a reply waits for the caller's words before it, when transcription is slow. */
+export const TRANSCRIPT_WAIT_MS = 3000;
 
 /** The part of the SDK's call socket the engine uses; tests pass a fake. */
 export interface RealtimeSocket {
@@ -113,17 +117,47 @@ export class RealtimeEngine implements VoiceEngine {
     const handlers: ((e: SidebandEvent) => void)[] = [];
     const emit = (e: SidebandEvent) => { for (const h of handlers) h(e); };
 
+    // The model answers as soon as the caller stops; their words are transcribed after, and
+    // can arrive seconds later. Until they do, the reply's words and its hand-off wait, so
+    // the record reads in order and the backend plans with what the caller just said.
+    const awaiting = new Set<string>();
+    let held: SidebandEvent[] = [];
+    let timer: NodeJS.Timeout | null = null;
+    const release = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      awaiting.clear();
+      const out = held;
+      held = [];
+      for (const e of out) emit(e);
+    };
+    const reply = (e: SidebandEvent) => {
+      if (!awaiting.size) return emit(e);
+      held.push(e);
+      timer ??= setTimeout(release, TRANSCRIPT_WAIT_MS);
+    };
+    const heard = (itemId: unknown) => {
+      if (typeof itemId === 'string') awaiting.delete(itemId);
+      if (!awaiting.size) release();
+    };
+
     ws.on('event', (e) => {
       switch (e.type) {
-        case 'conversation.item.input_audio_transcription.delta':
-          if (typeof e.delta === 'string' && e.delta) emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.delta, start_ms: ms(), end_ms: ms() });
+        case 'input_audio_buffer.committed':
+          if (typeof e.item_id === 'string') awaiting.add(e.item_id);
           return;
+        // the caller's turn, whole, once it is transcribed
+        case 'conversation.item.input_audio_transcription.completed':
+          if (typeof e.transcript === 'string' && e.transcript.trim()) emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: ms(), end_ms: ms() });
+          return heard(e.item_id);
+        case 'conversation.item.input_audio_transcription.failed':
+          return heard(e.item_id);
         case 'response.output_audio_transcript.delta':
-          if (typeof e.delta === 'string' && e.delta) emit({ type: 'session.output_transcript.delta', event_id: id(e), delta: e.delta, start_ms: ms(), end_ms: ms() });
+          if (typeof e.delta === 'string' && e.delta) reply({ type: 'session.output_transcript.delta', event_id: id(e), delta: e.delta, start_ms: ms(), end_ms: ms() });
           return;
         // the model hands the caller's request to the backend: the runner answers it like a GPT-Live delegation
         case 'response.function_call_arguments.done':
-          if (e.name === ASK_BACKEND.name && typeof e.call_id === 'string') emit({ type: 'session.delegation.created', event_id: id(e), delegation: { id: e.call_id, target: 'client' } });
+          if (e.name === ASK_BACKEND.name && typeof e.call_id === 'string') reply({ type: 'session.delegation.created', event_id: id(e), delegation: { id: e.call_id, target: 'client' } });
           return;
         case 'error':
           emit({ type: 'error', event_id: id(e), error: (e.error ?? undefined) as { code?: string; message?: string } | undefined });
@@ -157,9 +191,11 @@ export class RealtimeEngine implements VoiceEngine {
       send,
       onEvent: (handler) => { handlers.push(handler); },
       onError: (handler) => { ws.on('error', handler); },
-      // a Realtime call has no closing event: a clean close of the call's socket is the end of the call
+      // a Realtime call has no closing event: a clean close of the call's socket is the end
+      // of the call; any other close is a dropped connection, and the runner records it so
       onClose: (handler) => {
         ws.socket.on('close', (code: number) => {
+          release();
           if (code === 1000) emit({ type: 'session.closed', event_id: `rt_${callId}_closed`, reason: 'call_ended', usage: { seconds: Math.round(ms() / 1000) } });
           handler(code);
         });

@@ -36,6 +36,7 @@ describe('the Realtime engine', () => {
     expect(session.tools).toEqual([ASK_BACKEND]);
     expect(session.instructions).toContain(DEMO_CLINIC.greeting);
     expect(session.instructions).toContain('call ask_backend');
+    expect(session.instructions).toContain('never mention a backend or a system, never say you are asking or checking with anyone');
     // a voice only GPT-Live has falls back to one both have
     await e.accept('rtc_2', { ...DEMO_CLINIC, voice: 'not-a-realtime-voice' }, NOW);
     expect(((calls.accept.mock.calls[1] as unknown[])[1] as { audio: { output: { voice: string } } }).audio.output.voice).toBe('marin');
@@ -48,7 +49,7 @@ describe('the Realtime engine', () => {
     sideband.onEvent((ev) => seen.push(ev));
     const closed = vi.fn();
     sideband.onClose(closed);
-    s.play({ type: 'conversation.item.input_audio_transcription.delta', event_id: 'a', delta: 'I need a visit' });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'a', item_id: 'item_1', transcript: 'I need a visit' });
     s.play({ type: 'response.output_audio_transcript.delta', event_id: 'b', delta: 'Sure, one moment.' });
     s.play({ type: 'response.function_call_arguments.done', event_id: 'c', name: 'ask_backend', call_id: 'fc_1', arguments: '{"request":"book"}' });
     s.play({ type: 'response.function_call_arguments.done', event_id: 'd', name: 'something_else', call_id: 'fc_2' });
@@ -56,6 +57,29 @@ describe('the Realtime engine', () => {
     expect(seen.map((x) => x.type)).toEqual(['session.input_transcript.delta', 'session.output_transcript.delta', 'session.delegation.created', 'session.closed']);
     expect(seen[2]).toMatchObject({ delegation: { id: 'fc_1', target: 'client' } });
     expect(closed).toHaveBeenCalledWith(1000);
+  });
+
+  it('holds the reply and its hand-off until the caller\'s words before it are transcribed, or 3 seconds at most', () => {
+    vi.useFakeTimers();
+    const { e, s } = engine();
+    const sideband = e.attach('rtc_1');
+    const seen: SidebandEvent[] = [];
+    sideband.onEvent((ev) => seen.push(ev));
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'a', item_id: 'item_1' });
+    s.play({ type: 'response.output_audio_transcript.delta', event_id: 'b', delta: 'Got it, ' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'c', name: 'ask_backend', call_id: 'fc_1' });
+    expect(seen).toEqual([]);
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'd', item_id: 'item_1', transcript: 'Her birthday is the fifth of January.' });
+    expect(seen.map((x) => x.type)).toEqual(['session.input_transcript.delta', 'session.output_transcript.delta', 'session.delegation.created']);
+    expect(seen[0]).toMatchObject({ delta: 'Her birthday is the fifth of January.' });
+
+    // a transcription that never comes holds nothing for long
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'e', item_id: 'item_2' });
+    s.play({ type: 'response.output_audio_transcript.delta', event_id: 'f', delta: 'Sorry?' });
+    expect(seen).toHaveLength(3);
+    vi.advanceTimersByTime(3000);
+    expect(seen.at(-1)).toMatchObject({ type: 'session.output_transcript.delta', delta: 'Sorry?' });
+    vi.useRealTimers();
   });
 
   it('a dropped socket is not the end of the call: the runner sees the drop itself', () => {
