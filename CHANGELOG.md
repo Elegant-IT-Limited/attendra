@@ -4,6 +4,16 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the final pre-launch review)
+
+- **Calls.** "I don't think he's okay", "I hope she's fine" or "is she okay?" no longer lift an animal emergency. The on-call transfer after an emergency script, a take-over and every hang-up wait until the assistant's words have been heard. Only one transfer or hang-up is ever on its way. Phone calls release what the engines keep per call.
+- **GPT Realtime.** The assistant greets the caller first. What is sent before the socket opens waits instead of failing. One-off notes are conversation messages, not standing rules. One response at a time. Its words reach the record whole, not split inside words ("Bisc uit").
+- **Schedule.** The desk's open times reach the last day of the range (a 200-slot cap dropped later days). The conflicts alert counts a visit a special day's hours no longer hold, and one that overlaps a part-day absence. The assistant hears which part of a day a provider is away.
+- **Reminders.** A text the carrier refused for now is tried again on the next run, 3 times at most. A 2-hour setting sends as 3.
+- **Team.** A manager cannot reset the password of someone who also works for another organization.
+- **API.** A rate-limited request answers 429, not 500. Impossible dates answer 422. Webhooks limit only deliveries with a bad signature, so a flood of forged ones never turns a real call away.
+- **Dashboard.** Typing a choice exactly and pressing Enter keeps it (it picked the first). SIP transfer addresses survive a save. A list save refreshes the settings everywhere. New booking leaves the address bar. Keyboard moves keep focus in their own list. The days field clears. A squeezed-in visit goes to the vet shown. The month view is a proper grid for screen readers. Test-call captions read in order with GPT Realtime. Links to a Settings section land on it. Today says "Free 5:00 PM to 6:00 PM".
+
 ### Added (drag and drop, abusive callers)
 
 - **Drag and drop, like other apps**: hold a card anywhere but a field or a button (or by its handle) and it lifts and follows the pointer, while the others slide aside; drop it anywhere in its list. A finger presses and holds first, so the page still scrolls. The arrow keys on the handle still move it. Built on dnd-kit.

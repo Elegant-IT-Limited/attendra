@@ -91,6 +91,22 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
+  it('waits for a goodbye that arrived as text all at once to be heard, and drops a second hang-up', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    // about 6 s of speech arrives in one piece, long before its audio has played
+    await h.runner.handle(delta('out', 'o1', 'Thank you for calling Riverbend Animal Hospital. Take good care of Biscuit, goodbye.', 0));
+    await h.runner.act([{ type: 'hangup', afterMs: 3500 }]);
+    await h.runner.act([{ type: 'hangup', afterMs: 3500 }]);
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.engine.hangup).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('transfers a VIP caller only once the assistant has finished speaking', async () => {
     vi.useFakeTimers();
     const h = harness(new ScriptedPlanner([]));
@@ -101,7 +117,8 @@ describe('the GPT-Live call runner', () => {
       await h.runner.handle(delta('out', `v${i}`, 'connecting you ', 1000 * i));
     }
     expect(h.engine.transfer).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(2000);
+    // and once its audio has played (the words arrived a little faster than they are spoken)
+    await vi.advanceTimersByTimeAsync(3500);
     expect(h.engine.transfer).toHaveBeenCalledWith('live_1', 'tel:+13035550101');
     vi.useRealTimers();
   });

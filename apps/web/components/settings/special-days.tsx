@@ -23,9 +23,9 @@ export function SpecialDaysEditor({ days, holidays, onChange }: { days: SpecialD
     el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el?.querySelector<HTMLElement>('select')?.focus({ preventScroll: true });
     el?.classList.add('ring-2', 'ring-primary');
-    const t = setTimeout(() => el?.classList.remove('ring-2', 'ring-primary'), 1200);
+    // not cleared when `added` resets below: the outline must still come off
+    if (el) setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1200);
     setAdded(null);
-    return () => clearTimeout(t);
   }, [added, days]);
   const taken = (d: string) => holidays.includes(d) || days.some((x) => x.date === d);
   const upd = (i: number, patch: Partial<SpecialDay>) => onChange(days.map((d, j) => (j === i ? { ...d, ...patch } : d)));

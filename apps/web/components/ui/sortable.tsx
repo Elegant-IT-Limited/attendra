@@ -5,7 +5,7 @@ import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifi
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /** Where a drag never starts: typing in a field, choosing in a list, or pressing a button stays what it is. */
@@ -49,6 +49,8 @@ export function Sortable<T>({ items, keyOf, label, onMove, disabled, children, a
   itemClassName?: string;
 }) {
   const list = useRef<HTMLElement | null>(null);
+  // this list's own handles: a list inside a card (a dropdown's choices) has handles of its own
+  const listId = useId();
   const focusAfter = useRef<number | null>(null);
   const [said, setSaid] = useState('');
   const sensors = useSensors(
@@ -62,7 +64,7 @@ export function Sortable<T>({ items, keyOf, label, onMove, disabled, children, a
   // a handle moved with the keyboard keeps the focus once the list has its new order
   useEffect(() => {
     if (focusAfter.current === null) return;
-    list.current?.querySelector<HTMLElement>(`[data-sortable-handle="${focusAfter.current}"]`)?.focus();
+    list.current?.querySelector<HTMLElement>(`[data-sortable-handle="${listId}:${focusAfter.current}"]`)?.focus();
     focusAfter.current = null;
   }, [items]);
 
@@ -97,7 +99,7 @@ export function Sortable<T>({ items, keyOf, label, onMove, disabled, children, a
         <SortableContext items={ids} strategy={verticalListSortingStrategy} disabled={disabled || items.length < 2}>
           <List ref={(el: HTMLElement | null) => { list.current = el; }} className={className}>
             {items.map((item, i) => (
-              <Row key={ids[i]} id={ids[i]!} index={i} as={as === 'ul' ? 'li' : 'div'} className={itemClassName} disabled={disabled || items.length < 2}
+              <Row key={ids[i]} id={ids[i]!} index={i} handleKey={`${listId}:${i}`} as={as === 'ul' ? 'li' : 'div'} className={itemClassName} disabled={disabled || items.length < 2}
                 handleLabel={`Move ${label(item, i) || 'this item'}: drag the card, or press the up and down arrow keys`}
                 onKey={(e) => key(e, i)} render={(handle) => children(item, i, items.length > 1 ? handle : null)} />
             ))}
@@ -110,9 +112,10 @@ export function Sortable<T>({ items, keyOf, label, onMove, disabled, children, a
 }
 
 /** One card: it follows the pointer while dragged, lifted above the rest; the others slide aside. */
-function Row({ id, index, as: Item, className, disabled, handleLabel, onKey, render }: {
+function Row({ id, index, handleKey, as: Item, className, disabled, handleLabel, onKey, render }: {
   id: string;
   index: number;
+  handleKey: string;
   as: 'li' | 'div';
   className?: string;
   disabled?: boolean;
@@ -122,7 +125,7 @@ function Row({ id, index, as: Item, className, disabled, handleLabel, onKey, ren
 }) {
   const { setNodeRef, setActivatorNodeRef, listeners, transform, transition, isDragging } = useSortable({ id, disabled });
   const handle = (
-    <button type="button" ref={setActivatorNodeRef} data-sortable-handle={index} disabled={disabled} aria-label={handleLabel}
+    <button type="button" ref={setActivatorNodeRef} data-sortable-handle={handleKey} disabled={disabled} aria-label={handleLabel}
       className={cn('focus-ring flex size-8 shrink-0 touch-none items-center justify-center rounded-md text-text-muted hover:bg-surface-sunken hover:text-text disabled:pointer-events-none disabled:opacity-40',
         isDragging ? 'cursor-grabbing' : 'cursor-grab')}
       onKeyDown={onKey}>

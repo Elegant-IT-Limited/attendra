@@ -126,12 +126,20 @@ describe('reading', () => {
     expect(res.json()).toMatchObject({ from: '2026-09-28', days: 42 });
   });
 
+  it('offers every opening of the days asked for, to the last one', async () => {
+    const slots = (await api.request('GET', `${C}/slots?visitTypeId=vt_sick&from=2026-09-28&days=14`, { cookie: as.staff })).json().slots as { startsAt: string }[];
+    const days = new Set(slots.map((x) => new Intl.DateTimeFormat('en-CA', { timeZone: DEMO_CLINIC.timezone }).format(new Date(x.startsAt))));
+    expect(slots.length).toBeGreaterThan(200);
+    expect(days).toContain('2026-10-09'); // the second Friday: before, the 200th slot cut the range short
+  });
+
   it('validates the query', async () => {
-    for (const q of ['', '?from=tomorrow', '?from=2026-09-29&days=43', '?from=2026-09-29&days=0']) {
+    for (const q of ['', '?from=tomorrow', '?from=2026-09-29&days=43', '?from=2026-09-29&days=0', '?from=2026-02-31', '?from=9999-12-31', '?from=2026-13-01']) {
       expect((await api.request('GET', `${C}${q}`, { cookie: as.staff })).json().error, q).toBe('invalid_request');
     }
     expect((await api.request('GET', `${C}/slots`, { cookie: as.staff })).json().error).toBe('invalid_request');
     expect((await api.request('GET', `${C}/slots?visitTypeId=vt_nothing`, { cookie: as.staff })).statusCode).toBe(422);
+    expect((await api.request('GET', `${C}/slots?visitTypeId=vt_sick&from=9999-99-99`, { cookie: as.staff })).statusCode).toBe(422);
   });
 });
 
@@ -282,6 +290,29 @@ describe('visits left on a day off or a holiday', () => {
     const res = (await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json();
     expect(res.conflicts).toEqual([{ date: '2026-10-06', providerId: 'prov_okafor', reason: 'holiday', count: 1 }]);
     expect(JSON.stringify(res)).not.toMatch(/Maria|Delgado/);
+    await c.close();
+  });
+
+  it('counts a visit a half day no longer holds, and one that overlaps a part-day absence', async () => {
+    const c = await startApi({ demoMode: false, now: () => zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone) });
+    const cookie = await c.signIn('omar@maple.example', true);
+    const S = `/api/v1/clinics/${DEMO_CLINIC.id}`;
+    const book = async (date: string, time: string, key: string) => expect((await c.request('POST', `${S}/appointments`, { cookie, body: {
+      patientId: c.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: zonedInstant(date, time, DEMO_CLINIC.timezone).toISOString(), idempotencyKey: key,
+    } })).statusCode).toBe(201);
+    await book('2026-10-07', '15:00', 'half-day-1');
+    await book('2026-10-08', '11:40', 'part-day-1');
+    const settings = (await c.request('GET', `${S}/settings`, { cookie })).json();
+    expect((await c.request('PUT', `${S}/settings`, { cookie, body: { ...settings, specialDays: [{ date: '2026-10-07', windows: [{ open: '08:00', close: '12:00' }] }] } })).statusCode).toBe(200);
+    const okafor = { ...settings.providers.find((p: { id: string }) => p.id === 'prov_okafor') };
+    delete okafor.id;
+    const away = await c.request('PUT', `${S}/doctors/prov_okafor`, { cookie, body: { ...okafor, timeOff: [...(okafor.timeOff ?? []), { from: '2026-10-08', to: '2026-10-08', start: '11:50', end: '13:00' }] } });
+    expect(away.statusCode, away.body).toBe(200);
+    const res = (await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json();
+    expect(res.conflicts).toEqual([
+      { date: '2026-10-07', providerId: 'prov_okafor', reason: 'holiday', count: 1 },
+      { date: '2026-10-08', providerId: 'prov_okafor', reason: 'away', count: 1 },
+    ]);
     await c.close();
   });
 });

@@ -37,3 +37,16 @@ test('a card is dragged anywhere in its list, by the card itself, and the arrow 
   await expect(handle()).toBeFocused();
   // nothing was saved: leaving the page drops the change
 });
+
+test('a dropdown that takes typing keeps the exact choice typed when Enter is pressed', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  await manager.getByRole('link', { name: 'Doctors' }).click();
+  await manager.getByRole('button', { name: 'Add doctor' }).click();
+  const panel = manager.getByRole('dialog', { name: 'Add doctor' });
+  const specialty = panel.getByLabel('Specialty');
+  // "Pediatrics" is one of the list's choices, not the first: Enter keeps it
+  await specialty.fill('Pediatrics');
+  await specialty.press('Enter');
+  await expect(specialty).toHaveValue('Pediatrics');
+  await panel.getByRole('button', { name: 'Cancel' }).click();
+});

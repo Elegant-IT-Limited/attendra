@@ -115,14 +115,18 @@ describe('the OpenAI webhook', () => {
     expect(engine.accept).not.toHaveBeenCalled();
   });
 
-  it('answers 429 once one address sends more than the limit, and leaves the health check alone', async () => {
-    const { d } = deps({ webhookRateLimit: 2 });
+  it('answers 429 once one address sends more forged deliveries than the limit, and still takes a signed call from it', async () => {
+    const { d, engine } = deps({ webhookRateLimit: 2 });
     const app = buildServer(d);
     const codes = [];
     for (const id of ['wh_9', 'wh_10', 'wh_11']) codes.push((await post(app, incoming(id, '+13035550100', 'forged'))).statusCode);
+    // the same address (a proxy, say) with a real call: never turned away
+    const real = await post(app, incoming('wh_12', '+13035550100'));
     const health = await app.inject({ method: 'GET', url: '/healthz' });
     await app.close();
     expect(codes).toEqual([400, 400, 429]);
+    expect(real.statusCode).toBe(200);
+    expect(engine.accept).toHaveBeenCalled();
     expect(health.statusCode).toBe(200);
   });
 });

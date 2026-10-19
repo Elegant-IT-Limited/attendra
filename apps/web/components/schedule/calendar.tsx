@@ -217,14 +217,16 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
         <div className="grid grid-cols-7 border-b border-border text-xs font-medium text-text-muted" role="row">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} role="columnheader" className="px-2 py-2">{d}</div>)}
         </div>
-        <div className="grid grid-cols-7">
-          {dates.map((d) => {
+        {/* a row per week, so the grid reads as one to a screen reader */}
+        {Array.from({ length: Math.ceil(dates.length / 7) }, (_, w) => dates.slice(w * 7, w * 7 + 7)).map((week) => (
+        <div key={week[0]} role="row" className="grid grid-cols-7">
+          {week.map((d) => {
             const items = byDate.get(d) ?? [];
             const other = !d.startsWith(month);
             const closed = closedDay(clinic, d);
             return (
               <div key={d} role="gridcell" data-testid="month-day" aria-label={`${dayTitle(d)}, ${items.length} booked`}
-                className={cn('min-h-28 border-b border-l border-border p-1.5 [&:nth-child(7n+1)]:border-l-0', other && 'bg-surface-sunken/50', d === today && 'bg-primary-soft/40')}>
+                className={cn('min-h-28 border-b border-l border-border p-1.5 first:border-l-0', other && 'bg-surface-sunken/50', d === today && 'bg-primary-soft/40')}>
                 <div className="mb-1 flex items-center justify-between gap-1">
                   <button type="button" onClick={() => onDay(d)} aria-label={`Open ${dayTitle(d)}`}
                     className={cn('focus-ring flex size-7 items-center justify-center rounded-full text-sm tabular-nums hover:bg-surface-sunken',
@@ -255,6 +257,7 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
             );
           })}
         </div>
+        ))}
       </div>
     </div>
   );

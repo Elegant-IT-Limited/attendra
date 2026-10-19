@@ -150,9 +150,13 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
       const req = host.switchToHttp().getRequest<import('fastify').FastifyRequest>();
       // an HttpException was thrown on purpose and says what went wrong; anything else is a bug
       const known = typeof (err as { getStatus?: () => number }).getStatus === 'function';
-      const status = known ? (err as { getStatus: () => number }).getStatus() : 500;
+      // a plugin's own 4xx (the rate limiter's 429, a body too large) keeps its status
+      const own = (err as { statusCode?: unknown }).statusCode;
+      const client = !known && typeof own === 'number' && own >= 400 && own < 500 ? own : null;
+      const status = known ? (err as { getStatus: () => number }).getStatus() : client ?? 500;
       if (status >= 500) deps.log.error({ route: req.routeOptions.url, name: (err as Error).name, code: (err as { code?: string }).code }, 'request failed');
-      const body = known ? (err as { getResponse: () => unknown }).getResponse() : { error: 'server_error' };
+      const body = known ? (err as { getResponse: () => unknown }).getResponse()
+        : client ? { error: client === 429 ? 'rate_limited' : client === 413 ? 'too_large' : 'bad_request' } : { error: 'server_error' };
       void reply.status(status).send(typeof body === 'string' ? { error: body } : body);
     },
   });

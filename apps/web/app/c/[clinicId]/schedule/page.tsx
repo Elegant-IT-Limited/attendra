@@ -192,7 +192,7 @@ function ScheduleScreen() {
       {writable && (
         <BookingDialog clinicId={clinicId} clinic={clinic} open={booking} onOpenChange={setBooking}
           findPatient={(pick) => <PatientPicker clinicId={clinicId} onPick={pick} canAdd={can('patients:write')} />}
-          onBooked={(id, startsAt) => set({ date: localDateOf(new Date(startsAt), tz), appointment: id })} />
+          onBooked={(id, startsAt) => set({ new: null, date: localDateOf(new Date(startsAt), tz), appointment: id })} />
       )}
     </>
   );

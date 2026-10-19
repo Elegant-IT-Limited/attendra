@@ -64,7 +64,8 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
       return v ? [localName(v, language)] : [];
     }),
     hours: weeklyHoursLine(p.hours ?? clinic.hours),
-    away: p.timeOff.filter((t) => t.to >= today && t.from <= horizon).map((t) => (t.from === t.to ? t.from : `${t.from} to ${t.to}`)),
+    // a part of a day says which part: "2026-10-22 13:00 to 18:00", never the whole day
+    away: p.timeOff.filter((t) => t.to >= today && t.from <= horizon).map((t) => (t.start && t.end ? `${t.from} ${t.start} to ${t.end}` : t.from === t.to ? t.from : `${t.from} to ${t.to}`)),
     ...(p.credentials?.length ? { credentials: p.credentials } : {}),
   }));
 }
