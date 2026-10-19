@@ -121,7 +121,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               </Select>
             </div>
           </div>
-          {!override.on && <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} />}
+          {!override.on && <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} patientId={patient?.id} />}
           <Checkbox id="override" label="Squeeze in outside the hours (override)" checked={override.on}
             hint="For a time no slot offers: before opening, on a closed day, or while the vet is away. Still refused if it clashes with another visit."
             onCheckedChange={(on) => setOverride({ ...override, on, providerId: override.providerId || providerId || providers[0]?.id || '' })} />

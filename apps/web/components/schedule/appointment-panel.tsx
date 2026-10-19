@@ -113,7 +113,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
             {mode === 'reschedule' ? (
               <div className="space-y-3">
                 <p className="text-sm">Pick a new time. The visit stays a {visit(a.visitTypeId)?.name}.</p>
-                <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={a.visitTypeId} providerId={null} from={from} onFrom={setFrom} value={slot} onChange={setSlot} excluding={a.id} />
+                <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={a.visitTypeId} providerId={null} from={from} onFrom={setFrom} value={slot} onChange={setSlot} excluding={a.id} patientId={a.patientId} />
               </div>
             ) : mode === 'cancel' ? (
               <div className="space-y-1.5">

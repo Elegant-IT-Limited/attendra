@@ -388,6 +388,8 @@ export const SlotQuery = z.object({
   partOfDay: z.enum(['morning', 'afternoon', 'any']).default('any'),
   /** The appointment being moved, so its own time counts as free. */
   excluding: z.uuid().optional(),
+  /** Who the visit is for: with no providerId, only providers who see their age (and take new patients, if they are new). */
+  patientId: z.uuid().optional(),
 });
 /** Visits booked on a provider's day off or a holiday, by day and provider. */
 export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
