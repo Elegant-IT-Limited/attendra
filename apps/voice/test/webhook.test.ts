@@ -4,7 +4,7 @@ import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import twilio from 'twilio';
 import { describe, expect, it, vi } from 'vitest';
-import type { Sideband, SidebandEvent } from '@attendra/voice-engine';
+import { EngineRouter, type Sideband, type SidebandEvent } from '@attendra/voice-engine';
 import { buildServer, type IncomingCall, type VoiceDeps } from '../src/server';
 
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
@@ -288,5 +288,41 @@ describe('Twilio text webhooks', () => {
     expect((await send(app, path, { MessageSid: sid, MessageStatus: 'undelivered', ErrorCode: '30007' })).statusCode).toBe(204);
     expect(s.status).toHaveBeenCalledWith({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'undelivered', errorCode: '30007' });
     expect((await send(app, path, { MessageSid: 'nope', MessageStatus: 'sent' })).statusCode).toBe(400);
+  });
+});
+
+describe('two engines: GPT-Live and the Realtime API', () => {
+  const fake = (name: string) => ({
+    name, accept: vi.fn(async () => {}), startBrowserCall: vi.fn(async () => ({ sessionId: `${name}_web`, sdpAnswer: 'v=0' })), reject: vi.fn(async () => {}), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}), release: vi.fn(),
+    attach: vi.fn((): Sideband => ({ send: vi.fn(), onEvent: vi.fn(), onError: vi.fn(), onClose: (h) => void setTimeout(() => h(1000), 0), close: vi.fn() })),
+  });
+  const realtimeCall = (id: string) => JSON.stringify({
+    sig: 'ok', id, type: 'realtime.call.incoming',
+    data: { call_id: 'rtc_1', sip_headers: [{ name: 'To', value: '<sip:+13035550100@sip.api.openai.com>' }, { name: 'From', value: '<sip:+13035550147@x>' }] },
+  });
+
+  it('answers a Realtime call with the Realtime engine, and a GPT-Live call with GPT-Live', async () => {
+    const live = fake('gpt-live');
+    const realtime = fake('gpt-realtime');
+    const { d } = deps({ engine: new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live') });
+    const app = buildServer(d);
+    await post(app, realtimeCall('wh_rt_1'));
+    await post(app, incoming('wh_rt_2', '+13035550100'));
+    await app.close();
+    expect(realtime.accept).toHaveBeenCalledWith('rtc_1', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date));
+    expect(realtime.attach).toHaveBeenCalledWith('rtc_1');
+    expect(live.accept).toHaveBeenCalledWith('live_abc', expect.anything(), expect.any(Date));
+  });
+
+  it('starts a test call with the engine the clinic was given', async () => {
+    const live = fake('gpt-live');
+    const realtime = fake('gpt-realtime');
+    const router = new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live');
+    await router.startBrowserCall({ ...DEMO_CLINIC, voiceEngine: 'gpt-realtime' }, 'v=0 offer', new Date());
+    await router.hangup('gpt-realtime_web');
+    expect(realtime.startBrowserCall).toHaveBeenCalled();
+    expect(realtime.hangup).toHaveBeenCalledWith('gpt-realtime_web');
+    await router.startBrowserCall(DEMO_CLINIC, 'v=0 offer', new Date());
+    expect(live.startBrowserCall).toHaveBeenCalled();
   });
 });

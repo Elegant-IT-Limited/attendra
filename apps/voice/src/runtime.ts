@@ -9,7 +9,7 @@ import type { Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
-import { GptLiveEngine, SimulatedEngine } from '@attendra/voice-engine';
+import { EngineRouter, GptLiveEngine, RealtimeEngine, SimulatedEngine } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
 import { buildServer, type IncomingCall, type VoiceDeps } from './server';
@@ -23,6 +23,9 @@ export interface VoiceRuntime {
   webhookSecret?: string;
   log: Logger;
   liveModel: string;
+  /** OpenAI's Realtime model, the second engine; and which engine answers a clinic that has not been given one. */
+  realtimeModel?: string;
+  defaultEngine?: 'gpt-live' | 'gpt-realtime';
   backendModel: string;
   /** Without it, texts are recorded as not sent and the call carries on. */
   twilio?: { accountSid: string; authToken: string };
@@ -45,7 +48,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
   const openai = new OpenAI({ apiKey: rt.openaiApiKey, webhookSecret: rt.webhookSecret ?? null });
   return buildServer(wire(rt, {
     verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
-    engine: new GptLiveEngine(openai, rt.liveModel),
+    engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
     planner: new ResponsesPlanner(openai, rt.backendModel),
   }));
 }
@@ -54,7 +57,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
  * The voice service with no OpenAI at all: only simulated calls, for the local demo
  * without a key and for the e2e suite. It takes no phone or browser calls.
  */
-export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'webhookSecret' | 'liveModel' | 'backendModel' | 'simulatedCalls'>) {
+export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'webhookSecret' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel' | 'simulatedCalls'>) {
   const engine = new SimulatedEngine();
   return buildServer(wire({ ...rt, simulatedCalls: false }, {
     verifyWebhook: async () => { throw new Error('this voice service takes no phone calls'); },
@@ -63,7 +66,7 @@ export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 
   }, engine));
 }
 
-function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'backendModel'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
+function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
   const { db, cipher } = rt;
   const calls = new CallRepository(db, cipher);
   const clinicNumbers = new Map<string, string>();
