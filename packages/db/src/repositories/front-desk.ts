@@ -482,6 +482,18 @@ export class FrontDeskRepository {
         lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
   }
 
+  /**
+   * Who a patient may be booked with: their date of birth and whether they are new, for
+   * the open-slot search. Nothing of it leaves the API, so no audit row (opening the
+   * patient to book them is audited already).
+   */
+  async bookingFit(clinicId: string, patientId: string): Promise<{ dob: string; isNew: boolean } | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [r] = await tx.select({ dobEnc: patients.dobEnc, status: patients.status }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      return r ? { dob: this.cipher.decrypt(r.dobEnc, phiContext(clinicId, 'patients.dob')), isNew: r.status === 'new' } : null;
+    });
+  }
+
   async settings(clinicId: string): Promise<unknown | null> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId));
