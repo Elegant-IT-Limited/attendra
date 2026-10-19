@@ -75,3 +75,13 @@ At a veterinary clinic, a pet is found by its owner's full name, its own name an
 ## Writes
 
 Every booking, reschedule and cancellation is two steps: propose (which produces the read-back) and commit (which runs only if the caller's own words since the read-back are a clear yes: "maybe", "actually" and questions do not count). Every write carries an idempotency key, and the database refuses two overlapping bookings for one provider whatever the application does.
+
+## Abusive callers
+
+A caller who is upset, or swears out of frustration ("what the hell is going on"), is helped like anyone else and offered a callback. Insults or threats aimed at the person on the line ("you idiot", "shut up", "I'll find you", "eres un idiota") are counted once per caller turn, from the words alone (`isAbusive` in packages/core):
+
+1. The first time, the assistant stays calm and polite and carries on.
+2. The second time, it says once that it will need to end the call if the language continues, and offers a call back from the clinic.
+3. The third time, it ends the call politely ("You're welcome to call back any time").
+
+It never argues or swears back, and it never ends a call during an emergency. The call shows "Abusive caller" in what the assistant did, and is always flagged for review.

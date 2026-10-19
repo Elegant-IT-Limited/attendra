@@ -70,6 +70,7 @@ export const TOOLS: Record<string, string> = {
   create_callback: 'Callback request',
   transfer_call: 'Transfer',
   end_call: 'Ended call',
+  abusive_caller: 'Abusive caller',
   get_clinic_info: 'Clinic information',
   search_knowledge: 'Searched clinic documents',
 };

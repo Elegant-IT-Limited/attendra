@@ -93,6 +93,7 @@ describe('the review flag', () => {
     ['needed staff to pick the record', { actions: [{ tool: 'verify_caller', result: { ok: false, error: 'needs_staff' } }] }, 'Two patient records'],
     ['ended on an error', { closeReason: 'error' }, 'ended on an error'],
     ['lost its connection', { closeReason: 'socket closed 1006 before session.closed' }, 'ended on an error'],
+    ['was abusive', { actions: [{ tool: 'abusive_caller', result: { step: 'ended' } }] }, 'insulting or threatening language'],
   ] as const)('stays flagged when the caller %s, however the caller asked the model not to', async (_what, facts, reason) => {
     const s = await new ModelSummariser(fixed(talkedOutOfIt).client, 'm').summarise(persuasive(facts as Partial<CallForSummary>));
     expect(s.needsReview).toBe(true);
