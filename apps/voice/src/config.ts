@@ -14,6 +14,9 @@ const Env = z.object({
   // phone calls need the webhook secret, texts need Twilio; browser test calls need neither
   OPENAI_WEBHOOK_SECRET: optional(z.string().startsWith('whsec_').min(10)),
   GPT_LIVE_MODEL: z.preprocess(blank, z.string().default('gpt-live-1')),
+  // the second engine, OpenAI's Realtime API, and which engine answers a clinic the operator has not given one
+  ATTENDRA_REALTIME_MODEL: z.preprocess(blank, z.string().default('gpt-realtime-2.1')),
+  ATTENDRA_VOICE_ENGINE: z.preprocess(blank, z.enum(['gpt-live', 'gpt-realtime']).default('gpt-live')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),

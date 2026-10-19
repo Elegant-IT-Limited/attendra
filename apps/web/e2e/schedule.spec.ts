@@ -8,7 +8,8 @@ const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
  * `upcoming`, it starts next week, where every visit is still ahead and can be changed.
  */
 async function findInWeek(page: Page, name: RegExp, upcoming = false) {
-  const nextWeek = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  // next week in the demo clinics' own time zone, not UTC: on a Sunday evening in Denver it is already Monday in UTC
+  const nextWeek = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(Date.now() + 7 * 86_400_000));
   await page.goto(`/c/${clinicOf(page)}/schedule?view=week${upcoming ? `&date=${nextWeek}` : ''}`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   const heading = page.getByRole('heading', { level: 2, name: /^Week of / });

@@ -79,6 +79,20 @@ describe('provisioning', () => {
     expect((await api.t.db.execute(sql`select entity_id from audit_logs where action = 'clinic.created' and clinic_id = ${opened.clinicId}`)).rows).toEqual([{ entity_id: clinicId }]);
   });
 
+  it('sets which voice engine answers a clinic, which Settings cannot change', async () => {
+    const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'gpt-realtime' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'grok' }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(404);
+    const cookie = await api.signIn('olga@maple.example', true);
+    const settings = (await api.request('GET', S, { cookie })).json();
+    expect(settings.voiceEngine).toBe('gpt-realtime');
+    // a save from Settings that drops or changes it keeps the operator's choice
+    expect((await api.request('PUT', S, { cookie, body: { ...settings, voiceEngine: 'gpt-live' } })).json().voiceEngine).toBe('gpt-realtime');
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().voiceEngine).toBeUndefined();
+  });
+
   it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('PUT', `${P}/clinics/clinic_none/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(404);

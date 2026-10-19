@@ -144,8 +144,9 @@ export default function TestCallPage() {
       let e: { type?: string; delta?: string };
       try { e = JSON.parse(String(m.data)); } catch { return; }
       if (e.type === 'session.started') a.started = true;
-      else if (e.type === 'session.input_transcript.delta' && e.delta) caption('caller', e.delta);
-      else if (e.type === 'session.output_transcript.delta' && e.delta) caption('agent', e.delta);
+      // GPT-Live's caption events, then the Realtime engine's
+      else if ((e.type === 'session.input_transcript.delta' || e.type === 'conversation.item.input_audio_transcription.delta') && e.delta) caption('caller', e.delta);
+      else if ((e.type === 'session.output_transcript.delta' || e.type === 'response.output_audio_transcript.delta') && e.delta) caption('agent', e.delta);
       else if (e.type === 'session.closed') finish(a, 'ended', false);
     };
 

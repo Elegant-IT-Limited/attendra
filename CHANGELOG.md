@@ -66,6 +66,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Lists the clinic keeps in order**: specialties, what doctors see, kinds of animal. Rename, remove, reorder and add; a rename is carried to every doctor, a removal takes it off them after saying how many use it (`PUT /settings/lists/:list`). Before a clinic keeps a list, it is what the records say.
 - **On the records**: a doctor's form picks what they see as chips from the list and has the clinic's fields; a request card has its own details (`PUT /tasks/:id/fields`, encrypted, migration 0032); the Pets list filters by kind of animal or by a dropdown or yes-or-no field, read on the server (`POST /patients/filter`), and shows the fields marked as columns; Requests filter by a request field. "Manage fields" on each list page opens its tab. Kinds of request moved from General to the Requests tab.
 
+### Added (calls that never stall, and a second engine)
+
+- **Nobody is left in silence**: when a caller finishes and nothing comes back for 6 seconds (no answer, no tool at work), the assistant is told to answer, or to ask them to repeat what it missed; at 14 seconds it apologises for the wait. Never while a transfer or a goodbye is on its way.
+- **A goodbye ends the call**: when the assistant says goodbye but forgets to end the call, and the line stays quiet for 6 seconds, the call is hung up. Only after the usual two steps ("Is there anything else I can help you with?", then the caller's no or goodbye): a goodbye without them never ends a call.
+- **OpenAI's Realtime API as a second engine** (gpt-realtime-2.1), behind the same backend through one tool, `ask_backend`: same identity checks, booking rules, texts and transfers. The operator chooses a clinic's engine (`PUT /provisioning/clinics/:id/voice-engine`, kept out of Settings); phone calls are answered with the engine OpenAI sends them as (`realtime.call.incoming` is handled now). Test calls show captions from either. `ATTENDRA_REALTIME_MODEL`, `ATTENDRA_VOICE_ENGINE`.
+- e2e: "next week" in the schedule spec is the demo clinics' own, not UTC's.
+
 ### Added (booking rules)
 
 - **Settings → General → Booking rules**: who the assistant books with when the caller names nobody, set by the clinic, with every case written out beside the settings. The pet's (or patient's) usual vet first, if free within a number of days the clinic sets (3 by default), else the earliest with anyone, and the caller hears why; or simply the earliest. Several free at the same time: the one with the fewest visits that day (default), or an order the clinic drags into place. At a veterinary clinic, only vets who list the pet's kind of animal (a vet who lists none sees every animal); refusal `no_provider_for_animal`.
