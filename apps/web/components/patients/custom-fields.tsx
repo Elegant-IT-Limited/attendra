@@ -5,8 +5,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox, DatePicker } from '@/components/ui/controls';
-import { Alert } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
 
 /** A value as staff read it: "Yes", "Cat, Rabbit", or "Not filled in". */
@@ -25,12 +25,15 @@ export function CustomFieldsForm({ clinicId, patientId, saveUrl, queryKey, field
 }) {
   const queries = useQueryClient();
   const [form, setForm] = useState<Record<string, string>>(values);
-  const [state, setState] = useState<'idle' | 'saved' | string>('idle');
+  const toast = useToast();
+  const problem = useProblem();
   const url = saveUrl ?? `/clinics/${clinicId}/patients/${patientId}/fields`;
   const save = useMutation({
     mutationFn: (v: Record<string, string>) => api<void>(url, { method: 'PUT', body: JSON.stringify({ values: v }) }),
-    onSuccess: () => { setState('saved'); void queries.invalidateQueries({ queryKey: queryKey ?? ['patient', clinicId, patientId] }); },
-    onError: (e) => setState(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues.map((i) => `${fields.find((f) => `values.${f.id}` === i.path)?.label ?? 'A field'}: ${i.message}`).join('. ') : 'That did not save. Check your connection and try again.'),
+    onSuccess: () => { toast({ tone: 'success', message: 'Details saved.' }); void queries.invalidateQueries({ queryKey: queryKey ?? ['patient', clinicId, patientId] }); },
+    onError: (e) => problem(e instanceof ApiFailure && e.body.issues?.length
+      ? { title: 'Not saved. Fix these first', items: e.body.issues.map((i) => `${fields.find((f) => `values.${f.id}` === i.path)?.label ?? 'A field'}: ${i.message}`) }
+      : { title: 'Not saved', message: 'The details did not reach the server. Check your connection and try again.' }),
   });
   if (!canWrite) {
     return (
@@ -39,17 +42,15 @@ export function CustomFieldsForm({ clinicId, patientId, saveUrl, queryKey, field
       </dl>
     );
   }
-  const put = (id: string, v: string) => { setState('idle'); setForm({ ...form, [id]: v }); };
+  const put = (id: string, v: string) => setForm({ ...form, [id]: v });
   const missing = fields.filter((f) => f.required && !form[f.id]?.trim());
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (missing.length) { setState(`Fill in ${missing.map((f) => f.label).join(', ')} first.`); return; }
+    if (missing.length) { problem({ title: 'Not saved. Fill these in first', items: missing.map((f) => f.label) }); return; }
     save.mutate(Object.fromEntries(fields.map((f) => [f.id, form[f.id] ?? ''])));
   };
   return (
     <form onSubmit={submit} className="space-y-4">
-      {state === 'saved' && <Alert>Saved.</Alert>}
-      {state !== 'idle' && state !== 'saved' && <Alert tone="warn">{state}</Alert>}
       <fieldset disabled={save.isPending}>
         <CustomFieldInputs fields={fields} values={form} onChange={put} compact={compact} />
       </fieldset>

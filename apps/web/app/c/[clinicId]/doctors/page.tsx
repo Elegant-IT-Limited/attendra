@@ -10,6 +10,7 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { ImportPanel } from '@/components/import-panel';
 import { CustomFieldInputs, shownValue } from '@/components/patients/custom-fields';
 import { ChipsPicker } from '@/components/ui/chips';
+import { Combobox } from '@/components/ui/combobox';
 import { LocalNames } from '@/components/settings/assistant';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { PageHeader } from '@/components/shell';
@@ -19,7 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
@@ -173,7 +174,9 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const lists = config.data ? { specialties: managedList(config.data, 'specialties'), categories: managedList(config.data, 'categories') } : { specialties: [], categories: [] };
   const providerFields = config.data?.providerFields ?? [];
   const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not saved', message }); };
   const [confirmDelete, setConfirmDelete] = useState(false);
   const toast = useToast();
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
@@ -184,7 +187,6 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
 
   const save = useMutation({
     mutationFn: (body: DoctorInput) => api<DoctorList>(`/clinics/${clinicId}/doctors${editing.id ? `/${editing.id}` : ''}`, { method: editing.id ? 'PUT' : 'POST', body: JSON.stringify(body) }),
-    onMutate: () => setProblem(null),
     onSuccess: () => { onSaved(); toast({ tone: 'success', message: editing.id ? 'Saved. The assistant uses it from the next request.' : 'Added. The assistant can book them from the next request.' }); onClose(); },
     onError: failed,
   });
@@ -225,7 +227,6 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </>
       )}>
       <form id="doctor-form" onSubmit={submit} className="space-y-5">
-        {problem && <Alert tone="warn">{problem}</Alert>}
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div className="space-y-1.5"><Label htmlFor="doc-name">Name</Label><Input id="doc-name" required minLength={2} maxLength={80} value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Dr. Jane Example" /></div>
           <div className="space-y-1.5"><Label htmlFor="doc-kind">Is a</Label>
@@ -248,8 +249,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-specialty">Specialty</Label>
-          <Input id="doc-specialty" maxLength={60} list="doc-specialty-list" value={d.specialty ?? ''} onChange={(e) => set({ specialty: e.target.value })} placeholder={pets ? 'e.g. General practice, Surgery' : 'e.g. Family medicine, Pediatrics'} />
-          <datalist id="doc-specialty-list">{lists.specialties.map((s) => <option key={s} value={s} />)}</datalist>
+          <Combobox id="doc-specialty" label="Specialty" value={d.specialty ?? ''} options={lists.specialties} onChange={(specialty) => set({ specialty })} placeholder={pets ? 'Pick one, or type: General practice, Surgery' : 'Pick one, or type: Family medicine'} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-categories">{pets ? 'Animals and services they see' : 'What they see people for'}</Label>
@@ -331,6 +331,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Days off</legend>
           <p className="text-xs text-text-muted">Leave, a conference, a holiday of their own. Nobody is booked with them on these days, by the assistant or at the desk. Away for part of a day: no times are offered between these, visits outside them are unchanged.</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => set({ timeOff: [{ from: today, to: today }, ...d.timeOff] })}><Plus /> Days off</Button>
           {d.timeOff.map((t, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
               <Input type="date" aria-label={t.start ? 'Day' : 'First day off'} className="h-8 w-38" value={t.from} min={editing.id ? undefined : today}
@@ -359,7 +360,6 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
               <Button type="button" size="sm" variant="ghost" aria-label="Remove these days off" onClick={() => set({ timeOff: d.timeOff.filter((_, j) => j !== i) })}><X /></Button>
             </div>
           ))}
-          <Button type="button" size="sm" variant="outline" onClick={() => set({ timeOff: [...d.timeOff, { from: today, to: today }] })}><Plus /> Days off</Button>
         </fieldset>
       </form>
     </Panel>

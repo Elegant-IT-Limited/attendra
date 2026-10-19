@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import { useProblem } from '@/components/ui/toast';
 import type { TestCall, TestCallAllowance } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Mic, PhoneOff, User } from 'lucide-react';
@@ -56,7 +57,9 @@ export default function TestCallPage() {
   const { data: me, clinic, can } = useClinic(clinicId);
   const queries = useQueryClient();
   const [phase, setPhase] = useState<Phase>('idle');
-  const [failure, setFailure] = useState<string | null>(null);
+  // why the call did not start or dropped opens in a dialog; the call area says it is ready again
+  const problem = useProblem();
+  const setFailure = (message: string | null) => { if (message) problem({ title: 'The test call stopped', message }); };
   const [micNote, setMicNote] = useState<string | null>(null);
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [callId, setCallId] = useState<string | null>(null);
@@ -228,9 +231,8 @@ export default function TestCallPage() {
         <Card>
           <CardHeader><CardTitle>Live captions</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            {failure && <Alert tone="danger">{failure}</Alert>}
             {micNote && <Alert tone="warn">{micNote}</Alert>}
-            {captions.length === 0 && !failure && <p className="text-sm text-text-muted">What you and the assistant say appears here.</p>}
+            {captions.length === 0 && <p className="text-sm text-text-muted">What you and the assistant say appears here.</p>}
             {captions.map((c, i) => {
               const agent = c.speaker === 'agent';
               return (

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import { useProblem, useToast } from '@/components/ui/toast';
 import type { AddedMember, Member, MemberList } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
@@ -31,19 +32,23 @@ export default function Team() {
   const queries = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Member | null>(null);
-  const [notice, setNotice] = useState<{ tone: 'info' | 'warn'; text: string } | null>(null);
+  // done: a note at the bottom of the screen; not done: a dialog in the middle of it
+  const toast = useToast();
+  const problem = useProblem();
+  const setNotice = (n: { tone: 'info' | 'warn'; text: string } | null) => {
+    if (n?.tone === 'info') toast({ tone: 'success', message: n.text });
+    else if (n) problem({ title: 'Not changed', message: n.text });
+  };
   const members = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
-    onMutate: () => setNotice(null),
     onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: `${m.name} is now ${label(role).toLowerCase()}. It applies to their next click.` }),
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
   const refills = useMutation({
     mutationFn: ({ m, on }: { m: Member; on: boolean }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ approvesRefills: on }) }),
-    onMutate: () => setNotice(null),
     onSuccess: (_r, { m, on }) => {
       setNotice({ tone: 'info', text: on ? `${m.name} can now approve and decline refills.` : `${m.name} no longer approves refills.` });
       void queries.invalidateQueries({ queryKey: ['me'] });
@@ -55,14 +60,12 @@ export default function Team() {
   const [resetting, setResetting] = useState<Member | null>(null);
   const reset = useMutation({
     mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
-    onMutate: () => setNotice(null),
     onSuccess: (r, m) => { setResetting(null); setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }); },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
   const remove = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'DELETE' }),
-    onMutate: () => setNotice(null),
     onSuccess: (_r, m) => { setNotice({ tone: 'info', text: `${m.name} is off the team and signed out.` }); setRemoving(null); },
     onError: (e) => { setNotice({ tone: 'warn', text: message(e) }); setRemoving(null); },
     onSettled: refresh,
@@ -77,7 +80,6 @@ export default function Team() {
     <>
       <PageHeader title="Team" description={`Who can sign in to this clinic, and what each person can do.${(me?.clinics.length ?? 0) > 1 ? ' Everyone on the team sees all your locations.' : ''}`}
         actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add a person</Button>} />
-      {notice && <Alert tone={notice.tone} className="mb-4">{notice.text}</Alert>}
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
@@ -153,9 +155,11 @@ export default function Team() {
 function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
   const [form, setForm] = useState({ name: '', email: '', role: 'staff', approvesRefills: false });
   const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
+  const problem = useProblem();
   const add = useMutation({
     mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ ...form, approvesRefills: form.role !== 'viewer' && form.approvesRefills }) }),
     onSuccess: (r) => { setAdded({ ...r, name: form.name, email: form.email }); onAdded(); },
+    onError: (e) => problem({ title: 'Not added', message: message(e) }),
   });
   const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff', approvesRefills: false }); add.reset(); } onOpenChange(o); };
   const submit = (e: FormEvent) => { e.preventDefault(); add.mutate(); };
@@ -168,7 +172,6 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
         <OneTimePassword email={added.email} password={added.temporaryPassword} />
       ) : (
         <form onSubmit={submit} className="space-y-4">
-          {add.isError && <Alert tone="warn">{message(add.error)}</Alert>}
           <fieldset disabled={add.isPending} className="space-y-4">
             <div className="space-y-1.5"><Label htmlFor="member-name">Name</Label><Input id="member-name" required maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div className="space-y-1.5"><Label htmlFor="member-email">Email</Label><Input id="member-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>

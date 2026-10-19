@@ -13,10 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
-import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
+import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
 
@@ -45,12 +45,13 @@ export default function ApiKeysPage() {
   const [days, setDays] = useState('90');
   const [shown, setShown] = useState<ApiKeyCreated | null>(null);
   const [revoking, setRevoking] = useState<ApiKeyView | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Key not made', message }); };
   const refresh = () => void queries.invalidateQueries({ queryKey: ['api-keys', clinicId] });
 
   const create = useMutation({
     mutationFn: () => api<ApiKeyCreated>(`/clinics/${clinicId}/api-keys`, { method: 'POST', body: JSON.stringify({ name: name.trim(), scopes, expiresInDays: Number(days) }) }),
-    onMutate: () => setProblem(null),
     onSuccess: (k) => { setShown(k); setName(''); refresh(); },
     onError: (e) => setProblem(e instanceof ApiFailure ? e.body.issues?.[0]?.message ?? 'That did not save.' : 'That did not save.'),
   });
@@ -84,7 +85,6 @@ export default function ApiKeysPage() {
                   <option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option><option value="365">A year</option>
                 </Select>
               </Field>
-              {problem && <Alert tone="danger">{problem}</Alert>}
               <Button type="submit" loading={create.isPending} disabled={!name.trim() || !scopes.length}><Plus /> Make key</Button>
             </form>
           </CardContent>

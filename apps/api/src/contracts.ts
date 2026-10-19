@@ -334,7 +334,8 @@ export const BookedBy = z.discriminatedUnion('kind', [
 
 export const ScheduleQuery = z.object({
   from: isoDate,
-  days: z.coerce.number().int().min(1).max(14).default(1),
+  // a day, a week, or a month view's six weeks
+  days: z.coerce.number().int().min(1).max(42).default(1),
   providerId: z.string().max(64).optional(),
   /** booked: what is on the calendar; cancelled: only what was cancelled; all: both. */
   status: z.enum(['booked', 'cancelled', 'all']).default('all'),

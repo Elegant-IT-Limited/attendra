@@ -6,8 +6,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Checkbox } from '@/components/ui/controls';
-import { Alert } from '@/components/ui/feedback';
+import { useProblem } from '@/components/ui/toast';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 
@@ -31,20 +32,25 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   const [form, setForm] = useState<Omit<PatientInput, 'gender'> & { gender: Gender | '' }>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', species: '', ...initial, gender: initial?.gender ?? '' });
   // a vet clinic's records are pets: found on a call by the owner's full name, the pet's name and the phone
   const pet = industryPack(config.data?.industry).identity === 'pet';
-  const [problem, setProblem] = useState<{ text: string; existing?: string } | null>(null);
-  const [similar, setSimilar] = useState(false);
+  // what did not work, or is worth a look, opens in a dialog in the middle of the screen
+  const showProblem = useProblem();
+  const setProblem = (p: { text: string; existing?: string }) => showProblem({
+    title: p.existing ? 'Already on file' : 'Not saved',
+    message: <>{p.text}{p.existing && <>{' '}<Link className="font-medium text-primary underline" href={`/c/${clinicId}/patients/${p.existing}`}>Open their record</Link></>}</>,
+  });
   const today = localDateOf(new Date(), config.data?.timezone ?? 'UTC');
   const child = !!form.dob && form.dob <= today && ageOn(form.dob, today) < 18;
   const save = useMutation({
     mutationFn: (input: PatientInput) => api<PatientSaved>(`/clinics/${clinicId}/patients${patientId ? `/${patientId}` : ''}`, {
       method: patientId ? 'PATCH' : 'POST', body: JSON.stringify(input),
     }),
-    onMutate: () => { setProblem(null); setSimilar(false); },
     onSuccess: (r, input) => {
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patient-search', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patients', clinicId] });
-      if (r.similar) setSimilar(true);
+      if (r.similar) {
+        showProblem({ tone: 'info', title: 'Saved. One thing to check', message: 'Someone else on file has the same name and date of birth, on another phone number. That is allowed; check it is not the same person twice.' });
+      }
       onSaved(r.id, input);
     },
     onError: (e) => {
@@ -69,13 +75,6 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      {similar && <Alert>Saved. Someone else on file has the same name and date of birth, on another phone number. That is allowed; check it is not the same person twice.</Alert>}
-      {problem && (
-        <Alert tone="warn">
-          {problem.text}{' '}
-          {problem.existing && <Link className="font-medium underline" href={`/c/${clinicId}/patients/${problem.existing}`}>Open their record</Link>}
-        </Alert>
-      )}
       {pet ? (
         <fieldset disabled={save.isPending} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
@@ -84,9 +83,9 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="species">Kind of animal</Label>
-            <Input id="species" required maxLength={40} autoComplete="off" list="species-list" value={form.species ?? ''} onChange={set('species')} placeholder="Dog, cat, rabbit…" />
-            {/* the clinic's own list, in its order (Settings, Fields and lists) */}
-            <datalist id="species-list">{(config.data ? managedList(config.data, 'species') : [...DEFAULT_SPECIES]).map((k) => <option key={k} value={k.toLowerCase()} />)}</datalist>
+            {/* the clinic's own list, in its order (Settings, Fields and lists); stored in lower case */}
+            <Combobox id="species" label="Kind of animal" required maxLength={40} value={form.species ?? ''} onChange={(species) => setForm({ ...form, species })} placeholder="Pick one, or type: dog, cat…"
+              options={(config.data ? managedList(config.data, 'species') : [...DEFAULT_SPECIES]).map((k) => ({ value: k.toLowerCase(), label: k }))} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="dob">Birthday</Label>

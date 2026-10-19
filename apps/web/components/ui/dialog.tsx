@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
  * A panel on the right (side="right") or a centred dialog. Both trap focus, close
  * with Escape or the close button, and give focus back to what opened them.
  */
-export function Panel({ open, onOpenChange, title, description, side = 'center', children, footer, className }: {
+export function Panel({ open, onOpenChange, title, description, side = 'center', children, footer, className, stacked }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
@@ -18,13 +18,15 @@ export function Panel({ open, onOpenChange, title, description, side = 'center',
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /** Above anything already open: the app's messages and questions. */
+  stacked?: boolean;
 }) {
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-overlay animate-fade-in" />
+        <D.Overlay className={cn('fixed inset-0 bg-overlay animate-fade-in', stacked ? 'z-[65]' : 'z-40')} />
         <D.Content
-          className={cn('fixed z-50 flex flex-col bg-surface-raised text-text shadow-lg focus-visible:outline-none',
+          className={cn('fixed flex flex-col', stacked ? 'z-[70]' : 'z-50', 'bg-surface-raised text-text shadow-lg focus-visible:outline-none',
             side === 'right'
               ? 'inset-y-0 right-0 w-full max-w-md border-l border-border animate-slide-in'
               : 'left-1/2 top-1/2 max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border animate-rise-in',

@@ -157,7 +157,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const original = await greeting.inputValue();
     await greeting.fill('Thanks for calling Maple Street. How can I help?');
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('the greeting must disclose that the caller is speaking with an AI assistant')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Not saved. Fix these first' }).getByText('the greeting must disclose that the caller is speaking with an AI assistant')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
     await greeting.fill(original);
     await page.getByLabel('Holiday date').fill('2026-12-31');
     await page.getByRole('button', { name: 'Add holiday' }).click();

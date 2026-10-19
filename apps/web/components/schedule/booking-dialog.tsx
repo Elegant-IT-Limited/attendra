@@ -9,8 +9,8 @@ import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/controls';
-import { Alert } from '@/components/ui/feedback';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
+import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -45,7 +45,9 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
   const [slot, setSlot] = useState<PickedSlot | null>(null);
   const [note, setNote] = useState('');
   const [key, setKey] = useState(newKey);
-  const [error, setError] = useState<string | null>(null);
+  // why a booking did not go through opens in a dialog over this one
+  const problem = useProblem();
+  const setError = (message: string | null) => { if (message) problem({ title: 'Not booked', message }); };
   // the front desk squeezing someone in outside the hours: any time, with why
   const [override, setOverride] = useState<{ on: boolean; providerId: string; date: string; time: string; reason: string }>({ on: false, providerId: '', date: '', time: '', reason: '' });
   const squeezed = override.on && override.providerId && override.date && /^\d{2}:\d{2}$/.test(override.time)
@@ -68,7 +70,6 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
         ...(override.on ? { override: true, overrideReason: override.reason.trim() } : {}),
       }),
     }),
-    onMutate: () => setError(null),
     onSuccess: (r) => {
       void queries.invalidateQueries({ queryKey: ['schedule', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
@@ -101,7 +102,6 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
           ? <Button onClick={() => setStep(step + 1)} disabled={!canNext}>Next</Button>
           : <Button onClick={() => book.mutate()} disabled={book.isPending}>{book.isPending ? 'Booking…' : 'Book appointment'}</Button>}
       </>}>
-      {error && <Alert tone="warn" className="mb-4">{error}</Alert>}
       {step === 0 && findPatient((p) => { setPatient(p); setStep(1); })}
       {step === 1 && (
         <div className="space-y-4">
