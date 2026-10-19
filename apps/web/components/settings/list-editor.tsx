@@ -45,6 +45,9 @@ export function ListEditor({ clinicId, name, id, title, description, values, usa
       setEditing(null);
       onSaved(config);
       void queries.invalidateQueries({ queryKey: ['doctors', clinicId] });
+      // the save moved the settings' version on: every copy of them is out of date now
+      void queries.invalidateQueries({ queryKey: ['settings', clinicId] });
+      void queries.invalidateQueries({ queryKey: ['settings-versioned', clinicId] });
       toast({ tone: 'success', message: `${title} saved.` });
     },
     onError: (e) => problem({ title: `${title}: not saved`, message: e instanceof ApiFailure ? (e.body.issues?.[0]?.message ?? e.message) : 'The list did not reach the server. Check your connection and save again.' }),

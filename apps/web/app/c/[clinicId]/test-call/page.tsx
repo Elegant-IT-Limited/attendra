@@ -18,7 +18,8 @@ import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
 import { cn } from '@/lib/utils';
 
 type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
-type Caption = { speaker: 'caller' | 'agent'; text: string };
+/** `item`: the Realtime engine's id for a caller's turn, whose words arrive after the reply to it starts. */
+type Caption = { speaker: 'caller' | 'agent'; text: string; item?: string };
 
 const TEST_CALLS_DOC = 'https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/test-calls.md';
 
@@ -102,7 +103,14 @@ export default function TestCallPage() {
 
   const caption = (speaker: Caption['speaker'], delta: string) => setCaptions((all) => {
     const last = all.at(-1);
-    return last?.speaker === speaker ? [...all.slice(0, -1), { speaker, text: last.text + delta }] : [...all, { speaker, text: delta }];
+    return last?.speaker === speaker && !last.item ? [...all.slice(0, -1), { speaker, text: last.text + delta }] : [...all, { speaker, text: delta }];
+  });
+  // Realtime: a caller's turn holds its place in the order it was said; its words fill in once transcribed
+  const heard = (item: string, text: string | null) => setCaptions((all) => {
+    const at = all.findIndex((c) => c.item === item);
+    if (text === null) return at >= 0 ? all : [...all, { speaker: 'caller', text: '', item }];
+    if (at < 0) return [...all, { speaker: 'caller', text, item }];
+    return all.map((c, i) => (i === at ? { ...c, text: c.text + text } : c));
   });
 
   async function start() {
@@ -141,12 +149,16 @@ export default function TestCallPage() {
     events.onopen = () => { if (!a.cancelled) setPhase('live'); };
     events.onclose = () => finish(a, 'ended', false);
     events.onmessage = (m) => {
-      let e: { type?: string; delta?: string };
+      let e: { type?: string; delta?: string; item_id?: string };
       try { e = JSON.parse(String(m.data)); } catch { return; }
       if (e.type === 'session.started') a.started = true;
-      // GPT-Live's caption events, then the Realtime engine's
-      else if ((e.type === 'session.input_transcript.delta' || e.type === 'conversation.item.input_audio_transcription.delta') && e.delta) caption('caller', e.delta);
-      else if ((e.type === 'session.output_transcript.delta' || e.type === 'response.output_audio_transcript.delta') && e.delta) caption('agent', e.delta);
+      // GPT-Live's caption events
+      else if (e.type === 'session.input_transcript.delta' && e.delta) caption('caller', e.delta);
+      else if (e.type === 'session.output_transcript.delta' && e.delta) caption('agent', e.delta);
+      // the Realtime engine's: the caller's turn is placed when it ends, and filled in as it is transcribed
+      else if (e.type === 'input_audio_buffer.committed' && e.item_id) heard(e.item_id, null);
+      else if (e.type === 'conversation.item.input_audio_transcription.delta' && e.delta) { if (e.item_id) heard(e.item_id, e.delta); else caption('caller', e.delta); }
+      else if (e.type === 'response.output_audio_transcript.delta' && e.delta) caption('agent', e.delta);
       else if (e.type === 'session.closed') finish(a, 'ended', false);
     };
 
@@ -241,7 +253,7 @@ export default function TestCallPage() {
                   <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-full', agent ? 'bg-primary-soft text-primary' : 'bg-surface-sunken text-text-muted')}>
                     {agent ? <Bot className="size-4" /> : <User className="size-4" />}
                   </div>
-                  <p className={cn('max-w-[80%] rounded-lg px-3.5 py-2 text-sm leading-relaxed', agent ? 'bg-surface-sunken' : 'bg-primary text-on-primary')}>{c.text}</p>
+                  <p className={cn('max-w-[80%] rounded-lg px-3.5 py-2 text-sm leading-relaxed', agent ? 'bg-surface-sunken' : 'bg-primary text-on-primary')}>{c.text || '…'}</p>
                 </div>
               );
             })}

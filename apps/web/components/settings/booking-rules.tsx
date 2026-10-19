@@ -5,6 +5,7 @@ import { Field, Section } from '@/components/settings/section';
 import { RadioGroup, Switch } from '@/components/ui/controls';
 import { Input } from '@/components/ui/input';
 import { moved, Sortable } from '@/components/ui/sortable';
+import { useEffect, useState } from 'react';
 
 /**
  * Settings, Booking rules: who the assistant books with when the caller names nobody,
@@ -33,7 +34,7 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
               ]} />
             {r.noPreference === 'usual_first' && (
               <Field label={`Wait for the usual ${vet} up to, in days`} hint={`1 to 30. Past this, the caller is offered the earliest time with another ${vet}.`}>
-                <Input type="number" min={1} max={30} className="w-28" disabled={disabled} value={r.usualWithinDays} onChange={(e) => upd({ usualWithinDays: Math.min(30, Math.max(1, Number(e.target.value) || 1)) })} />
+                <DaysInput disabled={disabled} value={r.usualWithinDays} onChange={(usualWithinDays) => upd({ usualWithinDays })} />
               </Field>
             )}
           </fieldset>
@@ -87,5 +88,20 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
         </div>
       </div>
     </Section>
+  );
+}
+
+/** A number of days, 1 to 30, that can be cleared while typing: it settles on leaving the field. */
+function DaysInput({ value, onChange, disabled }: { value: number; onChange: (days: number) => void; disabled?: boolean }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+  return (
+    <Input type="number" min={1} max={30} className="w-28" disabled={disabled} value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        const n = Number(e.target.value);
+        if (e.target.value !== '' && Number.isInteger(n) && n >= 1 && n <= 30) onChange(n);
+      }}
+      onBlur={() => setText(String(value))} />
   );
 }

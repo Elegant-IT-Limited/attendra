@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -102,7 +102,8 @@ export class AppointmentsController {
     const busy = await this.desk.busy(clinicId, {
       from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding,
     });
-    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now,
+    // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
+    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) };
   }
@@ -128,9 +129,13 @@ export class AppointmentsController {
       const provider = clinic.providers.find((p) => p.id === b.providerId);
       const special = specialDayOf(clinic, date);
       const minutes = localParts(b.start, clinic.timezone).minutes;
-      const closedDay = special ? !special.windows.length : clinic.holidays.includes(date);
-      // a booking inside a part-day absence counts too
-      const awayThen = !!provider && (awayOn(provider, date) || awayWindows(provider, date).some((a) => minutes >= a.start && minutes < a.end));
+      const end = minutes + Math.round((b.end.getTime() - b.start.getTime()) / 60_000);
+      // closed all day, or a special day whose hours no longer hold the whole visit
+      const closedDay = special
+        ? !special.windows.some((w) => toMinutes(w.open) <= minutes && end <= toMinutes(w.close))
+        : clinic.holidays.includes(date);
+      // a booking that overlaps a part-day absence counts too
+      const awayThen = !!provider && (awayOn(provider, date) || awayWindows(provider, date).some((a) => minutes < a.end && end > a.start));
       const reason = closedDay ? 'holiday' : awayThen ? 'away' : null;
       if (!reason) continue;
       const key = `${date}|${b.providerId}`;

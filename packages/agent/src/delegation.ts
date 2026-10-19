@@ -28,6 +28,26 @@ const HOLD_AFTER_MS = 7000;
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 
+/** Before "he's fine" in the same clause: a no, a doubt or a wish ("I don't think he's okay", "I hope she's fine", "no está bien"). */
+const NOT_SAFE_BEFORE = /\b(no|not|never|nunca|hope|hoping|ojala|espero|if|si|whether|maybe|quizas|tal vez)\b|n't\b/;
+/** Where a clause starts again: what comes before it does not change it. */
+const CLAUSE = /[.,;:!]|\b(but|pero|and now|y ahora)\b/g;
+
+/**
+ * Said, not asked or doubted: the caller states the animal is safe. A question ("do you
+ * think she's okay?"), a negation or a hedge before the words in the same clause does not
+ * lift the emergency.
+ */
+function saidSafe(text: string, safe: RegExp | undefined): boolean {
+  if (!safe || /[?¿]/.test(text)) return false;
+  const m = safe.exec(text);
+  if (!m) return false;
+  const before = text.slice(0, m.index);
+  let start = 0;
+  for (const c of before.matchAll(CLAUSE)) start = c.index + c[0].length;
+  return !NOT_SAFE_BEFORE.test(before.slice(start));
+}
+
 /**
  * A caller who insults or threatens: the first time, the assistant stays calm and carries
  * on; the second, it says once that the call will end if it goes on, and offers a call
@@ -124,7 +144,8 @@ export class CallAgent {
     if (!this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
       if (onCall.ok) {
-        out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS });
+        // after the script has been said: the runner waits until the assistant is quiet
+        out.push({ type: 'transfer', uri: onCall.uri, afterMs: AFTER_EMERGENCY_SCRIPT_MS, quiet: true });
         this.state.emergencyTransferSent = true;
       }
     }
@@ -144,7 +165,7 @@ export class CallAgent {
     if (!s.emergencyLocked || !safe || !this.canEndByStaff()) return [];
     if (![...s.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) return [];
     const text = normalise(delta);
-    if (!this.ctx.clinic.languages.some((l) => safe[l]?.test(text))) return [];
+    if (!this.ctx.clinic.languages.some((l) => saidSafe(text, safe[l]))) return [];
     s.emergencyCleared = true;
     s.revision++;
     this.log.info({ call_id: this.ctx.callId, emergency_kind: s.emergency?.kind }, 'caller said the animal is safe; the call goes on');
@@ -231,7 +252,7 @@ export class CallAgent {
     this.emitState();
     return [
       { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
-      { type: 'transfer', uri, afterMs: AFTER_SPEECH_MS },
+      { type: 'transfer', uri, afterMs: AFTER_SPEECH_MS, quiet: true },
     ];
   }
 
@@ -256,7 +277,8 @@ export class CallAgent {
   private checkAbuse(): Outbound[] {
     const s = this.state;
     const turn = s.turns.filter((t) => t.speaker === 'caller').length;
-    if (s.abuseTurn === turn || s.endedByStaff || !isAbusive(s.lastTurn('caller'))) return [];
+    // once the call is being ended for it, nothing more is said or scheduled
+    if (s.abuseTurn === turn || s.endedByStaff || (s.abuse >= ABUSE_LINES.length && !s.emergencyLocked) || !isAbusive(s.lastTurn('caller'))) return [];
     s.abuseTurn = turn;
     s.abuse++;
     // an emergency is never cut short: the assistant stays calm and keeps to the script

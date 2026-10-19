@@ -33,7 +33,8 @@ export interface RealtimeSocket {
   on(event: 'event', handler: (e: { type: string; event_id?: string } & Record<string, unknown>) => void): unknown;
   on(event: 'error', handler: (err: Error) => void): unknown;
   close(): void;
-  socket: { on(event: 'close', handler: (code: number) => void): unknown };
+  /** The underlying WebSocket: 1 is open. Sends before it opens are queued here, not lost. */
+  socket: { readyState?: number; on(event: 'close', handler: (code: number) => void): unknown; on(event: 'open', handler: () => void): unknown };
 }
 
 /** A voice GPT-Live has that the Realtime models may not: the clinic's own if it is one of both, else a warm default. */
@@ -49,8 +50,6 @@ const voiceFor = (voice: string) => ((PREVIEW_VOICES as readonly string[]).inclu
 export class RealtimeEngine implements VoiceEngine {
   readonly name = 'gpt-realtime';
   private readonly browser = new Set<string>();
-  /** The instructions each call started with, and what was added since: added text is appended, never lost. */
-  private readonly instructions = new Map<string, string>();
 
   constructor(
     private readonly client: OpenAI,
@@ -73,9 +72,7 @@ export class RealtimeEngine implements VoiceEngine {
   }
 
   async accept(callId: string, clinic: ClinicConfig, now: Date) {
-    const session = this.session(clinic, now);
-    this.instructions.set(callId, session.instructions);
-    await this.client.realtime.calls.accept(callId, session);
+    await this.client.realtime.calls.accept(callId, this.session(clinic, now));
   }
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
@@ -86,7 +83,6 @@ export class RealtimeEngine implements VoiceEngine {
     const callId = res.headers.get('location')?.split('/').filter(Boolean).at(-1);
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
-    this.instructions.set(callId, session.instructions);
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
 
@@ -105,7 +101,6 @@ export class RealtimeEngine implements VoiceEngine {
 
   release(callId: string) {
     this.browser.delete(callId);
-    this.instructions.delete(callId);
   }
 
   attach(callId: string): Sideband {
@@ -116,6 +111,40 @@ export class RealtimeEngine implements VoiceEngine {
     const id = (e: { event_id?: string }) => e.event_id ?? `rt_${callId}_${++n}`;
     const handlers: ((e: SidebandEvent) => void)[] = [];
     const emit = (e: SidebandEvent) => { for (const h of handlers) h(e); };
+
+    // The socket is still connecting when the runner first speaks (a VIP's line, say): what is
+    // sent before it opens waits, and on open the assistant greets the caller, with anything
+    // queued as context for that first answer. Realtime models wait for the caller otherwise.
+    let open = ws.socket.readyState === 1;
+    let queue: Record<string, unknown>[] = [];
+    // one response at a time: a new one waits for the one in progress to finish (or be cancelled)
+    let active = false;
+    let wanted: Record<string, unknown> | null = null;
+    const raw = (e: Record<string, unknown>) => (open ? ws.send(e) : queue.push(e));
+    const respond = (e: Record<string, unknown> = { type: 'response.create' }) => {
+      if (!open) return; // the greeting on open answers for it
+      if (active) wanted = e; else { active = true; ws.send(e); }
+    };
+    const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
+    ws.socket.on('open', () => {
+      open = true;
+      const items = queue.filter((e) => e.type === 'conversation.item.create');
+      queue = [];
+      for (const e of items) ws.send(e);
+      respond();
+    });
+    if (open) respond();
+
+    // the model's words come in pieces smaller than a word ("Bisc", "uit"): they are passed on
+    // a word at a time, so the record and the live captions read as said
+    let words = '';
+    const spoken = (e: { event_id?: string }, final = false) => {
+      const cut = final ? words.length : Math.max(words.lastIndexOf(' '), words.lastIndexOf('\n')) + 1;
+      if (cut <= 0) return;
+      const delta = words.slice(0, cut);
+      words = words.slice(cut);
+      reply({ type: 'session.output_transcript.delta', event_id: id(e), delta, start_ms: ms(), end_ms: ms() });
+    };
 
     // The model answers as soon as the caller stops; their words are transcribed after, and
     // can arrive seconds later. Until they do, the reply's words and its hand-off wait, so
@@ -153,8 +182,21 @@ export class RealtimeEngine implements VoiceEngine {
         case 'conversation.item.input_audio_transcription.failed':
           return heard(e.item_id);
         case 'response.output_audio_transcript.delta':
-          if (typeof e.delta === 'string' && e.delta) reply({ type: 'session.output_transcript.delta', event_id: id(e), delta: e.delta, start_ms: ms(), end_ms: ms() });
+          if (typeof e.delta === 'string' && e.delta) { words += e.delta; spoken(e); }
           return;
+        case 'response.output_audio_transcript.done':
+          return spoken(e, true);
+        case 'response.created':
+          active = true;
+          return;
+        case 'response.done': {
+          spoken(e, true);
+          active = false;
+          const next = wanted;
+          wanted = null;
+          if (next) respond(next);
+          return;
+        }
         // the model hands the caller's request to the backend: the runner answers it like a GPT-Live delegation
         case 'response.function_call_arguments.done':
           if (e.name === ASK_BACKEND.name && typeof e.call_id === 'string') reply({ type: 'session.delegation.created', event_id: id(e), delegation: { id: e.call_id, target: 'client' } });
@@ -170,20 +212,18 @@ export class RealtimeEngine implements VoiceEngine {
       const c = event as { type: string; delegation_id: string | null; content: string };
       if (c.type === 'session.commentary.append' && c.delegation_id) {
         // the backend's answer to the hand-off: the tool's result, then the model says it
-        ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.delegation_id, output: c.content } });
-        ws.send({ type: 'response.create' });
+        raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.delegation_id, output: c.content } });
+        respond();
       } else if (c.type === 'session.thinking.append') {
         // GPT-Live hears progress notes as context; here only "still working" is said, the rest is silent
-        if (/^Still working/.test(c.content)) ws.send({ type: 'response.create', response: { instructions: 'Tell the caller in a few words that you are still checking. Do not answer the question yet.', tool_choice: 'none' } });
+        if (/^Still working/.test(c.content)) respond({ type: 'response.create', response: { instructions: 'Tell the caller in a few words that you are still checking. Do not answer the question yet.', tool_choice: 'none' } });
       } else {
-        // new instructions (an emergency script, a staff note, a nudge): kept for the rest of
-        // the call, and acted on now, cutting off whatever the assistant was saying
-        const all = `${this.instructions.get(callId) ?? ''}\n${c.content}`;
-        this.instructions.set(callId, all);
-        ws.send({ type: 'response.cancel' });
-        ws.send({ type: 'session.update', session: { type: 'realtime', instructions: all } });
-        ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: c.content }] } });
-        ws.send({ type: 'response.create' });
+        // new instructions (an emergency script, a staff note, a nudge): a system message in
+        // the conversation, so it stays in context without becoming a standing rule, acted on
+        // now, cutting off whatever the assistant was saying
+        raw({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: c.content }] } });
+        interrupt();
+        respond();
       }
     };
 

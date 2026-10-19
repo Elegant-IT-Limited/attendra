@@ -299,7 +299,7 @@ export default function LiveCallPage() {
         footer={<><Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button><Button loading={act.isPending} disabled={target === 'me' && !mine.data?.number} onClick={() => act.mutate('take')}>Transfer the call</Button></>}>
         <div className="space-y-4">
           <RadioGroup label="Transfer to" value={target} onValueChange={setTarget} options={[
-            { value: 'front_desk', label: 'The front desk line', hint: 'The number in Settings, under Routing.' },
+            { value: 'front_desk', label: 'The front desk line', hint: 'The number in Settings, under Transfers.' },
             { value: 'me', label: 'My own number', hint: mine.data?.number ?? 'Not set yet.' },
           ]} />
           {target === 'me' && mine.data?.number && !changing && (

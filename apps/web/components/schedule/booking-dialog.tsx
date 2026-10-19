@@ -62,6 +62,11 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
   }, [open, fixed?.id, today]);
 
   const providers = clinic.providers.filter((p) => p.visitTypeIds.includes(visitTypeId));
+  // a squeezed-in visit goes to someone who does this visit type: the one the dropdown shows
+  const overrideProvider = providers.some((p) => p.id === override.providerId) ? override.providerId : providers[0]?.id ?? '';
+  useEffect(() => {
+    if (override.on && overrideProvider !== override.providerId) setOverride((o) => ({ ...o, providerId: overrideProvider }));
+  }, [override.on, override.providerId, overrideProvider]);
   const book = useMutation({
     mutationFn: () => api<AppointmentChange>(`/clinics/${clinicId}/appointments`, {
       method: 'POST',
@@ -123,7 +128,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
           </div>
           {!override.on && <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} patientId={patient?.id} />}
           <Checkbox id="override" label="Squeeze in outside the hours (override)" checked={override.on}
-            hint="For a time no slot offers: before opening, on a closed day, or while the vet is away. Still refused if it clashes with another visit."
+            hint={`For a time no slot offers: before opening, on a closed day, or while the ${pets ? 'vet' : 'provider'} is away. Still refused if it clashes with another visit.`}
             onCheckedChange={(on) => setOverride({ ...override, on, providerId: override.providerId || providerId || providers[0]?.id || '' })} />
           {override.on && (
             <div className="grid gap-3 sm:grid-cols-2">
