@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -96,11 +96,14 @@ export class AppointmentsController {
     if (q.providerId && !clinic.providers.some((p) => p.id === q.providerId)) throw this.invalid('providerId', 'unknown provider');
     const now = this.now();
     const today = localDateOf(now, clinic.timezone);
+    const fit = q.patientId ? await this.desk.bookingFit(clinicId, q.patientId) : null;
+    if (q.patientId && !fit) throw this.invalid('patientId', 'unknown patient');
     const from = q.from && q.from > today ? q.from : today;
     const busy = await this.desk.busy(clinicId, {
       from: zonedInstant(from, '00:00', clinic.timezone), to: zonedInstant(addDays(from, q.days), '00:00', clinic.timezone), except: q.excluding,
     });
-    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now });
+    const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now,
+      patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) };
   }
 
