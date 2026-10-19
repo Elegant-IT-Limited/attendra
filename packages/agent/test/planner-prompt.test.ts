@@ -10,6 +10,12 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(prompt).toContain('Never give medical advice, never interpret symptoms');
   });
 
+  it('never asks for the same detail a third time, and offers a callback instead', () => {
+    const prompt = systemPrompt(RIVERBEND_CLINIC, 'Today is Monday.');
+    expect(prompt).toContain('Never ask for the same detail a third time');
+    expect(prompt).toContain('offer to have the team call them back (create_callback');
+  });
+
   it('a veterinary clinic finds a pet by its owner, its name and the phone, and gives no advice about animals', () => {
     const prompt = systemPrompt(RIVERBEND_CLINIC, 'Today is Monday.');
     expect(prompt).toContain('find the pet (the owner\'s full name, the pet\'s name and the phone on file)');

@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (from the first GPT Realtime test call)
+
+- **The silence check counts from when the voice stops, not when its words arrive.** A reply's words arrive seconds before its audio has played, and the caller's words can be transcribed late, so the assistant was told to answer while it was still answering. "Quiet" now starts when the reply should have finished playing (80 ms a character). The goodbye hang-up waits 6 s from the same point. Both engines.
+- **GPT Realtime: the caller's words come before the reply to them.** The reply and its hand-off to the backend wait (3 s at most) until the caller's turn is transcribed. The call record reads in order, and the backend plans with what the caller just said, not without it.
+- **GPT Realtime never talks about "the backend" or someone who "could not hear"**: it checks, then answers as itself.
+- **No detail is asked for a third time.** After a detail given twice still fails, or when the caller is upset, the assistant apologises and offers a callback with what it has.
+
 ### Added
 
 - **Refills ready to pick up.** A refill request closes as "Approved, ready to pick up" (the worker texts the number the caller left, once, from the clinic's number, never naming the medication), "Not approved, called back", or "Sent to the pharmacy" as before. Migration 0025. The worker texts only with `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` set.
