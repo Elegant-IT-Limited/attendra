@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets } from '@attendra/core';
+import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets, usualProviderOf } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -114,9 +114,8 @@ export class PatientsController {
     const p = isUuid(id) ? await this.records.profile(clinicId, id, staff.userId) : null;
     if (!p) throw new NotFoundException({ error: 'not_found' });
     const names = await staffNames(this.db, clinicId, p.appointments.flatMap((a) => (a.createdByUserId ? [a.createdByUserId] : [])));
-    const seen = new Map<string, number>();
-    for (const a of p.appointments) if (a.status === 'booked' && a.startsAt < this.now()) seen.set(a.providerId, (seen.get(a.providerId) ?? 0) + 1);
-    const usual = [...seen.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    // the same rule the assistant books by: most visits in two years, the latest breaking a tie
+    const usual = usualProviderOf(p.appointments.map((a) => ({ providerId: a.providerId, start: a.startsAt, status: a.status })), this.now());
     const now = this.now().getTime();
     const fields = new Set((await this.clinic(clinicId)).customFields?.map((f) => f.id) ?? []);
     return {

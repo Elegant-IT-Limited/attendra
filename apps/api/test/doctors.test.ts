@@ -69,6 +69,14 @@ describe('doctors', () => {
     expect((await stored()).providers.some((p) => p.id === id)).toBe(true);
   });
 
+  it('saves the order of the doctors from Settings (Booking rules), keeping any it was not sent at the end', async () => {
+    const before = await stored();
+    const reversed = [...before.providers].reverse();
+    expect((await api.request('PUT', `/api/v1/clinics/${DEMO_CLINIC.id}/settings`, { cookie: as.owner, body: { ...before, providers: reversed.slice(1) } })).statusCode).toBe(200);
+    const after = (await stored()).providers.map((p) => p.id);
+    expect(after).toEqual([...reversed.slice(1).map((p) => p.id), reversed[0]!.id]);
+  });
+
   it('will not remove a doctor with visits to come', async () => {
     const at = zonedInstant('2026-09-29', '09:00', DEMO_CLINIC.timezone).toISOString();
     const booking = await api.request('POST', `/api/v1/clinics/${DEMO_CLINIC.id}/appointments`, {

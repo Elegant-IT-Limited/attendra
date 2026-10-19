@@ -101,7 +101,11 @@ export class SettingsController {
     // Doctors are changed on the Doctors page. Settings keeps the ones on file, so a
     // Settings page opened before a doctor was added cannot remove them; a visit type
     // removed here is taken off every doctor who offered it.
-    const providers = current.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => parsed.data.visitTypes.some((v) => v.id === id)) }));
+    // Their order is Settings' to change (Booking rules, "in the order below"): the ones on file, in the
+    // order sent, and any added since at the end
+    const order = new Map(parsed.data.providers.map((p, i) => [p.id, i]));
+    const ordered = [...current.providers].sort((a, b) => (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+    const providers = ordered.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => parsed.data.visitTypes.some((v) => v.id === id)) }));
     const stranded = providers.find((p) => !p.visitTypeIds.length);
     if (stranded) {
       throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'visitTypes', message: `${stranded.name} would have no visit types left. Give them another one on the Doctors page first.` }] });

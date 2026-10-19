@@ -215,6 +215,23 @@ export const Texting = z.object({
 });
 export type Texting = z.infer<typeof Texting>;
 
+/**
+ * Who the assistant books with when the caller does not name anyone. A caller who asks
+ * for someone (a name, a kind of doctor, a female or male doctor) is always offered only
+ * them; these rules are for everyone else.
+ */
+export const BookingRules = z.object({
+  // no one in mind: the pet's (or patient's) usual vet first, or the earliest time with anyone
+  noPreference: z.enum(['usual_first', 'earliest']).default('usual_first'),
+  // how many days ahead the usual vet is worth waiting for; past that, the earliest with anyone
+  usualWithinDays: z.number().int().min(1).max(30).default(3),
+  // several free at the same moment: the one with the fewest visits that day, or the order of the list
+  tieBreak: z.enum(['fewest_visits', 'list_order']).default('fewest_visits'),
+  // a veterinary clinic: only vets who list the pet's kind of animal (a vet who lists no animals sees every animal)
+  matchAnimal: z.boolean().default(true),
+});
+export type BookingRules = z.infer<typeof BookingRules>;
+
 /** How the assistant talks: a few lines in its instructions. The rules it follows are in code and do not change with these. */
 export const TalkStyle = z.object({
   pace: z.enum(['relaxed', 'normal', 'brisk']).default('normal'),
@@ -250,6 +267,8 @@ const ClinicConfigShape = z.object({
   phoneNumbers: z.array(e164).min(1),
   hours: WeeklyHours,
   holidays: z.array(isoDate).default([]),
+  // who the assistant books with when the caller names nobody
+  booking: BookingRules.optional(),
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)
@@ -432,6 +451,8 @@ export function greetingFor(c: Pick<ClinicConfig, 'greeting' | 'greetings' | 'pr
 
 /** The clinic's texting settings, with every default filled in. */
 export const textingOf = (c: Pick<ClinicConfig, 'texting'>): Texting => c.texting ?? Texting.parse({});
+/** The clinic's booking rules, with the defaults for what it has not set. */
+export const bookingOf = (c: Pick<ClinicConfig, 'booking'>): BookingRules => BookingRules.parse(c.booking ?? {});
 
 /**
  * A list as the clinic keeps it, or, before it has kept one, what its records say:
