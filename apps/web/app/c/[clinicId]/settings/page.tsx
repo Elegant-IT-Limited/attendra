@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { callingCode, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
-import type { ApiError } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -11,6 +10,7 @@ import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SpecialDaysEditor } from '@/components/settings/special-days';
+import { moved, Sortable } from '@/components/ui/sortable';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { VoicePreview } from '@/components/settings/voice-preview';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
@@ -21,7 +21,7 @@ import { Button, buttonStyles } from '@/components/ui/button';
 import { type Conflict, SettingsConflict } from '@/components/settings/settings-conflict';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { ApiFailure, apiTagged, useClinic } from '@/lib/api';
 import { clinicTime, DAYS, dayTitle } from '@/lib/format';
 import { useActiveSection } from '@/lib/scroll-spy';
@@ -100,12 +100,12 @@ export default function Settings() {
   const { can, clinic } = useClinic(clinicId);
   const queries = useQueryClient();
   const toast = useToast();
+  const problem = useProblem();
   // its own copy with the version it was read at, read fresh each time the page opens and
   // never swapped under a draft: a save is refused if someone else saved since
   const loaded = useQuery({ queryKey: ['settings-versioned', clinicId], queryFn: () => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`), gcTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false });
   const saved = { ...loaded, data: loaded.data?.body };
   const [draft, setDraft] = useState<ClinicConfig | null>(null);
-  const [issues, setIssues] = useState<ApiError['issues']>([]);
   const [conflict, setConflict] = useState<Conflict<ClinicConfig> | null>(null);
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
@@ -141,7 +141,7 @@ export default function Settings() {
     mutationFn: (config: ClinicConfig) => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`, {
       method: 'PUT', body: JSON.stringify(config), headers: loaded.data?.etag ? { 'if-match': loaded.data.etag } : {},
     }),
-    onMutate: () => { setIssues([]); setConflict(null); },
+    onMutate: () => setConflict(null),
     onSuccess: ({ body: config, etag }) => {
       keep(config, etag);
       void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] });
@@ -151,13 +151,14 @@ export default function Settings() {
       toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
     },
     onError: (e) => {
-      if (!(e instanceof ApiFailure)) return;
+      if (!(e instanceof ApiFailure)) { problem({ title: 'Not saved', message: 'The settings did not reach the server. Check your connection and press Save changes again.' }); return; }
       if (e.status === 409 && e.body.error === 'settings_changed') {
         const b = e.body as unknown as { current: ClinicConfig; version: number; updatedAt: string | null; updatedBy: { name: string } | null };
         setConflict({ theirs: b.current, version: b.version, updatedAt: b.updatedAt, updatedBy: b.updatedBy });
         return;
       }
-      setIssues(e.body.issues ?? [{ path: '', message: e.message }]);
+      const issues = e.body.issues ?? [{ path: '', message: e.message }];
+      problem({ title: 'Not saved. Fix these first', items: issues.map((i) => (i.path ? `${issueLabel(i.path)}: ${i.message}` : i.message)) });
     },
   });
 
@@ -191,11 +192,6 @@ export default function Settings() {
       {conflict && saved.data && (
         <SettingsConflict base={saved.data} mine={c} conflict={conflict} label={issueLabel} timeLabel={(iso) => clinicTime(iso, c.timezone)}
           onResolved={(next) => { keep(conflict.theirs, `"v${conflict.version}"`); setDraft(next); setConflict(null); }} />
-      )}
-      {issues && issues.length > 0 && (
-        <Alert tone="danger" title="Not saved. Fix these first:" className="mb-6">
-          <ul className="list-disc pl-4">{issues.map((i, n) => <li key={n}><span className="font-medium">{issueLabel(i.path)}</span>: {i.message}</li>)}</ul>
-        </Alert>
       )}
       <div className="lg:grid lg:grid-cols-[11rem_minmax(0,1fr)] lg:gap-8">
         <nav aria-label="On this page" className="hidden lg:block">
@@ -316,6 +312,10 @@ export default function Settings() {
 
         <Section id="holidays" title="Holidays and special days" description="Days that differ from the weekly hours: a holiday, closed all day, or a special day, closed with a reason or open shorter hours. Nothing is offered outside them, and the assistant tells callers. Adding one never moves a visit already booked: the Schedule lists any to move.">
           <ConflictsAlert clinicId={clinicId} />
+          <div className="flex flex-wrap gap-2">
+            <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
+            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday) || !!c.specialDays?.some((d) => d.date === newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
+          </div>
           {c.holidays.length === 0 ? <EmptyNote>No holidays set.</EmptyNote> : (
             <div className="flex flex-wrap gap-2">
               {c.holidays.map((h) => (
@@ -326,22 +326,19 @@ export default function Settings() {
               ))}
             </div>
           )}
-          <div className="flex flex-wrap gap-2">
-            <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
-            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday) || !!c.specialDays?.some((d) => d.date === newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
-          </div>
           <h3 className="pt-2 text-base font-medium">Special days</h3>
           <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} onChange={(specialDays) => set({ specialDays })} />
         </Section>
 
         {(pet || c.emergencyHospital) && (
           <Section id="emergency" title="Emergency hospitals" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. It names your first choice that is open at that moment. With none set or none open, callers are told to go to the nearest 24-hour emergency vet."
-            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => addOrFocus(hospitals, BLANK.hospital, (_h, i) => `item-hospital-${i}`, () => { setHospitals([...hospitals, { name: '', phone: '', address: '' }]); setAdded(`item-hospital-${hospitals.length}`); })}><Plus /> Hospital</Button>}>
+            action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => addOrFocus(hospitals, BLANK.hospital, (_h, i) => `item-hospital-${i}`, () => { setHospitals([{ name: '', phone: '', address: '' }, ...hospitals]); setAdded('item-hospital-0'); })}><Plus /> Hospital</Button>}>
             {hospitals.length === 0 && <EmptyNote>No emergency hospital yet. Add the one you send clients to at night.</EmptyNote>}
-            {hospitals.map((h, i) => {
+            <Sortable items={hospitals} keyOf={(_h, i) => String(i)} label={(h) => h.name} disabled={!writable || save.isPending} onMove={(f, t) => setHospitals(moved(hospitals, f, t))} className="space-y-5">
+            {(h, i, handle) => {
               const upd = (patch: Partial<typeof h>) => setHospitals(hospitals.map((x, j) => (j === i ? { ...x, ...patch } : x)));
               return (
-                <Item key={i} id={`item-hospital-${i}`} removeLabel={`Remove ${h.name || 'this hospital'}`} onRemove={() => setHospitals(hospitals.filter((_, j) => j !== i))}>
+                <Item handle={handle} id={`item-hospital-${i}`} removeLabel={`Remove ${h.name || 'this hospital'}`} onRemove={() => setHospitals(hospitals.filter((_, j) => j !== i))}>
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={i === 0 ? 'accent' : 'neutral'}>{i === 0 ? 'First choice' : `Choice ${i + 1}`}</Badge>
@@ -366,14 +363,16 @@ export default function Settings() {
                   </div>
                 </Item>
               );
-            })}
+            }}
+            </Sortable>
           </Section>
         )}
 
         <Section id="visits" title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.visitTypes, BLANK.named, (v) => `item-${v.id}`, () => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); })}><Plus /> Visit type</Button>}>
-          {c.visitTypes.map((v, i) => (
-            <Item key={v.id} id={`item-${v.id}`} removeLabel={`Remove ${v.name || 'this visit type'}`} onRemove={() => set({
+          <Sortable items={c.visitTypes} keyOf={(v) => v.id} label={(v) => v.name} disabled={!writable || save.isPending} onMove={(f, t) => set({ visitTypes: moved(c.visitTypes, f, t) })} className="space-y-5">
+          {(v, i, handle) => (
+            <Item handle={handle} id={`item-${v.id}`} removeLabel={`Remove ${v.name || 'this visit type'}`} onRemove={() => set({
               visitTypes: c.visitTypes.filter((_, j) => j !== i),
               // taken off every provider who offered it, on the server too
               providers: c.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => id !== v.id) })),
@@ -410,7 +409,8 @@ export default function Settings() {
                   checked={!!v.staffOnly} onCheckedChange={(on) => visit(i, { staffOnly: on || undefined })} disabled={!writable || save.isPending} />
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
           <p className="text-sm text-text-muted">
             {terms.title('providers')} have a page of their own, where you add them, set their hours and days off, and choose which visits each one does.{' '}
             <Link className="font-medium text-primary hover:underline" href={`/c/${clinicId}/doctors`}>Open {terms.title('providers')}</Link>
@@ -421,8 +421,9 @@ export default function Settings() {
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.routing, (r) => BLANK.number(r.uri, c), (_r, i) => `item-routing-${i}`, () => { set({ routing: [{ target: 'front_desk', uri: `tel:+${callingCode(c.phoneNumbers[0] ?? '') ?? ''}`, when: 'open', priority: 0 }, ...c.routing] }); setAdded('item-routing-0'); })}><Plus /> Transfer number</Button>}>
           {clinicWarnings(c).filter((w) => w.path === 'routing').map((w) => <Alert key={w.path} tone="warn">{w.message}</Alert>)}
           {c.routing.length === 0 && <EmptyNote>No transfer numbers yet. Callers who ask for a person get a callback request.</EmptyNote>}
-          {c.routing.map((r, i) => (
-            <Item key={i} id={`item-routing-${i}`} removeLabel="Remove this transfer number" onRemove={() => remove('routing', i)}>
+          <Sortable items={c.routing} keyOf={(_r, i) => String(i)} label={(r) => shownUri(r.uri)} disabled={!writable || save.isPending} onMove={(f, t) => set({ routing: moved(c.routing, f, t) })} className="space-y-5">
+          {(r, i, handle) => (
+            <Item handle={handle} id={`item-routing-${i}`} removeLabel="Remove this transfer number" onRemove={() => remove('routing', i)}>
               <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,11rem)]">
                 <Field label="Who it reaches">
                   <Select value={r.target} onChange={(e) => upd('routing', i, { target: e.target.value as typeof r.target })}>
@@ -439,41 +440,47 @@ export default function Settings() {
                 </Field>
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
         </Section>
 
         <Section id="vip" title="VIP callers" description="Callers who should always reach a person. While your front desk number (under Transfers) takes calls, the assistant greets them, says it is connecting them, and passes the call to that number. If the transfer does not go through, the assistant stays on and offers a callback; if it rings and nobody answers, your own phone system takes it from there. Outside front desk hours the assistant answers them as usual."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.vipCallers?.length ?? 0) >= 50} onClick={() => addOrFocus(c.vipCallers ?? [], (v) => !v.name.trim() && BLANK.number(v.phone, c), (_v, i) => `item-vip-${i}`, () => { set({ vipCallers: [{ name: '', phone: '' }, ...(c.vipCallers ?? [])] }); setAdded('item-vip-0'); })}><Plus /> VIP caller</Button>}>
           {!c.routing.some((r) => r.target === 'front_desk') && !!c.vipCallers?.length && <Alert tone="warn">Add a front desk number under Transfers, or VIP callers reach the assistant like anyone else.</Alert>}
           {!c.vipCallers?.length && <EmptyNote>No VIP callers yet.</EmptyNote>}
-          {(c.vipCallers ?? []).map((v, i) => (
-            <Item key={i} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
+          <Sortable items={(c.vipCallers ?? [])} keyOf={(_v, i) => String(i)} label={(v) => v.name} disabled={!writable || save.isPending} onMove={(f, t) => set({ vipCallers: moved(c.vipCallers ?? [], f, t) })} className="space-y-5">
+          {(v, i, handle) => (
+            <Item handle={handle} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
                 <Field label="Phone number" hint="With the country code."><Input type="tel" value={v.phone} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('vipCallers', i, { phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
         </Section>
 
         <Section id="answers" title="Answers to common questions" description="The assistant answers from these, in your words, and does not make up the rest."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.faqs, (f) => !f.question.trim() && !f.answer.trim(), (f) => `item-${f.id}`, () => { const id = newId('faq', 'question'); set({ faqs: [{ id, question: '', answer: '' }, ...c.faqs] }); setAdded(`item-${id}`); })}><Plus /> Question</Button>}>
           {c.faqs.length === 0 && <EmptyNote>No answers yet. Add the questions callers ask most, like parking, payment or what to bring.</EmptyNote>}
-          {c.faqs.map((f, i) => (
-            <Item key={f.id} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
+          <Sortable items={c.faqs} keyOf={(f) => f.id} label={(f) => f.question} disabled={!writable || save.isPending} onMove={(f, t) => set({ faqs: moved(c.faqs, f, t) })} className="space-y-5">
+          {(f, i, handle) => (
+            <Item handle={handle} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
               <div className="space-y-4">
                 <Field label="Question"><Input value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
                 <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} placeholder="e.g. Free parking behind the building, entrance on 5th Street." onChange={(e) => upd('faqs', i, { answer: e.target.value })} /></Field>
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
         </Section>
 
         <Section id="offers" title="Offers and announcements" description="What you are running now, like a vaccine clinic or a dental month. The assistant tells callers who ask, only between the dates you set."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.offers ?? [], (o) => !o.title.trim() && !o.details.trim(), (o) => `item-${o.id}`, () => { const id = newId('offer', 'offer'); set({ offers: [{ id, title: '', details: '' }, ...(c.offers ?? [])] }); setAdded(`item-${id}`); })}><Plus /> Offer</Button>}>
           {!c.offers?.length && <EmptyNote>No offers running.</EmptyNote>}
-          {(c.offers ?? []).map((o, i) => (
-            <Item key={o.id} id={`item-${o.id}`} removeLabel="Remove offer" onRemove={() => remove('offers', i)}>
+          <Sortable items={(c.offers ?? [])} keyOf={(o) => o.id} label={(o) => o.title} disabled={!writable || save.isPending} onMove={(f, t) => set({ offers: moved(c.offers ?? [], f, t) })} className="space-y-5">
+          {(o, i, handle) => (
+            <Item handle={handle} id={`item-${o.id}`} removeLabel="Remove offer" onRemove={() => remove('offers', i)}>
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem_10rem]">
                   <Field label="Title"><Input maxLength={80} value={o.title} placeholder="e.g. Saturday vaccine clinic" onChange={(e) => upd('offers', i, { title: e.target.value })} /></Field>
@@ -483,7 +490,8 @@ export default function Settings() {
                 <Field label="Details" hint={`${o.details.length}/400`}><Textarea maxLength={400} value={o.details} placeholder="e.g. Core vaccines for dogs and cats, 9 to 1, no appointment needed." onChange={(e) => upd('offers', i, { details: e.target.value })} /></Field>
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
         </Section>
 
         <Section id="fields" title="Fields and lists" description={`Your own fields on ${terms.patients}, ${terms.providers} and requests, the kinds of request the assistant labels, and the lists they pick from have their own tab.`}>
@@ -497,14 +505,16 @@ export default function Settings() {
         <Section id="links" title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => addOrFocus(c.menuLinks ?? [], (l) => !l.label.trim() && /^(https?:\/\/)?$/.test(l.url.trim()), (_l, i) => `item-link-${i}`, () => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); })}><Plus /> Link</Button>}>
           {!c.menuLinks?.length && <EmptyNote>No links yet.</EmptyNote>}
-          {(c.menuLinks ?? []).map((l, i) => (
-            <Item key={i} id={`item-link-${i}`} removeLabel="Remove link" onRemove={() => remove('menuLinks', i)}>
+          <Sortable items={(c.menuLinks ?? [])} keyOf={(_l, i) => String(i)} label={(l) => l.label} disabled={!writable || save.isPending} onMove={(f, t) => set({ menuLinks: moved(c.menuLinks ?? [], f, t) })} className="space-y-5">
+          {(l, i, handle) => (
+            <Item handle={handle} id={`item-link-${i}`} removeLabel="Remove link" onRemove={() => remove('menuLinks', i)}>
               <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
                 <Field label="Label"><Input maxLength={30} value={l.label} placeholder="e.g. Practice software" onChange={(e) => upd('menuLinks', i, { label: e.target.value })} /></Field>
                 <Field label="Web address"><Input type="url" value={l.url} placeholder="https://" onChange={(e) => upd('menuLinks', i, { url: e.target.value })} /></Field>
               </div>
             </Item>
-          ))}
+          )}
+          </Sortable>
         </Section>
 
         <Section id="records" title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
@@ -524,7 +534,7 @@ export default function Settings() {
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
             <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setDraft(saved.data ?? null); setIssues([]); }}>Discard</Button>
+              <Button variant="outline" onClick={() => setDraft(saved.data ?? null)}>Discard</Button>
               <Button onClick={() => save.mutate(withoutBlankRows(c))} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
             </div>
           </div>

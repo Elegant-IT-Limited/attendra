@@ -23,7 +23,8 @@ test('a manager adds an endpoint, sends a signed test event to a receiver, and r
     await page.goto(`/c/${clinic}/settings/integrations`);
     await page.getByLabel('URL').fill('https://10.0.0.5/hook');
     await page.getByRole('button', { name: 'Add endpoint' }).click();
-    await expect(page.getByText('That address is on a private network or this server. Use a public https address.')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Endpoint not added' }).getByText('That address is on a private network or this server. Use a public https address.')).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
 
     await page.getByLabel('URL').fill(url);
     await page.getByLabel('Description').fill('n8n on this machine');

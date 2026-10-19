@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { X } from 'lucide-react';
-import { type KeyboardEvent, useId, useState } from 'react';
+import { type KeyboardEvent, useState } from 'react';
 import { Input } from '@/components/ui/input';
 
 /**
@@ -13,7 +13,6 @@ export function ChipsPicker({ id, values, suggestions, onChange, placeholder, la
   id: string; values: string[]; suggestions: string[]; onChange: (values: string[]) => void; placeholder?: string; label: string;
 }) {
   const [text, setText] = useState('');
-  const listId = useId();
   const add = (raw: string) => {
     const v = raw.trim().replace(/,$/, '').trim();
     if (!v) return;
@@ -39,12 +38,12 @@ export function ChipsPicker({ id, values, suggestions, onChange, placeholder, la
           ))}
         </ul>
       )}
-      <Input id={id} list={listId} value={text} placeholder={placeholder} autoComplete="off" maxLength={40}
+      {/* a combobox, as before: the input with the clinic's list as buttons under it */}
+      <Input id={id} role="combobox" aria-expanded={false} aria-autocomplete="list" value={text} placeholder={placeholder} autoComplete="off" maxLength={40}
         onChange={(e) => { const v = e.target.value; if (left.some((s) => s === v)) add(v); else setText(v); }} onKeyDown={onKey} onBlur={() => add(text)} />
-      <datalist id={listId}>{left.map((s) => <option key={s} value={s} />)}</datalist>
       {left.length > 0 && (
         <div className="flex flex-wrap gap-1.5" aria-label={`Add from the list: ${label}`}>
-          {left.slice(0, 12).map((s) => (
+          {left.map((s) => (
             <button key={s} type="button" className="focus-ring rounded-full border border-border px-2.5 py-0.5 text-sm text-text-muted hover:border-primary hover:text-primary" onClick={() => add(s)}>+ {s}</button>
           ))}
         </div>

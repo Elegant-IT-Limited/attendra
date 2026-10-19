@@ -13,8 +13,9 @@ import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input } from '@/components/ui/input';
+import { moved, Sortable } from '@/components/ui/sortable';
 import { Tabs } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { ApiFailure, useClinic } from '@/lib/api';
 import { useSettingsSlice } from '@/lib/settings-save';
 import { useTerms } from '@/lib/terms';
@@ -37,13 +38,13 @@ function FieldsAndLists() {
   const terms = useTerms(clinicId);
   const { can } = useClinic(clinicId);
   const toast = useToast();
+  const problem = useProblem();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const tab = (['patients', 'providers', 'requests'] as const).find((t) => t === params.get('tab')) ?? 'patients';
   const slice = useSettingsSlice(clinicId);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [issues, setIssues] = useState<string[]>([]);
   const [config, setConfig] = useState<ClinicConfig | null>(null);
   useEffect(() => { if (slice.config && !config) { setConfig(slice.config); setDraft(pick(slice.config)); } }, [slice.config, config]);
 
@@ -52,9 +53,10 @@ function FieldsAndLists() {
       customFields: cleanFields(d.customFields ?? []), providerFields: cleanFields(d.providerFields ?? []), requestFields: cleanFields(d.requestFields ?? []),
       requestTopics: (d.requestTopics ?? []).filter((t) => t.name.trim()),
     }),
-    onMutate: () => setIssues([]),
     onSuccess: (c) => { setConfig(c); setDraft(pick(c)); toast({ tone: 'success', message: 'Saved.' }); },
-    onError: (e) => setIssues(e instanceof ApiFailure ? (e.body.issues ?? [{ path: '', message: e.message }]).map((i) => i.message) : ['Not saved. Try again.']),
+    onError: (e) => problem(e instanceof ApiFailure
+      ? { title: 'Not saved. Fix these first', items: (e.body.issues ?? [{ path: '', message: e.message }]).map((i) => i.message) }
+      : { title: 'Not saved', message: 'The changes did not reach the server. Check your connection and press Save changes again.' }),
   });
 
   if (slice.isError) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
@@ -72,7 +74,6 @@ function FieldsAndLists() {
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
       <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
-      {issues.length > 0 && <Alert tone="danger" title="Not saved:" className="mb-6"><ul className="list-disc pl-4">{issues.map((m, i) => <li key={i}>{m}</li>)}</ul></Alert>}
       <Tabs label="Fields and lists for" value={tab} onValueChange={setTab} className="mb-6"
         tabs={[{ value: 'patients', label: terms.title('patients') }, { value: 'providers', label: terms.title('providers') }, { value: 'requests', label: 'Requests' }]} />
 
@@ -117,14 +118,16 @@ function FieldsAndLists() {
                 setTimeout(() => document.getElementById('topic-0')?.querySelector('input')?.focus(), 0);
               }}><Plus /> Kind of request</Button>}>
               {!topics.length && <EmptyNote>None yet. Requests are still taken; they are just not labelled.</EmptyNote>}
-              {topics.map((t, i) => (
-                <Item key={t.id} id={`topic-${i}`} removeLabel="Remove kind of request" onRemove={() => set({ requestTopics: topics.filter((_, j) => j !== i) })}>
+              <Sortable items={topics} keyOf={(t) => t.id} label={(t) => t.name} disabled={!writable} onMove={(f, to) => set({ requestTopics: moved(topics, f, to) })} className="space-y-5">
+              {(t, i, handle) => (
+                <Item handle={handle} id={`topic-${i}`} removeLabel="Remove kind of request" onRemove={() => set({ requestTopics: topics.filter((_, j) => j !== i) })}>
                   <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
                     <Field label="Name"><Input maxLength={60} value={t.name} disabled={!writable} placeholder="e.g. Boarding inquiry" onChange={(e) => set({ requestTopics: topics.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} /></Field>
                     <Field label="What to ask the caller" hint="Optional."><Input maxLength={300} value={t.collect ?? ''} disabled={!writable} placeholder="e.g. The dates, the pet, and whether vaccines are current" onChange={(e) => set({ requestTopics: topics.map((x, j) => (j === i ? { ...x, collect: e.target.value || undefined } : x)) })} /></Field>
                   </div>
                 </Item>
-              ))}
+              )}
+              </Sortable>
             </Section>
           </>
         )}
@@ -135,7 +138,7 @@ function FieldsAndLists() {
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
             <p className="text-sm text-text-muted">You have unsaved changes to fields.</p>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setDraft(pick(config)); setIssues([]); }}>Discard</Button>
+              <Button variant="outline" onClick={() => { setDraft(pick(config)) }}>Discard</Button>
               <Button onClick={() => save.mutate(draft)} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
             </div>
           </div>

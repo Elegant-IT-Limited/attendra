@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
 import { Alert } from '@/components/ui/feedback';
+import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
 
 const STATUS: Record<ImportResult['rows'][number]['status'], { label: string; tone: 'ok' | 'info' | 'neutral' | 'danger' }> = {
@@ -44,10 +45,11 @@ export function ImportPanel({ open, onOpenChange, title, what, endpoint, templat
   const [file, setFile] = useState<{ name: string; csv: string } | null>(null);
   const [checked, setChecked] = useState<ImportResult | null>(null);
   const [done, setDone] = useState<ImportResult | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not imported', message }); };
   const run = useMutation({
     mutationFn: (dryRun: boolean) => api<ImportResult>(endpoint, { method: 'POST', body: JSON.stringify({ csv: file!.csv, dryRun }) }),
-    onMutate: () => setProblem(null),
     onSuccess: (r) => { if (r.dryRun) setChecked(r); else { setDone(r); onImported?.(r); } },
     onError: (e) => setProblem(e instanceof ApiFailure ? (e.body.issues?.map((i) => i.message).join('. ') || e.body.message || 'The import did not work.') : 'The import did not work. Check your connection and try again.'),
   });
@@ -88,7 +90,6 @@ export function ImportPanel({ open, onOpenChange, title, what, endpoint, templat
             </label>
           </>
         )}
-        {problem && <Alert tone="warn">{problem}</Alert>}
         {result && (
           <>
             <Alert tone={done ? 'ok' : result.counts.error ? 'warn' : 'info'}>

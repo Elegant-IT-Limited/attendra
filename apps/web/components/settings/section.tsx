@@ -39,10 +39,14 @@ export function Field({ label, hint, htmlFor, children, className }: { label: st
   );
 }
 
-/** One item in a list a clinic builds (a visit type, a rule, an offer): its fields, and a way to remove it. */
-export function Item({ id, children, onRemove, removeLabel, className }: { id?: string; children: ReactNode; onRemove: () => void; removeLabel: string; className?: string }) {
+/**
+ * One item in a list a clinic builds (a visit type, a rule, an offer): its fields, a
+ * way to remove it, and, in a list with an order, the handle that moves it (Sortable).
+ */
+export function Item({ id, children, onRemove, removeLabel, className, handle }: { id?: string; children: ReactNode; onRemove: () => void; removeLabel: string; className?: string; handle?: ReactNode }) {
   return (
-    <div id={id} className={cn('relative rounded-lg border border-border bg-surface-sunken/40 p-4 pr-14', className)}>
+    <div id={id} className={cn('relative rounded-lg border border-border bg-surface-sunken/40 p-4 pr-14', handle && 'pl-12', className)}>
+      {handle && <div className="absolute left-2 top-3">{handle}</div>}
       {children}
       <Button type="button" size="icon" variant="ghost" className="absolute right-2 top-2 text-text-muted hover:text-danger" aria-label={removeLabel} onClick={onRemove}><Trash2 /></Button>
     </div>

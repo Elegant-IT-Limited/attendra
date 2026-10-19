@@ -12,7 +12,7 @@ import { RadioGroup } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Textarea } from '@/components/ui/input';
-import { useToast } from '@/components/ui/toast';
+import { useProblem, useToast } from '@/components/ui/toast';
 import { countryCopy } from '@attendra/core';
 import { api, ApiFailure, newKey, useClinic, useClinicConfig } from '@/lib/api';
 import { clock, REFUSALS, TOOLS } from '@/lib/format';
@@ -164,7 +164,9 @@ export default function LiveCallPage() {
   const [target, setTarget] = useState<'front_desk' | 'me'>('front_desk');
   const [number, setNumber] = useState('');
   const [changing, setChanging] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  // what did not work opens in a dialog, wherever the page is scrolled
+  const showProblem = useProblem();
+  const setProblem = (message: string | null) => { if (message) showProblem({ title: 'That did not work', message }); };
   const mine = useQuery({ queryKey: ['my-number', clinicId], queryFn: () => api<{ number: string | null }>(`/clinics/${clinicId}/my-transfer-number`), enabled: can('calls:coach') });
 
   // one key per click: a retried request is the same action, a new click is a new one
@@ -182,7 +184,6 @@ export default function LiveCallPage() {
     mutationFn: (kind: 'take' | 'end') => api<void>(`/clinics/${clinicId}/calls/${callId}/live/${kind === 'take' ? 'take-over' : 'end'}`, {
       method: 'POST', body: JSON.stringify(kind === 'take' ? { target, key: newKey() } : { key: newKey() }),
     }),
-    onMutate: () => setProblem(null),
     onSuccess: (_d, kind) => { setConfirm(null); toast({ tone: 'success', message: kind === 'take' ? 'Transferring the call to you.' : 'Ending the call.' }); },
     onError: (e) => {
       setConfirm(null);
@@ -230,7 +231,6 @@ export default function LiveCallPage() {
           The assistant stopped and gave the emergency script. {live.snapshot.channel === 'phone' ? 'Take over if the caller needs a person now.' : ''}
         </Alert>
       )}
-      {problem && <Alert tone="warn" className="mb-6">{problem}</Alert>}
       {live.staff === 'transfer_failed' && <Alert tone="warn" className="mb-6" title="The transfer did not go through">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {live.staff === 'end_failed' && <Alert tone="warn" className="mb-6" title="The call did not end">The caller is still with the assistant, which is offering a callback. You can try again.</Alert>}
       {handedOff && <Alert className="mb-6">{live.staff === 'vip' ? 'A caller on your VIP list: the call is going straight to the front desk.' : live.staff === 'taken_over' ? 'The call is being transferred to a member of the team.' : 'The assistant is saying goodbye and ending the call.'}</Alert>}
