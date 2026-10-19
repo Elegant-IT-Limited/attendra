@@ -66,6 +66,7 @@ describe('the GPT-Live call runner', () => {
     const h = harness(new ScriptedPlanner([]));
     h.engine.transfer.mockRejectedValueOnce(new Error('sip 503'));
     await h.runner.handle(delta('in', 'e1', 'my wife is not breathing', 100));
+    await h.runner.handle(delta('out', 'e2', 'If this is a medical emergency, please hang up and call 911 right away.', 600));
     await vi.advanceTimersByTimeAsync(8000);
     const said = h.sent.map((e) => (e as { content: string }).content);
     expect(said).toHaveLength(3);
@@ -210,5 +211,71 @@ describe('the conversation prompt', () => {
     } finally {
       Object.assign(pack, saved);
     }
+  });
+});
+
+describe('a caller is never left in silence, and a goodbye ends the call', () => {
+  it('tells the assistant to answer when the caller finished and nothing came back, twice at most', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('in', 'e1', 'Hi, I would like to book a visit.', 100));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(h.sent).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('waiting for you. Answer them now') }]);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect((h.sent[1] as { content: string }).content).toContain('Apologise briefly for the wait');
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.sent).toHaveLength(2);
+    vi.useRealTimers();
+  });
+
+  it('says nothing while the assistant is answering, or while a tool is at work', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const h = harness({ plan: () => new Promise((resolve) => { release = () => resolve({ say: 'done' }); }) });
+    await h.runner.handle(delta('in', 'e1', 'What time do you close?', 100));
+    await h.runner.handle(delta('out', 'e2', 'We close at five.', 900));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.sent).toHaveLength(0);
+    await h.runner.handle(delta('in', 'e3', 'And can I book Tuesday?', 2000));
+    const running = h.runner.handle({ type: 'session.delegation.created', event_id: 'e4', delegation: { id: 'item_1', target: 'client' } });
+    await vi.advanceTimersByTimeAsync(10_000);
+    // only the agent's own notes for the delegation, never a silence nudge
+    expect(h.sent.every((e) => (e as { type: string }).type !== 'session.instructions.append')).toBe(true);
+    release();
+    await running;
+    vi.useRealTimers();
+  });
+
+  it('ends the call when the assistant said goodbye and the line stayed quiet, but not if the caller speaks', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('out', 'e0', 'You are booked for Tuesday at nine. Is there anything else I can help you with?', 50));
+    await h.runner.handle(delta('in', 'e1', 'No, that is all, thanks.', 100));
+    await h.runner.handle(delta('out', 'e2', 'You are welcome. Have a great day!', 800));
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+
+    const other = harness(new ScriptedPlanner([]));
+    await other.runner.handle(delta('out', 'e0', 'Is there anything else I can help you with?', 50));
+    await other.runner.handle(delta('in', 'e1', 'Thanks.', 100));
+    await other.runner.handle(delta('out', 'e2', 'Goodbye.', 800));
+    await vi.advanceTimersByTimeAsync(2000);
+    await other.runner.handle(delta('in', 'e3', 'Oh wait, one more thing.', 3000));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(other.engine.hangup).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('keeps the first version\'s rule: no hang-up after a goodbye unless "anything else?" was asked and the caller said no', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    // the assistant wrapped up on its own, without asking: the caller may still have something
+    await h.runner.handle(delta('in', 'e1', 'Okay, Tuesday at nine works.', 100));
+    await h.runner.handle(delta('out', 'e2', 'Great, see you Tuesday. Have a great day!', 800));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.engine.hangup).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
