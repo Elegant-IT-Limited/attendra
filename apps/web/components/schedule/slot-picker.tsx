@@ -17,7 +17,7 @@ export interface PickedSlot { providerId: string; startsAt: string }
  * assistant uses. Only real openings are offered, so a pick is bookable unless
  * someone takes it first.
  */
-export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, onFrom, value, onChange, excluding }: {
+export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, onFrom, value, onChange, excluding, patientId }: {
   clinicId: string;
   clinic: ClinicConfig;
   visitTypeId: string;
@@ -27,13 +27,15 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
   value: PickedSlot | null;
   onChange: (slot: PickedSlot) => void;
   excluding?: string;
+  /** Who the visit is for: "anyone" then means anyone who sees them. */
+  patientId?: string;
 }) {
   const days = 7;
   const today = localDateOf(new Date(), clinic.timezone);
   const slots = useQuery({
-    queryKey: ['slots', clinicId, visitTypeId, providerId, from, excluding],
+    queryKey: ['slots', clinicId, visitTypeId, providerId, from, excluding, patientId],
     queryFn: () => api<SlotList>(`/clinics/${clinicId}/appointments/slots?${new URLSearchParams({
-      visitTypeId, from, days: String(days), ...(providerId ? { providerId } : {}), ...(excluding ? { excluding } : {}),
+      visitTypeId, from, days: String(days), ...(providerId ? { providerId } : {}), ...(excluding ? { excluding } : {}), ...(patientId ? { patientId } : {}),
     })}`),
   });
   const byDay = new Map<string, SlotList['slots']>();

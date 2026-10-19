@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { awayOn, awayWindows, bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, localParts, type Slot, specialDayOf } from '@attendra/core';
+import { awayOn, awayWindows, bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, localParts, seesAge, type Slot, specialDayOf } from '@attendra/core';
 
 /** Why a time cannot be booked, in the words the API and the dashboard use. */
 export type SlotProblem =
@@ -22,6 +22,8 @@ export interface OpenSlotQuery {
   partOfDay?: 'morning' | 'afternoon' | 'any';
   now: Date;
   limit?: number;
+  /** Who the visit is for: with no provider picked, only providers who see their age, and take new patients if they are new, as on calls. */
+  patient?: { age: number; isNew: boolean };
 }
 
 /**
@@ -31,7 +33,9 @@ export interface OpenSlotQuery {
 export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery): Slot[] {
   const visitType = clinic.visitTypes.find((v) => v.id === q.visitTypeId);
   if (!visitType) return [];
-  const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId) : bookableProviders(clinic.providers);
+  const patient = q.patient;
+  const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId)
+    : bookableProviders(clinic.providers).filter((p) => !patient || (seesAge(p, patient.age) && (!patient.isNew || p.acceptingNewPatients)));
   return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: 0, limit: q.limit ?? 200 });
 }
 
