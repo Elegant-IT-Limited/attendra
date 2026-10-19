@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (drag and drop, abusive callers)
+
+- **Drag and drop, like other apps**: hold a card anywhere but a field or a button (or by its handle) and it lifts and follows the pointer, while the others slide aside; drop it anywhere in its list. A finger presses and holds first, so the page still scrolls. The arrow keys on the handle still move it. Built on dnd-kit.
+- **Abusive callers** (docs/safety.md): insults or threats are met calmly, then with one warning and an offer of a call back, then a polite end of the call. Never for a caller who is only upset, never during an emergency. The call shows "Abusive caller" and is always flagged for review.
+
 ### Fixed (from the first GPT Realtime test call)
 
 - **The silence check counts from when the voice stops, not when its words arrive.** A reply's words arrive seconds before its audio has played, and the caller's words can be transcribed late, so the assistant was told to answer while it was still answering. "Quiet" now starts when the reply should have finished playing (80 ms a character). The goodbye hang-up waits 6 s from the same point. Both engines.
