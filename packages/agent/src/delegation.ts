@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { crisisLineFor, detectEmergencies, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, isAbusive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
@@ -27,6 +27,18 @@ const VIP_AFTER_MS = 6000;
 const HOLD_AFTER_MS = 7000;
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
+
+/**
+ * A caller who insults or threatens: the first time, the assistant stays calm and carries
+ * on; the second, it says once that the call will end if it goes on, and offers a call
+ * back; the third, it ends the call politely. Never during an emergency, and never for
+ * a caller who is only upset (see isAbusive). The call is flagged for the clinic.
+ */
+const ABUSE_LINES = [
+  'The caller used insulting or threatening language. Stay calm and polite, do not comment on it, and keep helping with their request.',
+  'The caller is still using insulting or threatening language. Say calmly, once, in the language of the call: "I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back." Then keep helping.',
+  'Stop the current task. Say calmly, in one short sentence in the language of the call: "I\'m going to end the call now. You\'re welcome to call back any time. Goodbye." Then say nothing more.',
+] as const;
 // Staff cannot end a call before the caller has heard the emergency number. The
 // script counts as said once the assistant speaks the number; if its captions never
 // show it, staff may end the call this long after the script was sent.
@@ -79,7 +91,7 @@ export class CallAgent {
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return this.maybeClearEmergency(delta);
+    if (!match) return [...this.maybeClearEmergency(delta), ...this.checkAbuse()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
@@ -237,6 +249,28 @@ export class CallAgent {
       { type: 'instructions', delegationId: null, content: `This caller is on the clinic's VIP list. Right after your greeting, say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
       // after the greeting and the line, whatever their length: the runner waits for quiet
       { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true },
+    ];
+  }
+
+  /** Insults or threats, counted once per caller turn: calm, then a warning, then a polite end. */
+  private checkAbuse(): Outbound[] {
+    const s = this.state;
+    const turn = s.turns.filter((t) => t.speaker === 'caller').length;
+    if (s.abuseTurn === turn || s.endedByStaff || !isAbusive(s.lastTurn('caller'))) return [];
+    s.abuseTurn = turn;
+    s.abuse++;
+    // an emergency is never cut short: the assistant stays calm and keeps to the script
+    const ending = s.abuse >= ABUSE_LINES.length && !s.emergencyLocked;
+    this.log.warn({ call_id: this.ctx.callId, abuse: s.abuse, ending }, 'insulting or threatening language from the caller');
+    void this.actions?.record({ tool: 'abusive_caller', argsRedacted: {}, result: { step: ending ? 'ended' : s.abuse === 1 ? 'noted' : 'warned' }, revision: s.revision })
+      .catch((err) => this.log.warn({ call_id: this.ctx.callId, err }, 'recording the abusive caller failed'));
+    if (!ending) return [{ type: 'instructions', delegationId: null, content: s.emergencyLocked ? ABUSE_LINES[0] : ABUSE_LINES[Math.min(s.abuse, 2) - 1]! }];
+    s.revision++; // whatever was in flight is dropped, not spoken over the goodbye
+    s.pending = null;
+    this.emitState();
+    return [
+      { type: 'instructions', delegationId: null, content: ABUSE_LINES[2] },
+      { type: 'hangup', afterMs: AFTER_SPEECH_MS },
     ];
   }
 

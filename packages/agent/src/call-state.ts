@@ -74,6 +74,9 @@ export class CallState {
   remindersAsked = false;
   /** How many times the assistant had to be told to answer a caller left waiting in silence. */
   silenceNudges = 0;
+  /** Caller turns with insults or threats in them, and the last such turn (each counts once). */
+  abuse = 0;
+  abuseTurn = -1;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */

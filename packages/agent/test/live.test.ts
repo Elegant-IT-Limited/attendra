@@ -134,3 +134,41 @@ describe('taking over and ending', () => {
     expect(out[1]).toMatchObject({ afterMs: 3500 });
   });
 });
+
+describe('abusive callers', () => {
+  it('stays calm, then warns once and offers a call back, then ends the call politely, and flags it', async () => {
+    const recorded: { tool: string; result: unknown }[] = [];
+    const c = await w.call('+13035550147', { actions: { record: async (a) => { recorded.push({ tool: a.tool, result: a.result }); } } });
+    c.caller('Hi, I want to book a visit');
+    c.assistant('Sure. Can I have your full name?');
+    // upset is not abusive: nothing happens
+    expect(c.caller('What the hell, I already told you')).toEqual([]);
+    c.assistant('Sorry about that. Could you say it once more?');
+    const first = c.caller('You are a useless stupid machine');
+    expect(first).toEqual([{ type: 'instructions', delegationId: null, content: expect.stringContaining('Stay calm and polite') }]);
+    // more words in the same turn count once
+    expect(c.caller('honestly useless')).toEqual([]);
+    c.assistant('I understand. Let me help you with the booking.');
+    const second = c.caller('Shut up');
+    expect(second[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('I will need to end the call') });
+    expect(second).toHaveLength(1);
+    c.assistant('I want to help you, but if this language continues I will need to end the call.');
+    const third = c.caller('Fuck you');
+    expect(third).toEqual([
+      { type: 'instructions', delegationId: null, content: expect.stringContaining('end the call now') },
+      { type: 'hangup', afterMs: 3500 },
+    ]);
+    expect(recorded.map((r) => r.result)).toEqual([{ step: 'noted' }, { step: 'warned' }, { step: 'ended' }]);
+    expect(recorded.every((r) => r.tool === 'abusive_caller')).toBe(true);
+  });
+
+  it('never ends a call during an emergency', async () => {
+    const c = await w.call();
+    c.caller('I have chest pain and my left arm is numb');
+    for (const insult of ['You idiot', 'Shut up', 'Stupid robot', 'Fuck you']) {
+      c.assistant('Please call 911 now.');
+      const out = c.caller(insult);
+      expect(out.some((o) => o.type === 'hangup')).toBe(false);
+    }
+  });
+});
