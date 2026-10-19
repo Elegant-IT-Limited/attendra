@@ -92,6 +92,8 @@ export interface SchedulerAdapter {
   book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult>;
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
+  /** Past visits, for the patient's usual provider. Without it, nobody counts as usual. */
+  history?(clinicId: string, patientId: string, now: Date): Promise<{ providerId: string; start: Date }[]>;
 }
 
 /** follow_up: a call that ended with the caller's request unfinished, opened after the call for staff to pick up. */

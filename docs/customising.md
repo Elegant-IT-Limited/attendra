@@ -12,6 +12,7 @@ Everything here is in the dashboard, for owners and practice managers, and in th
 | Answers to common questions, and documents | Settings, Knowledge | Answers from your words, and never invents the rest. |
 | Hours, holidays and special days (closed, or shorter hours, with a note), what happens while you are closed, the emergency hospital | Settings | Books inside your hours and tells callers about a special day; takes requests or books after hours, as you chose. |
 | A doctor away for part of a day | Doctors, Days off | Offers no times between the two times. |
+| Who is booked when the caller names nobody: the usual vet first or the earliest, the fewest visits or your order on a tie, matching the kind of animal | Settings, Booking rules | Every case is written out next to the settings. |
 | Reminder texts: hours before, quiet hours, asking on calls | Settings → Texting | Asks after a booking; texts only people who said yes. |
 | Fields on each patient or pet: a label and a kind (text, yes or no, date), up to 20 | Settings; filled in under Details on each record (`PUT /api/v1/clinics/:clinicId/patients/:patientId/fields`) | Not used on calls. Encrypted like the rest of the record; saving is in the audit log, without the values. Removing a field hides what was filled in. |
 | Urgent and a due day on each open request | Requests (`POST /api/v1/clinics/:clinicId/tasks/:taskId/plan`) | Not used on calls. Urgent requests lead the open queue; a due day shows as Due or Overdue. Audited. |

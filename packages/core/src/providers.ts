@@ -85,8 +85,45 @@ const KINDS: Record<string, string[]> = {
   chinchilla: ['exotic', 'exotics', 'small', 'mammal', 'pocket'], gerbil: ['exotic', 'exotics', 'small', 'mammal', 'pocket'],
   parrot: ['bird', 'birds', 'avian', 'exotic', 'exotics'], budgie: ['bird', 'birds', 'avian', 'exotic', 'exotics'], cockatiel: ['bird', 'birds', 'avian', 'exotic', 'exotics'],
   snake: ['reptile', 'reptiles', 'exotic', 'exotics'], lizard: ['reptile', 'reptiles', 'exotic', 'exotics'], gecko: ['reptile', 'reptiles', 'exotic', 'exotics'],
-  turtle: ['reptile', 'reptiles', 'exotic', 'exotics'], tortoise: ['reptile', 'reptiles', 'exotic', 'exotics'], puppy: ['dog', 'dogs'], kitten: ['cat', 'cats'],
+  turtle: ['reptile', 'reptiles', 'exotic', 'exotics'], tortoise: ['reptile', 'reptiles', 'exotic', 'exotics'], puppy: ['dog', 'dogs', 'canine'], kitten: ['cat', 'cats', 'feline'],
+  dog: ['canine'], cat: ['feline'], horse: ['equine', 'pony'], pony: ['horse', 'equine'], bird: ['avian'],
 };
+
+/** Words that name animals (not services), for telling "Rabbits" or "Exotics" from "Dentistry". */
+const ANIMALS = new Set([
+  ...Object.keys(KINDS), ...Object.values(KINDS).flat().filter((w) => w !== 'small' && w !== 'pocket'),
+  'dog', 'dogs', 'cat', 'cats', 'canine', 'feline', 'horse', 'horses', 'equine', 'pony', 'bird', 'birds', 'avian', 'reptile', 'reptiles',
+  'exotic', 'exotics', 'rabbits', 'ferrets', 'rodent', 'rodents', 'livestock', 'cattle', 'goat', 'goats', 'sheep', 'pig', 'pigs', 'poultry', 'fish', 'amphibian', 'amphibians', 'wildlife',
+]);
+
+/** Whether a vet lists any kind of animal among what they see; one who lists none sees every animal. */
+export const listsAnimals = (p: Pick<Provider, 'categories'>) => p.categories.some((c) => wordsOf(c).some((w) => ANIMALS.has(w)));
+
+/** Whether a vet sees this kind of animal: listed for it (a rabbit under "Exotics" too), or lists no animals at all. */
+export function seesAnimal(p: Pick<Provider, 'categories'>, species: string): boolean {
+  if (!listsAnimals(p)) return true;
+  // "dog" and "Dogs", "rabbit" and "Exotics"
+  const one = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+  const want = wordsOf(species).flatMap((w) => [w, ...(KINDS[one(w)] ?? KINDS[w] ?? [])]).map(one);
+  const have = p.categories.flatMap(wordsOf).map(one);
+  return want.length > 0 && want.some((w) => have.some((h) => near(w, h)));
+}
+
+/**
+ * The provider a patient usually sees: the one with the most past visits in the last
+ * two years (cancelled ones do not count), the most recent breaking a tie. Null with none.
+ */
+export function usualProviderOf(visits: { providerId: string; start: Date; status?: string }[], now: Date): string | null {
+  const since = now.getTime() - 730 * 86_400_000;
+  const seen = new Map<string, { n: number; last: number }>();
+  for (const v of visits) {
+    const t = v.start.getTime();
+    if ((v.status && v.status !== 'booked') || t >= now.getTime() || t < since) continue;
+    const s = seen.get(v.providerId) ?? { n: 0, last: 0 };
+    seen.set(v.providerId, { n: s.n + 1, last: Math.max(s.last, t) });
+  }
+  return [...seen.entries()].sort((a, b) => b[1].n - a[1].n || b[1].last - a[1].last)[0]?.[0] ?? null;
+}
 
 /** Whether a doctor is listed for what the caller asked for: their specialty or one of their categories. */
 export function matchesSpecialty(p: Pick<Provider, 'specialty' | 'categories'>, asked: string): boolean {
