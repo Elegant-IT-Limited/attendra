@@ -233,7 +233,7 @@ export async function runTool(
       });
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
       const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. They can book: ${newVisits.join(', ')}.` } };
+      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.` } };
     }
 
     case 'get_clinic_info': {
@@ -722,7 +722,7 @@ async function registerPet(
   });
   if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
   const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. They can book: ${newVisits.join(', ')}.` } };
+  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.` } };
 }
 
 /**
