@@ -67,6 +67,18 @@ export default function ApiKeysPage() {
       <PageHeader title="Settings" description={<>Keys for another AI agent to work with the front desk over MCP. It can read and close requests, but it can never book or cancel.{' '}
         <a href="https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/mcp.md" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline underline-offset-2">How to connect an MCP client</a></>} />
       <SettingsNav clinicId={clinicId} />
+      {list.data?.mcpUrl && (
+        <Card className="mb-6">
+          <CardHeader><CardTitle>Where an MCP client connects</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-sm" data-testid="mcp-url">{list.data.mcpUrl}</code>
+              <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(list.data?.mcpUrl ?? '').then(() => toast({ tone: 'success', message: 'Copied.' }), () => {}); }}><Copy /> Copy</Button>
+            </div>
+            <p className="text-sm text-text-muted">Give the MCP client this address and a key from below. The key goes in the Authorization header as <span className="font-mono">Bearer atk_…</span>.</p>
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <Card className="self-start">
           <CardHeader><CardTitle>Make a key</CardTitle></CardHeader>

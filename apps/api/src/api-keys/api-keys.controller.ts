@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { ApiKeyCreated, ApiKeyInput, ApiKeys, type ApiKeyView } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, DB } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, CLOCK, DB } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -22,18 +22,18 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @Controller('clinics/:clinicId/api-keys')
 export class ApiKeysController {
   private readonly repo: ApiKeyRepository;
-  constructor(@Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date) {
+  constructor(@Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date, @Inject(API_OPTIONS) private readonly options: ApiOptions) {
     this.repo = new ApiKeyRepository(db);
   }
 
   @Get()
   @Requires('integrations:manage')
-  @ApiOperation({ summary: 'The clinic\'s API keys: name, scopes, expiry, last use. Never the key.' })
+  @ApiOperation({ summary: 'The clinic\'s API keys: name, scopes, expiry, last use, and the MCP address they work with. Never the key.' })
   @ApiOkResponse({ schema: schemaOf(ApiKeys) })
   async list(@Param('clinicId') clinicId: string): Promise<ApiKeys> {
     const keys = await this.repo.list(clinicId);
     const names = await staffNames(this.db, clinicId, keys.map((k) => k.createdByUserId));
-    return { keys: keys.map((k) => this.view(k, names)) };
+    return { keys: keys.map((k) => this.view(k, names)), mcpUrl: this.options.mcpUrl ?? null };
   }
 
   @Post()
