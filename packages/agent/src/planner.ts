@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, audienceLine, type ClinicConfig, industryPack, NO_INFORMATION, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, audienceLine, type ClinicConfig, industryPack, MEDICAL_REFUSAL, NO_INFORMATION, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -47,6 +47,8 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
     'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes.',
+    'Take a callback request only when the caller wants one: when they asked to be called back or to book while it cannot be done now, take it; otherwise offer it and wait for their yes.',
+    `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then offer a visit or a callback.`,
     ...(clinic.afterHours === 'requests' ? ['While the clinic is closed it books nothing: do not look up or offer times; take a request with create_callback for the team to book in the morning. Cancelling an existing visit is still fine.'] : []),
     ...planner.limits,
     ...(textingOf(clinic).enabled ? ['Texting: after giving the address, hours, a doctor\'s details or an answer from get_clinic_info, or when one of its links fits, you may offer to text it with send_text; it tells you the question to ask and sends only after the caller says yes. In an animal emergency the only text is emergency_hospital, offered once after the script. Never text anything else, and never to another person\'s number.'] : []),

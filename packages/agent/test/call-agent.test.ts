@@ -97,6 +97,9 @@ describe('booking over the phone', () => {
     const tries = [];
     for (let i = 0; i < 4; i++) tries.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: '1 January 1990' } }]));
     expect(tries.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified', 'too_many_attempts']);
+    // each miss asks first whether they are new, and says how many tries are left before nobody can be added
+    expect(tries[0]!.results[0]!.data.say).toContain('ask that first');
+    expect(tries.slice(0, 3).map((t) => String(t.results[0]!.data.say).match(/(\d) tr|No tries/)![0])).toEqual(['2 tr', '1 tr', 'No tries']);
   });
 
   it('tells apart two patients with the same name and DOB by the phone on their file, and never guesses without it', async () => {
