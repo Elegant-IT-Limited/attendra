@@ -50,7 +50,7 @@ A desktop MCP client, such as Claude Desktop, starts a local server over stdio. 
 
 ## Connecting over HTTP
 
-`pnpm --filter @attendra/mcp start` serves MCP over Streamable HTTP at `POST /mcp` on `MCP_PORT` (8082 by default); with Compose, `docker compose -f infra/docker-compose.yml --profile mcp up`. Put it behind HTTPS on your own address. Each request carries the key as a bearer token, and the server is stateless: nothing about one request outlives it.
+`pnpm --filter @attendra/mcp start` serves MCP over Streamable HTTP at `POST /mcp` on `MCP_PORT` (8082 by default); with Compose, `docker compose -f infra/docker-compose.yml --profile mcp up`. Put it behind HTTPS on your own address, and set `ATTENDRA_MCP_URL` on the API to that address, so **Settings > API keys** shows it. Each request carries the key as a bearer token, and the server is stateless: nothing about one request outlives it.
 
 Any MCP client that speaks Streamable HTTP can connect. For example, in a client that takes a JSON config:
 
@@ -73,4 +73,4 @@ curl -s https://mcp.your-clinic.example/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-A request with no key, or with a revoked or expired one, gets `401`. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`. The key is checked first, so a working key is still served from an address that is held back, and one client guessing behind a shared proxy does not lock out the others.
+A request with no key, or with a revoked or expired one, gets `401`. Behind a reverse proxy that sets `X-Forwarded-For` (Caddy, nginx), set `TRUST_PROXY=true` on the MCP server: the limits below then count the address the proxy added, not the proxy's own, and an address a client puts in the header itself is ignored. Each key may make 120 requests a minute, and an address that sends 30 requests without a working key in a minute is held back for the rest of it; both get `429` with `Retry-After`. The key is checked first, so a working key is still served from an address that is held back, and one client guessing behind a shared proxy does not lock out the others.

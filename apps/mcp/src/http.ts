@@ -6,7 +6,7 @@ import { createLogger } from '@attendra/observability';
 import { bossQueue, createBoss, eventSink } from '@attendra/worker/queue';
 import { createServer } from 'node:http';
 import { loadEnv } from './config';
-import { mcpHttpHandler } from './http-handler';
+import { forwardedAddress, mcpHttpHandler } from './http-handler';
 
 const env = loadEnv();
 const log = createLogger({ name: 'mcp', level: env.LOG_LEVEL });
@@ -18,6 +18,8 @@ await boss.start();
 const events = eventSink(bossQueue(boss));
 const handle = mcpHttpHandler({
   db, cipher: createPhiCipher(env.ATTENDRA_DATA_KEY), log,
+  // behind a proxy, every request comes from the proxy's address: count failures by the client's
+  ...(env.TRUST_PROXY ? { addressOf: forwardedAddress } : {}),
   onRequestDone: (clinicId, facts) => events.emit(clinicId, { type: 'request.done', key: String(facts.requestId), data: facts }),
 });
 const server = createServer((req, res) => {

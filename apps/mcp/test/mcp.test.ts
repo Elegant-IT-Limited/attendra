@@ -12,7 +12,7 @@ import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { bridge } from '../src/bridge';
 import { loadBridgeEnv } from '../src/config';
-import { mcpHttpHandler } from '../src/http-handler';
+import { forwardedAddress, mcpHttpHandler } from '../src/http-handler';
 import { createMcpServer, type McpDeps } from '../src/server';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -282,6 +282,20 @@ describe('rate limits', () => {
     // a working key from the same address is not locked out by someone else's guesses
     expect(await post(`Bearer ${(await make(['schedule:read'])).key}`)).toBe(200);
     expect(await post('Bearer atk_v')).toBe(429);
+    server.close();
+  });
+
+  it('behind a proxy, count failures by the address the proxy added, not the proxy\'s own', async () => {
+    const handle = mcpHttpHandler({ ...deps, rateLimit: { failuresPerAddress: 2, perKey: 100 }, addressOf: forwardedAddress });
+    const server = createServer((req, res) => void handle(req, res));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+    const post = (forwardedFor: string) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: 'Bearer atk_guess', 'x-forwarded-for': forwardedFor }, body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' }).then((r) => r.status);
+    expect([await post('203.0.113.7'), await post('203.0.113.7'), await post('203.0.113.7')]).toEqual([401, 401, 429]);
+    // every request arrives from the proxy's address, but another client is not held back
+    expect(await post('198.51.100.4')).toBe(401);
+    // a client cannot pick its own address: the proxy's entry is the last one
+    expect(await post('198.51.100.9, 203.0.113.7')).toBe(429);
     server.close();
   });
 });

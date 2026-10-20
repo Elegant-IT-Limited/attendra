@@ -56,6 +56,8 @@ export interface ApiOptions {
   demoSignIn?: { password: string; logins: { email: string; label: string }[] };
   /** Extra menu links for owners, from ATTENDRA_ACCOUNT_LINKS; {clinicId} in an href becomes the clinic's id. */
   accountLinks?: { label: string; href: string }[];
+  /** This deployment's MCP address (ATTENDRA_MCP_URL), shown on Settings > API keys. */
+  mcpUrl?: string;
   /** 'optional' lets people use the dashboard without two-step sign-in. Default 'required'. */
   twoFactor?: 'required' | 'optional';
   /** Minutes without activity before the dashboard signs out (default 15). */

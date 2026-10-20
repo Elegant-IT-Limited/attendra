@@ -134,4 +134,6 @@ A clinic is one validated JSON document (`ClinicConfig` in `packages/core/src/cl
 
 **For a veterinary clinic**, set `industry` to `vet` when the clinic is created (provisioning or the seed; Settings does not change it) and fill in the emergency hospital: the animal emergency script sends owners there. Choose what happens while you are closed (book, or take requests for the morning), and set the average visit value the Quality page uses for bookings made after hours. See [industries.md](industries.md).
 
+**The MCP address.** `ATTENDRA_MCP_URL` on the API, such as `https://app.example.com/mcp`, is shown on **Settings > API keys** so an owner can copy it with a key. Behind a reverse proxy, set `TRUST_PROXY=true` on the MCP server too, so its limit on requests without a working key counts each client's address, not the proxy's ([mcp.md](mcp.md)).
+
 **Extra menu links.** `ATTENDRA_ACCOUNT_LINKS` on the API adds links for owners to the dashboard menu, as JSON: `[{"label":"Billing","href":"https://billing.example/{clinicId}"}]`. An href is an `https://` address or a path, and `{clinicId}` becomes the clinic's id. At most five; leave it unset for none.
