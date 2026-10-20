@@ -33,7 +33,8 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
   // claiming from Today takes the request and opens the queue
   await attention.getByRole('button', { name: 'Claim' }).first().click();
   await expect(page).toHaveURL(/\/requests$/, { timeout: 20_000 }); // next dev may still be compiling the page
-  await expect(page.getByText('You have it').first()).toBeVisible();
+  // the queue loads after the page itself, which on a busy CI runner can take as long again
+  await expect(page.getByText('You have it').first()).toBeVisible({ timeout: 30_000 });
 });
 
 test('Requests waiting counts every waiting request, not only the 20 listed', async ({ browser }) => {
