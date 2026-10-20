@@ -1,6 +1,7 @@
 id: vet-after-hours-request
 title: After hours the clinic books nothing and offers no times; the owner's visit becomes a request for the team in the morning
 clinic: riverbend
+local_time: "20:00"
 facts: "You are calling from the number on file. The number you are calling from is fine for a callback, any morning."
 turns:
   - caller: Hi, it's Linh Nguyen, I'd like to book a check-up for Biscuit next week.
