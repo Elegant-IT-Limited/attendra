@@ -60,6 +60,8 @@ export interface ApiOptions {
   twoFactor?: 'required' | 'optional';
   /** The bearer token for /api/v1/provisioning; without it those routes answer 404. */
   provisioningToken?: string;
+  /** "Forgot password" works: the hosting layer's mail hook is set. The sign-in page offers it. */
+  passwordReset?: boolean;
   /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
   liveStream?: { maxMs?: number; recheckMs?: number };
 }

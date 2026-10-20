@@ -128,7 +128,7 @@ describe('existing accounts', () => {
   it('an email that already has an account with another practice is refused, never added silently', async () => {
     const res = await api.request('POST', `${C}/members`, { cookie: admin, body: { name: 'Otto Other', email: 'otto@other.example', role: 'viewer' } });
     expect(res.statusCode).toBe(409);
-    expect(res.json()).toEqual({ error: 'account_exists', message: 'This person already uses Attendra with another practice. Invitations for existing accounts are coming soon.' });
+    expect(res.json()).toEqual({ error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' });
     const members = (await api.request('GET', `${C}/members`, { cookie: admin })).json().members.map((m: { email: string }) => m.email);
     expect(members).not.toContain('otto@other.example');
   });

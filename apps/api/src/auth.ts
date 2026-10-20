@@ -6,6 +6,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization, twoFactor } from 'better-auth/plugins';
 import { createAccessControl } from 'better-auth/plugins/access';
 import { adminAc, defaultStatements, memberAc, ownerAc } from 'better-auth/plugins/organization/access';
+import type { MailRequest } from './mail-hook';
 
 // Better Auth manages people, sessions and member admin; our own table in
 // access.ts decides what each role may see. These roles only carry Better Auth's
@@ -25,6 +26,8 @@ export interface AuthOptions {
   rateLimit?: boolean;
   /** Better Auth's own messages go through the redacting logger, message text only. */
   log?: Logger;
+  /** Sends a "forgot password" email (the hosting layer's mail hook). Without it, people ask their manager for a reset. */
+  passwordReset?: (m: MailRequest) => Promise<void>;
 }
 
 export function createAuth(db: Database, opts: AuthOptions) {
@@ -51,8 +54,20 @@ export function createAuth(db: Database, opts: AuthOptions) {
     session: { modelName: 'auth_sessions', expiresIn: 60 * 60 * 12, disableSessionRefresh: true },
     // People are added on the Team page or with scripts/add-member.ts, never by sign-up.
     // Accounts made here are confirmed already; one opened by self-serve sign-up waits until its address is confirmed.
-    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12, requireEmailVerification: true },
-    rateLimit: { enabled: opts.rateLimit ?? true, window: 60, max: 30 },
+    emailAndPassword: {
+      enabled: true, disableSignUp: true, minPasswordLength: 12, requireEmailVerification: true,
+      // "Forgot password": a one-hour link to /reset-password, emailed by the hosting layer.
+      // A reset ends every session; two-step sign-in still applies at the next sign-in.
+      ...(opts.passwordReset ? {
+        resetPasswordTokenExpiresIn: 60 * 60,
+        revokeSessionsOnPasswordReset: true,
+        sendResetPassword: async ({ user, token }: { user: { email: string; name: string; emailVerified: boolean }; token: string }) => {
+          await opts.passwordReset!({ type: 'password_reset', email: user.email, name: user.name, emailVerified: user.emailVerified, url: `${opts.publicUrl}/reset-password?token=${encodeURIComponent(token)}` });
+        },
+      } : {}),
+    },
+    // a few reset emails an hour per address asking, on top of the general limit
+    rateLimit: { enabled: opts.rateLimit ?? true, window: 60, max: 30, customRules: { '/request-password-reset': { window: 3600, max: 5 }, '/reset-password': { window: 600, max: 10 } } },
     plugins: [
       organization({
         ac, roles, creatorRole: 'owner', allowUserToCreateOrganization: false,

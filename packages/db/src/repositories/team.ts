@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, ne, sql } from 'drizzle-orm';
-import { authAccounts, authSessions, authUsers, memberships } from '../auth-schema';
+import { and, eq, gt, ne, sql } from 'drizzle-orm';
+import { authAccounts, authSessions, authTwoFactors, authUsers, authVerifications, memberships } from '../auth-schema';
 import type { Database, Tx } from '../client';
 import { auditLogs, clinics, tasks } from '../schema';
 import type { StaffRole } from './front-desk';
@@ -35,16 +35,31 @@ export async function markTemporaryPassword(db: Database | Tx, userId: string, n
     .where(eq(authUsers.id, userId));
 }
 
+/** Whose password a "forgot password" link resets, while it is still valid. */
+export async function resetTokenUser(db: Database, token: string, now = new Date()): Promise<string | null> {
+  const [row] = await db.select({ userId: authVerifications.value }).from(authVerifications)
+    .where(and(eq(authVerifications.identifier, `reset-password:${token}`), gt(authVerifications.expiresAt, now)));
+  return row?.userId ?? null;
+}
+
+/** Ends every session a person has. */
+export async function endSessions(db: Database, userId: string) {
+  await db.delete(authSessions).where(eq(authSessions.userId, userId));
+}
+
 export async function clearTemporaryPassword(db: Database, userId: string) {
   await db.update(authUsers).set({ mustChangePassword: false, temporaryPasswordExpiresAt: null }).where(eq(authUsers.id, userId));
 }
 
 export type TeamChange =
-  | { type: 'add'; userId: string; role: StaffRole; temporary: boolean; approvesRefills?: boolean }
+  /** With `passwordHash`, an existing account that belongs to no team any more is added back with a new temporary password. */
+  | { type: 'add'; userId: string; role: StaffRole; temporary: boolean; approvesRefills?: boolean; passwordHash?: string }
   | { type: 'role'; userId: string; role: StaffRole }
   | { type: 'refills'; userId: string; approves: boolean }
   | { type: 'remove'; userId: string }
-  | { type: 'reset'; userId: string; passwordHash: string };
+  | { type: 'reset'; userId: string; passwordHash: string }
+  /** A lost phone: two-step sign-in is switched off for the person, who sets it up again at the next sign-in. */
+  | { type: 'two_factor'; userId: string };
 
 export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' | 'self' | 'owner_protected' | 'owner_grant' | 'last_owner' | 'other_organizations';
 
@@ -70,6 +85,14 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
     if (change.type === 'add') {
       if (target) return 'already_member';
       if (change.role === 'owner' && !isOwner) return 'owner_grant';
+      if (change.passwordHash) {
+        // someone removed earlier, coming back: only when they belong to no other team
+        const [elsewhere] = await tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.userId, change.userId)).limit(1);
+        if (elsewhere) return 'other_organizations';
+        await tx.update(authAccounts).set({ password: change.passwordHash, updatedAt: now })
+          .where(and(eq(authAccounts.userId, change.userId), eq(authAccounts.providerId, 'credential')));
+        await tx.delete(authSessions).where(eq(authSessions.userId, change.userId));
+      }
       await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId: change.userId, role: change.role, approvesRefills: !!change.approvesRefills });
       if (change.temporary) await markTemporaryPassword(tx, change.userId, now);
       await audit(tx, orgId, actor.userId, `member.added:${change.role}`, change.userId);
@@ -99,12 +122,19 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
       return 'done';
     }
 
-    if (change.type === 'reset') {
-      // a password belongs to the person, not to this team: one who also works for another
-      // organization would be signed out there and locked out by a manager here
+    if (change.type === 'reset' || change.type === 'two_factor') {
+      // a password and a phone belong to the person, not to this team: one who also works for
+      // another organization would be signed out there and locked out by a manager here
       const [elsewhere] = await tx.select({ n: sql<number>`count(*)::int` }).from(memberships)
         .where(and(eq(memberships.userId, change.userId), ne(memberships.organizationId, orgId)));
       if (elsewhere && elsewhere.n > 0) return 'other_organizations';
+    }
+    if (change.type === 'two_factor') {
+      await resetTwoFactor(tx, change.userId);
+      await audit(tx, orgId, actor.userId, 'member.two_factor.reset', change.userId);
+      return 'done';
+    }
+    if (change.type === 'reset') {
       await tx.update(authAccounts).set({ password: change.passwordHash, updatedAt: now })
         .where(and(eq(authAccounts.userId, change.userId), eq(authAccounts.providerId, 'credential')));
       await markTemporaryPassword(tx, change.userId, now);
@@ -133,6 +163,19 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
     await audit(tx, orgId, actor.userId, 'member.removed', change.userId);
     return 'done';
   });
+}
+
+/** Two-step sign-in off for a person (a lost phone), and every session ended: the next sign-in sets it up again where it is required. */
+export async function resetTwoFactor(db: Database | Tx, userId: string) {
+  await db.delete(authTwoFactors).where(eq(authTwoFactors.userId, userId));
+  await db.update(authUsers).set({ twoFactorEnabled: false }).where(eq(authUsers.id, userId));
+  await db.delete(authSessions).where(eq(authSessions.userId, userId));
+}
+
+/** How many teams a person belongs to. */
+export async function membershipCount(db: Database, userId: string) {
+  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(memberships).where(eq(memberships.userId, userId));
+  return row?.n ?? 0;
 }
 
 /** A person who can no longer make keys loses the ones they made, in every clinic of the organization, audited. */

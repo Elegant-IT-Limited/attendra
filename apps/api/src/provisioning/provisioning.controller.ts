@@ -2,7 +2,7 @@
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  phoneUsage, qualityRows, releaseNumber, setTestCallLimit,
+  phoneUsage, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
@@ -29,6 +29,12 @@ const NewAccount = z.object({
   /** Total browser test-call time, for a trial; absent is no limit. */
   testCallMinutes: z.number().int().min(0).max(600).optional(),
   plan: z.string().trim().min(1).max(40).default('hosted'),
+  /**
+   * The address has an account whose email was never confirmed and the hosting layer has no
+   * record of it (a sign-up it could not finish, or one made with someone else's address):
+   * that account, with what it opened alone, is removed and this one opened instead.
+   */
+  replaceUnconfirmed: z.boolean().default(false),
 });
 const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes: z.number().int().min(0).max(600).optional() });
 const Email = z.object({ email: z.email().max(254) });
@@ -71,7 +77,11 @@ export class ProvisioningController {
   @HttpCode(201)
   async open(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(NewAccount)) body: z.infer<typeof NewAccount>) {
     this.check(authorization);
-    if (await findAccount(this.auth, body.owner.email)) throw new HttpException({ error: 'email_taken' }, 409);
+    const taken = await findAccount(this.auth, body.owner.email);
+    if (taken && !(body.replaceUnconfirmed && !taken.emailVerified && (await removeUnconfirmedAccount(this.db, body.owner.email)) === 'removed')) {
+      // a confirmed account says so; one not confirmed yet says that too, so the hosting layer can send a new link
+      throw new HttpException({ error: 'email_taken', confirmed: taken.emailVerified }, 409);
+    }
     let config: ClinicConfig;
     try {
       config = starterClinic({ id: newId('clinic'), ...body.clinic });
@@ -107,6 +117,31 @@ export class ProvisioningController {
     if (!clinicId) throw new NotFoundException({ error: 'not_found' });
     if (body.testCallMinutes !== undefined) await setTestCallLimit(this.db, clinicId, body.testCallMinutes * 60);
     return { clinicId };
+  }
+
+  /**
+   * A sign-up the hosting layer could not finish (its own record failed after the account
+   * was opened): the account goes again, with what it opened alone, so the person can sign
+   * up again. Only an account whose email was never confirmed and that has had no calls.
+   */
+  @Delete('accounts/unconfirmed')
+  @HttpCode(204)
+  async removeUnconfirmed(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
+    this.check(authorization);
+    const result = await removeUnconfirmedAccount(this.db, body.email);
+    if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result !== 'removed') throw new HttpException({ error: result }, 409);
+  }
+
+  /** Support, for someone who lost their phone and has nobody to reset two-step sign-in for them (a sole owner). Signs them out everywhere. */
+  @Post('users/reset-two-factor')
+  @HttpCode(204)
+  async resetTwoFactor(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
+    this.check(authorization);
+    const user = await findAccount(this.auth, body.email);
+    if (!user) throw new NotFoundException({ error: 'not_found' });
+    await resetTwoFactor(this.db, user.id);
+    this.log.info({ user_id: user.id }, 'provisioning: two-step sign-in reset by support');
   }
 
   @Post('email-confirmations')

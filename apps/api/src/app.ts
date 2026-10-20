@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
 import type { KnowledgeBase } from '@attendra/core';
-import { type ChangeFeed, clearTemporaryPassword, type Database, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, ScheduleRepository } from '@attendra/db';
+import { type ChangeFeed, clearTemporaryPassword, type Database, endSessions, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, resetTokenUser, ScheduleRepository } from '@attendra/db';
 import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
 import { type GuardOptions, type Resolver } from '@attendra/webhooks';
@@ -75,6 +75,10 @@ export interface ApiDeps {
 const AUTH_ROUTES = new Set([
   'POST /sign-in/email', 'POST /sign-out', 'GET /get-session', 'POST /change-password',
   'POST /two-factor/enable', 'POST /two-factor/verify-totp', 'POST /two-factor/verify-backup-code',
+  // a signed-in person replacing their phone or their backup codes (both ask for the password)
+  'POST /two-factor/disable', 'POST /two-factor/generate-backup-codes',
+  // "forgot password": the link is emailed by the hosting layer (ATTENDRA_MAIL_HOOK_URL)
+  'POST /request-password-reset', 'POST /reset-password',
 ]);
 
 @Module({})
@@ -177,13 +181,14 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
       headers.set('x-forwarded-for', req.ip);
       const now = deps.now?.() ?? new Date();
 
-      // A temporary password works once, and only for 72 hours.
-      if (route === 'POST /sign-in/email' && typeof input.email === 'string') {
-        const state = await passwordState(deps.db, { email: input.email });
-        if (state?.mustChange && state.expiresAt && state.expiresAt < now) {
-          return reply.status(401).send({ error: 'temporary_password_expired', message: 'This temporary password has expired. Ask your practice manager to reset it.' });
-        }
-      }
+      // A temporary password works once, and only for 72 hours. Checked after the password
+      // itself, so the answer never tells a stranger that an address has an account.
+      const expired = route === 'POST /sign-in/email' && typeof input.email === 'string'
+        ? await passwordState(deps.db, { email: input.email }).then((s) => (s?.mustChange && s.expiresAt && s.expiresAt < now ? s.id : null))
+        : null;
+      // "Forgot password": whose password the link resets, so a temporary one stops being temporary
+      let resetting: string | null = null;
+      if (route === 'POST /reset-password' && typeof input.token === 'string') resetting = await resetTokenUser(deps.db, input.token);
       // Whoever typed a temporary password must not be able to set up the second step for its owner.
       let changing: string | null = null;
       if (route === 'POST /two-factor/enable' || route === 'POST /change-password') {
@@ -202,7 +207,12 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
       }
       const body = req.method === 'POST' ? JSON.stringify(input) : undefined;
       const res = await deps.auth.handler(new Request(url, { method: req.method, headers, body }));
-      if (changing && res.ok) await clearTemporaryPassword(deps.db, changing);
+      if (expired && res.ok) {
+        // the right temporary password, but too late: the session it just opened goes again
+        await endSessions(deps.db, expired);
+        return reply.status(401).send({ error: 'temporary_password_expired', message: 'This temporary password has expired. Ask your practice manager to reset it.' });
+      }
+      if ((changing || resetting) && res.ok) await clearTemporaryPassword(deps.db, (changing ?? resetting)!);
       reply.status(res.status);
       res.headers.forEach((value, key) => { if (key !== 'set-cookie') reply.header(key, value); });
       const cookies = res.headers.getSetCookie();

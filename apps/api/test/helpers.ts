@@ -6,6 +6,7 @@ import { createHmac } from 'node:crypto';
 import { Writable } from 'node:stream';
 import { type ApiDeps, createApi } from '../src/app';
 import { createAuth } from '../src/auth';
+import type { MailRequest } from '../src/mail-hook';
 import type { ApiOptions, VoiceClient } from '../src/http/tokens';
 import { addMember } from '../src/members';
 
@@ -28,13 +29,15 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
   const log = createLogger({ name: 'test', level: opts.logs ? 'debug' : 'info', destination: new Writable({ write: (c, _e, done) => { opts.logs?.push(String(c)); done(); } }) });
-  const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log });
+  // with `mails`, "forgot password" works and every email the engine asks for is kept there
+  const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log,
+    passwordReset: opts.mails ? async (m) => { opts.mails!.push(m); } : undefined });
   const users = {
     owner: await addMember(auth, t.db, { email: 'omar@maple.example', name: 'Omar Owner', password: PASSWORD, orgId: 'org_demo', role: 'owner' }),
     admin: await addMember(auth, t.db, { email: 'olga@maple.example', name: 'Olga Admin', password: PASSWORD, orgId: 'org_demo', role: 'admin' }),
@@ -52,7 +55,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

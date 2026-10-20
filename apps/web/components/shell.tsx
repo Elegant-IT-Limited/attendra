@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
+import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
@@ -64,12 +64,23 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
   }, [queries]);
 
+  // 15 idle minutes sign out, counted across every tab of the dashboard: a tab left in the
+  // background never signs out the one being worked in (they share the session)
   useEffect(() => {
-    let timer = setTimeout(() => void signOut('idle'), IDLE_MS);
-    const reset = () => { clearTimeout(timer); timer = setTimeout(() => void signOut('idle'), IDLE_MS); };
+    const KEY = 'attendra.activeAt';
+    let local = Date.now();
+    const shared = () => { try { return Number(localStorage.getItem(KEY)) || 0; } catch { return 0; } };
+    const touch = () => {
+      const now = Date.now();
+      if (now - local < 5_000) return; // at most every few seconds
+      local = now;
+      try { localStorage.setItem(KEY, String(now)); } catch { /* this tab's own time still counts */ }
+    };
+    touch();
+    const check = setInterval(() => { if (Date.now() - Math.max(local, shared()) >= IDLE_MS) void signOut('idle'); }, 15_000);
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
-    for (const e of events) window.addEventListener(e, reset, { passive: true });
-    return () => { clearTimeout(timer); for (const e of events) window.removeEventListener(e, reset); };
+    for (const e of events) window.addEventListener(e, touch, { passive: true });
+    return () => { clearInterval(check); for (const e of events) window.removeEventListener(e, touch); };
   }, [signOut]);
 
   // menu labels in the account's own words ("Pets", "Veterinarians")
@@ -255,6 +266,9 @@ function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: str
             <M.ItemIndicator className="ml-auto text-xs text-primary">On</M.ItemIndicator>
           </M.CheckboxItem>
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
+          <M.Item asChild className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
+            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your account: password and two-step</a>
+          </M.Item>
           <M.Item onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11"><LogOut className="size-4 text-text-muted" aria-hidden />Sign out</M.Item>
         </M.Content>
       </M.Portal>
