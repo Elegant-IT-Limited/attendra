@@ -73,7 +73,7 @@ export default function ApiKeysPage() {
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <code className="break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-sm" data-testid="mcp-url">{list.data.mcpUrl}</code>
-              <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(list.data?.mcpUrl ?? '').then(() => toast({ tone: 'success', message: 'Copied.' }), () => {}); }}><Copy /> Copy</Button>
+              <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(list.data?.mcpUrl ?? '').then(() => toast({ tone: 'success', message: 'Copied.' }), () => {}); }}><Copy /> Copy address</Button>
             </div>
             <p className="text-sm text-text-muted">Give the MCP client this address and a key from below. The key goes in the Authorization header as <span className="font-mono">Bearer atk_…</span>.</p>
           </CardContent>
@@ -103,28 +103,44 @@ export default function ApiKeysPage() {
         </Card>
         <Card>
           <CardHeader><CardTitle>Keys</CardTitle></CardHeader>
-          {list.isPending ? <Skeleton className="m-5 h-24" /> : !list.data?.keys.length ? <Empty title="No keys yet" icon={<KeyRound />}>A key lets another AI agent read the schedule and requests.</Empty> : (
-            <Table>
-              <THead><tr><TH>Name</TH><TH>Scopes</TH><TH>Status</TH><TH className="hidden md:table-cell">Last used</TH><TH><span className="sr-only">Revoke</span></TH></tr></THead>
-              <tbody>
-                {list.data.keys.map((k) => (
-                  <TRow key={k.id} data-testid="api-key">
-                    <TD><p className="font-medium">{k.name}</p><p className="font-mono text-xs text-text-muted">{k.prefix}…</p></TD>
-                    <TD><span className="flex flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} className="font-mono">{s}</Badge>)}</span></TD>
-                    <TD><Badge tone={STATUS[k.status].tone}>{STATUS[k.status].label}</Badge><p className="mt-1 text-xs text-text-muted">{k.status === 'active' ? `until ${clinicTime(k.expiresAt, tz)}` : ''}</p></TD>
-                    <TD className="hidden text-sm text-text-muted md:table-cell">{k.lastUsedAt ? clinicTime(k.lastUsedAt, tz) : 'Never'}</TD>
-                    <TD className="text-right">{k.status === 'active' && <Button size="sm" variant="ghost" onClick={() => setRevoking(k)}>Revoke</Button>}</TD>
-                  </TRow>
-                ))}
-              </tbody>
-            </Table>
-          )}
+          {list.isPending ? <Skeleton className="m-5 h-24" /> : !list.data?.keys.length ? <Empty title="No keys yet" icon={<KeyRound />}>A key lets another AI agent read the schedule and requests.</Empty> : (() => {
+            // the keys in use first; revoked and expired ones stay on record, out of the way
+            const inUse = list.data.keys.filter((k) => k.status === 'active');
+            const past = list.data.keys.filter((k) => k.status !== 'active');
+            const table = (keys: ApiKeyView[]) => (
+              <Table>
+                <THead><tr><TH>Name</TH><TH>Scopes</TH><TH>Status</TH><TH className="hidden md:table-cell">Last used</TH><TH><span className="sr-only">Revoke</span></TH></tr></THead>
+                <tbody>
+                  {keys.map((k) => (
+                    <TRow key={k.id} data-testid="api-key">
+                      <TD><p className="font-medium">{k.name}</p><p className="font-mono text-xs text-text-muted">{k.prefix}…</p></TD>
+                      <TD><span className="flex flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} className="font-mono">{s}</Badge>)}</span></TD>
+                      <TD><Badge tone={STATUS[k.status].tone}>{STATUS[k.status].label}</Badge><p className="mt-1 text-xs text-text-muted">{k.status === 'active' ? `until ${clinicTime(k.expiresAt, tz)}` : ''}</p></TD>
+                      <TD className="hidden text-sm text-text-muted md:table-cell">{k.lastUsedAt ? clinicTime(k.lastUsedAt, tz) : 'Never'}</TD>
+                      <TD className="text-right">{k.status === 'active' && <Button size="sm" variant="ghost" onClick={() => setRevoking(k)}>Revoke</Button>}</TD>
+                    </TRow>
+                  ))}
+                </tbody>
+              </Table>
+            );
+            return (
+              <>
+                {inUse.length ? table(inUse) : <Empty title="No key in use" icon={<KeyRound />}>Make one on the left. Revoked and expired keys stop working at once.</Empty>}
+                {past.length > 0 && (
+                  <details className="border-t border-border">
+                    <summary className="cursor-pointer px-5 py-3 text-sm text-text-muted hover:text-text">Revoked and expired keys ({past.length}). They no longer work and cannot be copied; they stay here as a record.</summary>
+                    {table(past)}
+                  </details>
+                )}
+              </>
+            );
+          })()}
         </Card>
       </div>
       <Panel open={!!shown} onOpenChange={(o) => !o && setShown(null)} title="Copy the key" description="This is the only time it is shown. Attendra keeps only a hash of it." footer={<Button onClick={() => setShown(null)}>Done</Button>}>
         <div className="space-y-3">
           <code className="block break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-sm" data-testid="api-key-value">{shown?.key}</code>
-          <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(shown?.key ?? '').then(() => toast({ tone: 'success', message: 'Copied.' }), () => {}); }}><Copy /> Copy</Button>
+          <Button variant="outline" size="sm" onClick={() => { void navigator.clipboard?.writeText(shown?.key ?? '').then(() => toast({ tone: 'success', message: 'Key copied.' }), () => {}); }}><Copy /> Copy key</Button>
           <p className="text-sm text-text-muted">Every use is recorded in the audit log with this key.</p>
         </div>
       </Panel>

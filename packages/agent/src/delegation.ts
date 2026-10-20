@@ -25,6 +25,8 @@ const AFTER_SPEECH_MS = 3500;
 const VIP_AFTER_MS = 6000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
+/** What the voice hears while a request runs. Not to be said: the answer usually comes in a moment. */
+export const PROGRESS_NOTE = 'Looking it up. Do not tell the caller you are working on it or checking; the answer comes in a moment, then say it.';
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 
@@ -326,7 +328,9 @@ export class CallAgent {
   async onDelegation(delegationId: string, emit?: (o: Outbound) => void): Promise<Outbound[]> {
     const revision = ++this.state.revision;
     const out: Outbound[] = [];
-    const progress: Outbound = { type: 'thinking', delegationId, content: 'Working on it.' };
+    // a note for the voice, not words for the caller: most answers come back within a second or
+    // two, and a reply that opens with "working on it" every time sounds like a machine
+    const progress: Outbound = { type: 'thinking', delegationId, content: PROGRESS_NOTE };
     if (emit) emit(progress); else out.push(progress);
     // a long wait is never silence: once, the caller hears that we are still on it
     const hold = emit ? setTimeout(() => {

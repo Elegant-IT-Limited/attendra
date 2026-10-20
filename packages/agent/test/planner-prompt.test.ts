@@ -23,6 +23,13 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(prompt).not.toContain('date of birth and phone)');
   });
 
+  it('a clinic with one vet never asks which vet; one with several asks once, and asks one question at a time', () => {
+    const one = { ...RIVERBEND_CLINIC, providers: RIVERBEND_CLINIC.providers.slice(0, 1) };
+    expect(systemPrompt(one, 'now')).toContain('There is only one provider here: never ask the caller which one they would like');
+    expect(systemPrompt(RIVERBEND_CLINIC, 'now')).not.toContain('There is only one provider here');
+    expect(systemPrompt(RIVERBEND_CLINIC, 'now')).toContain('at most one question');
+  });
+
   it('a veterinary clinic\'s tools take the owner\'s and the pet\'s names', async () => {
     let tools: { name: string; description: string; parameters: { properties: Record<string, unknown> } }[] = [];
     const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };

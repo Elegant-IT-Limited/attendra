@@ -1,4 +1,4 @@
-import { CallAgent, CallState, type Planner, ScriptedPlanner } from '@attendra/agent';
+import { CallAgent, CallState, type Planner, ScriptedPlanner, PROGRESS_NOTE } from '@attendra/agent';
 import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, Texting, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
@@ -36,7 +36,7 @@ describe('the GPT-Live call runner', () => {
     await h.runner.handle(delta('in', 'e1', 'Do you take Aetna?', 100));
     await h.runner.handle({ type: 'session.delegation.created', event_id: 'e2', delegation: { id: 'item_9', target: 'client' } });
     expect(h.sent).toEqual([
-      { type: 'session.thinking.append', event_id: expect.any(String), delegation_id: 'item_9', content: 'Working on it.' },
+      { type: 'session.thinking.append', event_id: expect.any(String), delegation_id: 'item_9', content: PROGRESS_NOTE },
       { type: 'session.commentary.append', event_id: expect.any(String), delegation_id: 'item_9', content: expect.stringContaining('Aetna') },
     ]);
   });
