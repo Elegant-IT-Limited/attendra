@@ -412,6 +412,11 @@ export async function runTool(
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
       const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing });
+      // the same change proposed again after it was read back keeps its read-back, so the yes the caller gave still counts
+      const same = state.pending;
+      if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
+        return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
+      }
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
     }
@@ -421,6 +426,10 @@ export async function runTool(
       const appt = upcoming.find((a) => a.id === args.appointment_id);
       if (!appt) return refuse('unknown_appointment', 'Use list_appointments to find the appointment first.');
       const readback = pack.readbackCancel({ when: when(appt.start) });
+      const same = state.pending;
+      if (same?.kind === 'cancel' && same.appointmentId === appt.id && same.readbackAtMs !== null) {
+        return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
+      }
       state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
     }

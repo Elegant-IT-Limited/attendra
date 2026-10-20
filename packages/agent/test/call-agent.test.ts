@@ -463,6 +463,42 @@ describe('review fixes', () => {
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
   });
 
+  it('keeps the yes when the planner proposes the same change again after it, as in live run 5', async () => {
+    const before = (await bookings()).length;
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit');
+    const slot = { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } } as const;
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.caller('Yes, that is right. Thanks, goodbye.');
+    // the planner looks it all up again and proposes the same slot before committing
+    const again = await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+      { tool: 'commit_pending', args: {} },
+    ]);
+    expect(again.errors).toEqual([null, null, null, null]);
+    expect(String(again.results[2]!.data.say)).toContain('already read back');
+    expect(await bookings()).toHaveLength(before + 1);
+    // a different slot is a new change: it is read back again before any yes counts
+    const c2 = await w.call();
+    c2.caller('Maria Delgado, March 4 1985, sick visit');
+    await c2.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c2.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c2.caller('Yes.');
+    const other = await c2.delegate([
+      { tool: 'propose_booking', args: () => ({ slot_id: [...c2.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) },
+      { tool: 'commit_pending', args: {} },
+    ]);
+    expect(other.errors).toEqual([null, 'not_read_back']);
+  });
+
   it('counts a read-back spoken in the same breath as "let me book that", as on the first live test call', async () => {
     const c = await w.call();
     c.caller('Maria Delgado, March 4 1985, sick visit, afternoon');
