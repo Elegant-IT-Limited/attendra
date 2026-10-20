@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { Trash2 } from 'lucide-react';
-import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, useId } from 'react';
+import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, useEffect, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 /** One settings card. With an `id` it is a place the page's own menu can jump to. */
 export function Section({ id, title, description, children, action }: { id?: string; title: string; description?: string; children: ReactNode; action?: ReactNode }) {
+  // a link to this card (settings#visits) lands on it, though the page drew it after loading
+  useEffect(() => {
+    if (id && window.location.hash === `#${id}`) document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  }, [id]);
   return (
     <Card id={id} className="scroll-mt-6">
       <CardHeader className="flex-row items-start justify-between gap-4">

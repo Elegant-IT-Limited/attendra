@@ -18,6 +18,7 @@ const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Error> = 
   owner_protected: () => new ForbiddenException({ error: 'forbidden', message: 'Only an owner can change, reset or remove an owner.' }),
   owner_grant: () => new ForbiddenException({ error: 'forbidden', message: 'Only an owner can make someone an owner.' }),
   last_owner: () => new ConflictException({ error: 'last_owner', message: 'This is the last owner. Make someone else an owner first.' }),
+  other_organizations: () => new ConflictException({ error: 'other_organizations', message: 'This person also works for another organization on Attendra, so their password cannot be reset from here. They can change it themselves after signing in, or ask Attendra support.' }),
 };
 
 /**

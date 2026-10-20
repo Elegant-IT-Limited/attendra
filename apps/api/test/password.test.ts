@@ -105,6 +105,17 @@ describe('a temporary password', () => {
     expect((await api.request('POST', `${C}/members/${api.users.staff}/reset-password`, { cookie: await api.signIn('vic@maple.example', true) })).statusCode).toBe(403);
   });
 
+  it('refuses to reset someone who also works for another organization, and signs nobody out', async () => {
+    await api.t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_two_orgs', 'org_other', ${api.users.viewer}, 'owner')`);
+    const res = await api.request('POST', `${C}/members/${api.users.viewer}/reset-password`, { cookie: admin });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('other_organizations');
+    expect(res.body).not.toMatch(/temporaryPassword/);
+    // their own password still works
+    expect((await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'vic@maple.example', password: PASSWORD } })).statusCode).toBe(200);
+    await api.t.db.execute(sql`delete from memberships where id = 'm_two_orgs'`);
+  });
+
   it('never reaches a log line', () => {
     expect(issued.length).toBeGreaterThan(2);
     const all = logs.join('\n');

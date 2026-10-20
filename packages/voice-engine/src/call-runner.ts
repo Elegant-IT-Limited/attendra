@@ -18,6 +18,12 @@ export interface CallRecorder {
 /** How long the assistant must be quiet before a hang-up goes through, and the most it waits for that. */
 const QUIET_MS = 1500;
 const HANGUP_MAX_WAIT_MS = 20_000;
+/**
+ * After its delay, how long an action may wait on audio still playing (not on new words):
+ * a goodbye is one short sentence; an emergency script before the on-call transfer can be
+ * long, and is waited for up to the overall limit.
+ */
+const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
 /** The caller finished and nothing came back: a word to the assistant after this long, and again after the second. */
 export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
@@ -128,6 +134,9 @@ export class CallRunner {
   private async dispatch(outbound: Outbound[]) {
     for (const o of outbound) {
       if (o.type === 'transfer' || o.type === 'hangup') {
+        // one call-control action at a time: a second transfer or hang-up while one is on its
+        // way would race it (and fail, and tell staff it failed)
+        if (this.ending) { this.log.info({ session_id: this.sessionId, action: o.type }, 'a transfer or hang-up is already on its way; this one is dropped'); continue; }
         this.ending = true;
         const act = () => (o.type === 'transfer' ? this.engine.transfer(this.sessionId, o.uri) : this.engine.hangup(this.sessionId))
           .catch((err) => {
@@ -139,10 +148,14 @@ export class CallRunner {
         if (!o.afterMs) { await act(); continue; }
         // a goodbye is never cut off: the hang-up waits until the assistant has gone quiet
         const due = Date.now() + HANGUP_MAX_WAIT_MS;
+        // the estimate of audio still playing is trusted for a while only: a model that
+        // keeps talking after its goodbye is not waited for to the end
+        const heard = Date.now() + o.afterMs + SPEECH_WAIT_MS[o.type];
         const later = (ms: number) => {
           const t = setTimeout(() => {
             this.timers.delete(t);
-            const talking = Date.now() - this.agentSpokeAt < QUIET_MS;
+            // still talking: words came in a moment ago, or their audio has not finished playing
+            const talking = Date.now() - this.agentSpokeAt < QUIET_MS || (Date.now() < this.speakingUntil && Date.now() < heard);
             if ((o.type === 'hangup' || (o.type === 'transfer' && o.quiet)) && talking && Date.now() < due) later(500); else void act();
           }, ms);
           this.timers.add(t);

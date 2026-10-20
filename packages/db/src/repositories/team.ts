@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authUsers, memberships } from '../auth-schema';
 import type { Database, Tx } from '../client';
 import { auditLogs, clinics, tasks } from '../schema';
@@ -46,7 +46,7 @@ export type TeamChange =
   | { type: 'remove'; userId: string }
   | { type: 'reset'; userId: string; passwordHash: string };
 
-export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' | 'self' | 'owner_protected' | 'owner_grant' | 'last_owner';
+export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' | 'self' | 'owner_protected' | 'owner_grant' | 'last_owner' | 'other_organizations';
 
 /**
  * One change to an organization's team, with its audit rows, in one transaction.
@@ -100,6 +100,11 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
     }
 
     if (change.type === 'reset') {
+      // a password belongs to the person, not to this team: one who also works for another
+      // organization would be signed out there and locked out by a manager here
+      const [elsewhere] = await tx.select({ n: sql<number>`count(*)::int` }).from(memberships)
+        .where(and(eq(memberships.userId, change.userId), ne(memberships.organizationId, orgId)));
+      if (elsewhere && elsewhere.n > 0) return 'other_organizations';
       await tx.update(authAccounts).set({ password: change.passwordHash, updatedAt: now })
         .where(and(eq(authAccounts.userId, change.userId), eq(authAccounts.providerId, 'credential')));
       await markTemporaryPassword(tx, change.userId, now);

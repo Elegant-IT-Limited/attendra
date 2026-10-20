@@ -102,16 +102,25 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   app.get('/healthz', async () => ({ ok: true }));
 
-  // Every delivery costs a signature check and a database round trip, so the webhook
-  // gets a per-address limit. OpenAI sends from a small pool of addresses, which is why
-  // the default is generous. The health check stays unlimited for load balancers.
+  // Only deliveries that fail their signature are limited, per address: behind a proxy
+  // every request comes from one address, and a flood of forged ones must never turn a
+  // real incoming call away. A signed delivery is never limited; checking a signature is
+  // cheap, and only a signed one reaches the database. The health check is not limited.
+  const forged = new Map<string, { n: number; until: number }>();
+  const tooManyForged = (ip: string) => {
+    const t = Date.now();
+    if (forged.size > 10_000) forged.clear();
+    const f = forged.get(ip);
+    if (!f || f.until < t) { forged.set(ip, { n: 1, until: t + 60_000 }); return 1 > (deps.webhookRateLimit ?? 600); }
+    return ++f.n > (deps.webhookRateLimit ?? 600);
+  };
   app.register(async (webhooks) => {
-    await webhooks.register(rateLimit, { max: deps.webhookRateLimit ?? 600, timeWindow: 60_000 });
     webhooks.post('/webhooks/openai', async (req, reply) => {
       let event: IncomingCall;
       try {
         event = await deps.verifyWebhook(req.body as string, req.headers);
       } catch {
+        if (tooManyForged(req.ip)) return reply.code(429).send({ error: 'too many invalid deliveries' });
         deps.log.warn({ path: '/webhooks/openai' }, 'rejected webhook with an invalid signature');
         return reply.code(400).send({ error: 'invalid signature' });
       }
@@ -136,14 +145,20 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     webhooks.post('/webhooks/twilio/sms-inbound', async (req, reply) => {
       if (!deps.sms) return reply.code(503).send({ error: 'sms_webhooks_off' });
       const f = fromTwilio(req);
-      if (!f) { deps.log.warn({ path: '/webhooks/twilio/sms-inbound' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' }); }
+      if (!f) {
+        if (tooManyForged(req.ip)) return reply.code(429).send({ error: 'too many invalid deliveries' });
+        deps.log.warn({ path: '/webhooks/twilio/sms-inbound' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' });
+      }
       const message = f.To && f.From ? await deps.sms.inbound({ to: f.To, from: f.From, body: f.Body ?? '' }) : undefined;
       return reply.code(200).header('content-type', 'text/xml').send(twiml(message));
     });
     webhooks.post('/webhooks/twilio/sms-status', async (req, reply) => {
       if (!deps.sms) return reply.code(503).send({ error: 'sms_webhooks_off' });
       const f = fromTwilio(req);
-      if (!f) { deps.log.warn({ path: '/webhooks/twilio/sms-status' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' }); }
+      if (!f) {
+        if (tooManyForged(req.ip)) return reply.code(429).send({ error: 'too many invalid deliveries' });
+        deps.log.warn({ path: '/webhooks/twilio/sms-status' }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' });
+      }
       const clinicId = (req.query as { clinic?: string }).clinic;
       if (!clinicId || !/^SM[0-9a-f]{32}$/i.test(f.MessageSid ?? '') || !f.MessageStatus) return reply.code(400).send({ error: 'bad_request' });
       await deps.sms.status({ clinicId, messageSid: f.MessageSid!, status: f.MessageStatus, errorCode: /^\d{1,6}$/.test(f.ErrorCode ?? '') ? f.ErrorCode! : null });
@@ -374,7 +389,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // A phone call ends with the line. A browser keeps talking after our sideband drops,
       // with no tools, recording or time limit, so end it explicitly.
       if (web && !closed && !hungUp) await hangup();
-      if (web) engine.release?.(sessionId);
+      // phone calls too: the engine and the router keep a little per call until released
+      engine.release?.(sessionId);
     }
   }
 

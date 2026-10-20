@@ -2,7 +2,7 @@
 'use client';
 import { Check, ChevronDown } from 'lucide-react';
 import { Popover as P } from 'radix-ui';
-import { type KeyboardEvent, useId, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
@@ -32,9 +32,19 @@ export function Combobox({ id, value, options, onChange, placeholder, maxLength 
   const input = useRef<HTMLInputElement>(null);
   const listId = useId();
   const q = value.trim().toLowerCase();
-  // just opened, or the field holds one of the choices: every choice; typing: the ones that match
-  const shown = !typed || items.some((i) => i.value.toLowerCase() === q || i.label.toLowerCase() === q)
-    ? items : items.filter((i) => i.label.toLowerCase().includes(q) || i.value.toLowerCase().includes(q));
+  // just opened: every choice; typing: the ones that match what is typed
+  const matching = (text: string) => {
+    const t = text.trim().toLowerCase();
+    return items.filter((i) => i.label.toLowerCase().includes(t) || i.value.toLowerCase().includes(t));
+  };
+  const shown = typed ? matching(value) : items;
+  // the choice the typed text is exactly, first; else the first that matches
+  const exact = (list: typeof items, text: string) => Math.max(0, list.findIndex((i) => i.value.toLowerCase() === text.trim().toLowerCase() || i.label.toLowerCase() === text.trim().toLowerCase()));
+  const optionId = (i: number) => `${listId}-${i}`;
+  // the highlighted choice stays in view as the arrows move through a long list
+  useEffect(() => {
+    if (open) document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
+  });
   const pick = (v: string) => { onChange(v); setOpen(false); setTyped(false); input.current?.focus(); };
   const show = () => { if (!disabled && items.length) { setOpen(true); setTyped(false); setActive(Math.max(0, items.findIndex((i) => i.value.toLowerCase() === q))); } };
   const key = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -56,8 +66,9 @@ export function Combobox({ id, value, options, onChange, placeholder, maxLength 
       <P.Anchor asChild>
         <div className="relative">
           <Input ref={input} id={id} role="combobox" aria-expanded={open && shown.length > 0} aria-controls={listId} aria-autocomplete="list"
+            aria-activedescendant={open && shown[active] ? optionId(active) : undefined}
             autoComplete="off" maxLength={maxLength} required={required} disabled={disabled} value={value} placeholder={placeholder} className="pr-9"
-            onChange={(e) => { onChange(e.target.value); setTyped(true); setOpen(true); setActive(0); }}
+            onChange={(e) => { onChange(e.target.value); setTyped(true); setOpen(true); setActive(exact(matching(e.target.value), e.target.value)); }}
             onKeyDown={key} onClick={show} />
           <button type="button" tabIndex={-1} disabled={disabled} aria-label="Open the list"
             className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-text-muted hover:text-text disabled:opacity-50"
@@ -74,7 +85,7 @@ export function Combobox({ id, value, options, onChange, placeholder, maxLength 
             {shown.map((o, i) => {
               const chosen = o.value.toLowerCase() === q;
               return (
-                <li key={o.value} role="option" aria-selected={chosen}
+                <li key={o.value} id={optionId(i)} role="option" aria-selected={chosen}
                   className={cn('flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-base', i === active && 'bg-surface-sunken')}
                   onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o.value)}>
                   <Check className={cn('size-4 shrink-0 text-primary', !chosen && 'invisible')} aria-hidden />

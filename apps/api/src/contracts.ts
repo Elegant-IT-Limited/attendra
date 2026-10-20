@@ -5,6 +5,17 @@ import { z } from 'zod';
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
 // schemas document it (OpenAPI at /api/docs) and give the web app its types.
 
+
+/** A real calendar day, YYYY-MM-DD, between 1900 and 2100: "2026-02-31" or "9999-12-31" is a 422, not a crash further in. */
+const realDate = (d: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const [y, m, day] = d.split('-').map(Number) as [number, number, number];
+  const t = new Date(Date.UTC(y, m - 1, day));
+  return y >= 1900 && y <= 2100 && t.getUTCMonth() === m - 1 && t.getUTCDate() === day;
+};
+const day = (message = 'expected YYYY-MM-DD') => z.string().refine(realDate, message);
+const STAMP = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}(:?\d{2})?|Z)$/;
+
 export const Role = z.enum(['owner', 'admin', 'staff', 'viewer']);
 
 export const Health = z.object({
@@ -35,7 +46,8 @@ export const callCursor = {
   encode: (c: { cursor: string; id: string }) => Buffer.from(`${c.cursor}|${c.id}`).toString('base64url'),
   decode: (s: string) => {
     const [startedAt, id] = Buffer.from(s, 'base64url').toString().split('|');
-    return startedAt && id && !Number.isNaN(Date.parse(startedAt)) && z.uuid().safeParse(id).success ? { startedAt, id } : null;
+    // exactly the timestamp text Postgres gave (2026-10-19 22:40:13.123456+00): anything else it may refuse
+    return startedAt && id && STAMP.test(startedAt) && realDate(startedAt.slice(0, 10)) && z.uuid().safeParse(id).success ? { startedAt, id } : null;
   },
 };
 
@@ -76,8 +88,8 @@ export const CallList = z.object({
 
 const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
 const CallFilters = z.object({
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional(),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional(),
+  from: day().optional(),
+  to: day().optional(),
   outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']).optional(),
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
@@ -254,9 +266,9 @@ export const TaskQuery = z.object({
   type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']).optional(),
   assignee: z.enum(['me', 'unassigned']).optional(),
   /** Came in on or after this clinic-local day. */
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  from: day().optional(),
   /** Came in on or before this clinic-local day. */
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: day().optional(),
 });
 /** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
 export const TaskSearch = TaskQuery.extend({
@@ -321,7 +333,7 @@ export const Task = z.object({
 export const TaskList = z.object({ tasks: z.array(Task) });
 export const TaskCount = z.object({ open: z.number() });
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
+const isoDate = day();
 const instant = z.iso.datetime({ offset: true });
 
 export const CancelReason = z.enum(['patient_asked', 'clinic_asked', 'booked_in_error', 'other']);

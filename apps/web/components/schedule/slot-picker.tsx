@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { api } from '@/lib/api';
+import { usePets } from '@/lib/terms';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +32,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
   patientId?: string;
 }) {
   const days = 7;
+  const pets = usePets(clinicId);
   const today = localDateOf(new Date(), clinic.timezone);
   const slots = useQuery({
     queryKey: ['slots', clinicId, visitTypeId, providerId, from, excluding, patientId],
@@ -61,7 +63,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
       {slots.isPending ? <Skeleton className="h-40" /> : slots.isError ? (
         <p className="text-sm text-danger">Open times did not load. Try again in a moment.</p>
       ) : byDay.size === 0 ? (
-        <Empty title="No open times this week">Try the next week, or another provider.</Empty>
+        <Empty title="No open times this week">Try the next week, or another {pets ? 'veterinarian' : 'provider'}.</Empty>
       ) : (
         <div className="max-h-80 space-y-4 overflow-y-auto pr-1" role="radiogroup" aria-label="Open times">
           {[...byDay.entries()].map(([day, list]) => (
