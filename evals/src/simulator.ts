@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, type Messenger, speakSlot, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -143,12 +143,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const backend = { patients: new PostgresPatientDirectory(db, cipher), scheduler, tasks: new PostgresTaskQueue(db, cipher), audit: new PostgresAuditLog(db), messenger, knowledge };
   const calls = new CallRepository(db, cipher);
 
-  // an existing appointment for Maria, for the reschedule and cancel scenarios
+  // an existing appointment on Thursday (Maria's sick visit, or Biscuit's wellness exam at the vet), for the reschedule and cancel scenarios
   if (scenario.tags.includes('has-appointment')) {
     const setupCall = await calls.open(clinic.id, `setup_${scenario.id}`, null);
     const existing = nextThursday(clinic, now);
-    await scheduler.book(clinic.id, { patientId: patientIds.maria!, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
-      slot: { id: 'setup', providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: existing, end: new Date(existing.getTime() + 20 * 60_000) } });
+    const [patientId, providerId, visitTypeId, minutes] = scenario.clinic === 'riverbend' ? [patientIds.biscuit!, 'prov_ruiz', 'vt_wellness', 30] : [patientIds.maria!, 'prov_okafor', 'vt_sick', 20];
+    await scheduler.book(clinic.id, { patientId, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
+      slot: { id: 'setup', providerId, visitTypeId, start: existing, end: new Date(existing.getTime() + minutes * 60_000) } });
   }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   const state = new CallState();
@@ -281,6 +282,12 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
   if (e.language) check(state.language === e.language, `answered in ${state.language}, expected ${e.language}`);
   if (e.booked_with) check(createdRows.every((a) => a.providerId === e.booked_with), `booked with ${JSON.stringify(createdRows.map((a) => a.providerId))}, expected ${e.booked_with}`);
+  if (e.offered_from_time) {
+    const early = [...state.offered.values()].filter((s) => localParts(s.start, clinic.timezone).minutes < toMinutes(e.offered_from_time!));
+    check(early.length === 0, `offered ${early.length} time(s) before ${e.offered_from_time}`);
+  }
+  // the demo plays each call on its own day, so a date that follows from "today" is checked only on the eval's day
+  if (e.booked_on && !opts.now) check(createdRows.every((a) => localDateOf(a.startsAt, clinic.timezone) === e.booked_on), `booked on ${JSON.stringify(createdRows.map((a) => localDateOf(a.startsAt, clinic.timezone)))}, expected ${e.booked_on}`);
   for (const date of e.not_offered_on) {
     const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);

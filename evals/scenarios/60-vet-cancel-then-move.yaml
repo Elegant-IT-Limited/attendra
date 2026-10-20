@@ -1,0 +1,30 @@
+id: vet-cancel-then-move
+title: An owner calls to cancel Thursday, then decides to move it to next week instead; the visit is moved, not cancelled
+clinic: riverbend
+local_time: "10:00"
+tags: [has-appointment]
+facts: "You are calling from the number on file. When the cancellation is read back, say actually, could you just move it to next week instead. Any day next week and any vet are fine. Say yes to the first time offered next week and to the read-back of the move."
+turns:
+  - caller: Hi, Linh Nguyen. I need to cancel Biscuit's appointment on Thursday.
+    reply: "Thanks, Linh. I see Biscuit's wellness exam on Thursday. Shall I cancel it?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Actually, wait. Could we just move it to next week instead of cancelling?
+    reply: "Of course. Next week I have {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "$next_week", part_of_day: any }
+  - caller: The first one works.
+    reply: "So that's {readback}. Shall I make the change?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: "$appointments[0]" }
+  - caller: Yes.
+    reply: "Done, Biscuit's visit is moved to {booked}. I've texted you the new time."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

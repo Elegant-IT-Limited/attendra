@@ -51,7 +51,12 @@ describe('identity inputs', () => {
     expect(saidGoodbye("No, that's all", asked)).toBe(true);
     expect(saidGoodbye('No', asked)).toBe(true);
     expect(saidGoodbye('Adiós, gracias', '¿Hay algo más en que pueda ayudarle?')).toBe(true);
-    expect(saidGoodbye('Okay, thank you, bye!')).toBe(false); // the question comes first
+    expect(saidGoodbye('Okay, thank you')).toBe(false); // the question comes first
+    expect(saidGoodbye("That's all")).toBe(false);
+    // a caller who is leaving is let go without it
+    expect(saidGoodbye('Okay, thank you, bye!')).toBe(true);
+    expect(saidGoodbye("Sorry, something's come up, I have to go. I'll call back. Bye!", 'I have Tuesday at 9 or 10.')).toBe(true);
+    expect(saidGoodbye('Bye, wait, one more thing', 'Anything else?')).toBe(false);
     expect(saidGoodbye('0 1 7 1 4 2 6 2 5 8 4. I am done', 'And the phone number for his file?')).toBe(false);
     expect(saidGoodbye('No', 'Is he a new patient?')).toBe(false);
     expect(saidGoodbye('Yes, one more thing', asked)).toBe(false);

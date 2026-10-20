@@ -55,6 +55,8 @@ export const Scenario = z.object({
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
     booked_with: z.string().optional(), // the provider every booking made on the call must be with
     not_offered_on: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]), // the clinic's local dates no offered time may fall on
+    offered_from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), // every offered time is at or after this local time of day
+    booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
 });

@@ -1,0 +1,19 @@
+id: vet-has-to-go
+title: The owner has to go mid-booking; nothing is booked, the goodbye is short, and the call ends
+clinic: riverbend
+local_time: "10:00"
+turns:
+  - caller: Hi, Linh Nguyen. I need a check-up for Biscuit.
+    reply: "Thanks, Linh. I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Oh no, sorry, something's come up, I have to go. I'll call back. Bye!
+    reply: "No problem, Linh. Call any time. Goodbye."
+    delegate:
+      - end_call: { reason: caller has to go and said goodbye }
+expect:
+  outcome: abandoned
+  verified: true
+  bookings_created: 0
+forbid_spoken: ["anything else", "would you like me to book"]

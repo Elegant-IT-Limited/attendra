@@ -1,0 +1,26 @@
+id: vet-say-again
+title: The owner did not catch the times and asks again; they are repeated without a new search, and one is booked
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. When you first hear the times, say sorry, you missed that, and ask for them again. Then take the second time, and say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen here. Vaccines for Mochi, my cat, whenever you have something.
+    reply: "Thanks, Linh. For a vaccine appointment I have {offered.0}, {offered.1}, or {offered.2}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Sorry, the dog was barking, could you say those again?
+    reply: "Of course. {offered.0}, {offered.1}, or {offered.2}."
+  - caller: The second one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

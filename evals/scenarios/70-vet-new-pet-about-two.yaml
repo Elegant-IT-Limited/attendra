@@ -1,0 +1,31 @@
+id: vet-new-pet-about-two
+title: A new dog whose owner only knows he is about two is added with an estimated birthday, and books
+clinic: riverbend
+local_time: "14:00"
+caller_number: "+17205550194"
+facts: "You are Omar Haddad, calling from your own mobile, the number you are calling from. Rocky is your male dog, a rescue, about two years old; you do not know his birthday. He is new to the clinic. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, Omar Haddad. I just adopted a dog, Rocky, and I'd like to get him in for a first check-up.
+    reply: "Welcome, Omar. I couldn't find Rocky, so I'll add him. How old is he, or when is his birthday?"
+    delegate:
+      - verify_caller: { owner_name: Omar Haddad, pet_name: Rocky }
+  - caller: He's a rescue, so I'm not sure. About two?
+    reply: "That's fine, about two it is. For a new patient exam I have {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Rocky, owner_name: Omar Haddad, species: dog, sex: male, birthday_or_age: about two, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Rocky is booked for {booked}. Bring any papers from the shelter if you have them."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["what kind of animal", "female or male", "exact birthday", "full name"]

@@ -1,0 +1,13 @@
+id: vet-how-long-and-price
+title: How long a wellness exam takes comes from the clinic's visit list; the price is not known and not guessed
+clinic: riverbend
+local_time: "10:00"
+turns:
+  - caller: How long does a check-up take, and roughly what does it cost?
+    reply: "A wellness exam is 30 minutes. I don't have prices here, I'm afraid; I can have someone from the clinic call you back with that, if you'd like."
+    delegate:
+      - get_clinic_info: { question: how long is a wellness exam and what does it cost }
+expect:
+  outcome: info
+  spoken_contains: ["30 minutes"]
+forbid_spoken: ["$", "dollars", "around 5", "about 5", "typically costs"]

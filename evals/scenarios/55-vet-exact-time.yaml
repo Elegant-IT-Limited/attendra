@@ -1,0 +1,23 @@
+id: vet-exact-time
+title: An owner asks for Friday at 10:30 exactly; that time is offered when it is free, and booked
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. You want Friday at 10:30 for Mochi's vaccines; if 10:30 is taken, the nearest time after it is fine. Say yes to the read-back."
+turns:
+  - caller: Hi, it's Linh Nguyen. Can I get Mochi in for her vaccines on Friday at 10:30?
+    reply: "Thanks, Linh. Friday at 10:30 is free: {offered.0}. Shall I book it?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: "2026-10-02", part_of_day: any, from_time: "10:30" }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-02"
+  offered_from_time: "10:30"

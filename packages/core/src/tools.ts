@@ -29,6 +29,8 @@ export const ToolArgs = {
     specialty: z.string().min(2).max(60).nullable().default(null),
     from_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
     part_of_day: z.enum(['morning', 'afternoon', 'any']),
+    // the earliest time of day the caller wants, 24-hour local: "after 3" or "at 3:30" is 15:00 or 15:30; null when they said none
+    from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
   }),
   list_appointments: z.object({}),
   // Writes happen in two steps. propose_* stores the change and returns the read-back
