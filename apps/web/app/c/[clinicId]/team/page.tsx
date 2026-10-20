@@ -15,7 +15,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { api, ApiFailure, useClinic } from '@/lib/api';
+import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
 
 const ROLES: { id: Member['role']; label: string; detail: string }[] = [
   { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
@@ -62,6 +62,14 @@ export default function Team() {
     mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
     onSuccess: (r, m) => { setResetting(null); setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }); },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
+    onSettled: refresh,
+  });
+  // a lost phone: their two-step sign-in is switched off, and they set it up again at their next sign-in
+  const [unlocking, setUnlocking] = useState<Member | null>(null);
+  const twoStep = useMutation({
+    mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}/reset-two-factor`, { method: 'POST' }),
+    onSuccess: (_r, m) => { setUnlocking(null); setNotice({ tone: 'info', text: `${m.name} can sign in with their password now, and sets up two-step sign-in on their new phone.` }); },
+    onError: (e) => { setUnlocking(null); setNotice({ tone: 'warn', text: message(e) }); },
     onSettled: refresh,
   });
   const remove = useMutation({
@@ -122,6 +130,7 @@ export default function Team() {
                       </TD>
                       <TD className="whitespace-nowrap text-right">
                         {!locked && <Button size="sm" variant="ghost" disabled={reset.isPending} onClick={() => setResetting(m)}>Reset password</Button>}
+                        {!locked && m.twoFactorEnabled && <Button size="sm" variant="ghost" disabled={twoStep.isPending} onClick={() => setUnlocking(m)}>Reset two-step</Button>}
                         {!locked && <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>Remove</Button>}
                       </TD>
                     </TRow>
@@ -139,6 +148,11 @@ export default function Team() {
         footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Keep it</Button><Button variant="danger" loading={reset.isPending} onClick={() => resetting && reset.mutate(resetting)}>Reset password</Button></>}>
         <p className="text-base">{resetting?.email}</p>
       </Panel>
+      <Panel open={!!unlocking} onOpenChange={(o) => !o && setUnlocking(null)} title={`Reset ${unlocking?.name ?? ''}'s two-step sign-in?`}
+        description="For a lost or new phone. They are signed out everywhere, sign in again with their own password, and set up two-step sign-in on their phone."
+        footer={<><Button variant="ghost" onClick={() => setUnlocking(null)}>Keep it</Button><Button variant="danger" loading={twoStep.isPending} onClick={() => unlocking && twoStep.mutate(unlocking)}>Reset two-step</Button></>}>
+        <p className="text-base">{unlocking?.email}</p>
+      </Panel>
       <Panel open={!!issued} onOpenChange={(o) => !o && setIssued(null)} title={`New temporary password for ${issued?.name ?? ''}`}
         description="They were signed out everywhere. The old password no longer works." footer={<Button onClick={() => setIssued(null)}>Done</Button>}>
         {issued && <OneTimePassword email={issued.email} password={issued.password} />}
@@ -153,6 +167,8 @@ export default function Team() {
 }
 
 function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
+  // two-step sign-in is mentioned only where the deployment asks for it
+  const twoStepRequired = useMe().data?.twoFactorRequired ?? true;
   const [form, setForm] = useState({ name: '', email: '', role: 'staff', approvesRefills: false });
   const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
   const problem = useProblem();
@@ -166,7 +182,7 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
 
   return (
     <Panel open={open} onOpenChange={close} title={added ? `${added.name} is on the team` : 'Add a person'}
-      description={added ? undefined : 'They sign in with their email and a temporary password, then set up two-step sign-in.'}
+      description={added ? undefined : `They sign in with their email and a temporary password${twoStepRequired ? ', then set up two-step sign-in' : ''}.`}
       footer={added ? <Button onClick={() => close(false)}>Done</Button> : undefined}>
       {added ? (
         <OneTimePassword email={added.email} password={added.temporaryPassword} />
@@ -201,6 +217,7 @@ function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
 
 /** A temporary password, shown once. It must be changed at first sign-in and stops working after 72 hours. */
 function OneTimePassword({ email, password }: { email: string; password: string }) {
+  const twoStepRequired = useMe().data?.twoFactorRequired ?? true;
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-3 text-sm">
@@ -211,7 +228,7 @@ function OneTimePassword({ email, password }: { email: string; password: string 
         <code className="rounded-md bg-surface-sunken px-3 py-1.5 font-mono text-base tracking-wide" data-testid="temporary-password">{password}</code>
         <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard?.writeText(password); setCopied(true); }}><Copy /> {copied ? 'Copied' : 'Copy'}</Button>
       </div>
-      <p className="text-text-muted">After their own password, they set up two-step sign-in with an authenticator app.</p>
+      {twoStepRequired && <p className="text-text-muted">After their own password, they set up two-step sign-in with an authenticator app.</p>}
     </div>
   );
 }

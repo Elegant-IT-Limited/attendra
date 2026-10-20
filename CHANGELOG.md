@@ -4,6 +4,25 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (signing in)
+
+- **Forgot your password?** With `ATTENDRA_MAIL_HOOK_URL` (a hosting layer's mailer, see docs/provisioning.md), the sign-in page offers a reset link by email: one hour, once, every session ended. The answer is the same for any address.
+- **Your account**, from the menu: change your password, turn on two-step sign-in, move it to a new phone, or get new backup codes; each asks for the password first.
+- **Reset two-step** on the Team page, for someone who lost their phone; a support route does the same for a sole owner.
+- **Back where you were.** A session that ends mid-work says so on the sign-in page, and every step after it (the code, a new password, two-step setup) ends on the page you were on.
+
+### Fixed (signing in)
+
+- A link to sign in can only lead back to a page of the dashboard, never to another site.
+- An outage no longer reads as a wrong password; too many tries, an expired temporary password and an unconfirmed email each say what to do.
+- An expired temporary password is reported only after the right one is typed.
+- A timed-out two-step check offers to sign in again instead of failing in a loop; a backup code has its own wording.
+- Someone removed from the team can be added again by the same practice (with a new temporary password); any other practice gets a neutral answer.
+- Idle time is counted across every tab of the dashboard, and `ATTENDRA_IDLE_MINUTES` sets how long (15 by default; up to 12 hours where no patient health information is kept).
+- Every password field has an eye button to show or hide what was typed.
+- Signing out on purpose opens a plain sign-in page; only a session that ended by itself offers the way back.
+- Text fields no longer zoom the page on an iPhone.
+
 ### Fixed (the final pre-launch review)
 
 - **Calls.** "I don't think he's okay", "I hope she's fine" or "is she okay?" no longer lift an animal emergency. The on-call transfer after an emergency script, a take-over and every hang-up wait until the assistant's words have been heard. Only one transfer or hang-up is ever on its way. Phone calls release what the engines keep per call.

@@ -1,13 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ChevronDown } from 'lucide-react';
-import { type ComponentProps, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId } from 'react';
+import { ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { type ComponentProps, type LabelHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useId, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted/60 hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11';
+const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted/60 hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11 max-md:text-[16px]';
 
 /** A text field. It takes a ref, like the input it renders (a file field needs one to be cleared). */
 export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn(field, 'h-9', className)} {...props} />;
+}
+
+/** A password field with an eye button that shows or hides what was typed. */
+export function PasswordInput({ className, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span className="relative block">
+      <input type={shown ? 'text' : 'password'} className={cn(field, 'h-9 pr-10', className)} {...props} />
+      {/* named by its text, not aria-label, so it is never mistaken for the field's own label */}
+      <button type="button" onClick={() => setShown((s) => !s)} aria-pressed={shown}
+        className="focus-ring absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-text-muted hover:text-text">
+        {shown ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+        <span className="sr-only">{shown ? 'Hide password' : 'Show password'}</span>
+      </button>
+    </span>
+  );
 }
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {

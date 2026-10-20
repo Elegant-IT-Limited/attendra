@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { changeTeam, type Database, listMembers, orgOfClinic, type TeamChange, type TeamResult, TEMPORARY_PASSWORD_HOURS } from '@attendra/db';
+import { changeTeam, type Database, listMembers, membershipCount, orgOfClinic, type TeamChange, type TeamResult, TEMPORARY_PASSWORD_HOURS } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
@@ -11,14 +11,18 @@ import { AUTH, CLOCK, DB } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { createAccount, deleteNewAccount, findAccount, hashPassword, temporaryPassword } from '../members';
 
+// neither "with another practice" nor anything else about the account: it is not ours to tell
+const NOT_HERE = { error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' };
+
 const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Error> = {
+  account_exists: () => new ConflictException(NOT_HERE),
   not_found: () => new NotFoundException({ error: 'not_found' }),
   already_member: () => new ConflictException({ error: 'already_member', message: 'This person is already on the team. Change their role instead.' }),
   self: () => new ForbiddenException({ error: 'forbidden', message: 'You cannot do that to your own account here. Ask another owner or manager.' }),
   owner_protected: () => new ForbiddenException({ error: 'forbidden', message: 'Only an owner can change, reset or remove an owner.' }),
   owner_grant: () => new ForbiddenException({ error: 'forbidden', message: 'Only an owner can make someone an owner.' }),
   last_owner: () => new ConflictException({ error: 'last_owner', message: 'This is the last owner. Make someone else an owner first.' }),
-  other_organizations: () => new ConflictException({ error: 'other_organizations', message: 'This person also works for another organization on Attendra, so their password cannot be reset from here. They can change it themselves after signing in, or ask Attendra support.' }),
+  other_organizations: () => new ConflictException({ error: 'other_organizations', message: 'This person also works for another practice on Attendra, so their password and two-step sign-in cannot be reset from here. They can use "Forgot your password?" on the sign-in page, or write to Attendra support.' }),
 };
 
 /**
@@ -62,7 +66,13 @@ export class TeamController {
     const existing = await findAccount(this.auth, body.email);
     if (existing) {
       if ((await listMembers(this.db, orgId)).some((m) => m.userId === existing.id)) throw REFUSED.already_member();
-      throw new ConflictException({ error: 'account_exists', message: 'This person already uses Attendra with another practice. Invitations for existing accounts are coming soon.' });
+      // someone this practice removed earlier, who belongs to no team now: added back, with a new temporary password
+      if (existing.emailVerified && (await membershipCount(this.db, existing.id)) === 0) {
+        const password = temporaryPassword();
+        this.check(await this.change(orgId, staff, { type: 'add', userId: existing.id, role: body.role, temporary: true, approvesRefills: body.approvesRefills, passwordHash: await hashPassword(this.auth, password) }));
+        return { userId: existing.id, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
+      }
+      throw new ConflictException(NOT_HERE);
     }
     const password = temporaryPassword();
     const userId = await createAccount(this.auth, { email: body.email, name: body.name, password });
@@ -91,6 +101,16 @@ export class TeamController {
     const password = temporaryPassword();
     this.check(await this.change(orgId, staff, { type: 'reset', userId, passwordHash: await hashPassword(this.auth, password) }));
     return { userId, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
+  }
+
+  @Post(':userId/reset-two-factor')
+  @HttpCode(204)
+  @Requires('members:manage')
+  @ApiOperation({ summary: 'A lost phone: turn off the person\'s two-step sign-in and sign them out everywhere; they set it up again at their next sign-in. Audited.' })
+  @ApiNoContentResponse()
+  @ApiForbiddenResponse({ description: 'Your own account, or a manager resetting an owner' })
+  async resetTwoFactor(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @CurrentStaff() staff: Staff) {
+    this.check(await this.change(await this.org(clinicId), staff, { type: 'two_factor', userId }));
   }
 
   @Patch(':userId')

@@ -5,11 +5,18 @@ import { type ReactNode, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/overlay';
 import { ToastProvider } from '@/components/ui/toast';
 import { ApiFailure, redirectFor } from '@/lib/api';
+import { safeNext, signedOutOnPurpose } from '@/lib/next';
 
-// A signed-out or not-yet-enrolled person is sent to the right page from any screen.
+// A signed-out or not-yet-enrolled person is sent to the right page from any screen. A
+// session that ended mid-work says so on the sign-in page, and comes back to the same page.
 function follow(error: unknown) {
   const to = redirectFor(error);
-  if (to && window.location.pathname !== to) window.location.href = to;
+  if (!to || window.location.pathname === to) return;
+  if (to === '/sign-in' && signedOutOnPurpose()) window.location.href = to;
+  else if (to === '/sign-in') {
+    const here = window.location.pathname + window.location.search;
+    window.location.href = `/sign-in?expired=1${safeNext(here) ? `&next=${encodeURIComponent(here)}` : ''}`;
+  } else window.location.href = to;
 }
 
 export function Providers({ children }: { children: ReactNode }) {

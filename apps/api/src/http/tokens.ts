@@ -58,8 +58,12 @@ export interface ApiOptions {
   accountLinks?: { label: string; href: string }[];
   /** 'optional' lets people use the dashboard without two-step sign-in. Default 'required'. */
   twoFactor?: 'required' | 'optional';
+  /** Minutes without activity before the dashboard signs out (default 15). */
+  idleMinutes?: number;
   /** The bearer token for /api/v1/provisioning; without it those routes answer 404. */
   provisioningToken?: string;
+  /** "Forgot password" works: the hosting layer's mail hook is set. The sign-in page offers it. */
+  passwordReset?: boolean;
   /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */
   liveStream?: { maxMs?: number; recheckMs?: number };
 }

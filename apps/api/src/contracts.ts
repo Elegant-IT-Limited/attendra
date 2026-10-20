@@ -23,6 +23,11 @@ export const Health = z.object({
   demoMode: z.boolean(),
   // only on a local demo (`pnpm demo`); a deployed demo never publishes its password
   demoSignIn: z.object({ password: z.string(), logins: z.array(z.object({ email: z.string(), label: z.string() })) }).optional(),
+  /** "Forgot password" can email a link. Without it, the sign-in page says to ask a practice manager. */
+  passwordReset: z.boolean(),
+  /** A hosted deployment's own sign-up page, and where to get a new confirmation link. */
+  signupUrl: z.string().optional(),
+  resendUrl: z.string().optional(),
 });
 
 export const Me = z.object({
@@ -30,6 +35,8 @@ export const Me = z.object({
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
+  /** Minutes without activity, in every tab, before the dashboard signs out. */
+  idleMinutes: z.number(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */

@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
  * shown, so content that arrives a moment later (the demo logins) does not move the
  * form under someone's cursor.
  */
-export function AuthCard({ title, subtitle, children, pending = false }: { title: string; subtitle?: string; children: ReactNode; pending?: boolean }) {
+export function AuthCard({ title, subtitle, children, pending = false, footer }: { title: string; subtitle?: string; children: ReactNode; pending?: boolean; footer?: ReactNode }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
       <div className={pending ? 'invisible w-full max-w-sm space-y-6' : 'w-full max-w-sm space-y-6'} aria-busy={pending || undefined}>
@@ -22,6 +22,7 @@ export function AuthCard({ title, subtitle, children, pending = false }: { title
           </div>
           {children}
         </div>
+        {footer && <p className="text-center text-sm text-text-muted">{footer}</p>}
         <p className="text-center text-xs text-text-muted">Attendra keeps patient data encrypted and every view in an audit log.</p>
       </div>
     </main>

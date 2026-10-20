@@ -7,6 +7,7 @@ import { embedderFromEnv } from '@attendra/worker/runtime';
 import OpenAI from 'openai';
 import { createApi } from './app';
 import { createAuth } from './auth';
+import { mailHook } from './mail-hook';
 import { loadEnv } from './config';
 import { httpVoiceClient } from './voice';
 import { openAiVoiceSampler } from './voice-samples/samplers';
@@ -25,12 +26,14 @@ const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) :
 const answerer = openai ? new ModelAnswerer(openai, env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
 // the greeting in a voice, for Settings' Listen button
 const voiceSamples = openai ? openAiVoiceSampler(openai, env.ATTENDRA_TTS_MODEL) : null;
+// "forgot password" emails go out through the hosting layer, which holds the mailer
+const mail = env.ATTENDRA_MAIL_HOOK_URL && env.ATTENDRA_PROVISIONING_TOKEN ? mailHook(env.ATTENDRA_MAIL_HOOK_URL, env.ATTENDRA_PROVISIONING_TOKEN, log) : null;
 const app = await createApi({
   db,
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
-  auth: createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET, log }),
+  auth: createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET, log, passwordReset: mail ?? undefined }),
   log,
-  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, twoFactor: env.ATTENDRA_TWO_FACTOR, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN },
+  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, twoFactor: env.ATTENDRA_TWO_FACTOR, idleMinutes: env.ATTENDRA_IDLE_MINUTES, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN, passwordReset: !!mail },
   trustProxy: env.TRUST_PROXY,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
