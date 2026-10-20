@@ -16,18 +16,19 @@ const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
 /**
  * Your account: your password, and two-step sign-in (a new phone, new backup codes, or
- * turning it on where it is optional). Each change asks for the password first.
+ * turning it on or off where it is optional). Each change asks for the password first.
  */
 function Profile() {
   const me = useMe();
   const queries = useQueryClient();
   const changed = useSearchParams().get('changed');
   // what the password is being asked for
-  const [asking, setAsking] = useState<'phone' | 'codes' | null>(null);
+  const [asking, setAsking] = useState<'phone' | 'codes' | 'off' | null>(null);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [codes, setCodes] = useState<string[] | null>(null);
+  const [turnedOff, setTurnedOff] = useState(false);
   const user = me.data?.user;
   const first = me.data?.clinics[0];
   // a temporary password is changed before anything else
@@ -39,12 +40,16 @@ function Profile() {
     setError(null);
     setBusy(true);
     try {
-      if (asking === 'phone') {
-        // off for a moment, then straight into setting it up on the new phone
+      if (asking === 'phone' || asking === 'off') {
+        // off: for a moment and straight into setting it up on the new phone, or for good where it is optional
         const res = await authClient.twoFactor.disable({ password });
         if (res.error) { setBusy(false); return setError(res.error.status === 429 ? 'Too many tries. Wait a minute and try again.' : 'That password is not right.'); }
         await queries.invalidateQueries({ queryKey: ['me'] });
-        return window.location.assign('/setup-two-factor');
+        if (asking === 'phone') return window.location.assign('/setup-two-factor');
+        setBusy(false);
+        setAsking(null);
+        setPassword('');
+        return setTurnedOff(true);
       }
       const res = await authClient.twoFactor.generateBackupCodes({ password });
       setBusy(false);
@@ -75,11 +80,13 @@ function Profile() {
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => { setAsking('phone'); setCodes(null); }}>Use a new phone</Button>
                 <Button size="sm" variant="outline" onClick={() => { setAsking('codes'); setCodes(null); }}>New backup codes</Button>
+                {me.data?.twoFactorRequired === false && <Button size="sm" variant="outline" onClick={() => { setAsking('off'); setCodes(null); }}>Turn it off</Button>}
               </div>
             )}
           </>
         ) : (
           <>
+            {turnedOff && <Alert tone="ok">Two-step sign-in is off. You sign in with your password only.</Alert>}
             <p className="text-sm text-text-muted">Off. A code from an authenticator app keeps your account safe even if someone learns your password.</p>
             <Link className={LINK} href="/setup-two-factor">Turn it on</Link>
           </>
@@ -87,7 +94,7 @@ function Profile() {
         {asking && (
           <form onSubmit={confirm} className="space-y-3 rounded-md border border-border p-3">
             <div className="space-y-1.5">
-              <Label htmlFor="confirm-password">{asking === 'phone' ? 'Your password, to set up a new phone' : 'Your password, for new backup codes'}</Label>
+              <Label htmlFor="confirm-password">{asking === 'phone' ? 'Your password, to set up a new phone' : asking === 'off' ? 'Your password, to turn two-step off' : 'Your password, for new backup codes'}</Label>
               <PasswordInput id="confirm-password" autoComplete="current-password" required autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
               {asking === 'codes' && <p className="text-xs text-text-muted">Your old backup codes stop working.</p>}
             </div>
