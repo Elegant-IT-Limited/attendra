@@ -72,6 +72,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
   const emit: EventSink['emit'] = (clinicId, e) => (d.events?.emit(clinicId, e) ?? Promise.resolve()).catch((err: unknown) =>
     d.log.warn({ clinic_id: clinicId, type: e.type, err: { message: (err as Error).message } }, 'could not queue an event'));
   const now = d.now ?? (() => new Date());
+  /** Reminder texts the carrier refused for now (an outage, a rate limit), by visit: tried again, 3 times at most. */
+  const reminderTries = new Map<string, number>();
   return {
     /** A closed call: queue what every closed call needs, once each. */
     async callCompleted(job: CallJob) {
@@ -136,6 +138,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         const parsed = ClinicConfig.safeParse(row.config);
         if (!parsed.success) continue;
         const config = parsed.data;
+        // no reminder goes out under 2 hours before a visit; a setting of 2 hours means 3, so it can send at all
         const r = textingOf(config).reminders;
         if (!r.enabled || quiet(localParts(at, config.timezone).minutes, r.quietFrom, r.quietTo)) continue;
         const clinicId = config.id;
@@ -145,7 +148,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           .leftJoin(schema.calls, eq(schema.calls.id, schema.appointments.createdByCallId))
           .where(and(
             eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.status, 'booked'), isNull(schema.appointments.reminderSentAt),
-            gt(schema.appointments.startsAt, new Date(at.getTime() + 2 * 3_600_000)), lte(schema.appointments.startsAt, new Date(at.getTime() + r.hoursBefore * 3_600_000)),
+            gt(schema.appointments.startsAt, new Date(at.getTime() + 2 * 3_600_000)), lte(schema.appointments.startsAt, new Date(at.getTime() + Math.max(r.hoursBefore, 3) * 3_600_000)),
             isNotNull(schema.patients.smsConsentAt), isNotNull(schema.patients.phoneEnc),
           )));
         if (!due.length) continue;
@@ -167,7 +170,13 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             idempotencyKey: `reminder:${a.id}:${a.startsAt.toISOString()}`, about: { patientId: p.id, appointmentId: a.id },
           });
           if (result.messageId) await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSmsId: result.messageId }).where(eq(schema.appointments.id, a.id)));
-          if (result.status === 'sent') sent++;
+          if (result.status === 'sent') { sent++; reminderTries.delete(a.id); continue; }
+          // a refusal that may pass (the carrier, a rate limit): the visit is let go, so a later run tries again
+          const tries = (reminderTries.get(a.id) ?? 0) + 1;
+          if (result.status === 'not_sent' && (result.reason === 'carrier' || result.reason === 'rate_limited') && tries < 3) {
+            reminderTries.set(a.id, tries);
+            await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSentAt: null }).where(eq(schema.appointments.id, a.id)));
+          } else reminderTries.delete(a.id);
         }
       }
       if (sent) d.log.info({ sent }, 'reminder texts sent');

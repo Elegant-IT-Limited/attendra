@@ -216,13 +216,15 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
                   return (
                     <section key={p.id} className="px-5 py-4" aria-label={p.name}>
                       <h3 className="mb-2 flex items-baseline justify-between text-sm font-semibold">
-                        {p.name}
+                        {/* the starter's placeholder is "our veterinarian": a heading starts with a capital */}
+                        {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
                         <span className="text-xs font-normal text-text-muted">{windows.length ? `${mine.length} booked` : ''}</span>
                       </h3>
                       {!windows.length ? <p className="text-sm text-text-muted">Not working today.</p> : !rows.length ? <p className="text-sm text-text-muted">Nothing left today.</p> : (
                         <ul className="space-y-1">
                           {rows.slice(0, 9).map((r) => r.kind === 'gap' ? (
-                            <li key={`gap-${r.s}`} className="rounded-md border border-dashed border-border px-2.5 py-1 text-xs text-text-muted">Open {clock(r.s)} to {clock(r.e)}</li>
+                            // free time, from the next 5 minutes when it starts now
+                            <li key={`gap-${r.s}`} className="rounded-md border border-dashed border-border px-2.5 py-1 text-xs text-text-muted">Free {clock(Math.min(r.e, Math.ceil(r.s / 5) * 5))} to {clock(r.e)}</li>
                           ) : (
                             <li key={r.a!.id}>
                               <Link href={`/c/${clinicId}/schedule?appointment=${r.a!.id}`}

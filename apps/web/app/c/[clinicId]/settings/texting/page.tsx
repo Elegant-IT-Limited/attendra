@@ -124,7 +124,7 @@ export default function TextingSettings() {
           {r.enabled && (
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Hours before the visit" htmlFor="reminder-hours" hint="Between 2 and 168. 24 is the day before.">
-                <Input id="reminder-hours" type="number" min={2} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
+                <Input id="reminder-hours" type="number" min={3} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
               </Field>
               <Field label="Quiet hours" htmlFor="quiet-from" hint="No texts between these times, in your time zone. One that would fall in them goes out when they end." className="sm:col-span-2">
                 <div className="flex items-center gap-2">

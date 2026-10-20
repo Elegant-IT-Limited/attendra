@@ -72,8 +72,12 @@ const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal'
 const BLANK = {
   named: (x: { name: string }) => !x.name.trim(),
   hospital: (h: { name: string; phone: string; address?: string }) => !h.name.trim() && !h.phone.replace(/\D/g, '') && !h.address?.trim(),
-  /** Empty, or only the country code the new row started with. */
-  number: (n: string, c: { phoneNumbers: string[] }) => { const d = n.replace(/\D/g, ''); return !d || d === (callingCode(c.phoneNumbers[0] ?? '') ?? ''); },
+  /** Empty, or only the country code the new row started with. A SIP address (sip:frontdesk@pbx…) is never blank. */
+  number: (n: string, c: { phoneNumbers: string[] }) => {
+    if (/^sips?:\S/i.test(n.trim())) return false;
+    const d = n.replace(/\D/g, '');
+    return !d || d === (callingCode(c.phoneNumbers[0] ?? '') ?? '');
+  },
 };
 
 /** The settings without rows left empty, so a forgotten new row never blocks a save. */
@@ -128,9 +132,9 @@ export default function Settings() {
     el?.querySelector<HTMLInputElement>('input, select, textarea')?.focus({ preventScroll: true });
     // a brief outline, so the eye finds the row the button pointed to
     el?.classList.add('ring-2', 'ring-primary');
-    const t = el ? setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1200) : undefined;
+    // not cleared when `added` resets below: the outline must still come off
+    if (el) setTimeout(() => el.classList.remove('ring-2', 'ring-primary'), 1200);
     setAdded(null);
-    return () => clearTimeout(t);
   }, [added, draft]);
   /** One empty row at a time: with an empty one already there, the button takes you to it instead of adding another. */
   const addOrFocus = <T,>(list: T[], blank: (x: T) => boolean, idOf: (x: T, i: number) => string, add: () => void) => {

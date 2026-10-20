@@ -119,7 +119,7 @@ export class WebhooksController {
   @ApiOperation({ summary: 'Deliver an event again, now' })
   @ApiOkResponse({ schema: schemaOf(WebhookAttempt) })
   async redeliver(@Param('clinicId') clinicId: string, @Param('endpointId') id: string, @Param('attemptId') attemptId: string) {
-    const previous = /^\d+$/.test(attemptId) ? await this.repo.attempt(clinicId, Number(attemptId)) : null;
+    const previous = /^\d{1,15}$/.test(attemptId) ? await this.repo.attempt(clinicId, Number(attemptId)) : null;
     if (!previous || previous.endpointId !== id) throw new NotFoundException({ error: 'not_found' });
     this.throttle(clinicId);
     return this.send(clinicId, id, previous.eventId, 'redelivery');

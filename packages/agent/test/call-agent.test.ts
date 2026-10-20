@@ -257,7 +257,7 @@ describe('safety', () => {
     const out = c.caller('actually I have chest pain and my left arm feels numb');
     expect(out[0]).toMatchObject({ type: 'instructions', delegationId: null });
     expect(out[0]!.type === 'instructions' && out[0]!.content).toContain('call 911');
-    expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000 });
+    expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000, quiet: true });
     expect(c.state.pending).toBeNull();
     expect(c.state.outcome).toBe('emergency');
   });
@@ -269,7 +269,7 @@ describe('safety', () => {
     expect(script).toContain('Front Range Pet Emergency');
     expect(script).toContain('call 911');
     expect(pet.state.emergency?.kind).toBe('pet_toxin');
-    expect(out).toContainEqual({ type: 'transfer', uri: 'tel:+17205550179', afterMs: 8000 });
+    expect(out).toContainEqual({ type: 'transfer', uri: 'tel:+17205550179', afterMs: 8000, quiet: true });
     // ending the call waits until the hospital's name has been said
     expect(pet.agent.canEndByStaff()).toBe(false);
     pet.agent.onAgentTranscript('Please take your pet to Front Range Pet Emergency right away.', 0, 1000);
@@ -287,7 +287,7 @@ describe('safety', () => {
     const general = c.caller('this is an emergency');
     expect(general.some((o) => o.type === 'transfer')).toBe(false); // the bare word rings no one
     const cardiac = c.caller('my husband has chest pain');
-    expect(cardiac).toContainEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000 });
+    expect(cardiac).toContainEqual({ type: 'transfer', uri: 'tel:+13035550199', afterMs: 8000, quiet: true });
     const again = c.caller('and now he is not breathing');
     expect(again.some((o) => o.type === 'transfer')).toBe(false);
   });
@@ -554,6 +554,19 @@ describe('what the review found on calls', () => {
     const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
     expect(slots!.data.error).toBe('after_hours');
     expect(c.state.offered.size).toBe(0);
+  });
+
+  it('keeps the emergency when the owner doubts, denies or asks whether the animal is fine', async () => {
+    const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
+    const c = await w.call('+17205550172', { clinic: open });
+    c.caller('my dog ate a whole bar of chocolate');
+    c.assistant('Please take your pet to Front Range Pet Emergency right away.');
+    for (const doubt of ["I don't think he's okay, he's still not moving", 'Do you think she is okay?', "I hope he's fine", 'No está bien, sigue sin moverse', '¿Usted cree que ella está bien?']) {
+      expect(c.caller(doubt), doubt).toEqual([]);
+      expect(c.state.emergencyLocked, doubt).toBe(true);
+      c.assistant('Please take him to the emergency hospital now.');
+    }
+    expect(c.caller("but he's fine now, it was a false alarm")[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('animal is safe') });
   });
 
   it('lets a calm owner carry on after an animal emergency they say is over, and never after a person in danger', async () => {

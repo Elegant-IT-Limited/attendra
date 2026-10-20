@@ -93,7 +93,7 @@ describe('taking over and ending', () => {
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
     const out = c.agent.takeOver('tel:+13035550101');
     expect(out[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining(TAKE_OVER_LINE) });
-    expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550101', afterMs: 3500 });
+    expect(out[1]).toEqual({ type: 'transfer', uri: 'tel:+13035550101', afterMs: 3500, quiet: true });
     expect(c.state.pending).toBeNull();
     expect(c.state.outcome).toBe('transferred');
   });

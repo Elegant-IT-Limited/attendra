@@ -362,6 +362,31 @@ describe('appointment reminders', () => {
     expect(row!.reminderSmsId).toEqual(expect.any(String));
   });
 
+  it('tries a reminder again when the carrier refused it for now, 3 times at most, and never shows it as sent', async () => {
+    let fail = 2;
+    const sent: string[] = [];
+    const texts = { send: async (m: { body: string }) => { if (fail-- > 0) throw Object.assign(new Error('Service unavailable'), { code: 20503 }); sent.push(m.body); return { sid: `SM${'f'.repeat(32)}` }; } };
+    let clock = zonedInstant('2026-10-11', '10:30', tz);
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts, now: () => clock });
+    const id = await visit(zonedInstant('2026-10-12', '10:00', tz));
+    const row = async () => (await withClinic(t.db, REM.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, id))))[0]!;
+    expect(await h.appointmentReminders()).toEqual({ sent: 0 });
+    expect((await row()).reminderSentAt).toBeNull(); // let go: the next run tries again
+    clock = new Date(clock.getTime() + 10 * 60_000);
+    expect(await h.appointmentReminders()).toEqual({ sent: 0 });
+    clock = new Date(clock.getTime() + 10 * 60_000);
+    expect(await h.appointmentReminders()).toEqual({ sent: 1 });
+    expect(sent).toHaveLength(1);
+    expect((await row()).reminderSentAt).toBeInstanceOf(Date);
+
+    // a carrier that keeps refusing: 3 tries, then the visit is left alone
+    fail = 99;
+    const stuck = await visit(zonedInstant('2026-10-12', '09:00', tz));
+    for (let i = 0; i < 5; i++) { clock = new Date(clock.getTime() + 10 * 60_000); await h.appointmentReminders(); }
+    const [left] = await withClinic(t.db, REM.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, stuck)));
+    expect(left!.reminderSentAt).toBeInstanceOf(Date);
+  });
+
   it('knows quiet hours that run past midnight', () => {
     expect(quiet(21 * 60, '20:00', '08:00')).toBe(true);
     expect(quiet(7 * 60, '20:00', '08:00')).toBe(true);
