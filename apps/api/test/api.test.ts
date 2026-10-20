@@ -44,7 +44,7 @@ describe('sign-in and two-factor', () => {
   });
 
   it('answers the health check without a session, and nothing else', async () => {
-    expect((await api.request('GET', '/api/v1/health')).json()).toEqual({ ok: true, demoMode: false });
+    expect((await api.request('GET', '/api/v1/health')).json()).toEqual({ ok: true, demoMode: false, passwordReset: false });
   });
 
   it('answers 401 with no session at all', async () => {
@@ -54,7 +54,7 @@ describe('sign-in and two-factor', () => {
 
 describe('the auth surface', () => {
   it('serves only the routes the dashboard uses; member admin stays closed', async () => {
-    for (const [method, path] of [['POST', 'organization/invite-member'], ['GET', 'organization/list-members'], ['POST', 'update-user'], ['POST', 'two-factor/disable']] as const) {
+    for (const [method, path] of [['POST', 'organization/invite-member'], ['GET', 'organization/list-members'], ['POST', 'update-user'], ['POST', 'delete-user']] as const) {
       expect((await api.request(method, `/api/auth/${path}`, { cookie: admin, body: method === 'POST' ? {} : undefined })).statusCode, path).toBe(404);
     }
   });

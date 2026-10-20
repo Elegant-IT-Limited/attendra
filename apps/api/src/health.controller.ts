@@ -9,10 +9,19 @@ import { API_OPTIONS, type ApiOptions } from './http/tokens';
 export class HealthController {
   constructor(@Inject(API_OPTIONS) private readonly options: ApiOptions) {}
 
-  /** Liveness, and whether this is a demo deployment (the sign-in page shows the demo logins). */
+  /**
+   * Liveness, and what the sign-in page offers: the demo logins on a demo, "Forgot
+   * password" when the hosting layer can email the link, and, on a hosted deployment
+   * (it has account pages under /account), sign-up and a new confirmation link.
+   */
   @Get()
   @Public()
   health() {
-    return { ok: true, demoMode: this.options.demoMode, ...(this.options.demoSignIn ? { demoSignIn: this.options.demoSignIn } : {}) };
+    const hosted = !!this.options.accountLinks?.length;
+    return {
+      ok: true, demoMode: this.options.demoMode, ...(this.options.demoSignIn ? { demoSignIn: this.options.demoSignIn } : {}),
+      passwordReset: !!this.options.passwordReset,
+      ...(hosted ? { signupUrl: '/account/signup', resendUrl: '/account/resend' } : {}),
+    };
   }
 }

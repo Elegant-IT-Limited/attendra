@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { createApi } from '../src/app';
 import { createAuth } from '../src/auth';
+import { mailHook } from '../src/mail-hook';
 import { httpVoiceClient } from '../src/voice';
 import { openAiVoiceSampler } from '../src/voice-samples/samplers';
 import { DEMO_LOGINS, LOCAL_DEMO_PASSWORD, seedDemoWorkspace } from './demo-data';
@@ -49,7 +50,9 @@ const log = createLogger({ name: 'api', level: process.env.LOG_LEVEL ?? 'info' }
 const { db, client } = await openTestDatabase();
 // fresh keys each run: nothing outlives the process, so nothing needs to be kept
 const cipher = createPhiCipher(randomBytes(32).toString('base64'));
-const auth = createAuth(db, { publicUrl, secret: randomBytes(32).toString('base64'), log });
+// "forgot password" through a local attendra-cloud, when one is running and given (ATTENDRA_MAIL_HOOK_URL)
+const mail = process.env.ATTENDRA_MAIL_HOOK_URL && provisioningToken ? mailHook(process.env.ATTENDRA_MAIL_HOOK_URL, provisioningToken, log) : undefined;
+const auth = createAuth(db, { publicUrl, secret: randomBytes(32).toString('base64'), log, passwordReset: mail });
 const results = await seedDemoWorkspace(db, cipher, auth, LOCAL_DEMO_PASSWORD);
 // The worker, in this process, on the same in-memory Postgres. Test calls made from
 // the browser are summarised by the model when there is a key; with test calls off
@@ -110,7 +113,7 @@ const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.
 const tts = realCalls ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const voiceSamples = tts ? openAiVoiceSampler(tts, process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts') : null;
 const changes = await pgliteChangeFeed(client);
-const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken }, voiceSamples });
+const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken, passwordReset: !!mail }, voiceSamples });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

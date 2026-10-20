@@ -11,15 +11,27 @@ Without the token the routes answer 404. With it, every request needs `Authoriza
 
 | Route | What it does |
 |---|---|
-| `POST /provisioning/accounts` | A new organization, its clinic and its owner. Body: `organization.name`; `clinic.name`, `clinic.timezone` (IANA), `clinic.industry` (`vet` or `clinic`), `clinic.phone` (the clinic's own main number, E.164, which sets the country; it is not pointed at Attendra); `owner.name`, `owner.email`, `owner.password` (12 characters or more); optional `testCallMinutes` and `plan`. Answers `201 { organizationId, clinicId, userId }`, or `409 email_taken`. The clinic starts from its pack's first settings: weekday hours, the pack's visit types, one provider to book with, no FAQ. |
+| `POST /provisioning/accounts` | A new organization, its clinic and its owner. Body: `organization.name`; `clinic.name`, `clinic.timezone` (IANA), `clinic.industry` (`vet` or `clinic`), `clinic.phone` (the clinic's own main number, E.164, which sets the country; it is not pointed at Attendra); `owner.name`, `owner.email`, `owner.password` (12 characters or more); optional `testCallMinutes`, `plan` and `replaceUnconfirmed`. Answers `201 { organizationId, clinicId, userId }`, or `409 { error: 'email_taken', confirmed }`. With `replaceUnconfirmed: true`, an account with this email that was never confirmed (and has had no calls) is removed, with what it opened alone, and this one is opened instead: someone signing up again before confirming starts over. The clinic starts from its pack's first settings: weekday hours, the pack's visit types, one provider to book with, no FAQ. |
 | `POST /provisioning/organizations/:organizationId/clinics` | Another location in the organization. Body: `clinic` as above, optional `testCallMinutes`. Answers `201 { clinicId }`, or 404 for no such organization. It starts from the pack's first settings and copies the first clinic's assistant: texting, languages, assistant name, voice, how it talks, call-record days, common questions, kinds of request, fields and menu links; hours, doctors, address, transfers and hospitals are its own. Everyone in the organization sees it (memberships are per organization). Audited on the first clinic as `clinic.created`. |
 | `POST /provisioning/email-confirmations` | `{ email }`. An account opened here cannot sign in until its address is confirmed; the hosting layer sends the link and calls this when it is opened. |
+| `DELETE /provisioning/accounts/unconfirmed` | `{ email }`. Takes back an account whose email was never confirmed, with what it opened alone: for a sign-up the hosting layer could not finish. `204`, `404 not_found`, or `409` when it is confirmed (`confirmed`) or has had calls (`in_use`). |
+| `POST /provisioning/users/reset-two-factor` | `{ email }`. Support, for someone who lost their phone and has nobody at the clinic to reset two-step sign-in for them. Turns it off and signs them out everywhere; they set it up again at their next sign-in. `204` or `404`. |
 | `PUT /provisioning/clinics/:clinicId/voice-engine` | `{ engine }`: `gpt-live`, `gpt-realtime`, or `null` for the deployment's default. Which engine answers the clinic's calls (see docs/live-call.md, Two engines). Settings cannot change it. |
 | `PUT /provisioning/clinics/:clinicId/test-call-limit` | `{ seconds }`, or `null` for no limit. |
 | `PUT /provisioning/clinics/:clinicId/numbers/:number` | Points a number (E.164, URL-encoded) at the clinic: calls to it reach the assistant and texts are sent from it. |
 | `DELETE /provisioning/numbers/:number` | Stops a number reaching any clinic. |
 | `GET /provisioning/clinics/:clinicId/usage?from=&to=` | Phone calls in the period (ISO times): `{ calls, seconds }`, each call start to end, rounded up to the second. Browser test calls are not counted. |
 | `GET /provisioning/clinics/:clinicId/report?weeks=1` | The weekly report: the clinic's name, time zone, industry and average visit value, its owners with a confirmed address, and the Quality page's numbers for the last whole weeks, newest first. |
+
+## Password reset emails
+
+The engine has no mailer. With a hook, "Forgot your password?" appears on the sign-in page and the engine asks the hosting layer to send the link:
+
+```bash
+ATTENDRA_MAIL_HOOK_URL=https://accounts.internal/api/engine-mail   # called with the provisioning token
+```
+
+It posts `{ type: 'password_reset', email, name, emailVerified, url }` with `Authorization: Bearer <provisioning token>`. The link works once, for one hour, and signs the person out everywhere when used. The sign-in page answers the same whether or not the address has an account; requests are limited to 5 an hour. Without the hook, the page tells people to ask their practice owner or manager, who reset passwords on the Team page.
 
 ## Two-step sign-in
 

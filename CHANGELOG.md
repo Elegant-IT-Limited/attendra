@@ -4,6 +4,22 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (signing in)
+
+- **Forgot your password?** With `ATTENDRA_MAIL_HOOK_URL` (a hosting layer's mailer, see docs/provisioning.md), the sign-in page offers a reset link by email: one hour, once, every session ended. The answer is the same for any address.
+- **Your account**, from the menu: change your password, turn on two-step sign-in, move it to a new phone, or get new backup codes; each asks for the password first.
+- **Reset two-step** on the Team page, for someone who lost their phone; a support route does the same for a sole owner.
+- **Back where you were.** A session that ends mid-work says so on the sign-in page, and every step after it (the code, a new password, two-step setup) ends on the page you were on.
+
+### Fixed (signing in)
+
+- An outage no longer reads as a wrong password; too many tries, an expired temporary password and an unconfirmed email each say what to do.
+- An expired temporary password is reported only after the right one is typed.
+- A timed-out two-step check offers to sign in again instead of failing in a loop; a backup code has its own wording.
+- Someone removed from the team can be added again (with a new temporary password); an address used with another practice gets a neutral answer.
+- Fifteen idle minutes are counted across every tab of the dashboard.
+- Text fields no longer zoom the page on an iPhone.
+
 ### Fixed (the final pre-launch review)
 
 - **Calls.** "I don't think he's okay", "I hope she's fine" or "is she okay?" no longer lift an animal emergency. The on-call transfer after an emergency script, a take-over and every hang-up wait until the assistant's words have been heard. Only one transfer or hang-up is ever on its way. Phone calls release what the engines keep per call.
