@@ -58,6 +58,9 @@ describe('booking over the phone', () => {
     expect(await bookings()).toHaveLength(1);
     expect(w.sms).toMatchObject([{ to: '+13035550147', template: 'booking_confirmed', language: 'en' }]);
     expect(c.state.outcome).toBe('booked');
+    // the visit type comes back with it, so moving it looks for the same kind of visit
+    const listed = (await c.delegate([{ tool: 'list_appointments', args: {} }])).results[0]!;
+    expect(listed.data.appointments).toEqual([expect.objectContaining({ visit_type_id: 'vt_sick', visit: 'sick visit' })]);
   });
 
   it('does not book on a hedge, even when the planner tries to commit', async () => {
@@ -298,6 +301,38 @@ describe('safety', () => {
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
     expect(spoken(out)).toContain('Do not promise approval');
     expect(c.state.outcome).toBe('task_created');
+  });
+
+  it('calls back at the number they are calling from when the caller says it is fine, and asks for one when it is withheld', async () => {
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    const c = await w.call('+13035550163');
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: null } }]);
+    await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: null } }]);
+    await c.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: null, topic: null } }]);
+    expect(create.mock.calls.map(([, input]) => input.details.callback_number)).toEqual(['+13035550163', '+13035550163']);
+    const hidden = await w.call(null);
+    const out = await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: null, topic: null } }]);
+    expect(out.errors).toEqual(['no_callback_number']);
+    expect(spoken(out)).toContain('ask for the best number');
+    await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: '303 555 0199', topic: null } }]);
+    expect(create.mock.calls.at(-1)![1].details.callback_number).toBe('303 555 0199');
+    create.mockRestore();
+  });
+
+  it('answers from the common questions when no document does, and searches for the topic, not the clinic name', async () => {
+    const c = await w.call();
+    c.caller('Where are you? What is the address?');
+    const [found] = (await c.delegate([{ tool: 'search_knowledge', args: { question: 'clinic address' } }])).results;
+    expect(found!.data).toMatchObject({ source: 'faq_address', answer: expect.stringContaining('214 Maple Street') });
+    expect(c.state.outcome).toBe('info');
+    c.caller('Do you do tattoo removal?');
+    const search = vi.fn(async () => []);
+    Object.assign(w.backend, { knowledge: { search } });
+    const [none] = (await c.delegate([{ tool: 'search_knowledge', args: { question: 'Does Maple Street Family Medicine do tattoo removal?' } }])).results;
+    Object.assign(w.backend, { knowledge: undefined });
+    expect(search).toHaveBeenCalledWith(expect.any(String), 'Does do tattoo removal?');
+    expect(none!.data).toMatchObject({ passages: [] });
+    expect(none!.data.say).toContain('I don\'t have that information');
   });
 
   it('refuses a medical question the caller asked, even when the model passes on a softened one', async () => {

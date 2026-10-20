@@ -71,6 +71,20 @@ export function judgeReport(runs: { scenario: Scenario; result: ScenarioResult; 
     if (r.error) out.push(`- Not judged: ${r.error}`);
     if (r.verdict) for (const k of keys) if (r.verdict[k].score < 5) out.push(`- ${k} ${r.verdict[k].score}/5: ${r.verdict[k].reason}`);
     out.push('');
+    // a failed call in full, to read what happened: the lines, and each tool call with what came back (synthetic data only)
+    if (!r.result.passed) out.push(...callDetails(r.result), '');
   }
   return `${out.join('\n')}\n`;
+}
+
+/** The call as it happened: each line, then each tool call with its arguments and a short result. Synthetic people only. */
+export function callDetails(r: Pick<ScenarioResult, 'transcript' | 'calls'>): string[] {
+  const clip = (v: unknown, n = 300) => { const j = JSON.stringify(v) ?? ''; return j.length > n ? `${j.slice(0, n)}…` : j; };
+  return [
+    '<details><summary>Transcript and tools</summary>', '',
+    ...r.transcript.map((l) => (l.speaker === 'instruction' ? `> _instruction: ${l.text}_` : `> **${l.speaker === 'caller' ? 'Caller' : 'Assistant'}:** ${l.text}`)).flatMap((l) => [l, '>']),
+    '',
+    ...r.calls.map((c) => `- \`${c.tool}\` ${clip(c.args, 200)} → ${clip(c.data)}`),
+    '', '</details>',
+  ];
 }

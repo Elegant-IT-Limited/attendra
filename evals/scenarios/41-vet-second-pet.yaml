@@ -2,6 +2,7 @@ id: vet-second-pet
 title: An owner with two pets on one number moves from the dog to the cat, and the cat's vaccines are booked
 clinic: riverbend
 local_time: "11:00"
+facts: "You are calling from the number on file. Any time works, with any vet. You want the second time offered; say yes when it is read back."
 turns:
   - caller: Hi, Linh Nguyen here. Biscuit's fine, but I need to book vaccines for my cat Mochi.
     reply: "Thanks, Linh. I've found Mochi. For a vaccine appointment I can offer {offered.0}, or {offered.1}."

@@ -1,6 +1,7 @@
 id: new-patient-books
 title: Someone new to the clinic is found nowhere, is added, and books a new patient visit on a clear yes; no text goes to a number they are not calling from
 caller_number: null
+facts: "You are new to the clinic and female. You are calling from 303 555 0193. Any time works, with any doctor. Say yes to the first time offered and to the read-back."
 turns:
   - caller: Hi, I'd like an appointment. I'm Ana Reyes, born June 1 1990, my number is 303 555 0193.
     reply: "I couldn't find a record with those details. Are you new to the clinic?"

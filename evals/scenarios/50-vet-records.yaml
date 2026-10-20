@@ -2,6 +2,7 @@ id: vet-records
 title: An owner asks for a pet's records to go to a boarding place; the pet is found first, and it becomes a request for the team
 clinic: riverbend
 caller_number: "+17205550174"
+facts: "Luna is your dog. Happy Tails boarding's phone is 720 555 0188. You leave on Friday. The number you are calling from is fine for a callback."
 turns:
   - caller: Hi, it's Carmen Ortiz. Can you send Luna's vaccine records to Happy Tails boarding? We leave on Friday.
     reply: "Thanks, Carmen. I've asked the team to send Luna's vaccine records to Happy Tails before Friday. They'll call you if they need anything."

@@ -36,6 +36,10 @@ export const Scenario = z.object({
   // must follow them. A second location is the same clinic with its own name, hours, vets and hospital.
   settings: z.record(z.string(), z.unknown()).optional(),
   turns: z.array(Turn).min(1),
+  // live only: what the caller knows beyond their scripted lines (a pharmacy, a callback number, a yes to a
+  // reminder). With it, a model playing the caller answers the real planner's follow-up questions after the
+  // scripted lines run out, up to four lines, so a call is judged on how it ends, not on a script it outran
+  facts: z.string().optional(),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),
     refusals: z.array(z.string()).default([]), // error codes runTool must return, in order

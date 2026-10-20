@@ -91,6 +91,7 @@ export const REFUSALS: Record<string, string> = {
   staff_books: 'booked by the team only, request taken',
   too_far_ahead: 'too far ahead for this visit',
   after_hours: 'closed, request taken instead',
+  no_callback_number: 'no number to call back, asked for one',
 };
 
 /** Requests, in the words a front desk uses. The API still calls them tasks. */

@@ -25,10 +25,10 @@ const quiet = createLogger({ name: 'sim', destination: new Writable({ write: (_c
 
 /** Remembers what each tool returned, so the refusals and the booking attempt can be counted. */
 class Watched implements Planner {
-  readonly results: { tool: string; result: ToolResult }[] = [];
+  readonly results: { tool: string; args: unknown; result: ToolResult }[] = [];
   constructor(private readonly inner: Planner) {}
   plan(input: Parameters<Planner['plan']>[0], execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
-    return this.inner.plan(input, async (name, args) => { const r = await execute(name, args); this.results.push({ tool: name, result: r }); return r; });
+    return this.inner.plan(input, async (name, args) => { const r = await execute(name, args); this.results.push({ tool: name, args, result: r }); return r; });
   }
 }
 
@@ -72,6 +72,11 @@ export class TextAssistant implements AssistantUnderTest {
     this.clock += 3000;
     this.agent.onAgentTranscript(reply, this.clock, this.clock + 2000);
     return { reply, ended: this.ended };
+  }
+
+  /** Each tool call with its arguments and what came back, for the report. */
+  calls() {
+    return this.planner.results.map((r) => ({ tool: r.tool, args: r.args, data: r.result.data }));
   }
 
   result() {

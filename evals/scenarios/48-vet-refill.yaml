@@ -2,6 +2,7 @@ id: vet-refill
 title: A refill for a rabbit's medication becomes a request for a vet to approve, and nobody promises it
 clinic: riverbend
 caller_number: "+17205550173"
+facts: "Pepper takes meloxicam. You will pick it up at the clinic. The number you are calling from is fine for a callback."
 turns:
   - caller: Hi, Daniel Brooks, my rabbit Pepper is nearly out of her meloxicam.
     reply: "Thanks, Daniel. I've sent Pepper's meloxicam refill request to the vet, for pick-up at the clinic. They'll call you if they have any questions."

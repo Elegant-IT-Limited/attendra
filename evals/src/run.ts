@@ -7,6 +7,7 @@ import { ResponsesPlanner } from '@attendra/agent';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import OpenAI from 'openai';
+import { modelFollowUp } from './follow-up';
 import { Judge, judgeReport, type Verdict } from './judge';
 import { loadScenarios, type Scenario } from './scenario';
 import { runScenario, type ScenarioResult } from './simulator';
@@ -20,6 +21,8 @@ if (judging && !live) {
 const judge = judging ? new Judge(new OpenAI(), process.env.ATTENDRA_JUDGE_MODEL ?? 'gpt-6-luna') : null;
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
 const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna') : undefined;
+// live, a model answers the planner's follow-up questions for a scenario that lists its facts
+const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
 
 const scenarios = loadScenarios().filter((s) => !only || s.id.includes(only));
 const c = (n: number) => (s: string) => (process.stdout.isTTY || process.env.FORCE_COLOR ? `\x1b[${n}m${s}\x1b[0m` : s);
@@ -29,7 +32,7 @@ console.log(bold(`attendra evals`) + dim(`  ${scenarios.length} scenarios · pla
 let failed = 0;
 const runs: { scenario: Scenario; result: ScenarioResult; verdict: Verdict | null; error?: string }[] = [];
 for (const s of scenarios) {
-  const r = await runScenario(s, planner);
+  const r = await runScenario(s, planner, followUp);
   if (!r.passed) failed++;
   if (judge) {
     // a judge that fails is a gap in the report, never a failed eval
