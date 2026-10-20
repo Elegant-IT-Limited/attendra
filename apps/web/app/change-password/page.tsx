@@ -5,7 +5,7 @@ import { type FormEvent, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Label, PasswordInput } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { signOutAndLeave } from '@/lib/next';
@@ -62,16 +62,16 @@ export default function ChangePassword() {
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="current">{temporary ? 'Temporary password' : 'Current password'}</Label>
-          <Input id="current" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+          <PasswordInput id="current" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="next">New password</Label>
-          <Input id="next" type="password" autoComplete="new-password" required minLength={12} value={next} onChange={(e) => setNext(e.target.value)} />
+          <PasswordInput id="next" autoComplete="new-password" required minLength={12} value={next} onChange={(e) => setNext(e.target.value)} />
           <p className="text-xs text-text-muted">At least 12 characters. Only you should know it.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="again">New password again</Label>
-          <Input id="again" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
+          <PasswordInput id="again" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
         </div>
         {error && <Alert tone="danger">{error}</Alert>}
         <Button type="submit" className="w-full" disabled={busy}>{busy ? 'Saving…' : 'Save my password'}</Button>

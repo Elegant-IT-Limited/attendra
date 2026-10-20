@@ -8,7 +8,7 @@ import { type FormEvent, type ReactNode, Suspense, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Input, Label, PasswordInput } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { rememberNext } from '@/lib/next';
@@ -72,7 +72,7 @@ function SignIn() {
     // shown once the API has said whether this is a demo, so the demo box never pushes the form down
     <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist." pending={health.isPending}
       footer={health.data?.signupUrl ? <>New to Attendra? <a className={LINK} href={health.data.signupUrl}>Start your free trial</a></> : undefined}>
-      {idle && <Alert>You were signed out after 15 minutes without activity.</Alert>}
+      {idle && <Alert>You were signed out after a while without activity.</Alert>}
       {expired && !idle && <Alert>You were signed out. Sign in again to carry on where you were.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
@@ -99,7 +99,7 @@ function SignIn() {
             <Label htmlFor="password">Password</Label>
             {health.data?.passwordReset && <Link className="text-sm text-primary underline-offset-4 hover:underline" href="/forgot-password">Forgot your password?</Link>}
           </div>
-          <Input id="password" type="password" autoComplete="current-password" required value={password} aria-invalid={!!error} aria-describedby={error ? 'sign-in-error' : undefined} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordInput id="password" autoComplete="current-password" required value={password} aria-invalid={!!error} aria-describedby={error ? 'sign-in-error' : undefined} onChange={(e) => setPassword(e.target.value)} />
           {health.data && !health.data.passwordReset && !health.data.demoMode && (
             <p className="text-xs text-text-muted">Forgot your password? Your practice owner or manager can give you a new one on the Team page.</p>
           )}

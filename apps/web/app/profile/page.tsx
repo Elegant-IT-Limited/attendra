@@ -7,7 +7,7 @@ import { type FormEvent, Suspense, useEffect, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Label, PasswordInput } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { signOutAndLeave } from '@/lib/next';
@@ -88,7 +88,7 @@ function Profile() {
           <form onSubmit={confirm} className="space-y-3 rounded-md border border-border p-3">
             <div className="space-y-1.5">
               <Label htmlFor="confirm-password">{asking === 'phone' ? 'Your password, to set up a new phone' : 'Your password, for new backup codes'}</Label>
-              <Input id="confirm-password" type="password" autoComplete="current-password" required autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
+              <PasswordInput id="confirm-password" autoComplete="current-password" required autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
               {asking === 'codes' && <p className="text-xs text-text-muted">Your old backup codes stop working.</p>}
             </div>
             {error && <Alert tone="danger">{error}</Alert>}

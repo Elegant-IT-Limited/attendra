@@ -28,6 +28,7 @@ export class MeController {
       user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword },
       demoMode: this.options.demoMode,
       twoFactorRequired: !this.options.demoMode && this.options.twoFactor !== 'optional',
+      idleMinutes: this.options.idleMinutes ?? 15,
       testCalls: !!this.voice?.browserCalls,
       simulatedCalls: !!this.voice?.simulatedCalls,
       clinics: clinics.map((c) => ({
