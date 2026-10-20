@@ -45,6 +45,11 @@ export interface ToolResult {
 }
 
 const MAX_VERIFY_ATTEMPTS = 3;
+/** Said with every miss: once the tries run out, nobody can be found or added on this call. */
+const triesLeft = (state: CallState) => {
+  const left = MAX_VERIFY_ATTEMPTS - state.verifyAttempts;
+  return left > 0 ? `${left} ${left === 1 ? 'try is' : 'tries are'} left; after that nobody can be found or added on this call.` : 'No tries are left.';
+};
 const MAX_REGISTRATIONS = 3;
 const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'set_reminder_consent']);
 // tools that change something; they refuse to run for an outdated request
@@ -181,7 +186,7 @@ export async function runTool(
       if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm their record, and offer a callback.');
       state.notFound = true;
       // same answer for "no such patient", "wrong DOB" and "wrong phone": never confirm a record exists
-      return refuse('not_verified', 'Say you could not find a match. Ask them to spell their last name and repeat their date of birth and the phone number on their file. If they say they are new to the clinic, add them with register_patient.');
+      return refuse('not_verified', `Say you could not find a match. If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient. Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file. ${triesLeft(state)}`);
     }
 
     case 'register_patient': {
@@ -638,7 +643,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   state.notFound = true;
   // the same answer whichever detail was wrong: never confirm that a record exists
-  return refuse('not_verified', 'Say you could not find the pet. Ask them to spell their last name and repeat the pet\'s name and the phone number on file. If the pet is new to the clinic, add it with register_patient.');
+  return refuse('not_verified', `Say you could not find the pet. If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient. For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file. ${triesLeft(state)}`);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
