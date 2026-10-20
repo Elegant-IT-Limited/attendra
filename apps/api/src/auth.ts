@@ -61,12 +61,13 @@ export function createAuth(db: Database, opts: AuthOptions) {
       ...(opts.passwordReset ? {
         resetPasswordTokenExpiresIn: 60 * 60,
         revokeSessionsOnPasswordReset: true,
+        // not awaited: an answer that waited for the email would be slower for an address with an account
         sendResetPassword: async ({ user, token }: { user: { email: string; name: string; emailVerified: boolean }; token: string }) => {
-          await opts.passwordReset!({ type: 'password_reset', email: user.email, name: user.name, emailVerified: user.emailVerified, url: `${opts.publicUrl}/reset-password?token=${encodeURIComponent(token)}` });
+          void opts.passwordReset!({ type: 'password_reset', email: user.email, name: user.name, emailVerified: user.emailVerified, url: `${opts.publicUrl}/reset-password?token=${encodeURIComponent(token)}` });
         },
       } : {}),
     },
-    // a few reset emails an hour per address asking, on top of the general limit
+    // a few reset emails an hour per address asking (the hosting layer also limits them per recipient), on top of the general limit
     rateLimit: { enabled: opts.rateLimit ?? true, window: 60, max: 30, customRules: { '/request-password-reset': { window: 3600, max: 5 }, '/reset-password': { window: 600, max: 10 } } },
     plugins: [
       organization({

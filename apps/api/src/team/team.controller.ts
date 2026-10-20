@@ -11,7 +11,11 @@ import { AUTH, CLOCK, DB } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { createAccount, deleteNewAccount, findAccount, hashPassword, temporaryPassword } from '../members';
 
+// neither "with another practice" nor anything else about the account: it is not ours to tell
+const NOT_HERE = { error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' };
+
 const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Error> = {
+  account_exists: () => new ConflictException(NOT_HERE),
   not_found: () => new NotFoundException({ error: 'not_found' }),
   already_member: () => new ConflictException({ error: 'already_member', message: 'This person is already on the team. Change their role instead.' }),
   self: () => new ForbiddenException({ error: 'forbidden', message: 'You cannot do that to your own account here. Ask another owner or manager.' }),
@@ -62,14 +66,13 @@ export class TeamController {
     const existing = await findAccount(this.auth, body.email);
     if (existing) {
       if ((await listMembers(this.db, orgId)).some((m) => m.userId === existing.id)) throw REFUSED.already_member();
-      // someone removed earlier, who belongs to no team now: added back, with a new temporary password
+      // someone this practice removed earlier, who belongs to no team now: added back, with a new temporary password
       if (existing.emailVerified && (await membershipCount(this.db, existing.id)) === 0) {
         const password = temporaryPassword();
         this.check(await this.change(orgId, staff, { type: 'add', userId: existing.id, role: body.role, temporary: true, approvesRefills: body.approvesRefills, passwordHash: await hashPassword(this.auth, password) }));
         return { userId: existing.id, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
       }
-      // neither "with another practice" nor anything else about the account: it is not ours to tell
-      throw new ConflictException({ error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' });
+      throw new ConflictException(NOT_HERE);
     }
     const password = temporaryPassword();
     const userId = await createAccount(this.auth, { email: body.email, name: body.name, password });

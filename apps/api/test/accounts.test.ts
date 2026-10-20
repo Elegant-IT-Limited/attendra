@@ -126,6 +126,18 @@ describe('someone removed, added back', () => {
     expect((await signIn('rhea@maple.example', back.json().temporaryPassword)).statusCode).toBe(200);
   });
 
+  it('only by the practice that removed them: another one cannot take over a login nobody uses', async () => {
+    const opened = (await api.request('POST', `${P}/accounts`, { authorization: `Bearer ${TOKEN}`, body: { organization: { name: 'Quarry Vets' }, clinic: { name: 'Quarry Vets', timezone: 'America/Denver', industry: 'vet', phone: '+13035550122' }, owner: { name: 'Quinn Quarry', email: 'quinn@quarry.example', password: 'quinn has a long password' } } })).json();
+    await api.request('POST', `${P}/email-confirmations`, { authorization: `Bearer ${TOKEN}`, body: { email: 'quinn@quarry.example' } });
+    const quinn = cookieOf(await signIn('quinn@quarry.example', 'quinn has a long password'));
+    const rhea = (await api.request('GET', `${C}/members`, { cookie: owner })).json().members.find((m: { email: string }) => m.email === 'rhea@maple.example');
+    expect((await api.request('DELETE', `${C}/members/${rhea.userId}`, { cookie: owner })).statusCode).toBe(204);
+    const elsewhere = await api.request('POST', `/api/v1/clinics/${opened.clinicId}/members`, { cookie: quinn, body: { name: 'Rhea', email: 'rhea@maple.example', role: 'staff' } });
+    expect([elsewhere.statusCode, elsewhere.json().error]).toEqual([409, 'account_exists']);
+    expect(elsewhere.json().temporaryPassword).toBeUndefined();
+    expect((await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Rhea Return', email: 'rhea@maple.example', role: 'staff' } })).statusCode).toBe(201);
+  });
+
   it('someone at another practice: a neutral answer that names nothing', async () => {
     const res = await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Otto', email: 'otto@other.example', role: 'staff' } });
     expect(res.statusCode).toBe(409);
@@ -141,7 +153,10 @@ describe('a sign-up the hosting layer could not finish', () => {
     const first = await open(account('pia@pine.example'));
     expect(first.statusCode).toBe(201);
     expect([(await open(account('pia@pine.example'))).statusCode, (await open(account('pia@pine.example'))).json()]).toEqual([409, { error: 'email_taken', confirmed: false }]);
-    // opened again in its place
+    // while its link may still be opened, nobody else's sign-up replaces it
+    expect((await open(account('pia@pine.example', { replaceUnconfirmed: true }))).json()).toEqual({ error: 'email_taken', confirmed: false });
+    // once the link has run out, a new sign-up is opened in its place
+    await api.t.db.execute(sql`update auth_users set created_at = now() - interval '49 hours' where email = 'pia@pine.example'`);
     const replaced = await open(account('pia@pine.example', { replaceUnconfirmed: true }));
     expect(replaced.statusCode).toBe(201);
     expect(replaced.json().organizationId).not.toBe(first.json().organizationId);

@@ -99,11 +99,12 @@ export async function confirmEmail(db: Database, email: string): Promise<boolean
  * could not finish, or one made with someone else's address. Never an account that was
  * confirmed, an organization someone else belongs to, or a clinic that has had a call.
  */
-export async function removeUnconfirmedAccount(db: Database, email: string): Promise<'removed' | 'not_found' | 'confirmed' | 'in_use'> {
+export async function removeUnconfirmedAccount(db: Database, email: string, opts: { createdBefore?: Date } = {}): Promise<'removed' | 'not_found' | 'confirmed' | 'in_use' | 'recent'> {
   return db.transaction(async (tx) => {
-    const [user] = await tx.select({ id: authUsers.id, verified: authUsers.emailVerified }).from(authUsers).where(eq(authUsers.email, email.trim().toLowerCase()));
+    const [user] = await tx.select({ id: authUsers.id, verified: authUsers.emailVerified, createdAt: authUsers.createdAt }).from(authUsers).where(eq(authUsers.email, email.trim().toLowerCase()));
     if (!user) return 'not_found';
     if (user.verified) return 'confirmed';
+    if (opts.createdBefore && user.createdAt > opts.createdBefore) return 'recent';
     const orgs = (await tx.select({ orgId: memberships.organizationId }).from(memberships).where(eq(memberships.userId, user.id))).map((r) => r.orgId);
     // organizations this person opened alone: those go with them
     const alone: string[] = [];

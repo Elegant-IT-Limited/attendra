@@ -13,10 +13,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed (signing in)
 
+- A link to sign in can only lead back to a page of the dashboard, never to another site.
 - An outage no longer reads as a wrong password; too many tries, an expired temporary password and an unconfirmed email each say what to do.
 - An expired temporary password is reported only after the right one is typed.
 - A timed-out two-step check offers to sign in again instead of failing in a loop; a backup code has its own wording.
-- Someone removed from the team can be added again (with a new temporary password); an address used with another practice gets a neutral answer.
+- Someone removed from the team can be added again by the same practice (with a new temporary password); any other practice gets a neutral answer.
 - Fifteen idle minutes are counted across every tab of the dashboard.
 - Text fields no longer zoom the page on an iPhone.
 

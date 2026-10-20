@@ -61,7 +61,7 @@ export type TeamChange =
   /** A lost phone: two-step sign-in is switched off for the person, who sets it up again at the next sign-in. */
   | { type: 'two_factor'; userId: string };
 
-export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' | 'self' | 'owner_protected' | 'owner_grant' | 'last_owner' | 'other_organizations';
+export type TeamResult = 'done' | 'unchanged' | 'not_found' | 'already_member' | 'self' | 'owner_protected' | 'owner_grant' | 'last_owner' | 'other_organizations' | 'account_exists';
 
 /**
  * One change to an organization's team, with its audit rows, in one transaction.
@@ -89,6 +89,8 @@ export async function changeTeam(db: Database, orgId: string, actor: { userId: s
         // someone removed earlier, coming back: only when they belong to no other team
         const [elsewhere] = await tx.select({ id: memberships.id }).from(memberships).where(eq(memberships.userId, change.userId)).limit(1);
         if (elsewhere) return 'other_organizations';
+        // and only by the practice that removed them: any other would be handed someone's login
+        if (!(await removedHere(tx, orgId, change.userId))) return 'account_exists';
         await tx.update(authAccounts).set({ password: change.passwordHash, updatedAt: now })
           .where(and(eq(authAccounts.userId, change.userId), eq(authAccounts.providerId, 'credential')));
         await tx.delete(authSessions).where(eq(authSessions.userId, change.userId));
@@ -191,6 +193,17 @@ async function revokeKeysOf(tx: Tx, orgId: string, actorId: string, memberId: st
 
 async function clinicsOf(tx: Tx, orgId: string) {
   return (await tx.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, orgId))).map((c) => c.id);
+}
+
+/** Whether this organization removed the person from its team before (its audit log says so). */
+async function removedHere(tx: Tx, orgId: string, userId: string) {
+  for (const clinicId of await clinicsOf(tx, orgId)) {
+    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    const [row] = await tx.select({ id: auditLogs.id }).from(auditLogs)
+      .where(and(eq(auditLogs.clinicId, clinicId), eq(auditLogs.action, 'member.removed'), eq(auditLogs.entityId, userId))).limit(1);
+    if (row) return true;
+  }
+  return false;
 }
 
 async function audit(tx: Tx, orgId: string, actorId: string, action: string, memberId: string) {
