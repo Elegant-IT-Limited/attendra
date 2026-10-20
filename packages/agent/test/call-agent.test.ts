@@ -96,11 +96,31 @@ describe('booking over the phone', () => {
   it('gives the same answer for a wrong DOB as for no such patient, and stops after three tries', async () => {
     const c = await w.call();
     const tries = [];
-    for (let i = 0; i < 4; i++) tries.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: '1 January 1990' } }]));
+    for (let i = 0; i < 4; i++) tries.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: `${i + 1} January 1990` } }]));
     expect(tries.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified', 'too_many_attempts']);
     // each miss asks first whether they are new, and says how many tries are left before nobody can be added
     expect(tries[0]!.results[0]!.data.say).toContain('ask that first');
     expect(tries.slice(0, 3).map((t) => String(t.results[0]!.data.say).match(/(\d) tr|No tries/)![0])).toEqual(['2 tr', '1 tr', 'No tries']);
+  });
+
+  it('the same details again are not another try, so someone new can still be added after the planner repeats itself', async () => {
+    const c = await w.call('+13035550199');
+    const again = [];
+    for (let i = 0; i < 3; i++) again.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Ana Reyes', date_of_birth: 'June 1 1988' } }]));
+    expect(again.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified']);
+    expect(c.state.verifyAttempts).toBe(1);
+    expect(String(again[1]!.results[0]!.data.say)).toContain('do not look them up again');
+    // cased and spaced differently, or the date said another way, it is still the same details
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'ana  REYES', date_of_birth: '6/1/1988' } }]);
+    expect(c.state.verifyAttempts).toBe(1);
+    const added = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 1988', gender: 'female' } }]);
+    expect(added.errors).toEqual([null]);
+    expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
+    // a pet: the same owner, pet and phone again use no try either
+    const vet = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Fahmida Hossain', pet_name: 'Maliha', phone: '+13035051162' } }]);
+    await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'fahmida hossain', pet_name: 'MALIHA', phone: '(303) 505-1162' } }]);
+    expect(vet.state.verifyAttempts).toBe(1);
   });
 
   it('tells apart two patients with the same name and DOB by the phone on their file, and never guesses without it', async () => {

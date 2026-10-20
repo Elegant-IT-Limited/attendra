@@ -30,6 +30,8 @@ export class CallState {
   /** For a pet: the owner's name as the caller gave it when the pet was found. */
   verifiedOwner: string | null = null;
   verifyAttempts = 0;
+  /** Details already looked up and not found: the same ones again are not another try, and not another lookup. */
+  readonly identitiesTried = new Set<string>();
   /** New patients added on this call: a parent may add two children, nobody adds ten. */
   registrations = 0;
   /** The identity check has found nobody on this call: only then may the assistant add a new patient. */

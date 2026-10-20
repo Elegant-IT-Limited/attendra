@@ -43,7 +43,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
   return [
     `You are the backend for the phone assistant of ${clinic.name}. ${nowLine}`,
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
-    'When the caller has said who they are, even only in part, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. With only a first name, ask just for the last name, never for a "full name".',
+    'When the caller has said who they are, even only in part, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. With only a first name, ask just for the last name, never for a "full name". Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong.',
     ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
     'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it.',
