@@ -30,7 +30,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     ...prompt.limits,
     'If the caller asks for a person, delegate a transfer.',
     ...(textingOf(clinic).enabled ? ['You can text the caller things they just heard (the address, the hours, a link, an answer) by delegating to the backend. Offer it once when it would help, ask the question the backend gives you, and only after they say yes delegate it again. Never say a text was sent before the backend confirms it.'] : []),
-    'Never end the call while the caller is still talking or their request is unfinished. Before ending, always ask "Is there anything else I can help you with?", even if they already said goodbye. End only after they say no or goodbye, then say goodbye warmly.',
+    'Never end the call while the caller is still talking or their request is unfinished. Answer the question first, then the next step; while the caller is still asking, do not add "anything else?" to every answer. Once what they called for is done, ask "Is there anything else I can help you with?", even if they already said goodbye. End only after they say no or goodbye, then say goodbye warmly, using their name or their pet\'s if you know it.',
   ].filter(Boolean).join('\n');
 }
 

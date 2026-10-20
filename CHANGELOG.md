@@ -4,6 +4,19 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls, from a real test call)
+
+- **No "working on it" before every answer.** The note the voice hears while a request runs tells it to stay quiet and answer; the "still checking" line after 7 seconds is unchanged.
+- **A choice of one is no choice.** A clinic with one provider never asks which one the caller would like; with several, the planner asks once. A reply asks at most one question.
+- **What the caller said is kept.** An owner who gave one name is asked only for the other, by name. "My cat" and "she" answer the kind of animal and its sex; the assistant never asks for a detail twice, and confirms with one read-back when unsure.
+- **Dates as people say them.** "The fifteenth of January 2026", "January twenty-first, 2025" and "the 5th of January 2026" are understood; a pet's birthday without a year is asked for with the year.
+- **Test calls end clearly.** A minute before the limit the caller hears so; at the limit the assistant says the test call is ending and why, then it ends. The Test call page shows the time left and says when a call ended at its limit.
+
+### Fixed (dashboard)
+
+- **The sign-in page goes straight on when you are signed in already**, in another tab or after a reload, to where you were going.
+- **Settings > API keys:** Copy address and Copy key are told apart, and revoked and expired keys sit in a folded list below the keys in use.
+
 ### Added (going live)
 
 - **A calls check for the hosting layer.** `POST /provisioning/clinics/:id/calls-check` says how many phone calls started since a moment, whether one came from a given number (by its keyed hash), and how long the clinic was open meanwhile: the hosting layer's "Check my forwarding" and its alert for a line that stays quiet while the clinic is open.

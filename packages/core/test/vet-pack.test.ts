@@ -81,11 +81,15 @@ describe('a pet\'s age or birthday', () => {
     ['six months', '2026-04-16', true],
     ['8 weeks', '2026-08-21', true],
     ['tres años', '2023-10-16', true],
+    // as callers say a date: spoken ordinals, "the", "of"
+    ['fifteenth January 2026', '2026-01-15', false],
+    ['the 5th of January 2026', '2026-01-05', false],
+    ['January twenty-first, 2025', '2025-01-21', false],
   ])('"%s" is %s', (said, dob, estimated) => {
     expect(parsePetBirth(said, today)).toEqual({ dob, estimated });
   });
 
   it('refuses what is neither a date nor an age', () => {
-    for (const t of ['no idea', 'old', '45 years']) expect(parsePetBirth(t, today), t).toBeNull();
+    for (const t of ['no idea', 'old', '45 years', 'fifth Jan']) expect(parsePetBirth(t, today), t).toBeNull();
   });
 });

@@ -224,7 +224,11 @@ export default function TestCallPage() {
               <p className="font-medium">
                 {{ idle: 'Ready', connecting: 'Connecting…', live: 'Live', ending: 'Ending…', ended: 'Call ended' }[phase]}
               </p>
-              <p className="text-sm tabular-nums text-text-muted">{phase === 'live' || phase === 'ended' ? clock(seconds * 1000) : `Test calls end on their own after ${Math.round(maxSeconds / 60)} minutes`}</p>
+              <p className={cn('text-sm tabular-nums', phase === 'live' && maxSeconds - seconds <= 60 ? 'font-medium text-warning' : 'text-text-muted')} data-testid="test-call-clock">
+                {phase === 'live' ? `${clock(seconds * 1000)} · ${clock(Math.max(0, maxSeconds - seconds) * 1000)} left`
+                  : phase === 'ended' ? (seconds >= maxSeconds - 5 ? `${clock(seconds * 1000)} · ended at the ${Math.round(maxSeconds / 60)}-minute limit for one test call` : clock(seconds * 1000))
+                  : `One test call can last up to ${Math.round(maxSeconds / 60)} minutes`}
+              </p>
             </div>
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>

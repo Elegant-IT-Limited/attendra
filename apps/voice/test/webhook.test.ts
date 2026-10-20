@@ -213,10 +213,14 @@ describe('browser test calls', () => {
 
   it('ends a test call that runs past its time limit', async () => {
     const { d, engine } = deps({ internalToken: TOKEN, browserCallMaxSeconds: 0.05 });
-    engine.attach.mockReturnValue(openSideband().sideband);
+    const call = openSideband();
+    engine.attach.mockReturnValue(call.sideband);
     const app = buildServer(d);
     expect((await webCall(app, OFFER)).statusCode).toBe(201);
     await vi.waitFor(() => expect(engine.hangup).toHaveBeenCalledWith('live_web'));
+    // the assistant is told why it stops before the line closes
+    const sent = vi.mocked(call.sideband.send).mock.calls.map(([m]) => m as { type: string; content?: string });
+    expect(sent.some((m) => m.type === 'session.instructions.append' && String(m.content).includes('time limit'))).toBe(true);
   });
 
   it('ends the browser session when our sideband drops before it closed', async () => {
