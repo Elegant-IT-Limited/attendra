@@ -210,7 +210,8 @@ describe('the conversation prompt', () => {
     expect(prompt).toContain('ask which pet the visit is for');
     expect(prompt).toContain("the owner's full name, the pet's name and the phone number on file");
     expect(prompt).toContain('Never give medical or first-aid advice for an animal');
-    expect(prompt).toContain('the veterinarians or clinic facts');
+    expect(prompt).toContain('- The clinic: hours, the veterinarians, visit types');
+    expect(prompt).toContain('Interruption policy: Never talk over the caller.');
     expect(prompt).not.toMatch(/date of birth|female or a male doctor/);
   });
 
@@ -222,9 +223,9 @@ describe('the conversation prompt', () => {
       pack.prompt = { identify: ['IDENTIFY LINE'], preferences: ['PREFERENCE LINE'], limits: ['LIMIT LINE'] };
       const prompt = conversationPrompt(DEMO_CLINIC, NOW);
       expect(prompt).toContain("the shop's AI assistant");
-      expect(prompt).toContain('the stylists or shop facts');
+      expect(prompt).toContain('- The shop: hours, the stylists');
       expect(prompt).toMatch(/IDENTIFY LINE[\s\S]*PREFERENCE LINE[\s\S]*LIMIT LINE/);
-      expect(prompt).not.toMatch(/the doctors or clinic facts|female or a male doctor|medical advice/);
+      expect(prompt).not.toMatch(/the doctors|female or a male doctor|medical advice/);
     } finally {
       Object.assign(pack, saved);
     }
