@@ -59,6 +59,12 @@ export interface VoiceDeps {
   };
 }
 
+/** Said near a test call's end: a minute left, then why it stops. */
+export const TEST_CALL_MINUTE_LEFT = 'This browser test call ends in about one minute. Finish what you are doing quickly. The next time you speak, tell the caller in a few words that the test call has about a minute left.';
+export const TEST_CALL_TIME_UP = 'The browser test call has reached its time limit. Stop the current task. Tell the caller in one short sentence that the test call is ending now because of its time limit, and that they can start another. Then say nothing more.';
+/** How long the goodbye may take before the line is closed. */
+const TEST_CALL_GOODBYE_MS = 8000;
+
 const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024), maxSeconds: z.number().int().positive().optional() });
 const WebCallEnd = z.object({ clinicId: z.string().min(1).max(64) });
 const LiveAction = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), byName: z.string().trim().max(100).optional(), key: z.string().min(8).max(100) });
@@ -353,16 +359,27 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, now, log: deps.log, channel }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
+      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log);
       if (web) {
         const limit = opts.maxSeconds ?? maxSeconds;
+        // a minute before the end the caller hears so, and at the end the assistant says why it
+        // stops: a test call never just goes quiet
+        if (limit > 90) {
+          timers.push(setTimeout(() => {
+            void runner.act([{ type: 'instructions', delegationId: null, content: TEST_CALL_MINUTE_LEFT }]).catch(() => {});
+          }, (limit - 60) * 1000));
+        }
+        // the goodbye takes a few seconds, never longer than the call itself was allowed
+        const goodbye = Math.min(TEST_CALL_GOODBYE_MS, limit * 1000);
         timers.push(setTimeout(() => {
           deps.log.info({ session_id: sessionId }, 'test call reached its time limit');
-          void hangup();
+          void runner.act([{ type: 'instructions', delegationId: null, content: TEST_CALL_TIME_UP }, { type: 'hangup', afterMs: goodbye }]).catch(() => hangup());
         }, limit * 1000));
+        // whatever the goodbye did, the call is over a little later
+        timers.push(setTimeout(() => { void hangup(); }, limit * 1000 + goodbye + 5000));
         // if the session ignores the close, stop listening anyway so the call counts as over
         timers.push(setTimeout(() => sideband.close(), (limit + 30) * 1000));
       }
-      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log);
       const a = agent;
       // staff watching live see every event; their actions go through the runner like the agent's own
       frontDesk.set(callId, clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null);

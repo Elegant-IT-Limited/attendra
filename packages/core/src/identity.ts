@@ -69,9 +69,26 @@ export function dobProblem(input: string, today = new Date(), order: 'mdy' | 'dm
   return null;
 }
 
+/** "fifteenth" or "twenty-first" as a day of the month, as callers say it. */
+const ORDINAL_DAYS: Record<string, number> = Object.fromEntries([
+  'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth',
+  'fourteenth', 'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth', 'twentieth',
+].map((w, i) => [w, i + 1]));
+const ORDINAL_UNITS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth'];
+
+/** A spoken ordinal day ("twenty-first", "the fifth") as its number, in words that are left alone otherwise. */
+function ordinalDays(s: string): string {
+  return s
+    .replace(/\btwenty[ -](first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\b/g, (_, u: string) => String(21 + ORDINAL_UNITS.indexOf(u)))
+    .replace(/\bthirty[ -]first\b/g, '31').replace(/\bthirtieth\b/g, '30')
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\b/g, (w: string) => String(ORDINAL_DAYS[w]));
+}
+
 function readDob(input: string, order: 'mdy' | 'dmy'): [number, number, number] | null {
-  const s = fold(input).toLowerCase()
+  const s = ordinalDays(fold(input).toLowerCase())
     .replace(/(\d)(st|nd|rd|th)\b/g, '$1')
+    // "the 15th of January", "January the 15th"
+    .replace(/\bthe /g, '').replace(/ of /g, ' ')
     .replace(/ de(l)? /g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim().replace(/^el /, '');
   let y: number | undefined, m: number | undefined, d: number | undefined;
   let r: RegExpMatchArray | null;

@@ -1,0 +1,39 @@
+id: vet-new-pet-one-name
+title: An owner who gives one name is asked only for the other, and nothing they already said (a cat, she) is asked again
+clinic: riverbend
+local_time: "14:00"
+caller_number: "+17205550193"
+facts: "You are Fahmida Hossain, calling from your own mobile, the number you are calling from. Maliha is your female cat, born on 15 January 2026, and she is new to the clinic. You already said she is a cat and used 'she'; if you are asked again, say so, a little annoyed. Any time works. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I need an appointment for my cat. Her name is Maliha and I'm Fahmida.
+    reply: "Thanks, Fahmida. And your last name?"
+    delegate:
+      - verify_caller: { owner_name: Fahmida, pet_name: Maliha }
+  - caller: Hossain. Maliha is new, she has never been to your clinic.
+    reply: "Welcome, Maliha. I will add her. How old is she, or when is her birthday?"
+    delegate:
+      - verify_caller: { owner_name: Fahmida Hossain, pet_name: Maliha }
+  - caller: She was born on the fifteenth of January 2026.
+    reply: "Thank you. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Maliha, owner_name: Fahmida Hossain, species: cat, sex: female, birthday_or_age: the fifteenth of January 2026 }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Maliha is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [owner_full_name, not_verified]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken:
+  - first and last name
+  - what kind of animal
+  - female or male
+  - working on it

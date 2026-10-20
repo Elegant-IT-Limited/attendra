@@ -113,3 +113,12 @@ test('a wrong password says so, and a forgotten one is sent to the manager when 
   await page.goto('/reset-password');
   await expect(page.getByRole('link', { name: /new one|new link/i }).first()).toBeVisible();
 });
+
+test('a sign-in page opened while signed in, in another tab or after a reload, goes straight on', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinicPage = new URL(page.url()).pathname;
+  await page.goto(`/sign-in?expired=1&next=${encodeURIComponent(`${clinicPage}/requests`)}`);
+  await expect(page).toHaveURL(new RegExp(`${clinicPage}/requests$`), { timeout: 20_000 });
+  await page.goto('/sign-in');
+  await expect(page).toHaveURL(/\/c\/[^/]+/, { timeout: 20_000 });
+});

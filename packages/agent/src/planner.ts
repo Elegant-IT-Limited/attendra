@@ -53,8 +53,10 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     ...planner.limits,
     ...(textingOf(clinic).enabled ? ['Texting: after giving the address, hours, a doctor\'s details or an answer from get_clinic_info, or when one of its links fits, you may offer to text it with send_text; it tells you the question to ask and sends only after the caller says yes. In an animal emergency the only text is emergency_hospital, offered once after the script. Never text anything else, and never to another person\'s number.'] : []),
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
-    'Finish with one or two short sentences for the assistant to say. Plain words, no lists, no markdown.',
+    'Finish with one or two short sentences for the assistant to say, with at most one question in them. Plain words, no lists, no markdown. Never ask for something the transcript shows the caller already said.',
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
+    // a choice of one is no choice: the caller is never asked which provider they would like
+    ...(clinic.providers.length === 1 ? ['There is only one provider here: never ask the caller which one they would like; book with them.'] : []),
   ].join('\n');
 }
 
