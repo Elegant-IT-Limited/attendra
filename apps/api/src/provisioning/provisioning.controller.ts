@@ -2,7 +2,7 @@
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  phoneUsage, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setHostingPlan, setTestCallLimit,
+  phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
@@ -46,6 +46,7 @@ const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
 const PlanBody = z.object({ plan: HostingPlan.nullable() });
+const Closed = z.object({ closed: z.boolean() });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
@@ -188,6 +189,26 @@ export class ProvisioningController {
   async plan(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(PlanBody)) body: z.infer<typeof PlanBody>) {
     this.check(authorization);
     if (!(await setHostingPlan(this.db, clinicId, body.plan))) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /** Closes a clinic (a location removed) or opens it again within 30 days. Nothing is deleted. */
+  @Put('clinics/:clinicId/closed')
+  @HttpCode(204)
+  async closed(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(Closed)) body: z.infer<typeof Closed>) {
+    this.check(authorization);
+    if (!(await setClinicClosed(this.db, clinicId, body.closed, this.now()))) throw new NotFoundException({ error: 'not_found' });
+    this.log.info({ clinic_id: clinicId, closed: body.closed }, 'provisioning: clinic closed or reopened');
+  }
+
+  /** Deletes a clinic closed at least 30 days ago, with everything recorded for it. 409 for an open clinic or one closed more recently. */
+  @Delete('clinics/:clinicId')
+  @HttpCode(204)
+  async purge(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string) {
+    this.check(authorization);
+    const result = await purgeClosedClinic(this.db, clinicId, this.now());
+    if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result !== 'purged') throw new HttpException({ error: result === 'open' ? 'not_closed' : 'closed_recently' }, 409);
+    this.log.info({ clinic_id: clinicId }, 'provisioning: closed clinic deleted');
   }
 
   /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */
