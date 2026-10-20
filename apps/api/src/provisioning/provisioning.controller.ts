@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
+  type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
@@ -11,7 +11,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Auth } from '../auth';
 import { Public } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { HostingPlan } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
@@ -50,6 +50,8 @@ const Closed = z.object({ closed: z.boolean() });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
+// a POST body, so a caller's number is never in an address: since when, and optionally the number a check call comes from
+const CallsCheck = z.object({ since: z.iso.datetime(), from: z.string().regex(/^\+[1-9]\d{7,14}$/, 'expected E.164, like +13035550100').optional() });
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 const newId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
@@ -71,6 +73,7 @@ export class ProvisioningController {
     @Inject(API_OPTIONS) private readonly options: ApiOptions,
     @Inject(LOGGER) private readonly log: Logger,
     @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(CIPHER) private readonly cipher: PhiCipher,
   ) {}
 
   private check(authorization: string | undefined) {
@@ -245,6 +248,23 @@ export class ProvisioningController {
     this.check(authorization);
     if (!(await this.desk.settings(clinicId))) throw new NotFoundException({ error: 'not_found' });
     return phoneUsage(this.db, clinicId, new Date(q.from), new Date(q.to));
+  }
+
+  /**
+   * Phone calls since a moment, for the hosting layer: how many, when the last began, whether
+   * one came from `from` (the forwarding check: the owner calls the clinic's own number), and
+   * the minutes the clinic was open since then (a line that stays quiet while open). No call details.
+   */
+  @Post('clinics/:clinicId/calls-check')
+  @HttpCode(200)
+  async callsCheck(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(CallsCheck)) body: z.infer<typeof CallsCheck>) {
+    this.check(authorization);
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const since = new Date(body.since);
+    const now = this.now();
+    const calls = await phoneCallsSince(this.db, this.cipher, clinicId, since, body.from);
+    return { ...calls, openMinutes: since < now ? openMinutes(ClinicConfig.parse(stored), since, now) : 0 };
   }
 
   /** The weekly report's numbers: the Quality page's weeks, the owners to send it to, and the visit value. */
