@@ -35,6 +35,8 @@ export const Me = z.object({
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
+  /** Minutes without activity, in every tab, before the dashboard signs out. */
+  idleMinutes: z.number(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */

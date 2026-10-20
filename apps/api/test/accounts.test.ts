@@ -23,6 +23,10 @@ describe('what the sign-in page is told it can offer', () => {
   it('forgot password, sign-up and a new confirmation link on a hosted deployment', async () => {
     expect((await api.request('GET', '/api/v1/health')).json()).toMatchObject({ passwordReset: true, signupUrl: '/account/signup', resendUrl: '/account/resend' });
   });
+
+  it('how long the dashboard waits without activity before signing out: 15 minutes unless the deployment says otherwise', async () => {
+    expect((await api.request('GET', '/api/v1/me', { cookie: owner })).json().idleMinutes).toBe(15);
+  });
 });
 
 describe('forgot password', () => {

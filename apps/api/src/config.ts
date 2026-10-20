@@ -36,6 +36,9 @@ const Env = z.object({
   // Two-step sign-in: required for everyone (the default), or optional, for a hosted service whose
   // accounts hold no patient health information (veterinary clinics). Demo mode skips it either way.
   ATTENDRA_TWO_FACTOR: z.preprocess(blank, z.enum(['required', 'optional']).default('required')),
+  // Minutes without activity, in every tab, before the dashboard signs out: 15 where it holds
+  // patient records; a hosted service for veterinary clinics can choose longer (up to 12 hours).
+  ATTENDRA_IDLE_MINUTES: z.preprocess(blank, z.coerce.number().int().min(5).max(720).default(15)),
   // Turns on /api/v1/provisioning for a hosting layer: opening accounts, numbers, usage. Unset, the routes do not exist.
   ATTENDRA_PROVISIONING_TOKEN: optional(z.string().min(32, 'ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters: openssl rand -base64 32')),
   // Where the hosting layer takes emails the engine cannot send itself ("forgot password"), signed with ATTENDRA_PROVISIONING_TOKEN.

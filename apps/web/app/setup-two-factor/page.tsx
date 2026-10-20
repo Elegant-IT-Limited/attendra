@@ -7,7 +7,7 @@ import { renderSVG } from 'uqr';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Input, Label, PasswordInput } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { signOutAndLeave } from '@/lib/next';
@@ -71,7 +71,7 @@ export default function SetupTwoFactor() {
         <form onSubmit={start} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">Confirm your password</Label>
-            <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput id="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           {error && <Alert tone="danger">{error}</Alert>}
           <Button type="submit" className="w-full">Continue</Button>

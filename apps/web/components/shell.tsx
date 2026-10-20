@@ -28,7 +28,6 @@ import { cn } from '@/lib/utils';
 const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
 // A workstation left open at the front desk signs itself out.
-const IDLE_MS = 15 * 60_000;
 
 /**
  * The frame around every clinic page. A full sidebar from 1280 px, icons only from
@@ -66,8 +65,9 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
   }, [queries]);
 
-  // 15 idle minutes sign out, counted across every tab of the dashboard: a tab left in the
-  // background never signs out the one being worked in (they share the session)
+  // the deployment's idle minutes (15 by default) sign out, counted across every tab of the
+  // dashboard: a tab left in the background never signs out the one being worked in (they share the session)
+  const idleMs = (me?.idleMinutes ?? 15) * 60_000;
   useEffect(() => {
     const KEY = 'attendra.activeAt';
     let local = 0;
@@ -79,11 +79,11 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       try { localStorage.setItem(KEY, String(now)); } catch { /* this tab's own time still counts */ }
     };
     touch();
-    const check = setInterval(() => { if (Date.now() - Math.max(local, shared()) >= IDLE_MS) void signOut('idle'); }, 15_000);
+    const check = setInterval(() => { if (Date.now() - Math.max(local, shared()) >= idleMs) void signOut('idle'); }, 15_000);
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
     for (const e of events) window.addEventListener(e, touch, { passive: true });
     return () => { clearInterval(check); for (const e of events) window.removeEventListener(e, touch); };
-  }, [signOut]);
+  }, [signOut, idleMs]);
 
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);

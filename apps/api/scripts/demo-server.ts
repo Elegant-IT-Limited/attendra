@@ -41,6 +41,8 @@ if (existsSync(envFile)) {
 // a hosting layer tried locally (attendra-cloud): its menu links and its provisioning token, from the shell only
 const accountLinks = process.env.ATTENDRA_ACCOUNT_LINKS ? JSON.parse(process.env.ATTENDRA_ACCOUNT_LINKS) as { label: string; href: string }[] : undefined;
 const provisioningToken = process.env.ATTENDRA_PROVISIONING_TOKEN || undefined;
+// minutes without activity before the dashboard signs out (ATTENDRA_IDLE_MINUTES, 5 to 720; 15 unset)
+const idleMinutes = Math.min(720, Math.max(5, Number(process.env.ATTENDRA_IDLE_MINUTES) || 15));
 if (provisioningToken && provisioningToken.length < 32) throw new Error('ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters');
 
 const port = Number(process.env.API_PORT ?? 8081);
@@ -113,7 +115,7 @@ const answerer = realCalls ? new ModelAnswerer(new OpenAI({ apiKey: process.env.
 const tts = realCalls ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const voiceSamples = tts ? openAiVoiceSampler(tts, process.env.ATTENDRA_TTS_MODEL || 'gpt-4o-mini-tts') : null;
 const changes = await pgliteChangeFeed(client);
-const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken, passwordReset: !!mail }, voiceSamples });
+const app = await createApi({ db, cipher, auth, log, voice, changes, jobs: bossQueue(boss), knowledge: { base: knowledge, answerer, embeddingModel: embedder.model }, webhooks, options: { publicUrl, demoMode: true, demoSignIn, accountLinks, provisioningToken, passwordReset: !!mail, idleMinutes }, voiceSamples });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`\n  Attendra demo API on http://127.0.0.1:${port}  (${results.length} calls recorded)`);
 console.log(`  ${voiceNote}`);

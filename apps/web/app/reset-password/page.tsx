@@ -6,7 +6,7 @@ import { type FormEvent, type ReactNode, Suspense, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
-import { Input, Label } from '@/components/ui/input';
+import { Label, PasswordInput } from '@/components/ui/input';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
@@ -58,11 +58,11 @@ function ResetPassword() {
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="next">New password</Label>
-          <Input id="next" type="password" autoComplete="new-password" required minLength={12} autoFocus value={next} onChange={(e) => setNext(e.target.value)} />
+          <PasswordInput id="next" autoComplete="new-password" required minLength={12} autoFocus value={next} onChange={(e) => setNext(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="again">New password again</Label>
-          <Input id="again" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
+          <PasswordInput id="again" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
         </div>
         {error && <Alert tone="danger">{error}</Alert>}
         <Button type="submit" className="w-full" disabled={state === 'busy'}>{state === 'busy' ? 'Saving…' : 'Save my new password'}</Button>

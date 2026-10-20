@@ -18,7 +18,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - An expired temporary password is reported only after the right one is typed.
 - A timed-out two-step check offers to sign in again instead of failing in a loop; a backup code has its own wording.
 - Someone removed from the team can be added again by the same practice (with a new temporary password); any other practice gets a neutral answer.
-- Fifteen idle minutes are counted across every tab of the dashboard.
+- Idle time is counted across every tab of the dashboard, and `ATTENDRA_IDLE_MINUTES` sets how long (15 by default; up to 12 hours where no patient health information is kept).
+- Every password field has an eye button to show or hide what was typed.
+- Signing out on purpose opens a plain sign-in page; only a session that ended by itself offers the way back.
 - Text fields no longer zoom the page on an iPhone.
 
 ### Fixed (the final pre-launch review)
