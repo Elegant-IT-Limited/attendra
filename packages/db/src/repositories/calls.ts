@@ -4,6 +4,9 @@ import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
 
+/** What a caller's number is hashed as, per clinic: the last 10 digits, so +1 and spacing do not matter. */
+export const callerKey = (clinicId: string, number: string) => `${clinicId}|${number.replace(/\D/g, '').slice(-10)}`;
+
 /** Actor on the audit rows the call record writes: the voice service, not a person. */
 const SYSTEM = 'system';
 
@@ -18,7 +21,7 @@ export class CallRepository {
    */
   async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const fromHash = fromNumber ? this.cipher.hash(`${clinicId}|${fromNumber.replace(/\D/g, '').slice(-10)}`) : null;
+      const fromHash = fromNumber ? this.cipher.hash(callerKey(clinicId, fromNumber)) : null;
       const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, channel }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
         await tx.insert(auditLogs).values(startedBy

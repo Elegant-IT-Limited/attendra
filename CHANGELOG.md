@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (going live)
+
+- **A calls check for the hosting layer.** `POST /provisioning/clinics/:id/calls-check` says how many phone calls started since a moment, whether one came from a given number (by its keyed hash), and how long the clinic was open meanwhile: the hosting layer's "Check my forwarding" and its alert for a line that stays quiet while the clinic is open.
+
 ### Added (MCP on a hosted service)
 
 - **Settings > API keys says where to connect.** With `ATTENDRA_MCP_URL` set on the API, the page shows the MCP address with a Copy button, next to the keys that work with it.
