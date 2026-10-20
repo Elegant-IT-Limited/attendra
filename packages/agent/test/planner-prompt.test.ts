@@ -36,6 +36,9 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(prompt).toContain('never as done ("is set", "is booked")');
     expect(prompt).toContain('offer the request in the same reply; take it after their yes');
     expect(prompt).toContain('do not ask which day, time or provider they would like');
+    // a closed day asked for is not the clinic being closed now
+    expect(prompt).toContain('offer the first times after it from find_slots, which skips closed days; that is no reason for a callback');
+    expect(prompt).toContain('While the clinic is closed right now');
   });
 
   it('writes in the clinic\'s languages, and searches its own questions in its main one', () => {
