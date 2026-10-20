@@ -43,11 +43,16 @@ describe('a live stream', () => {
   });
 
   it('ends soon after the watcher may no longer read calls', async () => {
-    const started = Date.now();
+    // the role changes 200 ms after the stream has started, so the start's own check never sees it on a busy machine
+    let started = 0;
+    voice.liveStream.mockImplementationOnce(async () => {
+      started = Date.now();
+      setTimeout(() => void addMembership(api.t.db, 'org_demo', api.users.admin, 'viewer'), 200);
+      return endless();
+    });
     const res = watch(admin);
-    setTimeout(() => void addMembership(api.t.db, 'org_demo', api.users.admin, 'viewer'), 200);
     expect((await res).statusCode).toBe(200);
-    // well before the 3 second limit: the re-check ended it, not the clock
+    // well before the 3 second limit, counted from the stream's start: the re-check ended it, not the clock
     expect(Date.now() - started).toBeLessThan(2500);
     await addMembership(api.t.db, 'org_demo', api.users.admin, 'admin');
   });
