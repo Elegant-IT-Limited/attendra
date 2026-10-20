@@ -286,10 +286,10 @@ export default function Settings() {
                 <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2">
                   {windows(d).length === 0 && <span className="text-base text-text-muted">Closed</span>}
                   {windows(d).map((w, i) => (
-                    <span key={i} className="flex items-center gap-1.5">
-                      <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-32" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
+                    <span key={i} className="flex items-center gap-1.5 max-md:w-full">
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-32 max-md:w-auto max-md:min-w-0 max-md:flex-1" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
                       <span className="text-sm text-text-muted">to</span>
-                      <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-32" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-32 max-md:w-auto max-md:min-w-0 max-md:flex-1" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
                       <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove these ${DAYS[Number(d)]} hours`} onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
                     </span>
                   ))}
