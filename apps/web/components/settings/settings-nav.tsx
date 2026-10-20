@@ -20,17 +20,20 @@ export function SettingsNav({ clinicId }: { clinicId: string }) {
   const { can } = useClinic(clinicId);
   const base = `/c/${clinicId}/settings`;
   return (
-    <nav aria-label="Settings" className="mb-6 flex gap-1 border-b border-border">
-      {SETTINGS_PAGES.filter((p) => !p.permission || can(p.permission)).map((p) => {
-        const href = `${base}${p.href}`;
-        const active = p.href ? pathname.startsWith(href) : pathname === base;
-        return (
-          <Link key={p.href} href={href} aria-current={active ? 'page' : undefined}
-            className={cn('focus-ring -mb-px border-b-2 px-3 py-2 text-base font-medium', active ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text')}>
-            {p.label}
-          </Link>
-        );
-      })}
-    </nav>
+    // one line on a phone too: it scrolls sideways instead of wrapping
+    <div className="mb-6 overflow-x-auto">
+      <nav aria-label="Settings" className="flex w-max min-w-full gap-1 border-b border-border">
+        {SETTINGS_PAGES.filter((p) => !p.permission || can(p.permission)).map((p) => {
+          const href = `${base}${p.href}`;
+          const active = p.href ? pathname.startsWith(href) : pathname === base;
+          return (
+            <Link key={p.href} href={href} aria-current={active ? 'page' : undefined}
+              className={cn('focus-ring -mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-base font-medium', active ? 'border-primary text-text' : 'border-transparent text-text-muted hover:text-text')}>
+              {p.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </div>
   );
 }

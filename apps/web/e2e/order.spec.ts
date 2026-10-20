@@ -48,5 +48,12 @@ test('a dropdown that takes typing keeps the exact choice typed when Enter is pr
   await specialty.fill('Pediatrics');
   await specialty.press('Enter');
   await expect(specialty).toHaveValue('Pediatrics');
+  // a specialty that is not in the list yet: Enter keeps it and leaves the form open, half filled in as it is
+  // (with a name in, so the form could have been sent)
+  await panel.getByLabel('Name', { exact: true }).fill('Dr. Enter Test');
+  await specialty.fill('Behavioural medicine');
+  await specialty.press('Enter');
+  await expect(specialty).toHaveValue('Behavioural medicine');
+  await expect(panel).toBeVisible();
   await panel.getByRole('button', { name: 'Cancel' }).click();
 });
