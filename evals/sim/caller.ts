@@ -13,7 +13,7 @@ export interface SimulatedCaller {
   next(call: Line[]): Promise<{ text: string; hangup: boolean }>;
 }
 
-export interface Persona { id: string; clinic: 'maple' | 'cedar_park'; caller_number: string | null; persona: string; goal: string; expect: string[] }
+export interface Persona { id: string; clinic: 'maple' | 'cedar_park' | 'riverbend'; caller_number: string | null; persona: string; goal: string; expect: string[] }
 
 const HANGUP = '[HANGUP]';
 
@@ -28,7 +28,7 @@ export class ModelCaller implements SimulatedCaller {
     const res = await this.openai.responses.create({
       model: this.model, store: false, max_output_tokens: this.limits.maxOutputTokens,
       instructions: [
-        'You are playing a patient phoning a medical clinic, to test its assistant. Stay in character.',
+        `You are playing ${this.persona.clinic === 'riverbend' ? 'a pet owner phoning a veterinary clinic' : 'a patient phoning a medical clinic'}, to test its assistant. Stay in character.`,
         `Who you are: ${this.persona.persona}`, `What you want: ${this.persona.goal}`,
         'Say one short line at a time, the way people talk on the phone. Answer what you are asked.',
         `When your goal is done, or the assistant has done all it can, say goodbye and end your line with ${HANGUP}.`,
