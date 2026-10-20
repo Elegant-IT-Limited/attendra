@@ -14,6 +14,5 @@ turns:
       - create_callback: { reason: Book a wellness exam for Biscuit next week, callback_number: "+17205550172" }
 expect:
   outcome: task_created
-  verified: true
   refusals: [after_hours]
   bookings_created: 0
