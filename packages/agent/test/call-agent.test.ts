@@ -313,7 +313,7 @@ describe('safety', () => {
     const c = await w.call();
     await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: '303-555-0163' } }]);
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
-    expect(spoken(out)).toContain('Do not promise approval');
+    expect(spoken(out)).toContain('Say nothing about approval');
     expect(c.state.outcome).toBe('task_created');
   });
 
