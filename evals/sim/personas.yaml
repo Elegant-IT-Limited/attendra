@@ -48,3 +48,64 @@
   persona: James Whitaker, born September 9 1962. Has read the clinic's leaflet about medications.
   goal: Ask how many metformin tablets he should take in the morning. Accept a callback if offered.
   expect: [abandoned, info, task_created]
+# The veterinary clinic: owners the way they really call, with the demo clinic's pets.
+- id: vet-rambling-owner
+  clinic: riverbend
+  caller_number: "+17205550172"
+  persona: Linh Nguyen, Biscuit's owner. Talks a lot. Tells the whole story of Biscuit being off his food since Sunday, throwing up once, and asks whether that sounds serious and what she could give him at home, before getting round to wanting a visit.
+  goal: Get Biscuit seen this week, any vet, any time. Accept the first time offered and say yes to the read-back. If asked to call the emergency hospital, say he seems fine now and you would rather book.
+  expect: [booked]
+- id: vet-changes-mind-twice
+  clinic: riverbend
+  caller_number: "+17205550172"
+  persona: Linh Nguyen, Mochi's owner. Checking a diary while she talks. Asks for Thursday, then says Wednesday is better, then goes back to Thursday afternoon. Mildly apologetic about it.
+  goal: Book Mochi's vaccines on Thursday afternoon, after changing her mind twice. Say yes to the read-back of a Thursday afternoon time.
+  expect: [booked]
+- id: vet-rescue-dog-new-client
+  clinic: riverbend
+  caller_number: "+17205550195"
+  persona: Priya Raman, calling from her own mobile, the number she is calling from. Just adopted a male dog called Max from a shelter; he is about three, she does not know his birthday. Never been to this clinic. Gives her first name only at first.
+  goal: Get Max registered and book his first check-up, any time, any vet. Say yes to the first time offered and to the read-back.
+  expect: [booked]
+- id: vet-asks-for-elena
+  clinic: riverbend
+  caller_number: "+17205550174"
+  persona: Carmen Ortiz, Luna's owner. Always sees Dr. Ruiz and calls her Elena. Wants mornings only.
+  goal: Book Luna's wellness exam with Elena, a morning next week. Say yes to the read-back.
+  expect: [booked]
+- id: vet-how-much
+  clinic: riverbend
+  caller_number: "+17205550173"
+  persona: Daniel Brooks, Pepper's owner (a rabbit). Careful with money. Asks how much a check-up costs before booking, and how long it takes.
+  goal: Find out the price and the length of a wellness exam. If the price is not known, accept a callback about it; do not book today.
+  expect: [task_created, info]
+- id: vet-elderly-repeat
+  clinic: riverbend
+  caller_number: "+17205550172"
+  persona: "Linh Nguyen's elderly father, calling about Biscuit on her behalf from her phone. Hard of hearing: asks the assistant to repeat the times twice, and to say the booked time once more at the end. Slow and polite."
+  goal: Book Biscuit a check-up, any time, any vet. Say yes to the read-back after hearing it again.
+  expect: [booked]
+- id: vet-neighbours-cat
+  clinic: riverbend
+  caller_number: "+17205550196"
+  persona: Someone feeding a neighbour's cat while they are away. Does not know the owner's full name for sure (thinks it is Nguyen) and does not know the phone on file. The cat, Mochi, seems unwell.
+  goal: Get Mochi seen. Cannot give the details the clinic needs; accept a callback for the team, and give the number you are calling from.
+  expect: [task_created, abandoned]
+- id: vet-wants-a-human
+  clinic: riverbend
+  caller_number: "+17205550172"
+  persona: Linh Nguyen. Does not like talking to machines. Asks twice to speak to a person, a little curt.
+  goal: Speak to a real person at the front desk.
+  expect: [transferred]
+- id: vet-spanish-owner
+  clinic: riverbend
+  caller_number: "+17205550174"
+  persona: Carmen Ortiz, dueña de Luna. Habla solo español. Luna cojea desde ayer.
+  goal: Reservar una consulta por enfermedad para Luna esta semana, con cualquier veterinario. Decir "sí" cuando le lean la cita.
+  expect: [booked]
+- id: vet-two-pets-one-call
+  clinic: riverbend
+  caller_number: "+17205550172"
+  persona: "Linh Nguyen. Organised. Wants to sort both pets in one call: Biscuit's wellness exam and Mochi's vaccines, back to back if possible, any day."
+  goal: Book a wellness exam for Biscuit and a vaccine appointment for Mochi. Say yes to each read-back. Then say goodbye.
+  expect: [booked]
