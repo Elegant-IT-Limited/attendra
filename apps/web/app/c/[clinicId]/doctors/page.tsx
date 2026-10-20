@@ -110,7 +110,7 @@ export default function DoctorsPage() {
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
         <Label htmlFor="doctor-sort" className="sr-only">Sort</Label>
-        <Select id="doctor-sort" className="w-44" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+        <Select id="doctor-sort" className="w-52" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
           <option value="added">In the order added</option>
           <option value="name">By name</option>
           <option value="specialty">By specialty</option>

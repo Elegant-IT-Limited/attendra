@@ -1,0 +1,18 @@
+id: settings-texting-off
+title: "Settings: with texting off, the assistant says the address and sends nothing, even when asked for a text"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  texting: { enabled: false }
+turns:
+  - caller: Hi, where exactly are you? Can you text me the address?
+    reply: "We're at 88 Riverbend Road in Denver, with free parking in front of the clinic."
+    delegate:
+      - get_clinic_info: { question: where is the clinic address }
+      - send_text: { kind: directions, ref: null, to: null }
+expect:
+  outcome: info
+  refusals: [texting_off]
+  sms_sent: 0
+forbid_spoken: ["I've sent", "I have sent", "sent you a text", "text it to you", "text that to you"]

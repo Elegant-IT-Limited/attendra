@@ -27,7 +27,7 @@ describe('demo calls', () => {
 
   it('writes one call per scenario and per ordinary demo call, all in the past, over about two weeks', async () => {
     const calls = await new FrontDeskRepository(t.db, cipher).listCalls(DEMO_CLINIC.id, { limit: 100 });
-    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple').length + loadScenarios(DEMO_CALL_DIR).length);
+    expect(calls).toHaveLength(loadScenarios().filter((s) => s.clinic === 'maple' && !s.settings).length + loadScenarios(DEMO_CALL_DIR).length);
     expect(calls[0]!.startedAt.getTime()).toBeLessThan(NOW.getTime());
     expect(NOW.getTime() - calls.at(-1)!.startedAt.getTime()).toBeLessThan(15 * 24 * 3_600_000);
   });
@@ -137,7 +137,8 @@ describe('the veterinary demo clinic\'s calls', () => {
       const { patientIds } = await seedRiverbend(fresh.db, cipher);
       const vet = await recordDemoCalls(fresh.db, cipher, patientIds, NOW, { clinic: RIVERBEND_CLINIC });
       expect(vet.filter((r) => !r.passed).map((r) => `${r.id}: ${r.failures.join('; ')}`)).toEqual([]);
-      expect(vet).toHaveLength(loadScenarios().filter((s) => s.clinic === 'riverbend').length);
+      // the settings scenarios change the clinic's settings, so they are not part of its demo
+      expect(vet).toHaveLength(loadScenarios().filter((s) => s.clinic === 'riverbend' && !s.settings).length);
       const calls = await new FrontDeskRepository(fresh.db, cipher).listCalls(RIVERBEND_CLINIC.id, { limit: 100 });
       expect(calls.every((c) => c.startedAt.getTime() < NOW.getTime())).toBe(true);
       const booking = calls.find((c) => c.id === vet.find((r) => r.id === 'vet-booking')!.callId)!;

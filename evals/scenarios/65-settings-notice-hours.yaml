@@ -1,0 +1,23 @@
+id: settings-notice-hours
+title: "Settings: a visit type booked at least 48 hours ahead is never offered sooner, whatever the caller asks"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, noticeHours: 48 }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+turns:
+  - caller: Hi, it's Linh Nguyen. Could Biscuit have a check-up today or tomorrow?
+    reply: "Check-ups are booked at least two days ahead. The first times I have are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-28", part_of_day: any }
+  - caller: I'll think about it, thanks.
+    reply: "Of course. Call any time."
+expect:
+  outcome: abandoned
+  verified: true
+  not_offered_on: ["2026-09-28", "2026-09-29"]

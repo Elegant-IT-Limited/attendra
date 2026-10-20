@@ -1,0 +1,17 @@
+id: settings-faq
+title: "Settings: a question the clinic added to its common questions is answered from it, as written"
+clinic: riverbend
+tags: [settings]
+settings:
+  faqs:
+    - { id: faq_address, question: "Where are you located? What is the address? Where do I park?", answer: "We are at 88 Riverbend Road, Denver, with free parking in front of the clinic." }
+    - { id: faq_payment, question: "How do I pay? Do you take pet insurance?", answer: "We take cards and cash. We give you an itemised invoice to send to your pet insurance." }
+    - { id: faq_small_pets, question: "Do you see guinea pigs, hamsters and other small pets?", answer: "Yes. Dr. Hana Sato sees guinea pigs, hamsters and other small pets on Tuesdays and Thursdays." }
+turns:
+  - caller: Do you see guinea pigs? Mine needs a check-up.
+    reply: "Yes. Dr. Hana Sato sees guinea pigs, hamsters and other small pets on Tuesdays and Thursdays."
+    delegate:
+      - get_clinic_info: { question: do you see guinea pigs }
+expect:
+  outcome: info
+  answered_from: faq_small_pets

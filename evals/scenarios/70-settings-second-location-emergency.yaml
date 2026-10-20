@@ -1,0 +1,22 @@
+id: settings-second-location-emergency
+title: "A second location: an animal emergency there names that location's hospital and rings its on-call vet, never the first location's"
+clinic: riverbend
+tags: [settings, locations, safety]
+settings:
+  name: Riverbend West
+  timezone: America/Los_Angeles
+  phoneNumbers: ["+14155550166"]
+  address: "9 Bay Street, San Francisco"
+  greeting: "Thanks for calling Riverbend West. I'm Juniper, the clinic's AI assistant. How can I help you and your pet today?"
+  emergencyHospital: { name: Bay Pet Emergency, phone: "+14155550199", address: "700 Mission Street, San Francisco" }
+  routing:
+    - { target: front_desk, uri: "tel:+14155550167", when: open }
+    - { target: on_call, uri: "tel:+14155550177", when: always }
+turns:
+  - caller: My dog just ate a whole bar of dark chocolate, please help!
+expect:
+  outcome: emergency
+  emergency_instruction: true
+  transfer_to: tel:+14155550177
+  spoken_contains: ["Bay Pet Emergency", "700 Mission Street"]
+forbid_spoken: ["Front Range Pet Emergency", "Larkspur"]
