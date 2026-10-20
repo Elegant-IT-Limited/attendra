@@ -92,11 +92,12 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
 }
 
 /** A number of days, 1 to 30, that can be cleared while typing: it settles on leaving the field. */
-function DaysInput({ value, onChange, disabled }: { value: number; onChange: (days: number) => void; disabled?: boolean }) {
+function DaysInput({ value, onChange, disabled, id, 'aria-describedby': describedBy }: { value: number; onChange: (days: number) => void; disabled?: boolean; id?: string; 'aria-describedby'?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { setText(String(value)); }, [value]);
+  // Field names its control by passing these down: they go on the input itself
   return (
-    <Input type="number" min={1} max={30} className="w-28" disabled={disabled} value={text}
+    <Input id={id} aria-describedby={describedBy} type="number" min={1} max={30} className="w-28" disabled={disabled} value={text}
       onChange={(e) => {
         setText(e.target.value);
         const n = Number(e.target.value);
