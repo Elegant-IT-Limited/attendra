@@ -135,6 +135,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const at = now();
       let sent = 0;
       for (const row of await allClinics(d.db)) {
+        // a closed clinic (a location removed) texts nobody
+        if (row.closedAt) continue;
         const parsed = ClinicConfig.safeParse(row.config);
         if (!parsed.success) continue;
         const config = parsed.data;

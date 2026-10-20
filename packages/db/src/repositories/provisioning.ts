@@ -72,6 +72,79 @@ export async function releaseNumber(db: Database, e164: string): Promise<boolean
   return rows.rows.length === 1;
 }
 
+/** Sets the plan the hosting layer keeps for a clinic, or clears it with null. False when there is no such clinic. */
+export async function setHostingPlan(db: Database, clinicId: string, plan: Record<string, unknown> | null): Promise<boolean> {
+  const rows = await db.update(clinics).set({ hostingPlan: plan }).where(eq(clinics.id, clinicId)).returning({ id: clinics.id });
+  return rows.length === 1;
+}
+
+/** The plan the hosting layer set for a clinic, as stored; null when it set none. */
+export async function hostingPlanOf(db: Database, clinicId: string): Promise<unknown> {
+  const [row] = await db.select({ plan: clinics.hostingPlan }).from(clinics).where(eq(clinics.id, clinicId));
+  return row?.plan ?? null;
+}
+
+/** Days a closed clinic can be opened again before the hosting layer may delete it. */
+export const CLOSED_KEPT_DAYS = 30;
+
+/**
+ * Closes a clinic (a location its organization removed) or opens it again. Closed, it leaves
+ * every member's dashboard, its numbers stop reaching the assistant and its API keys are
+ * revoked; nothing is deleted. Closing again keeps the first date. False when there is no such clinic.
+ */
+export async function setClinicClosed(db: Database, clinicId: string, closed: boolean, now = new Date()): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const rows = await tx.update(clinics).set({ closedAt: closed ? sql`coalesce(${clinics.closedAt}, ${now})` : null })
+      .where(eq(clinics.id, clinicId)).returning({ id: clinics.id });
+    if (!rows.length) return false;
+    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    if (closed) {
+      await tx.execute(sql`update phone_numbers set status = 'released' where clinic_id = ${clinicId} and status = 'active'`);
+      await tx.execute(sql`update api_keys set revoked_at = ${now} where clinic_id = ${clinicId} and revoked_at is null`);
+    }
+    await tx.insert(auditLogs).values({ clinicId, actor: 'provisioning', action: closed ? 'clinic.closed' : 'clinic.reopened', entity: 'clinic', entityId: clinicId });
+    return true;
+  });
+}
+
+/**
+ * Deletes a clinic closed at least 30 days ago, with everything recorded for it: calls,
+ * transcripts, patients, appointments, requests, texts, documents, webhooks, keys and its
+ * audit log. An open clinic, or one closed more recently, is left as it is.
+ */
+export async function purgeClosedClinic(db: Database, clinicId: string, now = new Date()): Promise<'purged' | 'not_found' | 'open' | 'recent'> {
+  return db.transaction(async (tx) => {
+    const [c] = await tx.select({ closedAt: clinics.closedAt }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
+    if (!c) return 'not_found';
+    if (!c.closedAt) return 'open';
+    if (c.closedAt.getTime() > now.getTime() - CLOSED_KEPT_DAYS * 86_400_000) return 'recent';
+    // row-level security applies to this connection too: the clinic's own rows only
+    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    // the rows that point at others go first; a patient and the call that created it point at each other
+    const steps = [
+      sql`delete from webhook_attempts where clinic_id = ${clinicId}`,
+      sql`delete from webhook_events where clinic_id = ${clinicId}`,
+      sql`delete from webhook_endpoints where clinic_id = ${clinicId}`,
+      sql`delete from task_notes where clinic_id = ${clinicId}`,
+      sql`delete from tasks where clinic_id = ${clinicId}`,
+      sql`delete from appointments where clinic_id = ${clinicId}`,
+      sql`delete from call_summaries where clinic_id = ${clinicId}`,
+      sql`update patients set created_by_call_id = null where clinic_id = ${clinicId} and created_by_call_id is not null`,
+      sql`delete from calls where clinic_id = ${clinicId}`,
+      sql`delete from patients where clinic_id = ${clinicId}`,
+      sql`delete from knowledge_documents where clinic_id = ${clinicId}`,
+      sql`delete from sms_messages where clinic_id = ${clinicId}`,
+      sql`delete from sms_opt_outs where clinic_id = ${clinicId}`,
+      sql`delete from api_keys where clinic_id = ${clinicId}`,
+      sql`delete from audit_logs where clinic_id = ${clinicId}`,
+      sql`delete from phone_numbers where clinic_id = ${clinicId}`,
+    ];
+    for (const step of steps) await tx.execute(step);
+    await tx.delete(clinics).where(eq(clinics.id, clinicId));
+    return 'purged';
+  });
+}
+
 /** Phone calls in [from, to): how many, and their length in seconds, start to end. Browser test calls are not counted. */
 export async function phoneUsage(db: Database, clinicId: string, from: Date, to: Date): Promise<{ calls: number; seconds: number }> {
   const [row] = (await db.execute(sql`

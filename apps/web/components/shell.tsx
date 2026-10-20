@@ -9,6 +9,7 @@ import { DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { EmergencyAlerts } from '@/components/calls/live-now';
 import { CommandPalette } from '@/components/command-palette';
+import { PlanBanner } from '@/components/plan';
 import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
@@ -174,6 +175,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
             Demo mode. Every record and call here is made up, and two-step sign-in is switched off.
           </div>
         )}
+        <PlanBanner clinicId={clinicId} />
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>
       </div>
 
