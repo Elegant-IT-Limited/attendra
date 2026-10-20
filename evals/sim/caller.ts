@@ -22,7 +22,7 @@ const HANGUP = '[HANGUP]';
  * comes from ATTENDRA_SIM_MODEL, and each line has a timeout and a short ceiling.
  */
 export class ModelCaller implements SimulatedCaller {
-  constructor(private readonly openai: Pick<OpenAI, 'responses'>, readonly model: string, private readonly persona: Persona, private readonly limits = { timeoutMs: 20_000, maxOutputTokens: 150 }) {}
+  constructor(private readonly openai: Pick<OpenAI, 'responses'>, readonly model: string, private readonly persona: Persona, private readonly limits = { timeoutMs: 20_000, maxOutputTokens: 1_000 }) {}
 
   async next(call: Line[]) {
     const res = await this.openai.responses.create({

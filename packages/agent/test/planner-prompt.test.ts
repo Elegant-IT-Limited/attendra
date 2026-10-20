@@ -30,6 +30,21 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(systemPrompt(RIVERBEND_CLINIC, 'now')).toContain('at most one question');
   });
 
+  it('looks the caller up with what they said before asking, reads back as a question, and offers a request before taking it', () => {
+    const prompt = systemPrompt(RIVERBEND_CLINIC, 'now');
+    expect(prompt).toContain('call verify_caller with exactly what they said before you ask anything else');
+    expect(prompt).toContain('never as done ("is set", "is booked")');
+    expect(prompt).toContain('offer the request in the same reply; take it after their yes');
+    expect(prompt).toContain('do not ask which day, time or provider they would like');
+  });
+
+  it('writes in the clinic\'s languages, and searches its own questions in its main one', () => {
+    expect(systemPrompt({ ...RIVERBEND_CLINIC, languages: ['en'], primaryLanguage: 'en' }, 'now'))
+      .toContain('Write what the assistant says in English, even when the caller speaks another language. Pass questions to get_clinic_info and search_knowledge in English');
+    expect(systemPrompt({ ...DEMO_CLINIC, languages: ['en', 'es'], primaryLanguage: 'en' }, 'now'))
+      .toContain('in the caller\'s language when it is English or Spanish, otherwise in English');
+  });
+
   it('a veterinary clinic\'s tools take the owner\'s and the pet\'s names', async () => {
     let tools: { name: string; description: string; parameters: { properties: Record<string, unknown> } }[] = [];
     const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };

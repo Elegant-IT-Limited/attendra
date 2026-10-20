@@ -11,4 +11,5 @@ turns:
 expect:
   outcome: task_created
   verified: true
-forbid_spoken: ["approved", "will be ready"]
+# a promise is what is forbidden, as in the vet refill: "I can't promise it will be approved" promises nothing
+forbid_spoken: ["is approved", "been approved", "I approved", "approved it", "will be ready"]

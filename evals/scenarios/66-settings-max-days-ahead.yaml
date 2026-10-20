@@ -3,7 +3,7 @@ title: "Settings: a visit type booked at most 14 days ahead is not booked two mo
 clinic: riverbend
 local_time: "10:00"
 tags: [settings]
-facts: "Biscuit is a dog. Any vet is fine. If that day cannot be booked yet, say you will call back in November."
+facts: "Biscuit is a dog. Any vet is fine. If that day cannot be booked yet, say you will call back in November yourself; if the assistant offers to have the team call you, say no thanks."
 settings:
   visitTypes:
     - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, maxDaysAhead: 14 }

@@ -96,11 +96,31 @@ describe('booking over the phone', () => {
   it('gives the same answer for a wrong DOB as for no such patient, and stops after three tries', async () => {
     const c = await w.call();
     const tries = [];
-    for (let i = 0; i < 4; i++) tries.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: '1 January 1990' } }]));
+    for (let i = 0; i < 4; i++) tries.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: `${i + 1} January 1990` } }]));
     expect(tries.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified', 'too_many_attempts']);
     // each miss asks first whether they are new, and says how many tries are left before nobody can be added
     expect(tries[0]!.results[0]!.data.say).toContain('ask that first');
     expect(tries.slice(0, 3).map((t) => String(t.results[0]!.data.say).match(/(\d) tr|No tries/)![0])).toEqual(['2 tr', '1 tr', 'No tries']);
+  });
+
+  it('the same details again are not another try, so someone new can still be added after the planner repeats itself', async () => {
+    const c = await w.call('+13035550199');
+    const again = [];
+    for (let i = 0; i < 3; i++) again.push(await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Ana Reyes', date_of_birth: 'June 1 1988' } }]));
+    expect(again.map((t) => t.errors[0])).toEqual(['not_verified', 'not_verified', 'not_verified']);
+    expect(c.state.verifyAttempts).toBe(1);
+    expect(String(again[1]!.results[0]!.data.say)).toContain('do not look them up again');
+    // cased and spaced differently, or the date said another way, it is still the same details
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'ana  REYES', date_of_birth: '6/1/1988' } }]);
+    expect(c.state.verifyAttempts).toBe(1);
+    const added = await c.delegate([{ tool: 'register_patient', args: { first_name: 'Ana', last_name: 'Reyes', date_of_birth: 'June 1 1988', gender: 'female' } }]);
+    expect(added.errors).toEqual([null]);
+    expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
+    // a pet: the same owner, pet and phone again use no try either
+    const vet = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]);
+    await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'jamie cole', pet_name: 'PEPPER', phone: '(720) 555-0165' } }]);
+    expect(vet.state.verifyAttempts).toBe(1);
   });
 
   it('tells apart two patients with the same name and DOB by the phone on their file, and never guesses without it', async () => {
@@ -313,7 +333,7 @@ describe('safety', () => {
     const c = await w.call();
     await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: '303-555-0163' } }]);
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
-    expect(spoken(out)).toContain('Do not promise approval');
+    expect(spoken(out)).toContain('Say nothing about approval');
     expect(c.state.outcome).toBe('task_created');
   });
 
@@ -441,6 +461,42 @@ describe('review fixes', () => {
     c.assistant('Would you like me to book it?');
     c.caller('Yes please.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('keeps the yes when the planner proposes the same change again after it, as in live run 5', async () => {
+    const before = (await bookings()).length;
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit');
+    const slot = { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } } as const;
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.caller('Yes, that is right. Thanks, goodbye.');
+    // the planner looks it all up again and proposes the same slot before committing
+    const again = await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+      { tool: 'commit_pending', args: {} },
+    ]);
+    expect(again.errors).toEqual([null, null, null, null]);
+    expect(String(again.results[2]!.data.say)).toContain('already read back');
+    expect(await bookings()).toHaveLength(before + 1);
+    // a different slot is a new change: it is read back again before any yes counts
+    const c2 = await w.call();
+    c2.caller('Maria Delgado, March 4 1985, sick visit');
+    await c2.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    c2.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c2.caller('Yes.');
+    const other = await c2.delegate([
+      { tool: 'propose_booking', args: () => ({ slot_id: [...c2.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) },
+      { tool: 'commit_pending', args: {} },
+    ]);
+    expect(other.errors).toEqual([null, 'not_read_back']);
   });
 
   it('counts a read-back spoken in the same breath as "let me book that", as on the first live test call', async () => {

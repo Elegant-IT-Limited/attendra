@@ -82,6 +82,22 @@ test('a new team member picks a password, changes it from Your account, turns on
   await sam.getByLabel('Password').fill('sam picks another one');
   await signInPatiently(sam, () => sam.getByRole('button', { name: 'Sign in', exact: true }).click());
   await expect(sam.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
+
+  // where two-step is optional (the demo, or ATTENDRA_TWO_FACTOR=optional), Sam can turn it on and off again
+  await sam.goto('/profile');
+  await sam.getByRole('link', { name: 'Turn it on' }).click();
+  await sam.getByLabel('Confirm your password').fill('sam picks another one');
+  await sam.getByRole('button', { name: 'Continue' }).click();
+  const again = (await sam.locator('code.font-mono').textContent())!.trim();
+  await sam.getByLabel('Code from the app').fill(totp(again));
+  await sam.getByRole('button', { name: 'Turn on and continue' }).click();
+  await expect(sam.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
+  await sam.goto('/profile');
+  await sam.getByRole('button', { name: 'Turn it off' }).click();
+  await sam.getByLabel('Your password, to turn two-step off').fill('sam picks another one');
+  await sam.getByRole('button', { name: 'Continue' }).click();
+  await expect(sam.getByText('Two-step sign-in is off. You sign in with your password only.')).toBeVisible();
+  await expect(sam.getByRole('link', { name: 'Turn it on' })).toBeVisible();
 });
 
 test('signing in again after the session ended opens the page you were on', async ({ browser }) => {
