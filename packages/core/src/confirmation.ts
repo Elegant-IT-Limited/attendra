@@ -26,7 +26,7 @@ const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|graci
 const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;
 const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|espere|pregunta)\b|\?/;
 // a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
-const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|i('| a)?m going|talk (to you )?later|adios|hasta luego|chao|chau|me tengo que ir)\b/;
+const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|adios|hasta luego|chao|chau|me tengo que ir)\b/;
 
 /**
  * May the call end? Two steps, like a front desk: the assistant has asked whether
