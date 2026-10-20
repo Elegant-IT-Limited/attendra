@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { callingCode, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -66,7 +66,7 @@ function issueLabel(path: string) {
   return names[top] ?? (top || 'Settings');
 }
 /** The clinic's talk settings with defaults, so one change keeps the other two. */
-const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal', style: c.talk?.style ?? 'efficient', acknowledgements: c.talk?.acknowledgements ?? true });
+const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal', style: c.talk?.style ?? defaultTalkStyle(c.industry), acknowledgements: c.talk?.acknowledgements ?? true });
 
 /** A row nobody has typed in yet: the button that made it points to it again instead of adding another, and Save leaves it out. */
 const BLANK = {
@@ -254,7 +254,7 @@ export default function Settings() {
                 </Select>
               </Field>
               <Field label="Style" htmlFor="talk-style">
-                <Select id="talk-style" value={c.talk?.style ?? 'efficient'} onChange={(e) => set({ talk: { ...talkOf(c), style: e.target.value as TalkStyle['style'] } })}>
+                <Select id="talk-style" value={c.talk?.style ?? defaultTalkStyle(c.industry)} onChange={(e) => set({ talk: { ...talkOf(c), style: e.target.value as TalkStyle['style'] } })}>
                   <option value="warm">Warm and chatty</option><option value="efficient">Friendly and efficient</option><option value="professional">Calm and professional</option>
                 </Select>
               </Field>
