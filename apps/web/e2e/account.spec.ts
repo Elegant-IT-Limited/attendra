@@ -74,7 +74,8 @@ test('a new team member picks a password, changes it from Your account, turns on
   await manager.getByRole('row', { name: /Sam Reed/ }).getByRole('button', { name: 'Reset two-step' }).click();
   await manager.getByRole('dialog', { name: 'Reset Sam Reed\'s two-step sign-in?' }).getByRole('button', { name: 'Reset two-step' }).click();
   await expect(manager.getByText('Sam Reed can sign in with their password now', { exact: false })).toBeVisible();
-  await sam.goto('/');
+  // the page may already be on its way to sign-in by itself: only the start of this navigation is awaited
+  await sam.goto('/', { waitUntil: 'commit' });
   await expect(sam).toHaveURL(/\/sign-in/);
   // back in with the password alone (two-step is optional in the demo; in production they set it up again next)
   await sam.getByLabel('Email').fill('sam@maple-demo.test');
@@ -84,11 +85,15 @@ test('a new team member picks a password, changes it from Your account, turns on
 });
 
 test('signing in again after the session ended opens the page you were on', async ({ browser }) => {
-  const page = await openAs(browser, 'frontdesk');
-  const schedule = `${new URL(page.url()).pathname}/schedule`;
-  // the session ends (here: its cookie is gone) while they work
-  await page.context().clearCookies();
-  await page.goto(schedule);
+  const today = await openAs(browser, 'frontdesk');
+  const schedule = `${new URL(today.url()).pathname}/schedule`;
+  // the session ends (here: its cookie is gone). Today is closed first: its next refresh would
+  // send it to sign-in by itself, racing the page opened here (net::ERR_ABORTED in CI)
+  const context = today.context();
+  await today.close();
+  await context.clearCookies();
+  const page = await context.newPage();
+  await page.goto(schedule, { waitUntil: 'commit' });
   await expect(page).toHaveURL(/\/sign-in\?expired=1&next=/);
   await expect(page.getByText('You were signed out. Sign in again to carry on where you were.')).toBeVisible();
   await signInPatiently(page, () => page.getByRole('button', { name: 'Front desk', exact: true }).click());
