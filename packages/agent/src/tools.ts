@@ -56,6 +56,16 @@ const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback',
 export const MAX_TEXTS_PER_CALL = 3;
 /** The assistant's own words that offered a text: "I can text you…", "…por mensaje". */
 const TEXT_OFFER_MARKER = /\btext|mensaje/i;
+/** What a search is about: "does Maple Street Family Medicine do X" is about X, since the clinic's own name matches every document. */
+function topicOf(question: string, clinicName: string): string {
+  const name = clinicName.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const topic = name ? question.replace(new RegExp(name, 'gi'), ' ').replace(/\s+/g, ' ').trim() : question;
+  return topic.length >= 2 ? topic : question;
+}
+/** The number to call back: the one the caller gave, or else the number they are calling from. */
+const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null }) =>
+  (typeof args.callback_number === 'string' && args.callback_number.trim() ? args.callback_number.trim() : null) ?? ctx.callerNumber;
+const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
@@ -220,8 +230,9 @@ export async function runTool(
       // what the caller said too: the model may pass on a question it has softened
       if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
       const hours = todaysHoursLine(clinic, ctx.now());
-      const answer = answerFromFaqs(clinic.faqs, question);
-      const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
+      const topic = topicOf(question, clinic.name);
+      const answer = answerFromFaqs(clinic.faqs, topic);
+      const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
       // a question answered from the clinic's own words is a call the assistant handled
       if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
       // an answer from the clinic's own list may be texted afterwards, by its id
@@ -247,8 +258,18 @@ export async function runTool(
     case 'search_knowledge': {
       const question = String(args.question);
       if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
-      const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, question) : [];
-      if (!passages.length) return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. Say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      const topic = topicOf(question, clinic.name);
+      const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
+      if (!passages.length) {
+        // the clinic's own common questions (the address, parking) answer it as well as a document would
+        const answer = answerFromFaqs(clinic.faqs, topic);
+        if (answer) {
+          state.answersGiven.add(answer.id);
+          if (state.outcome === 'abandoned') state.outcome = 'info';
+          return { ok: true, data: { passages: [], answer: answer.answer, source: answer.id, say: `This is one of the clinic's common questions. If it answers theirs, answer from it in a sentence or two, in the caller's language; if not, say: "${NO_INFORMATION}" Never add advice of your own.` } };
+        }
+        return { ok: true, data: { passages: [], say: `Nothing in the clinic's documents answers this. For the hours, the address or the ${trade.identity === 'pet' ? 'vets' : 'doctors'}, use get_clinic_info. Otherwise say: "${NO_INFORMATION}" Offer to take a callback.` } };
+      }
       if (state.outcome === 'abandoned') state.outcome = 'info';
       return {
         ok: true,
@@ -357,7 +378,11 @@ export async function runTool(
 
     case 'list_appointments': {
       const upcoming = await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now());
-      return { ok: true, data: { appointments: upcoming.map((a) => ({ appointment_id: a.id, when: when(a.start), provider: providerName(a.providerId) })) } };
+      // the kind of visit too, so a reschedule looks for the same one
+      return { ok: true, data: { appointments: upcoming.map((a) => {
+        const visit = clinic.visitTypes.find((v) => v.id === a.visitTypeId);
+        return { appointment_id: a.id, when: when(a.start), provider: providerName(a.providerId), visit_type_id: a.visitTypeId, visit: visit ? localName(visit, lang) : null };
+      }) } };
     }
 
     case 'propose_booking': {
@@ -456,10 +481,12 @@ export async function runTool(
     }
 
     case 'create_refill_request': {
+      const callback = callbackNumber(args, ctx);
+      if (!callback) return NO_CALLBACK_NUMBER();
       const task = await backend.tasks.create(clinic.id, {
         type: 'refill', callId: ctx.callId, patientId: state.verifiedPatient!.id,
         idempotencyKey: key(ctx.callId, 'refill', String(args.medication).toLowerCase()),
-        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: String(args.callback_number) },
+        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: callback },
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
@@ -471,10 +498,12 @@ export async function runTool(
       const same = (x: string) => fold(x).toLowerCase().trim();
       const asked = typeof args.topic === 'string' ? same(args.topic) : '';
       const topic = asked ? clinic.requestTopics?.find((t) => same(t.name) === asked || t.id === args.topic) : undefined;
+      const callback = callbackNumber(args, ctx);
+      if (!callback) return NO_CALLBACK_NUMBER();
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         idempotencyKey: key(ctx.callId, 'callback', String(args.reason).toLowerCase()),
-        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: String(args.callback_number) },
+        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: callback },
       });
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
