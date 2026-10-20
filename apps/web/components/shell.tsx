@@ -286,7 +286,8 @@ export function PageHeader({ title, description, actions }: { title: string; des
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="max-w-3xl text-base text-text-muted">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* on a phone the buttons wrap onto lines of their own instead of pushing the page sideways */}
+      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
