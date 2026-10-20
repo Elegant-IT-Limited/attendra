@@ -2,6 +2,7 @@ id: vet-booking
 title: A pet owner is found by their name, the pet's name and their phone, and books a wellness exam on a clear yes
 clinic: riverbend
 local_time: "10:00"
+facts: "You are calling from the number on file. Any time works, with any vet. Say yes to the first time offered and to the read-back."
 turns:
   - caller: Hi, this is Linh Nguyen. I'd like to book a check-up for my dog Biscuit.
     reply: "Thanks, Linh, I've found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."

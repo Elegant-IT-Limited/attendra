@@ -5,7 +5,10 @@
 // never runs it; the manual quality workflow does.
 import { ResponsesPlanner } from '@attendra/agent';
 import { qualityOf } from '@attendra/core';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import OpenAI from 'openai';
+import { callDetails } from '../src/judge';
 import { ModelCaller } from './caller';
 import { loadPersonas, type Simulation, simulate } from './simulate';
 
@@ -41,4 +44,17 @@ console.log(`
   refusals             ${q.refusals.map((r) => `${r.code} ${r.count}`).join(', ') || 'none'}
   estimated voice cost ${q.costPerCall === null ? 'n/a' : `$${q.costPerCall.toFixed(2)} a call`}, from the words spoken
 `);
+// every call in full, to read what happened (synthetic people only); git ignores the reports
+const dir = join(import.meta.dirname, '../reports');
+mkdirSync(dir, { recursive: true });
+const file = join(dir, `sim-${new Date().toISOString().slice(0, 10)}.md`);
+writeFileSync(file, [
+  `# Simulated calls, ${new Date().toISOString().slice(0, 10)}`, '', `Planner ${plannerModel}, caller ${callerModel}. ${runs.filter((r) => r.goalMet).length} of ${runs.length} goals met.`, '',
+  ...runs.flatMap((r, i) => [
+    `## ${i + 1}. ${r.persona.id}: ${r.goalMet ? 'met' : 'MISSED'} (${r.result.outcome}, expected ${r.persona.expect.join(' or ')})`, '',
+    `Goal: ${r.persona.goal}`, '',
+    ...callDetails({ transcript: r.transcript, calls: r.calls }), '',
+  ]),
+].join('\n'));
+console.log(`report: ${file}`);
 process.exit(0);

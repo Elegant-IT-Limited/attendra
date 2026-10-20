@@ -1,5 +1,6 @@
 id: changed-mind-mid-task
 title: '"Not that one, the next one" replaces the pending booking before any yes'
+facts: "You are calling from the number on your file. Any doctor is fine. You want the second time offered, not the first; say yes when that one is read back."
 turns:
   - caller: Maria Delgado, 1985-03-04, I need a sick visit.
     reply: "Thanks, Maria. The first opening I have is {readback}. Does that work for you?"

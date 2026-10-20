@@ -3,6 +3,7 @@ title: A new pet is looked up first, then added with its owner, its kind and its
 clinic: riverbend
 local_time: "14:00"
 caller_number: "+17205550190"
+facts: "You are calling from your own mobile, the number you are calling from. Ziggy is a male dog, about eight months old. You have no other pets at the clinic. Any time works. Say yes to the first time offered and to the read-back."
 turns:
   - caller: Hi, I just adopted a puppy. I'm Ava Patel and his name is Ziggy.
     reply: "Congratulations! I couldn't find Ziggy in our records yet. Is he new to the clinic?"

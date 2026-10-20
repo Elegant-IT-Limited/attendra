@@ -1,5 +1,6 @@
 id: booking-happy-path
 title: A verified caller books the first offered sick visit and gets one text
+facts: "You are calling from the number on your file. Any time this week works, with any doctor. Say yes to the first time offered, and yes when it is read back."
 turns:
   - caller: Hi, this is Maria Delgado, born March 4th 1985. My knee has been hurting and I'd like to be seen.
     reply: "Thanks, Maria, I've found your record. For a sick visit I can offer {offered.0}, or {offered.1}."
