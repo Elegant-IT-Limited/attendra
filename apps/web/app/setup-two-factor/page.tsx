@@ -10,6 +10,7 @@ import { Alert } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { signOutAndLeave } from '@/lib/next';
 
 /**
  * First sign-in: staff turn on two-factor before they can see any patient data.
@@ -32,7 +33,7 @@ export default function SetupTwoFactor() {
   }, [me.data, router, setup]);
   const [copied, setCopied] = useState<'key' | 'codes' | null>(null);
   const copy = (what: 'key' | 'codes', text: string) => { void navigator.clipboard?.writeText(text).then(() => setCopied(what), () => {}); };
-  const signOut = () => void authClient.signOut().finally(() => window.location.assign('/sign-in'));
+  const signOut = () => signOutAndLeave(() => authClient.signOut());
   const qr = useMemo(() => (setup ? renderSVG(setup.totpURI, { border: 1 }) : null), [setup]);
   const secret = setup ? new URL(setup.totpURI).searchParams.get('secret') : null;
   // turned on by choice, from Your account: a way back; when it is required, only signing out
