@@ -32,6 +32,9 @@ export const Scenario = z.object({
   caller_number: z.string().nullable().optional(),
   // the clinic's local time of the call on its day (Monday 28 September 2026); 20:00, after hours, unless set
   local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  // settings the clinic changed, as Settings saves them (top-level keys of its config, whole values): the call
+  // must follow them. A second location is the same clinic with its own name, hours, vets and hospital.
+  settings: z.record(z.string(), z.unknown()).optional(),
   turns: z.array(Turn).min(1),
   expect: z.object({
     outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']),
@@ -46,6 +49,8 @@ export const Scenario = z.object({
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
+    booked_with: z.string().optional(), // the provider every booking made on the call must be with
+    not_offered_on: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]), // the clinic's local dates no offered time may fall on
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
 });

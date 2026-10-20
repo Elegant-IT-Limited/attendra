@@ -1,0 +1,17 @@
+id: settings-transfer-number
+title: "Settings: asking for a person during opening hours rings the front desk number the clinic set"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  routing:
+    - { target: front_desk, uri: "tel:+17205550100", when: open }
+    - { target: on_call, uri: "tel:+17205550179", when: always }
+turns:
+  - caller: Can I talk to someone at the front desk, please?
+    reply: "Of course, I'll put you through now."
+    delegate:
+      - transfer_call: { target: front_desk }
+expect:
+  outcome: transferred
+  transfer_to: tel:+17205550100

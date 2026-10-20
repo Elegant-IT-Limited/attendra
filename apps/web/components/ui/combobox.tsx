@@ -55,6 +55,11 @@ export function Combobox({ id, value, options, onChange, placeholder, maxLength 
     } else if (e.key === 'Enter' && open && shown[active]) {
       e.preventDefault();
       pick(shown[active]!.value);
+    } else if (e.key === 'Enter') {
+      // a value typed in, not in the list: Enter keeps it, and never sends the whole form half filled in
+      e.preventDefault();
+      setOpen(false);
+      setTyped(false);
     } else if (e.key === 'Escape' && open) {
       e.preventDefault();
       setOpen(false);

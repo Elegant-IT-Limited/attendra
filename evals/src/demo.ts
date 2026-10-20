@@ -23,8 +23,8 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   const [{ a }] = (await db.execute(sql`select count(*)::int as a from appointments where clinic_id not in (${sql.join(demoIds.map((id) => sql`${id}`), sql`, `)})`)).rows as [{ a: number }];
   if (a > 0) throw new Error('this database has appointments for other clinics; demo calls go only into a demo database');
 
-  // each clinic's own scenarios
-  const evals = loadScenarios().filter((s) => clinicOf(s).id === clinic.id);
+  // each clinic's own scenarios, as the clinic is set up (not the ones that change its settings)
+  const evals = loadScenarios().filter((s) => !s.settings && clinicOf(s).id === clinic.id);
   // and a working week of ordinary calls, played the same way, for the clinic's current week
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
   if (week.length) await ensurePatients(db, cipher, clinic);

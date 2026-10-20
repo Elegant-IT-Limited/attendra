@@ -283,13 +283,14 @@ export default function Settings() {
             {(['1', '2', '3', '4', '5', '6', '0'] as Day[]).map((d) => (
               <div key={d} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
                 <span className="w-24 text-base font-medium">{DAYS[Number(d)]}</span>
-                <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2">
+                {/* on a phone the times go under the day's name, and a window wraps to two lines rather than past the card */}
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 max-md:basis-full">
                   {windows(d).length === 0 && <span className="text-base text-text-muted">Closed</span>}
                   {windows(d).map((w, i) => (
-                    <span key={i} className="flex items-center gap-1.5">
-                      <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-32" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
+                    <span key={i} className="flex flex-wrap items-center gap-1.5">
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} opens`} className="w-32 max-md:w-36" value={w.open} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, open: e.target.value } : x)))} />
                       <span className="text-sm text-text-muted">to</span>
-                      <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-32" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
+                      <Input type="time" aria-label={`${DAYS[Number(d)]} closes`} className="w-32 max-md:w-36" value={w.close} onChange={(e) => setWindows(d, windows(d).map((x, j) => (j === i ? { ...x, close: e.target.value } : x)))} />
                       <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove these ${DAYS[Number(d)]} hours`} onClick={() => setWindows(d, windows(d).filter((_, j) => j !== i))}><Trash2 /></Button>
                     </span>
                   ))}

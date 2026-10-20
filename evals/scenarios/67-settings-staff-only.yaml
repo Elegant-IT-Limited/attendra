@@ -1,0 +1,27 @@
+id: settings-staff-only
+title: "Settings: a visit type the team books itself becomes a request for the team; the assistant offers no times"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_surgery, name: surgery consultation, minutes: 30, staffOnly: true }
+turns:
+  - caller: Hi, it's Linh Nguyen. Biscuit needs a surgery consultation, can I book one?
+    reply: "Surgery consultations are booked by the team. I'll ask them to call you to find a time. Is this the best number?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_surgery, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Yes, this number is fine.
+    reply: "Done. The team will call you to book Biscuit's surgery consultation."
+    delegate:
+      - create_callback: { reason: Book a surgery consultation for Biscuit, callback_number: "+17205550172" }
+expect:
+  outcome: task_created
+  verified: true
+  refusals: [staff_books]
+  bookings_created: 0

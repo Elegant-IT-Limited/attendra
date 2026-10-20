@@ -1,0 +1,19 @@
+id: settings-holiday
+title: "Settings: a day the clinic marked closed is never offered; the next open day is"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  holidays: ["2026-09-29"]
+turns:
+  - caller: Hi, it's Linh Nguyen. Can Biscuit come in tomorrow for a check-up?
+    reply: "We're closed tomorrow. The first times I have are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: Let me check my calendar and call back.
+    reply: "Of course. Call any time."
+expect:
+  outcome: abandoned
+  verified: true
+  not_offered_on: ["2026-09-29"]
