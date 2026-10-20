@@ -37,7 +37,9 @@
         "LOG_LEVEL",
         "ATTENDRA_ACCOUNT_LINKS",
         "ATTENDRA_PROVISIONING_TOKEN",
-        "ATTENDRA_ACCOUNT_URL"
+        "ATTENDRA_ACCOUNT_URL",
+        "ATTENDRA_MAIL_HOOK_URL",
+        "ATTENDRA_IDLE_MINUTES"
       ]
     }
   }

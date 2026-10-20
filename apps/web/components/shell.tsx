@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun } from 'lucide-react';
+import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
@@ -17,6 +17,7 @@ import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { useClinicChanges } from '@/lib/changes';
 import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
+import { markSignedOut } from '@/lib/next';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
 import { useTerms } from '@/lib/terms';
@@ -27,7 +28,6 @@ import { cn } from '@/lib/utils';
 const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
 // A workstation left open at the front desk signs itself out.
-const IDLE_MS = 15 * 60_000;
 
 /**
  * The frame around every clinic page. A full sidebar from 1280 px, icons only from
@@ -59,18 +59,31 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // Drops every cached call, transcript and task before leaving, and reloads, so the
   // next person at this screen starts from nothing.
   const signOut = useCallback(async (reason?: 'idle') => {
+    markSignedOut();
     await authClient.signOut().catch(() => {});
     queries.clear();
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
   }, [queries]);
 
+  // the deployment's idle minutes (15 by default) sign out, counted across every tab of the
+  // dashboard: a tab left in the background never signs out the one being worked in (they share the session)
+  const idleMs = (me?.idleMinutes ?? 15) * 60_000;
   useEffect(() => {
-    let timer = setTimeout(() => void signOut('idle'), IDLE_MS);
-    const reset = () => { clearTimeout(timer); timer = setTimeout(() => void signOut('idle'), IDLE_MS); };
+    const KEY = 'attendra.activeAt';
+    let local = 0;
+    const shared = () => { try { return Number(localStorage.getItem(KEY)) || 0; } catch { return 0; } };
+    const touch = () => {
+      const now = Date.now();
+      if (now - local < 5_000) return; // at most every few seconds
+      local = now;
+      try { localStorage.setItem(KEY, String(now)); } catch { /* this tab's own time still counts */ }
+    };
+    touch();
+    const check = setInterval(() => { if (Date.now() - Math.max(local, shared()) >= idleMs) void signOut('idle'); }, 15_000);
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
-    for (const e of events) window.addEventListener(e, reset, { passive: true });
-    return () => { clearTimeout(timer); for (const e of events) window.removeEventListener(e, reset); };
-  }, [signOut]);
+    for (const e of events) window.addEventListener(e, touch, { passive: true });
+    return () => { clearInterval(check); for (const e of events) window.removeEventListener(e, touch); };
+  }, [signOut, idleMs]);
 
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);
@@ -255,6 +268,9 @@ function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: str
             <M.ItemIndicator className="ml-auto text-xs text-primary">On</M.ItemIndicator>
           </M.CheckboxItem>
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
+          <M.Item asChild className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
+            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your account: password and two-step</a>
+          </M.Item>
           <M.Item onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11"><LogOut className="size-4 text-text-muted" aria-hidden />Sign out</M.Item>
         </M.Content>
       </M.Portal>

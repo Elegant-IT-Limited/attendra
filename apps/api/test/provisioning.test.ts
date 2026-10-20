@@ -53,7 +53,7 @@ describe('provisioning', () => {
     expect(await clinicForNumber(api.t.db, '+13125550100')).toBeNull();
 
     // the same email again
-    expect((await api.request('POST', `${P}/accounts`, { body: account, authorization: auth })).json()).toEqual({ error: 'email_taken' });
+    expect((await api.request('POST', `${P}/accounts`, { body: account, authorization: auth })).json()).toEqual({ error: 'email_taken', confirmed: true });
     // an unknown time zone
     const bad = await api.request('POST', `${P}/accounts`, { body: { ...account, owner: { ...account.owner, email: 'x@oakhill.example' }, clinic: { ...account.clinic, timezone: 'Mars/Base' } }, authorization: auth });
     expect(bad.statusCode).toBe(422);

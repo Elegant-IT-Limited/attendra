@@ -3,10 +3,10 @@
 // clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
 // none of it reads patient data.
 import { ClinicConfig, PACKS } from '@attendra/core';
-import { and, asc, eq, sql } from 'drizzle-orm';
-import { authUsers, memberships } from '../auth-schema';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { authAccounts, authSessions, authTwoFactors, authUsers, memberships } from '../auth-schema';
 import type { Database } from '../client';
-import { auditLogs, clinics, organizations } from '../schema';
+import { auditLogs, calls, clinics, organizations } from '../schema';
 
 /**
  * A new organization and its first clinic. The clinic's own number is not pointed at
@@ -91,4 +91,45 @@ export async function clinicOwners(db: Database, clinicId: string): Promise<{ na
 export async function confirmEmail(db: Database, email: string): Promise<boolean> {
   const rows = await db.update(authUsers).set({ emailVerified: true }).where(eq(authUsers.email, email.trim().toLowerCase())).returning({ id: authUsers.id });
   return rows.length === 1;
+}
+
+/**
+ * Removes an account whose email address was never confirmed, with the organization and
+ * clinics it opened alone, so the address can sign up again: a sign-up the hosting layer
+ * could not finish, or one made with someone else's address. Never an account that was
+ * confirmed, an organization someone else belongs to, or a clinic that has had a call.
+ */
+export async function removeUnconfirmedAccount(db: Database, email: string, opts: { createdBefore?: Date } = {}): Promise<'removed' | 'not_found' | 'confirmed' | 'in_use' | 'recent'> {
+  return db.transaction(async (tx) => {
+    const [user] = await tx.select({ id: authUsers.id, verified: authUsers.emailVerified, createdAt: authUsers.createdAt }).from(authUsers).where(eq(authUsers.email, email.trim().toLowerCase()));
+    if (!user) return 'not_found';
+    if (user.verified) return 'confirmed';
+    if (opts.createdBefore && user.createdAt > opts.createdBefore) return 'recent';
+    const orgs = (await tx.select({ orgId: memberships.organizationId }).from(memberships).where(eq(memberships.userId, user.id))).map((r) => r.orgId);
+    // organizations this person opened alone: those go with them
+    const alone: string[] = [];
+    for (const orgId of orgs) {
+      const [other] = await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.organizationId, orgId), ne(memberships.userId, user.id))).limit(1);
+      if (!other) alone.push(orgId);
+    }
+    const clinicIds = alone.length ? (await tx.select({ id: clinics.id }).from(clinics).where(inArray(clinics.orgId, alone))).map((c) => c.id) : [];
+    // calls and the audit log are behind row-level security, even for this connection: one clinic at a time
+    for (const clinicId of clinicIds) {
+      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      const [used] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.clinicId, clinicId)).limit(1);
+      if (used) return 'in_use'; // checked for every clinic before anything is removed
+    }
+    for (const clinicId of clinicIds) {
+      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await tx.delete(auditLogs).where(eq(auditLogs.clinicId, clinicId));
+    }
+    if (clinicIds.length) await tx.delete(clinics).where(inArray(clinics.id, clinicIds));
+    await tx.delete(memberships).where(eq(memberships.userId, user.id));
+    if (alone.length) await tx.delete(organizations).where(inArray(organizations.id, alone));
+    await tx.delete(authSessions).where(eq(authSessions.userId, user.id));
+    await tx.delete(authTwoFactors).where(eq(authTwoFactors.userId, user.id));
+    await tx.delete(authAccounts).where(eq(authAccounts.userId, user.id));
+    await tx.delete(authUsers).where(eq(authUsers.id, user.id));
+    return 'removed';
+  });
 }
