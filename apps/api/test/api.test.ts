@@ -92,6 +92,9 @@ describe('API settings for a hosted service', () => {
     expect(loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Setup","href":"/setup"}]' }).ATTENDRA_ACCOUNT_LINKS).toEqual([{ label: 'Setup', href: '/setup' }]);
     expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: '[{"label":"Billing","href":"http://x.example"}]' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
     expect(() => loadEnv({ ...base, ATTENDRA_ACCOUNT_LINKS: 'not json' })).toThrow('ATTENDRA_ACCOUNT_LINKS');
+    expect(loadEnv(base).ATTENDRA_MCP_URL).toBeUndefined();
+    expect(loadEnv({ ...base, ATTENDRA_MCP_URL: 'https://app.example.com/mcp' }).ATTENDRA_MCP_URL).toBe('https://app.example.com/mcp');
+    expect(() => loadEnv({ ...base, ATTENDRA_MCP_URL: 'http://app.example.com/mcp' })).toThrow('ATTENDRA_MCP_URL');
     expect(loadEnv(base).ATTENDRA_TWO_FACTOR).toBe('required');
     expect(loadEnv({ ...base, ATTENDRA_TWO_FACTOR: 'optional' }).ATTENDRA_TWO_FACTOR).toBe('optional');
     expect(() => loadEnv({ ...base, ATTENDRA_TWO_FACTOR: 'off' })).toThrow('ATTENDRA_TWO_FACTOR');

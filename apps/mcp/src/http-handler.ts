@@ -28,6 +28,16 @@ function windowCounter(limit: number) {
   };
 }
 
+/**
+ * The client's address behind one trusted proxy: the last X-Forwarded-For entry, the one
+ * that proxy added. Entries before it come from the client and can say anything.
+ */
+export function forwardedAddress(req: IncomingMessage): string {
+  const header = req.headers['x-forwarded-for'];
+  const last = (Array.isArray(header) ? header.join(',') : header ?? '').split(',').map((s) => s.trim()).filter(Boolean).at(-1);
+  return last ?? req.socket.remoteAddress ?? 'unknown';
+}
+
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0;

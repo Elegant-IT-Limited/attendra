@@ -3,10 +3,14 @@ import { z } from 'zod';
 
 const blank = (v: unknown) => (v === '' ? undefined : v);
 const LOG_LEVEL = z.preprocess(blank, z.string().default('info'));
+const flag = z.preprocess(blank, z.enum(['true', 'false', '1', '0']).default('false')).transform((v) => v === 'true' || v === '1');
 const Env = z.object({
   DATABASE_URL: z.string().url(),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   MCP_PORT: z.preprocess(blank, z.coerce.number().int().min(1).max(65535).default(8082)),
+  // true behind one reverse proxy that sets X-Forwarded-For (Caddy, nginx), so the limit on
+  // requests without a working key counts each client's address instead of the proxy's
+  TRUST_PROXY: flag,
   LOG_LEVEL,
 });
 export type Env = z.infer<typeof Env>;

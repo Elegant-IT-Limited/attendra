@@ -237,7 +237,7 @@ export const ApiKeyView = z.object({
   createdBy: z.string().nullable(), createdAt: z.iso.datetime(), lastUsedAt: z.iso.datetime().nullable(), revokedAt: z.iso.datetime().nullable(),
   status: z.enum(['active', 'expired', 'revoked']),
 });
-export const ApiKeys = z.object({ keys: z.array(ApiKeyView) });
+export const ApiKeys = z.object({ keys: z.array(ApiKeyView), /** where an MCP client connects with a key; null when the deployment does not say */ mcpUrl: z.string().nullable() });
 export const ApiKeyInput = z.object({
   name: z.string().trim().min(1, 'give the key a name').max(100),
   scopes: z.array(z.enum(API_SCOPES)).min(1, 'choose at least one scope'),
