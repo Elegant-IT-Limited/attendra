@@ -27,6 +27,8 @@ export const clinics = pgTable('clinics', {
   testSecondsLimit: integer('test_seconds_limit'),
   /** The hosting layer's plan (status, minutes included, period, trial end); null on a self-hosted install. Not part of the settings staff edit. */
   hostingPlan: jsonb('hosting_plan'),
+  /** When the organization closed this clinic (a location removed): it leaves the dashboard and answers no calls. Null while open. */
+  closedAt: timestamp('closed_at', { withTimezone: true }),
   /** One more on every save of the settings, so a save made from an older copy is refused. */
   configVersion: integer('config_version').notNull().default(1),
   configUpdatedAt: timestamp('config_updated_at', { withTimezone: true }),

@@ -19,13 +19,13 @@ type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 export async function clinicsForUser(db: Database, userId: string) {
   return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, role: memberships.role, approvesRefills: memberships.approvesRefills })
     .from(memberships).innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(eq(memberships.userId, userId)).orderBy(clinics.name);
+    .where(and(eq(memberships.userId, userId), isNull(clinics.closedAt))).orderBy(clinics.name);
 }
 
 export async function staffRole(db: Database, userId: string, clinicId: string): Promise<StaffRole | null> {
   const [row] = await db.select({ role: memberships.role }).from(memberships)
     .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId), isNull(clinics.closedAt)));
   return row?.role ?? null;
 }
 
