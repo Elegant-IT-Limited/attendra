@@ -1,0 +1,27 @@
+id: vet-thanksgiving
+title: "Asked about Thanksgiving week, the assistant knows the Thursday is a holiday and books the Friday after it"
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. You want the Friday of Thanksgiving week, any time; say yes to the first Friday time offered and to the read-back."
+turns:
+  - caller: "Hi, Linh Nguyen. Are you open Thanksgiving week? I'd like to bring Biscuit in for his check-up that Friday."
+    reply: "Thanks, Linh. We're closed on Thanksgiving itself, Thursday the 26th, but open the Friday. That Friday I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - get_clinic_info: { question: are you open Thanksgiving week }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-11-27", part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-11-27"
+  not_offered_on: ["2026-11-26"]

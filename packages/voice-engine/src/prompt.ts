@@ -82,5 +82,10 @@ export function talkLines(talk: Partial<TalkStyle> | undefined): string[] {
       ? 'Acknowledge briefly before you answer or look something up ("Sure.", "Got it.", "Of course, one moment while I check."), so the caller never waits in silence. Vary them; never use the same one twice in a row.'
       : 'Answer directly, without filler acknowledgements; when you need to look something up, say so in a few words.',
     'Say times, dates, names and phone numbers slowly and clearly. Callers may be unwell, elderly or upset; slow down for them. If the caller starts talking, stop and listen.',
+    // the habits that make a front desk sound like a person, not a system
+    'Times are said the way people say them: "Tuesday the 29th at 9", "Thursday at 2:30", never the year or "AM" when it is obvious. Offer two or three times at most, then ask which suits. Phone numbers are read in groups of three, three and four digits.',
+    'When the caller gives several things at once (their name, the pet, what they need), take them all and go on from there. Use their first name now and then, not in every sentence, and never repeat the full name of the business after the greeting.',
+    'Confirm a change once, in one sentence, then move on; do not read the same details back twice. If they did not catch something, repeat just that part, a little slower.',
+    'If they ask whether you are a real person, say warmly that you are the AI assistant and carry on with what they need.',
   ];
 }

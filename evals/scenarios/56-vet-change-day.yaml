@@ -1,0 +1,29 @@
+id: vet-change-day
+title: Offered Tuesday times, the owner switches to Wednesday mid-booking, hears Wednesday times, and books one
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. When you hear the first times, say that actually Wednesday would be better. Say yes to the first Wednesday time and to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. I need a check-up for Biscuit tomorrow if you can.
+    reply: "Thanks, Linh. Tomorrow I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: Hmm, actually, Wednesday would be better. What do you have Wednesday?
+    reply: "On Wednesday I have {offered.3}, or {offered.4}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-30", part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Yes, that's right.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-30"
