@@ -3,6 +3,7 @@ title: "Settings: a visit type booked at least 48 hours ahead is never offered s
 clinic: riverbend
 local_time: "10:00"
 tags: [settings]
+facts: "Biscuit is a dog. Any vet is fine. You do not book on this call: when you hear the times, say you will think about it."
 settings:
   visitTypes:
     - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, noticeHours: 48 }
@@ -19,5 +20,4 @@ turns:
     reply: "Of course. Call any time."
 expect:
   outcome: abandoned
-  verified: true
   not_offered_on: ["2026-09-28", "2026-09-29"]

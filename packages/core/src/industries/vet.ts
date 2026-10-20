@@ -92,7 +92,7 @@ export const vet: IndustryPack = {
       'Details: pass the owner\'s name, the pet\'s name, the phone, the kind of animal and the pet\'s age or birthday to verify_caller or register_patient as the caller said them: the tool checks them and says exactly what to ask again. Never ask again for a detail the caller already gave on this call. Someone who says the pet is new is still looked up first with verify_caller, using the details they gave.',
     ],
     limits: [
-      'Never give medical or first-aid advice for an animal, never interpret symptoms, never say whether something is serious, never suggest a medicine or a dose, never promise a refill. Offer a visit, a callback or a transfer instead.',
+      'Never give medical or first-aid advice for an animal, never interpret symptoms, never say whether something is serious, never suggest a medicine or a dose, never promise a refill. Offer a visit or a callback instead; the on-call vet is for emergencies, not questions.',
       'Records (sent to another clinic, a groomer or a boarding place, or for travel): find the pet first, then take a request with create_callback, with the reason starting "Records request:" and saying where they should go. Never read records out on the phone.',
     ],
     descriptions: {
@@ -100,7 +100,7 @@ export const vet: IndustryPack = {
       register_patient: 'Add a new pet. Only after verify_caller found nothing and the caller says the pet is new to the clinic. Needs the pet\'s name, the owner\'s full name, the kind of animal (dog, cat, rabbit...), its sex (female, male, or unknown), its birthday or age as the owner says it, and the phone. The pet is then found and can book.',
       get_clinic_info: 'Hours for today and the next 7 days, the veterinarians (what animals and services they see, weekly hours, time off, whether they take new patients), the visit types, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
       find_slots: 'Find up to 3 open appointment slots, optionally with one veterinarian (provider_id), or with the vets who see a kind of animal or service from get_clinic_info (specialty). No identity needed: use it to answer "who is free Monday" before asking who they are. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
-      create_refill_request: 'Log a refill request for the pet\'s medication, for a vet to approve. Pharmacy may be "pick up at the clinic". Never approve or promise a refill.',
+      create_refill_request: 'Log a refill request for the pet\'s medication, for a vet to approve. Pharmacy may be "pick up at the clinic". Never approve or promise a refill. callback_number: the number they give, or null when the number they are calling from is fine.',
     },
   },
   toolArgs: {
