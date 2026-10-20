@@ -51,6 +51,10 @@ const triesLeft = (state: CallState) => {
   return left > 0 ? `${left} ${left === 1 ? 'try is' : 'tries are'} left; after that nobody can be found or added on this call.` : 'No tries are left.';
 };
 const MAX_REGISTRATIONS = 3;
+/** The details of one identity check, as the same words and digits whatever their case, spacing or punctuation. */
+const identityKey = (...parts: string[]) => parts.map((p) => p.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()).join('|');
+/** The same details again: nothing new to look up, so no try is used, and the planner is told to move on. */
+const triedAgain = (state: CallState, who: string) => refuse('not_verified', `These same details were already looked up on this call and nothing was found: do not look them up again. If the caller has not said whether ${who} is new to the clinic, ask that; if new, add them with register_patient. Otherwise ask only for the detail that may be wrong. ${triesLeft(state)}`);
 const PATIENT_TOOLS = new Set<ToolName>(['list_appointments', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'set_reminder_consent']);
 // tools that change something; they refuse to run for an outdated request
 const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'propose_cancellation', 'commit_pending', 'create_refill_request', 'create_callback', 'send_text', 'set_reminder_consent', 'transfer_call', 'end_call']);
@@ -176,6 +180,8 @@ export async function runTool(
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
         return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       }
+      const tried = identityKey(String(args.full_name), dob, phone.replace(/\D/g, '').slice(-10));
+      if (state.identitiesTried.has(tried)) return triedAgain(state, 'the patient');
       const found = await backend.patients.findByIdentity(clinic.id, String(args.full_name), dob, phone);
       if (found.status === 'found') {
         if (current?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
@@ -185,6 +191,7 @@ export async function runTool(
       state.verifyAttempts++;
       if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm their record, and offer a callback.');
       state.notFound = true;
+      state.identitiesTried.add(tried);
       // same answer for "no such patient", "wrong DOB" and "wrong phone": never confirm a record exists
       return refuse('not_verified', `Say you could not find a match. If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient. Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file. ${triesLeft(state)}`);
     }
@@ -405,6 +412,11 @@ export async function runTool(
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
       const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing });
+      // the same change proposed again after it was read back keeps its read-back, so the yes the caller gave still counts
+      const same = state.pending;
+      if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
+        return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
+      }
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
     }
@@ -414,6 +426,10 @@ export async function runTool(
       const appt = upcoming.find((a) => a.id === args.appointment_id);
       if (!appt) return refuse('unknown_appointment', 'Use list_appointments to find the appointment first.');
       const readback = pack.readbackCancel({ when: when(appt.start) });
+      const same = state.pending;
+      if (same?.kind === 'cancel' && same.appointmentId === appt.id && same.readbackAtMs !== null) {
+        return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
+      }
       state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       return { ok: true, data: { say: `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
     }
@@ -495,7 +511,7 @@ export async function runTool(
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
-      return { ok: true, data: { task_id: task.id, say: 'Tell them the request is with the care team, who will review it. Do not promise approval or a time.' } };
+      return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.` } };
     }
 
     case 'create_callback': {
@@ -640,6 +656,8 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const current = state.verifiedPatient;
   if (current && sameFirstWord(pet, current.firstName) && state.verifiedOwner && namesMatch(owner, state.verifiedOwner)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
+  const tried = identityKey(owner, pet, phone.replace(/\D/g, '').slice(-10));
+  if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
   const found = await backend.patients.findPet(clinic.id, owner, pet, phone);
   if (found.status === 'found') {
     if (current?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
@@ -650,6 +668,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   state.verifyAttempts++;
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   state.notFound = true;
+  state.identitiesTried.add(tried);
   // the same answer whichever detail was wrong: never confirm that a record exists
   return refuse('not_verified', `Say you could not find the pet. If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient. For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file. ${triesLeft(state)}`);
 }

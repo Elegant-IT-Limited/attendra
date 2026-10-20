@@ -155,7 +155,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const results: ToolResult[] = [];
   const queue: Planner[] = [];
   const observed = new Observed({ plan: (input, execute) => queue.shift()!.plan(input, execute) });
-  const log = createLogger({ name: 'eval', destination: new Writable({ write: (_c, _e, done) => done() }) });
+  // errors the call logs (a planner request that failed, so the caller heard the apology) are kept for the checks
+  const errors: string[] = [];
+  const log = createLogger({ name: 'eval', destination: new Writable({ write: (chunk, _e, done) => { loggedError(String(chunk), errors); done(); } }) });
   const actions: ActionRecorder | undefined = opts.record
     ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
@@ -177,9 +179,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const lines: Scenario['turns'] = followUp ? scenario.turns.slice(0, 1) : [...scenario.turns];
   const over = () => state.emergency !== null || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   let hungUp = false;
+  let callerSilent = false;
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
-    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); await segment('agent', turn.assistant, clock); continue; }
+    // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
+    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
     if (livePlanner) clock += 1500;
@@ -228,6 +232,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       const next = await followUp(scenario, transcript);
       if (next.text) lines.push({ caller: next.text });
       hungUp = next.hangup;
+      callerSilent = !next.text && !next.hangup;
     }
   }
 
@@ -251,6 +256,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const failures: string[] = [];
   const check = (ok: boolean, msg: string) => { if (!ok) failures.push(msg); };
 
+  // live, a call cut short by the test itself, or one where the backend failed, says so first
+  if (livePlanner) {
+    check(!callerSilent, 'the model playing the caller gave no line, so the call stopped early (the test, not the assistant)');
+    for (const err of errors) check(false, `backend error: ${err}`);
+  }
   // live, a call that answered a question and changed nothing is as good as one that changed nothing
   const sameOutcome = state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
   check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome}`);
@@ -282,6 +292,14 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
   return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, calls: observed.calls, callId, ms: Math.round(performance.now() - started) };
+}
+
+/** A log line at error level or above, as "message: the error's message". */
+function loggedError(line: string, into: string[]) {
+  try {
+    const entry = JSON.parse(line) as { level?: number; msg?: string; err?: { message?: string } };
+    if ((entry.level ?? 0) >= 50) into.push([entry.msg, entry.err?.message].filter(Boolean).join(': '));
+  } catch { /* not a JSON line */ }
 }
 
 /** One scenario in its own fresh in-process Postgres, so no scenario can affect another. */

@@ -22,7 +22,17 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     ...talkLines(clinic.talk),
     ...clinic.languages.flatMap((l) => PACKS[l].prompt),
     `${todaysHoursLine(clinic, now)} The ${terms.business} is ${open ? 'open' : 'closed'} right now.${!open && clinic.afterHours === 'requests' ? ` While it is closed nothing is booked: never offer times; the ${terms.business}'s team books in the morning from a request.` : ''}`,
-    `You cannot see records or calendars yourself. For anything about appointments, identity, refills, callbacks, transfers, the ${terms.providers} or ${terms.business} facts, delegate to the backend and wait for its answer.`,
+    // OpenAI's Live prompting guide: these three policies under their own headings
+    ...LISTENING,
+    'Delegation policy:',
+    'Backend tools:',
+    `- Appointments: open times with the ${terms.providers}, and booking, changing or cancelling a visit.`,
+    `- ${terms.patients.replace(/^./, (c) => c.toUpperCase())}: finding a ${terms.patient}'s record, and adding a new one.`,
+    '- Requests for the team: refills, records and callbacks.',
+    `- The ${terms.business}: hours, the ${terms.providers}, visit types, common questions and its own documents.`,
+    '- Transfers to a person, and texts.',
+    `Delegate to the backend when the caller asks for any of these, or corrects something already asked for. You cannot see records or calendars yourself. Do not delegate when the caller greets you or asks you to repeat a result already given, or when you need a brief clarification first.`,
+    'Delegate before giving an answer that depends on backend work. Do not guess the result while waiting.',
     ...prompt.identify,
     'Never ask again for something the caller already told you on this call. When the backend says one detail is wrong, ask only about that one, and say what is wrong.',
     ...prompt.preferences,
@@ -33,6 +43,18 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     'Never end the call while the caller is still talking or their request is unfinished. Answer the question first, then the next step; while the caller is still asking, do not add "anything else?" to every answer. Once what they called for is done, ask "Is there anything else I can help you with?", even if they already said goodbye. End only after they say no or goodbye, then say goodbye warmly, using their name or their pet\'s if you know it.',
   ].filter(Boolean).join('\n');
 }
+
+/**
+ * Turn-taking, as OpenAI's Live prompting guide lays it out: callers pause to think, spell
+ * names and read out numbers, and a reply that starts in those pauses cuts them off.
+ */
+const LISTENING = [
+  'Backchannel policy: Use few backchannels: at most a short "mm-hmm" while the caller gives a long answer, such as spelling a name or reading out a number. Never use one to start your reply.',
+  'Interruption policy: Never talk over the caller. Wait until they have finished what they are saying before you answer, even when you already know the answer. If the caller starts talking while you speak, stop at once and listen.',
+  'Keep listening while the caller pauses to think, spells a name, or reads out a phone number or a date: a short pause is not the end of their turn. Do not treat a cough, background noise or a nearby conversation as something to answer.',
+  'If an important name, date or number is unclear, ask about that part only. Use the caller\'s correction. Never guess a missing value.',
+  'Use a backend result you already have when it still answers the question; ask the backend again only when it is missing or out of date, or the caller asks you to check again.',
+];
 
 const PACE: Record<TalkStyle['pace'], string> = {
   relaxed: 'Speak at a relaxed, unhurried pace, with a short pause between sentences.',
