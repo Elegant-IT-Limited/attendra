@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, type ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, type Messenger, speakSlot, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, type Messenger, speakSlot, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -13,7 +13,9 @@ import type { Scenario } from './scenario';
 // Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver, after hours.
 export const SIM_NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
-export const clinicOf = (scenario: Scenario): ClinicConfig => DEMO_CLINICS[scenario.clinic];
+/** The demo clinic, with the scenario's settings changed and checked the way Settings checks a save. */
+export const clinicOf = (scenario: Scenario): ClinicConfig =>
+  scenario.settings ? ClinicConfig.parse({ ...DEMO_CLINICS[scenario.clinic], ...scenario.settings }) : DEMO_CLINICS[scenario.clinic];
 const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
 /** Each demo clinic's seed: the clinic and its patients. */
 export const SEEDS = { maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend } as const;
@@ -191,7 +193,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     });
   }
 
-  const created = (await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)))).length;
+  const createdRows = await withClinic(db, clinic.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.createdByCallId, callId)));
+  const created = createdRows.length;
   const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' || o.type === 'instructions' ? [o.content] : [])), ...replies];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
@@ -213,6 +216,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   }
   if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
   if (e.language) check(state.language === e.language, `answered in ${state.language}, expected ${e.language}`);
+  if (e.booked_with) check(createdRows.every((a) => a.providerId === e.booked_with), `booked with ${JSON.stringify(createdRows.map((a) => a.providerId))}, expected ${e.booked_with}`);
+  for (const date of e.not_offered_on) {
+    const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
+    check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);
+  }
   for (const phrase of e.spoken_contains) {
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `never said "${phrase}"`);
   }

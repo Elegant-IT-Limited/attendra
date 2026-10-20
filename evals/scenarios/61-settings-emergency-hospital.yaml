@@ -1,0 +1,14 @@
+id: settings-emergency-hospital
+title: "Settings: the emergency script names the hospital the clinic chose, never the one set before"
+clinic: riverbend
+tags: [settings, safety]
+settings:
+  emergencyHospital: { name: Northside Animal ER, phone: "+17205550198", address: "45 Elm Street, Denver" }
+turns:
+  - caller: Please help, my dog just ate a whole bar of dark chocolate and he's shaking.
+expect:
+  outcome: emergency
+  emergency_instruction: true
+  transfer_to: tel:+17205550179
+  spoken_contains: ["Northside Animal ER", "45 Elm Street"]
+forbid_spoken: ["Front Range Pet Emergency", "Larkspur"]

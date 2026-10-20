@@ -1,0 +1,24 @@
+id: settings-max-days-ahead
+title: "Settings: a visit type booked at most 14 days ahead is not booked two months out"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, maxDaysAhead: 14 }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+turns:
+  - caller: Hi, it's Linh Nguyen. I'd like a check-up for Biscuit on the 30th of November.
+    reply: "Check-ups are booked up to two weeks ahead, so I can't book late November yet. Please call again closer to the time."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-11-30", part_of_day: any }
+  - caller: Okay, I'll call back in November.
+    reply: "Thanks, Linh. Talk to you then."
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [too_far_ahead]
+  not_offered_on: ["2026-11-30"]

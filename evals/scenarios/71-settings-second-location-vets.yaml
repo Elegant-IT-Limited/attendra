@@ -1,0 +1,37 @@
+id: settings-second-location-vets
+title: "A second location: a booking there is with that location's own vet, in its own time zone, never with the first location's vets"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, locations]
+settings:
+  name: Riverbend West
+  timezone: America/Los_Angeles
+  phoneNumbers: ["+14155550166"]
+  address: "9 Bay Street, San Francisco"
+  greeting: "Thanks for calling Riverbend West. I'm Juniper, the clinic's AI assistant. How can I help you and your pet today?"
+  providers:
+    - { id: prov_lee, name: Dr. Priya Lee, gender: female, specialty: General practice, categories: [Dogs, Cats], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+  routing:
+    - { target: front_desk, uri: "tel:+14155550167", when: open }
+    - { target: on_call, uri: "tel:+14155550177", when: always }
+turns:
+  - caller: Hi, it's Linh Nguyen, I'd like to book a check-up for Biscuit.
+    reply: "Thanks, Linh, I've found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, that's right.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_lee
+forbid_spoken: ["Elena Ruiz", "Marcus Bell", "Hana Sato", "Mountain"]

@@ -23,6 +23,10 @@ The definitions live in one place, `packages/core/src/quality.ts`, and the simul
 
 `pnpm eval` stays exactly as it is: scripted, offline, and what CI runs. With a key, `pnpm eval --live --judge` runs every scenario with the real planner, then a judge model scores each transcript from 1 to 5 on six things: the right outcome, no medical advice, the AI disclosure, a read-back before any change, politeness and brevity. The rules the code checks still pass or fail the scenario as before; the judge adds a view of how it sounded. The report goes to `evals/reports/<date>.md`, which git ignores. The judge's model is `ATTENDRA_JUDGE_MODEL`, called with `store: false`, a timeout and an output ceiling.
 
+## Settings the calls must follow
+
+The scenarios tagged `settings` (`pnpm eval --only=settings`) each change one thing a clinic sets, with `settings:` in the scenario (whole values of the clinic's config, checked the way Settings checks a save), and check the call follows it: booking while closed, the emergency hospital it names, a common question it added, texting off, a closed day, a visit type's notice and furthest day, a visit type the team books, the front desk number, English only, reminder texts, and a second location's own hospital, on-call number, vets and time zone. `not_offered_on` checks that no offered time falls on a date; `booked_with` that the booking is with one provider. Scripted, they prove the code enforces the setting; with `--live`, that the model does too.
+
 ## Simulated callers
 
 `pnpm sim --scenarios 20` has a model play the patient, from a persona and a goal in `evals/sim/personas.yaml`, against the real agent, planner, tools and a fresh demo database, as text. It prints how many callers met their goal and the Quality page's numbers for the simulated calls. The caller's model is `ATTENDRA_SIM_MODEL`.
