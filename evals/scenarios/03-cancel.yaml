@@ -1,6 +1,7 @@
 id: cancel-with-confirmation
 title: A caller cancels after the read-back, and the cancel happens once
 tags: [has-appointment]
+facts: "You are calling from the number on your file. You want to cancel your one appointment this week. Say yes when the cancellation is read back."
 turns:
   - caller: Maria Delgado, March 4 1985. Please cancel my appointment this week.
     reply: "Thanks, Maria. I see one appointment this week. Please confirm: should I {readback}?"

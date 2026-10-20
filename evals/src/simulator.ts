@@ -36,7 +36,7 @@ export interface ScenarioResult {
   ms: number;
 }
 
-/** Plays the caller after the scripted lines, live: the next line given the call so far, and whether they hang up after it. */
+/** Plays the caller after the opening line, live: the next line given the call so far, and whether they hang up after it. */
 export type FollowUp = (scenario: Scenario, transcript: ScenarioResult['transcript']) => Promise<{ text: string; hangup: boolean }>;
 
 /** One tool call as the report shows it: the name, the arguments and what came back. Synthetic data only. */
@@ -83,6 +83,14 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
   }));
 }
 
+/** Live, the voice speaks the planner's own words: a line says a phrase when it has most of the phrase's words. */
+function saysMostOf(line: string, phrase: string): boolean {
+  const words = (t: string) => t.toLowerCase().replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter((w) => w.length >= 4);
+  const said = new Set(words(line));
+  const wanted = words(phrase);
+  return wanted.length > 0 && wanted.filter((w) => said.has(w)).length / wanted.length >= 0.75;
+}
+
 /** Fills {offered.N}, {readback} and {booked} in a scripted reply from the call as it happened. */
 function render(reply: string, state: CallState, lastReadback: string | null, clinic: ClinicConfig): string {
   const offered = [...state.offered.values()];
@@ -94,7 +102,7 @@ function render(reply: string, state: CallState, lastReadback: string | null, cl
 
 export interface PlayOptions {
   livePlanner?: Planner;
-  /** Live only, and only for a scenario with `facts`: answers the planner's questions once the script has run out. */
+  /** Live only, and only for a scenario with `facts`: plays the caller after the opening line, answering the planner's questions. */
   followUp?: FollowUp;
   /** Writes the transcript, tool actions and close-out into the database, as the voice service does. Used for demo data. */
   record?: boolean;
@@ -157,16 +165,25 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let lastReadback: string | null = null;
   const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: clinic.greeting }];
   await segment('agent', clinic.greeting, clock);
-  const lines: Scenario['turns'] = [...scenario.turns];
-  const scripted = scenario.turns.length;
+  // live, a scenario with facts keeps only its opening line: a model playing the caller answers
+  // whatever the real planner asks next, in the order it asks, up to ten caller lines
+  const followUp = livePlanner && scenario.facts ? opts.followUp : undefined;
+  const lines: Scenario['turns'] = followUp ? scenario.turns.slice(0, 1) : [...scenario.turns];
   const over = () => state.emergency !== null || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
     if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); await segment('agent', turn.assistant, clock); continue; }
+    // live, the caller speaks after the assistant has finished, as on a real call: a yes said
+    // at the same moment as the read-back would not count as an answer to it
+    if (livePlanner) clock += 1500;
     const heard = agent.onCallerTranscript(turn.caller, clock, clock + 1000);
     outbound.push(...heard);
     transcript.push({ speaker: 'caller', text: turn.caller });
-    for (const o of heard) if (o.type === 'instructions') transcript.push({ speaker: 'instruction', text: o.content });
+    for (const o of heard) if (o.type === 'instructions') {
+      transcript.push({ speaker: 'instruction', text: o.content });
+      // live, the voice model says the script it was handed, as it does on a call
+      if (livePlanner) { clock += 1500; agent.onAgentTranscript(o.content, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: o.content }); }
+    }
     await segment('caller', turn.caller, clock);
     const say = async () => {
       // live, the assistant's words are the model's, not the script's
@@ -197,10 +214,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     }
     if (state.pending) lastReadback = state.pending.readback;
     await say();
-    // live, once the script has run out: a model playing the caller answers the planner's
-    // questions from the scenario's facts, up to four more lines, until the call is over
-    if (i === lines.length - 1 && livePlanner && opts.followUp && scenario.facts && lines.length < scripted + 4 && !over()) {
-      const next = await opts.followUp(scenario, transcript);
+    // live, after the last line so far: the model caller answers the planner's question from
+    // the scenario's facts, until the call is over or it has said ten lines
+    if (i === lines.length - 1 && followUp && lines.length < 10 && !over()) {
+      const next = await followUp(scenario, transcript);
       if (next.text) lines.push({ caller: next.text });
       if (next.hangup) break;
     }
@@ -236,7 +253,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   check(outbound.some((o) => o.type === 'instructions') === e.emergency_instruction, `emergency instruction ${outbound.some((o) => o.type === 'instructions')}, expected ${e.emergency_instruction}`);
   if (e.cites) {
     const cited = [...new Set(observed.cited)];
-    const ok = e.cites.length === 0 ? cited.length === 0 : cited[0] === e.cites[0] && e.cites.every((t) => cited.includes(t));
+    // live, the planner may answer from the clinic's own common questions, which come before any document
+    const fromFaq = !!livePlanner && e.cites.length > 0 && observed.sources.length > 0;
+    const ok = e.cites.length === 0 ? cited.length === 0 : fromFaq || (cited[0] === e.cites[0] && e.cites.every((t) => cited.includes(t)));
     check(ok, `cited ${JSON.stringify(cited)}, expected ${e.cites.length ? `${JSON.stringify(e.cites)}, the first leading` : 'nothing'}`);
   }
   if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
@@ -247,7 +266,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);
   }
   for (const phrase of e.spoken_contains) {
-    check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `never said "${phrase}"`);
+    check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }
   for (const phrase of scenario.forbid_spoken) {
     check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);

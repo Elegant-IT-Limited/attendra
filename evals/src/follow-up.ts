@@ -6,10 +6,10 @@ import type { FollowUp, ScenarioResult } from './simulator';
 const HANGUP = '[HANGUP]';
 
 /**
- * Live evals only: a model plays the caller once the scenario's scripted lines have run
- * out, answering the planner's questions from what the caller already said and the
- * scenario's facts, so a careful planner that asks one more question is not marked as
- * an abandoned call. It never brings a new request. store is off.
+ * Live evals only: after a scenario's opening line, a model plays the caller, answering
+ * the planner's questions from what the caller already said and the scenario's facts, in
+ * whatever order the planner asks them, so a careful planner is not marked as an
+ * abandoned call. It never brings a new request. store is off.
  */
 export function modelFollowUp(openai: Pick<OpenAI, 'responses'>, model: string): FollowUp {
   return async (scenario: Scenario, transcript: ScenarioResult['transcript']) => {
