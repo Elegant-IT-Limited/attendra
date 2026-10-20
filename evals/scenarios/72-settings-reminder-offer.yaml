@@ -7,6 +7,7 @@ settings:
   texting:
     enabled: true
     reminders: { enabled: true, hoursBefore: 24, quietFrom: "20:00", quietTo: "08:00", askOnBooking: true }
+facts: "You are calling from the number on file. Any time works, with any vet. Say yes to the first time offered and to the read-back, and yes to a reminder text."
 turns:
   - caller: Hi, it's Linh Nguyen, I'd like to book a check-up for Biscuit.
     reply: "Thanks, Linh, I've found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."

@@ -1,5 +1,6 @@
 id: parent-books-child
 title: A parent books for their son on the family phone, and only doctors who see children are offered
+facts: "You are calling from the family phone on file. Lucas is your son and has had a fever since yesterday. Any doctor who sees children is fine. Say yes to the first time offered and to the read-back."
 turns:
   - caller: Hi, it's Maria Delgado. I need to book my son Lucas Delgado, born May 12 2019. He has a fever.
     reply: "I've found Lucas. For a sick visit I can offer {offered.0}, or {offered.1}."

@@ -10,6 +10,7 @@ settings:
     - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
     - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
     - { id: vt_surgery, name: surgery consultation, minutes: 30, staffOnly: true }
+facts: "The number you are calling from is fine for a callback; mornings are best."
 turns:
   - caller: Hi, it's Linh Nguyen. Biscuit needs a surgery consultation, can I book one?
     reply: "Surgery consultations are booked by the team. I'll ask them to call you to find a time. Is this the best number?"

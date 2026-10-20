@@ -20,6 +20,7 @@ export interface Simulation {
   persona: Persona;
   transcript: Line[];
   result: ReturnType<TextAssistant['result']>;
+  calls: ReturnType<TextAssistant['calls']>;
   goalMet: boolean;
 }
 
@@ -50,7 +51,7 @@ export async function simulate(persona: Persona, caller: SimulatedCaller, planne
       if (ended || line.hangup) break;
     }
     const result = assistant.result();
-    return { persona, transcript, result, goalMet: persona.expect.includes(result.outcome ?? '') };
+    return { persona, transcript, result, calls: assistant.calls(), goalMet: persona.expect.includes(result.outcome ?? '') };
   } finally {
     await t.close();
   }
