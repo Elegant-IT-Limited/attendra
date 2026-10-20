@@ -27,6 +27,7 @@ import { StaffGuard, toHeaders } from './http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
+import { PlanController } from './overview/plan.controller';
 import { PatientsController } from './patients/patients.controller';
 import { ProvisioningController } from './provisioning/provisioning.controller';
 import { QualityController } from './quality/quality.controller';
@@ -86,7 +87,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },

@@ -72,6 +72,18 @@ export async function releaseNumber(db: Database, e164: string): Promise<boolean
   return rows.rows.length === 1;
 }
 
+/** Sets the plan the hosting layer keeps for a clinic, or clears it with null. False when there is no such clinic. */
+export async function setHostingPlan(db: Database, clinicId: string, plan: Record<string, unknown> | null): Promise<boolean> {
+  const rows = await db.update(clinics).set({ hostingPlan: plan }).where(eq(clinics.id, clinicId)).returning({ id: clinics.id });
+  return rows.length === 1;
+}
+
+/** The plan the hosting layer set for a clinic, as stored; null when it set none. */
+export async function hostingPlanOf(db: Database, clinicId: string): Promise<unknown> {
+  const [row] = await db.select({ plan: clinics.hostingPlan }).from(clinics).where(eq(clinics.id, clinicId));
+  return row?.plan ?? null;
+}
+
 /** Phone calls in [from, to): how many, and their length in seconds, start to end. Browser test calls are not counted. */
 export async function phoneUsage(db: Database, clinicId: string, from: Date, to: Date): Promise<{ calls: number; seconds: number }> {
   const [row] = (await db.execute(sql`
