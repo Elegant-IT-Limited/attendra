@@ -21,6 +21,7 @@ Without the token the routes answer 404. With it, every request needs `Authoriza
 | `PUT /provisioning/clinics/:clinicId/numbers/:number` | Points a number (E.164, URL-encoded) at the clinic: calls to it reach the assistant and texts are sent from it. |
 | `DELETE /provisioning/numbers/:number` | Stops a number reaching any clinic. |
 | `GET /provisioning/clinics/:clinicId/usage?from=&to=` | Phone calls in the period (ISO times): `{ calls, seconds }`, each call start to end, rounded up to the second. Browser test calls are not counted. |
+| `POST /provisioning/clinics/:clinicId/calls-check` | `{ since, from? }`: phone calls that started since `since` (ISO time), ended or not: `{ calls, lastCallAt, heard, openMinutes }`. With `from` (E.164), `heard` says whether one came from that number, compared by its keyed hash (the forwarding check: the owner calls the clinic's own number from a phone); otherwise `null`. `openMinutes` is how long the clinic was open since then, by its hours, holidays and special days, for at most 7 days (a quiet line). A POST, so a number is never in an address. |
 | `GET /provisioning/clinics/:clinicId/report?weeks=1` | The weekly report: the clinic's name, time zone, industry and average visit value, its owners with a confirmed address, and the Quality page's numbers for the last whole weeks, newest first. |
 
 ## Password reset emails

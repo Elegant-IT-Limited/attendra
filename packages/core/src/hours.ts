@@ -29,6 +29,19 @@ export function isOpen(clinic: Days, at: Date): boolean {
     .some((w) => local.minutes >= toMinutes(w.open) && local.minutes < toMinutes(w.close));
 }
 
+/**
+ * Minutes the clinic was open between two moments, counted in 15-minute steps (each step
+ * counts when the clinic is open at its start), for at most 7 days: enough to tell a line
+ * that went quiet while open from one that was closed.
+ */
+export function openMinutes(clinic: Days, from: Date, to: Date, stepMinutes = 15): number {
+  const step = stepMinutes * 60_000;
+  const end = Math.min(to.getTime(), from.getTime() + 7 * 86_400_000);
+  let open = 0;
+  for (let t = from.getTime(); t < end; t += step) if (isOpen(clinic, new Date(t))) open += stepMinutes;
+  return open;
+}
+
 /** One short line the voice model can say: "Today we are open 8:00 to 12:00 and 13:00 to 17:00." */
 export function todaysHoursLine(clinic: Days, at: Date): string {
   const local = localParts(at, clinic.timezone);
