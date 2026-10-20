@@ -24,5 +24,10 @@ COPY packages/webhooks/package.json packages/webhooks/
 COPY evals/package.json evals/
 RUN pnpm install --frozen-lockfile
 COPY . .
+# The services run as node, so the app is node's: pnpm checks the installed packages before each
+# `pnpm <script>` and rewrites their links, which a root-owned /app refused at start
+# (ERR_PNPM_CMD_SHIM_CHMOD). And a built image never installs anything when it starts.
+RUN chown -R node:node /app
+ENV npm_config_verify_deps_before_run=false
 USER node
 EXPOSE 8080 8081 8082
