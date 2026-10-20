@@ -616,6 +616,14 @@ export async function runTool(
   }
 }
 
+/** Only the last name is missing: the caller said one name, and is asked for the other, not both again. */
+function lastNameAsk(given: string, keep: string): string {
+  const name = given.trim();
+  return name
+    ? `The owner gave one name, "${name}". Ask only for their last name; do not ask for the first name again. Keep ${keep} they already gave.`
+    : `Ask for the owner's first and last name. Keep ${keep} they already gave.`;
+}
+
 /**
  * The veterinary pack's identity check: a pet, by its owner's full name, its own name
  * and the phone on file. The same rules as for a person: three tries, the same answer
@@ -627,7 +635,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on the pet\'s file, with the area code.');
   const owner = String(args.owner_name);
   const pet = String(args.pet_name);
-  if (owner.trim().split(/\s+/).length < 2) return refuse('owner_full_name', 'Ask for the owner\'s first and last name. Keep the pet\'s name and phone they already gave.');
+  if (owner.trim().split(/\s+/).length < 2) return refuse('owner_full_name', lastNameAsk(owner, 'the pet\'s name and phone'));
   // the pet already found: nothing to do. Another of the owner's pets is checked like any
   const current = state.verifiedPatient;
   if (current && sameFirstWord(pet, current.firstName) && state.verifiedOwner && namesMatch(owner, state.verifiedOwner)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
@@ -658,9 +666,9 @@ async function registerPet(
   if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach the owner, with the area code.');
   const owner = String(args.owner_name).trim();
   const ownerParts = owner.split(/\s+/);
-  if (ownerParts.length < 2) return refuse('owner_full_name', 'Ask for the owner\'s first and last name. Keep everything else they already gave.');
+  if (ownerParts.length < 2) return refuse('owner_full_name', lastNameAsk(owner, 'everything else'));
   const birth = parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
-  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday. Keep everything else they already gave.');
+  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const petName = String(args.pet_name).trim();
   const species = String(args.species).trim().toLowerCase();
   const sex = args.sex === 'unknown' ? 'undisclosed' : (args.sex as Gender);

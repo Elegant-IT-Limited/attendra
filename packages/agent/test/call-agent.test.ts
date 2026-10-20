@@ -1,3 +1,4 @@
+import { PROGRESS_NOTE } from '../src/delegation';
 import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -288,6 +289,16 @@ describe('safety', () => {
     expect(said).not.toContain('Front Range');
   });
 
+  it('at a veterinary clinic, an owner who gave one name is asked only for the other, and a birthday needs its year', async () => {
+    const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Fahmida', pet_name: 'Maliha', phone: '+13035051162' } }]);
+    expect(one.errors).toEqual(['owner_full_name']);
+    const said = String(one.results[0]!.data.say ?? one.results[0]!.data.message ?? JSON.stringify(one.results[0]!.data));
+    expect(said).toContain('Fahmida');
+    expect(said).toMatch(/only for their last name/);
+    expect(said).not.toMatch(/first and last name/);
+  });
+
   it('queues the on-call transfer for chest pain even when "this is an emergency" came first, and only once', async () => {
     const c = await w.call();
     const general = c.caller('this is an emergency');
@@ -383,7 +394,8 @@ describe('call control', () => {
       const early: string[] = [];
       const pending = c.delegate([], slow, (o) => { if (o.type === 'thinking') early.push(o.content); });
       await vi.advanceTimersByTimeAsync(6000);
-      expect(early).toEqual(['Working on it.']);
+      expect(early).toEqual([PROGRESS_NOTE]);
+      expect(early[0]).toMatch(/^Looking it up. Do not tell the caller/); // a note for the voice, not words to say
       await vi.advanceTimersByTimeAsync(2000);
       expect(early).toHaveLength(2);
       expect(early[1]).toContain('still checking');
