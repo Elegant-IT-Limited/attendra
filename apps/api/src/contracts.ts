@@ -577,6 +577,27 @@ export const Overview = z.object({
   /** Per clinic-time day, oldest first: for the trend lines. Counts only. */
   daily: z.array(z.object({ date: z.string(), calls: z.number(), booked: z.number(), requests: z.number() })),
 });
+/** A link the hosting layer gives: a path on this site or an https address, nothing a browser would run. */
+const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.startsWith('//')) || v.startsWith('https://'), 'expected a path or an https address');
+/** The hosting layer's plan for a clinic, as it sets it: what the dashboard shows of the month's minutes and the trial. */
+export const HostingPlan = z.object({
+  status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
+  /** Call minutes a month included at this clinic. */
+  includedMinutes: z.number().int().min(0).max(100_000),
+  /** The minutes' month: phone calls from periodStart count toward includedMinutes; it starts again at periodEnd. */
+  periodStart: z.iso.datetime().nullable(),
+  periodEnd: z.iso.datetime().nullable(),
+  trialEndsAt: z.iso.datetime().nullable(),
+  /** The trial's length, for its countdown. */
+  trialDays: z.number().int().min(1).max(365).default(14),
+  /** When the plan ends, its renewal turned off. */
+  endsAt: z.iso.datetime().nullable(),
+  /** Where an owner manages the plan. */
+  manageUrl: SafeLink.nullable(),
+});
+/** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
+export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable() });
+
 // the oldest 20, and how many are waiting in all
 export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
@@ -598,6 +619,8 @@ export const ApiError = z.object({ error: z.string(), message: z.string().option
 
 export type Health = z.infer<typeof Health>;
 export type Me = z.infer<typeof Me>;
+export type HostingPlan = z.infer<typeof HostingPlan>;
+export type ClinicPlan = z.infer<typeof ClinicPlan>;
 export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;

@@ -2,7 +2,7 @@
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  phoneUsage, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setTestCallLimit,
+  phoneUsage, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
@@ -13,6 +13,7 @@ import type { Auth } from '../auth';
 import { Public } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
+import { HostingPlan } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
@@ -44,6 +45,7 @@ const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes:
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
+const PlanBody = z.object({ plan: HostingPlan.nullable() });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
@@ -178,6 +180,14 @@ export class ProvisioningController {
       return { save: { ...c, texting: { ...textingOf(c), enabled: body.enabled } }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /** The clinic's plan as the dashboard shows it (minutes, trial days); null clears it. Set on every change to the plan. */
+  @Put('clinics/:clinicId/plan')
+  @HttpCode(204)
+  async plan(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(PlanBody)) body: z.infer<typeof PlanBody>) {
+    this.check(authorization);
+    if (!(await setHostingPlan(this.db, clinicId, body.plan))) throw new NotFoundException({ error: 'not_found' });
   }
 
   /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */

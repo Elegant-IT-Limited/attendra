@@ -25,6 +25,8 @@ export const clinics = pgTable('clinics', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   /** Seconds of browser test calls the clinic may use in all; null is no limit. Not part of the settings staff edit. */
   testSecondsLimit: integer('test_seconds_limit'),
+  /** The hosting layer's plan (status, minutes included, period, trial end); null on a self-hosted install. Not part of the settings staff edit. */
+  hostingPlan: jsonb('hosting_plan'),
   /** One more on every save of the settings, so a save made from an older copy is refused. */
   configVersion: integer('config_version').notNull().default(1),
   configUpdatedAt: timestamp('config_updated_at', { withTimezone: true }),
