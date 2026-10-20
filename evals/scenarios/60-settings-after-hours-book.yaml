@@ -1,0 +1,25 @@
+id: settings-after-hours-book
+title: "Settings: a clinic set to book while closed books the visit after hours, instead of taking a request"
+clinic: riverbend
+tags: [settings]
+settings:
+  afterHours: book
+turns:
+  - caller: Hi, it's Linh Nguyen, I'd like to book a check-up for Biscuit.
+    reply: "Thanks, Linh, I've found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, that's right.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

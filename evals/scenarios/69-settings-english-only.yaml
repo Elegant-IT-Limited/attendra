@@ -1,0 +1,17 @@
+id: settings-english-only
+title: "Settings: a clinic that answers in English only stays in English when the caller speaks Spanish"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings]
+settings:
+  languages: [en]
+  primaryLanguage: en
+turns:
+  - caller: Hola, ¿dónde están ubicados? ¿Dónde puedo estacionar?
+    reply: "Hello! We're at 88 Riverbend Road, Denver, with free parking in front of the clinic. I can help in English."
+    delegate:
+      - get_clinic_info: { question: where are you located and where do I park }
+expect:
+  outcome: info
+  language: en
+  answered_from: faq_address
