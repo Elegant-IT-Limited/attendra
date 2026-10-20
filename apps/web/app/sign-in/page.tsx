@@ -4,14 +4,14 @@ import { useQuery } from '@tanstack/react-query';
 import type { Health } from '@attendra/api/contracts';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { type FormEvent, type ReactNode, Suspense, useState } from 'react';
+import { type FormEvent, type ReactNode, Suspense, useEffect, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { Input, Label, PasswordInput } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { rememberNext } from '@/lib/next';
+import { rememberNext, safeNext } from '@/lib/next';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
@@ -39,6 +39,16 @@ function SignIn() {
   const [busy, setBusy] = useState(false);
   // the demo login being signed in with, so its button shows the loading state
   const [demo, setDemo] = useState<string | null>(null);
+
+  // already signed in (in another tab, or before this page was reloaded): straight on to where they
+  // were going. A plain request, not the app's query client, so a signed-out answer is just that.
+  useEffect(() => {
+    let gone = false;
+    void fetch('/api/v1/me', { credentials: 'same-origin', cache: 'no-store' }).then((res) => {
+      if (!gone && res.ok) window.location.replace(safeNext(next) ?? '/');
+    }).catch(() => { /* offline: the form stays */ });
+    return () => { gone = true; };
+  }, [next]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
