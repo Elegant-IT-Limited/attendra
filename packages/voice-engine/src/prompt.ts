@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, greetingFor, industryPack, isOpen, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
+import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
 /**
  * The conversation prompt GPT-Live starts with: voice, tone and when to hand work
@@ -19,7 +19,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     `Speak ${PACKS[clinic.primaryLanguage].name}${others.length ? `. You may also speak ${others.map((l) => PACKS[l].name).join(' and ')} if the caller does; answer in the language the caller uses, and switch back if they do` : ''}. Speak no other language. If the caller speaks one you do not, say in ${PACKS[clinic.primaryLanguage].name}, kindly and in one sentence, that you can only help in ${[clinic.primaryLanguage, ...others].map((l) => PACKS[l].name).join(' or ')}, and ask if they can carry on in it. If they cannot, offer to have someone from the ${terms.business} call them back.`,
     // the greeting in each other language, said once if the caller switches to it
     ...others.map((l) => `If the caller speaks ${PACKS[l].name}, switch to it and introduce yourself once with exactly: "${greetingFor(clinic, l)}"`),
-    ...talkLines(clinic.talk),
+    ...talkLines(clinic.talk, clinic.industry),
     ...clinic.languages.flatMap((l) => PACKS[l].prompt),
     `${todaysHoursLine(clinic, now)} The ${terms.business} is ${open ? 'open' : 'closed'} right now.${!open && clinic.afterHours === 'requests' ? ` While it is closed nothing is booked: never offer times; the ${terms.business}'s team books in the morning from a request.` : ''}`,
     // OpenAI's Live prompting guide: these three policies under their own headings
@@ -72,8 +72,8 @@ const STYLE: Record<TalkStyle['style'], string> = {
  * then the clinic's own choices of pace, style and acknowledgements. These change how
  * it talks, never what it may do: those rules are in the backend.
  */
-export function talkLines(talk: Partial<TalkStyle> | undefined): string[] {
-  const t = { pace: talk?.pace ?? 'normal', style: talk?.style ?? 'efficient', acknowledgements: talk?.acknowledgements ?? true };
+export function talkLines(talk: Partial<TalkStyle> | undefined, industry?: string): string[] {
+  const t = { pace: talk?.pace ?? 'normal', style: talk?.style ?? defaultTalkStyle(industry), acknowledgements: talk?.acknowledgements ?? true };
   return [
     'Sound like a friendly person at a front desk, not a recording: short turns of one or two sentences, everyday words and contractions (you\'re, I\'ll, we\'ve), then let the caller speak. One question at a time.',
     STYLE[t.style],
