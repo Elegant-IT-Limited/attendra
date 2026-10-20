@@ -10,6 +10,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
 import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
+import { PlanMeter } from '@/components/plan';
 import { capital } from '@/components/schedule/booking-dialog';
 import { PageHeader } from '@/components/shell';
 import { AnimatedNumber, RelativeTime, StatCard } from '@/components/ui/bits';
@@ -81,6 +82,7 @@ export default function Today() {
           <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
         </div>
         <div className="space-y-6">
+          <PlanMeter clinicId={clinicId} />
           <AssistantDid overview={overview} hosted={!!account?.accountLinks.length} />
           <RecentCalls clinicId={clinicId} tz={tz} calls={phoneCalls} canOpen={can('calls:read')} canTest={can('calls:test') && !!me?.testCalls} />
         </div>

@@ -184,9 +184,9 @@ export async function purgeWebhookRecords(db: Database, clinicId: string, before
   return counts;
 }
 
-/** Every clinic's id and stored config, for jobs that run across clinics. Owner connection; no PHI. */
-export async function allClinics(db: Database): Promise<{ id: string; config: unknown }[]> {
-  return db.select({ id: clinics.id, config: clinics.config }).from(clinics);
+/** Every clinic's id and stored config, for jobs that run across clinics, and whether it was closed. Owner connection; no PHI. */
+export async function allClinics(db: Database): Promise<{ id: string; config: unknown; closedAt: Date | null }[]> {
+  return db.select({ id: clinics.id, config: clinics.config, closedAt: clinics.closedAt }).from(clinics);
 }
 
 /**

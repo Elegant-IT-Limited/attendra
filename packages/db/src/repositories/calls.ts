@@ -76,7 +76,7 @@ export class CallRepository {
 export async function clinicForNumber(db: Database, e164: string): Promise<unknown | null> {
   const [row] = await db.select({ config: clinics.config }).from(phoneNumbers)
     .innerJoin(clinics, eq(clinics.id, phoneNumbers.clinicId))
-    .where(and(eq(phoneNumbers.e164, e164), eq(phoneNumbers.status, 'active')));
+    .where(and(eq(phoneNumbers.e164, e164), eq(phoneNumbers.status, 'active'), isNull(clinics.closedAt)));
   return row?.config ?? null;
 }
 

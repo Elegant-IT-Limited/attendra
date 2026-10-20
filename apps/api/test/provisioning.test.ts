@@ -121,4 +121,29 @@ describe('provisioning', () => {
     expect(report.owners).toEqual([{ name: 'Omar Owner', email: 'omar@maple.example' }]);
     expect(JSON.stringify(report)).not.toMatch(/Maria|Delgado|lisinopril/);
   });
+
+  it('keeps the hosting plan, which every member sees with the month\'s phone minutes; none on a self-hosted clinic', async () => {
+    const G = `/api/v1/clinics/${DEMO_CLINIC.id}/plan`;
+    const viewer = await api.signIn('vic@maple.example', true);
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null });
+
+    await api.t.db.execute(sql`update calls set started_at = now() - interval '1 hour', ended_at = now() - interval '1 hour' + interval '125 seconds', channel = 'phone' where id = ${api.callId}`);
+    const plan = {
+      status: 'active', includedMinutes: 400, periodStart: new Date(Date.now() - 86_400_000).toISOString(), periodEnd: new Date(Date.now() + 29 * 86_400_000).toISOString(),
+      trialEndsAt: null, trialDays: 14, endsAt: null, manageUrl: '/account/billing/clinic_maple',
+    };
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan, minutesUsed: 3 });
+
+    // a trial counts no minutes; a link a browser would run is refused; an unknown clinic is a 404
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, status: 'trial', trialEndsAt: plan.periodEnd } }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toMatchObject({ plan: { status: 'trial' }, minutesUsed: null });
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, manageUrl: 'javascript:alert(1)' } }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, manageUrl: '//evil.example' } }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/plan`, { body: { plan }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan }, authorization: 'Bearer wrong' })).statusCode).toBe(401);
+
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null });
+  });
 });
