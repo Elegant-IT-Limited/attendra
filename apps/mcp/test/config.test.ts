@@ -9,4 +9,11 @@ describe('MCP environment', () => {
     expect(() => loadEnv({ ...base, MCP_PORT: '0' })).toThrow('MCP_PORT');
     expect(() => loadEnv({ ...base, MCP_PORT: '65536' })).toThrow('MCP_PORT');
   });
+
+  it('trusts X-Forwarded-For only when TRUST_PROXY says so', () => {
+    expect(loadEnv(base).TRUST_PROXY).toBe(false);
+    expect(loadEnv({ ...base, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+    expect(loadEnv({ ...base, TRUST_PROXY: '' }).TRUST_PROXY).toBe(false);
+    expect(() => loadEnv({ ...base, TRUST_PROXY: 'yes' })).toThrow('TRUST_PROXY');
+  });
 });

@@ -36,7 +36,7 @@ describe('API keys', () => {
       expect((await api.request('POST', `${C}/api-keys`, { cookie: as[who], body: { name: 'x', scopes: ['schedule:read'] } })).statusCode).toBe(403);
     }
     expect((await api.request('GET', `${C}/api-keys`, { cookie: as.outsider })).statusCode).toBe(404);
-    expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/api-keys`, { cookie: as.outsider })).json()).toEqual({ keys: [] });
+    expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/api-keys`, { cookie: as.outsider })).json()).toEqual({ keys: [], mcpUrl: null });
     expect((await api.request('POST', `${C}/api-keys`, { cookie: as.admin, origin: 'https://evil.example', body: { name: 'x', scopes: ['schedule:read'] } })).statusCode).toBe(403);
   });
 
@@ -62,5 +62,13 @@ describe('API keys', () => {
     expect(actions).toEqual([
       { action: 'api_key.created', actor: `user:${api.users.admin}` }, { action: 'api_key.created', actor: `user:${api.users.owner}` }, { action: 'api_key.revoked', actor: `user:${api.users.owner}` },
     ]);
+  });
+
+  it('says where an MCP client connects, when the deployment sets it', async () => {
+    const hosted = await startApi({ demoMode: false, mcpUrl: 'https://app.example.com/mcp' });
+    try {
+      const owner = await hosted.signIn('omar@maple.example', true);
+      expect((await hosted.request('GET', `${C}/api-keys`, { cookie: owner })).json()).toMatchObject({ mcpUrl: 'https://app.example.com/mcp' });
+    } finally { await hosted.close(); }
   });
 });

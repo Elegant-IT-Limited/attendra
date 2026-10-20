@@ -46,6 +46,9 @@ const Env = z.object({
   ATTENDRA_MAIL_HOOK_URL: optional(z.url()),
   // Extra links for owners in the dashboard menu, as JSON: [{"label":"Billing","href":"https://billing.example/{clinicId}"}].
   // A hosting layer uses it for billing or setup pages; {clinicId} becomes the clinic's id. Self-hosters leave it unset.
+  // This deployment's MCP server for other AI agents (apps/mcp), as clients reach it, like
+  // https://app.example.com/mcp. Settings > API keys shows it next to the keys. Unset, it shows none.
+  ATTENDRA_MCP_URL: optional(z.url().refine((u) => /^https:\/\//.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(u), 'ATTENDRA_MCP_URL must be https (or http on this machine)')),
   ATTENDRA_ACCOUNT_LINKS: z.preprocess((v) => (v === '' || v === undefined ? [] : typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v),
     z.array(z.object({ label: z.string().trim().min(1).max(30), href: z.string().max(300).refine((h) => /^(https:\/\/|\/)/.test(h), 'an account link is an https:// address or a path') })).max(5)),
   LOG_LEVEL: z.preprocess(blank, z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),

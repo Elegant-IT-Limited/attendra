@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (MCP on a hosted service)
+
+- **Settings > API keys says where to connect.** With `ATTENDRA_MCP_URL` set on the API, the page shows the MCP address with a Copy button, next to the keys that work with it.
+- **MCP behind a reverse proxy.** `TRUST_PROXY=true` on the MCP server counts requests without a working key by the address the proxy added, not the proxy's own, so one client guessing keys no longer holds back every other client; an address a client writes into `X-Forwarded-For` itself is ignored.
+
 ### Added (signing in)
 
 - **Forgot your password?** With `ATTENDRA_MAIL_HOOK_URL` (a hosting layer's mailer, see docs/provisioning.md), the sign-in page offers a reset link by email: one hour, once, every session ended. The answer is the same for any address.

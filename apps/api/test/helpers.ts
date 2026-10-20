@@ -29,7 +29,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; mcpUrl?: string; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -55,7 +55,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
