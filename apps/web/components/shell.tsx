@@ -17,6 +17,7 @@ import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { useClinicChanges } from '@/lib/changes';
 import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
+import { markSignedOut } from '@/lib/next';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
 import { useTerms } from '@/lib/terms';
@@ -59,6 +60,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // Drops every cached call, transcript and task before leaving, and reloads, so the
   // next person at this screen starts from nothing.
   const signOut = useCallback(async (reason?: 'idle') => {
+    markSignedOut();
     await authClient.signOut().catch(() => {});
     queries.clear();
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');

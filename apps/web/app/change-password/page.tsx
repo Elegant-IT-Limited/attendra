@@ -8,6 +8,7 @@ import { Alert } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { signOutAndLeave } from '@/lib/next';
 
 /**
  * First sign-in with a temporary password: the person picks their own before
@@ -26,7 +27,7 @@ export default function ChangePassword() {
 
   // anyone else changing theirs, from Your account
   const temporary = me.data?.user.mustChangePassword ?? true;
-  const signOut = () => void authClient.signOut().finally(() => window.location.assign('/sign-in'));
+  const signOut = () => signOutAndLeave(() => authClient.signOut());
 
   async function submit(e: FormEvent) {
     e.preventDefault();

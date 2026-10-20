@@ -10,6 +10,7 @@ import { Alert } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { signOutAndLeave } from '@/lib/next';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
@@ -31,7 +32,7 @@ function Profile() {
   const first = me.data?.clinics[0];
   // a temporary password is changed before anything else
   useEffect(() => { if (me.data?.user.mustChangePassword) window.location.assign('/change-password'); }, [me.data]);
-  const signOut = () => void authClient.signOut().finally(() => window.location.assign('/sign-in'));
+  const signOut = () => signOutAndLeave(() => authClient.signOut());
 
   async function confirm(e: FormEvent) {
     e.preventDefault();

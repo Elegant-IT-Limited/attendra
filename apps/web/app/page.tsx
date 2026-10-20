@@ -6,7 +6,7 @@ import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { ApiFailure, useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { takeNext } from '@/lib/next';
+import { signOutAndLeave, takeNext } from '@/lib/next';
 
 /**
  * Where a signed-in person goes: a temporary password first, then two-step sign-in where
@@ -34,7 +34,7 @@ export default function Home() {
   }
   if (me.data && !first) {
     return (
-      <Empty title="No clinic yet" action={<Button variant="outline" onClick={() => void authClient.signOut().finally(() => window.location.assign('/sign-in'))}>Sign out</Button>}>
+      <Empty title="No clinic yet" action={<Button variant="outline" onClick={() => signOutAndLeave(() => authClient.signOut())}>Sign out</Button>}>
         Your account is not a member of any clinic. Ask your practice owner to add you.
       </Empty>
     );
