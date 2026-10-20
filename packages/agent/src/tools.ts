@@ -495,7 +495,7 @@ export async function runTool(
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
-      return { ok: true, data: { task_id: task.id, say: 'Tell them the request is with the care team, who will review it. Do not promise approval or a time.' } };
+      return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.` } };
     }
 
     case 'create_callback': {

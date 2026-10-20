@@ -12,9 +12,10 @@ const HANGUP = '[HANGUP]';
  * abandoned call. It never brings a new request. store is off.
  */
 export function modelFollowUp(openai: Pick<OpenAI, 'responses'>, model: string): FollowUp {
-  return async (scenario: Scenario, transcript: ScenarioResult['transcript']) => {
+  // the cap counts the model's reasoning too, so a small one can leave the line empty and end the call
+  const ask = async (scenario: Scenario, transcript: ScenarioResult['transcript']) => {
     const res = await openai.responses.create({
-      model, store: false, max_output_tokens: 120,
+      model, store: false, max_output_tokens: 1_000,
       instructions: [
         'You are the caller in a test of a clinic\'s phone assistant. Stay in character and keep to the situation.',
         `The situation: ${scenario.title}`,
@@ -25,7 +26,11 @@ export function modelFollowUp(openai: Pick<OpenAI, 'responses'>, model: string):
       ].join('\n'),
       input: transcript.filter((l) => l.speaker !== 'instruction').map((l) => `${l.speaker === 'caller' ? 'You' : 'Assistant'}: ${l.text}`).join('\n'),
     }, { timeout: 20_000, maxRetries: 1 });
-    const text = (res.output_text ?? '').trim();
+    return (res.output_text ?? '').trim();
+  };
+  return async (scenario: Scenario, transcript: ScenarioResult['transcript']) => {
+    // an empty answer is asked for once more
+    const text = (await ask(scenario, transcript)) || (await ask(scenario, transcript));
     return { text: text.replace(HANGUP, '').trim(), hangup: text.includes(HANGUP) };
   };
 }
