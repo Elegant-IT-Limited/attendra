@@ -7,8 +7,12 @@
  */
 const KEY = 'attendra.next';
 
+// a browser drops tabs and line breaks from an address ("/\t/x" opens "//x", another site): none anywhere, and no backslash
+const plain = (value: string) => [...value].every((c) => c.charCodeAt(0) > 0x1f && c.charCodeAt(0) !== 0x7f && c !== '\\');
+
 export function safeNext(value: string | null | undefined): string | null {
-  return value && /^\/(?![/\\])/.test(value) && !/^\/(sign-in|two-factor|setup-two-factor|change-password|forgot-password|reset-password)\b/.test(value) ? value : null;
+  return value && /^\/(?![/\\])/.test(value) && plain(value)
+    && !/^\/(sign-in|two-factor|setup-two-factor|change-password|forgot-password|reset-password)\b/.test(value) ? value : null;
 }
 
 export function rememberNext(value: string | null | undefined) {

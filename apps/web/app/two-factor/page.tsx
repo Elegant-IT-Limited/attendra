@@ -18,7 +18,7 @@ const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 function whyNot(error: { status?: number; code?: string }, backup: boolean): ReactNode {
   const startAgain = <> <Link className={LINK} href="/sign-in">Sign in again</Link>.</>;
   if (error.status === 429) return <>Too many tries. Wait 15 minutes, then{startAgain}</>;
-  if (error.code === 'INVALID_TWO_FACTOR_COOKIE' || error.code === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE' || error.status === 401) {
+  if (error.code === 'INVALID_TWO_FACTOR_COOKIE' || error.code === 'TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE') {
     return <>This sign-in has timed out or had too many tries.{startAgain}</>;
   }
   return backup ? 'That backup code did not work. Each one works once; check it and try another.'

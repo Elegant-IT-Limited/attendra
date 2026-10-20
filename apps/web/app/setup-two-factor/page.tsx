@@ -35,6 +35,11 @@ export default function SetupTwoFactor() {
   const signOut = () => void authClient.signOut().finally(() => window.location.assign('/sign-in'));
   const qr = useMemo(() => (setup ? renderSVG(setup.totpURI, { border: 1 }) : null), [setup]);
   const secret = setup ? new URL(setup.totpURI).searchParams.get('secret') : null;
+  // turned on by choice, from Your account: a way back; when it is required, only signing out
+  const optional = me.data?.twoFactorRequired === false;
+  const footer = optional
+    ? <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your account</a>
+    : <button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>;
 
   async function start(e: FormEvent) {
     e.preventDefault();
@@ -60,8 +65,8 @@ export default function SetupTwoFactor() {
 
   if (!setup) {
     return (
-      <AuthCard title="Turn on two-step sign-in" subtitle="Everyone who can see patient calls signs in with a password and a code from an authenticator app."
-        footer={<button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>}>
+      <AuthCard title="Turn on two-step sign-in" subtitle={optional ? 'A code from an authenticator app keeps your account safe even if someone learns your password.' : 'Everyone who can see patient calls signs in with a password and a code from an authenticator app.'}
+        footer={footer}>
         <form onSubmit={start} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">Confirm your password</Label>
@@ -76,7 +81,7 @@ export default function SetupTwoFactor() {
 
   return (
     <AuthCard title="Scan this code" subtitle="Use Google Authenticator, 1Password, Authy or any TOTP app."
-      footer={<button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>}>
+      footer={footer}>
       {/* renderSVG builds the markup from our own otpauth URI; no user content goes in */}
       <div className="mx-auto w-48 rounded-lg bg-white p-2 [&_svg]:h-auto [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qr! }} />
       {/* on the phone itself there is nothing to scan: the link opens the authenticator app */}

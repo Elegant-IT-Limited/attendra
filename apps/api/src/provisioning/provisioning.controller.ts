@@ -17,6 +17,9 @@ import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
 
+/** How long an unconfirmed sign-up is kept before a new one may replace it: the hosting layer's link lifetime. */
+const UNCONFIRMED_KEPT_MS = 48 * 3_600_000;
+
 const NewAccount = z.object({
   organization: z.object({ name: z.string().trim().min(2).max(100) }),
   clinic: z.object({
@@ -32,7 +35,8 @@ const NewAccount = z.object({
   /**
    * The address has an account whose email was never confirmed and the hosting layer has no
    * record of it (a sign-up it could not finish, or one made with someone else's address):
-   * that account, with what it opened alone, is removed and this one opened instead.
+   * that account, with what it opened alone, is removed and this one opened instead, once it is
+   * older than its confirmation link (48 hours).
    */
   replaceUnconfirmed: z.boolean().default(false),
 });
@@ -77,16 +81,21 @@ export class ProvisioningController {
   @HttpCode(201)
   async open(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(NewAccount)) body: z.infer<typeof NewAccount>) {
     this.check(authorization);
-    const taken = await findAccount(this.auth, body.owner.email);
-    if (taken && !(body.replaceUnconfirmed && !taken.emailVerified && (await removeUnconfirmedAccount(this.db, body.owner.email)) === 'removed')) {
-      // a confirmed account says so; one not confirmed yet says that too, so the hosting layer can send a new link
-      throw new HttpException({ error: 'email_taken', confirmed: taken.emailVerified }, 409);
-    }
+    // checked first: nothing is replaced for a request that cannot open an account
     let config: ClinicConfig;
     try {
       config = starterClinic({ id: newId('clinic'), ...body.clinic });
     } catch {
       throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
+    }
+    const taken = await findAccount(this.auth, body.owner.email);
+    // an unconfirmed account is replaced only once its confirmation link has run out: before
+    // then, its link could confirm whoever signed up second with the same address
+    const replaced = !!taken && body.replaceUnconfirmed && !taken.emailVerified
+      && (await removeUnconfirmedAccount(this.db, body.owner.email, { createdBefore: new Date(Date.now() - UNCONFIRMED_KEPT_MS) })) === 'removed';
+    if (taken && !replaced) {
+      // a confirmed account says so; one not confirmed yet says that too, so the hosting layer can send its link again
+      throw new HttpException({ error: 'email_taken', confirmed: taken.emailVerified }, 409);
     }
     const organizationId = newId('org');
     const userId = await createAccount(this.auth, { ...body.owner, emailVerified: false });

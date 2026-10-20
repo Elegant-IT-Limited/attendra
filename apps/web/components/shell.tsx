@@ -68,7 +68,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // background never signs out the one being worked in (they share the session)
   useEffect(() => {
     const KEY = 'attendra.activeAt';
-    let local = Date.now();
+    let local = 0;
     const shared = () => { try { return Number(localStorage.getItem(KEY)) || 0; } catch { return 0; } };
     const touch = () => {
       const now = Date.now();
