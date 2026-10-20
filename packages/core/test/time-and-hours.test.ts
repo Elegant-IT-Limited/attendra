@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEMO_CLINIC, demoHolidays, hoursSummary, isOpen, localParts, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
+import { DEMO_CLINIC, demoHolidays, hoursSummary, isOpen, localParts, openMinutes, todayLine, todaysHoursLine, weekHours, zonedInstant } from '../src';
 
 describe('clinic-local time', () => {
   it('turns a Denver wall-clock time into the right UTC instant, on both sides of DST', () => {
@@ -49,6 +49,20 @@ describe('opening hours', () => {
   it('describes a split day in one line', () => {
     expect(todaysHoursLine(DEMO_CLINIC, zonedInstant('2026-09-29', '07:00', 'America/Denver')))
       .toBe('Today the clinic is open 08:00 to 12:00 and 13:00 to 17:00.');
+  });
+});
+
+describe('open minutes between two moments', () => {
+  const at = (date: string, time: string) => zonedInstant(date, time, 'America/Denver');
+  it('counts the open quarter hours: a Tuesday is 8 hours, a weekend none', () => {
+    expect(openMinutes(DEMO_CLINIC, at('2026-09-29', '00:00'), at('2026-09-30', '00:00'))).toBe(480);
+    expect(openMinutes(DEMO_CLINIC, at('2026-09-29', '11:30'), at('2026-09-29', '13:30'))).toBe(60);
+    expect(openMinutes(DEMO_CLINIC, at('2026-10-03', '00:00'), at('2026-10-05', '00:00'))).toBe(0);
+  });
+  it('looks at 7 days at most, and nothing when the end is first', () => {
+    const week = openMinutes(DEMO_CLINIC, at('2026-09-28', '00:00'), at('2026-10-05', '00:00'));
+    expect(openMinutes(DEMO_CLINIC, at('2026-09-28', '00:00'), at('2026-10-20', '00:00'))).toBe(week);
+    expect(openMinutes(DEMO_CLINIC, at('2026-09-30', '00:00'), at('2026-09-29', '00:00'))).toBe(0);
   });
 });
 

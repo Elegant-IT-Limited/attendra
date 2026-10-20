@@ -6,7 +6,9 @@ import { ClinicConfig, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, memberships } from '../auth-schema';
 import type { Database } from '../client';
+import type { PhiCipher } from '../crypto';
 import { auditLogs, calls, clinics, organizations } from '../schema';
+import { callerKey } from './calls';
 
 /**
  * A new organization and its first clinic. The clinic's own number is not pointed at
@@ -151,6 +153,25 @@ export async function phoneUsage(db: Database, clinicId: string, from: Date, to:
     select count(*)::int as calls, coalesce(sum(ceil(extract(epoch from (ended_at - started_at)))), 0)::int as seconds
     from calls where clinic_id = ${clinicId} and channel = 'phone' and ended_at is not null and started_at >= ${from} and started_at < ${to}`)).rows as [{ calls: number; seconds: number }];
   return { calls: Number(row.calls), seconds: Number(row.seconds) };
+}
+
+/**
+ * Phone calls that started since a moment, ended or not: how many, when the last one began,
+ * and, given a number, whether one came from it (compared by its keyed hash, never stored
+ * or returned). For the hosting layer's forwarding check and its quiet-line alert.
+ */
+export async function phoneCallsSince(db: Database, cipher: PhiCipher, clinicId: string, since: Date, from?: string): Promise<{ calls: number; lastCallAt: string | null; heard: boolean | null }> {
+  const [row] = (await db.execute(sql`
+    select count(*)::int as calls, max(started_at) as last_at
+    from calls where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since}`)).rows as [{ calls: number; last_at: string | Date | null }];
+  let heard: boolean | null = null;
+  if (from) {
+    const [match] = (await db.execute(sql`
+      select count(*)::int as n from calls
+      where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since} and from_hash = ${cipher.hash(callerKey(clinicId, from))}`)).rows as [{ n: number }];
+    heard = Number(match.n) > 0;
+  }
+  return { calls: Number(row.calls), lastCallAt: row.last_at ? new Date(row.last_at).toISOString() : null, heard };
 }
 
 /** The owners of the organization a clinic belongs to, for account email. */

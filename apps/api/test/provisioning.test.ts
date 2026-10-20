@@ -115,6 +115,20 @@ describe('provisioning', () => {
     const usage = await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/usage?from=${from}&to=${to}`, { authorization: auth });
     expect(usage.json()).toEqual({ calls: 1, seconds: 95 });
 
+    // the forwarding check and the quiet-line alert: calls since a moment, and one from a number, by its hash
+    const caller = '+13035550147';
+    const since = new Date(Date.now() - 3_600_000).toISOString();
+    await api.t.db.execute(sql`update calls set started_at = now() - interval '10 minutes', ended_at = now() - interval '10 minutes' + interval '95 seconds' where id = ${api.callId}`);
+    const check = (body: object) => api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/calls-check`, { body, authorization: auth });
+    expect((await check({ since, from: caller })).json()).toMatchObject({ calls: 1, heard: true });
+    expect((await check({ since, from: '+13035550999' })).json()).toMatchObject({ calls: 1, heard: false });
+    const quiet = (await check({ since: new Date().toISOString() })).json();
+    expect(quiet).toMatchObject({ calls: 0, lastCallAt: null, heard: null });
+    expect(typeof quiet.openMinutes).toBe('number');
+    expect((await check({ since, from: '303 555 0147' })).statusCode).toBe(422);
+    expect((await api.request('POST', `${P}/clinics/clinic_none/calls-check`, { body: { since }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/calls-check`, { body: { since } })).statusCode).toBe(401);
+
     const report = (await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/report`, { authorization: auth })).json();
     expect(report.clinic).toMatchObject({ id: DEMO_CLINIC.id, averageVisitValue: 150 });
     expect(report.weeks).toHaveLength(1);
