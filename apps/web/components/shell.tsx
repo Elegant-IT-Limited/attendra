@@ -2,11 +2,12 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, PhoneCall, Search, Sun, UserRound } from 'lucide-react';
+import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, Search, Sun, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { BrandMark } from '@/components/brand-mark';
 import { EmergencyAlerts } from '@/components/calls/live-now';
 import { CommandPalette } from '@/components/command-palette';
 import { PlanBanner } from '@/components/plan';
@@ -121,7 +122,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       {/* tablet and desktop: the sidebar */}
       <aside className="sticky top-0 hidden h-dvh flex-col border-r border-border bg-surface md:flex">
         <div className="flex items-center gap-2 px-5 pt-5 pb-3 max-xl:justify-center max-xl:px-0">
-          <PhoneCall className="size-5 text-primary" aria-hidden />
+          <BrandMark className="size-7" />
           <span className="font-semibold tracking-tight max-xl:sr-only">Attendra</span>
         </div>
         <div className="px-5 pb-3 max-xl:hidden">
@@ -163,7 +164,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
 
       {/* phone: a top bar */}
       <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
-        <PhoneCall className="size-5 text-primary" aria-hidden />
+        <BrandMark className="size-7 shrink-0" />
         <div className="min-w-0 flex-1">{others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}</div>
         <button type="button" aria-label="Search and jump" onClick={() => setPalette(true)} className="focus-ring flex size-11 items-center justify-center rounded-md text-text-muted hover:bg-surface-sunken"><Search className="size-5" /></button>
         <UserMenu compact user={user} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />

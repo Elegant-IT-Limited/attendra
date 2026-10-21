@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (one brand)
+
+- **The dashboard wears the website's colours.** Warm paper neutrals and brown-black text, with slate as the one action colour instead of teal, in light and dark. Geist, the website's typeface, replaces Inter, and the sign-in pages, the sidebar and the browser tab show the website's mark: a phone in a rounded square.
+
 ### Fixed (calls, from a real test call)
 
 - **No "working on it" before every answer.** The note the voice hears while a request runs tells it to stay quiet and answer; the "still checking" line after 7 seconds is unchanged.
