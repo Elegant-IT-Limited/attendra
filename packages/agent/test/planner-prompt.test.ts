@@ -33,6 +33,14 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(systemPrompt(RIVERBEND_CLINIC, 'now')).toContain('at most one question');
   });
 
+  it('after a miss the state line sends a new caller to register_patient, not the same lookup', () => {
+    const state = new CallState();
+    expect(stateLine(state)).toContain('patient not verified');
+    state.notFound = true;
+    expect(stateLine(state)).toContain('if the caller says they are new, call register_patient');
+    expect(stateLine(state)).toContain('call verify_caller again with it at once');
+  });
+
   it('after a booking the state line says what is done, so nothing is looked up again', () => {
     const state = new CallState();
     state.done.push('booked Tuesday at 9 with Dr. Ruiz for a sick visit');

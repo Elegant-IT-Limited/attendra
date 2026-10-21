@@ -92,6 +92,10 @@ describe('who a caller can be offered', () => {
     expect(matchesSpecialty({ categories: ['Exotics'] }, 'rabbit')).toBe(true);
     expect(matchesSpecialty({ categories: ['Birds'] }, 'parrot')).toBe(true);
     expect(matchesSpecialty({ categories: ['Dogs', 'Cats'] }, 'rabbit')).toBe(false);
+    // "cat" is the vet who lists "Cats" (live run 8 offered nobody for a cat's vaccines)
+    expect(matchesSpecialty({ specialty: 'General practice', categories: ['Dogs', 'Cats', 'Dentistry'] }, 'cat')).toBe(true);
+    expect(matchesSpecialty({ specialty: 'General practice', categories: ['Dogs', 'Cats'] }, 'dogs')).toBe(true);
+    expect(matchesSpecialty({ specialty: 'Exotic pets', categories: ['Rabbits', 'Birds'] }, 'cat')).toBe(false);
     const starter = starterClinic({ id: 'clinic_x', name: 'Oak Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550100' });
     expect(bookableProviders(starter.providers).map((p) => p.id)).toEqual(['prov_1']);
     const withVet = [...starter.providers, { ...starter.providers[0]!, id: 'prov_patel', name: 'Dr. Patel', placeholder: undefined }];

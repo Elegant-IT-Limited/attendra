@@ -136,17 +136,58 @@ const NUMBER_WORDS: Record<string, number> = {
  * the vet's record only needs to be close. Null when it is neither.
  */
 export function parsePetBirth(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): { dob: string; estimated: boolean } | null {
-  const exact = parseDob(input, today, order);
+  const whole = birthIn(input, today, order);
+  if (whole) return whole;
+  // a sentence with the answer in one part: "He's a rescue, so I'm not sure. About two?" (the last part that says one wins)
+  const parts = input.split(/[.;!?]+|,\s+(?=(?:so|but|i think|maybe|about|around|probably|she|he|it|i)\b)/i).map((p) => p.trim()).filter(Boolean);
+  for (const part of parts.reverse()) {
+    const found = parts.length > 1 ? birthIn(part, today, order) : null;
+    if (found) return found;
+  }
+  return null;
+}
+
+/** One phrase as a birthday or an age, once the words owners put around it are taken off. */
+function birthIn(input: string, today: Date, order: 'mdy' | 'dmy'): { dob: string; estimated: boolean } | null {
+  // what owners say around the date: "her birthday is ...", "she was born on ...", "he's about two", "this year"
+  const year = today.getUTCFullYear();
+  let plain = fold(input).toLowerCase().replace(/[.!?]+\s*$/, '').trim();
+  for (let i = 0; i < 3; i++) {
+    plain = plain
+      .replace(/^(?:(?:her|his|its|the)\s+)?(?:birthday|date of birth|dob|birth date)\s+(?:is|was|would be)\s+/, '')
+      .replace(/^(?:(?:she|he|it)(?:\s+(?:is|was)|'s|s)?|(?:she|he|it)\s+turned|turned|naci(?:o|ó)|tiene)\b[\s,]*/, '')
+      .replace(/^(?:was\s+)?born\s+/, '')
+      .replace(/^(?:on|in|el|en)\s+/, '')
+      .replace(/^(?:i think|i guess|probably|maybe|roughly|approximately|almost|nearly)\s+(?=\S)/, (m) => (/maybe|roughly|approximately/.test(m) ? 'about ' : ''))
+      .trim();
+  }
+  // "two or three": the first
+  plain = plain.replace(/\b(\d{1,2}|[a-z]+)\s+or\s+(?:\d{1,2}|[a-z]+)\b/, '$1')
+    .replace(/\bthis year\b/, String(year)).replace(/\blast year\b/, String(year - 1)).replace(/\beste ano\b/, String(year))
+    .replace(/,?\s*i think$/, '').trim();
+  const exact = parseDob(plain, today, order) ?? parseDob(input, today, order);
   if (exact) return { dob: exact, estimated: false };
-  const s = fold(input).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  // a month and a year, or "last January": the middle of that month, as an estimate
+  const monthYear = plain.match(/^(?:(last)\s+)?([a-z]+)(?:\s+(?:of\s+)?(\d{4}))?$/);
+  const month = monthYear ? [MONTHS, MONTHS_ES].map((m) => m.indexOf(monthYear[2]!)).find((i) => i >= 0) : undefined;
+  if (monthYear && month !== undefined && (monthYear[1] || monthYear[3])) {
+    let y = monthYear[3] ? Number(monthYear[3]) : year;
+    if (!monthYear[3] && month >= today.getUTCMonth()) y -= 1;
+    const d = `${y}-${String(month + 1).padStart(2, '0')}-15`;
+    if (d <= today.toISOString().slice(0, 10) && y > year - 40) return { dob: d, estimated: true };
+  }
+  const half = /\band a half\b|\by medio\b/.test(plain);
+  const s = plain.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const r = s.match(/(?:^|\s)(\d{1,2}|[a-z]+)(?:\s+and\s+a\s+half)?\s*(years?|yrs?|anos?|months?|mos?|meses|mes|weeks?|semanas?)(?:\s|$)/)
     ?? (s.match(/^(?:about|around|maybe|como|unos|unas)?\s*(\d{1,2}|[a-z]+)(?:\s+(?:years? old|anos))?$/) ? [s, s.replace(/^(?:about|around|maybe|como|unos|unas)\s*/, '').split(' ')[0]!, 'years'] : null);
   if (!r) return null;
+  // a bare "a" is an article ("a rescue"), never an age without a unit
+  if (!r[2] || (/^an?$/.test(r[1]!) && !/(years?|yrs?|months?|mos?|weeks?)/.test(r[2]))) return null;
   const n = /^\d+$/.test(r[1]!) ? Number(r[1]) : NUMBER_WORDS[r[1]!];
   if (n === undefined || n < 0 || n > 40) return null;
   const unit = r[2]!;
   const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  if (/^(years?|yrs?|anos?)$/.test(unit)) d.setUTCFullYear(d.getUTCFullYear() - n);
+  if (/^(years?|yrs?|anos?)$/.test(unit)) { d.setUTCFullYear(d.getUTCFullYear() - n); if (half) d.setUTCMonth(d.getUTCMonth() - 6); }
   else if (/^(months?|mos?|meses|mes)$/.test(unit)) d.setUTCMonth(d.getUTCMonth() - n);
   else d.setUTCDate(d.getUTCDate() - 7 * n);
   return { dob: d.toISOString().slice(0, 10), estimated: true };

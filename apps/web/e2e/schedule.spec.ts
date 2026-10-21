@@ -109,7 +109,8 @@ test.describe.serial('the schedule', () => {
   test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.goto(`/c/${clinicOf(page)}/schedule`);
-    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
+    // the page may still be compiling under next dev on a busy CI runner: give it the time the other first loads get
+    await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const dialog = page.getByRole('dialog', { name: 'New booking' });
     for (let i = 0; i < 2; i++) {
       await page.keyboard.press('n');
