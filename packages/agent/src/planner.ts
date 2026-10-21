@@ -89,7 +89,7 @@ function transcriptFor(state: CallState): string {
  */
 export class ResponsesPlanner implements Planner {
   constructor(
-    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 5,
+    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 8, // two pets in one call take six or seven tool calls
     private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
   ) {}
 
