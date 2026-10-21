@@ -38,6 +38,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(stateLine(state)).toContain('patient not verified');
     state.notFound = true;
     expect(stateLine(state)).toContain('if the caller says they are new, call register_patient');
+    expect(stateLine(state)).toContain('call verify_caller again with it at once');
   });
 
   it('after a booking the state line says what is done, so nothing is looked up again', () => {

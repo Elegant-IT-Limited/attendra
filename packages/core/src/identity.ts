@@ -136,9 +136,26 @@ const NUMBER_WORDS: Record<string, number> = {
  * the vet's record only needs to be close. Null when it is neither.
  */
 export function parsePetBirth(input: string, today = new Date(), order: 'mdy' | 'dmy' = 'mdy'): { dob: string; estimated: boolean } | null {
-  const exact = parseDob(input, today, order);
+  // what owners say around the date: "she was born on ...", "he's about two", "this year"
+  const year = today.getUTCFullYear();
+  const plain = fold(input).toLowerCase()
+    .replace(/^\s*(?:(?:she|he|it)(?:\s+(?:is|was)|'s|s)?|(?:she|he|it)\s+turned|turned|born|was born|naci(?:o|ó)|tiene)\b[\s,]*/, '')
+    .replace(/^\s*(?:born\s+)?(?:on|in|el|en)\s+/, '')
+    .replace(/\bthis year\b/, String(year)).replace(/\blast year\b/, String(year - 1)).replace(/\beste ano\b/, String(year))
+    .trim();
+  const exact = parseDob(plain, today, order) ?? parseDob(input, today, order);
   if (exact) return { dob: exact, estimated: false };
-  const s = fold(input).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  // a month and a year, or "last January": the middle of that month, as an estimate
+  const monthYear = plain.match(/^(?:(last)\s+)?([a-z]+)(?:\s+(?:of\s+)?(\d{4}))?$/);
+  const month = monthYear ? [MONTHS, MONTHS_ES].map((m) => m.indexOf(monthYear[2]!)).find((i) => i >= 0) : undefined;
+  if (monthYear && month !== undefined && (monthYear[1] || monthYear[3])) {
+    let y = monthYear[3] ? Number(monthYear[3]) : year;
+    if (!monthYear[3] && month >= today.getUTCMonth()) y -= 1;
+    const d = `${y}-${String(month + 1).padStart(2, '0')}-15`;
+    if (d <= today.toISOString().slice(0, 10) && y > year - 40) return { dob: d, estimated: true };
+  }
+  const half = /\band a half\b|\by medio\b/.test(plain);
+  const s = plain.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   const r = s.match(/(?:^|\s)(\d{1,2}|[a-z]+)(?:\s+and\s+a\s+half)?\s*(years?|yrs?|anos?|months?|mos?|meses|mes|weeks?|semanas?)(?:\s|$)/)
     ?? (s.match(/^(?:about|around|maybe|como|unos|unas)?\s*(\d{1,2}|[a-z]+)(?:\s+(?:years? old|anos))?$/) ? [s, s.replace(/^(?:about|around|maybe|como|unos|unas)\s*/, '').split(' ')[0]!, 'years'] : null);
   if (!r) return null;
@@ -146,7 +163,7 @@ export function parsePetBirth(input: string, today = new Date(), order: 'mdy' | 
   if (n === undefined || n < 0 || n > 40) return null;
   const unit = r[2]!;
   const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  if (/^(years?|yrs?|anos?)$/.test(unit)) d.setUTCFullYear(d.getUTCFullYear() - n);
+  if (/^(years?|yrs?|anos?)$/.test(unit)) { d.setUTCFullYear(d.getUTCFullYear() - n); if (half) d.setUTCMonth(d.getUTCMonth() - 6); }
   else if (/^(months?|mos?|meses|mes)$/.test(unit)) d.setUTCMonth(d.getUTCMonth() - n);
   else d.setUTCDate(d.getUTCDate() - 7 * n);
   return { dob: d.toISOString().slice(0, 10), estimated: true };

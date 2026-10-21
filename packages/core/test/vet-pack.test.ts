@@ -85,6 +85,13 @@ describe('a pet\'s age or birthday', () => {
     ['fifteenth January 2026', '2026-01-15', false],
     ['the 5th of January 2026', '2026-01-05', false],
     ['January twenty-first, 2025', '2025-01-21', false],
+    // with the words around it, as an owner says it (live run 8 asked the age again)
+    ['she was born on the fifteenth of January 2026', '2026-01-15', false],
+    ['15th of January this year', '2026-01-15', false],
+    ['she is about two', '2024-10-16', true],
+    ['a year and a half', '2025-04-16', true],
+    ['January 2026', '2026-01-15', true],
+    ['last January', '2026-01-15', true],
   ])('"%s" is %s', (said, dob, estimated) => {
     expect(parsePetBirth(said, today)).toEqual({ dob, estimated });
   });
