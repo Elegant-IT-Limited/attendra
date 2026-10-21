@@ -294,6 +294,7 @@ export class CallAgent {
     if (!ending) return [{ type: 'instructions', delegationId: null, content: s.emergencyLocked ? lines[0] : lines[Math.min(s.abuse, 2) - 1]! }];
     s.revision++; // whatever was in flight is dropped, not spoken over the goodbye
     s.pending = null;
+    s.endedForAbuse = true;
     this.emitState();
     return [
       { type: 'instructions', delegationId: null, content: lines[2] },
@@ -329,6 +330,8 @@ export class CallAgent {
    * this request's writes are refused, and its result is dropped instead of spoken.
    */
   async onDelegation(delegationId: string, emit?: (o: Outbound) => void): Promise<Outbound[]> {
+    // once the goodbye has been said (staff ended the call, or an abusive caller), nothing more is planned or spoken
+    if (this.state.ending) return [{ type: 'thinking', delegationId, content: 'The call is being ended. Say nothing more.' }];
     const revision = ++this.state.revision;
     const out: Outbound[] = [];
     // a note for the voice, not words for the caller: most answers come back within a second or

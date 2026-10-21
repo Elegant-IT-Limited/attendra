@@ -233,7 +233,7 @@ export async function runTool(
       state.notFound = true;
       state.identitiesTried.add(tried);
       // same answer for "no such patient", "wrong DOB" and "wrong phone": never confirm a record exists
-      return refuse('not_verified', `Say you could not find a match. If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient. Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file. ${triesLeft(state)}`);
+      return refuse('not_verified', `Say you could not find a match. ${state.identitiesTried.size > 1 ? 'They have given these details before: do not ask again whether they are new.' : 'If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient.'} Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file, one detail at a time. ${triesLeft(state)}`);
     }
 
     case 'register_patient': {
@@ -729,7 +729,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   state.notFound = true;
   state.identitiesTried.add(tried);
   // the same answer whichever detail was wrong: never confirm that a record exists
-  return refuse('not_verified', `Say you could not find the pet. If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient. For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file. ${triesLeft(state)}`);
+  return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file, one detail at a time. ${triesLeft(state)}`);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */

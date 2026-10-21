@@ -55,6 +55,10 @@ export class CallState {
   emergencyTransferSent = false;
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
+  /** The call is being ended for the caller's language: the goodbye has been said and nothing is planned after it. */
+  endedForAbuse = false;
+  /** Nothing more is planned once the call is being ended, by staff or for abuse. */
+  get ending(): boolean { return this.endedByStaff || this.endedForAbuse; }
   /** Every emergency kind already answered, so a new kind (bleeding after chest pain) is answered too. */
   readonly emergencyKinds = new Set<string>();
   /**
