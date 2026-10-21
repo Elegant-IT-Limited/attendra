@@ -8,6 +8,6 @@ describe('conversation scenarios (scripted planner)', () => {
     it(`${scenario.id}: ${scenario.title}`, async () => {
       const result = await runScenario(scenario);
       expect(result.failures).toEqual([]);
-    });
+    }, 60_000); // each scenario opens its own database: a loaded machine needs more than the default
   }
 });
