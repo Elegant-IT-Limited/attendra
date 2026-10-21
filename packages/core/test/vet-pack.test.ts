@@ -92,11 +92,18 @@ describe('a pet\'s age or birthday', () => {
     ['a year and a half', '2025-04-16', true],
     ['January 2026', '2026-01-15', true],
     ['last January', '2026-01-15', true],
+    // whole sentences, punctuation and all (live run 8b still asked the age again)
+    ['Her birthday is January 15, 2026.', '2026-01-15', false],
+    ['She was born on the fifteenth of January 2026.', '2026-01-15', false],
+    ["He's a rescue, so I'm not sure. About two?", '2024-10-16', true],
+    ["I'm not sure, about two", '2024-10-16', true],
+    ['Maybe two or three', '2024-10-16', true],
+    ["He's two.", '2024-10-16', true],
   ])('"%s" is %s', (said, dob, estimated) => {
     expect(parsePetBirth(said, today)).toEqual({ dob, estimated });
   });
 
   it('refuses what is neither a date nor an age', () => {
-    for (const t of ['no idea', 'old', '45 years', 'fifth Jan']) expect(parsePetBirth(t, today), t).toBeNull();
+    for (const t of ['no idea', 'old', '45 years', 'fifth Jan', 'a rescue', 'she is new', 'I have a dog', 'January 15th.']) expect(parsePetBirth(t, today), t).toBeNull();
   });
 });
