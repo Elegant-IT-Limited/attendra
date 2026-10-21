@@ -7,8 +7,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Calls' })).toBeVisible();
     await expect(page.getByText('Demo mode.')).toBeVisible();
-    // 29 eval scenarios in the weeks before, and 11 ordinary calls this week
-    await expect(page.locator('tbody tr')).toHaveCount(40);
+    // 33 eval scenarios in the weeks before, and 11 ordinary calls this week
+    await expect(page.locator('tbody tr')).toHaveCount(44);
     // named for what it holds; Today's Needs attention is a different, wider list
     await expect(page.getByRole('tab', { name: 'Needs attention' })).toHaveCount(0);
     await page.getByRole('tab', { name: 'Emergencies and requests' }).click();

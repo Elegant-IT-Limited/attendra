@@ -12,7 +12,9 @@ const STOP = new Set([
   'que', 'los', 'las', 'una', 'por', 'para', 'con', 'como', 'donde', 'cuando', 'ustedes', 'tienen', 'mi', 'mis',
 ].map(normalise));
 // any script: letters, marks and digits make a word; Latin accents are dropped so "cita" meets "cíta"
-const words = (s: string) => normalise(s).replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w));
+// a light stem, so "parking" meets "park" and "located" meets "location"
+const stem = (w: string) => (w.length > 5 ? w.replace(/(ing|ies|ied|ed|es|s)$/, '') : w.length > 4 ? w.replace(/s$/, '') : w);
+const words = (s: string) => normalise(s).replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOP.has(w)).map(stem);
 
 export function answerFromFaqs<T extends { id: string; question: string; answer: string }>(faqs: T[], question: string, minOverlap = 1): T | null {
   const asked = new Set(words(question));

@@ -450,6 +450,7 @@ export async function runTool(
         state.pending = null;
         if (cancelled.status === 'not_found') return refuse('unknown_appointment', 'Say you could not find that appointment and offer a callback.');
         state.outcome = 'cancelled';
+        state.done.push(`cancelled ${pending.readback}`);
         if (cancelled.status === 'cancelled') {
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
@@ -495,10 +496,12 @@ export async function runTool(
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
+      state.done.push(`booked ${pending.readback}`);
       return {
         ok: true,
         data: {
           booked: true, when: pending.readback, sms_sent: smsSent,
+          done: 'This visit is booked. Say so once; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.',
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
         },

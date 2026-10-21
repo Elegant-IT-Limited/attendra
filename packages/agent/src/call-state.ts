@@ -65,6 +65,8 @@ export class CallState {
   language: Language = 'en';
   /** A text waiting for the caller's yes. A new offer replaces it; an emergency clears it. */
   textOffer: TextOffer | null = null;
+  /** What this call has changed so far, in the words read back ("booked ...", "cancelled ..."), so the backend never looks for it again or doubts it. */
+  readonly done: string[] = [];
   /** The FAQ answers given on this call, by id: only those may be texted. */
   readonly answersGiven = new Set<string>();
   /** Texts sent on this call after a yes; confirmations do not count. */
