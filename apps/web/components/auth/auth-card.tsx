@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { PhoneCall } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { BrandMark } from '@/components/brand-mark';
 
 /**
  * The centred card every sign-in step uses. With `pending`, it is laid out but not
@@ -11,8 +11,8 @@ export function AuthCard({ title, subtitle, children, pending = false, footer }:
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
       <div className={pending ? 'invisible w-full max-w-sm space-y-6' : 'w-full max-w-sm space-y-6'} aria-busy={pending || undefined}>
-        <div className="flex items-center gap-2 text-primary">
-          <PhoneCall className="size-5" aria-hidden />
+        <div className="flex items-center gap-2">
+          <BrandMark className="size-7" />
           <span className="text-md font-semibold tracking-tight text-text">Attendra</span>
         </div>
         <div className="space-y-5 rounded-lg border border-border bg-surface p-6 shadow-xs">

@@ -14,13 +14,15 @@ Everything is in `apps/web/app/globals.css`, as Tailwind `@theme` variables. Pag
 | `surface-sunken` | `bg-surface-sunken` | Hover fills, skeletons, quiet wells |
 | `border`, `border-strong` | `border-border`, `border-border-strong` | Dividers; control outlines |
 | `text`, `text-muted` | `text-text`, `text-text-muted` | Body text; secondary text |
-| `primary`, `on-primary`, `primary-soft` | `bg-primary` and so on | The one action colour (teal), text on it, and its tint |
+| `primary`, `on-primary`, `primary-soft` | `bg-primary` and so on | The one action colour (slate, the website's brand colour), text on it, and its tint |
 | `success`, `warning`, `danger`, `info`, each with `-soft` | `text-danger`, `bg-warning-soft` | States. Soft variants are backgrounds for badges and alerts |
 | `focus` | the `focus-ring` utility | The one focus ring |
 
 Every text and background pair passes WCAG 2.2 AA in both themes. The e2e suite runs axe on every main page, in light and dark, and fails on a serious or critical issue.
 
-**Type.** Inter, self-hosted with `next/font/local`. One scale: `text-xs` 12, `text-sm` 13, `text-base` 14 (body), `text-md` 16, `text-lg` 20, `text-xl` 24 (page titles), `text-2xl` 30. Figures, times and counts are tabular everywhere.
+**Mark.** `components/brand-mark.tsx`: a phone in a rounded square in the primary colour, the same shape as the website's logo; `app/icon.svg` is the browser tab's icon.
+
+**Type.** Geist, the website's typeface, self-hosted with `next/font/local`. One scale: `text-xs` 12, `text-sm` 13, `text-base` 14 (body), `text-md` 16, `text-lg` 20, `text-xl` 24 (page titles), `text-2xl` 30. Figures, times and counts are tabular everywhere.
 
 **Shape.** A 4 px grid (Tailwind's spacing). Three radii: `rounded-sm` 6, `rounded-md` 8, `rounded-lg` 12. Two shadows: `shadow-xs` for things on the page, `shadow-lg` for things above it.
 
