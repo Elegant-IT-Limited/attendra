@@ -1,0 +1,32 @@
+id: hard-notice-hours
+title: "Settings: a wellness exam needs 48 hours' notice; asked for tomorrow, the assistant says so and offers the first times after the notice"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, noticeHours: 48 }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+facts: "Biscuit is a dog. You asked for tomorrow; whatever the first day offered is, take the first time, any vet. Say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit have his wellness exam tomorrow morning?
+    reply: "Wellness exams need two days' notice, so tomorrow isn't possible. The first times are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+  - caller: OK, the first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  not_offered_on: ["2026-09-28", "2026-09-29"]

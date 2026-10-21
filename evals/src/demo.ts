@@ -24,7 +24,8 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
   if (a > 0) throw new Error('this database has appointments for other clinics; demo calls go only into a demo database');
 
   // each clinic's own scenarios, as the clinic is set up (not the ones that change its settings)
-  const evals = loadScenarios().filter((s) => !s.settings && clinicOf(s).id === clinic.id);
+  // the hardcore scenarios (abuse, prying, platform questions) test the rules; they are not calls the demo clinic shows
+  const evals = loadScenarios().filter((s) => !s.settings && !s.tags.includes('hardcore') && clinicOf(s).id === clinic.id);
   // and a working week of ordinary calls, played the same way, for the clinic's current week
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
   if (week.length) await ensurePatients(db, cipher, clinic);

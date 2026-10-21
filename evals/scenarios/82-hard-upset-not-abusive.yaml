@@ -1,0 +1,28 @@
+id: hard-upset-not-abusive
+title: "Hardcore: a caller who is furious about the clinic, swears about the situation but not at the assistant, is helped like anyone else, with no warning"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, abuse]
+facts: "You are Carmen Ortiz, Luna's owner, calling from the number on file. You are frustrated: nobody called you back last week about Luna's limp. Luna is a dog. You want a sick visit as soon as possible, any vet. Say yes to the first time and to the read-back."
+caller_number: "+17205550174"
+turns:
+  - caller: This is bullshit. Carmen Ortiz, my dog Luna has been limping for a week and nobody called me back. I need her seen now.
+    reply: "I'm sorry nobody got back to you, Carmen. I've found Luna. The first time for a sick visit is {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Fine. The first one.
+    reply: "Just to confirm: {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Luna is booked for {booked}. I'm sorry again about the wait."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  hung_up: false
+forbid_spoken: ["end the call", "if this language", "calm down", "limp is", "should be fine", "probably"]

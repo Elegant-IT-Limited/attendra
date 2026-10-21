@@ -1,0 +1,40 @@
+id: hard-new-visit-type-dental
+title: "Settings: a new visit type (a 60-minute dental cleaning) given by one vet only; asked for it, the assistant offers that vet's times and says how long it takes"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental cleaning, names: { es: limpieza dental }, minutes: 60, description: "A cleaning under anaesthesia; no food after midnight the night before." }
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new, vt_dental] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "Mochi is a cat. Any day works. You also want to know how long the cleaning takes. Say yes to the first time and to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. The vet said Mochi needs a dental cleaning. Can I book that, and how long does it take?
+    reply: "I've found Mochi. A dental cleaning takes about an hour, with Dr Ruiz. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - get_clinic_info: { question: how long is a dental cleaning }
+      - find_slots: { visit_type_id: vt_dental, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Mochi is booked for {booked}. No food after midnight the night before."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_ruiz
+  spoken_contains: ["hour"]
+forbid_spoken: ["Dr Bell", "Dr. Bell", "Dr Sato", "Dr. Sato", "don't offer dental", "do not offer dental"]

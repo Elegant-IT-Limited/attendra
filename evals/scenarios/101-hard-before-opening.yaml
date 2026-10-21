@@ -1,0 +1,27 @@
+id: hard-before-opening
+title: "Asked for 7 in the morning, before the clinic opens, the assistant says when it opens and offers the first times from then"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, hours]
+facts: "Biscuit is a dog. You wanted 7 am tomorrow before work; if that is before opening, the earliest time tomorrow is fine, any vet. Say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can I bring Biscuit in at 7 tomorrow morning, before work?
+    reply: "We open at 8, so 7 isn't possible. The first times tomorrow are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-29", part_of_day: any, from_time: "07:00" }
+  - caller: The first one is fine.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-29"
+  offered_from_time: "08:00"

@@ -1,0 +1,29 @@
+id: hard-half-day-wednesday
+title: "Settings: Wednesday is a half day (open 8 to 12 for staff training); a caller who wants Wednesday afternoon gets Wednesday morning or the next day, never a Wednesday afternoon time"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  specialDays:
+    - { date: "2026-09-30", windows: [{ open: "08:00", close: "12:00" }], note: "staff training" }
+facts: "Biscuit is a dog. You wanted Wednesday afternoon; if the clinic is closed then, the Wednesday morning or Thursday is fine, any vet. Say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit have his check-up on Wednesday afternoon, say around 3?
+    reply: "We close at noon on Wednesday, so the afternoon isn't possible. I can do {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-30", part_of_day: afternoon }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-30", part_of_day: any }
+  - caller: The first one then.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1

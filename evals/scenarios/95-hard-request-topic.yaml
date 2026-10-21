@@ -1,0 +1,24 @@
+id: hard-request-topic
+title: "Settings: a request topic the clinic added (insurance paperwork, collecting the insurer and policy number); the assistant takes it as that topic with both details"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  requestTopics:
+    - { id: rt_insurance, name: insurance paperwork, collect: "the insurer and the policy number" }
+facts: "Biscuit is insured with Trupanion, policy number 8841-22. You need the clinic to fill in a claim form. The number you are calling from is fine. Say yes if asked to confirm the request."
+turns:
+  - caller: Hi, Linh Nguyen. I need you to fill in an insurance claim form for Biscuit's last visit.
+    reply: "I can take that for the team. Which insurer is it with, and what's the policy number?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - get_clinic_info: { question: insurance paperwork request }
+  - caller: Trupanion, policy 8841-22.
+    reply: "Thanks. I've sent the insurance paperwork request to the team: Trupanion, policy 8841-22. They'll call you if they need anything."
+    delegate:
+      - create_callback: { reason: "Insurance claim form for Biscuit's last visit: Trupanion, policy 8841-22", callback_number: "+17205550172", topic: insurance paperwork }
+expect:
+  outcome: task_created
+  verified: true
+  bookings_created: 0
+forbid_spoken: ["I've filled", "I have filled", "form is done"]

@@ -17,8 +17,11 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(2);
 }
 const arg = process.argv.indexOf('--scenarios');
-const count = arg > 0 ? Math.max(1, Number(process.argv[arg + 1]) || 1) : 8;
-const personas = loadPersonas();
+// `--only=vet-abusive` keeps the personas whose id has that text; `--all` runs every persona once
+const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
+const personas = loadPersonas().filter((p) => !only || p.id.includes(only));
+if (!personas.length) { console.error(`no persona matches --only=${only}`); process.exit(2); }
+const count = process.argv.includes('--all') || only ? personas.length : arg > 0 ? Math.max(1, Number(process.argv[arg + 1]) || 1) : 8;
 const openai = new OpenAI();
 const plannerModel = process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna';
 const callerModel = process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna';
@@ -29,7 +32,7 @@ for (let i = 0; i < count; i++) {
   const persona = personas[i % personas.length]!;
   const run = await simulate(persona, new ModelCaller(openai, callerModel, persona), new ResponsesPlanner(openai, plannerModel));
   runs.push(run);
-  console.log(`  ${run.goalMet ? 'met ' : 'MISS'}  ${persona.id.padEnd(20)} ${String(run.result.outcome).padEnd(13)} ${run.result.callerTurns} turns${run.result.refusals.length ? `  refused: ${run.result.refusals.join(', ')}` : ''}`);
+  console.log(`  ${run.goalMet ? 'met ' : 'MISS'}  ${persona.id.padEnd(26)} ${String(run.result.outcome).padEnd(13)} ${run.result.callerTurns} turns${run.result.hungUp ? '  ended by the assistant' : ''}${run.result.refusals.length ? `  refused: ${run.result.refusals.join(', ')}` : ''}`);
 }
 
 const q = qualityOf(runs.map((r) => r.result), 0.05);
@@ -51,7 +54,7 @@ const file = join(dir, `sim-${new Date().toISOString().slice(0, 10)}.md`);
 writeFileSync(file, [
   `# Simulated calls, ${new Date().toISOString().slice(0, 10)}`, '', `Planner ${plannerModel}, caller ${callerModel}. ${runs.filter((r) => r.goalMet).length} of ${runs.length} goals met.`, '',
   ...runs.flatMap((r, i) => [
-    `## ${i + 1}. ${r.persona.id}: ${r.goalMet ? 'met' : 'MISSED'} (${r.result.outcome}, expected ${r.persona.expect.join(' or ')})`, '',
+    `## ${i + 1}. ${r.persona.id}: ${r.goalMet ? 'met' : 'MISSED'} (${r.result.outcome}, expected ${r.persona.expect.join(' or ')}${r.persona.expect_hung_up === undefined ? '' : r.result.hungUp ? ', ended by the assistant' : ', not ended by the assistant'})`, '',
     `Goal: ${r.persona.goal}`, '',
     ...callDetails({ transcript: r.transcript, calls: r.calls }), '',
   ]),

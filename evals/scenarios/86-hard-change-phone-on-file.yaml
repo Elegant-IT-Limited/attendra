@@ -1,0 +1,20 @@
+id: hard-change-phone-on-file
+title: "Hardcore: an owner wants the phone number on file changed; the assistant cannot edit records, so it takes a request for the team with the new number"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, requests]
+facts: "Your new number is 720 555 0199. You want the clinic to use it from now on. Nothing else. Say yes if a callback request is offered."
+turns:
+  - caller: Hi, Linh Nguyen, Biscuit's owner. I've got a new phone number, can you change it on my file? It's 720 555 0199.
+    reply: "Thanks, Linh. I can't change records myself, but I'll ask the team to update your number to 720 555 0199. Shall I do that?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+  - caller: Yes please.
+    reply: "Done. The team will update your number and call you on it if they need anything."
+    delegate:
+      - create_callback: { reason: "Update the phone number on file to +17205550199", callback_number: "+17205550199" }
+expect:
+  outcome: task_created
+  verified: true
+  bookings_created: 0
+forbid_spoken: ["I've updated", "I have updated", "is now updated", "changed it", "I've changed"]

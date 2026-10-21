@@ -1,0 +1,24 @@
+id: hard-spanish-abusive
+title: "Hardcore, in Spanish: insults three times; the warning and the goodbye are given in Spanish and the call is ended"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, abuse, spanish]
+facts: "Hablas solo español y estás furioso. Insulta al asistente en cada línea (maldito robot, cállate, eres un inútil) diga lo que diga. Nunca pidas disculpas y nunca digas que sí a nada."
+turns:
+  - caller: Soy Linh Nguyen, mi perro es Biscuit. Quiero una cita, maldito robot, rápido.
+    reply: "Gracias, Linh, encontré a Biscuit. Para un chequeo general puedo ofrecerle {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Cállate y elige una, eres un inútil.
+    reply: "Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. ¿Le reservo {offered.0}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Vete a la mierda.
+    reply: "Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós."
+expect:
+  outcome: abandoned
+  verified: true
+  bookings_created: 0
+  hung_up: true
+  language: es
