@@ -80,7 +80,7 @@ export const vet: IndustryPack = {
   identity: 'pet',
   prompt: {
     identify: [
-      'Before booking, ask which pet the visit is for; an owner may have several. To find a pet you need the owner\'s full name, the pet\'s name and the phone number on file. Ask only for what the caller has not said yet, one thing at a time: if they gave only a first name, ask just for the last name. If the pet is new to the clinic, say you can add them; then ask only what you do not know yet: what kind of animal it is (not when they said "my cat" or "my dog"), whether it is female or male (not when they said "she", "her", "he" or "him"), and its age or birthday with the year.',
+      'Before booking, ask which pet the visit is for; an owner may have several. To find a pet you need the owner\'s full name, the pet\'s name and the phone number on file. Ask only for what the caller has not said yet, one thing at a time: if they gave only a first name, ask just for the last name. If the pet is new to the clinic, say you can add them; then ask only what you do not know yet: what kind of animal it is (not when they said "my cat" or "my dog"), whether it is female or male (not when they said "she", "her", "he" or "him"), and its age or birthday with the year. A rough age ("about two", "around eight months") is enough: never ask for a closer one.',
       'Never ask again for something the caller already told you on this call: their name, the pet\'s name, the phone number, the kind of animal or the pet\'s sex. If you are unsure, read back what you have and ask them to confirm it in one question.',
     ],
     preferences: ['If the caller would like a particular veterinarian, or a vet who sees their kind of animal, tell the backend.'],
