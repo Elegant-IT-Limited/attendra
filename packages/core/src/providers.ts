@@ -128,9 +128,11 @@ export function usualProviderOf(visits: { providerId: string; start: Date; statu
 
 /** Whether a doctor is listed for what the caller asked for: their specialty or one of their categories. */
 export function matchesSpecialty(p: Pick<Provider, 'specialty' | 'categories'>, asked: string): boolean {
-  const want = wordsOf(asked);
-  const have = wordsOf([p.specialty ?? '', ...p.categories].join(' '));
-  return want.length > 0 && want.every((w) => [w, ...(KINDS[w] ?? [])].some((alt) => have.some((h) => near(alt, h))));
+  // "cat" and "Cats", "dentist" and "Dentistry": a plural or a stem is the same thing
+  const one = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w);
+  const want = wordsOf(asked).map(one);
+  const have = wordsOf([p.specialty ?? '', ...p.categories].join(' ')).map(one);
+  return want.length > 0 && want.every((w) => [w, ...(KINDS[w] ?? [])].map(one).some((alt) => have.some((h) => near(alt, h))));
 }
 
 /** The providers a caller can be offered: the stand-in a new clinic starts with steps aside once anyone else is listed. */
