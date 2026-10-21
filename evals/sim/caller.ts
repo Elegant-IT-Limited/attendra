@@ -41,6 +41,7 @@ export class ModelCaller implements SimulatedCaller {
         `You are playing ${this.persona.clinic === 'riverbend' ? 'a pet owner phoning a veterinary clinic' : 'a patient phoning a medical clinic'}, to test its assistant. Stay in character.`,
         `Who you are: ${this.persona.persona}`, `What you want: ${this.persona.goal}`,
         'Say one short line at a time, the way people talk on the phone. Answer what you are asked.',
+        'Never say goodbye in the same line as choosing a time, answering a question or giving a detail: say that, then wait for the assistant. Nothing is booked until you have heard it read back and said yes.',
         `When your goal is done, or the assistant has done all it can, say goodbye and end your line with ${HANGUP}.`,
       ].join('\n'),
       input: call.length ? call.map((l) => `${l.speaker === 'caller' ? 'You' : 'Assistant'}: ${l.text}`).join('\n') : 'The assistant has just answered the phone.',

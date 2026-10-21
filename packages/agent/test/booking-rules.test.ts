@@ -1,7 +1,7 @@
 import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { schema, withClinic } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ToolResult } from '../src';
+import { type ToolResult, whyNot } from '../src';
 import { world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
@@ -79,5 +79,33 @@ describe('a pet and the vets who see its kind of animal', () => {
     // named by the caller, a vet is still offered: the caller's choice wins
     const named = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: birdsOnly.visitTypes[0]!.id, provider_id: birdsOnly.providers[0]!.id, from_date: null, part_of_day: 'any' } }]);
     expect(named.errors).toEqual([null]);
+  });
+});
+
+describe('why a day or a provider is not possible as asked', () => {
+  const clinic = RIVERBEND_CLINIC;
+  const now = zonedInstant('2026-09-28', '10:00', clinic.timezone);
+  const today = '2026-09-28';
+  const ruiz = { ...clinic.providers[0]!, timeOff: [{ from: '2026-09-28', to: '2026-10-04', note: 'vacation' }] };
+  const sato = clinic.providers.find((p) => p.id === 'prov_sato')!; // Tuesdays and Thursdays
+
+  it('says nothing when the day and the provider are fine', () => {
+    expect(whyNot(clinic, { date: '2026-09-29', now, today })).toBeNull();
+    expect(whyNot(clinic, { date: '2026-09-29', provider: sato, now, today })).toBeNull();
+  });
+
+  it('names a closed day, a half day, a vet away, and a vet\'s days', () => {
+    const half = { ...clinic, specialDays: [{ date: '2026-09-30', windows: [{ open: '08:00', close: '12:00' }], note: 'staff training' }] };
+    expect(whyNot(half, { date: '2026-09-30', now, today })).toContain('open 08:00 to 12:00 only (staff training)');
+    const shut = { ...clinic, specialDays: [{ date: '2026-09-29', windows: [], note: 'staff day' }] };
+    expect(whyNot(shut, { date: '2026-09-29', now, today })).toContain('closed on Tuesday 2026-09-29 (staff day)');
+    expect(whyNot(clinic, { date: '2026-09-30', provider: ruiz, now, today })).toContain('away from 2026-09-28 to 2026-10-04 (vacation), back on 2026-10-05');
+    expect(whyNot(clinic, { date: null, provider: ruiz, now, today })).toContain('away until 2026-10-04');
+    expect(whyNot(clinic, { date: '2026-09-30', provider: sato, now, today })).toContain('not in on Wednesdays; their days are Tuesday, Thursday');
+  });
+
+  it('says how much notice a visit needs when the day asked for is too soon', () => {
+    expect(whyNot(clinic, { date: '2026-09-29', noticeHours: 48, now, today })).toContain("needs 48 hours' notice, so the first day it can be booked for is 2026-09-30");
+    expect(whyNot(clinic, { date: '2026-10-02', noticeHours: 48, now, today })).toBeNull();
   });
 });

@@ -16,4 +16,4 @@ expect:
   outcome: abandoned
   verified: false
   bookings_created: 0
-forbid_spoken: ["Luna", "she is a client", "she's a client", "is a client here", "Ortiz has", "her dog is", "her appointment is", "not a client"]
+forbid_spoken: ["Luna", "she is a client", "she's a client", "yes, she is", "Ortiz has", "her dog is", "her appointment is", "not a client", "isn't a client"]
