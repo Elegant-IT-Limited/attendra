@@ -69,7 +69,9 @@ export class TextAssistant implements AssistantUnderTest {
     const out = await this.agent.onDelegation(`sim_${++this.delegations}`);
     const said = out.flatMap((o) => (o.type === 'commentary' ? [o.content] : []));
     if (out.some((o) => o.type === 'transfer') || heard.some((o) => o.type === 'transfer')) { this.transferred = true; this.ended = true; }
-    if (out.some((o) => o.type === 'hangup') || heard.some((o) => o.type === 'hangup')) { this.hungUp = true; this.ended = true; }
+    // ended by a rule of the code (the abusive caller) is what hungUp means; end_call after a goodbye is an ordinary end
+    if (heard.some((o) => o.type === 'hangup')) this.hungUp = true;
+    if (out.some((o) => o.type === 'hangup') || heard.some((o) => o.type === 'hangup')) this.ended = true;
     const reply = [quoted, ...said].filter(Boolean).join(' ') || 'Let me check that for you.';
     this.clock += 3000;
     this.agent.onAgentTranscript(reply, this.clock, this.clock + 2000);

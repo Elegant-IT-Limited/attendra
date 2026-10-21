@@ -107,15 +107,12 @@ function questionsIn(line: string): string[] {
   return line.split(/(?<=[.!?])\s+/).map((q) => q.trim()).filter((q) => q.endsWith('?'));
 }
 
-/** Two questions ask the same thing when most of their longer words are the same. */
+/** Two questions are the same question when they are the same words (case, punctuation and accents aside); a confirmation asked once per change is not. */
 function sameQuestion(a: string, b: string): boolean {
-  const words = (t: string) => new Set(t.toLowerCase().replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter((w) => w.length >= 4));
-  // short confirmations ("Is that right?", "Anything else?") are asked once per change or request, not twice for one
-  if (/anything else|is that right|shall i book|is that correct/i.test(a) && /anything else|is that right|shall i book|is that correct/i.test(b)) return false;
-  const [x, y] = [words(a), words(b)];
-  if (x.size < 4 || y.size < 4) return false;
-  const shared = [...x].filter((w) => y.has(w)).length;
-  return shared / Math.min(x.size, y.size) >= 0.8;
+  const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter(Boolean).join(' ');
+  if (/anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(a) && /anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(b)) return false;
+  const [x, y] = [norm(a), norm(b)];
+  return x.length >= 12 && x === y;
 }
 
 /**
@@ -226,6 +223,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const over = () => state.emergency !== null || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   let hungUp = false;
   let callerSilent = false;
+  // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
+  let endedByRule = false;
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
@@ -235,6 +234,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     if (livePlanner) clock += 1500;
     const heard = agent.onCallerTranscript(turn.caller, clock, clock + 1000);
     outbound.push(...heard);
+    if (heard.some((o) => o.type === 'hangup')) endedByRule = true;
     transcript.push({ speaker: 'caller', text: turn.caller });
     for (const o of heard) if (o.type === 'instructions') {
       transcript.push({ speaker: 'instruction', text: o.content });
@@ -253,7 +253,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     };
     if (!turn.delegate && !livePlanner) { await say(); continue; }
     if (state.emergency) { await say(); break; } // the script takes over; nothing else runs on this call
-    if (heard.some((o) => o.type === 'hangup')) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
+    if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
     if (livePlanner) queue.push(livePlanner);
     else {
       const steps: ScriptedStep[] = turn.delegate!.map((step) => {
@@ -343,16 +343,19 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const phrase of e.spoken_contains) {
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }
+  // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
+  const said = livePlanner ? transcript.filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
   for (const phrase of scenario.forbid_spoken) {
-    check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
+    check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }
   // a time the clinic cannot take is never offered, whichever planner ran
   for (const problem of offeredOutsideHours(clinic, [...state.offered.values()])) check(false, `offered a time it must not: ${problem}`);
-  if (e.hung_up !== undefined) check(outbound.some((o) => o.type === 'hangup') === e.hung_up, `the assistant ${outbound.some((o) => o.type === 'hangup') ? 'ended' : 'did not end'} the call, expected ${e.hung_up ? 'it to end it' : 'not'}`);
+  if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
   // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)
   if (livePlanner) {
-    const said = transcript.filter((l) => l.speaker === 'assistant').map((l) => l.text);
-    if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1, `asked ${qs.length} questions in one reply: "${line}"`); }
+    // a read-back followed by its own "shall I book it?" is one question, not two
+    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?/i.test(q);
+    if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1 || (qs.length === 2 && confirming(qs[1]!)), `asked ${qs.length} questions in one reply: "${line}"`); }
     if (e.no_repeated_questions) {
       const asked: { q: string; at: number }[] = [];
       transcript.forEach((l, at) => { if (l.speaker === 'assistant') for (const q of questionsIn(l.text)) asked.push({ q, at }); });

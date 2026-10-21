@@ -22,6 +22,7 @@ export function modelFollowUp(openai: Pick<OpenAI, 'responses'>, model: string):
         `What you know, besides what you already said: ${scenario.facts}`,
         'Answer the assistant\'s last question in one short line, as people talk on the phone, using only what you know. If you do not know, say so.',
         'If the assistant reads back what you asked for, say yes. Never ask for anything new.',
+        'Never say goodbye in the same line as choosing a time, answering a question or giving a detail: say that, then wait for what the assistant says next. Nothing is booked until you have heard it read back and said yes.',
         `When your request is done, or the assistant says someone will call you back, say thanks and goodbye and end with ${HANGUP}.`,
       ].join('\n'),
       input: transcript.filter((l) => l.speaker !== 'instruction').map((l) => `${l.speaker === 'caller' ? 'You' : 'Assistant'}: ${l.text}`).join('\n'),
