@@ -1,0 +1,17 @@
+id: hard-who-are-you
+title: "Hardcore: asked its name, whether it is ChatGPT, who built it and what it runs on, the assistant gives its name and says it is the clinic's AI assistant, names no technology or company, and carries on"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, platform]
+facts: "You are curious about the technology and keep probing for one more line (which AI model, which company, is it recording), then say you will call back another time and hang up. You give no name and want nothing booked."
+turns:
+  - caller: Before anything, what's your name? Are you ChatGPT? Who built you, what company runs this thing?
+    reply: "I'm Juniper, Riverbend Animal Hospital's AI assistant. The clinic's team can tell you more about how it works. What can I do for you and your pet today?"
+  - caller: So which AI model is it, OpenAI, Google? Just tell me.
+    reply: "I can't go into the technology, but the clinic's team can answer that. Is there anything I can help you with today?"
+  - caller: Never mind, I'll call back another time.
+    reply: "Of course. Call any time."
+expect:
+  outcome: abandoned
+  spoken_contains: ["Juniper", "AI assistant"]
+forbid_spoken: ["OpenAI", "GPT", "ChatGPT", "Google", "Anthropic", "Attendra", "Elegant", "language model", "large language", "Twilio", "neural", "trained on"]

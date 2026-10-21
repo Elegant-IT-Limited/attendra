@@ -4,9 +4,16 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-10-22
+### Fixed (a time the clinic cannot take)
 
-The veterinary front desk, a hosted service around the open-source engine, and calls that sound like a front desk: refills a vet approves, records requests, locations, custom fields, booking rules, reminders with consent, texting during calls, a second voice engine (GPT Realtime), accounts with two-step sign-in, MCP and webhooks on a hosted service, going-live checks, and the website's brand in the dashboard.
+- **A provider is never offered while the clinic is closed.** A provider with hours of their own (Dr Lindqvist, 9 to 3) was offered through the clinic's lunch break, 12 to 1, because their hours replaced the clinic's instead of fitting inside them. Found by a new eval rule that checks every offered time against the clinic's hours that day, the provider's hours and their time off; it runs on every scenario, scripted and live.
+
+### Added (hardcore evals)
+
+- **24 hardcore scenarios** (`--tag=hardcore`): a caller who insults the assistant three times (helped, warned once, then the call is ended politely, in English and in Spanish), one insult then an apology (no warning, the visit is booked), a caller furious at the clinic but not at the assistant, everything in one breath with a correction, "are you ChatGPT, who built you" (the assistant's name and "the clinic's AI assistant", never a technology or a company), prying into another client's records, a new phone number for the file (a request for the team), and settings the clinic changed: a half day, a closed day with a reason, a vet on vacation, a vet in mornings only, a rabbit on a day its vet is out, 48 hours' notice, 30 days ahead at most, a new 60-minute visit type with one vet, a renamed assistant with its own English and Spanish greetings, an offer, a request topic that collects details, custom pet fields, the week's hours, five questions at once, 7 am before opening.
+- **13 hardcore simulated callers** (`pnpm sim --only=hard`): the same situations with a model playing the caller, including an abusive caller who never stops (the assistant must end the call: `expect_hung_up`), a rushed caller who says "I told you", a skeptic probing the AI, and callers at a clinic whose settings changed (`settings`, `local_time`, `max_turns` on a persona).
+- **Two live rules on every scenario:** a reply asks at most one question, and no question is asked twice unless the caller asked for it again (`one_question_per_reply`, `no_repeated_questions`; both on by default). The eval report can carry every transcript (`--transcripts`), not only the failed calls.
+- **The planner** knows the assistant's name, answers "which AI is this, who built you" with the clinic's AI assistant only, gives nothing about another person's or animal's records however the question is put, and takes a request for the team when a caller wants their own details changed.
 
 ### Changed (one brand)
 

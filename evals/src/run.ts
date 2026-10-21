@@ -24,7 +24,10 @@ const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_B
 // live, a model answers the planner's follow-up questions for a scenario that lists its facts
 const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
 
-const scenarios = loadScenarios().filter((s) => !only || s.id.includes(only));
+// `--tag=hardcore` keeps the scenarios with that tag; `--transcripts` puts every call's transcript in the report, not only the failed ones
+const tag = process.argv.find((a) => a.startsWith('--tag='))?.slice(6);
+const transcripts = process.argv.includes('--transcripts');
+const scenarios = loadScenarios().filter((s) => (!only || s.id.includes(only)) && (!tag || s.tags.includes(tag)));
 const c = (n: number) => (s: string) => (process.stdout.isTTY || process.env.FORCE_COLOR ? `\x1b[${n}m${s}\x1b[0m` : s);
 const [green, red, dim, bold] = [c(32), c(31), c(2), c(1)];
 
@@ -49,7 +52,7 @@ if (judge) {
   const dir = join(import.meta.dirname, '../reports');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${date}.md`);
-  writeFileSync(file, judgeReport(runs, { date, planner: process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', judge: judge.model }));
+  writeFileSync(file, judgeReport(runs, { date, planner: process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', judge: judge.model, transcripts }));
   console.log(dim(`report: ${file}`));
 }
 process.exit(failed ? 1 : 0);

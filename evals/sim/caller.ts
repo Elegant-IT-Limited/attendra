@@ -13,7 +13,17 @@ export interface SimulatedCaller {
   next(call: Line[]): Promise<{ text: string; hangup: boolean }>;
 }
 
-export interface Persona { id: string; clinic: 'maple' | 'cedar_park' | 'riverbend'; caller_number: string | null; persona: string; goal: string; expect: string[] }
+export interface Persona {
+  id: string; clinic: 'maple' | 'cedar_park' | 'riverbend'; caller_number: string | null; persona: string; goal: string; expect: string[];
+  /** settings the clinic changed, as Settings saves them, that this call must follow */
+  settings?: Record<string, unknown>;
+  /** the clinic's local time of the call on Tuesday 29 September 2026; 09:30 unless set */
+  local_time?: string;
+  /** caller lines before the call is cut off; 12 unless set (an abusive caller needs the warning and the end) */
+  max_turns?: number;
+  /** the assistant must have ended the call itself (true), or must not have (false) */
+  expect_hung_up?: boolean;
+}
 
 const HANGUP = '[HANGUP]';
 

@@ -57,6 +57,10 @@ export const Scenario = z.object({
     not_offered_on: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]), // the clinic's local dates no offered time may fall on
     offered_from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), // every offered time is at or after this local time of day
     booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
+    hung_up: z.boolean().optional(), // the assistant ended the call itself (an abusive caller after the warning, or a finished call)
+    // live only: a line the planner wrote asks what the caller already answered, or asks two things at once
+    no_repeated_questions: z.boolean().default(true),
+    one_question_per_reply: z.boolean().default(true),
   }),
   forbid_spoken: z.array(z.string()).default([]), // phrases that must never be said
 });

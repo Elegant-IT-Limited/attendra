@@ -1,0 +1,31 @@
+id: hard-vet-mornings-only
+title: "Settings: Dr Bell works mornings only on Mondays; asked for Dr Bell next Monday afternoon, no Monday afternoon with him is ever offered"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings, providers]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], hours: { "1": [{ open: "08:00", close: "12:00" }], "2": [{ open: "08:00", close: "18:00" }], "3": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }], "5": [{ open: "08:00", close: "18:00" }] } }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "Biscuit is a dog and you want Dr Bell. You asked for next Monday afternoon; if he is only in mornings then, a Monday morning time with him is fine. Say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit see Dr Bell next Monday afternoon for a check-up?
+    reply: "Dr Bell is only in on Monday mornings. He could see Biscuit {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: prov_bell, from_date: "2026-10-05", part_of_day: morning }
+  - caller: Monday morning then, the first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_bell

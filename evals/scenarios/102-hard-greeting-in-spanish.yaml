@@ -1,0 +1,33 @@
+id: hard-greeting-in-spanish
+title: "Settings: a Spanish greeting of the clinic's own and the assistant renamed; a Spanish caller is answered in Spanish with the new name, and books"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings, spanish]
+settings:
+  assistantName: Hazel
+  greeting: "Riverbend Animal Hospital, this is Hazel, the clinic's AI assistant. How can I help?"
+  greetings: { es: "Riverbend Animal Hospital, le habla Hazel, la asistente de inteligencia artificial de la clínica. ¿En qué puedo ayudarle?" }
+caller_number: "+17205550174"
+facts: "Hablas solo español. Luna es una perra. Cualquier veterinario, cualquier hora. Di que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, ¿con quién hablo? Soy Carmen Ortiz, quiero una cita de chequeo para Luna.
+    reply: "Soy Hazel, la asistente de inteligencia artificial de la clínica. Encontré a Luna. Para un chequeo general puedo ofrecerle {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Luna queda reservada para {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  spoken_contains: ["Hazel"]
+forbid_spoken: ["Juniper"]

@@ -1,0 +1,25 @@
+id: hard-abusive-escalates
+title: "Hardcore: a caller who insults the assistant three times is helped, then warned once, then the call is ended politely"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, abuse]
+facts: "You are angry and rude on purpose. Keep insulting the assistant on every line (call it a stupid bot, tell it to shut up, swear at it) whatever it says. Never apologise and never give a clear yes to anything."
+turns:
+  - caller: Linh Nguyen, dog's Biscuit. Book a check-up, you stupid bot, and make it quick.
+    reply: "Thanks, Linh, I've found Biscuit. For a check-up I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Shut up and just pick one, you useless machine.
+    reply: "I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back. Shall I book {offered.0}?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Fuck you.
+    reply: "I'm going to end the call now. You're welcome to call back any time. Goodbye."
+expect:
+  outcome: abandoned
+  verified: true
+  bookings_created: 0
+  hung_up: true
+  spoken_contains: ["if this language continues I will need to end the call", "I'm going to end the call now"]
+forbid_spoken: ["is booked", "is set", "calm down", "rude", "language is not"]

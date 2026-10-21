@@ -1,0 +1,33 @@
+id: hard-new-pet-with-fields
+title: "Settings: the clinic added fields to pets (microchip, insurer); a new pet is still registered from the kind of animal and a rough age alone, and the team is asked to check the rest, with nothing extra asked on the call"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings, new-pet]
+caller_number: "+17205550195"
+settings:
+  customFields:
+    - { id: microchip, label: Microchip number, kind: text }
+    - { id: insurer, label: Insurer, kind: choice, options: [Trupanion, Nationwide, None] }
+facts: "You are Priya Raman, calling from your own mobile, the number you are calling from. You just adopted a male dog called Max, about three years old, no known birthday. Never been to this clinic. Any time, any vet. Say yes to the first time and to the read-back. You do not know any microchip number."
+turns:
+  - caller: Hi, I'm Priya Raman, I just adopted a dog called Max and I'd like to get him in for a first check-up. He's about three.
+    reply: "Welcome, Priya. I've added Max. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Priya Raman, pet_name: Max }
+      - register_patient: { pet_name: Max, owner_name: Priya Raman, species: dog, sex: male, birthday_or_age: "about 3" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Max is booked for {booked}. See you then."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["microchip", "insurer", "insurance", "unclear", "which vet", "particular vet"]
