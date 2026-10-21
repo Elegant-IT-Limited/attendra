@@ -592,13 +592,18 @@ describe('review fixes', () => {
     const cut = await c.delegate([{ tool: 'end_call', args: { reason: 'caller is done' } }]);
     expect(cut.errors).toEqual(['caller_not_finished']);
     expect(cut.some((o) => o.type === 'hangup')).toBe(false);
-    c.caller('Thanks, bye.'); // a goodbye before the question gets the question
-    expect((await c.delegate([{ tool: 'end_call', args: { reason: 'goodbye' } }])).errors).toEqual(['caller_not_finished']);
+    c.caller('Thanks. That is all.'); // "that is all" before the question gets the question
+    expect((await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }])).errors).toEqual(['caller_not_finished']);
     c.assistant('Is there anything else I can help with?');
     c.caller('No.');
     const ok = await c.delegate([{ tool: 'end_call', args: { reason: 'done' } }]);
     expect(ok.errors).toEqual([null]);
     expect(ok.some((o) => o.type === 'hangup')).toBe(true);
+    // a caller who is leaving is let go without the question
+    const gone = await w.call();
+    gone.assistant('I have Tuesday at 9 or 10. Which would you like?');
+    gone.caller('Sorry, something has come up, I have to go. Bye!');
+    expect((await gone.delegate([{ tool: 'end_call', args: { reason: 'caller has to go' } }])).errors).toEqual([null]);
   });
 
   it('reports the booking as made even when the confirmation text fails', async () => {

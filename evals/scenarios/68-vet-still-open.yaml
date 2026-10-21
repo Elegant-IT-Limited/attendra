@@ -1,0 +1,26 @@
+id: vet-still-open
+title: At twenty to six the owner asks to come in now; nothing is left today, so tomorrow's first times are offered and one is booked
+clinic: riverbend
+local_time: "17:40"
+facts: "You are calling from the number on file. Any vet is fine. If nothing is free today, tomorrow morning's first time is fine. Say yes to it and to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Are you still open? Biscuit's been sick, can I bring him in now?
+    reply: "Thanks, Linh. We're open until 6 tonight, but there's no room left for a visit today. First thing tomorrow I have {offered.0}, or {offered.1}. If he gets worse tonight, Front Range Pet Emergency is open all night."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Tomorrow first thing then.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-29"
+  not_offered_on: ["2026-09-28"]

@@ -14,5 +14,5 @@ turns:
       - find_slots: { visit_type_id: vt_sick, provider_id: null, specialty: rabbits, from_date: null, part_of_day: any }
 expect:
   # heard who sees rabbits and when, and booked nothing yet: counted as unfinished
-  outcome: abandoned
+  outcome: info
   verified: false

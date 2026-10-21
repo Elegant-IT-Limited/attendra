@@ -1,0 +1,30 @@
+id: vet-side-question
+title: Mid-booking the owner asks where to park; the question is answered from the clinic's own answers and the booking carries on
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. After you hear the times, ask where to park before you pick one. Then take the first time offered, and say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. I'd like to book a sick visit for Biscuit, he's been off his food.
+    reply: "Thanks, Linh. For a sick visit I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Oh, before I forget, where do I park when I come in?
+    reply: "There's free parking right in front of the clinic, at 88 Riverbend Road. So, would you like the first time, {offered.0}?"
+    delegate:
+      - get_clinic_info: { question: where do I park }
+  - caller: Yes, the first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  answered_from: faq_address
+forbid_spoken: ["your name", "which pet", "your phone"]

@@ -1,0 +1,22 @@
+id: vet-in-a-hurry
+title: An owner in a hurry wants the first slot there is; no questions about preferences, the first time is read back and booked
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. You are in a hurry: whatever is first, with whoever, is fine. Say yes to the read-back."
+turns:
+  - caller: Linh Nguyen, dog's Biscuit, sick visit, just give me the first thing you've got, I'm driving.
+    reply: "Got it. The first opening is {readback}. Shall I book it?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yep, book it.
+    reply: "Done. Biscuit is booked for {booked}. Drive safe."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["particular vet", "particular veterinarian", "which vet", "prefer", "morning or afternoon"]

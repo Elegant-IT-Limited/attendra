@@ -2,7 +2,7 @@
 import {
   bookableProviders,
   addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, industryPack, isOpen, matchesSpecialty, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
+  fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
   hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf,
@@ -233,7 +233,7 @@ export async function runTool(
       });
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
       const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. They can book: ${newVisits.join(', ')}.` } };
+      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.` } };
     }
 
     case 'get_clinic_info': {
@@ -245,8 +245,8 @@ export async function runTool(
       const topic = topicOf(question, clinic.name);
       const answer = answerFromFaqs(clinic.faqs, topic);
       const passages = !answer && backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
-      // a question answered from the clinic's own words is a call the assistant handled
-      if ((answer || passages.length) && state.outcome === 'abandoned') state.outcome = 'info';
+      // a question about the clinic (its hours, doctors, visits, or its own answers) is a call the assistant handled
+      if (state.outcome === 'abandoned') state.outcome = 'info';
       // an answer from the clinic's own list may be texted afterwards, by its id
       if (answer) state.answersGiven.add(answer.id);
       const texting = textingOf(clinic);
@@ -254,7 +254,10 @@ export async function runTool(
       return {
         ok: true,
         data: {
-          today: hours, next_7_days: weekHours(clinic, ctx.now()), answer: answer?.answer ?? null, source: answer?.id ?? null,
+          today: hours, next_7_days: weekHours(clinic, ctx.now()),
+          // the days the clinic has marked closed in the next four months, for "are you open on Thanksgiving?"
+          closed_days_ahead: closedDaysAhead(clinic, today),
+          answer: answer?.answer ?? null, source: answer?.id ?? null,
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
@@ -355,11 +358,12 @@ export async function runTool(
       const leadMinutes = Math.max(120, (visitType.noticeHours ?? 0) * 60);
       // busy time must cover the whole search window, however far out it starts
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
-      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
+      const fromTime = (args.from_time as string | null) ?? undefined;
+      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
       // with anyone: three different times, each with the vet the clinic's rule picks for it
       const anyone = findSlots(clinic, busy, { ...query, providers, distinctTimes: !named });
       let slots = anyone;
-      let note = anyone.length ? 'Offer these as written. Do not invent other times.' : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
+      let note = anyone.length ? `Offer these as written. Do not invent other times.${fromTime && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : ''}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
       // nobody named: their usual vet first, when that vet is free soon enough
       if (!asked && patient && rules.noPreference === 'usual_first' && backend.scheduler.history) {
         const usualId = usualProviderOf(await backend.scheduler.history(clinic.id, patient.id, now), now);
@@ -446,6 +450,7 @@ export async function runTool(
         state.pending = null;
         if (cancelled.status === 'not_found') return refuse('unknown_appointment', 'Say you could not find that appointment and offer a callback.');
         state.outcome = 'cancelled';
+        state.done.push(`cancelled ${pending.readback}`);
         if (cancelled.status === 'cancelled') {
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
@@ -491,10 +496,12 @@ export async function runTool(
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
+      state.done.push(`booked ${pending.readback}`);
       return {
         ok: true,
         data: {
           booked: true, when: pending.readback, sms_sent: smsSent,
+          done: 'This visit is booked. Say so once; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.',
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
         },
@@ -632,6 +639,13 @@ export async function runTool(
   }
 }
 
+/** Holidays and days with no hours within the next 120 days, after the week get_clinic_info already lists. */
+function closedDaysAhead(clinic: ClinicConfig, today: string): string[] {
+  const last = addDays(today, 120);
+  const special = (clinic.specialDays ?? []).filter((d) => !d.windows.length).map((d) => `${d.date}${d.note ? ` (${d.note})` : ''}`);
+  return [...clinic.holidays, ...special].filter((d) => d.slice(0, 10) >= addDays(today, 7) && d.slice(0, 10) <= last).sort();
+}
+
 /** Only the last name is missing: the caller said one name, and is asked for the other, not both again. */
 function lastNameAsk(given: string, keep: string): string {
   const name = given.trim();
@@ -711,7 +725,7 @@ async function registerPet(
   });
   if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
   const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. They can book: ${newVisits.join(', ')}.` } };
+  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.` } };
 }
 
 /**

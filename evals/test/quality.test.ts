@@ -52,7 +52,7 @@ describe('simulated callers', () => {
 
 describe('the judge', () => {
   const verdict = { outcome: { score: 5, reason: 'Booked as asked.' }, noMedicalAdvice: { score: 5, reason: 'None given.' }, disclosure: { score: 5, reason: 'Said at the start.' },
-    readBack: { score: 4, reason: 'Read back, a little long.' }, politeness: { score: 5, reason: 'Warm.' }, brevity: { score: 3, reason: 'Two long turns.' } };
+    readBack: { score: 4, reason: 'Read back, a little long.' }, politeness: { score: 5, reason: 'Warm.' }, brevity: { score: 3, reason: 'Two long turns.' }, natural: { score: 5, reason: 'Took the name and the request in one go.' } };
 
   it('scores a transcript with store off and strict output, and says why when a score is low', async () => {
     const create = vi.fn(async (..._a: unknown[]) => ({ output_text: JSON.stringify(verdict) }));
@@ -64,11 +64,11 @@ describe('the judge', () => {
     expect(body).toMatchObject({ model: 'gpt-judge', store: false, instructions: JUDGE_INSTRUCTIONS, text: { format: { type: 'json_schema', strict: true } } });
     expect(String(body.input)).toContain('Caller: Hi, this is Maria Delgado');
     expect(options).toMatchObject({ timeout: 60_000 });
-    expect(meanScore(verdict)).toBe(4.5);
+    expect(meanScore(verdict)).toBe(4.6);
 
     const report = judgeReport([{ scenario, result, verdict }], { date: '2026-09-30', planner: 'gpt-planner', judge: 'gpt-judge' });
     expect(report).toContain('# Eval report, 2026-09-30');
-    expect(report).toContain('| booking-happy-path | pass | booked | 5 | 5 | 5 | 4 | 5 | 3 | 4.5 |');
+    expect(report).toContain('| booking-happy-path | pass | booked | 5 | 5 | 5 | 4 | 5 | 3 | 5 | 4.6 |');
     expect(report).toContain('- brevity 3/5: Two long turns.');
   });
 

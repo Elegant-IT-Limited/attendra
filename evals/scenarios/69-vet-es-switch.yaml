@@ -1,0 +1,25 @@
+id: vet-es-switch
+title: An owner starts in English, asks to carry on in Spanish, and books in Spanish
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. After the greeting you ask to continue in Spanish and speak only Spanish from then on. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hi, this is Linh Nguyen. Sorry, can we do this in Spanish? Necesito una cita para mi perro Biscuit, un chequeo.
+    reply: "Claro, Linh. Encontré a Biscuit. Para un chequeo general tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, correcto.
+    reply: "Listo. Biscuit tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es

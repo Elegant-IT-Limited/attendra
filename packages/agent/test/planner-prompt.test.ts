@@ -1,6 +1,6 @@
 import { DEMO_CLINIC, RIVERBEND_CLINIC, Texting } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
-import { ResponsesPlanner, systemPrompt } from '../src/planner';
+import { ResponsesPlanner, stateLine, systemPrompt } from '../src/planner';
 import { CallState } from '../src';
 
 describe('the planner\'s instructions follow the clinic\'s industry', () => {
@@ -23,11 +23,20 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     expect(prompt).not.toContain('date of birth and phone)');
   });
 
-  it('a clinic with one vet never asks which vet; one with several asks once, and asks one question at a time', () => {
+  it('never asks which vet or doctor: it searches all and says the name with each time; one question at a time', () => {
     const one = { ...RIVERBEND_CLINIC, providers: RIVERBEND_CLINIC.providers.slice(0, 1) };
     expect(systemPrompt(one, 'now')).toContain('There is only one provider here: never ask the caller which one they would like');
     expect(systemPrompt(RIVERBEND_CLINIC, 'now')).not.toContain('There is only one provider here');
+    expect(systemPrompt(RIVERBEND_CLINIC, 'now')).toContain('never ask the caller which vet they would like');
+    expect(systemPrompt(DEMO_CLINIC, 'now')).toContain('never ask which doctor they would like');
+    expect(systemPrompt(RIVERBEND_CLINIC, 'now')).not.toContain('ask once whether');
     expect(systemPrompt(RIVERBEND_CLINIC, 'now')).toContain('at most one question');
+  });
+
+  it('after a booking the state line says what is done, so nothing is looked up again', () => {
+    const state = new CallState();
+    state.done.push('booked Tuesday at 9 with Dr. Ruiz for a sick visit');
+    expect(stateLine(state)).toContain('done on this call: booked Tuesday at 9 with Dr. Ruiz for a sick visit (final');
   });
 
   it('looks the caller up with what they said before asking, reads back as a question, and offers a request before taking it', () => {

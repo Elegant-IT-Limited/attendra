@@ -1,0 +1,20 @@
+id: in-a-hurry
+title: A patient in a hurry wants the first slot there is; no questions about doctors, the first time is read back and booked
+facts: "You are calling from the number on your file. You are in a hurry: whatever is first, with whoever, is fine. Say yes to the read-back."
+turns:
+  - caller: "Maria Delgado, March 4 1985, sick visit, first thing you've got, I'm about to go into a meeting."
+    reply: "Got it. The first opening is {readback}. Shall I book it?"
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, book it.
+    reply: "Done, you're booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["particular doctor", "kind of doctor", "which doctor", "prefer", "morning or afternoon"]

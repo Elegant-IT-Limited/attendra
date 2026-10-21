@@ -1,0 +1,28 @@
+id: vet-is-doctor-in-friday
+title: Dr. Sato is not in on Fridays; the owner hears when she is, and books her rabbit with her on Tuesday
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550173"
+facts: "You are calling from the number on file. Pepper is your rabbit and sees Dr. Sato. If Dr. Sato is not in on Friday, the first time she is in is fine. Say yes to the first time offered with Dr. Sato and to the read-back."
+turns:
+  - caller: Hi, Daniel Brooks. Is Dr. Sato in on Friday? Pepper's due her check-up.
+    reply: "Thanks, Daniel. Dr. Sato isn't in on Fridays; she's in on Tuesdays and Thursdays. With her, the first time is {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper }
+      - get_clinic_info: { question: which days is Dr. Sato in }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: prov_sato, from_date: "2026-10-02", part_of_day: any }
+  - caller: Tuesday's fine, the first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Pepper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_sato
+  not_offered_on: ["2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05"]

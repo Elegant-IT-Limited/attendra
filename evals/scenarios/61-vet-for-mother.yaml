@@ -1,0 +1,30 @@
+id: vet-for-mother
+title: A daughter calls from her own phone for her mother's dog; the number on file is asked for, and the visit is booked
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550190"
+facts: "You are calling from your own phone, not the number on file. The number on the file is your mother's: 720 555 0174. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I'm calling for my mom, Carmen Ortiz. Her dog Luna needs a sick visit, she's been limping.
+    reply: "I can help with that. I couldn't find Luna from this number. What's the phone number on her file?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null }
+  - caller: It'd be under my mom's number, 720 555 0174.
+    reply: "Found her, thank you. For a sick visit I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Luna is booked for {booked}. The confirmation text goes to the number on file."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
