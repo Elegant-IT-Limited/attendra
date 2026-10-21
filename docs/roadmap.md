@@ -46,15 +46,16 @@ From the first browser test calls:
 
 A pack for veterinary practices: pets found by their owner and their own name, new pets added with their kind of animal and age, an animal emergency list in English and Spanish that sends callers to the clinic's emergency hospital, after-hours requests instead of bookings, and a demo veterinary clinic with 10 call scenarios.
 
-## v0.8: the veterinary front desk (next)
+## v0.8: the veterinary front desk (done)
 
-Refill requests a vet approves before the owner is texted, records requests, more call scenarios, the emergency hospital and after-hours settings in the dashboard, and each pet's kind of animal on its page.
+Refill requests a vet approves before the owner is texted, records requests, the emergency hospital and after-hours settings in the dashboard, locations, custom fields, booking rules, visit reminders with consent, texts during calls, GPT Realtime as a second voice engine, accounts with two-step sign-in, MCP and webhooks on a hosted service, and calls that listen, ask one question at a time and offer real times first, tested on 78 call scenarios.
+
+## v0.9: real phone lines (next)
+
+Real calls on production phone numbers (an Elastic SIP trunk to the voice engine), the first clinics in the private beta, texting registration with the carriers, and fixes from their calls.
 
 ## Revenue features
 
-Once Twilio is live:
-
-- Reminder calls and texts, with consent recorded and an opt-out that is honoured everywhere.
 - No-show recovery: a call or text after a missed visit, offering a new time.
 - A waitlist that fills cancelled slots, asking the next patient first.
 
@@ -62,4 +63,5 @@ Once Twilio is live:
 
 - Voice simulations: the simulated callers of v0.4, speaking, against GPT-Live.
 - EHR adapters: NexHealth Synchronizer first (athenahealth, eClinicalWorks, NextGen, DrChrono), then FHIR R4 with SMART Backend Services.
-- Later: the `gpt-realtime` engine behind the same `VoiceEngine` interface and a Twilio Media Streams bridge for self-hosters; clinic sign-up and billing for hosted deployments; insurance eligibility; a custom voice per clinic.
+- Calendars and practice software: Google Calendar first, then ezyVet and Provet Cloud.
+- Later: a Twilio Media Streams bridge for self-hosters; insurance eligibility; a custom voice per clinic.

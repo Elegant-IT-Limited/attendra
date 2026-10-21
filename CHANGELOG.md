@@ -4,9 +4,28 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-22
+
+The veterinary front desk, a hosted service around the open-source engine, and calls that sound like a front desk: refills a vet approves, records requests, locations, custom fields, booking rules, reminders with consent, texting during calls, a second voice engine (GPT Realtime), accounts with two-step sign-in, MCP and webhooks on a hosted service, going-live checks, and the website's brand in the dashboard.
+
 ### Changed (one brand)
 
 - **The dashboard wears the website's colours.** Warm paper neutrals and brown-black text, with slate as the one action colour instead of teal, in light and dark. Geist, the website's typeface, replaces Inter, and the sign-in pages, the sidebar and the browser tab show the website's mark: a phone in a rounded square.
+
+### Changed (calls that sound like a front desk)
+
+From live runs with a model caller and a judge (48 of 56 scenarios, then 76 of 78 with 22 harder ones added) and real test calls:
+
+- **The voice lets the caller finish.** Backchannel, interruption and delegation policies after OpenAI's Live prompting guide: a pause to think is not the end of a turn, and the assistant stays quiet while a request runs.
+- **The caller is looked up before anything is asked**, with what they already said; a new or corrected detail (another phone number) is looked up at once, and nothing is said to be missing without a lookup. The same details looked up again use no try, so a new pet can still be added.
+- **One question at a time**, never the same one twice unless the caller asks, and free times come before questions. Callbacks are offered and taken only on a yes.
+- **No question about which vet or doctor.** The booking rules choose; a caller can still name one. A newly registered patient is offered the first visit's times at once.
+- **Times as asked.** `find_slots` takes `from_time` ("anything after three?"); a day the clinic is closed (a holiday, a weekend) gets the next open times, not a callback; `get_clinic_info` returns the closed days ahead.
+- **A yes still counts** when the same change is proposed again after its read-back, and a booking made on the call is final: the assistant never doubts or re-checks it.
+- **Ages and birthdays as owners say them:** "she was born on the fifteenth of January 2026", "about two", "two or three", "a year and a half", "last January". A rough age is enough for a new pet.
+- **A caller who has to go is let go** with a goodbye, not "anything else?"; "I'm going" alone is not a goodbye.
+- **A cat finds the vets who see Cats**: a plural and a singular match. Asked whether it is a person, the assistant says it is an AI assistant. Vet clinics sound warm by default.
+- **Evals:** 22 new scenarios (after three, exact times, a changed day, a side question, say again, two requests, cancel then move, a daughter for her mother, in a hurry, a real person, Thanksgiving, a Spanish switch and more), 10 simulated pet owners, a judge criterion for how natural a call sounds, and live runs that report an empty model caller or a backend error as a failure.
 
 ### Fixed (calls, from a real test call)
 
