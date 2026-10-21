@@ -1,0 +1,25 @@
+id: after-three
+title: A patient who can only do Thursday after 3 hears Thursday times from 3, and books one
+facts: "You are calling from the number on your file. Any doctor is fine. You can only do Thursday after 3 in the afternoon. Say yes to the first time offered after 3 and to the read-back."
+turns:
+  - caller: "Hi, Maria Delgado, March 4th 1985. I need a sick visit, and the only time I can do is Thursday after 3."
+    reply: "Thanks, Maria. On Thursday after 3 I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4th 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-10-01", part_of_day: afternoon, from_time: "15:00" }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "You're booked for {booked}. You'll get a text with the details."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-01"
+  offered_from_time: "15:00"
+forbid_spoken: ["particular doctor", "kind of doctor", "morning"]

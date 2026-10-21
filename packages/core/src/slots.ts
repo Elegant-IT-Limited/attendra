@@ -22,6 +22,8 @@ export interface SlotQuery {
   from: string; // local YYYY-MM-DD, inclusive
   days: number;
   partOfDay?: 'morning' | 'afternoon' | 'any';
+  /** The earliest local time of day the caller wants (HH:MM): "after 3" or "at 3:30". */
+  fromTime?: string;
   now: Date;
   leadMinutes?: number; // no same-hour surprises for the front desk
   limit?: number;
@@ -74,6 +76,7 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
         for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += step) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;
           if (q.partOfDay === 'afternoon' && m < 12 * 60) continue;
+          if (q.fromTime && m < toMinutes(q.fromTime)) continue;
           // away for part of the day: nothing that overlaps it
           if (away.some((a) => m < a.end && m + q.visitType.minutes > a.start)) continue;
           const start = zonedInstant(date, fromMinutes(m), clinic.timezone);

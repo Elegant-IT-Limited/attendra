@@ -235,11 +235,13 @@ export type BookingRules = z.infer<typeof BookingRules>;
 /** How the assistant talks: a few lines in its instructions. The rules it follows are in code and do not change with these. */
 export const TalkStyle = z.object({
   pace: z.enum(['relaxed', 'normal', 'brisk']).default('normal'),
-  style: z.enum(['warm', 'efficient', 'professional']).default('efficient'),
+  style: z.enum(['warm', 'efficient', 'professional']).default('efficient'), // the default a clinic sees is defaultTalkStyle(industry)
   // short acknowledgements ("Got it", "Sure, one moment") instead of silence
   acknowledgements: z.boolean().default(true),
 });
 export type TalkStyle = z.infer<typeof TalkStyle>;
+/** How the assistant talks when the clinic has not chosen: warm at a veterinary clinic (owners want "oh, poor Biscuit"), efficient elsewhere. */
+export const defaultTalkStyle = (industry: string | undefined): TalkStyle['style'] => (industry === 'vet' ? 'warm' : 'efficient');
 
 /** A caller the clinic always wants a person to answer: a partner vet, a breeder, the owner's family. */
 export const VipCaller = z.object({

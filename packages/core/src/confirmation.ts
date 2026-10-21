@@ -25,15 +25,20 @@ const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no
 const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|gracias)\b/;
 const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;
 const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|espere|pregunta)\b|\?/;
+// a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
+const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|adios|hasta luego|chao|chau|me tengo que ir)\b/;
 
 /**
  * May the call end? Two steps, like a front desk: the assistant has asked whether
  * there is anything else, and the caller's own last words answer no or say goodbye.
  * Read on what was said, never on the model's view of it: "I'm done" in the middle of
  * giving a phone number ends nothing, and a goodbye before the question is answered
- * with the question.
+ * with the question. A caller who says they have to go, or says goodbye themselves, is
+ * let go without the question.
  */
 export function saidGoodbye(lastCallerTurn: string, lastAgentTurns = ''): boolean {
   const t = normalise(lastCallerTurn).trim();
-  return ANYTHING_ELSE.test(normalise(lastAgentTurns)) && !MORE_TO_SAY.test(t) && (GOODBYE.test(t) || NOTHING_MORE.test(t));
+  if (MORE_TO_SAY.test(t)) return false;
+  if (LEAVING.test(t)) return true;
+  return ANYTHING_ELSE.test(normalise(lastAgentTurns)) && (GOODBYE.test(t) || NOTHING_MORE.test(t));
 }

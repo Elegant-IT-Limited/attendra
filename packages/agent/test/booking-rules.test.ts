@@ -52,6 +52,22 @@ describe('who the assistant books with when the caller names nobody', () => {
   });
 });
 
+describe('a time of day the caller names', () => {
+  it('"after 3" offers nothing before 3, and "at 10:30" says when that exact time is taken', async () => {
+    const c = await w.call('+17205550172', { clinic: { ...RIVERBEND_CLINIC, afterHours: 'book' } });
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit', phone: null } }]);
+    const after = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '15:00' } }]);
+    const slots = after.results[0]!.data.slots as { when: string }[];
+    expect(slots.length).toBe(3);
+    expect(slots.every((s) => /Thursday, October 1 at (3|4|5):\d\d PM/.test(s.when))).toBe(true);
+    expect(String(after.results[0]!.data.note)).not.toContain('exactly');
+    // 10:35 is not on the 30-minute grid, so the nearest after it is offered and the result says so
+    const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35' } }]);
+    expect(String(odd.results[0]!.data.note)).toContain('Nothing is free at exactly 10:35');
+    expect((odd.results[0]!.data.slots as { when: string }[])[0]!.when).toContain('11:00 AM');
+  });
+});
+
 describe('a pet and the vets who see its kind of animal', () => {
   it('refuses plainly when no vet is listed for the animal', async () => {
     const birdsOnly = ClinicConfig.parse({ ...RIVERBEND_CLINIC, afterHours: 'book', providers: RIVERBEND_CLINIC.providers.map((p) => ({ ...p, categories: ['Birds'] })) });

@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { answerFromFaqs, type CallAgent } from '../src';
 import { world } from './support';
@@ -58,5 +58,8 @@ describe('a Spanish call at Maple Street', () => {
 describe('the clinic\'s FAQ', () => {
   it('answers English questions as before', () => {
     expect(answerFromFaqs(DEMO_CLINIC.faqs, 'which insurance do you accept')?.id).toBe('faq_insurance');
+    // "parking" meets "park", as the planner passes the topic in one word
+    expect(answerFromFaqs(RIVERBEND_CLINIC.faqs, 'parking')?.id).toBe('faq_address');
+    expect(answerFromFaqs(RIVERBEND_CLINIC.faqs, 'boarding')?.id).toBe('faq_boarding');
   });
 });

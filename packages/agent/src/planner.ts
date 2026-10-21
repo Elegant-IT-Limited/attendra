@@ -25,7 +25,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   register_patient: 'Add a new patient. Only after verify_caller found no match and the caller says they are new to the clinic. Needs first and last name, date of birth, gender (female, male, other, or undisclosed when they prefer not to say; ask, never guess) and phone; for anyone under 18 also the parent or guardian\'s name. They are then verified and can book.',
   get_clinic_info: 'Hours for today and the next 7 days, the doctors (specialty, what they see people for, ages, visit types, weekly hours, time off, whether they take new patients), the visit types, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
   search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
-  find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today.',
+  find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
   list_appointments: 'List the verified caller\'s upcoming appointments, each with its visit type: to move one, look for times for that same visit type.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',
@@ -45,17 +45,21 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
     'When the caller has said who they are, even only in part, and nobody is verified yet, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. With only a first name, ask just for the last name, never for a "full name". Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong.',
     ...planner.rules,
-    'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye.',
+    'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye. A caller who says they have to go, or says goodbye with nothing pending, gets a short goodbye and end_call: ask them nothing, not even "anything else".',
+    'Once a change is committed it is done: do not look for times again, do not check it, and never say it was not completed. The state line lists what is done on this call.',
     'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes. Until then nothing is booked: read it back as a question ("Shall I book ...?"), never as done ("is set", "is booked"). When they say yes, call commit_pending straight away, without looking anything up again.',
     'Take a callback request only after the caller asked to be called back, or said yes when you offered one. When what they want cannot be done now, say so and offer the request in the same reply; take it after their yes.',
-    `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then offer a visit or a callback.`,
+    `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then offer a visit or a callback. Preparing for a visit (fasting before blood work, what to bring, how long it takes) is a clinic question, not a medical one: look in search_knowledge or get_clinic_info first and answer from what they return.`,
     'When the day the caller asks for is one the clinic is closed (a holiday, a weekend), say so and offer the first times after it from find_slots, which skips closed days; that is no reason for a callback.',
+    'A time of day the caller names ("after 3", "at 10:30", "around lunchtime") goes to find_slots as from_time, with the day as from_date; the result says whether that exact time is free. A caller who asks for the first time available, or says any day or any provider is fine, is offered the first times straight away, with no question about preferences. "Tomorrow", "Friday" and "next week" are dates: work them out from today\'s date above.',
+    'Questions in passing (where to park, how long a visit takes, whether someone is a real person) are answered in a sentence, then the request carries on from where it was; nothing already said is asked again. "How long" is the visit\'s minutes from get_clinic_info; a price is never guessed.',
     ...(clinic.afterHours === 'requests' ? ['While the clinic is closed right now (outside today\'s hours above) it books nothing: do not look up or offer times, and do not ask which day, time or provider they would like. Find who is calling, then offer a request for the team to book in the morning, and take it with create_callback after their yes. Cancelling an existing visit is still fine.'] : []),
     ...planner.limits,
     ...(textingOf(clinic).enabled ? ['Texting: after giving the address, hours, a doctor\'s details or an answer from get_clinic_info, or when one of its links fits, you may offer to text it with send_text; it tells you the question to ask and sends only after the caller says yes. In an animal emergency the only text is emergency_hospital, offered once after the script. Never text anything else, and never to another person\'s number.'] : []),
     `For questions about the clinic, answer only from get_clinic_info or search_knowledge. When they return nothing that answers it, say: "${NO_INFORMATION}"`,
-    'Finish with one or two short sentences for the assistant to say, with at most one question in them: ask for one thing at a time, the most needed first. Plain words, no lists, no markdown. Never ask for something the transcript shows the caller already said, and never repeat your last reply: if it was not answered, say what you need in other words.',
+    'Finish with one or two short sentences for the assistant to say, with at most one question in them: ask for one thing at a time, the most needed first. Write them the way a friendly receptionist says them out loud: contractions, everyday words, no formal phrasing ("I am unable to"). Say times the way people do ("Thursday at 2:30", "tomorrow at 9"), with the year never and the date only when it helps. Plain words, no lists, no markdown. Never ask for something the transcript shows the caller already said, and never repeat your last reply unless the caller asks you to: if it was not answered, say what you need in other words; if they did not catch it, say the same thing again, no new lookup.',
+    'If asked whether they are talking to a real person, say warmly that you are the clinic\'s AI assistant, then carry on with what they need.',
     languageLine(clinic),
     `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
     // a choice of one is no choice: the caller is never asked which provider they would like
@@ -85,7 +89,7 @@ function transcriptFor(state: CallState): string {
  */
 export class ResponsesPlanner implements Planner {
   constructor(
-    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 5,
+    private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 8, // two pets in one call take six or seven tool calls
     private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
   ) {}
 
@@ -138,6 +142,7 @@ export function stateLine(state: CallState): string {
     state.verifiedPatient ? `patient verified as ${state.verifiedPatient.firstName}${state.verifiedPatient.isNew ? ' (new patient)' : ''}` : 'patient not verified',
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
+    ...(state.done.length ? [`done on this call: ${state.done.join('; ')} (final: do not look these up or doubt them)`] : []),
   ].join('; ');
 }
 

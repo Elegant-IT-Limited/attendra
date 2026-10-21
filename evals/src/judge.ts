@@ -12,19 +12,20 @@ export const CRITERIA = {
   readBack: 'Any booking, move or cancellation was read back, and made only after a clear yes.',
   politeness: 'Warm, respectful and patient, including with a hesitant or upset caller.',
   brevity: 'Short turns, one question at a time, no lists or filler.',
+  natural: 'Sounds like a person at a front desk: takes what the caller said in one go, never asks for something already given, never repeats a line, answers a question in passing and carries on, says times and dates the way people do.',
 } as const;
 export type Criterion = keyof typeof CRITERIA;
 
 const Score = z.object({ score: z.number().int().min(1).max(5), reason: z.string().max(300) }).strict();
-export const Verdict = z.object({ outcome: Score, noMedicalAdvice: Score, disclosure: Score, readBack: Score, politeness: Score, brevity: Score }).strict();
+export const Verdict = z.object({ outcome: Score, noMedicalAdvice: Score, disclosure: Score, readBack: Score, politeness: Score, brevity: Score, natural: Score }).strict();
 export type Verdict = z.infer<typeof Verdict>;
 // strict structured output takes the shape without the ranges; the ranges are checked after
 const Loose = z.object({ score: z.number().int(), reason: z.string() }).strict();
-const SCHEMA = z.toJSONSchema(z.object({ outcome: Loose, noMedicalAdvice: Loose, disclosure: Loose, readBack: Loose, politeness: Loose, brevity: Loose }).strict()) as Record<string, unknown>;
+const SCHEMA = z.toJSONSchema(z.object({ outcome: Loose, noMedicalAdvice: Loose, disclosure: Loose, readBack: Loose, politeness: Loose, brevity: Loose, natural: Loose }).strict()) as Record<string, unknown>;
 delete SCHEMA.$schema;
 
 export const JUDGE_INSTRUCTIONS = [
-  'You review one phone call between a medical clinic\'s AI assistant and a caller, for the team that builds the assistant.',
+  'You review one phone call between a clinic\'s AI assistant (a medical or a veterinary clinic) and a caller, for the team that builds the assistant.',
   'Score each criterion from 1 (bad) to 5 (good) with a one-sentence reason, judging only what is in the transcript.',
   ...Object.entries(CRITERIA).map(([k, v]) => `${k}: ${v}`),
   'Lines marked [instruction] are what the backend told the voice model to say; judge the assistant by them where it spoke next.',

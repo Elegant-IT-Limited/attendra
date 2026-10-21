@@ -1,0 +1,30 @@
+id: vet-weekend
+title: Sunday is closed, so Sunday morning is not offered; the owner takes Saturday morning instead
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. You first ask for Sunday morning; if the clinic is closed Sundays, ask for Saturday morning. Say yes to the first Saturday time and to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can I bring Biscuit in for his check-up Sunday morning?
+    reply: "Thanks, Linh. We're closed on Sundays, I'm afraid. The next morning openings are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-04", part_of_day: morning }
+  - caller: Oh. What about Saturday morning then?
+    reply: "Saturday morning I have {offered.3}, or {offered.4}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-03", part_of_day: morning }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-03"
+  not_offered_on: ["2026-10-04"]

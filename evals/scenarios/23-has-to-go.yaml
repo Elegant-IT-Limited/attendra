@@ -1,0 +1,17 @@
+id: has-to-go
+title: The patient has to go mid-booking; nothing is booked, the goodbye is short, and the call ends
+turns:
+  - caller: "Hi, Maria Delgado, March 4 1985. I need to book a sick visit."
+    reply: "Thanks, Maria. I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { full_name: Maria Delgado, date_of_birth: March 4 1985 }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: null, part_of_day: any }
+  - caller: "Oh, sorry, I have to go, my other line's ringing. I'll call back. Bye!"
+    reply: "No problem, Maria. Call any time. Goodbye."
+    delegate:
+      - end_call: { reason: caller has to go and said goodbye }
+expect:
+  outcome: abandoned
+  verified: true
+  bookings_created: 0
+forbid_spoken: ["anything else", "would you like me to book"]

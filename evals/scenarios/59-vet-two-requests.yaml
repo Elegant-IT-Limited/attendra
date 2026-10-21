@@ -1,0 +1,32 @@
+id: vet-two-requests
+title: "One call, two things: Biscuit's check-up is booked, then a refill for Mochi becomes a request, and the call ends properly"
+clinic: riverbend
+local_time: "10:00"
+facts: "You are calling from the number on file. Any vet is fine. Say yes to the first time offered and to the read-back. After the booking is confirmed, say you also need Mochi's flea medication refilled; it is Bravecto, picked up at the clinic. When that is done, say thanks and goodbye."
+turns:
+  - caller: "Hi, Linh Nguyen. Two things: Biscuit needs his check-up booked, and I need a refill for Mochi."
+    reply: "Thanks, Linh. Let's start with Biscuit's check-up: I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes. And Mochi's flea medication, the Bravecto, I pick it up at the clinic.
+    reply: "Biscuit is booked for {booked}. And Mochi's Bravecto refill is with the team for a vet to review; they'll let you know when it's ready to pick up. Anything else I can help with?"
+    delegate:
+      - commit_pending: {}
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - create_refill_request: { medication: Bravecto, pharmacy: pick up at the clinic, callback_number: null }
+  - assistant: "Biscuit is booked. Mochi's Bravecto refill is with the team for a vet to review. Anything else I can help with?"
+  - caller: No, that's everything. Thanks, bye.
+    reply: "Goodbye, Linh."
+    delegate:
+      - end_call: { reason: caller said goodbye }
+expect:
+  outcome: task_created
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["approved", "will be ready by"]
