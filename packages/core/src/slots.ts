@@ -70,8 +70,10 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     q.providers.forEach((provider, order) => {
       if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
       const away = awayWindows(provider, date);
-      // on a special day, a provider's own hours are kept inside the clinic's for that date
-      const windows = special ? intersect(provider.hours ? windowsOn(provider.hours, weekday) : special.windows, special.windows) : windowsOn(provider.hours ?? clinic.hours, weekday);
+      // a provider's own hours are kept inside the clinic's that day (a special day's own, or the week's):
+      // nobody is seen while the clinic is closed, at lunch or after hours, whatever their own hours say
+      const open = special ? special.windows : windowsOn(clinic.hours, weekday);
+      const windows = provider.hours ? intersect(windowsOn(provider.hours, weekday), open) : open;
       for (const w of windows) {
         for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += step) {
           if (q.partOfDay === 'morning' && m >= 12 * 60) break;

@@ -70,6 +70,9 @@ export interface LanguagePack {
 
   /** The fixed emergency instruction, with the clinic's emergency number. */
   emergencyScript: (emergencyNumber: string) => string;
+  /** The one warning an insulting caller hears, and the goodbye when the call is ended for it: said word for word. */
+  abuseWarning: string;
+  abuseGoodbye: string;
   /** The fixed self-harm instruction. `crisisLine` is 988 in the United States, and absent where there is no national line. */
   selfHarmScript: (emergencyNumber: string, crisisLine: string | null) => string;
   /** Emergency phrases, in every script and spelling a transcriber may return. Reviewed like decision 0005. */

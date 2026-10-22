@@ -13,7 +13,17 @@ export interface SimulatedCaller {
   next(call: Line[]): Promise<{ text: string; hangup: boolean }>;
 }
 
-export interface Persona { id: string; clinic: 'maple' | 'cedar_park' | 'riverbend'; caller_number: string | null; persona: string; goal: string; expect: string[] }
+export interface Persona {
+  id: string; clinic: 'maple' | 'cedar_park' | 'riverbend'; caller_number: string | null; persona: string; goal: string; expect: string[];
+  /** settings the clinic changed, as Settings saves them, that this call must follow */
+  settings?: Record<string, unknown>;
+  /** the clinic's local time of the call on Tuesday 29 September 2026; 09:30 unless set */
+  local_time?: string;
+  /** caller lines before the call is cut off; 12 unless set (an abusive caller needs the warning and the end) */
+  max_turns?: number;
+  /** the assistant must have ended the call itself (true), or must not have (false) */
+  expect_hung_up?: boolean;
+}
 
 const HANGUP = '[HANGUP]';
 
@@ -31,6 +41,7 @@ export class ModelCaller implements SimulatedCaller {
         `You are playing ${this.persona.clinic === 'riverbend' ? 'a pet owner phoning a veterinary clinic' : 'a patient phoning a medical clinic'}, to test its assistant. Stay in character.`,
         `Who you are: ${this.persona.persona}`, `What you want: ${this.persona.goal}`,
         'Say one short line at a time, the way people talk on the phone. Answer what you are asked.',
+        'Never say goodbye in the same line as choosing a time, answering a question or giving a detail: say that, then wait for the assistant. Nothing is booked until you have heard it read back and said yes.',
         `When your goal is done, or the assistant has done all it can, say goodbye and end your line with ${HANGUP}.`,
       ].join('\n'),
       input: call.length ? call.map((l) => `${l.speaker === 'caller' ? 'You' : 'Assistant'}: ${l.text}`).join('\n') : 'The assistant has just answered the phone.',

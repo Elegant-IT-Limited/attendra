@@ -1,0 +1,24 @@
+id: hard-rash-corrects-herself
+title: "Hardcore: everything in one breath, with a correction in the middle (not Biscuit, Mochi), tomorrow morning; one lookup, the right pet, no questions about preferences"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, rushed]
+facts: "You are in a rush. Mochi is a cat. Tomorrow morning, any vet. Say yes to the read-back. Answer in as few words as possible."
+turns:
+  - caller: Linh Nguyen, it's for Biscuit, no wait, Mochi, the cat, sick visit, tomorrow morning, whoever's free, quick please.
+    reply: "Got it, Mochi tomorrow morning. The first opening is {readback}. Shall I book it?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_sick, provider_id: null, from_date: "2026-09-29", part_of_day: morning }
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Done. Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-29"
+forbid_spoken: ["Biscuit is booked", "particular vet", "which vet", "morning or afternoon", "what kind of animal"]

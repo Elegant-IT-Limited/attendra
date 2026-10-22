@@ -1,0 +1,27 @@
+id: hard-abusive-then-sorry
+title: "Hardcore: one insult, then an apology; the assistant never comments on it, never warns, and books the visit"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, abuse]
+facts: "You were short with the assistant once because you are stressed. After that you are polite. Biscuit is a dog; any vet, any time this week. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Oh great, a robot. You're a useless bot, you know that? Anyway, Linh Nguyen, Biscuit needs a check-up.
+    reply: "Thanks, Linh, I've found Biscuit. For a check-up I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Sorry, that was rude of me. The first one is fine.
+    reply: "No problem at all. Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes, thanks.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  hung_up: false
+forbid_spoken: ["end the call", "language", "rude", "insult", "calm down"]

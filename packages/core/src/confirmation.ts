@@ -38,7 +38,10 @@ const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|ta
  */
 export function saidGoodbye(lastCallerTurn: string, lastAgentTurns = ''): boolean {
   const t = normalise(lastCallerTurn).trim();
-  if (MORE_TO_SAY.test(t)) return false;
-  if (LEAVING.test(t)) return true;
+  // "bye, but one more thing" has more to say; "I'll call back another time, goodbye" is leaving: the goodbye comes last
+  const more = MORE_TO_SAY.exec(t);
+  const leaving = LEAVING.exec(t);
+  if (leaving && (!more || leaving.index > more.index) && !t.includes('?')) return true;
+  if (more) return false;
   return ANYTHING_ELSE.test(normalise(lastAgentTurns)) && (GOODBYE.test(t) || NOTHING_MORE.test(t));
 }

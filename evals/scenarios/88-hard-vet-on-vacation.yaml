@@ -1,0 +1,33 @@
+id: hard-vet-on-vacation
+title: "Settings: Dr Ruiz is on vacation this week; asked for her this week, the assistant says when she is back and offers her first times then, or another vet now"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-28", to: "2026-10-04", note: vacation }] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "Luna is a dog and always sees Dr Ruiz. You would rather wait for Dr Ruiz than see someone else: when told she is away, ask for her first time when she is back, and say yes to the read-back of a time with her."
+caller_number: "+17205550174"
+turns:
+  - caller: Hi, Carmen Ortiz. I'd like Luna's check-up with Dr Ruiz this week, she always sees her.
+    reply: "Dr Ruiz is away this week and back on the 5th. Her first times then are {offered.0}, or {offered.1}. Or Dr Bell could see Luna this week."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: prov_ruiz, from_date: null, part_of_day: any }
+  - caller: I'll wait for Dr Ruiz. The first one when she's back.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Luna is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_ruiz
+  not_offered_on: ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03"]

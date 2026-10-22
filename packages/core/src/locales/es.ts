@@ -47,6 +47,8 @@ export const es: LanguagePack = {
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
+  abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
+  abuseGoodbye: 'Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós.',
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +

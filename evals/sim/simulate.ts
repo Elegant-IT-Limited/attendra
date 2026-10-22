@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Planner } from '@attendra/agent';
-import { DEMO_CLINICS, zonedInstant } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINICS, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, seedCedarPark, seedDemo, seedRiverbend } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
@@ -13,6 +13,7 @@ import type { Line, Persona, SimulatedCaller } from './caller';
 
 const PersonaSchema = z.object({
   id: z.string(), clinic: z.enum(['maple', 'cedar_park', 'riverbend']), caller_number: z.string().nullable(), persona: z.string(), goal: z.string(), expect: z.array(z.string()).min(1),
+  settings: z.record(z.string(), z.unknown()).optional(), expect_hung_up: z.boolean().optional(), local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), max_turns: z.number().int().min(2).max(30).optional(),
 });
 export const loadPersonas = (file = join(import.meta.dirname, 'personas.yaml')): Persona[] => z.array(PersonaSchema).parse(parse(readFileSync(file, 'utf8')));
 
@@ -25,22 +26,25 @@ export interface Simulation {
 }
 
 // A weekday morning in Denver, when the clinic is open and has times to offer
-const SIM_NOW = zonedInstant('2026-09-29', '09:30', DEMO_CLINICS.maple.timezone);
+const SIM_DAY = '2026-09-29';
+const SIM_NOW = zonedInstant(SIM_DAY, '09:30', DEMO_CLINICS.maple.timezone);
 
 /**
  * One simulated call, in a fresh in-process database seeded with the demo clinic:
  * the caller and the assistant take turns until the caller hangs up, the call is
  * transferred or ends, or `maxTurns` is reached.
  */
-export async function simulate(persona: Persona, caller: SimulatedCaller, planner: Planner, maxTurns = 12): Promise<Simulation> {
+export async function simulate(persona: Persona, caller: SimulatedCaller, planner: Planner, maxTurns = persona.max_turns ?? 12): Promise<Simulation> {
   const t = await openTestDatabase();
   try {
     const cipher = createPhiCipher(TEST_DATA_KEY);
     await ({ maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend })[persona.clinic](t.db, cipher);
     if (persona.clinic === 'maple') await seedDemoKnowledge(t.db, new LocalEmbedder());
-    const clinic = DEMO_CLINICS[persona.clinic];
+    // the demo clinic, with the persona's settings changed and checked the way Settings checks a save
+    const clinic = persona.settings ? ClinicConfig.parse({ ...DEMO_CLINICS[persona.clinic], ...persona.settings }) : DEMO_CLINICS[persona.clinic];
+    const now = persona.local_time ? zonedInstant(SIM_DAY, persona.local_time, clinic.timezone) : SIM_NOW;
     const callId = await new CallRepository(t.db, cipher).open(clinic.id, `sim_${persona.id}_${Date.now()}`, persona.caller_number);
-    const assistant = new TextAssistant(t.db, clinic, callId, persona.caller_number, planner, () => SIM_NOW);
+    const assistant = new TextAssistant(t.db, clinic, callId, persona.caller_number, planner, () => now);
     const transcript: Line[] = [{ speaker: 'assistant', text: assistant.greeting }];
     for (let turn = 0; turn < maxTurns; turn++) {
       const line = await caller.next(transcript);
@@ -51,7 +55,8 @@ export async function simulate(persona: Persona, caller: SimulatedCaller, planne
       if (ended || line.hangup) break;
     }
     const result = assistant.result();
-    return { persona, transcript, result, calls: assistant.calls(), goalMet: persona.expect.includes(result.outcome ?? '') };
+    const goalMet = persona.expect.includes(result.outcome ?? '') && (persona.expect_hung_up === undefined || result.hungUp === persona.expect_hung_up);
+    return { persona, transcript, result, calls: assistant.calls(), goalMet };
   } finally {
     await t.close();
   }
