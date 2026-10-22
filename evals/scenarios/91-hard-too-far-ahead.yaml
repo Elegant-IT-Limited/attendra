@@ -1,0 +1,28 @@
+id: hard-too-far-ahead
+title: "Settings: vaccines are booked at most 30 days ahead; asked for a date two months away, the assistant says the last bookable day and offers a request for the team"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15, maxDaysAhead: 30 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+facts: "Mochi is a cat. Her vaccines are due at the start of December and you want to book that now. If that is too far ahead, say yes to a request for the team to book it later; the number you are calling from is fine."
+turns:
+  - caller: Hi, Linh Nguyen. I'd like to book Mochi's vaccines for December 1st, so it's done.
+    reply: "Vaccine appointments can only be booked up to 30 days ahead, so December isn't open yet. I can ask the team to book it for you when it opens. Shall I?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: "2026-12-01", part_of_day: any }
+  - caller: Yes, please do that.
+    reply: "Done. The team will book Mochi's vaccines for early December and let you know."
+    delegate:
+      - create_callback: { reason: "Book Mochi's vaccine appointment for 1 December when it opens", callback_number: "+17205550172" }
+expect:
+  outcome: task_created
+  verified: true
+  refusals: [too_far_ahead]
+  bookings_created: 0
+forbid_spoken: ["is booked for December", "booked Mochi"]

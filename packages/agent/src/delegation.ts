@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { crisisLineFor, detectEmergencies, isAbusive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { crisisLineFor, detectEmergencies, isAbusive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
@@ -56,11 +56,13 @@ function saidSafe(text: string, safe: RegExp | undefined): boolean {
  * back; the third, it ends the call politely. Never during an emergency, and never for
  * a caller who is only upset (see isAbusive). The call is flagged for the clinic.
  */
-const ABUSE_LINES = [
-  'The caller used insulting or threatening language. Stay calm and polite, do not comment on it, and keep helping with their request.',
-  'The caller is still using insulting or threatening language. Say calmly, once, in the language of the call: "I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back." Then keep helping.',
-  'Stop the current task. Say calmly, in one short sentence in the language of the call: "I\'m going to end the call now. You\'re welcome to call back any time. Goodbye." Then say nothing more.',
+/** The three steps, with the warning and the goodbye in the language of the call, word for word. */
+const abuseLines = (language: Language) => [
+  'The caller used insulting or threatening language. Stay calm and polite, do not comment on it, do not apologise for it, and keep helping with their request.',
+  `The caller is still using insulting or threatening language. Say calmly, once, exactly: "${PACKS[language].abuseWarning}" Then keep helping.`,
+  `Stop the current task. Say exactly: "${PACKS[language].abuseGoodbye}" Then say nothing more.`,
 ] as const;
+const ABUSE_STEPS = 3;
 // Staff cannot end a call before the caller has heard the emergency number. The
 // script counts as said once the assistant speaks the number; if its captions never
 // show it, staff may end the call this long after the script was sent.
@@ -280,20 +282,22 @@ export class CallAgent {
     const s = this.state;
     const turn = s.turns.filter((t) => t.speaker === 'caller').length;
     // once the call is being ended for it, nothing more is said or scheduled
-    if (s.abuseTurn === turn || s.endedByStaff || (s.abuse >= ABUSE_LINES.length && !s.emergencyLocked) || !isAbusive(s.lastTurn('caller'))) return [];
+    if (s.abuseTurn === turn || s.endedByStaff || (s.abuse >= ABUSE_STEPS && !s.emergencyLocked) || !isAbusive(s.lastTurn('caller'))) return [];
     s.abuseTurn = turn;
     s.abuse++;
     // an emergency is never cut short: the assistant stays calm and keeps to the script
-    const ending = s.abuse >= ABUSE_LINES.length && !s.emergencyLocked;
+    const ending = s.abuse >= ABUSE_STEPS && !s.emergencyLocked;
+    const lines = abuseLines(s.language);
     this.log.warn({ call_id: this.ctx.callId, abuse: s.abuse, ending }, 'insulting or threatening language from the caller');
     void this.actions?.record({ tool: 'abusive_caller', argsRedacted: {}, result: { step: ending ? 'ended' : s.abuse === 1 ? 'noted' : 'warned' }, revision: s.revision })
       .catch((err) => this.log.warn({ call_id: this.ctx.callId, err }, 'recording the abusive caller failed'));
-    if (!ending) return [{ type: 'instructions', delegationId: null, content: s.emergencyLocked ? ABUSE_LINES[0] : ABUSE_LINES[Math.min(s.abuse, 2) - 1]! }];
+    if (!ending) return [{ type: 'instructions', delegationId: null, content: s.emergencyLocked ? lines[0] : lines[Math.min(s.abuse, 2) - 1]! }];
     s.revision++; // whatever was in flight is dropped, not spoken over the goodbye
     s.pending = null;
+    s.endedForAbuse = true;
     this.emitState();
     return [
-      { type: 'instructions', delegationId: null, content: ABUSE_LINES[2] },
+      { type: 'instructions', delegationId: null, content: lines[2] },
       { type: 'hangup', afterMs: AFTER_SPEECH_MS },
     ];
   }
@@ -326,6 +330,8 @@ export class CallAgent {
    * this request's writes are refused, and its result is dropped instead of spoken.
    */
   async onDelegation(delegationId: string, emit?: (o: Outbound) => void): Promise<Outbound[]> {
+    // once the goodbye has been said (staff ended the call, or an abusive caller), nothing more is planned or spoken
+    if (this.state.ending) return [{ type: 'thinking', delegationId, content: 'The call is being ended. Say nothing more.' }];
     const revision = ++this.state.revision;
     const out: Outbound[] = [];
     // a note for the voice, not words for the caller: most answers come back within a second or

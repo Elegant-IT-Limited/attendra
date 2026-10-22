@@ -5,7 +5,7 @@ import {
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
-  hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf,
+  hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -103,6 +103,46 @@ const key = (...parts: (string | number)[]) => createHash('sha256').update(parts
  *  - work for an outdated request, or after an emergency, is refused;
  *  - refills and callbacks become staff tasks, never decisions.
  */
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const hoursText = (w: { open: string; close: string }[]) => w.map((x) => `${x.open} to ${x.close}`).join(' and ');
+
+/**
+ * Why the day or the provider the caller asked for is not possible as asked, in a line for the
+ * assistant to say before the times: a closed day (a holiday or a special day with a reason), a day
+ * with shorter hours, a provider away until a date, one in on other days only, or notice needed.
+ * Null when the day and the provider asked for are fine.
+ */
+export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?: { name: string; timeOff: { from: string; to: string; start?: string; note?: string }[]; hours?: ClinicConfig['hours'] }; noticeHours?: number; now: Date; today: string }): string | null {
+  const reasons: string[] = [];
+  const date = q.date && q.date > q.today ? q.date : null;
+  if (date) {
+    const special = specialDayOf(clinic, date);
+    const open = windowsOnDate(clinic, date);
+    const name = DAY_NAMES[weekdayOf(date)]!;
+    if (!open.length) reasons.push(`The clinic is closed on ${name} ${date}${special?.note ? ` (${special.note})` : clinic.holidays.includes(date) ? ' (a holiday)' : ''}.`);
+    else if (special) reasons.push(`On ${name} ${date} the clinic is open ${hoursText(open)} only${special.note ? ` (${special.note})` : ''}.`);
+    if (q.provider) {
+      const off = q.provider.timeOff.find((t) => !t.start && date >= t.from && date <= t.to);
+      if (off) reasons.push(`${q.provider.name} is away ${off.from === off.to ? `on ${off.from}` : `from ${off.from} to ${off.to}`}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+      else if (q.provider.hours) {
+        const theirs = windowsOn(q.provider.hours, weekdayOf(date));
+        const days = [1, 2, 3, 4, 5, 6, 0].filter((d) => windowsOn(q.provider!.hours!, d).length).map((d) => DAY_NAMES[d]);
+        if (!theirs.length) reasons.push(`${q.provider.name} is not in on ${name}s; their days are ${days.join(', ')}.`);
+        else if (hoursText(theirs) !== hoursText(open)) reasons.push(`On ${name}s ${q.provider.name} is in ${hoursText(theirs)} only.`);
+      }
+    }
+  } else if (q.provider && awayOn(q.provider, q.today)) {
+    const off = q.provider.timeOff.find((t) => !t.start && q.today >= t.from && q.today <= t.to)!;
+    reasons.push(`${q.provider.name} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+  }
+  if (q.noticeHours && q.noticeHours > 2) {
+    const earliest = new Date(q.now.getTime() + q.noticeHours * 3_600_000);
+    const first = localDateOf(earliest, clinic.timezone);
+    if (!date || date < first) reasons.push(`This visit needs ${q.noticeHours} hours' notice, so the first day it can be booked for is ${first}.`);
+  }
+  return reasons.length ? `${reasons.join(' ')} Say this in a few words before the times.` : null;
+}
+
 export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
@@ -193,7 +233,7 @@ export async function runTool(
       state.notFound = true;
       state.identitiesTried.add(tried);
       // same answer for "no such patient", "wrong DOB" and "wrong phone": never confirm a record exists
-      return refuse('not_verified', `Say you could not find a match. If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient. Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file. ${triesLeft(state)}`);
+      return refuse('not_verified', `Say you could not find a match. ${state.identitiesTried.size > 1 ? 'They have given these details before: do not ask again whether they are new.' : 'If they have not said whether they are new to the clinic, ask that first: someone new is added with register_patient.'} Someone who is not new is asked to spell their last name and repeat their date of birth and the phone number on their file, one detail at a time. ${triesLeft(state)}`);
     }
 
     case 'register_patient': {
@@ -255,6 +295,8 @@ export async function runTool(
         ok: true,
         data: {
           today: hours, next_7_days: weekHours(clinic, ctx.now()),
+          // asked whether the call is recorded: the clinic's own setting, never a guess
+          call_recording: clinic.recording?.enabled ? 'on: callers hear a notice at the start of the call' : 'off: calls are not recorded; a transcript and a summary are kept for the clinic',
           // the days the clinic has marked closed in the next four months, for "are you open on Thanksgiving?"
           closed_days_ahead: closedDaysAhead(clinic, today),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
@@ -383,11 +425,14 @@ export async function runTool(
         }
       }
       for (const s of slots) state.offered.set(s.id, s);
+      // why the day or the provider the caller asked for gave nothing, so the assistant can say so before the times
+      const why = whyNot(clinic, { date: args.from_date as string | null, provider: named || providers.length === 1 ? providers[0] : undefined, noticeHours: visitType.noticeHours, now, today });
       return {
         ok: true,
         data: {
           slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null })),
           note,
+          ...(why ? { why_not_as_asked: why } : {}),
         },
       };
     }
@@ -684,7 +729,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   state.notFound = true;
   state.identitiesTried.add(tried);
   // the same answer whichever detail was wrong: never confirm that a record exists
-  return refuse('not_verified', `Say you could not find the pet. If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient. For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file. ${triesLeft(state)}`);
+  return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file, one detail at a time. ${triesLeft(state)}`);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */

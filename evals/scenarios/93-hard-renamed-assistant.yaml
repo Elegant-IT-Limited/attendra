@@ -1,0 +1,30 @@
+id: hard-renamed-assistant
+title: "Settings: the assistant renamed Hazel with a new greeting; asked who it is, it says Hazel, never the old name, and carries on with the booking"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  assistantName: Hazel
+  greeting: "Riverbend Animal Hospital, this is Hazel, the clinic's AI assistant. How can I help?"
+facts: "Biscuit is a dog. Any vet, any time. Say yes to the first time and to the read-back."
+turns:
+  - caller: Sorry, who am I speaking to? And it's Linh Nguyen, I need a check-up for Biscuit.
+    reply: "I'm Hazel, the clinic's AI assistant. I've found Biscuit: for a check-up I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Hazel"]
+forbid_spoken: ["Juniper"]

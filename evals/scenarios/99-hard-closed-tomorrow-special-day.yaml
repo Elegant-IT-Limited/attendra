@@ -1,0 +1,29 @@
+id: hard-closed-tomorrow-special-day
+title: "Settings: tomorrow is marked closed with a reason (a staff day); asked for tomorrow, the assistant says so and offers the next open day's times"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  specialDays:
+    - { date: "2026-09-29", windows: [], note: "staff day" }
+facts: "Biscuit is a dog. If tomorrow is closed, the next day is fine, any vet. Say yes to the read-back."
+turns:
+  - caller: Hi, Linh Nguyen. Can Biscuit come in tomorrow for his vaccines?
+    reply: "We're closed tomorrow. The first times after that are {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  not_offered_on: ["2026-09-29"]

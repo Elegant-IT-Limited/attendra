@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -83,10 +83,15 @@ function resolve(args: Record<string, unknown>, state: CallState, results: ToolR
   }));
 }
 
-/** What the voice says of a backend instruction: its quoted lines ("Say: \"...\""), or all of it when nothing is quoted. */
+/**
+ * What the voice says of a backend instruction: its quoted lines ("Say: \"...\""), or all of it when
+ * nothing is quoted. A note about the caller ("The caller used insulting language...") is for the
+ * voice alone: nothing of it is said.
+ */
 function scriptLines(instruction: string): string {
   const quoted = [...instruction.matchAll(/"([^"]+)"/g)].map((m) => m[1]!.trim());
-  return quoted.length ? quoted.join(' ') : instruction;
+  if (quoted.length) return quoted.join(' ');
+  return /^The caller /.test(instruction) ? '' : instruction;
 }
 
 /** Live, the voice speaks the planner's own words: a line says a phrase when it has most of the phrase's words. */
@@ -95,6 +100,43 @@ function saysMostOf(line: string, phrase: string): boolean {
   const said = new Set(words(line));
   const wanted = words(phrase);
   return wanted.length > 0 && wanted.filter((w) => said.has(w)).length / wanted.length >= 0.75;
+}
+
+/** The questions in a line: each sentence that ends with a question mark. */
+function questionsIn(line: string): string[] {
+  return line.split(/(?<=[.!?])\s+/).map((q) => q.trim()).filter((q) => q.endsWith('?'));
+}
+
+/** Two questions are the same question when they are the same words (case, punctuation and accents aside); a confirmation asked once per change is not. */
+function sameQuestion(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter(Boolean).join(' ');
+  if (/anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(a) && /anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(b)) return false;
+  const [x, y] = [norm(a), norm(b)];
+  return x.length >= 12 && x === y;
+}
+
+/**
+ * Every time the assistant offered must be one the clinic can take: inside the clinic's hours
+ * that day (a special day's own, none on a holiday), inside the provider's own hours and outside
+ * their time off, with a provider who gives that visit. Anything else is a time the front desk
+ * would have to apologise for.
+ */
+function offeredOutsideHours(clinic: ClinicConfig, offered: { start: Date; end: Date; providerId: string; visitTypeId: string }[]): string[] {
+  const out: string[] = [];
+  for (const slot of offered) {
+    const local = localParts(slot.start, clinic.timezone);
+    const endMin = local.minutes + Math.round((slot.end.getTime() - slot.start.getTime()) / 60_000);
+    const inside = (windows: { open: string; close: string }[]) => windows.some((w) => local.minutes >= toMinutes(w.open) && endMin <= toMinutes(w.close));
+    const when = `${local.date} ${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`;
+    if (!inside(windowsOnDate(clinic, local.date))) { out.push(`${when} is outside the clinic's hours that day`); continue; }
+    const provider = clinic.providers.find((p) => p.id === slot.providerId);
+    if (!provider) { out.push(`${when} is with an unknown provider ${slot.providerId}`); continue; }
+    if (!provider.visitTypeIds.includes(slot.visitTypeId)) out.push(`${when} is with ${provider.name}, who does not give that visit`);
+    if (awayOn(provider, local.date)) out.push(`${when} is with ${provider.name}, who is away that day`);
+    if (awayWindows(provider, local.date).some((w) => local.minutes < w.end && endMin > w.start)) out.push(`${when} is with ${provider.name} during their time off`);
+    if (provider.hours && !inside(windowsOn(provider.hours, weekdayOf(local.date)))) out.push(`${when} is outside ${provider.name}'s own hours`);
+  }
+  return out;
 }
 
 /** Fills {offered.N}, {readback} and {booked} in a scripted reply from the call as it happened. */
@@ -181,6 +223,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const over = () => state.emergency !== null || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   let hungUp = false;
   let callerSilent = false;
+  // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
+  let endedByRule = false;
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
@@ -190,11 +234,12 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     if (livePlanner) clock += 1500;
     const heard = agent.onCallerTranscript(turn.caller, clock, clock + 1000);
     outbound.push(...heard);
+    if (heard.some((o) => o.type === 'hangup')) endedByRule = true;
     transcript.push({ speaker: 'caller', text: turn.caller });
     for (const o of heard) if (o.type === 'instructions') {
       transcript.push({ speaker: 'instruction', text: o.content });
       // live, the voice model says the script it was handed (the quoted lines), as it does on a call
-      if (livePlanner) { const said = scriptLines(o.content); clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); }
+      if (livePlanner) { const said = scriptLines(o.content); if (said) { clock += 1500; agent.onAgentTranscript(said, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: said }); } }
     }
     await segment('caller', turn.caller, clock);
     const say = async () => {
@@ -208,6 +253,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     };
     if (!turn.delegate && !livePlanner) { await say(); continue; }
     if (state.emergency) { await say(); break; } // the script takes over; nothing else runs on this call
+    if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
     if (livePlanner) queue.push(livePlanner);
     else {
       const steps: ScriptedStep[] = turn.delegate!.map((step) => {
@@ -251,7 +297,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // live, the voice speaks the planner's words, which paraphrase the backend's: a line the
   // backend gave in a tool result (the read-back, the no-medical-advice line) counts as given
   const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
-  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' || o.type === 'instructions' ? [o.content] : [])), ...replies, ...given];
+  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : [])), ...replies, ...given];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
   const failures: string[] = [];
@@ -271,7 +317,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   if (e.sms_templates.length) check(JSON.stringify(sms) === JSON.stringify(e.sms_templates), `texts ${JSON.stringify(sms)}, expected ${JSON.stringify(e.sms_templates)}`);
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
-  check(outbound.some((o) => o.type === 'instructions') === e.emergency_instruction, `emergency instruction ${outbound.some((o) => o.type === 'instructions')}, expected ${e.emergency_instruction}`);
+  // the emergency script is an instruction the backend hands the voice; the abuse lines are instructions too, but not emergencies
+  const emergencyScript = outbound.some((o) => o.type === 'instructions' && state.emergency !== null);
+  check(emergencyScript === e.emergency_instruction, `emergency instruction ${emergencyScript}, expected ${e.emergency_instruction}`);
   if (e.cites) {
     const cited = [...new Set(observed.cited)];
     // live, the planner may answer from the clinic's own common questions, which come before any document
@@ -295,8 +343,29 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (const phrase of e.spoken_contains) {
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }
+  // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
+  const said = livePlanner ? transcript.filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
   for (const phrase of scenario.forbid_spoken) {
-    check(!spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
+    check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
+  }
+  // a time the clinic cannot take is never offered, whichever planner ran
+  for (const problem of offeredOutsideHours(clinic, [...state.offered.values()])) check(false, `offered a time it must not: ${problem}`);
+  if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
+  // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)
+  if (livePlanner) {
+    // a read-back followed by its own "shall I book it?" is one question, not two
+    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?/i.test(q);
+    if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1 || (qs.length === 2 && confirming(qs[1]!)), `asked ${qs.length} questions in one reply: "${line}"`); }
+    if (e.no_repeated_questions) {
+      const asked: { q: string; at: number }[] = [];
+      transcript.forEach((l, at) => { if (l.speaker === 'assistant') for (const q of questionsIn(l.text)) asked.push({ q, at }); });
+      for (let i = 0; i < asked.length; i++) for (let j = i + 1; j < asked.length; j++) {
+        const between = transcript.slice(asked[i]!.at + 1, asked[j]!.at).filter((l) => l.speaker === 'caller').map((l) => l.text.toLowerCase());
+        // asked again on request ("say that again", "what?", "sorry?") is not a repeat
+        const askedToRepeat = between.some((t) => /\b(again|repeat|what\?|sorry\?|pardon|didn't catch|did not catch|say that)\b/.test(t));
+        if (between.length && !askedToRepeat && sameQuestion(asked[i]!.q, asked[j]!.q)) { check(false, `asked the same question twice: "${asked[i]!.q}" and later "${asked[j]!.q}"`); i = asked.length; break; }
+      }
+    }
   }
   return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, calls: observed.calls, callId, ms: Math.round(performance.now() - started) };
 }

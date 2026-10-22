@@ -517,10 +517,11 @@ describe('review fixes', () => {
   });
 
   it('ignores a cough or a breath after the yes', async () => {
-    const c = await w.call();
-    c.caller('Maria Delgado, March 4 1985, sick visit');
+    // James, not Maria: the tests above booked Maria's afternoon, and a patient cannot be in two places at once
+    const c = await w.call('+13035550163');
+    c.caller('James Whitaker, September 9 1962, sick visit');
     await c.delegate([
-      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: 'September 9 1962' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);

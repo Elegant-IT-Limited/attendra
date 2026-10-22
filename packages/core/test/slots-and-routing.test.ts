@@ -52,6 +52,17 @@ describe('finding slots', () => {
     expect(findSlots(DEMO_CLINIC, [], { visitType: newPatient, providers: lindqvist, from: '2026-09-29', days: 14, now })).toEqual([]);
   });
 
+  it('never offers a provider while the clinic is closed, even inside their own hours (the lunch break)', () => {
+    // Dr Lindqvist works 9 to 3 on Tuesdays; the clinic closes 12 to 1. Nothing from 12 to 1 is offered.
+    const lindqvist = DEMO_CLINIC.providers.filter((p) => p.id === 'prov_lindqvist');
+    const times = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: lindqvist, from: '2026-09-29', days: 1, now, limit: 50 })
+      .map((s) => speakSlot(s.start, tz).replace(/^.* at /, ''));
+    expect(times).toContain('11:40 AM');
+    expect(times).toContain('1:00 PM');
+    expect(times.some((t) => /^12:/.test(t))).toBe(false);
+    expect(times.at(-1)).toBe('2:40 PM');
+  });
+
   it('keeps a lead time so the front desk is not surprised by a booking an hour away', () => {
     const morning = zonedInstant('2026-09-29', '08:05', tz);
     const slots = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: okafor, from: '2026-09-29', days: 1, now: morning });

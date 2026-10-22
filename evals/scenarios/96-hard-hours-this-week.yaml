@@ -1,0 +1,18 @@
+id: hard-hours-this-week
+title: "Asked the hours for the week and whether Saturday is open, the assistant answers from the clinic's hours in one go: weekdays 8 to 6, Saturday 9 to 1, closed Sunday"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, info]
+caller_number: null
+facts: "You only want the opening hours, including Saturday and Sunday. Then say thanks and hang up."
+turns:
+  - caller: What are your hours this week? Are you open Saturday? What about Sunday?
+    reply: "We're open 8 to 6 Monday to Friday, 9 to 1 on Saturday, and closed on Sunday."
+    delegate:
+      - get_clinic_info: { question: opening hours this week including Saturday and Sunday }
+  - caller: Great, thanks, bye.
+    reply: "Goodbye."
+expect:
+  outcome: info
+  spoken_contains: ["Saturday", "Sunday"]
+forbid_spoken: ["I don't have that information", "I do not have that information"]

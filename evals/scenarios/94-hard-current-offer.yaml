@@ -1,0 +1,21 @@
+id: hard-current-offer
+title: "Settings: an offer the clinic added (20% off dental cleanings in October); asked about specials, the assistant tells it, and nothing that has ended"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, settings]
+settings:
+  offers:
+    - { id: off_dental, title: "Dental month", details: "20% off dental cleanings booked in October.", from: "2026-09-28", to: "2026-10-31" }
+    - { id: off_summer, title: "Summer flea offer", details: "Free flea check with any visit in August.", from: "2026-08-01", to: "2026-08-31" }
+facts: "You just want to know about any current specials or offers, then you will think about it and call back. Nothing booked."
+turns:
+  - caller: Hi, do you have any specials or offers on at the moment?
+    reply: "Yes: it's dental month, with 20% off dental cleanings booked in October. Would you like to book one?"
+    delegate:
+      - get_clinic_info: { question: current offers and specials }
+  - caller: Let me think about it, I'll call back. Thanks.
+    reply: "Of course. Call any time."
+expect:
+  outcome: info
+  spoken_contains: ["dental"]
+forbid_spoken: ["flea", "August", "no offers", "don't have any offers", "do not have any offers"]

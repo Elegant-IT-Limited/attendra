@@ -1,0 +1,29 @@
+id: hard-rabbit-on-a-wednesday
+title: "A rabbit's owner asks for Wednesday; the only vet who sees rabbits works Tuesdays and Thursdays, so Wednesday is never offered and the booking is with her"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, providers]
+caller_number: "+17205550173"
+facts: "Pepper is a rabbit. You asked for Wednesday; if that is not possible, Thursday is fine. Say yes to the read-back."
+turns:
+  - caller: Hi, Daniel Brooks. Can my rabbit Pepper come in on Wednesday for a check-up?
+    reply: "Dr Sato, who sees rabbits, isn't in on Wednesdays. She could see Pepper {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-30", part_of_day: any }
+  - caller: Thursday is fine, the first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Pepper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_sato
+  not_offered_on: ["2026-09-30"]
+forbid_spoken: ["Dr Ruiz", "Dr. Ruiz", "Dr Bell", "Dr. Bell"]

@@ -40,6 +40,8 @@ export class TextAssistant implements AssistantUnderTest {
   private delegations = 0;
   private callerTurns = 0;
   private ended = false;
+  /** the assistant ended the call itself (an abusive caller after the warning, or a finished call) */
+  private hungUp = false;
   private transferred = false;
 
   constructor(db: Database, clinic: ClinicConfig, callId: string, callerNumber: string | null, planner: Planner, now: () => Date) {
@@ -67,7 +69,9 @@ export class TextAssistant implements AssistantUnderTest {
     const out = await this.agent.onDelegation(`sim_${++this.delegations}`);
     const said = out.flatMap((o) => (o.type === 'commentary' ? [o.content] : []));
     if (out.some((o) => o.type === 'transfer') || heard.some((o) => o.type === 'transfer')) { this.transferred = true; this.ended = true; }
-    if (out.some((o) => o.type === 'hangup')) this.ended = true;
+    // ended by a rule of the code (the abusive caller) is what hungUp means; end_call after a goodbye is an ordinary end
+    if (heard.some((o) => o.type === 'hangup')) this.hungUp = true;
+    if (out.some((o) => o.type === 'hangup') || heard.some((o) => o.type === 'hangup')) this.ended = true;
     const reply = [quoted, ...said].filter(Boolean).join(' ') || 'Let me check that for you.';
     this.clock += 3000;
     this.agent.onAgentTranscript(reply, this.clock, this.clock + 2000);
@@ -87,7 +91,7 @@ export class TextAssistant implements AssistantUnderTest {
       // text has no audio: count the words a voice would have said, at about 150 a minute
       voiceSeconds: Math.round(state.turns.reduce((n, t) => n + t.text.split(/\s+/).length, 0) / 150 * 60),
       flagged: state.emergency !== null, triedToBook: this.planner.results.some((r) => r.tool === 'propose_booking'),
-      callerTurns: this.callerTurns, refusals, afterHours: false, refusedTools: this.planner.results.filter((r) => r.result.data.error).map((r) => r.tool),
+      callerTurns: this.callerTurns, refusals, hungUp: this.hungUp, afterHours: false, refusedTools: this.planner.results.filter((r) => r.result.data.error).map((r) => r.tool),
     };
   }
 }

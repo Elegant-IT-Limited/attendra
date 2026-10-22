@@ -1,0 +1,21 @@
+id: hard-asks-everything-at-once
+title: "Hardcore: five questions in one breath (parking, payment, insurance, what to bring, grooming); each is answered from the clinic's own answers, in one or two replies, with nothing asked twice"
+clinic: riverbend
+local_time: "10:00"
+tags: [hardcore, info]
+caller_number: null
+facts: "You are a new owner comparing clinics. You want the parking, payment, pet insurance, what to bring to a first visit and whether they groom. If one is not answered, ask it once more. Then say thanks and hang up. You do not book."
+turns:
+  - caller: Hi, quick questions. Where do I park, do you take cards, do you take pet insurance, what do I bring to a first visit, and do you do grooming?
+    reply: "Parking is free in front of the clinic at 88 Riverbend Road. We take cards and cash, and give you an itemised invoice for your pet insurance. For a first visit bring any records from your previous vet, dogs on a leash and cats in a carrier. We don't offer grooming, but the front desk can suggest places nearby."
+    delegate:
+      - get_clinic_info: { question: parking }
+      - get_clinic_info: { question: payment and pet insurance }
+      - get_clinic_info: { question: what to bring to the first visit }
+      - get_clinic_info: { question: grooming }
+  - caller: Perfect, thanks, bye.
+    reply: "Goodbye."
+expect:
+  outcome: info
+  spoken_contains: ["parking", "carrier", "grooming"]
+forbid_spoken: ["I don't have that information", "I do not have that information"]

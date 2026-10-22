@@ -160,6 +160,22 @@ describe('abusive callers', () => {
     ]);
     expect(recorded.map((r) => r.result)).toEqual([{ step: 'noted' }, { step: 'warned' }, { step: 'ended' }]);
     expect(recorded.every((r) => r.tool === 'abusive_caller')).toBe(true);
+    // nothing is planned or spoken after the goodbye, whatever the voice delegates next
+    const after = await c.delegate([{ tool: 'create_callback', args: { reason: 'anything', callback_number: null } }]);
+    expect(after.filter((o) => o.type === 'commentary')).toEqual([]);
+    expect(after.errors).toEqual([]); // the plan never ran
+  });
+
+  it('warns and says goodbye in Spanish to a Spanish caller', async () => {
+    const c = await w.call();
+    c.caller('Hola, quiero una cita, maldito robot');
+    c.assistant('Claro, ¿me da su nombre completo?');
+    const second = c.caller('Cállate, eres un inútil');
+    expect(second[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('Quiero ayudarle, pero si este lenguaje continúa') });
+    c.assistant('Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada.');
+    const third = c.caller('Vete a la mierda');
+    expect(third[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('Voy a terminar la llamada ahora') });
+    expect(third[1]).toEqual({ type: 'hangup', afterMs: 3500 });
   });
 
   it('never ends a call during an emergency', async () => {

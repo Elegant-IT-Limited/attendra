@@ -137,8 +137,8 @@ describe('the veterinary demo clinic\'s calls', () => {
       const { patientIds } = await seedRiverbend(fresh.db, cipher);
       const vet = await recordDemoCalls(fresh.db, cipher, patientIds, NOW, { clinic: RIVERBEND_CLINIC });
       expect(vet.filter((r) => !r.passed).map((r) => `${r.id}: ${r.failures.join('; ')}`)).toEqual([]);
-      // the settings scenarios change the clinic's settings, so they are not part of its demo
-      expect(vet).toHaveLength(loadScenarios().filter((s) => s.clinic === 'riverbend' && !s.settings).length);
+      // the settings scenarios change the clinic's settings and the hardcore ones test the rules, so neither is part of its demo
+      expect(vet).toHaveLength(loadScenarios().filter((s) => s.clinic === 'riverbend' && !s.settings && !s.tags.includes('hardcore')).length);
       const calls = await new FrontDeskRepository(fresh.db, cipher).listCalls(RIVERBEND_CLINIC.id, { limit: 100 });
       expect(calls.every((c) => c.startedAt.getTime() < NOW.getTime())).toBe(true);
       const booking = calls.find((c) => c.id === vet.find((r) => r.id === 'vet-booking')!.callId)!;
