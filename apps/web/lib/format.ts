@@ -71,6 +71,8 @@ export const TOOLS: Record<string, string> = {
   transfer_call: 'Transfer',
   end_call: 'Ended call',
   abusive_caller: 'Abusive caller',
+  security_probe: 'Pushed on the rules',
+  security_leak: 'Corrected: said how it works',
   get_clinic_info: 'Clinic information',
   search_knowledge: 'Searched clinic documents',
 };

@@ -204,6 +204,8 @@ export class CallRunner {
     }
     // a promise to call back that no request backs: the assistant is told to make it, once it has finished speaking
     if (now - this.agentSpokeAt >= QUIET_MS && now >= this.speakingUntil) {
+      const leaked = this.agent.onLeakCheck();
+      if (leaked.length) return this.dispatch(leaked);
       const promised = this.agent.onPromiseCheck();
       if (promised.length) return this.dispatch(promised);
     }
