@@ -108,6 +108,9 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/12345`, { authorization: auth })).statusCode).toBe(422);
     expect((await api.request('DELETE', `${P}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
     expect(await clinicForNumber(api.t.db, '+13035550177')).toBeNull();
+    // the clinic's audit log shows the number it got and the one it gave back
+    expect((await api.t.db.execute(sql`select action, entity_id from audit_logs where clinic_id = ${DEMO_CLINIC.id} and action like 'number.%' order by id`)).rows)
+      .toEqual([{ action: 'number.assigned', entity_id: '+13035550177' }, { action: 'number.released', entity_id: '+13035550177' }]);
 
     await api.t.db.execute(sql`update calls set ended_at = started_at + interval '95 seconds', channel = 'phone' where id = ${api.callId}`);
     const from = new Date(Date.now() - 86_400_000).toISOString();

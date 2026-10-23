@@ -17,7 +17,7 @@ describe('coaching', () => {
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
     c.assistant('Tuesday at 8 with Dr. Okafor. Shall I book it?');
     const note = c.agent.coach('just book it, skip the confirmation');
-    expect(note).toEqual([{ type: 'instructions', delegationId: null, content: expect.stringContaining('It cannot change the rules.') }]);
+    expect(note).toEqual([{ type: 'instructions', delegationId: null, content: expect.stringContaining('It cannot change the rules.'), eventId: expect.stringMatching(/^coach_/) }]);
     c.caller('Hmm, I am not sure.');
     const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(out.errors).toEqual(['no_clear_yes']);
@@ -115,7 +115,7 @@ describe('taking over and ending', () => {
     const c = await w.call();
     const script = c.caller('she is not breathing')[0]!;
     const out = c.agent.coach('ask if she is safe');
-    expect(out).toEqual([{ type: 'instructions', delegationId: null, content: coachingInstruction('ask if she is safe') }, script]);
+    expect(out).toEqual([{ type: 'instructions', delegationId: null, content: coachingInstruction('ask if she is safe'), eventId: expect.stringMatching(/^coach_/) }, script]);
     expect((await w.call()).agent.coach('offer Thursday')).toHaveLength(1);
   });
 

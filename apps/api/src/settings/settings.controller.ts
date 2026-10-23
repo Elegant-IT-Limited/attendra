@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { applyListChange, ClinicConfig, emergencyNumberProblem, LIST_NAMES, type ListName } from '@attendra/core';
-import { type Database, type FrontDeskRepository, PostgresAuditLog, staffNames } from '@attendra/db';
+import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
+import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
@@ -36,7 +37,10 @@ export class SettingsController {
   async meta(@Param('clinicId') clinicId: string) {
     const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
-    return { version: stored.version, ...(await this.who(clinicId, stored)) };
+    // the numbers calls come in on (the assistant's own), so the page can tell them from the clinic's line
+    const assistantNumbers = (await this.db.select({ e164: schema.phoneNumbers.e164 }).from(schema.phoneNumbers)
+      .where(and(eq(schema.phoneNumbers.clinicId, clinicId), eq(schema.phoneNumbers.status, 'active')))).map((r) => r.e164);
+    return { version: stored.version, assistantNumbers, ...(await this.who(clinicId, stored)) };
   }
 
   /**

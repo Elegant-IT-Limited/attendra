@@ -79,12 +79,14 @@ export default function Patients() {
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardContent className="py-5">
-            <div className="mb-3 flex gap-1" role="group" aria-label="Which patients">
+            {/* one filter row, the same as on the other lists: which patients, then the dropdowns */}
+            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+            <div className="flex gap-1" role="group" aria-label="Which patients">
               <Button size="sm" variant={onlyNew ? 'ghost' : 'outline'} aria-pressed={!onlyNew} onClick={() => setOnlyNew(false)}>All {terms.patients}</Button>
               <Button size="sm" variant={onlyNew ? 'outline' : 'ghost'} aria-pressed={onlyNew} onClick={() => setOnlyNew(true)}>Added by the assistant, to check</Button>
             </div>
             {(pet && speciesList.length > 0) || filterable.length > 0 ? (
-              <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+              <>
                 {pet && speciesList.length > 0 && (
                   <>
                     <Label htmlFor="pet-species" className="sr-only">Kind of animal</Label>
@@ -113,8 +115,9 @@ export default function Patients() {
                   </>
                 )}
                 {filtering && <Button size="sm" variant="ghost" onClick={() => { setSpecies(''); setFieldFilter({ id: '', value: '' }); }}>Clear</Button>}
-              </div>
+              </>
             ) : null}
+            </div>
             {filtering ? (
               byFilter.isPending ? <Skeleton className="h-40" /> : byFilter.isError ? <Alert tone="warn">This list did not load. Refresh to try again.</Alert>
                 : !byFilter.data?.patients.length ? <Empty title="Nobody matches">Try another kind or value, or clear the filter.</Empty>
