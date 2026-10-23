@@ -17,6 +17,8 @@ const Env = z.object({
   // texts the team's decisions (a refill ready to pick up); without both, nothing is texted
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
+  // the trunk calls come in on: its disaster recovery URL is the backup route, which the worker keeps in place
+  TWILIO_TRUNK_SID: optional(z.string().startsWith('TK').min(10)),
   // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged
   ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),

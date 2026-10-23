@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ClinicConfig, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { activeNumbers, allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
 import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { type SmsSender, smsStatusUrl, TwilioMessenger } from '@attendra/telephony';
+import { type FallbackEntry, fallbackEntry, type SmsSender, smsStatusUrl, type TwilioFallback, TwilioMessenger } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
@@ -35,6 +35,8 @@ export interface WorkerDeps {
   sms?: { publicUrl?: string; dailyCap?: number };
   /** Where alerts go (Slack): a job that gave up, texts the carrier refuses. */
   alerts?: Alerter;
+  /** The backup route in Twilio (a Function on the trunk's disaster recovery URL): kept in place and current. */
+  fallback?: { client: Pick<TwilioFallback, 'ensure' | 'sync'>; trunkSid: string; slackWebhookUrl?: string };
 }
 
 /**
@@ -135,6 +137,23 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
      * is still 2 hours away. Each visit is claimed before its text goes, so two workers
      * never send two.
      */
+    /**
+     * What the backup route does for each of our numbers, as of now: ring the clinic's
+     * front desk or on-call phone, or say where to go. Only what changed is written.
+     */
+    async fallbackSync() {
+      if (!d.fallback) return 'off';
+      const at = now();
+      const entries = new Map<string, FallbackEntry>();
+      for (const row of await activeNumbers(d.db)) {
+        const parsed = ClinicConfig.safeParse(row.config);
+        if (parsed.success) entries.set(row.e164, fallbackEntry(parsed.data, at));
+      }
+      const done = await d.fallback.client.sync(entries);
+      if (done.written || done.removed) d.log.info({ numbers: entries.size, ...done }, 'backup route updated');
+      return done;
+    },
+
     async appointmentReminders() {
       const at = now();
       let sent = 0;
@@ -312,6 +331,17 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, poll, each((data) => h.smsStatus(data)));
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
   await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
+  await d.boss.work(QUEUES.fallbackSync, each(async () => { await h.fallbackSync(); }));
+  // the backup route in place before anything else needs it; a failure is said, and tried again at the next start
+  if (d.fallback) {
+    const f = d.fallback;
+    void f.client.ensure({ trunkSid: f.trunkSid, slackWebhookUrl: f.slackWebhookUrl })
+      .then((url) => { d.log.info({ url }, 'backup route in place'); return h.fallbackSync(); })
+      .catch((err: unknown) => {
+        d.log.error({ err: { message: (err as Error).message } }, 'backup route not in place');
+        d.alerts?.alert('backup_route', `The backup route could not be set up in Twilio: ${(err as Error).message.slice(0, 120)}. Calls still work; an outage would give callers an error tone.`);
+      });
+  }
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
     d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
@@ -321,6 +351,7 @@ export async function startWorker(d: WorkerDeps) {
   if (d.schedulePurge !== false) {
     await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
     await d.boss.schedule(QUEUES.appointmentReminders, '*/10 * * * *');
+    if (d.fallback) await d.boss.schedule(QUEUES.fallbackSync, '*/10 * * * *');
   }
   d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');
   return h;

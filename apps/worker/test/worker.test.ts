@@ -408,3 +408,15 @@ describe('appointment reminders', () => {
     expect(quiet(13 * 60, '09:00', '09:00')).toBe(false);
   });
 });
+
+describe('the backup route', () => {
+  it('keeps every active number of every open clinic in the map, with what to do for it, and nothing when it is off', async () => {
+    let got: Map<string, { clinic: string; forwardTo: string | null }> | null = null;
+    const fallback = { client: { ensure: async () => 'https://x.twil.io/fallback', sync: async (m: Map<string, never>) => { got = m; return { written: m.size, removed: 0 }; } }, trunkSid: 'TK1' };
+    const at = zonedInstant('2026-09-29', '10:00', DEMO_CLINIC.timezone);
+    const result = await handlers({ boss: { send: async () => null } as never, db: t.db, cipher, summariser: new LocalSummariser(), log, fallback, now: () => at }).fallbackSync();
+    expect(result).toMatchObject({ removed: 0 });
+    expect(got!.get('+13035550100')).toMatchObject({ clinic: DEMO_CLINIC.name, forwardTo: '+13035550101' });
+    expect(await handlers({ boss: { send: async () => null } as never, db: t.db, cipher, summariser: new LocalSummariser(), log }).fallbackSync()).toBe('off');
+  });
+});
