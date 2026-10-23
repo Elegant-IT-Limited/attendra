@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (texts)
+
+- **Your texts.** Settings, Texting shows every text as a client gets it, with sample details, in each of the clinic's languages, and its length in texts (an emoji makes it 70 characters a text, not 160). The clinic can add a few words after its name ("Willow Creek: Find our clinic here: …", up to 40 characters) and one line before the opt-out (up to 100); the name, the details and "Reply STOP" stay fixed, as the carriers registered them. No shortened links and no sales wording; Reset to the standard text. Rendering is shared (`renderText` in core), so the preview is the text that goes out.
+- **Every refill decision reaches the caller.** Besides "ready to pick up": "your request was sent to <pharmacy>" and "about your recent request, please call us", in English and Spanish, sent when the team closes a refill with that outcome; never the medicine, never the word refill. One picked up at the clinic gets no "sent to the pharmacy".
+
 ### Changed (the dashboard, from the first real setup)
 
 - **One layout for every list.** Every page puts its buttons in one row under the title, from the left (they sat top-right on some pages and under the text on others); Pets has its tabs and filters on one row, like Veterinarians and Requests.

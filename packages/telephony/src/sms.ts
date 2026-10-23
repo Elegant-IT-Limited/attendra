@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asE164, type Language, type Messenger, PACKS, type TextRefusal, type TextRequest, type TextResult } from '@attendra/core';
+import { asE164, ClinicConfig, type Language, type Messenger, PACKS, renderText, smsSegments, type TextRefusal, type TextRequest, type TextResult, textingOf } from '@attendra/core';
 import { type Database, type PhiCipher, phoneKey, schema, withClinic } from '@attendra/db';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 
@@ -12,7 +12,10 @@ import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, ne, sql } from 'driz
 export const TEMPLATES = PACKS.en.sms;
 
 /** A template's text in the language the call was held in. */
-export const renderSms = (template: keyof typeof TEMPLATES, vars: Record<string, string>, language: Language = 'en') => PACKS[language].sms[template](vars);
+/** A template's text in the language the call was held in, with the clinic's own words (see renderText). */
+export const renderSms = (template: keyof typeof TEMPLATES, vars: Record<string, string>, language: Language = 'en', wording?: { label?: string; extra?: string }) =>
+  renderText(template, vars, language, wording);
+export { smsSegments };
 
 /** Texts to one number from one clinic in 24 hours, across calls and jobs. */
 export const MAX_TEXTS_PER_NUMBER_PER_DAY = 8;
@@ -64,6 +67,13 @@ export class TwilioMessenger implements Messenger {
     const toHash = smsNumberHash(this.cipher, clinicId, to);
     const [row] = await withClinic(this.db, clinicId, (tx) => tx.select({ status: smsOptOuts.status }).from(smsOptOuts).where(and(eq(smsOptOuts.clinicId, clinicId), eq(smsOptOuts.toHash, toHash))));
     return row?.status === 'opted_out';
+  }
+
+  /** The clinic's own few words in this text, as saved in Settings, Texting. None if it set none, or its settings do not read. */
+  private async wordingFor(clinicId: string, template: string, language: Language) {
+    const [row] = await withClinic(this.db, clinicId, (tx) => tx.select({ config: schema.clinics.config }).from(schema.clinics).where(eq(schema.clinics.id, clinicId)));
+    const parsed = ClinicConfig.safeParse(row?.config);
+    return parsed.success ? textingOf(parsed.data).wording[template]?.[language as 'en' | 'es'] : undefined;
   }
 
   async sendTemplate(clinicId: string, input: TextRequest): Promise<TextResult> {
@@ -127,7 +137,7 @@ export class TwilioMessenger implements Messenger {
 
     try {
       const statusCallback = this.options.statusCallback?.(clinicId);
-      const { sid } = await this.sender.send({ from, to, body: renderSms(input.template, input.vars, input.language), ...(statusCallback ? { statusCallback } : {}) });
+      const { sid } = await this.sender.send({ from, to, body: renderSms(input.template, input.vars, input.language, await this.wordingFor(clinicId, input.template, input.language ?? 'en')), ...(statusCallback ? { statusCallback } : {}) });
       await withClinic(this.db, clinicId, async (tx) => {
         await tx.update(smsMessages).set({ status: 'sent', providerSid: sid, sentAt: new Date() }).where(eq(smsMessages.id, id));
         await tx.insert(auditLogs).values(audit(`sms.sent.${input.template}`, sid));

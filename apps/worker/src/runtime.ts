@@ -261,8 +261,14 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         const [call] = task?.callId ? await tx.select({ language: schema.calls.language }).from(schema.calls).where(and(eq(schema.calls.clinicId, clinicId), eq(schema.calls.id, task.callId))) : [];
         return task && clinic ? { task, config: ClinicConfig.parse(clinic.config), language: call?.language ?? null } : null;
       });
-      if (!found || found.task.type !== 'refill' || found.task.outcome !== 'refill_ready') return 'skipped';
+      // what the team decided, in one text each: ready to pick up, sent to the pharmacy, or please call us
+      const byOutcome: Record<string, 'request_ready' | 'refill_sent' | 'refill_not_approved'> = { refill_ready: 'request_ready', refill_sent: 'refill_sent', refill_declined: 'refill_not_approved' };
+      const template = found?.task.outcome ? byOutcome[found.task.outcome] : undefined;
+      if (!found || found.task.type !== 'refill' || !template) return 'skipped';
       const details = JSON.parse(d.cipher.decrypt(found.task.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>;
+      // "sent to the pharmacy" names the pharmacy, never the medicine; one picked up at the clinic is "ready" instead
+      const pharmacy = details.pharmacy?.trim();
+      if (template === 'refill_sent' && (!pharmacy || /pick ?up|clinic|recoger/i.test(pharmacy))) return 'skipped';
       const { config } = found;
       const language = config.languages.includes(found.language as never) ? (found.language as typeof config.primaryLanguage) : config.primaryLanguage;
       const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
@@ -271,13 +277,13 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       });
       // a refusal (texts off, opted out, no number) is kept on the request for staff to see
       const result = await messenger.sendTemplate(clinicId, {
-        to: details.callback_number ?? '', template: 'request_ready', vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]! },
-        idempotencyKey: `request-ready:${taskId}`, language, kind: 'auto',
+        to: details.callback_number ?? '', template, vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]!, ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
+        idempotencyKey: template === 'request_ready' ? `request-ready:${taskId}` : `${template}:${taskId}`, language, kind: 'auto',
         about: { callId: found.task.callId, patientId: found.task.patientId, taskId },
       });
       if (result.status !== 'not_sent') return 'sent';
       if (result.reason === 'carrier') throw new JobError('sms_failed'); // the carrier may take it on a retry
-      if (result.reason === 'texting_off') d.log.info({ clinic_id: clinicId, task_id: taskId }, 'texts are off: no ready-to-pick-up text sent');
+      if (result.reason === 'texting_off') d.log.info({ clinic_id: clinicId, task_id: taskId, template }, 'texts are off: no refill text sent');
       return result.reason === 'texting_off' ? 'off' : 'not_sent';
     },
 

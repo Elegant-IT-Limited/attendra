@@ -187,6 +187,18 @@ export const TextLink = z.object({
   when: z.string().trim().min(2).max(120),
 });
 
+// a link shortener hides where a link goes; US carriers filter texts that use one
+const SHORTENER = /\b(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|rebrand\.ly|cutt\.ly|shorturl\.at)\b/i;
+// the clinic's texts are registered for appointments and care (A2P): selling words would break that
+const PROMO = /(\d+\s?%\s?off|\bdiscounts?\b|\bcoupons?\b|\bpromo(tion)?\s?codes?\b|\bsale\b|\blimited[- ]time\b|\bdeal of\b|\bbuy now\b)/i;
+const textPart = (max: number) => z.string().trim().max(max)
+  .refine((t) => !SHORTENER.test(t), 'no shortened links: carriers filter them')
+  .refine((t) => !PROMO.test(t), 'no sales or offer wording: these texts are registered for appointments and care')
+  .optional();
+/** The clinic's own words in one text: a few words after its name, and one line before "Reply STOP". The rest is fixed. */
+export const TextWording = z.object({ label: textPart(40), extra: textPart(100) });
+export type TextWording = z.infer<typeof TextWording>;
+
 export const Texting = z.object({
   // the switch for texts asked for on a call; a hosted clinic has it turned on when its texting registration is approved
   enabled: z.boolean().default(false),
@@ -203,6 +215,8 @@ export const Texting = z.object({
   // the clinic's own map link; without one, a Google Maps search of the address
   mapUrl: z.string().trim().max(300).regex(/^https:\/\//, 'a link starts with https://').optional(),
   links: z.array(TextLink).max(10).default([]),
+  // per text, per language: the clinic's few words; empty means the standard wording
+  wording: z.record(z.string(), z.object({ en: TextWording.optional(), es: TextWording.optional() })).default({}),
   reminders: z.object({
     enabled: z.boolean().default(false),
     hoursBefore: z.number().int().min(2).max(168).default(24),
