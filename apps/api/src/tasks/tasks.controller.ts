@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
-import { approvesRefills, type Database, type FrontDeskRepository, staffNames, staffRole, taskFacts } from '@attendra/db';
+import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, staffNames, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { CustomFieldValues, NewTask, TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
+import { CIPHER, DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
+import { randomUUID } from 'node:crypto';
 import type { JobQueue } from '@attendra/worker/queue';
 import { ZodPipe } from '../http/zod.pipe';
 
@@ -22,7 +23,27 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/tasks')
 export class TasksController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink, @Inject(JOBS) private readonly jobs: JobQueue) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(DB) private readonly db: Database, @Inject(EVENTS) private readonly events: EventSink, @Inject(JOBS) private readonly jobs: JobQueue, @Inject(CIPHER) private readonly cipher: PhiCipher) {}
+
+  /**
+   * A request someone at the clinic writes down by hand, in the same queue as the
+   * assistant's: a callback or a follow-up, with the number to call back on. Audited
+   * under the person, and announced like any other request.
+   */
+  @Post()
+  @Requires('tasks:work')
+  @ApiOperation({ summary: 'Write down a request by hand: a callback or a follow-up, with the number to call back on. Audited.' })
+  @ApiBody({ schema: schemaOf(NewTask) })
+  async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(NewTask)) body: z.infer<typeof NewTask>, @CurrentStaff() staff: Staff): Promise<{ id: string }> {
+    const config = ClinicConfig.parse(await this.desk.settings(clinicId));
+    const topic = body.topic ? config.requestTopics?.find((t) => t.name === body.topic)?.name : undefined;
+    if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
+    const details: Record<string, string> = { reason: body.reason, ...(topic ? { topic } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}) };
+    const task = await new PostgresTaskQueue(this.db, this.cipher, `user:${staff.userId}`).create(clinicId, { type: body.type, callId: null, patientId: null, idempotencyKey: `manual:${randomUUID()}`, details });
+    if (body.urgent !== undefined || body.dueOn !== undefined) await this.desk.planTask(clinicId, task.id, { urgent: body.urgent, dueOn: body.dueOn }, staff.userId);
+    await this.events.emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: body.type, patientId: null, callId: null } });
+    return { id: task.id };
+  }
 
   @Get()
   @Requires('tasks:read')

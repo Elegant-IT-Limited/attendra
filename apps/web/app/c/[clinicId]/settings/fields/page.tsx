@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { cleanFields, FieldsEditor } from '@/components/settings/fields-editor';
+import { BuiltIn, cleanFields, FieldsEditor } from '@/components/settings/fields-editor';
 import { ListEditor } from '@/components/settings/list-editor';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
@@ -30,8 +30,8 @@ export default function FieldsAndListsPage() {
 
 /**
  * Settings, Fields and lists: for pets (or patients), veterinarians (or doctors) and
- * requests, the clinic's own fields and the lists they pick from. Fields are saved with
- * the bar at the bottom; each list has its own Save, since a rename reaches every record.
+ * requests, the clinic's own fields and the lists they pick from. Every section saves with
+ * its own button: fields, kinds of request and each list (a rename reaches every record).
  */
 function FieldsAndLists() {
   const { clinicId } = useParams<{ clinicId: string }>();
@@ -64,10 +64,18 @@ function FieldsAndLists() {
   const writable = can('settings:write');
   const pet = config.industry === 'vet';
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
-  const dirty = JSON.stringify(draft) !== JSON.stringify(pick(config));
   const onListSaved = (c: ClinicConfig) => setConfig(c);
   const topics = draft.requestTopics ?? [];
   const setTab = (t: Tab) => router.replace(`${pathname}?tab=${t}`, { scroll: false });
+  // each section saves with its own button, the same as every list on this page
+  const changed = (k: keyof Draft) => JSON.stringify(draft[k] ?? []) !== JSON.stringify(pick(config)[k] ?? []);
+  const saveButton = (k: keyof Draft, what: string) => writable && (
+    <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
+      {changed(k) && <span className="text-sm text-text-muted">Unsaved changes</span>}
+      {changed(k) && <Button variant="ghost" onClick={() => set({ [k]: pick(config)[k] } as Partial<Draft>)}>Discard</Button>}
+      <Button disabled={!changed(k) || save.isPending} onClick={() => save.mutate(draft)}>{save.isPending ? 'Saving…' : `Save ${what}`}</Button>
+    </div>
+  );
 
   return (
     <>
@@ -77,12 +85,14 @@ function FieldsAndLists() {
       <Tabs label="Fields and lists for" value={tab} onValueChange={setTab} className="mb-6"
         tabs={[{ value: 'patients', label: terms.title('patients') }, { value: 'providers', label: terms.title('providers') }, { value: 'requests', label: 'Requests' }]} />
 
-      <div className="space-y-6 pb-24">
+      <div className="space-y-6">
         {tab === 'patients' && (
           <>
             <FieldsEditor id="patient-fields" title={`Fields on each ${terms.patient}`} disabled={!writable}
               description={`Details you keep that have no place yet, like ${pet ? 'a microchip number, an insurer or a vaccine due date' : 'an insurer or a reminder date'}. Your team fills them in under Details on each record. Dropdowns and yes-or-no fields can filter the ${terms.patients} list. Removing a field hides what was filled in.`}
-              placeholder={pet ? 'e.g. Microchip' : 'e.g. Insurance member ID'} fields={draft.customFields ?? []} onChange={(customFields: CustomField[]) => set({ customFields })} />
+              placeholder={pet ? 'e.g. Microchip' : 'e.g. Insurance member ID'} fields={draft.customFields ?? []} onChange={(customFields: CustomField[]) => set({ customFields })}
+              builtIn={pet ? ['Pet\'s name', 'Kind of animal', 'Sex', 'Birthday', 'Owner', 'Phone', 'Usual vet', 'Reminder consent'] : ['First name', 'Last name', 'Date of birth', 'Gender', 'Phone', 'Parent or guardian', 'Usual doctor']}
+              footer={saveButton('customFields', 'fields')} />
             {pet && (
               <ListEditor clinicId={clinicId} name="species" id="species" title="Kinds of animal" disabled={!writable} placeholder="e.g. Rabbit"
                 description="Offered first when your team adds a pet, in this order, and used to filter the Pets list. Each pet keeps the kind it was saved with."
@@ -95,7 +105,9 @@ function FieldsAndLists() {
           <>
             <FieldsEditor id="provider-fields" title={`Fields on each ${terms.provider}`} disabled={!writable}
               description={`Details about your ${terms.providers} that have no place yet, like a licence number or the languages they speak. Filled in on each ${terms.provider}. The assistant does not use them.`}
-              placeholder="e.g. Licence number" fields={draft.providerFields ?? []} onChange={(providerFields: CustomField[]) => set({ providerFields })} />
+              placeholder="e.g. Licence number" fields={draft.providerFields ?? []} onChange={(providerFields: CustomField[]) => set({ providerFields })}
+              builtIn={['Name', 'Specialty', pet ? 'Animals and services they see' : 'What they see people for', 'Visit types', 'Weekly hours', 'Days off', 'Takes new patients']}
+              footer={saveButton('providerFields', 'fields')} />
             <ListEditor clinicId={clinicId} name="specialties" id="specialties" title="Specialties" disabled={!writable} placeholder={pet ? 'e.g. Surgery' : 'e.g. Family medicine'}
               description={`What callers hear a ${terms.provider} is (one each). Renaming one renames it on every ${terms.provider}; removing it takes it off them.`}
               values={managedList(config, 'specialties')} usage={listUsage(config, 'specialties')} onSaved={onListSaved} />
@@ -109,7 +121,9 @@ function FieldsAndLists() {
           <>
             <FieldsEditor id="request-fields" title="Fields on each request" disabled={!writable}
               description="Details your team adds to a request, like a pharmacy, an insurance claim number or a follow-up reason. Filled in on the request card; dropdowns and yes-or-no fields filter the Requests page."
-              placeholder="e.g. Pharmacy" fields={draft.requestFields ?? []} onChange={(requestFields: CustomField[]) => set({ requestFields })} />
+              placeholder="e.g. Pharmacy" fields={draft.requestFields ?? []} onChange={(requestFields: CustomField[]) => set({ requestFields })}
+              builtIn={['Kind', pet ? 'Pet' : 'Patient', 'Call back on', 'Reason', 'Who has it', 'Urgent', 'Due', 'Notes']}
+              footer={saveButton('requestFields', 'fields')} />
             <Section id="topics" title="Kinds of request" description="Your own kinds of request, like a boarding inquiry or an insurance question. The assistant asks what you list for each and labels the request, so your team sees at a glance what it is."
               action={<Button type="button" size="sm" variant="outline" disabled={!writable || topics.length >= 20} onClick={() => {
                 const empty = topics.findIndex((t) => !t.name.trim());
@@ -117,7 +131,8 @@ function FieldsAndLists() {
                 set({ requestTopics: [{ id: `topic_${Math.random().toString(36).slice(2, 8)}`, name: '' }, ...topics] });
                 setTimeout(() => document.getElementById('topic-0')?.querySelector('input')?.focus(), 0);
               }}><Plus /> Kind of request</Button>}>
-              {!topics.length && <EmptyNote>None yet. Requests are still taken; they are just not labelled.</EmptyNote>}
+              <BuiltIn label="Built in, always taken" names={['Prescription refill', 'Callback', 'Voicemail', pet ? 'New pet to check' : 'New patient to check', 'Follow up']} />
+              {!topics.length && <EmptyNote>None of your own yet. Requests are still taken; they are just not labelled.</EmptyNote>}
               <Sortable items={topics} keyOf={(t) => t.id} label={(t) => t.name} disabled={!writable} onMove={(f, to) => set({ requestTopics: moved(topics, f, to) })} className="space-y-5">
               {(t, i, handle) => (
                 <Item handle={handle} id={`topic-${i}`} removeLabel="Remove kind of request" onRemove={() => set({ requestTopics: topics.filter((_, j) => j !== i) })}>
@@ -128,22 +143,12 @@ function FieldsAndLists() {
                 </Item>
               )}
               </Sortable>
+              {saveButton('requestTopics', 'kinds of request')}
             </Section>
           </>
         )}
       </div>
 
-      {writable && dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-10 border-t border-border bg-surface/95 backdrop-blur md:left-16 xl:left-60">
-          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-8">
-            <p className="text-sm text-text-muted">You have unsaved changes to fields.</p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => { setDraft(pick(config)) }}>Discard</Button>
-              <Button onClick={() => save.mutate(draft)} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

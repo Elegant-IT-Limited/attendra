@@ -4,6 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (the dashboard, from the first real setup)
+
+- **One layout for every list.** Every page puts its buttons in one row under the title, from the left (they sat top-right on some pages and under the text on others); Pets has its tabs and filters on one row, like Veterinarians and Requests.
+- **New request.** Staff can write a request down by hand (a voicemail, a walk-in's question, a call taken at the desk): a callback or a follow-up, or one of the clinic's own kinds, with the number to call back on, urgent and due. Audited under the person, announced like any request.
+- **The clinic's own kinds of request work.** A kind saved in Settings appeared nowhere; it is now in the Requests type filter and in New request. A field marked "show as a column" shows on every request card, with "Not filled in" when empty.
+- **What is built in is shown.** Fields and lists lists the fields every record has anyway (a pet's name, kind, sex, birthday, owner, phone…) and the built-in kinds of request, so nobody adds them twice. Every section there saves with its own button, like the lists.
+- **Phone numbers say what they are.** Settings shows each number formatted, as "Your assistant's number" or "Your clinic's own line"; the settings' meta lists the assistant's numbers. Getting and releasing a number is in the clinic's audit log.
+- **A staff note shows when it arrived.** On a live call, a note says "Sending…", then "Delivered" when the voice model acknowledges it.
+
 ### Added (the backup route)
 
 - **A caller never hears an error tone when Attendra is down.** When the trunk cannot reach the assistant (our server, OpenAI or the voice service down), Twilio asks the trunk's disaster recovery URL, which is now a Twilio Function hosted by Twilio: it rings the clinic's front desk while it is open or the on-call phone after hours (with the caller's number, so they see who it is), and otherwise says the clinic cannot take the call right now and where to go in an emergency, in the clinic's language. It also tells the Slack channel. The worker sets it all up at start (a Sync map of our numbers, the Function, deployed only when its code changes, and the trunk's disaster recovery URL; needs `TWILIO_TRUNK_SID`) and keeps the map current every 10 minutes. A line forwarded to the assistant is never used, so a call cannot loop back into the outage.

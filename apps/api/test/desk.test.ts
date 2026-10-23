@@ -185,6 +185,24 @@ describe('calls', () => {
 
 });
 
+describe('a request written down by hand', () => {
+  it('joins the queue with its number and reason, audited under the person; a viewer cannot, and a kind must be the clinic\'s own', async () => {
+    const res = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'Left a voicemail about a dental cleaning', callbackNumber: '(303) 555-0142', urgent: true } });
+    expect(res.statusCode).toBe(201);
+    const { id } = res.json() as { id: string };
+    const found = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'dental cleaning' } })).json().tasks as { id: string; callId: string | null; urgent: boolean; details: Record<string, string> }[];
+    expect(found.find((t) => t.id === id)).toMatchObject({ callId: null, urgent: true, details: { reason: 'Left a voicemail about a dental cleaning', callback_number: '(303) 555-0142' } });
+    expect((await audit('task.created.callback')).find((a) => a.entity_id === id)?.actor).toMatch(/^user:/);
+    expect((await api.request('POST', `${C}/tasks`, { cookie: as.viewer, body: { type: 'callback', reason: 'nope' } })).statusCode).toBe(403);
+    expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'boarding', topic: 'Not a kind here' } })).statusCode).toBe(422);
+  });
+
+  it('the settings say which numbers are the assistant\'s own', async () => {
+    const meta = (await api.request('GET', `${C}/settings/meta`, { cookie: as.staff })).json() as { assistantNumbers: string[] };
+    expect(meta.assistantNumbers).toContain(DEMO_CLINIC.phoneNumbers[0]);
+  });
+});
+
 describe('the team', () => {
   const M = `${C}/members`;
   const members = async (cookie = as.admin) => (await api.request('GET', M, { cookie })).json().members as { userId: string; email: string; role: string; you: boolean; twoFactorEnabled: boolean }[];

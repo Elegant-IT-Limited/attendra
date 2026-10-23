@@ -23,7 +23,7 @@ type Caption = { speaker: 'caller' | 'agent'; text: string };
 type Step =
   | { kind?: 'tool'; tool: string; status: 'started' | 'ok' | 'refused'; code: string | null; at: number }
   // a staff action, with the note's words: from the live stream only, never stored
-  | { kind: 'staff'; action: string; by: string | null; note: string | null; at: number };
+  | { kind: 'staff'; action: string; by: string | null; note: string | null; at: number; delivered?: boolean };
 type Snapshot = { channel: 'phone' | 'web'; startedAt: string; verified: string | null; doing: string | null; pending: string | null; emergency: boolean };
 
 /** Everything the page knows about the call, built from the stream. */
@@ -68,6 +68,11 @@ function useLiveCall(clinicId: string, callId: string, onEnded: () => void, allo
     on('state', (d) => setState({ verified: (d.verified as string | null) ?? null, pending: (d.pending as string | null) ?? null, doing: (d.doing as string | null) ?? null }));
     on('emergency', (d) => setEmergency(String(d.kind)));
     on('staff', (d) => {
+      // the assistant got the latest note: it is marked delivered, not added again
+      if (d.action === 'coach_delivered') {
+        setSteps((ss) => { const i = ss.findLastIndex((s) => s.kind === 'staff' && s.action === 'coached' && !s.delivered); return i < 0 ? ss : ss.map((s, j) => (j === i ? { ...s, delivered: true } : s)); });
+        return;
+      }
       setStaff(String(d.action));
       if (['coached', 'taken_over', 'vip', 'ended'].includes(String(d.action))) {
         setSteps((ss) => [...ss, { kind: 'staff', action: String(d.action), by: (d.by as string | null) ?? null, note: (d.note as string | undefined) ?? null, at: Date.now() }]);
@@ -275,6 +280,7 @@ export default function LiveCallPage() {
                     <div className="min-w-0">
                       <p className="font-medium">{staffLine(s.action, s.by)}</p>
                       {s.note && <p className="break-words text-xs text-text-muted">&ldquo;{s.note}&rdquo;</p>}
+                      {s.action === 'coached' && <p className="text-xs text-text-muted" data-testid="note-status">{s.delivered ? 'Delivered: the assistant uses it on its next reply' : 'Sending…'}</p>}
                     </div>
                   </li>
                 ) : (
