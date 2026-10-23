@@ -6,6 +6,9 @@ import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE }
 import type { Planner } from './planner';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
+/** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"). */
+const CALLBACK_PROMISE = /\b(pass (that|this|it|your (message|request|details)) (along|on)|(have|get|ask) (someone|the team|our team|a team member|the clinic|staff|the staff|a vet|the vet|a veterinarian)( from the clinic)? (to )?(call|ring|get back to|contact) you|(will|'ll|is going to) (call|ring|get back to|contact) you|call you back|be in touch|let the team know|le (llamar[aá]n|llamaremos|devolver[aá]n la llamada)|alguien (le|te) llamar[aá])/i;
+
 /** What the voice engine should send or do. The engine owns the socket; the agent owns the decisions. */
 export type Outbound =
   | { type: 'thinking' | 'commentary'; delegationId: string; content: string }
@@ -247,6 +250,25 @@ export class CallAgent {
     }];
   }
 
+  /**
+   * The assistant told the caller the team will call them back, or that it passed something
+   * on, and no request exists: it is told to make it now. A promise to call back is kept by
+   * a request with the caller's number, never by the model's word. Twice at most per call.
+   */
+  private promiseChecked = -1;
+  onPromiseCheck(): Outbound[] {
+    const s = this.state;
+    if (s.requestMade || s.ending || s.emergencyLocked || s.promiseNudges >= 2) return [];
+    let i = s.turns.length - 1;
+    while (i >= 0 && s.turns[i]!.speaker !== 'agent') i--;
+    if (i < 0 || i === this.promiseChecked) return [];
+    this.promiseChecked = i;
+    if (!CALLBACK_PROMISE.test(s.turns[i]!.text)) return [];
+    s.promiseNudges++;
+    this.log.info({ call_id: this.ctx.callId, nth: s.promiseNudges }, 'the assistant promised a callback that is not recorded: asking for it');
+    return [{ type: 'instructions', delegationId: null, content: 'You told the caller the team will get back to them, but no request exists yet. If the caller wants a callback, ask the backend now to create it with what they need; their number is the one they are calling from unless they gave another. Do not mention this note.' }];
+  }
+
   /** A person takes the call: the assistant says so, then the call is transferred. Work in flight is dropped. */
   takeOver(uri: string, by: string | null = null): Outbound[] {
     this.state.revision++;
@@ -352,6 +374,7 @@ export class CallAgent {
       const code = typeof result.data.error === 'string' ? result.data.error : null;
       this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
       // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
+      if ((name === 'create_callback' || name === 'create_refill_request') && result.ok) this.state.requestMade = true;
       if ((name === 'verify_caller' || name === 'register_patient') && result.data.verified !== false && (result.data.verified === true || result.data.registered === true)) {
         const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown; pet_name?: unknown };
         // a pet is shown by its own name

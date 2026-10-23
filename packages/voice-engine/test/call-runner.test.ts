@@ -182,6 +182,14 @@ describe('the conversation prompt', () => {
     expect(conversationPrompt({ ...DEMO_CLINIC, texting: Texting.parse({ enabled: true }) }, NOW)).toMatch(/You can text the caller/);
   });
 
+  it('says the greeting once only, never after a pause or a staff note, and never asks for the number they are calling from', () => {
+    const p = conversationPrompt(DEMO_CLINIC, NOW);
+    expect(p).toContain('Never say it again later in the call');
+    expect(p).toContain('Ask for the caller\'s first name only');
+    expect(p).toContain('Never ask for the phone number they are calling from');
+    expect(p).toContain('unless the backend has done it in this call');
+  });
+
   it('carries the greeting, the AI disclosure and today\'s hours, and nothing about any patient', () => {
     const prompt = conversationPrompt(DEMO_CLINIC, NOW);
     expect(prompt).toContain("I'm Maya, the clinic's AI assistant");
@@ -301,6 +309,60 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     await other.runner.handle(delta('in', 'e3', 'Oh wait, one more thing.', 3000));
     await vi.advanceTimersByTimeAsync(5000);
     expect(other.engine.hangup).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('ends the first real call\'s goodbye that came in pieces, and never nudges after it (2026-10-23)', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('out', 'e1', 'And is there anything', 100));
+    await h.runner.handle(delta('in', 'e2', 'Thank you', 600));
+    await h.runner.handle(delta('out', 'e3', 'else I can help you with today?', 900));
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.runner.handle(delta('in', 'e4', "No, it's fine. Thank you. Bye. Have a", 4000));
+    await h.runner.handle(delta('out', 'e5', 'Goodbye,', 4500));
+    await h.runner.handle(delta('in', 'e6', 'nice day', 4600));
+    await h.runner.handle(delta('out', 'e7', 'Salam. Take care.', 4700));
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    expect(h.sent.filter((e) => (e as { type: string }).type === 'session.instructions.append')).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('ends the call when the caller asks for it ("can you cut the call?"), and keeps it when they say not to', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('out', 'e1', 'Sure thing, take care.', 100));
+    await vi.advanceTimersByTimeAsync(2000);
+    await h.runner.handle(delta('in', 'e2', 'Okay, can you cut the call?', 2000));
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(h.engine.hangup).toHaveBeenCalledTimes(1);
+    expect(h.sent.filter((e) => (e as { type: string }).type === 'session.instructions.append')).toEqual([]);
+
+    const other = harness(new ScriptedPlanner([]));
+    await other.runner.handle(delta('in', 'e1', "Please don't hang up, I'm finding the card.", 100));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(other.engine.hangup).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('tells the assistant to make the callback it promised, once it has finished speaking, and not when one exists', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('in', 'e1', 'Please tell your team to call me back.', 100));
+    await h.runner.handle(delta('out', 'e2', "Sure. I'll pass that along.", 600));
+    await vi.advanceTimersByTimeAsync(5000);
+    const notes = h.sent.filter((e) => (e as { type: string }).type === 'session.instructions.append') as { content: string }[];
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.content).toContain('no request exists yet');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.sent.filter((e) => (e as { content?: string }).content?.includes('no request exists'))).toHaveLength(1);
+
+    const made = harness(new ScriptedPlanner([]));
+    (made.runner as unknown as { agent: CallAgent }).agent.state.requestMade = true;
+    await made.runner.handle(delta('out', 'e1', 'Someone will call you back in the morning.', 100));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(made.sent).toEqual([]);
     vi.useRealTimers();
   });
 

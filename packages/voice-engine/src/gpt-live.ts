@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import type { DataChannelConfig } from 'openai/resources/live/live';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt } from './prompt';
+import { conversationPrompt, openingInstruction } from './prompt';
 
 /**
  * What a browser tab may see and do on its own data channel. It is untrusted, so
@@ -38,6 +38,8 @@ export class GptLiveEngine implements VoiceEngine {
   /** Browser sessions have no SIP leg: they end with session.close, never with the SIP endpoints. */
   private readonly browser = new Set<string>();
   private readonly sockets = new Map<string, SidebandSocket>();
+  /** Sessions that still have to be told to greet, with what to say: sent once, when the sideband attaches. */
+  private readonly openings = new Map<string, string>();
 
   constructor(
     private readonly client: OpenAI,
@@ -49,6 +51,8 @@ export class GptLiveEngine implements VoiceEngine {
     return {
       model: this.model,
       instructions: conversationPrompt(clinic, now),
+      // GPT-Live waits for the caller unless told to speak first (OpenAI: "Greet before the caller speaks")
+      input: [{ type: 'message' as const, role: 'developer' as const, content: [{ type: 'input_text' as const, text: openingInstruction(clinic) }] }],
       audio: { output: { voice: clinic.voice } },
       // client delegation: our backend runs every tool, so identity checks,
       // confirmations and audit stay in code we own
@@ -59,6 +63,7 @@ export class GptLiveEngine implements VoiceEngine {
 
   async accept(sessionId: string, clinic: ClinicConfig, now: Date) {
     await this.client.live.sessions.accept(sessionId, { session: { type: 'live', ...this.session(clinic, now) } });
+    this.openings.set(sessionId, openingInstruction(clinic));
   }
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
@@ -68,6 +73,7 @@ export class GptLiveEngine implements VoiceEngine {
       transport: { type: 'webrtc', sdp: sdpOffer },
     }, { timeout: 10_000, maxRetries: 0 });
     this.browser.add(created.session.id);
+    this.openings.set(created.session.id, openingInstruction(clinic));
     return { sessionId: created.session.id, sdpAnswer: created.transport.sdp };
   }
 
@@ -77,6 +83,12 @@ export class GptLiveEngine implements VoiceEngine {
 
   attach(sessionId: string): Sideband {
     const ws = this.openSideband(sessionId);
+    // the same opening again, once, now that we can reach the session; the SDK holds it until the socket opens
+    const opening = this.openings.get(sessionId);
+    if (opening) {
+      this.openings.delete(sessionId);
+      ws.send({ type: 'session.instructions.append', event_id: `opening_${sessionId}`, delegation_id: null, content: opening } as never);
+    }
     if (this.browser.has(sessionId)) {
       this.sockets.set(sessionId, ws);
       ws.socket.on('close', () => { if (this.sockets.get(sessionId) === ws) this.sockets.delete(sessionId); });
@@ -116,6 +128,7 @@ export class GptLiveEngine implements VoiceEngine {
 
   release(sessionId: string) {
     this.browser.delete(sessionId);
+    this.openings.delete(sessionId);
     this.sockets.delete(sessionId);
   }
 }

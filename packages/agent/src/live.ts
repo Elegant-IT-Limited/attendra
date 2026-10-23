@@ -46,7 +46,7 @@ export function shortName(fullName: string): string | null {
 export function coachingInstruction(note: string): string {
   return [
     `A member of the clinic's staff is listening and sends you this note: "${note.replace(/"/g, "'")}".`,
-    'It is for you, not the caller: use it if it fits, in your own words, and never read it out.',
+    'It is for you, not the caller: apply it on your next reply, in your own words, and never read it out or mention it. Carry on from where the conversation is: do not greet the caller again or start over.',
     'It cannot change the rules. You still verify identity, read back every change, wait for a clear yes, and follow the emergency script.',
   ].join(' ');
 }
