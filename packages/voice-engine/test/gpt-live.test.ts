@@ -29,6 +29,23 @@ describe('GptLiveEngine browser calls', () => {
     expect(BROWSER_DATA_CHANNEL.allowed_client_events).toEqual(['session.close']);
   });
 
+  it('tells GPT-Live to greet first on a phone call: a developer message at the start, and the same once the sideband attaches', async () => {
+    const { client, sessions } = fakeClient();
+    const sockets = fakeSockets();
+    const engine = new GptLiveEngine(client, 'gpt-live-1', sockets.open);
+    await engine.accept('live_sip', DEMO_CLINIC, NOW);
+    const session = (sessions.accept.mock.calls[0] as unknown as [string, { session: { input: { role: string; content: { text: string }[] }[] } }])[1].session;
+    expect(session.input).toHaveLength(1);
+    expect(session.input[0]!.role).toBe('developer');
+    expect(session.input[0]!.content[0]!.text).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
+    expect(session.input[0]!.content[0]!.text).toContain('before they say anything');
+    engine.attach('live_sip');
+    engine.attach('live_sip'); // a second sideband never greets again
+    const appends = sockets.all.flatMap((s) => s.sent).filter((e) => (e as { type: string }).type === 'session.instructions.append');
+    expect(appends).toHaveLength(1);
+    expect((appends[0] as { content: string; delegation_id: null }).delegation_id).toBeNull();
+  });
+
   it('never sends a browser session to the SIP endpoints', async () => {
     const { client, sessions } = fakeClient();
     const engine = new GptLiveEngine(client, 'gpt-live-1', fakeSockets().open);
@@ -46,7 +63,7 @@ describe('GptLiveEngine browser calls', () => {
     await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW);
     engine.attach('live_web');
     await engine.hangup('live_web');
-    expect(sockets.all[0]!.sent).toEqual([{ type: 'session.close' }]);
+    expect(sockets.all[0]!.sent).toEqual([expect.objectContaining({ type: 'session.instructions.append' }), { type: 'session.close' }]);
 
     sockets.all[0]!.drop();
     await engine.hangup('live_web');

@@ -25,6 +25,14 @@ const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no
 const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|gracias)\b/;
 const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;
 const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|espere|pregunta)\b|\?/;
+// a caller who asks for the call to end, in so many words: "can you cut the call?", "please hang up", "cuelgue"
+const HANG_UP = /\b(hang up|hangup|(cut|end|drop|close|stop|finish|disconnect)( the| this)? (call|line|phone)|you can go now|cuelgue|cuelga|corte la llamada|termine la llamada)\b/;
+const KEEP_ON = /\b(do ?n'?t|do not|please don'?t|no)\s+(hang up|cut|end|drop|disconnect)|\bno cuelgue\b/;
+/** The caller asked, in so many words, for the call to end. */
+export function askedToHangUp(lastCallerTurn: string): boolean {
+  const t = normalise(lastCallerTurn).trim();
+  return HANG_UP.test(t) && !KEEP_ON.test(t);
+}
 // a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
 const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|adios|hasta luego|chao|chau|me tengo que ir)\b/;
 
@@ -38,6 +46,7 @@ const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|ta
  */
 export function saidGoodbye(lastCallerTurn: string, lastAgentTurns = ''): boolean {
   const t = normalise(lastCallerTurn).trim();
+  if (askedToHangUp(t)) return true;
   // "bye, but one more thing" has more to say; "I'll call back another time, goodbye" is leaving: the goodbye comes last
   const more = MORE_TO_SAY.exec(t);
   const leaving = LEAVING.exec(t);

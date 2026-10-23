@@ -57,6 +57,10 @@ export class CallState {
   endedByStaff = false;
   /** The call is being ended for the caller's language: the goodbye has been said and nothing is planned after it. */
   endedForAbuse = false;
+  /** A request for the team (a callback, a refill) was made on this call. */
+  requestMade = false;
+  /** How often the assistant was told to make the callback it had promised. */
+  promiseNudges = 0;
   /** Nothing more is planned once the call is being ended, by staff or for abuse. */
   get ending(): boolean { return this.endedByStaff || this.endedForAbuse; }
   /** Every emergency kind already answered, so a new kind (bleeding after chest pain) is answered too. */
