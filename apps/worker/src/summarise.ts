@@ -64,6 +64,7 @@ const endedOnError = (call: CallForSummary) => call.closeReason === 'error' || c
  */
 export function requiredReview(call: CallForSummary): { reason: string; followUp: string } | null {
   if (call.emergency) return { reason: 'Emergency language on the call.', followUp: 'Check the call and whether anyone should contact the caller.' };
+  if (ran(call, 'security_probe') || ran(call, 'security_leak')) return { reason: 'The caller tried to change the assistant\'s rules or get private information, or the assistant said how it works.', followUp: 'Check the call: what was asked and what was said.' };
   if (ran(call, 'abusive_caller')) return { reason: 'The caller used insulting or threatening language.', followUp: 'Decide whether anyone should contact the caller.' };
   if (said(call, 'needs_staff')) return { reason: 'Two patient records share the caller\'s name and date of birth.', followUp: 'Confirm which patient called and call them back.' };
   if (said(call, 'too_many_attempts')) return { reason: 'The caller could not be verified after three tries.', followUp: 'Call the caller back to confirm who they are.' };

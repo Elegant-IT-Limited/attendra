@@ -22,3 +22,4 @@ export * from './starter';
 export * from './time';
 export * from './tools';
 export * from './voices';
+export * from './security';
