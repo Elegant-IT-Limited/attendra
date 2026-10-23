@@ -3,7 +3,7 @@ import { createPhiCipher, schema, seedDemo, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { callerNumber, confirmByReply, dialledNumber, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
+import { callerNumber, confirmByReply, dialledCandidates, dialledNumber, maskedHeaders, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
 import twilio from 'twilio';
 
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
@@ -25,6 +25,22 @@ describe('SIP headers from a Twilio Elastic SIP Trunk', () => {
 
   it('returns null instead of guessing when the header is missing or odd', () => {
     expect(dialledNumber([{ name: 'To', value: '<sip:frontdesk@example.com>' }])).toBeNull();
+  });
+});
+
+describe('dialled number candidates', () => {
+  it('reads To first, then other headers, never the caller headers, and masks numbers for logs', () => {
+    const headers = [
+      { name: 'From', value: '<sip:+8801700000000@x>' },
+      { name: 'To', value: '"Clinic" <sip:proj_abc@sip.api.openai.com;transport=tls>' },
+      { name: 'Diversion', value: '<sip:5163630790@pstn.twilio.com>;reason=unconditional' },
+      { name: 'X-Called', value: '+15163630790' },
+      { name: 'Call-ID', value: '03782086-4ce9-44bf-8b0d-4e303d2cc590' },
+    ];
+    expect(dialledCandidates(headers)).toEqual(['+15163630790']);
+    expect(dialledCandidates([{ name: 'To', value: '<sip:+13035550100@x>' }, { name: 'X-Other', value: '+19995550000' }])).toEqual(['+13035550100', '+19995550000']);
+    expect(maskedHeaders(headers).join('|')).not.toContain('5163630790');
+    expect(maskedHeaders(headers).join('|')).toContain('5163***0790');
   });
 });
 
