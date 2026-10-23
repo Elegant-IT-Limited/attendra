@@ -26,6 +26,8 @@ const Env = z.object({
   ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(500)),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
   BROWSER_CALL_MAX_SECONDS: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(300)),
+  // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged
+  ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),
 });
 export type Env = z.infer<typeof Env>;

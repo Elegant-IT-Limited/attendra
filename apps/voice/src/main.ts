@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { connect, createPhiCipher, KnowledgeRepository } from '@attendra/db';
 import { HybridKnowledgeBase } from '@attendra/knowledge';
-import { createLogger } from '@attendra/observability';
+import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
 import { embedderFromEnv } from '@attendra/worker/runtime';
 import { loadEnv } from './config';
@@ -9,6 +9,8 @@ import { createVoiceApp } from './runtime';
 
 const env = loadEnv();
 const log = createLogger({ name: 'voice', level: env.LOG_LEVEL });
+const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'voice', log });
+process.on('unhandledRejection', (err) => { log.error({ err: { message: (err as Error)?.message } }, 'unhandled rejection'); alerts.alert('voice_error', `Unhandled error: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown'}.`); });
 // sends jobs only; the worker service runs them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
@@ -20,6 +22,7 @@ const app = createVoiceApp({
   openaiApiKey: env.OPENAI_API_KEY,
   webhookSecret: env.OPENAI_WEBHOOK_SECRET,
   log,
+  alerts,
   liveModel: env.GPT_LIVE_MODEL,
   realtimeModel: env.ATTENDRA_REALTIME_MODEL,
   defaultEngine: env.ATTENDRA_VOICE_ENGINE,
@@ -36,8 +39,10 @@ const app = createVoiceApp({
 
 await app.listen({ port: env.PORT, host: '0.0.0.0' });
 log.info({ port: env.PORT, phone: !!env.OPENAI_WEBHOOK_SECRET, sms: !!env.TWILIO_ACCOUNT_SID, browser: !!env.VOICE_INTERNAL_TOKEN }, 'voice service listening');
+// a restart is worth knowing: a deploy, or a crash the container came back from
+alerts.note(`Voice service started: phone calls ${env.OPENAI_WEBHOOK_SECRET ? 'on' : 'OFF'}, texts ${env.TWILIO_ACCOUNT_SID ? 'on' : 'off'}.`);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   // let in-progress calls finish writing before the process exits
-  process.on(signal, () => { void app.close().then(() => boss.stop({ graceful: true })).then(() => process.exit(0)); });
+  process.on(signal, () => { void app.close().then(() => alerts.flush()).then(() => boss.stop({ graceful: true })).then(() => process.exit(0)); });
 }

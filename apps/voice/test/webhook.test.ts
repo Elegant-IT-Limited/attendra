@@ -107,12 +107,15 @@ describe('the OpenAI webhook', () => {
   });
 
   it('rejects a call to a number no clinic owns with SIP 404', async () => {
-    const { d, engine } = deps();
+    const alert = vi.fn();
+    const { d, engine } = deps({ alerts: { alert, note: vi.fn(), flush: async () => {} } });
     const app = buildServer(d);
     await post(app, incoming('wh_4', '+19995550000'));
     await app.close();
     expect(engine.reject).toHaveBeenCalledWith('live_abc', 404);
     expect(engine.accept).not.toHaveBeenCalled();
+    // the people who run Attendra hear about it from the system, not from a clinic
+    expect(alert).toHaveBeenCalledWith('call_rejected', expect.stringContaining('turned away (SIP 404)'));
   });
 
   it('reads the caller\'s earlier calls before the call runs, and a failed read never holds the call up', async () => {
