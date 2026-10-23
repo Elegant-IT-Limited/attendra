@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the first real calls, round 2)
+
+- **The caller's number is kept, so the team can call back.** A call kept only a one-way hash of the number it came from, so a caller who asked to be called back could not be: the call page said "Unknown caller" and the request had no number. The number is now stored encrypted (migration 0036), shown on the calls list and the call page to the roles that may read calls, put on the after-call follow-up request as "Call back on", and cleared with the transcript when the retention period ends. It never goes to a model.
+- **A pet is found with the owner's first name.** At a veterinary clinic the owner's first name, the pet's name and the phone on file find the pet; the assistant no longer asks for a last name. A full name, when given, still has to match in full, and every wrong detail gets the same answer.
+- **A caller who rings back is helped from where they left off.** The backend gets this number's last three calls to the clinic in 30 days (their summaries and the requests still open), reads them in an audited access, and may mention them only once the caller has said the first name or the pet's name used on that call, because a number can be faked.
+
 ### Fixed (the first real calls, round 1)
 
 - **The assistant speaks first on a phone call.** GPT-Live waits for the caller unless told otherwise, so callers heard silence until they said hello. The opening is now a developer message at the start of the session and the same instruction once the sideband attaches, as OpenAI's guide describes; it is said once.

@@ -101,6 +101,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           details: {
             reason: summary.reviewReason ?? 'The call ended without the caller\'s request done.',
             ...(summary.followUp ? { suggested: summary.followUp } : {}),
+            // whoever picks it up can call back without opening the call
+            ...(call.fromNumber ? { callback_number: call.fromNumber } : {}),
           },
         });
         if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: 'follow_up', patientId: call.patientId, callId } });

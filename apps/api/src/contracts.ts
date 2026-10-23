@@ -72,6 +72,8 @@ export const CallSummary = z.object({
   id: z.string(),
   /** The verified patient's name, for roles that may read calls; null for everyone else, and for calls nobody was verified on. */
   patientName: z.string().nullable(),
+  /** The number the call came from, for the same roles as the name; null on a browser test call and once the transcript is deleted. */
+  callerNumber: z.string().nullable(),
   channel: z.enum(['phone', 'web']),
   startedAt: z.iso.datetime(),
   endedAt: z.iso.datetime().nullable(),

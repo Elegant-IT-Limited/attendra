@@ -17,7 +17,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
-import { clinicTime, duration, OUTCOMES, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
+import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
 import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -163,7 +163,7 @@ function Calls() {
                       ? <span className="inline-flex items-center gap-1 text-text"><CheckCircle2 className="size-4 text-primary" aria-label="Verified" /> {c.patientName}</span>
                       : c.verified
                         ? <span className="inline-flex items-center gap-1 text-text"><CheckCircle2 className="size-4 text-primary" /> Verified caller</span>
-                        : <span className="inline-flex items-center gap-1"><CircleDashed className="size-4" /> Unknown caller</span>}
+                        : <span className="inline-flex items-center gap-1"><CircleDashed className="size-4" /> {c.callerNumber ? phone(c.callerNumber) : 'Unknown caller'}</span>}
                   </TD>
                   <TD className="hidden text-text-muted md:table-cell">{c.tools.map((t) => TOOLS[t] ?? t).join(', ') || 'Talked only'}</TD>
                   <TD className="text-right tabular-nums text-text-muted">{duration(c.voiceSeconds)}</TD>

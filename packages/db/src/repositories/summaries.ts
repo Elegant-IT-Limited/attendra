@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, asc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, callSummaries, clinics, tasks } from '../schema';
+import { callerKey } from './calls';
 
 export const INTENTS = ['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other'] as const;
 export const SENTIMENTS = ['calm', 'frustrated', 'distressed'] as const;
@@ -40,6 +41,8 @@ export interface CallForSummary {
   tasks: { type: string }[];
   /** The patient the assistant verified on the call, if any. */
   patientId: string | null;
+  /** The number the call came from, for the request's "call back on". */
+  fromNumber?: string | null;
 }
 
 const WORKER = 'worker';
@@ -56,6 +59,33 @@ export function decryptSummary(cipher: PhiCipher, clinicId: string, row: typeof 
 /** Summaries: written by the worker, read and marked reviewed by staff. */
 export class CallSummaryRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
+
+  /**
+   * The last calls from this number to this clinic (30 days, three at most), as lines for
+   * the assistant's backend: when, what the summary said, and the requests still open. A
+   * caller who rings back is helped from where they left off. Caller ID can be faked, so
+   * the planner is told to use it only once the caller has confirmed a detail from it.
+   * Reading the summaries is a PHI access and is audited.
+   */
+  async historyFor(clinicId: string, fromNumber: string, exceptCallId: string, now = new Date()): Promise<string | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const since = new Date(now.getTime() - 30 * 86_400_000);
+      const rows = await tx.select({ id: calls.id, startedAt: calls.startedAt, summary: callSummaries }).from(calls)
+        .innerJoin(callSummaries, eq(callSummaries.callId, calls.id))
+        .where(and(eq(calls.clinicId, clinicId), eq(calls.fromHash, this.cipher.hash(callerKey(clinicId, fromNumber))), ne(calls.id, exceptCallId),
+          gt(calls.startedAt, since), isNotNull(calls.endedAt)))
+        .orderBy(desc(calls.startedAt)).limit(3);
+      if (!rows.length) return null;
+      const open = await tx.select({ callId: tasks.callId, type: tasks.type }).from(tasks)
+        .where(and(eq(tasks.clinicId, clinicId), inArray(tasks.callId, rows.map((r) => r.id)), eq(tasks.status, 'open')));
+      await tx.insert(auditLogs).values({ clinicId, actor: 'assistant', action: 'call.history.read', entity: 'call', entityId: exceptCallId, callId: exceptCallId });
+      return rows.map((r) => {
+        const s = decryptSummary(this.cipher, clinicId, r.summary);
+        const still = open.filter((t) => t.callId === r.id).map((t) => t.type.replace('_', ' '));
+        return `${r.startedAt.toISOString()}: ${s.summary}${still.length ? ` Still open for the team: ${still.join(', ')}.` : ''}`;
+      }).join('\n');
+    });
+  }
 
   /**
    * The closed call, its transcript and what the tools did, for the summariser.
@@ -80,6 +110,7 @@ export class CallSummaryRepository {
         actions: actions.map((a) => ({ tool: a.tool, result: a.result as Record<string, unknown> })),
         tasks: callTasks,
         patientId: call.patientId,
+        fromNumber: call.fromEnc ? this.cipher.decrypt(call.fromEnc, phiContext(clinicId, 'calls.from')) : null,
       };
     });
   }
@@ -139,6 +170,8 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
         these.transcriptLines = (await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id })).length;
         these.summaries = (await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId })).length;
         these.callActions = (await tx.delete(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, old))).returning({ id: callActions.id })).length;
+        // the caller's number goes with the transcript; the hash for limits stays
+        await tx.update(calls).set({ fromEnc: null }).where(and(eq(calls.clinicId, clinicId), inArray(calls.id, old)));
       }
       await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: these });
       counts.transcriptLines += these.transcriptLines;
