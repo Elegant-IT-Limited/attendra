@@ -1,5 +1,5 @@
 import { DEMO_CLINIC, Texting, zonedInstant } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, clinicById, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -321,6 +321,28 @@ describe('a refill ready to pick up', () => {
     return id;
   };
   const textFor = (taskId: string) => withClinic(t.db, DEMO_CLINIC.id, async (tx) => (await tx.select().from(schema.smsMessages).where(eq(schema.smsMessages.taskId, taskId)))[0]);
+
+  it('texts "sent to your pharmacy" with the pharmacy and "please call us" for a refill not approved, never the medicine, and the clinic\'s own words', async () => {
+    const sent: string[] = [];
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts: { send: async (m) => { sent.push(m.body); return { sid: `SM${'f'.repeat(31)}${sent.length}` }; } } });
+    const decided = async (key: string, outcome: string, pharmacy: string) => {
+      const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: key, details: { medication: 'carprofen 75 mg', pharmacy, callback_number: '+13035550177' } });
+      await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: outcome as 'refill_sent' }).where(eq(schema.tasks.id, id)));
+      return id;
+    };
+    const before = await clinicById(t.db, DEMO_CLINIC.id);
+    const wording = JSON.stringify({ refill_sent: { en: { extra: 'Bring your ID when you collect it' } } });
+    await t.db.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || jsonb_build_object('wording', ${wording}::jsonb)) where id = ${DEMO_CLINIC.id}`);
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-sent-1', 'refill_sent', 'CVS on Main St') })).toBe('sent');
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-no-1', 'refill_declined', 'CVS on Main St') })).toBe('sent');
+    // collected at the clinic: "sent to your pharmacy" would be wrong, so nothing goes out for it
+    expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-sent-2', 'refill_sent', 'pick up at the clinic') })).toBe('skipped');
+    expect(sent[0]).toContain('your request was sent to CVS on Main St.');
+    expect(sent[0]).toContain('Bring your ID when you collect it. Reply STOP to opt out.');
+    expect(sent[1]).toContain('about your recent request, please call us on');
+    expect(sent.join(' ')).not.toMatch(/carprofen/i);
+    await t.db.execute(sql`update clinics set config = ${JSON.stringify(before)}::jsonb where id = ${DEMO_CLINIC.id}`);
+  });
 
   it('sends nothing when texts are off, and keeps why on the request', async () => {
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log });
