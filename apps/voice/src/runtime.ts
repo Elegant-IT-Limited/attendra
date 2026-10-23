@@ -5,7 +5,7 @@ import {
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
 import { type KnowledgeBase, PACKS, speakSlot } from '@attendra/core';
-import type { Logger } from '@attendra/observability';
+import type { Alerter, Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
@@ -22,6 +22,8 @@ export interface VoiceRuntime {
   /** Phone calls arrive as signed webhooks; without the secret every delivery is refused. */
   webhookSecret?: string;
   log: Logger;
+  /** Where alerts go (Slack); without it they are only logged. */
+  alerts?: Alerter;
   liveModel: string;
   /** OpenAI's Realtime model, the second engine; and which engine answers a clinic that has not been given one. */
   realtimeModel?: string;
@@ -88,9 +90,12 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     actionsFor: (clinicId, callId) => ({
       record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }),
     }),
+    alerts: rt.alerts,
     recorderFor: (clinicId, callId) => ({
       appendSegment: (s) => calls.appendSegment(clinicId, callId, s),
       close: async (c) => {
+        // a call that dropped instead of ending is something to look at
+        if (c.reason === 'connection_lost' || c.reason === 'error' || c.reason.startsWith('socket closed')) rt.alerts?.alert('call_dropped', `A call dropped before it ended (${c.reason}). Clinic ${clinicId}.`);
         await calls.close(clinicId, callId, c);
         // the call record stands whatever happens to the queue; the summary can be redone
         await (rt.jobs ?? noJobs).callCompleted({ clinicId, callId }).catch((err: unknown) =>

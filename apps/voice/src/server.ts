@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
 import { ClinicConfig, vipRoute } from '@attendra/core';
-import type { Logger } from '@attendra/observability';
+import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
@@ -21,6 +21,8 @@ export interface VoiceDeps {
   clinicById(clinicId: string): Promise<unknown | null>;
   /** `startedBy` (a staff user id) marks a browser test call and is audited with the call row. */
   openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string): Promise<string>;
+  /** Where alerts go (Slack): a call turned away or failed. */
+  alerts?: Alerter;
   /** This number's last calls to the clinic, as lines for the backend; null when there are none. */
   historyFor?(clinicId: string, fromNumber: string, callId: string): Promise<string | null>;
   recorderFor(clinicId: string, callId: string): CallRecorder;
@@ -437,6 +439,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     try {
       if (!via) {
         deps.log.error({ session_id: sessionId, engine: came }, 'a call came in for an engine this server does not run; rejecting with 503');
+        deps.alerts?.alert('call_rejected', `A call came in for the ${came} engine, which this server does not run: turned away (SIP 503).`);
         await deps.engine.reject(sessionId, 503);
         return;
       }
@@ -452,6 +455,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       }
       if (!stored) {
         deps.log.warn({ session_id: sessionId, sip_headers: maskedHeaders(headers) }, 'no clinic for the dialled number; rejecting with 404');
+        deps.alerts?.alert('call_rejected', `A call matched no clinic and was turned away (SIP 404). Dialled: ${dialledCandidates(headers)[0] ?? 'unknown'}.`);
         await via.reject(sessionId, 404);
         return;
       }
@@ -469,6 +473,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
+      deps.alerts?.alert('call_failed', `A call could not be set up${accepted ? ' after it was answered' : ' and was turned away'}: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown error'}.`);
       // best effort: the call is already failing, and a second error must not escape
       await Promise.resolve().then(() => (accepted ? deps.engine.hangup(sessionId) : (via ?? deps.engine).reject(sessionId, 503))).catch(() => {});
     }
