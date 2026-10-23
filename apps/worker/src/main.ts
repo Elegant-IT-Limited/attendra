@@ -2,7 +2,7 @@
 import { connect, createPhiCipher } from '@attendra/db';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { loadEnv } from './config';
-import { twilioSender } from '@attendra/telephony';
+import { TwilioFallback, twilioSender } from '@attendra/telephony';
 import twilio from 'twilio';
 import { bossQueue, createBoss, eventSink } from './queue';
 import { embedderFromEnv, startWorker, summariserFromEnv } from './runtime';
@@ -22,6 +22,10 @@ await startWorker({
   texts: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? twilioSender(twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN, { timeout: 5000 })) : undefined,
   sms: { publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL, dailyCap: env.ATTENDRA_SMS_DAILY_CAP },
   alerts,
+  // the backup route needs the trunk as well as the account
+  fallback: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_TRUNK_SID
+    ? { client: new TwilioFallback(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), trunkSid: env.TWILIO_TRUNK_SID, slackWebhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL }
+    : undefined,
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

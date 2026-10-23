@@ -84,6 +84,13 @@ export async function clinicForNumber(db: Database, e164: string): Promise<unkno
   return row?.config ?? null;
 }
 
+/** Every number calls come in on, with its open clinic's config: for the backup route. Owner connection; no PHI. */
+export async function activeNumbers(db: Database): Promise<{ e164: string; config: unknown }[]> {
+  return db.select({ e164: phoneNumbers.e164, config: clinics.config }).from(phoneNumbers)
+    .innerJoin(clinics, eq(clinics.id, phoneNumbers.clinicId))
+    .where(and(eq(phoneNumbers.status, 'active'), isNull(clinics.closedAt)));
+}
+
 /** A clinic's stored config by id, for a test call started from the dashboard. Owner connection; no PHI. */
 export async function clinicById(db: Database, clinicId: string): Promise<unknown | null> {
   const [row] = await db.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId));

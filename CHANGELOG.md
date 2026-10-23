@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (the backup route)
+
+- **A caller never hears an error tone when Attendra is down.** When the trunk cannot reach the assistant (our server, OpenAI or the voice service down), Twilio asks the trunk's disaster recovery URL, which is now a Twilio Function hosted by Twilio: it rings the clinic's front desk while it is open or the on-call phone after hours (with the caller's number, so they see who it is), and otherwise says the clinic cannot take the call right now and where to go in an emergency, in the clinic's language. It also tells the Slack channel. The worker sets it all up at start (a Sync map of our numbers, the Function, deployed only when its code changes, and the trunk's disaster recovery URL; needs `TWILIO_TRUNK_SID`) and keeps the map current every 10 minutes. A line forwarded to the assistant is never used, so a call cannot loop back into the outage.
+
 ### Added (alerts)
 
 - **The system says when calls fail.** With `ATTENDRA_SLACK_WEBHOOK_URL` set, the voice service and the worker post to a Slack channel: a call turned away (no clinic, an engine not run), a call that could not be set up or dropped, an unhandled error, a background job that gave up, a text the carrier refused, and each service start. The first alert of a kind goes out at once, repeats are counted into one line every 15 minutes, and "back to normal" follows a quiet window. Alerts carry codes and counts, never a caller's details; phone numbers are cut to their last 4 digits.

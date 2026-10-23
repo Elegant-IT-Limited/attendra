@@ -26,6 +26,8 @@ export const QUEUES = {
   requestReady: 'request-ready',
   /** Every 10 minutes: reminder texts for visits coming up, to people who said yes to them. */
   appointmentReminders: 'appointment-reminders',
+  /** Every 10 minutes: what the backup route does for each of our numbers, kept current in Twilio. */
+  fallbackSync: 'fallback-sync',
   /** Where a job goes after its last retry fails, to be looked at, not retried. */
   deadLetter: 'dead-letter',
 } as const;
@@ -136,7 +138,7 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
 export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
   if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
-  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.appointmentReminders]) {
+  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.appointmentReminders, QUEUES.fallbackSync]) {
     const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
     if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });
