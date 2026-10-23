@@ -27,6 +27,8 @@ export const en: LanguagePack = {
   sms: {
     booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     request_ready: (v) => `${v.clinic}: your request is ready to pick up. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_sent: (v) => `${v.clinic}: your request was sent to ${v.pharmacy}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_not_approved: (v) => `${v.clinic}: about your recent request, please call us on ${v.clinicPhone}. Reply STOP to opt out.`,
     change_confirmed: (v) => `${v.clinic}: your appointment has moved to ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     cancel_confirmed: (v) => `${v.clinic}: your appointment on ${v.when} is cancelled. To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,

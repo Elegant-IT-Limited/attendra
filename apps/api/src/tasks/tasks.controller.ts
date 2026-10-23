@@ -127,8 +127,8 @@ export class TasksController {
     }
     this.outcome(await this.desk.completeTask(clinicId, taskId, staff.userId, body.outcome ?? null));
     const facts = await taskFacts(this.db, clinicId, taskId);
-    // a refill the team approved: the caller hears by text, once, that it is ready to pick up
-    if (body.outcome === 'refill_ready' && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId });
+    // the caller hears what the team decided: ready to pick up, sent to the pharmacy, or please call us
+    if (body.outcome && REFILL_DECISIONS.has(body.outcome) && facts?.type === 'refill') await this.jobs.requestReady({ clinicId, taskId });
     if (facts) await this.events.emit(clinicId, { type: 'request.done', key: taskId, data: facts });
   }
 

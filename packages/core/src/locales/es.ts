@@ -30,6 +30,8 @@ export const es: LanguagePack = {
   sms: {
     booking_confirmed: (v) => `${v.clinic}: su cita es el ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     request_ready: (v) => `${v.clinic}: su pedido está listo para recoger. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_sent: (v) => `${v.clinic}: su pedido se envió a ${v.pharmacy}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_not_approved: (v) => `${v.clinic}: sobre su pedido reciente, por favor llámenos al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     change_confirmed: (v) => `${v.clinic}: su cita se cambió al ${v.when}. Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     cancel_confirmed: (v) => `${v.clinic}: su cita del ${v.when} quedó cancelada. Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,

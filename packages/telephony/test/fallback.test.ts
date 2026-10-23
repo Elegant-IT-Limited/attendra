@@ -106,3 +106,26 @@ describe('keeping the backup route in place', () => {
     expect([...state.items.keys()]).toEqual(['+15163630790']);
   });
 });
+
+describe('the clinic\'s own words in a text', () => {
+  it('go after the clinic\'s name and before "Reply STOP"; the name, the facts and the opt-out stay', async () => {
+    const { renderSms, smsSegments } = await import('../src');
+    const vars = { clinic: 'Zaru', address: '82-72 168th Street, Jamaica, NY 11432', mapUrl: 'https://maps.google.com/?q=x' };
+    expect(renderSms('directions', vars, 'en', { label: 'Find our clinic here', extra: 'Parking is behind the building' }))
+      .toBe('Zaru: Find our clinic here: 82-72 168th Street, Jamaica, NY 11432. Map: https://maps.google.com/?q=x. Parking is behind the building. Reply STOP to opt out.');
+    expect(renderSms('directions', vars, 'es', { extra: 'Estacionamiento detrás del edificio.' })).toContain('Estacionamiento detrás del edificio. Responda STOP');
+    expect(renderSms('directions', vars, 'en')).toBe('Zaru: 82-72 168th Street, Jamaica, NY 11432. Map: https://maps.google.com/?q=x. Reply STOP to opt out.');
+    expect(smsSegments('a'.repeat(160))).toBe(1);
+    expect(smsSegments('a'.repeat(161))).toBe(2);
+    expect(smsSegments(`${'a'.repeat(60)} 🐶`)).toBe(1);
+    expect(smsSegments(`${'a'.repeat(70)} 🐶`)).toBe(2); // an emoji: 70 a text, not 160
+  });
+
+  it('are refused with a shortened link or sales wording, which carriers filter or the registration does not allow', async () => {
+    const { TextWording } = await import('@attendra/core');
+    expect(TextWording.safeParse({ extra: 'Fill in the form: bit.ly/abc' }).success).toBe(false);
+    expect(TextWording.safeParse({ extra: '20% off dental cleanings this month' }).success).toBe(false);
+    expect(TextWording.safeParse({ label: 'x'.repeat(41) }).success).toBe(false);
+    expect(TextWording.safeParse({ label: 'Find our clinic here', extra: 'Please arrive 10 minutes early and bring vaccine records.' }).success).toBe(true);
+  });
+});
