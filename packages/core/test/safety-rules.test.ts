@@ -128,3 +128,14 @@ describe('a caller who asks for the call to end', () => {
     expect(saidGoodbye('Can you cut the call', '')).toBe(true);
   });
 });
+
+describe('a pet owner on the phone', () => {
+  it('is matched on the first name when that is all they gave, and in full when they gave both', async () => {
+    const { ownerMatches } = await import('../src');
+    expect(ownerMatches('Linh', 'Linh Nguyen')).toBe(true);
+    expect(ownerMatches('linh nguyen', 'Linh Nguyen')).toBe(true);
+    expect(ownerMatches('Linh Tran', 'Linh Nguyen')).toBe(false);
+    expect(ownerMatches('Maria', 'Linh Nguyen')).toBe(false);
+    expect(ownerMatches('', 'Linh Nguyen')).toBe(false);
+  });
+});

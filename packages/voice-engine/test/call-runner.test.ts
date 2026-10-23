@@ -216,7 +216,7 @@ describe('the conversation prompt', () => {
     const prompt = conversationPrompt(RIVERBEND_CLINIC, NOW);
     expect(prompt).toContain("I'm Juniper, the clinic's AI assistant");
     expect(prompt).toContain('ask which pet the visit is for');
-    expect(prompt).toContain("the owner's full name, the pet's name and the phone number on file");
+    expect(prompt).toContain("the owner's first name, the pet's name and the phone number on file");
     expect(prompt).toContain('Never give medical or first-aid advice for an animal');
     expect(prompt).toContain('- The clinic: hours, the veterinarians, visit types');
     expect(prompt).toContain('Interruption policy: Never talk over the caller.');

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, ownerMatches, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
 import { and, count, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -73,7 +73,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
       const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone)))));
       const pet = firstName(petName);
       const matches = rows.filter((r) => firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) === pet
-        && !!r.guardianNameEnc && namesMatch(ownerName, this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name'))));
+        && !!r.guardianNameEnc && ownerMatches(ownerName, this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name'))));
       if (matches.length > 1) return { status: 'ambiguous' } as const;
       const match = matches[0];
       if (!match) return { status: 'not_found' } as const;

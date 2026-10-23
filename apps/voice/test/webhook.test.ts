@@ -115,6 +115,16 @@ describe('the OpenAI webhook', () => {
     expect(engine.accept).not.toHaveBeenCalled();
   });
 
+  it('reads the caller\'s earlier calls before the call runs, and a failed read never holds the call up', async () => {
+    const historyFor = vi.fn(async () => { throw new Error('db down'); });
+    const { d, engine } = deps({ historyFor });
+    const app = buildServer(d);
+    await post(app, incoming('wh_hist', '+13035550100'));
+    await app.close();
+    expect(historyFor).toHaveBeenCalledWith(DEMO_CLINIC.id, '+13035550147', 'call_1');
+    expect(engine.attach).toHaveBeenCalledWith('live_abc');
+  });
+
   it('finds the dialled number outside the To header when To holds the project address, and never uses the caller\'s number', async () => {
     const { d, engine } = deps();
     const app = buildServer(d);

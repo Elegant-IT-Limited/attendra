@@ -21,6 +21,8 @@ export interface VoiceDeps {
   clinicById(clinicId: string): Promise<unknown | null>;
   /** `startedBy` (a staff user id) marks a browser test call and is audited with the call row. */
   openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string): Promise<string>;
+  /** This number's last calls to the clinic, as lines for the backend; null when there are none. */
+  historyFor?(clinicId: string, fromNumber: string, callId: string): Promise<string | null>;
   recorderFor(clinicId: string, callId: string): CallRecorder;
   actionsFor(clinicId: string, callId: string): ActionRecorder;
   engine: VoiceEngine;
@@ -360,7 +362,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));
         return parsed.success ? parsed.data : null;
       };
-      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, now, log: deps.log, channel }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      // a caller ringing back is helped from where they left off; a failed read never holds up the call
+      const history = from && !web && deps.historyFor ? await deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
+        deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'could not read the caller\'s earlier calls');
+        return null;
+      }) : null;
+      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history, now, log: deps.log, channel }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log);

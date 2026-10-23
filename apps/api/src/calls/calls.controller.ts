@@ -68,7 +68,7 @@ export class CallsController {
       calls: calls.map((c) => ({
         id: c.id, channel: c.channel, outcome: c.outcome, emergency: c.emergency, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
         intent: c.intent, sentiment: c.sentiment, needsReview: c.needsReview,
-        patientName: c.patientName, startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString() ?? null,
+        patientName: c.patientName, callerNumber: c.callerNumber, startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString() ?? null,
       })),
       next: calls.length === limit && last ? callCursor.encode(last) : null,
     };

@@ -22,7 +22,8 @@ export class CallRepository {
   async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string): Promise<string> {
     return withClinic(this.db, clinicId, async (tx) => {
       const fromHash = fromNumber ? this.cipher.hash(callerKey(clinicId, fromNumber)) : null;
-      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, channel }).onConflictDoNothing().returning({ id: calls.id });
+      const fromEnc = fromNumber ? this.cipher.encrypt(fromNumber, phiContext(clinicId, 'calls.from')) : null;
+      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
         await tx.insert(auditLogs).values(startedBy
           ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
