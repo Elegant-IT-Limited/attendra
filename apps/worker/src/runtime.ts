@@ -3,7 +3,7 @@ import { ClinicConfig, localParts, speakSlot, textingOf, toMinutes } from '@atte
 import type { EventSink } from '@attendra/core';
 import { allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
-import type { Logger } from '@attendra/observability';
+import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
 import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
@@ -33,6 +33,8 @@ export interface WorkerDeps {
   texts?: SmsSender;
   /** The voice service's public address, where Twilio reports delivery; and the clinic's daily text limit. */
   sms?: { publicUrl?: string; dailyCap?: number };
+  /** Where alerts go (Slack): a job that gave up, texts the carrier refuses. */
+  alerts?: Alerter;
 }
 
 /**
@@ -277,6 +279,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             status: next, ...(next === 'delivered' ? { deliveredAt: now() } : {}), ...(errorCode ? { errorCode, failureReason: 'carrier' } : {}),
           }).where(where);
           await tx.insert(schema.auditLogs).values({ clinicId, actor: 'worker', action: `sms.status.${next}`, entity: 'sms', entityId: messageSid });
+          // a text the carrier would not deliver: often a texting registration (A2P) problem, never one person's fault
+          if ((next === 'failed' || next === 'undelivered') && errorCode !== '21610') d.alerts?.alert('text_failed', `A text was not delivered (Twilio error ${errorCode ?? 'none given'}). Clinic ${clinicId}.`);
         }
         if (errorCode === '21610') {
           await tx.insert(schema.smsOptOuts).values({ clinicId, toHash: row.toHash, status: 'opted_out', source: 'carrier' })
@@ -311,6 +315,7 @@ export async function startWorker(d: WorkerDeps) {
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at
   await d.boss.work<Record<string, unknown>>(QUEUES.deadLetter, each(async (data) => {
     d.log.error({ clinic_id: data.clinicId, call_id: data.callId }, 'a job failed every retry and was dead-lettered');
+    d.alerts?.alert('job_failed', `A background job gave up after its retries${data.clinicId ? ` (clinic ${String(data.clinicId)})` : ''}: a summary, a text or a webhook was not done.`);
   }));
   // 03:00 UTC every day
   if (d.schedulePurge !== false) {
