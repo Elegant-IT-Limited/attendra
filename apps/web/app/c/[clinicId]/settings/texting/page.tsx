@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
+import { TextsEditor } from '@/components/settings/texts-editor';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/controls';
@@ -137,6 +138,7 @@ export default function TextingSettings() {
           )}
           {r.enabled && <Switch id="reminders-ask" label="Ask callers when booking" hint={'After a booking, the assistant asks once: "Would you like a reminder text before the visit?" A clear yes is kept on their record.'} checked={r.askOnBooking} onCheckedChange={(askOnBooking) => rem({ askOnBooking })} />}
         </Section>
+        <TextsEditor config={c} texting={draft} disabled={!writable} onChange={(wording) => set({ wording })} />
       </fieldset>
 
       {writable && dirty && (

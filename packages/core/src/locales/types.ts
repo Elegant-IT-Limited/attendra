@@ -40,6 +40,10 @@ export interface LanguagePack {
     booking_confirmed: (v: Record<string, string>) => string;
     /** A request the team approved is ready to pick up: never what it is. */
     request_ready: (v: Record<string, string>) => string;
+    /** A refill the team sent to the caller's pharmacy: where, never what, and never the word refill. */
+    refill_sent: (v: Record<string, string>) => string;
+    /** A refill the team did not approve: please call, never why or what. */
+    refill_not_approved: (v: Record<string, string>) => string;
     /** A visit moved or cancelled on the phone: sent without asking, like the booking one. */
     change_confirmed: (v: Record<string, string>) => string;
     cancel_confirmed: (v: Record<string, string>) => string;

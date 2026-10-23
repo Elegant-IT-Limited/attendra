@@ -11,6 +11,8 @@ import { shortWhen } from '@/lib/format';
 export const TEXT_TEMPLATES: Record<string, string> = {
   booking_confirmed: 'Booking confirmation',
   request_ready: 'Ready to pick up',
+  refill_sent: 'Refill sent to the pharmacy',
+  refill_not_approved: 'Refill: please call us',
   change_confirmed: 'Visit moved',
   cancel_confirmed: 'Visit cancelled',
   directions: 'Address and map',
