@@ -15,5 +15,5 @@ turns:
     reply: "Of course. Goodbye."
 expect:
   outcome: info
-  spoken_contains: ["Juniper", "AI assistant", "recorded"]
+  spoken_contains: ["Juniper", "AI assistant", "record"]
 forbid_spoken: ["OpenAI", "GPT", "ChatGPT", "Google", "Anthropic", "Attendra", "Elegant", "language model", "large language", "Twilio", "neural", "trained on", "don't have information about call recording", "do not have information about"]

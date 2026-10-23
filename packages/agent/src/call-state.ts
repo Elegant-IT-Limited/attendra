@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { CallPatient, Language, Slot } from '@attendra/core';
+import { type CallPatient, type Language, redactSensitive, type Slot } from '@attendra/core';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -61,6 +61,9 @@ export class CallState {
   requestMade = false;
   /** How often the assistant was told to make the callback it had promised. */
   promiseNudges = 0;
+  /** The caller turn last checked for a push on the rules, and how many reminders the call has had. */
+  securityTurn = -1;
+  securityNotes = 0;
   /** Nothing more is planned once the call is being ended, by staff or for abuse. */
   get ending(): boolean { return this.endedByStaff || this.endedForAbuse; }
   /** Every emergency kind already answered, so a new kind (bleeding after chest pain) is answered too. */
@@ -113,6 +116,9 @@ export class CallState {
     } else {
       this.turns.push({ speaker, text: delta.trim(), startMs, endMs });
     }
+    // a card or social security number is never kept, shown or sent on, by either side
+    const turn = this.turns.at(-1)!;
+    turn.text = redactSensitive(turn.text);
   }
 
   /**
