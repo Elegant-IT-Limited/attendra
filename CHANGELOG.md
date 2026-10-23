@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the first real phone calls)
+
+- **Calls through a Twilio Elastic SIP Trunk find their clinic.** The first calls to a real number were all turned away with SIP 404: the trunk sends each call to the OpenAI project's SIP address, and the dialled number was read only from the To header. Every header except the ones naming the caller is now searched for the clinic's number, To first; the caller's own number is never used to pick a clinic. A call that still matches no clinic logs its headers with the numbers cut short, so the next one can be traced.
+- **One phone call is answered once.** OpenAI delivers a SIP call once per engine (`live_…` and `rtc_…`, the same call underneath). Both went through the lookup, and the first reject ended the call for the other. The engine the clinic chose (GPT-Live unless it picked the Realtime API) answers; its twin waits 1.5 seconds and stays silent, or takes the call if the chosen one never came.
+
 ### Fixed (a time the clinic cannot take)
 
 - **A provider is never offered while the clinic is closed.** A provider with hours of their own (Dr Lindqvist, 9 to 3) was offered through the clinic's lunch break, 12 to 1, because their hours replaced the clinic's instead of fitting inside them. Found by a new eval rule that checks every offered time against the clinic's hours that day, the provider's hours and their time off; it runs on every scenario, scripted and live.

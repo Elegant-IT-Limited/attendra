@@ -115,6 +115,55 @@ describe('the OpenAI webhook', () => {
     expect(engine.accept).not.toHaveBeenCalled();
   });
 
+  it('finds the dialled number outside the To header when To holds the project address, and never uses the caller\'s number', async () => {
+    const { d, engine } = deps();
+    const app = buildServer(d);
+    const body = JSON.stringify({ sig: 'ok', id: 'wh_trunk', type: 'live.transport.incoming', data: { type: 'sip', session_id: 'live_trunk', sip_headers: [
+      { name: 'From', value: '<sip:+13035550100@x>' },
+      { name: 'To', value: '<sip:proj_example@sip.api.openai.com;transport=tls>' },
+      { name: 'X-Twilio-Called', value: '+13035550100' },
+    ] } });
+    await post(app, body);
+    await app.close();
+    expect(engine.accept).toHaveBeenCalledWith('live_trunk', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date));
+  });
+
+  it('a call to an unknown number is not matched through the caller\'s own number', async () => {
+    const { d, engine } = deps();
+    const app = buildServer(d);
+    const body = JSON.stringify({ sig: 'ok', id: 'wh_from', type: 'live.transport.incoming', data: { type: 'sip', session_id: 'live_from', sip_headers: [
+      { name: 'From', value: '<sip:+13035550100@x>' }, { name: 'P-Asserted-Identity', value: '<sip:+13035550100@x>' },
+      { name: 'To', value: '<sip:proj_x@sip.api.openai.com>' },
+    ] } });
+    await post(app, body);
+    await app.close();
+    expect(engine.reject).toHaveBeenCalledWith('live_from', 404);
+    expect(engine.accept).not.toHaveBeenCalled();
+  });
+
+  it('answers a call that arrives for both engines once, on GPT-Live, and rejects an unknown one once', async () => {
+    const twin = (id: string, type: string, session: string, to: string) => JSON.stringify({ sig: 'ok', id, type, data: { type: 'sip', session_id: session, call_id: session, sip_headers: [{ name: 'To', value: `<sip:${to}@x>` }] } });
+    const { d, engine } = deps({ pairWaitMs: 20 });
+    const app = buildServer(d);
+    await post(app, twin('wh_r1', 'realtime.call.incoming', 'rtc_u1_same', '+13035550100'));
+    await post(app, twin('wh_l1', 'live.transport.incoming', 'live_u1_same', '+13035550100'));
+    await post(app, twin('wh_r2', 'realtime.call.incoming', 'rtc_u1_none', '+19995550000'));
+    await post(app, twin('wh_l2', 'live.transport.incoming', 'live_u1_none', '+19995550000'));
+    await app.close();
+    expect(engine.accept).toHaveBeenCalledTimes(1);
+    expect(engine.accept).toHaveBeenCalledWith('live_u1_same', expect.anything(), expect.any(Date));
+    expect(engine.reject).toHaveBeenCalledTimes(1);
+    expect(engine.reject).toHaveBeenCalledWith('live_u1_none', 404);
+  });
+
+  it('a call that arrives for one engine only is still answered after the short wait', async () => {
+    const { d, engine } = deps({ pairWaitMs: 20 });
+    const app = buildServer(d);
+    await post(app, JSON.stringify({ sig: 'ok', id: 'wh_solo', type: 'realtime.call.incoming', data: { type: 'sip', call_id: 'rtc_u1_solo', sip_headers: [{ name: 'To', value: '<sip:+13035550100@x>' }] } }));
+    await app.close();
+    expect(engine.accept).toHaveBeenCalledWith('rtc_u1_solo', expect.anything(), expect.any(Date));
+  });
+
   it('answers 429 once one address sends more forged deliveries than the limit, and still takes a signed call from it', async () => {
     const { d, engine } = deps({ webhookRateLimit: 2 });
     const app = buildServer(d);
@@ -312,7 +361,7 @@ describe('two engines: GPT-Live and the Realtime API', () => {
   it('answers a Realtime call with the Realtime engine, and a GPT-Live call with GPT-Live', async () => {
     const live = fake('gpt-live');
     const realtime = fake('gpt-realtime');
-    const { d } = deps({ engine: new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live') });
+    const { d } = deps({ engine: new EngineRouter({ 'gpt-live': live, 'gpt-realtime': realtime }, 'gpt-live'), pairWaitMs: 20 });
     const app = buildServer(d);
     await post(app, realtimeCall('wh_rt_1'));
     await post(app, incoming('wh_rt_2', '+13035550100'));
