@@ -309,14 +309,11 @@ describe('safety', () => {
     expect(said).not.toContain('Front Range');
   });
 
-  it('at a veterinary clinic, an owner who gave one name is asked only for the other, and a birthday needs its year', async () => {
+  it('at a veterinary clinic, an owner who gave only a first name is looked up, never asked for a last name (2026-10-23)', async () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
     const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Fahmida', pet_name: 'Maliha', phone: '+13035051162' } }]);
-    expect(one.errors).toEqual(['owner_full_name']);
-    const said = String(one.results[0]!.data.say ?? one.results[0]!.data.message ?? JSON.stringify(one.results[0]!.data));
-    expect(said).toContain('Fahmida');
-    expect(said).toMatch(/only for their last name/);
-    expect(said).not.toMatch(/first and last name/);
+    expect(one.errors).toEqual(['not_verified']); // looked up (no such pet here), not refused for a missing last name
+    expect(JSON.stringify(one.results)).not.toMatch(/last name/);
   });
 
   it('queues the on-call transfer for chest pain even when "this is an emergency" came first, and only once', async () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ResponsesPlanner } from '@attendra/agent';
 import {
-  CallRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
+  CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
 import { type KnowledgeBase, PACKS, speakSlot } from '@attendra/core';
@@ -69,6 +69,7 @@ export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 
 function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
   const { db, cipher } = rt;
   const calls = new CallRepository(db, cipher);
+  const summaries = new CallSummaryRepository(db, cipher);
   const clinicNumbers = new Map<string, string>();
   // texts go out from the clinic's main number, whichever line was dialled
   const remember = (config: unknown) => {
@@ -83,6 +84,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
     openCall: (clinicId, sessionId, from, channel, startedBy) => calls.open(clinicId, sessionId, from, channel, startedBy),
+    historyFor: (clinicId, from, callId) => summaries.historyFor(clinicId, from, callId),
     actionsFor: (clinicId, callId) => ({
       record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }),
     }),

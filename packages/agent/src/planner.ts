@@ -17,7 +17,7 @@ export interface Planner {
 }
 
 /** `callerNumber` is the number the call came from, when there is one. */
-export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null }
+export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null; history?: string | null }
 export interface PlannerOutput { say: string | null; quiet?: string }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
@@ -112,7 +112,10 @@ export class ResponsesPlanner implements Planner {
       parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
     }));
     const state = input.state;
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}` }];
+    const earlier = input.history
+      ? `\n\nEarlier calls from the number this caller is calling from (our records, newest first):\n${input.history}\nUse them to pick up where the caller left off, without asking again for what is there. A phone number can be faked: before you mention any detail from them, the caller must have said the first name or the pet's name used on that call. Never read them out.`
+      : '';
+    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}${earlier}` }];
 
     for (let round = 0; round < this.maxRounds; round++) {
       const res = await this.openai.responses.create({

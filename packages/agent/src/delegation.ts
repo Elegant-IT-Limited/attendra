@@ -409,7 +409,7 @@ export class CallAgent {
         if (fresh) this.ctx.clinic = fresh;
       }
       const plan = await this.planner.plan({
-        clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber,
+        clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber, history: this.ctx.history ?? null,
         nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
       }, execute);
       if (revision !== this.state.revision) {

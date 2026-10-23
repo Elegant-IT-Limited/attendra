@@ -27,6 +27,10 @@ describe('pets at a veterinary clinic', () => {
   it('gives the same answer for a wrong owner, a wrong pet and a wrong phone', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     expect(await dir.findPet(C, 'Daniel Brooks', 'Mochi', '+17205550172')).toEqual({ status: 'not_found' });
+    // the owner's first name is enough with the pet's name and the phone on file; a wrong first name or last name is not
+    expect(await dir.findPet(C, 'Linh', 'Mochi', '+17205550172')).toMatchObject({ status: 'found' });
+    expect(await dir.findPet(C, 'Daniel', 'Mochi', '+17205550172')).toEqual({ status: 'not_found' });
+    expect(await dir.findPet(C, 'Linh Tran', 'Mochi', '+17205550172')).toEqual({ status: 'not_found' });
     expect(await dir.findPet(C, 'Linh Nguyen', 'Pepper', '+17205550172')).toEqual({ status: 'not_found' });
     expect(await dir.findPet(C, 'Linh Nguyen', 'Mochi', '+17205550199')).toEqual({ status: 'not_found' });
   });
