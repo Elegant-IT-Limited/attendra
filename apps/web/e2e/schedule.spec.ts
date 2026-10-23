@@ -133,7 +133,8 @@ test.describe.serial('the schedule', () => {
       }] } });
     });
     await page.goto(`/c/${clinicOf(page)}/schedule?view=week`);
-    await expect(page.getByText('A cancelled visit is hidden. Choose Booked and cancelled to see it.')).toBeVisible();
+    // the page may still be compiling under next dev on a busy CI runner: give it the time the other first loads get
+    await expect(page.getByText('A cancelled visit is hidden. Choose Booked and cancelled to see it.')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Nothing booked here yet')).toHaveCount(0);
   });
 
