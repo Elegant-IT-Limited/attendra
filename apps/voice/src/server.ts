@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { callerNumber, dialledNumber, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
+import { callerNumber, dialledCandidates, maskedHeaders, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -30,6 +30,8 @@ export interface VoiceDeps {
   now?: () => Date;
   /** Webhook deliveries allowed per source address per minute. Defaults to 600. */
   webhookRateLimit?: number;
+  /** How long a call on the engine the clinic did not choose waits for its twin on the chosen one. Defaults to 1500 ms. */
+  pairWaitMs?: number;
   /** Shared with the API for browser test calls. Without it the internal route does not exist. */
   internalToken?: string;
   /** A browser test call is ended after this long. Defaults to 300. */
@@ -85,6 +87,8 @@ const digest = (s: string) => createHash('sha256').update(s).digest();
 // GPT-Live's calls (the second name is deprecated but still delivered during migration), and the Realtime API's
 const INCOMING = new Set(['live.transport.incoming', 'live.call.incoming', 'realtime.call.incoming']);
 const sessionOf = (e: IncomingCall) => e.data.session_id ?? e.data.call_id ?? '';
+// One phone call can arrive twice, once per engine (live_u1_X and rtc_u1_X): the part after the prefix is the call
+const callKey = (sessionId: string) => sessionId.replace(/^(?:live|rtc)_/, '');
 
 /**
  * The voice service's HTTP surface: the webhook, a health check, and the internal
@@ -429,10 +433,18 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         await deps.engine.reject(sessionId, 503);
         return;
       }
-      const dialled = dialledNumber(headers);
-      const stored = dialled ? await deps.clinicForNumber(dialled) : null;
+      let stored: unknown = null;
+      for (const n of dialledCandidates(headers)) if ((stored = await deps.clinicForNumber(n))) break;
+      // OpenAI sends one call once per engine: the clinic's engine answers it (GPT-Live unless it chose
+      // another), the twin stays silent; a twin that waited and found no answer takes the call itself
+      const chosen = (stored as { voiceEngine?: string } | null)?.voiceEngine ?? 'gpt-live';
+      if (came !== chosen) await new Promise((r) => setTimeout(r, deps.pairWaitMs ?? 1500));
+      if (!(await deps.claimDelivery(`call:${callKey(sessionId)}`))) {
+        deps.log.info({ session_id: sessionId }, 'the same call came in for the other engine, which answers it');
+        return;
+      }
       if (!stored) {
-        deps.log.warn({ session_id: sessionId }, 'no clinic for the dialled number; rejecting with 404');
+        deps.log.warn({ session_id: sessionId, sip_headers: maskedHeaders(headers) }, 'no clinic for the dialled number; rejecting with 404');
         await via.reject(sessionId, 404);
         return;
       }
