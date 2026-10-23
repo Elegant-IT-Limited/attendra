@@ -47,6 +47,9 @@ describe('coaching', () => {
     expect(text).toContain('A member of the clinic\'s staff');
     expect(text).toContain('never read it out');
     expect(text).toContain("offer 'Thursday' afternoon");
+    // a note in the middle of a call is applied, not a restart (a note re-started the greeting on 2026-10-23)
+    expect(text).toContain('apply it on your next reply');
+    expect(text).toContain('do not greet the caller again');
   });
 });
 

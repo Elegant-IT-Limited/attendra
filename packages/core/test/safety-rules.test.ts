@@ -119,3 +119,12 @@ describe('medical questions', () => {
     }
   });
 });
+
+describe('a caller who asks for the call to end', () => {
+  it('is let go on "cut the call" or "hang up", in English and Spanish, but not on "don\'t hang up"', async () => {
+    const { askedToHangUp, saidGoodbye } = await import('../src');
+    for (const t of ['Okay, can you cut the call?', 'Cut the call', 'please hang up now', 'you can end the call', 'por favor cuelgue']) expect(askedToHangUp(t)).toBe(true);
+    for (const t of ["please don't hang up", 'do not end the call yet', 'I need to call the vet', 'can you call me back?']) expect(askedToHangUp(t)).toBe(false);
+    expect(saidGoodbye('Can you cut the call', '')).toBe(true);
+  });
+});

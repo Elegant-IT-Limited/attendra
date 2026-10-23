@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { CallAgent, Outbound } from '@attendra/agent';
-import { saidGoodbye } from '@attendra/core';
+import { askedToHangUp, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
@@ -28,6 +28,8 @@ const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
 export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
+/** After the caller asked for the call to end ("can you cut the call?"), how long it may stay up for the assistant's goodbye. */
+export const ASKED_HANGUP_MS = 2500;
 /**
  * The words of a reply arrive well before its audio has played, so "quiet" is counted
  * from when the voice should have finished: about this long per character, on the slow
@@ -193,6 +195,18 @@ export class CallRunner {
       this.log.info({ session_id: this.sessionId }, 'ending the call after the assistant\'s goodbye');
       return this.dispatch([{ type: 'hangup' }]);
     }
+    // the caller asked for the call to end ("cut the call", "hang up"): a goodbye may be said, then it ends;
+    // no nudge ever answers that with more talk
+    const callerLast = [...turns].reverse().find((t) => t.speaker === 'caller');
+    if (callerLast && askedToHangUp(callerLast.text) && now - this.callerSaidAt >= ASKED_HANGUP_MS && !this.pending && this.agent.canEndByStaff()) {
+      this.log.info({ session_id: this.sessionId }, 'ending the call: the caller asked for it');
+      return this.dispatch([{ type: 'hangup', afterMs: 1 }]);
+    }
+    // a promise to call back that no request backs: the assistant is told to make it, once it has finished speaking
+    if (now - this.agentSpokeAt >= QUIET_MS && now >= this.speakingUntil) {
+      const promised = this.agent.onPromiseCheck();
+      if (promised.length) return this.dispatch(promised);
+    }
     // the caller spoke after the assistant's voice had finished, nothing has come back, and
     // no tool is at work. A caller's words that arrive while the reply is still playing
     // (transcription can lag the reply) are not a wait.
@@ -203,14 +217,20 @@ export class CallRunner {
     }
   }
 
-  /** The caller's last turn answered "anything else?" with a no or a goodbye. */
+  /**
+   * The caller's last words answered "anything else?" with a no or a goodbye. A goodbye
+   * the assistant talked over arrives in pieces ("Bye. Have a" … "nice day"), so the
+   * caller's last two turns are read together.
+   */
   private mayEnd() {
     const turns = this.agent.state.turns;
-    let i = turns.length - 1;
-    while (i >= 0 && turns[i]!.speaker !== 'caller') i--;
-    if (i < 0) return false;
-    const asked = turns.slice(0, i).filter((t) => t.speaker === 'agent').slice(-2).map((t) => t.text).join(' ');
-    return saidGoodbye(turns[i]!.text, asked);
+    const callers: number[] = [];
+    for (let i = turns.length - 1; i >= 0 && callers.length < 2; i--) if (turns[i]!.speaker === 'caller') callers.unshift(i);
+    if (!callers.length) return false;
+    const first = callers[0]!;
+    const asked = turns.slice(0, first).filter((t) => t.speaker === 'agent').slice(-2).map((t) => t.text).join(' ');
+    const said = callers.map((i) => turns[i]!.text).join(' ');
+    return saidGoodbye(said, asked) || saidGoodbye(turns[callers.at(-1)!]!.text, turns.slice(0, callers.at(-1)!).filter((t) => t.speaker === 'agent').slice(-2).map((t) => t.text).join(' '));
   }
 
   /**
