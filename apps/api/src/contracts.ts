@@ -310,6 +310,16 @@ export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent',
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
+/** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
+export const NewTask = z.object({
+  type: z.enum(['callback', 'follow_up']),
+  /** One of the clinic's own kinds of request (Settings, Fields and lists), when one fits. */
+  topic: z.string().trim().max(80).nullable().optional(),
+  reason: z.string().trim().min(3, 'say what it is about').max(300),
+  callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
+  urgent: z.boolean().optional(),
+  dueOn: z.iso.date().nullable().optional(),
+});
 export const TaskPlan = z.object({ urgent: z.boolean().optional(), dueOn: z.iso.date().nullable().optional() });
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({

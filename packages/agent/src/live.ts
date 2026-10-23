@@ -12,7 +12,7 @@ export type LiveEvent =
   | { type: 'state'; verified: string | null; pending: string | null; doing: string | null }
   | { type: 'emergency'; kind: string }
   // `by` and `note` exist only in the live stream's memory: never stored, never audited
-  | { type: 'staff'; action: 'coached' | 'taken_over' | 'vip' | 'ended' | 'transfer_failed' | 'end_failed'; by?: string | null; note?: string }
+  | { type: 'staff'; action: 'coached' | 'coach_delivered' | 'taken_over' | 'vip' | 'ended' | 'transfer_failed' | 'end_failed'; by?: string | null; note?: string }
   | { type: 'ended'; outcome: string };
 
 /** What the assistant is doing, in the words the dashboard shows: "finding open times". */

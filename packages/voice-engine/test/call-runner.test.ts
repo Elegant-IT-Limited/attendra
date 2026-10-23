@@ -366,6 +366,19 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     vi.useRealTimers();
   });
 
+  it('sends a staff note with its own event id, and marks it delivered when the voice model acknowledges it', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    const agent = (h.runner as unknown as { agent: CallAgent }).agent;
+    const delivered = vi.spyOn(agent, 'onCoachDelivered');
+    await h.runner.act(agent.coach('offer Thursday afternoon', 'Jordan'));
+    const sent = h.sent.at(-1) as { type: string; event_id: string };
+    expect(sent.event_id).toMatch(/^coach_/);
+    await h.runner.handle({ type: 'session.instructions.appended', event_id: 'ack1', client_event_id: sent.event_id } as never);
+    expect(delivered).toHaveBeenCalledTimes(1);
+    await h.runner.handle({ type: 'session.instructions.appended', event_id: 'ack2', client_event_id: 'evt_other' } as never);
+    expect(delivered).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the first version\'s rule: no hang-up after a goodbye unless "anything else?" was asked and the caller said no', async () => {
     vi.useFakeTimers();
     const h = harness(new ScriptedPlanner([]));

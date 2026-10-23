@@ -284,13 +284,13 @@ function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: str
 /** Every page's header: a title, one line on what the page is for, and its main action on the right. */
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="mb-6 space-y-4">
       <div className="min-w-0 space-y-1">
         <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
         {description && <p className="max-w-3xl text-base text-text-muted">{description}</p>}
       </div>
-      {/* on a phone the buttons wrap onto lines of their own instead of pushing the page sideways */}
-      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
+      {/* every page puts its buttons in the same place: one row under the title, from the left; on a phone they wrap */}
+      {actions && <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="page-actions">{actions}</div>}
     </div>
   );
 }

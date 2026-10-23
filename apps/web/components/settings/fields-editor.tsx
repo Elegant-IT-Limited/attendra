@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
+import type { ReactNode } from 'react';
 import { CUSTOM_FIELD_KINDS, type CustomField } from '@attendra/core';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -22,8 +23,12 @@ const newFieldId = () => `field_${Math.random().toString(36).slice(2, 8)}`;
  * goes to that one instead. Fields and a dropdown's choices are put in order by dragging.
  * Dropdowns and yes-or-no fields become filters on the list.
  */
-export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder }: {
+export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer }: {
   id: string; title: string; description: string; fields: CustomField[]; onChange: (fields: CustomField[]) => void; disabled: boolean; placeholder: string;
+  /** The fields every record has anyway, shown so nobody adds them twice. */
+  builtIn?: readonly string[];
+  /** The section's own Save, like every list's. */
+  footer?: ReactNode;
 }) {
   const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {
@@ -45,7 +50,8 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
   return (
     <Section id={id} title={title} description={description}
       action={<Button type="button" size="sm" variant="outline" disabled={disabled || fields.length >= 20} onClick={add}><Plus /> Field</Button>}>
-      {!fields.length && <EmptyNote>No fields yet. Add one for anything you keep that has no place yet.</EmptyNote>}
+      {builtIn && builtIn.length > 0 && <BuiltIn names={builtIn} />}
+      {!fields.length && <EmptyNote>No fields of your own yet. Add one for anything you keep that has no place yet.</EmptyNote>}
       <Sortable items={fields} keyOf={(f) => f.id} label={(f) => f.label} disabled={disabled} onMove={(from, to) => onChange(moved(fields, from, to))} className="space-y-5">
       {(f, i, handle) => (
         <Item handle={handle} id={`${id}-${f.id}`} removeLabel={`Remove ${f.label || 'this field'}`} onRemove={() => onChange(fields.filter((_, j) => j !== i))}>
@@ -74,6 +80,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
         </Item>
       )}
       </Sortable>
+      {footer}
     </Section>
   );
 }
@@ -134,6 +141,16 @@ function Choices({ field, options, disabled, onChange }: { field: string; option
           </>
         )}
       </Sortable>
+    </div>
+  );
+}
+
+/** Built into every record: listed, never edited here, so the clinic's own fields do not repeat them. */
+export function BuiltIn({ names, label = 'Always on each record' }: { names: readonly string[]; label?: string }) {
+  return (
+    <div className="rounded-md border border-border bg-surface-sunken/60 px-4 py-3 text-sm" data-testid="built-in">
+      <p className="font-medium">{label}</p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">{names.map((n) => <li key={n} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-text-muted">{n}</li>)}</ul>
     </div>
   );
 }

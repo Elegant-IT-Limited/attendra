@@ -114,6 +114,12 @@ export class CallRunner {
           this.pending--;
         }
       }
+      case 'session.instructions.appended': {
+        // a staff note reached the voice model
+        const e = event as SidebandEvent & { client_event_id?: string };
+        if (e.client_event_id?.startsWith('coach_')) this.agent.onCoachDelivered();
+        return;
+      }
       case 'session.closed': {
         const e = event as Extract<SidebandEvent, { reason: string }>;
         return this.finish(e.reason, e.usage?.seconds ?? null);
@@ -164,7 +170,7 @@ export class CallRunner {
         };
         later(o.afterMs);
       } else if (o.type === 'instructions') {
-        this.sideband.send({ type: 'session.instructions.append', event_id: `evt_${randomUUID()}`, delegation_id: null, content: o.content });
+        this.sideband.send({ type: 'session.instructions.append', event_id: o.eventId ?? `evt_${randomUUID()}`, delegation_id: null, content: o.content });
       } else {
         this.sideband.send({ type: `session.${o.type}.append`, event_id: `evt_${randomUUID()}`, delegation_id: o.delegationId, content: o.content });
       }
