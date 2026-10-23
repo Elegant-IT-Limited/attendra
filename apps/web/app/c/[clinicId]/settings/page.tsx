@@ -23,8 +23,8 @@ import { type Conflict, SettingsConflict } from '@/components/settings/settings-
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
-import { ApiFailure, apiTagged, useClinic } from '@/lib/api';
-import { clinicTime, DAYS, dayTitle } from '@/lib/format';
+import { api, ApiFailure, apiTagged, useClinic } from '@/lib/api';
+import { clinicTime, DAYS, dayTitle, phone } from '@/lib/format';
 import { useActiveSection } from '@/lib/scroll-spy';
 import { cn } from '@/lib/utils';
 import { useTerms } from '@/lib/terms';
@@ -104,6 +104,9 @@ export default function Settings() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const terms = useTerms(clinicId);
   const { can, clinic } = useClinic(clinicId);
+  // the assistant's own numbers, to tell them from the clinic's line in the list of numbers
+  const meta = useQuery({ queryKey: ['settings-meta', clinicId], queryFn: () => api<{ assistantNumbers?: string[] }>(`/clinics/${clinicId}/settings/meta`) });
+  const assistantNumbers = new Set(meta.data?.assistantNumbers ?? []);
   const queries = useQueryClient();
   const toast = useToast();
   const problem = useProblem();
@@ -533,7 +536,12 @@ export default function Settings() {
         </Section>
 
         <Section id="numbers" title="Phone numbers" description={clinic?.accountLinks.length ? 'The numbers this clinic answers on. To get a number or change it, open Phone number under Account in the menu.' : 'The numbers this clinic answers on. Your Attendra operator sets them up.'}>
-          <ul className="flex flex-wrap gap-2">{c.phoneNumbers.map((n) => <li key={n} className="rounded-md border border-border bg-surface-sunken/60 px-3 py-1.5 font-mono text-sm">{n}</li>)}</ul>
+          <ul className="space-y-2">{c.phoneNumbers.map((n) => (
+            <li key={n} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-sunken/60 px-3 py-2 text-sm">
+              <span className="font-medium tabular-nums">{phone(n)}</span>
+              <span className="text-text-muted">{assistantNumbers.has(n) ? 'Your assistant\'s number: calls to it reach the assistant' : 'Your clinic\'s own line: forward it to the assistant\'s number'}</span>
+            </li>
+          ))}</ul>
         </Section>
       </fieldset>
       </div>

@@ -3,7 +3,7 @@
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { type CustomField, localDateOf, multiValues } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -15,7 +15,8 @@ import { Button, buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { useSettled } from '@/components/patients/patient-search';
-import { Input, Label, Select, Textarea } from '@/components/ui/input';
+import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
+import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, dayTitle, phone, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
@@ -57,6 +58,9 @@ function Requests() {
   };
   // a link can open the list on one type: the refill queue is ?type=refill
   const [type, setType] = useState(() => { const t = search.get('type') ?? ''; return Object.hasOwn(TASK_TYPES, t) ? t : ''; });
+  // one of the clinic's own kinds of request (Settings, Fields and lists): the request's topic
+  const [topic, setTopic] = useState('');
+  const [adding, setAdding] = useState(false);
   const [who, setWho] = useState<Who>('everyone');
   // what is typed narrows the list as it is typed; the dates are the clinic's own days
   const [text, setText] = useState('');
@@ -66,13 +70,14 @@ function Requests() {
   const [fieldFilter, setFieldFilter] = useState<{ id: string; value: string }>({ id: '', value: '' });
   const config = useClinicConfig(clinicId);
   const requestFields = config.data?.requestFields ?? [];
+  const topics = config.data?.requestTopics ?? [];
   const filterable = requestFields.filter((f) => f.kind === 'choice' || f.kind === 'multi' || f.kind === 'yesno');
   const filterField = filterable.find((f) => f.id === fieldFilter.id);
   const q = useSettled(text.trim());
   const queries = useQueryClient();
   // a POST body: what is typed can be a name or a phone number, and never goes in an address
   const filters = { status, ...(type ? { type } : {}), ...(who !== 'everyone' ? { assignee: who } : {}), q, ...(from ? { from } : {}), ...(to ? { to } : {}) };
-  const filtered = !!(type || who !== 'everyone' || q || from || to || fieldFilter.value);
+  const filtered = !!(type || topic || who !== 'everyone' || q || from || to || fieldFilter.value);
   const tasks = useQuery({
     queryKey: ['tasks', clinicId, status, type, who, q, from, to],
     queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify(filters) }),
@@ -130,13 +135,20 @@ function Requests() {
   }
   const teammates = (team.data?.members ?? []).filter((m) => m.role !== 'viewer');
   // the clinic's own field, filtered here: the values are already on the cards
-  const shown = (tasks.data?.tasks ?? []).filter((t) => !filterField || !fieldFilter.value
-    || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value));
+  const shown = (tasks.data?.tasks ?? []).filter((t) => (!filterField || !fieldFilter.value
+    || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value))
+    && (!topic || t.details.topic === topic));
 
   return (
     <>
       <PageHeader title="Requests" description={<>What callers asked the team for, the newest first. The assistant never approves a refill; that stays with your team. Times are {zoneLabel(tz)}.</>}
-        actions={can('settings:write') ? <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link> : undefined} />
+        actions={(
+          <>
+            {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link>}
+            {can('tasks:work') && <Button onClick={() => setAdding(true)}><Plus /> New request</Button>}
+          </>
+        )} />
+      <NewRequest clinicId={clinicId} open={adding} onOpenChange={setAdding} topics={topics.map((t) => t.name)} />
       <details className="group mb-5 rounded-lg border border-border bg-surface text-sm shadow-xs">
         <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
           <Info className="size-4" aria-hidden /> What each kind of request means
@@ -158,9 +170,17 @@ function Requests() {
           ))}
         </div>
         <Label htmlFor="request-type" className="sr-only">Type</Label>
-        <Select id="request-type" className="h-8 w-48" value={type} onChange={(e) => setType(e.target.value)}>
+        <Select id="request-type" className="h-8 w-48" value={topic ? `topic:${topic}` : type} onChange={(e) => {
+          const v = e.target.value;
+          if (v.startsWith('topic:')) { setType(''); setTopic(v.slice(6)); } else { setTopic(''); setType(v); }
+        }}>
           <option value="">All types</option>
           {Object.keys(TASK_TYPES).map((k) => <option key={k} value={k}>{taskType(k, terms.patient)}</option>)}
+          {topics.length > 0 && (
+            <optgroup label="Your kinds of request">
+              {topics.map((t) => <option key={t.id} value={`topic:${t.name}`}>{t.name}</option>)}
+            </optgroup>
+          )}
         </Select>
         <Label htmlFor="request-who" className="sr-only">Assigned to</Label>
         <Select id="request-who" className="h-8 w-44" value={who} onChange={(e) => setWho(e.target.value as Who)}>
@@ -198,7 +218,7 @@ function Requests() {
             )}
           </div>
         )}
-        {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); setFieldFilter({ id: '', value: '' }); }}><X /> Clear</Button>}
+        {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setTopic(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); setFieldFilter({ id: '', value: '' }); }}><X /> Clear</Button>}
       </div>
       <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
@@ -268,10 +288,11 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         {open && t.followUp && t.followUp !== t.details.suggested && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
         {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
-        {fields.filter((f) => t.custom[f.id]).map((f) => (
-          <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, t.custom[f.id])}</dd></div>
+        {fields.filter((f) => t.custom[f.id] || f.column).map((f) => (
+          <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{t.custom[f.id] ? shownValue(f, t.custom[f.id]) : <span className="text-text-muted">Not filled in</span>}</dd></div>
         ))}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
+        {!t.callId && <><dt className="text-text-muted">From</dt><dd>Added by the team, {clinicTime(t.createdAt, tz)}</dd></>}
       </dl>
       {fields.length > 0 && canWork && (
         <div className="border-t border-border px-5 py-3">
@@ -334,5 +355,59 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         </div>
       )}
     </Card>
+  );
+}
+
+/** A request written down by hand: a voicemail someone listened to, a walk-in's question, a call taken at the desk. */
+function NewRequest({ clinicId, open, onOpenChange, topics }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; topics: string[] }) {
+  const queries = useQueryClient();
+  const toast = useToast();
+  const blank = { kind: 'callback', reason: '', callbackNumber: '', urgent: false, dueOn: '' };
+  const [draft, setDraft] = useState(blank);
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => {
+      const topic = draft.kind.startsWith('topic:') ? draft.kind.slice(6) : null;
+      return api<{ id: string }>(`/clinics/${clinicId}/tasks`, { method: 'POST', body: JSON.stringify({
+        type: draft.kind === 'follow_up' ? 'follow_up' : 'callback', topic, reason: draft.reason,
+        callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
+      }) });
+    },
+    onSuccess: () => {
+      toast({ tone: 'success', message: 'Request added. It is in the queue for the team.' });
+      setDraft(blank); setError(null); onOpenChange(false);
+      void queries.invalidateQueries({ queryKey: ['tasks', clinicId] });
+    },
+    onError: (e) => setError(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
+  });
+  return (
+    <Panel open={open} onOpenChange={onOpenChange} title="New request" description="Write down something for the team: a voicemail, a walk-in's question, a call you took. It joins the same queue as the assistant's."
+      footer={(
+        <>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button loading={save.isPending} disabled={draft.reason.trim().length < 3} onClick={() => save.mutate()}>Add request</Button>
+        </>
+      )}>
+      <div className="space-y-4">
+        <Field label="Kind">
+          {(p) => <Select {...p} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
+            <option value="callback">Callback</option>
+            <option value="follow_up">Follow up</option>
+            {topics.length > 0 && <optgroup label="Your kinds of request">{topics.map((t) => <option key={t} value={`topic:${t}`}>{t}</option>)}</optgroup>}
+          </Select>}
+        </Field>
+        <Field label="Call back on" hint="The number to reach them on, if there is one.">
+          {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
+        </Field>
+        <Field label="What it is about">
+          {(p) => <Textarea {...p} rows={3} maxLength={300} value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="e.g. Wants a dental cleaning for Bella next month" />}
+        </Field>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.urgent} onChange={(e) => setDraft({ ...draft, urgent: e.target.checked })} /> Urgent</label>
+          <Field label="Due" className="w-44">{(p) => <Input {...p} type="date" value={draft.dueOn} onChange={(e) => setDraft({ ...draft, dueOn: e.target.value })} />}</Field>
+        </div>
+        {error && <Alert tone="danger">{error}</Alert>}
+      </div>
+    </Panel>
   );
 }

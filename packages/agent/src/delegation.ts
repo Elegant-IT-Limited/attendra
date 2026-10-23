@@ -12,7 +12,7 @@ const CALLBACK_PROMISE = /\b(pass (that|this|it|your (message|request|details)) 
 /** What the voice engine should send or do. The engine owns the socket; the agent owns the decisions. */
 export type Outbound =
   | { type: 'thinking' | 'commentary'; delegationId: string; content: string }
-  | { type: 'instructions'; delegationId: null; content: string }
+  | { type: 'instructions'; delegationId: null; content: string; eventId?: string }
   | { type: 'transfer'; uri: string; afterMs?: number; quiet?: boolean }
   | { type: 'hangup'; afterMs?: number };
 
@@ -210,10 +210,16 @@ export class CallAgent {
    */
   coach(note: string, by: string | null = null): Outbound[] {
     this.emit({ type: 'staff', action: 'coached', by, note });
-    const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: coachingInstruction(note) }];
+    // its own event id: the voice model's acknowledgement of it says the note arrived
+    const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: coachingInstruction(note), eventId: `coach_${Date.now().toString(36)}` }];
     // a note never replaces the emergency script: it is sent again after the note
     if (this.state.emergencyLocked && this.emergencyScript) out.push({ type: 'instructions', delegationId: null, content: this.emergencyScript.content });
     return out;
+  }
+
+  /** The voice model acknowledged a staff note: the live page shows it as delivered. */
+  onCoachDelivered() {
+    this.emit({ type: 'staff', action: 'coach_delivered' });
   }
 
   /**

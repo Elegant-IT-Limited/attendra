@@ -63,6 +63,8 @@ export async function assignNumber(db: Database, clinicId: string, e164: string)
     }
     await tx.execute(sql`insert into phone_numbers (e164, clinic_id) values (${e164}, ${clinicId}) on conflict (e164) do update set clinic_id = excluded.clinic_id, status = 'active'`);
     const phoneNumbers = [e164, ...config.phoneNumbers.filter((n) => n !== e164)];
+    // who got which number, and when: the clinic's audit log shows it
+    await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${clinicId}, 'hosting', 'number.assigned', 'phone_number', ${e164})`);
     await tx.execute(sql`update clinics set config = ${JSON.stringify({ ...config, phoneNumbers })}::jsonb, config_version = config_version + 1 where id = ${clinicId}`);
     return true;
   });
@@ -70,7 +72,9 @@ export async function assignNumber(db: Database, clinicId: string, e164: string)
 
 /** Stops a number reaching any clinic, as when an account is closed. The clinic keeps it in its settings until changed. */
 export async function releaseNumber(db: Database, e164: string): Promise<boolean> {
-  const rows = await db.execute(sql`update phone_numbers set status = 'released' where e164 = ${e164} and status = 'active' returning e164`);
+  const rows = await db.execute(sql`update phone_numbers set status = 'released' where e164 = ${e164} and status = 'active' returning clinic_id`);
+  const [row] = rows.rows as { clinic_id: string }[];
+  if (row) await db.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${row.clinic_id}, 'hosting', 'number.released', 'phone_number', ${e164})`);
   return rows.rows.length === 1;
 }
 

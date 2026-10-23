@@ -55,6 +55,9 @@ const ACTIONS: Record<string, string> = {
   'call.live.watched': 'Watched a live call',
   'calls.live.listed': 'Looked at live calls with names',
   'call.coached': 'Sent the assistant a note',
+  'number.assigned': 'Got a phone number for the assistant',
+  'number.released': 'Released a phone number',
+  'call.history.read': 'Read the caller\'s earlier calls to pick up where they left off',
   'call.taken_over': 'Took over a live call',
   'call.ended_by_staff': 'Ended a live call',
   'api_key.created': 'Made an API key',
@@ -150,6 +153,8 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
   if (a === 'voice-agent') return <Badge tone="accent">Assistant</Badge>;
   if (a === 'worker') return <span>Attendra, in the background</span>;
   if (a === 'system') return <span>Attendra</span>;
+  if (a === 'hosting') return <span>Attendra, your account</span>;
+  if (a === 'assistant') return <Badge tone="accent">Assistant</Badge>;
   if (a === 'seed') return <span>The demo setup</span>;
   if (a.startsWith('api_key:')) return <span>An API key <span className="font-mono text-xs text-text-muted">{a.slice(8, 16)}</span></span>;
   if (a.startsWith('user:')) {
