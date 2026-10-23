@@ -70,7 +70,8 @@ export default function Knowledge() {
       toast({ tone: 'success', message: 'Uploaded. It is being indexed.' });
     },
     onError: (e) => setProblem(e instanceof ApiFailure && e.status === 415 ? 'Upload a PDF, a text file or a markdown file.' : e instanceof ApiFailure && e.status === 413 ? 'The file is over 5 MB.'
-      : e instanceof ApiFailure && e.body.error === 'empty_file' ? 'The file is empty. Choose one with the text in it.' : 'The upload did not work. Try again.'),
+      : e instanceof ApiFailure && e.body.error === 'empty_file' ? 'The file is empty. Choose one with the text in it.'
+      : e instanceof ApiFailure && e.body.error === 'too_many_documents' ? 'You have 50 documents, the most a clinic can keep. Delete one, or upload with the same title to replace it.' : 'The upload did not work. Try again.'),
   });
   const remove = useMutation({
     mutationFn: (d: KnowledgeDocument) => api<void>(`/clinics/${clinicId}/knowledge/documents/${d.id}`, { method: 'DELETE' }),

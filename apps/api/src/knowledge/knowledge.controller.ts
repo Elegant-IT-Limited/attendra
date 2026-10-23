@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { KnowledgeBase } from '@attendra/core';
 import { type Database, KnowledgeRepository, staffNames } from '@attendra/db';
-import { type Answerer, answerQuestion, MAX_BYTES, sourceTypeOf } from '@attendra/knowledge';
+import { type Answerer, answerQuestion, MAX_BYTES, MAX_DOCUMENTS, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -46,7 +46,7 @@ export class KnowledgeController {
   /**
    * Upload a document as the raw body (PDF, plain text or markdown, up to 5 MB), with
    * its title in the query. The same title replaces the document; the same bytes
-   * again change nothing. Indexing happens in the worker.
+   * again change nothing. At most 50 documents per clinic. Indexing happens in the worker.
    */
   @Post('documents')
   @HttpCode(201)
@@ -62,6 +62,11 @@ export class KnowledgeController {
     const content = Buffer.from(body);
     const type = sourceTypeOf(q.name || q.title, String(req.headers['content-type'] ?? '').split(';')[0]);
     if (!type) throw new HttpException({ error: 'unsupported_type', message: 'Upload a PDF, a text file or a markdown file.' }, 415);
+    // a new title counts against the clinic's limit; the same title replaces its document
+    const docs = await this.repo.list(clinicId);
+    if (docs.length >= MAX_DOCUMENTS && !docs.some((d) => d.title === q.title)) {
+      throw new HttpException({ error: 'too_many_documents', message: `A clinic can keep ${MAX_DOCUMENTS} documents. Delete one, or upload with the same title to replace it.` }, 409);
+    }
     const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId, embeddingModel: this.knowledge?.embeddingModel });
     if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash, version: saved.version });
     const doc = await this.repo.get(clinicId, saved.id);
