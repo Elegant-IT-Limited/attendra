@@ -1,5 +1,5 @@
 import { DEMO_CLINIC, Texting, zonedInstant } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -101,6 +101,19 @@ describe('follow-up requests', () => {
     await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
     const opened = await tasksOf(callId);
     expect(opened.map((x) => x.type)).toEqual(['follow_up']);
+    // the number the caller rang from is on the request, so the team can call back (2026-10-23)
+    const details = JSON.parse(cipher.decrypt(opened[0]!.detailsEnc, phiContext(DEMO_CLINIC.id, 'tasks.details'))) as Record<string, string>;
+    expect(details.callback_number).toBe('+13035550147');
+    // and the call shows it to staff
+    const shown = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, callId, 'u_ana');
+    expect(shown!.callerNumber).toBe('+13035550147');
+    // a second call from that number knows the first, and the read is audited
+    const again = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '(303) 555-0147');
+    const history = await new CallSummaryRepository(t.db, cipher).historyFor(DEMO_CLINIC.id, '+13035550147', again);
+    expect(history).toContain('The caller wanted a visit for their son');
+    expect(history).toContain('Still open for the team: follow up');
+    expect((await audits(DEMO_CLINIC.id, 'call.history.read')).map((a) => a.entityId)).toContain(again);
+    expect(await new CallSummaryRepository(t.db, cipher).historyFor(DEMO_CLINIC.id, '+13035550199', again)).toBeNull();
     const desk = new FrontDeskRepository(t.db, cipher);
     expect(await desk.completeTask(DEMO_CLINIC.id, opened[0]!.id, 'u_ana', 'called_back')).toBe('done');
     expect((await summaryOf(DEMO_CLINIC.id, callId))!.reviewedAt).not.toBeNull();

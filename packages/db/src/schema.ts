@@ -99,6 +99,8 @@ export const calls = pgTable('calls', {
   clinicId: text('clinic_id').notNull(),
   openaiSessionId: text('openai_session_id').notNull(),
   fromHash: text('from_hash'),
+  /** The caller's number, encrypted: for calling them back. Cleared with the transcript. */
+  fromEnc: text('from_enc'),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   endedAt: timestamp('ended_at', { withTimezone: true }),
   outcome: text('outcome'),

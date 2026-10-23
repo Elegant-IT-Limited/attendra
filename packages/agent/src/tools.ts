@@ -2,7 +2,7 @@
 import {
   bookableProviders,
   addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, namesMatch, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
+  fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
   hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
@@ -31,6 +31,8 @@ export interface CallContext {
   reloadClinic?: () => Promise<ClinicConfig | null>;
   callId: string;
   callerNumber: string | null;
+  /** This number's last calls to the clinic, from our records, for picking up where the caller left off. */
+  history?: string | null;
   now: () => Date;
   log?: Logger;
   /** A browser test call cannot be transferred: the assistant says where it would have connected the caller. */
@@ -160,7 +162,7 @@ export async function runTool(
   }
   if (PATIENT_TOOLS.has(name) && !state.verifiedPatient) {
     return refuse('identity_required', trade.identity === 'pet'
-      ? 'Before that, ask for the owner\'s full name and the pet\'s name.'
+      ? 'Before that, ask for the owner\'s first name and the pet\'s name.'
       : 'Before that, ask for the caller\'s full name and date of birth.');
   }
   // closed, at a clinic that takes requests out of hours: the team books in the morning. No
@@ -691,16 +693,8 @@ function closedDaysAhead(clinic: ClinicConfig, today: string): string[] {
   return [...clinic.holidays, ...special].filter((d) => d.slice(0, 10) >= addDays(today, 7) && d.slice(0, 10) <= last).sort();
 }
 
-/** Only the last name is missing: the caller said one name, and is asked for the other, not both again. */
-function lastNameAsk(given: string, keep: string): string {
-  const name = given.trim();
-  return name
-    ? `The owner gave one name, "${name}". Ask only for their last name; do not ask for the first name again. Keep ${keep} they already gave.`
-    : `Ask for the owner's first and last name. Keep ${keep} they already gave.`;
-}
-
 /**
- * The veterinary pack's identity check: a pet, by its owner's full name, its own name
+ * The veterinary pack's identity check: a pet, by its owner's first name (or full name), its own name
  * and the phone on file. The same rules as for a person: three tries, the same answer
  * whichever detail was wrong, and two records only staff can tell apart go to staff.
  */
@@ -710,10 +704,10 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on the pet\'s file, with the area code.');
   const owner = String(args.owner_name);
   const pet = String(args.pet_name);
-  if (owner.trim().split(/\s+/).length < 2) return refuse('owner_full_name', lastNameAsk(owner, 'the pet\'s name and phone'));
+  if (!owner.trim()) return refuse('owner_name', 'Ask for the owner\'s first name. Keep the pet\'s name and the phone they already gave.');
   // the pet already found: nothing to do. Another of the owner's pets is checked like any
   const current = state.verifiedPatient;
-  if (current && sameFirstWord(pet, current.firstName) && state.verifiedOwner && namesMatch(owner, state.verifiedOwner)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
+  if (current && sameFirstWord(pet, current.firstName) && state.verifiedOwner && ownerMatches(owner, state.verifiedOwner)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const tried = identityKey(owner, pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
@@ -729,7 +723,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   state.notFound = true;
   state.identitiesTried.add(tried);
   // the same answer whichever detail was wrong: never confirm that a record exists
-  return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, ask them to spell their last name and repeat the pet's name and the phone number on file, one detail at a time. ${triesLeft(state)}`);
+  return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, check the details one at a time: the owner's first name as it is on the pet's file, the pet's name, and the phone number on file if it is not the one they are calling from. ${triesLeft(state)}`);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
@@ -744,14 +738,14 @@ async function registerPet(
   if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach the owner, with the area code.');
   const owner = String(args.owner_name).trim();
   const ownerParts = owner.split(/\s+/);
-  if (ownerParts.length < 2) return refuse('owner_full_name', lastNameAsk(owner, 'everything else'));
+  if (!owner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
   const birth = parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
   if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const petName = String(args.pet_name).trim();
   const species = String(args.species).trim().toLowerCase();
   const sex = args.sex === 'unknown' ? 'undisclosed' : (args.sex as Gender);
   const result = await backend.patients.register(clinic.id, {
-    firstName: petName, lastName: ownerParts.at(-1)!, dob: birth.dob, gender: sex, phone, guardianName: owner, callId: ctx.callId, species,
+    firstName: petName, lastName: ownerParts.length > 1 ? ownerParts.at(-1)! : '', dob: birth.dob, gender: sex, phone, guardianName: owner, callId: ctx.callId, species,
   });
   if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add any other pets, and offer a callback.');
   if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
