@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (documents)
+
+- **At most 50 documents a clinic.** Every document is embedded and stored, so a clinic keeps up to 50; the 51st new title is refused with a clear message (409 `too_many_documents`), and uploading with an existing title still replaces that document. Each document's own limits are unchanged (5 MB, 200 PDF pages, 400 passages).
+
 ### Added (texts)
 
 - **Your texts.** Settings, Texting shows every text as a client gets it, with sample details, in each of the clinic's languages, and its length in texts (an emoji makes it 70 characters a text, not 160). The clinic can add a few words after its name ("Zaru: Find our clinic here: …", up to 40 characters) and one line before the opt-out (up to 100); the name, the details and "Reply STOP" stay fixed, as the carriers registered them. No shortened links and no sales wording; Reset to the standard text. Rendering is shared (`renderText` in core), so the preview is the text that goes out.
