@@ -4,6 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the first real calls, round 1)
+
+- **The assistant speaks first on a phone call.** GPT-Live waits for the caller unless told otherwise, so callers heard silence until they said hello. The opening is now a developer message at the start of the session and the same instruction once the sideband attaches, as OpenAI's guide describes; it is said once.
+- **A goodbye ends the call.** A caller's goodbye that the assistant talked over arrived in two pieces ("Bye. Have a" … "nice day") and was not read as a goodbye; the caller's last two turns are now read together. A caller who asks for the call to end ("can you cut the call?", "hang up", "cuelgue") is let go after the assistant's goodbye, and no silence nudge answers it with more talk. "Please don't hang up" keeps the call.
+- **A promised callback is made.** The assistant said "I'll pass that along" and created nothing. When it promises that the team will be in touch and no request exists, it is told to create the callback, once it has finished speaking.
+- **A staff note does not restart the call.** A note sent from the live page made the assistant say the greeting again. Notes are applied on the next reply, without greeting again, and the greeting is said once per call.
+- **Fewer questions.** The first name is asked for, a last name only when the lookup needs it, and never the number the caller is calling from.
+- **Requests show the assistant's suggestion once.** It appeared twice, as "Suggested next step" and "Suggested by the assistant".
+
 ### Fixed (the first real phone calls)
 
 - **Calls through a Twilio Elastic SIP Trunk find their clinic.** The first calls to a real number were all turned away with SIP 404: the trunk sends each call to the OpenAI project's SIP address, and the dialled number was read only from the To header. Every header except the ones naming the caller is now searched for the clinic's number, To first; the caller's own number is never used to pick a clinic. A call that still matches no clinic logs its headers with the numbers cut short, so the next one can be traced.

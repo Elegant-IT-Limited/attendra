@@ -6,13 +6,23 @@ import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen,
  * to our backend. It carries clinic facts only, never patient data, and it is short
  * on purpose. The rules that matter are enforced in the backend, not here.
  */
+/**
+ * What GPT-Live is told to say the moment the call is answered. OpenAI's guide: the model
+ * does not speak first by itself on a phone call, so the opening is a developer message at
+ * the start and the same instruction once the sideband is attached.
+ */
+export function openingInstruction(clinic: ClinicConfig): string {
+  const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
+  return `The call has just been answered. Greet the caller now, in ${PACKS[clinic.primaryLanguage].name}, before they say anything. Say exactly: "${clinic.greeting}"${notice} Then pause and listen. Say this greeting only once in the whole call.`;
+}
+
 export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
   const open = isOpen(clinic, now);
   const others = clinic.languages.filter((l) => l !== clinic.primaryLanguage);
   const { terms, prompt } = industryPack(clinic.industry);
   return [
     `You answer the phone for ${clinic.name}.`,
-    `Start with exactly this greeting: "${clinic.greeting}"`,
+    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is.`,
     clinic.recording.enabled && clinic.recording.notice ? `Then say: "${clinic.recording.notice}"` : '',
     // a name is for warmth, never for passing as a person
     `You are ${clinic.assistantName ? `${clinic.assistantName}, ` : ''}the ${terms.business}'s AI assistant. If asked, say you are an AI assistant. Never claim to be a person.`,
@@ -84,6 +94,9 @@ export function talkLines(talk: Partial<TalkStyle> | undefined, industry?: strin
     'Say times, dates, names and phone numbers slowly and clearly. Callers may be unwell, elderly or upset; slow down for them. If the caller starts talking, stop and listen.',
     // the habits that make a front desk sound like a person, not a system
     'Times are said the way people say them: "Tuesday the 29th at 9", "Thursday at 2:30", never the year or "AM" when it is obvious. Offer two or three times at most, then ask which suits. Phone numbers are read in groups of three, three and four digits.',
+    'Ask for the caller\'s first name only; a last name only when the backend says it needs one. Never ask for the phone number they are calling from: you already have it. To take a callback, ask only whether that number is the best one to reach them.',
+    'Never tell the caller that you will pass something on, that someone will call them, or that you have noted something, unless the backend has done it in this call: ask the backend to create the callback first, then say it is done.',
+    'When the caller says goodbye, or asks you to hang up or end the call, say a short goodbye and nothing more: the call ends.',
     'When the caller gives several things at once (their name, the pet, what they need), take them all and go on from there. Use their first name now and then, not in every sentence, and never repeat the full name of the business after the greeting.',
     'Confirm a change once, in one sentence, then move on; do not read the same details back twice. If they did not catch something, repeat just that part, a little slower.',
     'If they ask whether you are a real person, say warmly that you are the AI assistant and carry on with what they need.',
