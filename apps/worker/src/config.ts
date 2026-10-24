@@ -15,6 +15,9 @@ const Env = z.object({
   ATTENDRA_VOICE_PUBLIC_URL: optional(z.string().url()),
   ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(150)),
   ATTENDRA_SMS_MONTHLY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(1_000_000).default(2000)),
+  // a Slack alert when a day's Twilio spend passes these dollars: texts, and the whole bill
+  ATTENDRA_SPEND_ALERT_SMS_USD: z.preprocess(blank, z.coerce.number().positive().max(100_000).default(10)),
+  ATTENDRA_SPEND_ALERT_TOTAL_USD: z.preprocess(blank, z.coerce.number().positive().max(100_000).default(25)),
   // texts the team's decisions (a refill ready to pick up); without both, nothing is texted
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
