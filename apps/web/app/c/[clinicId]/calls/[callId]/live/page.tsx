@@ -166,7 +166,10 @@ export default function LiveCallPage() {
   const length = useTicking(live.snapshot?.startedAt ?? listed?.startedAt);
   const [note, setNote] = useState('');
   const [confirm, setConfirm] = useState<'take' | 'end' | null>(null);
-  const [target, setTarget] = useState<'front_desk' | 'me'>('front_desk');
+  const [picked, setTarget] = useState<'front_desk' | 'me'>('front_desk');
+  // with no front desk number, a take-over can only go to the person's own number
+  const frontDeskSet = (config.data?.routing ?? []).some((r) => r.target === 'front_desk');
+  const target = frontDeskSet ? picked : 'me';
   const [number, setNumber] = useState('');
   const [changing, setChanging] = useState(false);
   // what did not work opens in a dialog, wherever the page is scrolled
@@ -194,7 +197,11 @@ export default function LiveCallPage() {
       setConfirm(null);
       const code = e instanceof ApiFailure ? e.body.error : null;
       setProblem(TAKEN(e) ?? (code === 'no_number' ? 'Add your number first.'
-        : code === 'emergency_script' ? 'The assistant is still giving the emergency number. You can end the call once the caller has heard it.' : 'That did not work. Try again.'));
+        : code === 'no_front_desk' ? 'There is no front desk number to transfer to. Add one in Settings, under Transfers, or transfer to your own number.'
+        : code === 'web_call' ? 'A browser test call cannot be transferred.'
+        : code === 'emergency_script' ? 'The assistant is still giving the emergency number. You can end the call once the caller has heard it.'
+        : code === 'not_live' ? 'The call has ended.'
+        : code === 'voice_unavailable' ? 'The call service did not answer. Try again in a moment.' : 'That did not work. Try again.'));
     },
   });
 
@@ -305,7 +312,8 @@ export default function LiveCallPage() {
         footer={<><Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button><Button loading={act.isPending} disabled={target === 'me' && !mine.data?.number} onClick={() => act.mutate('take')}>Transfer the call</Button></>}>
         <div className="space-y-4">
           <RadioGroup label="Transfer to" value={target} onValueChange={setTarget} options={[
-            { value: 'front_desk', label: 'The front desk line', hint: 'The number in Settings, under Transfers.' },
+            { value: 'front_desk', label: 'The front desk line', disabled: !frontDeskSet,
+              hint: frontDeskSet ? 'The number in Settings, under Transfers.' : <>No front desk number yet. <Link href={`/c/${clinicId}/settings#transfers`} className="text-primary underline">Add one in Settings, under Transfers</Link>.</> },
             { value: 'me', label: 'My own number', hint: mine.data?.number ?? 'Not set yet.' },
           ]} />
           {target === 'me' && mine.data?.number && !changing && (

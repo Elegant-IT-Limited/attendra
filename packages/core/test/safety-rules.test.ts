@@ -59,6 +59,11 @@ describe('identity inputs', () => {
     expect(saidGoodbye('Bye, wait, one more thing', 'Anything else?')).toBe(false);
     // "another time" is not more to say when the goodbye comes after it (from the hardcore run)
     expect(saidGoodbye("No, thanks. I'll call back another time. Goodbye.", 'Would you like me to request a callback?')).toBe(true);
+    // "I'll call back later" with nothing pending is leaving (Tamal's call, 2026-10-23)
+    expect(saidGoodbye("No, I don't want to give you that information. Anyway, I'll call back later", 'Is Susi female or male?')).toBe(true);
+    expect(saidGoodbye('Okay, I will call you back tomorrow', 'Would you like a callback?')).toBe(true);
+    expect(saidGoodbye('Te llamo más tarde', '¿Es hembra o macho?')).toBe(true);
+    expect(saidGoodbye('Can you call me back later?', 'Anything else?')).toBe(false);
     expect(saidGoodbye('Goodbye, but actually one question?', asked)).toBe(false);
     expect(saidGoodbye('0 1 7 1 4 2 6 2 5 8 4. I am done', 'And the phone number for his file?')).toBe(false);
     expect(saidGoodbye('No', 'Is he a new patient?')).toBe(false);
