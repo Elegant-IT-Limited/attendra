@@ -9,7 +9,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Suspense, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { TextStatus } from '@/components/calls/text-status';
-import { CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
+import { CustomFieldInputs, CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = {
   topic: 'Topic',
-  medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'Reason',
+  medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
@@ -148,7 +148,7 @@ function Requests() {
             {can('tasks:work') && <Button onClick={() => setAdding(true)}><Plus /> New request</Button>}
           </>
         )} />
-      <NewRequest clinicId={clinicId} open={adding} onOpenChange={setAdding} topics={topics.map((t) => t.name)} />
+      <NewRequest clinicId={clinicId} open={adding} onOpenChange={setAdding} topics={topics.map((t) => t.name)} fields={requestFields} patientWord={terms.patient} />
       <details className="group mb-5 rounded-lg border border-border bg-surface text-sm shadow-xs">
         <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
           <Info className="size-4" aria-hidden /> What each kind of request means
@@ -174,7 +174,7 @@ function Requests() {
           const v = e.target.value;
           if (v.startsWith('topic:')) { setType(''); setTopic(v.slice(6)); } else { setTopic(''); setType(v); }
         }}>
-          <option value="">All types</option>
+          <option value="">Any kind of request</option>
           {Object.keys(TASK_TYPES).map((k) => <option key={k} value={k}>{taskType(k, terms.patient)}</option>)}
           {topics.length > 0 && (
             <optgroup label="Your kinds of request">
@@ -288,7 +288,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         {open && t.followUp && t.followUp !== t.details.suggested && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
         {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
-        {fields.filter((f) => t.custom[f.id] || f.column).map((f) => (
+        {fields.map((f) => (
           <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{t.custom[f.id] ? shownValue(f, t.custom[f.id]) : <span className="text-text-muted">Not filled in</span>}</dd></div>
         ))}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
@@ -359,23 +359,35 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
 }
 
 /** A request written down by hand: a voicemail someone listened to, a walk-in's question, a call taken at the desk. */
-function NewRequest({ clinicId, open, onOpenChange, topics }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; topics: string[] }) {
+function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; topics: string[]; fields: CustomField[]; patientWord: string }) {
   const queries = useQueryClient();
   const toast = useToast();
-  const blank = { kind: 'callback', reason: '', callbackNumber: '', urgent: false, dueOn: '' };
+  const blank = { kind: 'callback', reason: '', callbackNumber: '', urgent: false, dueOn: '', medication: '', pharmacy: '' };
   const [draft, setDraft] = useState(blank);
+  const [custom, setCustom] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const refill = draft.kind === 'refill';
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const topic = draft.kind.startsWith('topic:') ? draft.kind.slice(6) : null;
-      return api<{ id: string }>(`/clinics/${clinicId}/tasks`, { method: 'POST', body: JSON.stringify({
-        type: draft.kind === 'follow_up' ? 'follow_up' : 'callback', topic, reason: draft.reason,
-        callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
+      const type = topic ? 'callback' : draft.kind;
+      const r = await api<{ id: string }>(`/clinics/${clinicId}/tasks`, { method: 'POST', body: JSON.stringify({
+        type, topic, reason: draft.reason, callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
+        ...(refill ? { medication: draft.medication.trim() || null, pharmacy: draft.pharmacy.trim() || null } : {}),
       }) });
+      // the clinic's own fields go with it; a problem with them leaves the request in the queue and says so
+      if (fields.length && Object.values(custom).some((v) => v.trim())) {
+        const values = Object.fromEntries(fields.map((f) => [f.id, custom[f.id] ?? '']));
+        const failed = await api<void>(`/clinics/${clinicId}/tasks/${r.id}/fields`, { method: 'PUT', body: JSON.stringify({ values }) }).then(() => false, () => true);
+        if (failed) return { ...r, fieldsFailed: true };
+      }
+      return { ...r, fieldsFailed: false };
     },
-    onSuccess: () => {
-      toast({ tone: 'success', message: 'Request added. It is in the queue for the team.' });
-      setDraft(blank); setError(null); onOpenChange(false);
+    onSuccess: (r) => {
+      toast(r.fieldsFailed
+        ? { tone: 'error', message: 'The request is added, but not its details. Open it and use Edit details.' }
+        : { tone: 'success', message: 'Request added. It is in the queue for the team.' });
+      setDraft(blank); setCustom({}); setError(null); onOpenChange(false);
       void queries.invalidateQueries({ queryKey: ['tasks', clinicId] });
     },
     onError: (e) => setError(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
@@ -389,13 +401,24 @@ function NewRequest({ clinicId, open, onOpenChange, topics }: { clinicId: string
         </>
       )}>
       <div className="space-y-4">
-        <Field label="Kind">
+        <Field label="Kind of request">
           {(p) => <Select {...p} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
-            <option value="callback">Callback</option>
-            <option value="follow_up">Follow up</option>
+            <optgroup label="Built in">
+              <option value="callback">{taskType('callback')}</option>
+              <option value="refill">{taskType('refill')}</option>
+              <option value="voicemail">{taskType('voicemail')}</option>
+              <option value="follow_up">{taskType('follow_up')}</option>
+            </optgroup>
             {topics.length > 0 && <optgroup label="Your kinds of request">{topics.map((t) => <option key={t} value={`topic:${t}`}>{t}</option>)}</optgroup>}
           </Select>}
         </Field>
+        <p className="-mt-2 text-xs text-text-muted">{taskType('review', patientWord)} is added by the assistant, with the {patientWord} it is about.</p>
+        {refill && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Medicine" hint="Optional.">{(p) => <Input {...p} maxLength={120} value={draft.medication} onChange={(e) => setDraft({ ...draft, medication: e.target.value })} />}</Field>
+            <Field label="Pharmacy" hint="Or pick up at the clinic. Optional.">{(p) => <Input {...p} maxLength={120} value={draft.pharmacy} onChange={(e) => setDraft({ ...draft, pharmacy: e.target.value })} />}</Field>
+          </div>
+        )}
         <Field label="Call back on" hint="The number to reach them on, if there is one.">
           {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
         </Field>
@@ -406,6 +429,12 @@ function NewRequest({ clinicId, open, onOpenChange, topics }: { clinicId: string
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.urgent} onChange={(e) => setDraft({ ...draft, urgent: e.target.checked })} /> Urgent</label>
           <Field label="Due" className="w-44">{(p) => <Input {...p} type="date" value={draft.dueOn} onChange={(e) => setDraft({ ...draft, dueOn: e.target.value })} />}</Field>
         </div>
+        {fields.length > 0 && (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Your own fields</legend>
+            <CustomFieldInputs idPrefix="new-req-cf" compact fields={fields} values={custom} onChange={(id, v) => setCustom((c) => ({ ...c, [id]: v }))} />
+          </fieldset>
+        )}
         {error && <Alert tone="danger">{error}</Alert>}
       </div>
     </Panel>

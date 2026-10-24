@@ -31,3 +31,23 @@ export function Tabs<V extends string>({ value, onValueChange, tabs, label, vari
   );
 }
 export const TabPanel = T.Content;
+
+/**
+ * A switch between views of one list (all pets, or the ones to check): the pill look of
+ * filter tabs, as pressed buttons, since there are no tab panels for it to point at.
+ */
+export function Segmented<V extends string>({ value, onValueChange, options, label, className }: {
+  value: V; onValueChange: (v: V) => void; options: { value: V; label: ReactNode }[]; label: string; className?: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className={cn('flex w-fit gap-1 rounded-md border border-border-strong bg-surface p-0.5', className)}>
+      {options.map((o) => (
+        <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onValueChange(o.value)}
+          className={cn('focus-ring inline-flex items-center whitespace-nowrap rounded-sm px-3 py-1 text-base transition-colors max-md:min-h-11',
+            o.value === value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}

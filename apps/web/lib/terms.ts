@@ -14,3 +14,14 @@ export function usePets(clinicId: string): boolean {
   const config = useClinicConfig(clinicId);
   return industryPack(config.data?.industry).identity === 'pet';
 }
+
+/**
+ * The names of a veterinarian's (or doctor's) details, the same on the list, its filters, the
+ * edit form and Settings, Fields and lists: one name for one thing everywhere.
+ */
+export const providerTerms = (pets: boolean) => ({
+  specialty: 'Specialty',
+  anySpecialty: 'Any specialty',
+  sees: pets ? 'Animals and services' : 'Sees people for',
+  anySees: pets ? 'Any animal or service' : 'Any reason',
+});

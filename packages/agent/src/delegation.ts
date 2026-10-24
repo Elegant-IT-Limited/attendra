@@ -28,6 +28,12 @@ const AFTER_SPEECH_MS = 3500;
 const VIP_AFTER_MS = 6000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
+/** A second "still checking" for a wait that goes on. */
+const HOLD_AGAIN_MS = 15_000;
+/** No caller waits longer than this for an answer: they hear an apology and a callback offer instead. */
+export const ANSWER_DEADLINE_MS = 25_000;
+/** A wait this long is logged as slow and reported (Slack). */
+const SLOW_MS = 10_000;
 /** What the voice hears while a request runs. Not to be said: the answer usually comes in a moment. */
 export const PROGRESS_NOTE = 'Looking it up. Do not tell the caller you are working on it or checking; the answer comes in a moment, then say it.';
 // and the emergency number before an emergency transfer starts ringing
@@ -412,16 +418,26 @@ export class CallAgent {
     const progress: Outbound = { type: 'thinking', delegationId, content: PROGRESS_NOTE };
     if (emit) emit(progress); else out.push(progress);
     // a long wait is never silence: once, the caller hears that we are still on it
-    const hold = emit ? setTimeout(() => {
-      if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
-    }, HOLD_AFTER_MS) : null;
+    const holds = emit ? [
+      setTimeout(() => {
+        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
+      }, HOLD_AFTER_MS),
+      setTimeout(() => {
+        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Thank the caller for waiting, in a few different words, and say it will be just a moment.' });
+      }, HOLD_AGAIN_MS),
+    ] : [];
+    const startedAt = Date.now();
+    let toolCalls = 0;
 
     const controls: Outbound[] = [];
     const execute = async (name: ToolName, args: unknown): Promise<ToolResult> => {
       this.doing = DOING[name] ?? null;
       this.emit({ type: 'tool', tool: name, status: 'started', code: null });
       this.emitState();
+      const toolStarted = Date.now();
       const result = await runTool(name, args, this.state, this.ctx, this.backend, revision);
+      toolCalls++;
+      this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - toolStarted }, 'tool done');
       const code = typeof result.data.error === 'string' ? result.data.error : null;
       this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
       // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
@@ -459,10 +475,19 @@ export class CallAgent {
         });
         if (fresh) this.ctx.clinic = fresh;
       }
-      const plan = await this.planner.plan({
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<'late'>((resolve) => { deadline = setTimeout(() => resolve('late'), ANSWER_DEADLINE_MS); });
+      const plan = await Promise.race([this.planner.plan({
         clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber, history: this.ctx.history ?? null,
         nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
-      }, execute);
+      }, execute), late]).finally(() => clearTimeout(deadline));
+      if (plan === 'late') {
+        // the answer is too slow to keep the caller waiting: anything it would still write is refused (the revision moves on)
+        if (revision === this.state.revision) this.state.revision++;
+        this.log.warn({ call_id: this.ctx.callId, revision, ms: Date.now() - startedAt, tools: toolCalls }, 'answer took too long: apologised and offered a callback');
+        out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.' });
+        return out;
+      }
       if (revision !== this.state.revision) {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];
@@ -474,7 +499,10 @@ export class CallAgent {
       // never claim success on failure; hand the caller to a person instead
       out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.' });
     } finally {
-      if (hold) clearTimeout(hold);
+      for (const h of holds) clearTimeout(h);
+      const ms = Date.now() - startedAt;
+      this.log.info({ call_id: this.ctx.callId, ms, tools: toolCalls }, 'request answered');
+      if (ms >= SLOW_MS) this.ctx.onSlow?.(ms);
       this.doing = this.state.pending ? 'waiting for a yes' : null;
       this.emitState();
     }

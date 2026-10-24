@@ -195,6 +195,13 @@ describe('a request written down by hand', () => {
     expect((await audit('task.created.callback')).find((a) => a.entity_id === id)?.actor).toMatch(/^user:/);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.viewer, body: { type: 'callback', reason: 'nope' } })).statusCode).toBe(403);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'boarding', topic: 'Not a kind here' } })).statusCode).toBe(422);
+    // a refill or a voicemail written down by hand; "new pet to check" stays the assistant's own
+    const refill = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'refill', reason: 'Asked at the desk', medication: 'Apoquel 16 mg', pharmacy: 'Pick up', callbackNumber: '(303) 555-0142' } });
+    expect(refill.statusCode).toBe(201);
+    const refills = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'Asked at the desk' } })).json().tasks as { id: string; type: string; details: Record<string, string> }[];
+    expect(refills.find((t) => t.id === refill.json().id)).toMatchObject({ type: 'refill', details: { medication: 'Apoquel 16 mg', pharmacy: 'Pick up' } });
+    expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'voicemail', reason: 'Left a message about boarding' } })).statusCode).toBe(201);
+    expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'review', reason: 'nope' } })).statusCode).toBe(422);
   });
 
   it('the settings say which numbers are the assistant\'s own', async () => {
