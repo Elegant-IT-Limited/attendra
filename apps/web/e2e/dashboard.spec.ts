@@ -63,7 +63,7 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByLabel('Outcome').selectOption({ label: 'Called back' });
     await first.getByRole('button', { name: 'Mark done' }).click();
     await expect(tasks).toHaveCount(10);
-    await page.getByRole('tab', { name: 'Done' }).click();
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(tasks).toHaveCount(1);
   });
 

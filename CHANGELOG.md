@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (dashboard, 2026-10-24)
+
+- **One profile per phone number.** A pet's (or patient's) page shows everyone on the same phone, every call from that number (verified or not, marked "From this number") and the requests of anyone on it, with counts in the header.
+- **The kind lists match.** The Requests filter and New request list the built-in kinds in one order under "Built in", then the clinic's own; in New request "New pet to check" shows greyed out, "added by the assistant".
+- **One filter bar on every list.** Pets, Veterinarians and Requests each put their switch, search and dropdowns in the same card; Requests' Open/Done is the same pill switch as Pets'.
+- **Settings:** a warning when a veterinary clinic has no emergency hospital; "+ Your clinic's own line" moves to an empty row already there; the example number uses the clinic's area code; "While you are closed" explains booking at night ("Book visits for your open hours, at any time of day").
+
 ### Fixed (calls, from a tester's calls on 2026-10-24 and live evals)
 
 - **The call ends when both sides said goodbye.** The assistant's goodbye answered by the caller's ("Take care." "Take care, bye") ends the call 2.5 s later, even with a request still at the backend; no "waiting in silence" nudge ever follows a caller's goodbye (it made the assistant speak again, twice). "I'll get back to you" counts as leaving; "talk to you soon" and "see you" count as the assistant's goodbye.

@@ -306,9 +306,9 @@ export default function Settings() {
             ))}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="While you are closed" htmlFor="after-hours" hint="Taking requests lets the team book in the morning, after a person has looked at each one.">
+            <Field label="While you are closed" htmlFor="after-hours" hint="Book: a caller at night books the next open times, like at the desk. Take requests: nothing is booked while you are closed; the team calls back in the morning.">
               <Select id="after-hours" value={c.afterHours} onChange={(e) => set({ afterHours: e.target.value as ClinicConfig['afterHours'] })}>
-                <option value="book">Book visits, as during opening hours</option>
+                <option value="book">Book visits for your open hours, at any time of day</option>
                 <option value="requests">Take requests; the team books in the morning</option>
               </Select>
             </Field>
@@ -548,7 +548,7 @@ export default function Settings() {
             ) : (
               <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                 {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
-                <Input aria-label="Your clinic's own line" className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable} placeholder={countryCopy(c).phone.local}
+                <Input aria-label="Your clinic's own line" data-own-line={n} className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
                   onBlur={(e) => { const v = e.target.value.trim() ? asE164(c, e.target.value) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
                 <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
                 {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}
@@ -556,7 +556,13 @@ export default function Settings() {
             )))}
           </ul>
           {writable && c.phoneNumbers.filter((n) => !assistantNumbers.has(n)).length < 3 && (
-            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => set({ phoneNumbers: [...c.phoneNumbers, ''] })}><Plus /> Your clinic&apos;s own line</Button>
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => {
+              // an empty row already there gets the cursor, like the other lists; otherwise a new one
+              const empty = document.querySelector<HTMLInputElement>('input[data-own-line=""]');
+              if (empty) { empty.focus(); return; }
+              set({ phoneNumbers: [...c.phoneNumbers, ''] });
+              setTimeout(() => document.querySelector<HTMLInputElement>('input[data-own-line=""]')?.focus(), 0);
+            }}><Plus /> Your clinic&apos;s own line</Button>
           )}
         </Section>
       </fieldset>
