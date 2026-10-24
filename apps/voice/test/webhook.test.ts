@@ -359,6 +359,17 @@ describe('Twilio text webhooks', () => {
     expect(s.status).toHaveBeenCalledWith({ clinicId: DEMO_CLINIC.id, messageSid: sid, status: 'undelivered', errorCode: '30007' });
     expect((await send(app, path, { MessageSid: 'nope', MessageStatus: 'sent' })).statusCode).toBe(400);
   });
+
+  it('says a Twilio spend alert in Slack, signed only', async () => {
+    const alert = vi.fn();
+    const app = buildServer({ ...deps({ sms: sms() }).d, alerts: { alert, note: vi.fn(), flush: async () => {} } });
+    const f = { UsageTriggerSid: `UT${'a'.repeat(32)}`, UsageCategory: 'sms', CurrentValue: '10.42', TriggerValue: '10' };
+    expect((await send(app, '/webhooks/twilio/spend-alert', f, 'forged')).statusCode).toBe(403);
+    expect(alert).not.toHaveBeenCalled();
+    expect((await send(app, '/webhooks/twilio/spend-alert', f)).statusCode).toBe(204);
+    expect(alert).toHaveBeenCalledWith('spend_sms', expect.stringContaining('Twilio spend today on texts is $10.42, past the $10.00 alert'));
+    expect((await send(app, '/webhooks/twilio/spend-alert', { ...f, UsageTriggerSid: 'nope' })).statusCode).toBe(400);
+  });
 });
 
 describe('two engines: GPT-Live and the Realtime API', () => {

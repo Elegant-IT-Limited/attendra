@@ -3,3 +3,4 @@ export * from './sip';
 export * from './sms';
 export * from './webhooks';
 export * from './fallback';
+export * from './spend';

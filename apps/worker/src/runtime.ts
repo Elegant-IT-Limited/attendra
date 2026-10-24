@@ -8,7 +8,7 @@ import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/
 import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
-import { type FallbackEntry, fallbackEntry, type SmsSender, smsStatusUrl, type TwilioFallback, TwilioMessenger } from '@attendra/telephony';
+import { type FallbackEntry, fallbackEntry, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
 import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
@@ -37,6 +37,8 @@ export interface WorkerDeps {
   alerts?: Alerter;
   /** The backup route in Twilio (a Function on the trunk's disaster recovery URL): kept in place and current. */
   fallback?: { client: Pick<TwilioFallback, 'ensure' | 'sync'>; trunkSid: string; slackWebhookUrl?: string };
+  /** Twilio's daily spend alerts, kept in place at each start. */
+  spend?: { client: Pick<TwilioSpendAlerts, 'ensure'>; callbackUrl: string; triggers: SpendTrigger[] };
 }
 
 /**
@@ -371,6 +373,16 @@ export async function startWorker(d: WorkerDeps) {
       .catch((err: unknown) => {
         d.log.error({ err: { message: (err as Error).message } }, 'backup route not in place');
         d.alerts?.alert('backup_route', `The backup route could not be set up in Twilio: ${(err as Error).message.slice(0, 120)}. Calls still work; an outage would give callers an error tone.`);
+      });
+  }
+  // the spend alerts in place; a failure is said, and tried again at the next start
+  if (d.spend) {
+    const s = d.spend;
+    void s.client.ensure(s.callbackUrl, s.triggers)
+      .then((r) => d.log.info({ ...r, lines: s.triggers.map((t) => `${t.category} $${t.usd}`) }, 'spend alerts in place'))
+      .catch((err: unknown) => {
+        d.log.error({ err: { message: (err as Error).message } }, 'spend alerts not in place');
+        d.alerts?.alert('spend_alerts', `Twilio's daily spend alerts could not be set up: ${(err as Error).message.slice(0, 120)}. Texts and calls still work; a runaway would not be said until the bill.`);
       });
   }
   // nothing retries a dead letter: it is logged, with ids only, for someone to look at

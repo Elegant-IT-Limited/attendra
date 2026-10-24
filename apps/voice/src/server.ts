@@ -2,7 +2,7 @@
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
-import { callerNumber, dialledCandidates, maskedHeaders, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
+import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -176,6 +176,19 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const clinicId = (req.query as { clinic?: string }).clinic;
       if (!clinicId || !/^SM[0-9a-f]{32}$/i.test(f.MessageSid ?? '') || !f.MessageStatus) return reply.code(400).send({ error: 'bad_request' });
       await deps.sms.status({ clinicId, messageSid: f.MessageSid!, status: f.MessageStatus, errorCode: /^\d{1,6}$/.test(f.ErrorCode ?? '') ? f.ErrorCode! : null });
+      return reply.code(204).send();
+    });
+    // Twilio: a day's spend passed one of the worker's usage triggers (texts, the whole bill)
+    webhooks.post(SPEND_ALERT_PATH, async (req, reply) => {
+      if (!deps.sms) return reply.code(503).send({ error: 'sms_webhooks_off' });
+      const f = fromTwilio(req);
+      if (!f) {
+        if (tooManyForged(req.ip)) return reply.code(429).send({ error: 'too many invalid deliveries' });
+        deps.log.warn({ path: SPEND_ALERT_PATH }, 'rejected a Twilio request with an invalid signature'); return reply.code(403).send({ error: 'invalid signature' });
+      }
+      if (!/^UT[0-9a-f]{32}$/i.test(f.UsageTriggerSid ?? '')) return reply.code(400).send({ error: 'bad_request' });
+      deps.log.warn({ category: f.UsageCategory, current: f.CurrentValue, trigger: f.TriggerValue }, 'Twilio spend passed an alert line');
+      deps.alerts?.alert(`spend_${(f.UsageCategory ?? 'twilio').replace(/[^a-z]/gi, '')}`, spendAlertText(f));
       return reply.code(204).send();
     });
   });
