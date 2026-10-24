@@ -3,6 +3,8 @@ import type { SourceType } from '@attendra/db';
 import { Worker } from 'node:worker_threads';
 
 export const MAX_BYTES = 5 * 1024 * 1024;
+/** Documents per clinic: each one is embedded and stored, so the count is bounded. */
+export const MAX_DOCUMENTS = 50;
 /** Limits on a PDF, which is read in a worker thread of its own. */
 export const PDF_LIMITS = { maxPages: 200, maxChars: 2 * 1024 * 1024, timeoutMs: 30_000, maxHeapMb: 256 };
 

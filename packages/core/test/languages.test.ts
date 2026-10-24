@@ -163,8 +163,8 @@ describe('the software\'s name', () => {
   it('in a greeting or as the assistant\'s name is a warning in Settings, never a configuration that fails to load', () => {
     const named = { ...DEMO_CLINIC, greeting: 'Thanks for calling, this is the Attendra AI assistant.', assistantName: 'Attendra' };
     expect(ClinicConfig.safeParse(named).success).toBe(true);
-    expect(clinicWarnings(named).map((w) => w.path)).toEqual(['greeting', 'assistantName']);
-    expect(clinicWarnings(DEMO_CLINIC)).toEqual([]);
+    expect(clinicWarnings(named).map((w) => w.path).filter((p) => p !== 'address')).toEqual(['greeting', 'assistantName']);
+    expect(clinicWarnings(DEMO_CLINIC).filter((w) => w.path !== 'address')).toEqual([]);
   });
 });
 
@@ -265,8 +265,11 @@ describe('clinic languages and the assistant\'s name', () => {
   it('warns when the software\'s name would reach a caller, and still loads the configuration', () => {
     const greeting = { ...base, greeting: 'Thanks for calling. I am the Attendra AI assistant.' };
     expect(ClinicConfig.safeParse(greeting).success).toBe(true);
-    expect(clinicWarnings(greeting).map((w) => w.path)).toEqual(['greeting']);
-    expect(clinicWarnings({ ...base, assistantName: 'Attendra' }).map((w) => w.path)).toEqual(['assistantName']);
+    expect(clinicWarnings(greeting).map((w) => w.path).filter((p) => p !== 'address')).toEqual(['greeting']);
+    expect(clinicWarnings({ ...base, assistantName: 'Attendra' }).map((w) => w.path).filter((p) => p !== 'address')).toEqual(['assistantName']);
+    // no address is said too: callers asking where the clinic is would hear nothing (Tamal's test, 2026-10-23)
+    expect(clinicWarnings({ ...base, address: undefined }).map((w) => w.path)).toContain('address');
+    expect(clinicWarnings({ ...base, address: '88 Riverbend Road, Denver' }).map((w) => w.path)).not.toContain('address');
   });
 
   it('names are one word of 2 to 24 letters, in any script', () => {

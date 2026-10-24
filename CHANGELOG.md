@@ -4,6 +4,31 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (the dashboard, from Tamal's UI round on 2026-10-24)
+
+- **One name for one thing.** A vet's "Specialty" and "Animals and services" (or "Sees people for") are called the same on the list, its filters ("Any specialty", "Any animal or service"), the card, the edit form and Settings, Fields and lists; the built-in fields listed there are the edit form's labels, word for word. "Kind of animal", "Kind of request" and "What it is about" likewise.
+- **Pets: a real switch** between all pets and those the assistant added, the same pill switch as other filters.
+- **Your own fields where you look for them.** Add pet has the clinic's own fields; New request has them too, and every request card lists every field ("Not filled in" until someone fills it). The editor says "Name" (it said "Label") and each section says where its fields show; "Show on the Pets list" replaces "Show as a column".
+- **New request takes every kind:** Callback, Prescription refill (with medicine and pharmacy), Voicemail, Follow up and the clinic's own kinds; "New pet to check" stays the assistant's, and the form says so.
+- **The clinic's own line can be changed** in Settings, Phone numbers (up to three, in the clinic's country). The assistant's numbers stay as they are and first, since they route calls and send texts.
+- **Settings say what is missing:** no address is a warning at the top of Settings. Menu links say they are shortcuts for the team, not for callers.
+- **Call records are kept a year by default**, three years at most, chosen from a list (90 days to 3 years); a longer value saved before is kept at three years.
+- **No follow-up request when the caller said no** to the last callback offered; the call can still need review, and its summary says they declined.
+
+### Fixed (calls, from Tamal's test calls on 2026-10-23)
+
+- **A callback is taken on the yes.** "Okay" to a callback creates it at once, from the number the caller is calling from; the assistant no longer asks "is this the best number?" first (a caller who hung up then had no request).
+- **No more long silences.** Every backend request logs how long it took; the caller hears "still checking" at 7 s and a thank-you for waiting at 15 s; after 25 s they hear an apology and a callback offer, the late answer is dropped, and a wait of 10 s or more alerts Slack (`slow_answer`).
+- **"I'll call back later" ends the call.** It counts as leaving, like "I have to go"; the assistant says a short goodbye and the line ends.
+- **Holidays.** "What's your next holiday?" is answered from the clinic's closed days; with none marked, the assistant says so and gives the weekly hours.
+- **Pets are called by name** until the owner says the sex ("I can add Susi"), and the owner's first name and the pet's name are asked one at a time; one acknowledgement per answer, never two in a row.
+- **Earlier calls.** From the number alone the assistant may say when this number last called and whether a request from that call is still open; what it was about only after the caller gives the first name or pet's name used on it.
+- **Take over says why.** With no front desk number the option is greyed out with a link to Settings, Transfers; a refused take-over says the reason (no front desk number, a browser test call, the call ended, the service not answering), and the API logs the refusal code.
+
+### Changed (documents)
+
+- **At most 50 documents a clinic.** Every document is embedded and stored, so a clinic keeps up to 50; the 51st new title is refused with a clear message (409 `too_many_documents`), and uploading with an existing title still replaces that document. Each document's own limits are unchanged (5 MB, 200 PDF pages, 400 passages).
+
 ### Added (texts)
 
 - **Your texts.** Settings, Texting shows every text as a client gets it, with sample details, in each of the clinic's languages, and its length in texts (an emoji makes it 70 characters a text, not 160). The clinic can add a few words after its name ("Zaru: Find our clinic here: …", up to 40 characters) and one line before the opt-out (up to 100); the name, the details and "Reply STOP" stay fixed, as the carriers registered them. No shortened links and no sales wording; Reset to the standard text. Rendering is shared (`renderText` in core), so the preview is the text that goes out.

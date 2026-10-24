@@ -95,3 +95,16 @@ describe('body limits', () => {
     expect((await inject('POST', '/api/auth/sign-in/email', 'application/json', json)).statusCode).toBe(413);
   });
 });
+
+describe('how many documents', () => {
+  it('keeps at most 50 a clinic; the same title still replaces its document', async () => {
+    const repo = new KnowledgeRepository(api.t.db);
+    const have = (await repo.list(DEMO_CLINIC.id)).length;
+    for (let i = have; i < 50; i++) await repo.save(DEMO_CLINIC.id, { title: `Filler ${i}`, sourceType: 'text', content: Buffer.from(`filler ${i}`), userId: api.users.admin });
+    const over = await upload(as.admin, 'One too many', 'Parking is free behind the building.');
+    expect(over.statusCode).toBe(409);
+    expect(over.json().error).toBe('too_many_documents');
+    expect((await upload(as.admin, 'Filler 49', 'filler 49, updated')).statusCode).toBe(201);
+    await api.t.db.execute(sql`delete from knowledge_documents where clinic_id = ${DEMO_CLINIC.id} and title like 'Filler %'`);
+  });
+});

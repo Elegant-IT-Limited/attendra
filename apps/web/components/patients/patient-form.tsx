@@ -8,6 +8,7 @@ import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Checkbox } from '@/components/ui/controls';
+import { CustomFieldInputs } from '@/components/patients/custom-fields';
 import { useProblem } from '@/components/ui/toast';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
@@ -38,13 +39,28 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
     title: p.existing ? 'Already on file' : 'Not saved',
     message: <>{p.text}{p.existing && <>{' '}<Link className="font-medium text-primary underline" href={`/c/${clinicId}/patients/${p.existing}`}>Open their record</Link></>}</>,
   });
+  // the clinic's own fields (Settings, Fields and lists), filled in when the record is added; an edit keeps them under Details
+  const customFields = !patientId ? config.data?.customFields ?? [] : [];
+  const [custom, setCustom] = useState<Record<string, string>>({});
   const today = localDateOf(new Date(), config.data?.timezone ?? 'UTC');
   const child = !!form.dob && form.dob <= today && ageOn(form.dob, today) < 18;
   const save = useMutation({
-    mutationFn: (input: PatientInput) => api<PatientSaved>(`/clinics/${clinicId}/patients${patientId ? `/${patientId}` : ''}`, {
-      method: patientId ? 'PATCH' : 'POST', body: JSON.stringify(input),
-    }),
+    mutationFn: async (input: PatientInput) => {
+      const r = await api<PatientSaved>(`/clinics/${clinicId}/patients${patientId ? `/${patientId}` : ''}`, {
+        method: patientId ? 'PATCH' : 'POST', body: JSON.stringify(input),
+      });
+      // the record is saved first; its own fields go with it, and a problem with them is said without undoing the record
+      let fieldsProblem: string | null = null;
+      if (customFields.length && Object.values(custom).some((v) => v.trim())) {
+        const values = Object.fromEntries(customFields.map((f) => [f.id, custom[f.id] ?? '']));
+        await api<void>(`/clinics/${clinicId}/patients/${r.id}/fields`, { method: 'PUT', body: JSON.stringify({ values }) }).catch((e: unknown) => {
+          fieldsProblem = e instanceof ApiFailure && e.body.issues?.length ? e.body.issues.map((i) => `${customFields.find((f) => `values.${f.id}` === i.path)?.label ?? 'A field'}: ${i.message}`).join('. ') : 'check your connection';
+        });
+      }
+      return { ...r, fieldsProblem: fieldsProblem as string | null };
+    },
     onSuccess: (r, input) => {
+      if (r.fieldsProblem) showProblem({ title: 'Saved, but not its details', message: `The ${pet ? 'pet' : 'patient'} is added. Open the record and fill in the details under Details: ${r.fieldsProblem}.` });
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patient-search', clinicId] });
       void queries.invalidateQueries({ queryKey: ['patients', clinicId] });
@@ -143,6 +159,12 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           </div>
         )}
       </fieldset>
+      )}
+      {customFields.length > 0 && (
+        <fieldset disabled={save.isPending} className="space-y-2">
+          <legend className="text-sm font-medium">Your own fields</legend>
+          <CustomFieldInputs idPrefix="new-cf" fields={customFields} values={custom} onChange={(id, v) => setCustom((c) => ({ ...c, [id]: v }))} />
+        </fieldset>
       )}
       <Checkbox id="texts-ok" label="Texts OK (reminders)" checked={!!form.textsOk} disabled={save.isPending} onCheckedChange={(textsOk) => setForm({ ...form, textsOk })}
         hint="Set when they said yes on a call. Tick it if they agreed in person. Reminder texts go only to people who said yes." />

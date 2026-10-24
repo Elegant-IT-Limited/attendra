@@ -235,15 +235,21 @@ describe('settings', () => {
     expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, emergencyNumber: '911' } })).statusCode).toBe(200);
   });
 
-  it('refuses a change to the phone numbers, including their order', async () => {
-    const res = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+19995550000'] } });
-    expect(res.json().issues[0].path).toBe('phoneNumbers');
-    // the first number sends the texts, so swapping the order is a change too
-    const two = ['+13035550100', '+13035550101'];
-    await api.t.db.execute(sql`update clinics set config = jsonb_set(config, '{phoneNumbers}', ${JSON.stringify(two)}::jsonb) where id = ${DEMO_CLINIC.id}`);
-    const reordered = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: [...two].reverse() } });
-    expect(reordered.json().issues[0].path).toBe('phoneNumbers');
-    await api.t.db.execute(sql`update clinics set config = jsonb_set(config, '{phoneNumbers}', ${JSON.stringify(DEMO_CLINIC.phoneNumbers)}::jsonb) where id = ${DEMO_CLINIC.id}`);
+  it('keeps the assistant\'s numbers as they are, and lets the clinic keep its own line right', async () => {
+    const assistant = DEMO_CLINIC.phoneNumbers[0]!;
+    // the assistant's number routes calls: it cannot be removed or swapped for another
+    const gone = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+13035559999'] } });
+    expect(gone.statusCode).toBe(422);
+    expect(gone.json().issues[0]).toMatchObject({ path: 'phoneNumbers', message: expect.stringContaining('Phone number page') });
+    // the clinic's own line can be added, changed and removed; the assistant's number stays first (it texts)
+    const added = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+13035550142', assistant] } });
+    expect(added.statusCode).toBe(200);
+    expect(added.json().phoneNumbers).toEqual([assistant, '+13035550142']);
+    const abroad = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: [assistant, '+442079460123'] } });
+    expect(abroad.json().issues[0]).toMatchObject({ path: 'phoneNumbers', message: expect.stringContaining('country') });
+    const four = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: [assistant, '+13035550142', '+13035550143', '+13035550144', '+13035550145'] } });
+    expect(four.json().issues[0]).toMatchObject({ path: 'phoneNumbers', message: 'up to 3 of your own lines' });
+    expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: [assistant] } })).json().phoneNumbers).toEqual([assistant]);
   });
 
   it('saves after-hours requests and an emergency hospital, refuses a hospital without a usable phone, and clears it', async () => {

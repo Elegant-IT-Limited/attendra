@@ -185,7 +185,10 @@ export class LiveController {
       throw new HttpException({ error: 'already_taken', by }, 409);
     }
     if (r.status === 404) throw new NotFoundException({ error: 'not_live' });
-    if (r.status === 409) throw new HttpException({ error: r.error }, 409);
+    if (r.status === 409) {
+      this.log.info({ clinic_id: clinicId, action, code: r.error }, 'live action refused');
+      throw new HttpException({ error: r.error }, 409);
+    }
     this.log.warn({ clinic_id: clinicId, code: r.error }, 'live action failed');
     throw new HttpException({ error: 'voice_unavailable' }, 502);
   }
