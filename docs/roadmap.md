@@ -50,9 +50,13 @@ A pack for veterinary practices: pets found by their owner and their own name, n
 
 Refill requests a vet approves before the owner is texted, records requests, the emergency hospital and after-hours settings in the dashboard, locations, custom fields, booking rules, visit reminders with consent, texts during calls, GPT Realtime as a second voice engine, accounts with two-step sign-in, MCP and webhooks on a hosted service, and calls that listen, ask one question at a time and offer real times first, tested on 78 call scenarios.
 
-## v0.9: real phone lines (next)
+## v0.9: real phone lines (done)
 
-Real calls on production phone numbers (an Elastic SIP trunk to the voice engine), the first clinics in the private beta, texting registration with the carriers, and fixes from their calls.
+Real calls on production phone numbers through an Elastic SIP trunk, a backup route that rings the clinic or says where to go when Attendra cannot take a call, texts with consent said on the call and limits that stop texting fraud, security rules enforced in code, Slack alerts and an outside uptime check, and fixes from the first real calls, tested on 110 call scenarios.
+
+## v1.0: the first clinics (next)
+
+The first clinics in the private beta on their own lines, texting approved by the carriers, and fixes from their calls.
 
 ## Revenue features
 

@@ -4,20 +4,24 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
-### Changed (texts consent, 2026-10-30)
+## [0.9.0] - 2026-10-25
+
+Real phone lines: calls to production numbers through a Twilio Elastic SIP Trunk, a backup route when Attendra cannot take a call, and fixes from the first real calls. Texts with the caller's consent said on the call, the clinic's own words, home-country numbers only and daily and monthly limits. Security on the phone enforced in code, alerts and an outside uptime check, and a dashboard with one list for requests. Tested on 110 call scenarios, 24 of them hardcore.
+
+### Changed (texts consent)
 
 - **A confirmation text is said before the yes.** When a booking, a move or a cancellation would be confirmed by text, the read-back says so ("I'll text you a confirmation at the number you're calling from, unless you'd rather not"), so the caller's yes covers it. "Yes, but no text" books and sends no text.
 - **Confirmations need texting on.** Like every other text, a confirmation goes out only when the clinic's texting is on, which a hosted clinic gets once its texting registration is approved.
 - **Refill decisions by text only on a yes.** With texting on, the assistant asks before logging a refill request: "Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime." The answer is kept on the request; a request from a call is texted only when the caller said yes (one the team logs itself, as before). With the clinic's texting off, the text is recorded as not sent, and why.
 - **The reminder offer says the terms:** "Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime."
 
-### Changed (dashboard, 2026-10-29)
+### Changed (the Requests list)
 
 - **Requests is one list.** Open requests come in three groups, Urgent, Waiting (nobody has them) and Claimed, each row saying who, what they need (the medicine, the topic, the reason, the assistant's suggestion), the detail that goes with it (pharmacy, the number to call back), how long it has waited, where it came from and who has it; an urgent one has a red edge. A row opens the request on the right with its details, notes and actions, and the other requests from the same call.
 - **New request in five steps:** what kind (cards, the clinic's own kinds included; a new pet or patient to check stays the assistant's), who to reach, the details for that kind, when (urgent, due day), and the clinic's own fields.
 - **Settings, Your texts: each text as a template.** The clinic's name and number as sent, every part the call fills in as a tag ({Owner's first name}, {Pet's name}...), where the clinic's own words go, and an example with plainly made-up names.
 
-### Added (operations, 2026-10-28)
+### Added (operations)
 
 - **Spend alerts from Twilio's own count.** The worker keeps two daily Twilio usage triggers in place: texts past `ATTENDRA_SPEND_ALERT_SMS_USD` ($10) and the whole Twilio bill past `ATTENDRA_SPEND_ALERT_TOTAL_USD` ($25) in a day. Twilio calls the voice service's signed `/webhooks/twilio/spend-alert`, which says it in Slack.
 - **An uptime check from outside.** `.github/workflows/uptime.yml` calls the website, the dashboard, the API, the account pages and the voice service every 10 minutes from GitHub's servers, three tries each, and posts to Slack (`UPTIME_SLACK_WEBHOOK_URL`) when one is not answering.
@@ -26,7 +30,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - The e2e sign-in waits up to 30 s for the Today screen (a busy runner took over 15 s on main, 2026-10-24).
 
-### Changed (texts, 2026-10-27)
+### Changed (texts)
 
 - **Texts are guarded against fraud and runaway cost.** A text goes only to a number in the clinic's own country; in North America never to a premium (900), toll-free or Caribbean +1 number, where texting fraud runs up bills. A clinic sends at most `ATTENDRA_SMS_DAILY_CAP` texts in 24 hours (now 150, was 500) and `ATTENDRA_SMS_MONTHLY_CAP` in a calendar month (2,000). A blocked number, 80% of the daily limit and either limit reached are said in Slack.
 - **Texts are counted.** The hosting layer's usage endpoint returns the period's texts (those the carrier took) beside the minutes, and the Today page shows the month's texts against the plan's when the plan includes texts.
