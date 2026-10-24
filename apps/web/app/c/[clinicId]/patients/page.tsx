@@ -12,7 +12,7 @@ import { PatientLine, PatientSearch } from '@/components/patients/patient-search
 import { ImportPanel } from '@/components/import-panel';
 import { PageHeader } from '@/components/shell';
 import { Button, buttonStyles } from '@/components/ui/button';
-import { Tabs } from '@/components/ui/tabs';
+import { Segmented } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -82,8 +82,8 @@ export default function Patients() {
           <CardContent className="py-5">
             {/* one filter row, the same as on the other lists: which patients, then the dropdowns */}
             <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
-            <Tabs variant="pills" label={`Which ${terms.patients}`} value={onlyNew ? 'new' : 'all'} onValueChange={(v) => setOnlyNew(v === 'new')}
-              tabs={[{ value: 'all', label: `All ${terms.patients}` }, { value: 'new', label: 'Added by the assistant, to check' }]} />
+            <Segmented label={`Which ${terms.patients}`} value={onlyNew ? 'new' : 'all'} onValueChange={(v) => setOnlyNew(v === 'new')}
+              options={[{ value: 'all', label: `All ${terms.patients}` }, { value: 'new', label: 'Added by the assistant, to check' }]} />
             {(pet && speciesList.length > 0) || filterable.length > 0 ? (
               <>
                 {pet && speciesList.length > 0 && (
