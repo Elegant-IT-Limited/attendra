@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (dashboard, 2026-10-29)
+
+- **Requests is one list.** Open requests come in three groups, Urgent, Waiting (nobody has them) and Claimed, each row saying who, what they need (the medicine, the topic, the reason, the assistant's suggestion), the detail that goes with it (pharmacy, the number to call back), how long it has waited, where it came from and who has it; an urgent one has a red edge. A row opens the request on the right with its details, notes and actions, and the other requests from the same call.
+- **New request in five steps:** what kind (cards, the clinic's own kinds included; a new pet or patient to check stays the assistant's), who to reach, the details for that kind, when (urgent, due day), and the clinic's own fields.
+- **Settings, Your texts: each text as a template.** The clinic's name and number as sent, every part the call fills in as a tag ({Owner's first name}, {Pet's name}...), where the clinic's own words go, and an example with plainly made-up names.
+
 ### Added (operations, 2026-10-28)
 
 - **Spend alerts from Twilio's own count.** The worker keeps two daily Twilio usage triggers in place: texts past `ATTENDRA_SPEND_ALERT_SMS_USD` ($10) and the whole Twilio bill past `ATTENDRA_SPEND_ALERT_TOTAL_USD` ($25) in a day. Twilio calls the voice service's signed `/webhooks/twilio/spend-alert`, which says it in Slack.
