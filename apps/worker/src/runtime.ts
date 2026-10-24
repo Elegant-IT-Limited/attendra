@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
+import { callUsNumber, ClinicConfig, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
 import { activeNumbers, allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
@@ -200,11 +200,21 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           if (!claimed.length) continue;
           const lang = config.languages.includes(language as never) ? (language as typeof config.primaryLanguage) : config.primaryLanguage;
           const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
-          // a pet is named; a person is not
-          const pet = config.industry === 'vet' ? d.cipher.decrypt(p.firstNameEnc, ctx('first_name')) : '';
+          // "Hi Abdul, a reminder of Flippy's check-up with Dr. Ruiz": the owner and the pet by name; a person by
+          // first name, with the doctor, and never the kind of visit
+          const pets = config.industry === 'vet';
+          const firstName = d.cipher.decrypt(p.firstNameEnc, ctx('first_name'));
+          const owner = pets && p.guardianNameEnc ? d.cipher.decrypt(p.guardianNameEnc, ctx('guardian_name')).trim().split(/\s+/)[0] : '';
+          const provider = config.providers.find((x) => x.id === a.providerId);
+          const visit = pets ? config.visitTypes.find((x) => x.id === a.visitTypeId) : undefined;
           const result = await messenger.sendTemplate(clinicId, {
             to: d.cipher.decrypt(p.phoneEnc!, ctx('phone')), template: 'reminder', language: lang, kind: 'reminder',
-            vars: { clinic: config.name, pet, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: config.phoneNumbers[0]! },
+            vars: {
+              clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config),
+              ...(pets ? { pet: firstName, ...(owner ? { name: owner } : {}) } : { name: firstName }),
+              ...(provider && provider.kind !== 'room' ? { provider: localName(provider, lang) } : {}),
+              ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
+            },
             idempotencyKey: `reminder:${a.id}:${a.startsAt.toISOString()}`, about: { patientId: p.id, appointmentId: a.id },
           });
           if (result.messageId) await withClinic(d.db, clinicId, (tx) => tx.update(schema.appointments).set({ reminderSmsId: result.messageId }).where(eq(schema.appointments.id, a.id)));
@@ -290,7 +300,9 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       });
       // a refusal (texts off, opted out, no number) is kept on the request for staff to see
       const result = await messenger.sendTemplate(clinicId, {
-        to: details.callback_number ?? '', template, vars: { clinic: config.name, clinicPhone: config.phoneNumbers[0]!, ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
+        to: details.callback_number ?? '', template,
+        // the pet by name when the request has it ("Flippy's request is ready"); never the medicine
+        vars: { clinic: config.name, clinicPhone: callUsNumber(config), ...(details.pet_name ? { pet: details.pet_name } : {}), ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
         idempotencyKey: template === 'request_ready' ? `request-ready:${taskId}` : `${template}:${taskId}`, language, kind: 'auto',
         about: { callId: found.task.callId, patientId: found.task.patientId, taskId },
       });
