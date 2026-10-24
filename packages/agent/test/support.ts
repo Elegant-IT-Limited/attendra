@@ -1,4 +1,4 @@
-import { type ClinicConfig, DEMO_CLINIC, type DomainEvent, type Messenger, zonedInstant } from '@attendra/core';
+import { type ClinicConfig, DEMO_CLINIC, type DomainEvent, type Messenger, Texting, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -65,5 +65,8 @@ export async function world() {
       },
     };
   }
-  return { t, backend, patientIds, call, sms, events };
+  return { t, backend, patientIds, call, sms, events, clinic };
 }
+
+/** The clinic with texting on, as once its texting registration is approved: confirmations go out only then. */
+export const textingOn = (c: ClinicConfig): ClinicConfig => ({ ...c, texting: { ...Texting.parse({}), ...c.texting, enabled: true } });

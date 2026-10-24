@@ -6,7 +6,7 @@ turns:
     reply: "Thanks, Priscilla. I've sent your atorvastatin request to the care team, with your pharmacy on file. They'll call you if they have questions."
     delegate:
       - verify_caller: { full_name: Priscilla Moreau, date_of_birth: June 25th 1957 }
-      - create_refill_request: { medication: atorvastatin 20 mg, pharmacy: King Soopers on Colfax, callback_number: "+17205550116" }
+      - create_refill_request: { medication: atorvastatin 20 mg, pharmacy: King Soopers on Colfax, callback_number: "+17205550116", text_updates: true }
 expect:
   outcome: task_created
   verified: true

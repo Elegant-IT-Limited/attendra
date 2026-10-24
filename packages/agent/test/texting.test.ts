@@ -152,9 +152,9 @@ describe('the reminder question after a booking', () => {
 
   it('is asked once after a booking; a hedge records nothing', async () => {
     const c = await w.call('+13035550147', { clinic: REMINDERS });
-    expect(said(await book(c))).toContain('Would you like a reminder text before the visit?');
+    expect(said(await book(c))).toContain('Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.');
     expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).errors).toEqual(['not_asked']);
-    c.assistant("You're booked. Would you like a reminder text before the visit?");
+    c.assistant("You're booked. Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.");
     c.caller('Hmm, I am not sure.');
     expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).results[0]!.data).toMatchObject({ reminders: false });
     expect(await textsOk()).toBe(false);
@@ -165,7 +165,7 @@ describe('the reminder question after a booking', () => {
   it('keeps a clear yes on the record, and does not ask someone who already said yes', async () => {
     const c = await w.call('+13035550147', { clinic: REMINDERS });
     await book(c);
-    c.assistant("You're booked. Would you like a reminder text before the visit?");
+    c.assistant("You're booked. Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.");
     c.caller('Yes please.');
     expect((await c.delegate([{ tool: 'set_reminder_consent', args: { agreed: true } }])).results[0]!.data).toMatchObject({ reminders: true });
     expect(await textsOk()).toBe(true);

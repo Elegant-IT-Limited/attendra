@@ -31,4 +31,4 @@ expect:
   verified: true
   bookings_created: 1
   sms_sent: 1
-  spoken_contains: ["Would you like a reminder text before the visit?"]
+  spoken_contains: ["Would you like a reminder text the day before the visit?"]

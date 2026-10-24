@@ -17,7 +17,7 @@ At 8 pm Maria calls the clinic about knee pain.
 3. We attach to the call's sideband socket. Every caller transcript fragment goes through the emergency guardrail before anything else.
 4. Maria asks for an appointment. GPT-Live delegates to our backend, which verifies her name, date of birth and the phone on her file, finds real openings with doctors who see her age, and offers three.
 5. She picks one. The backend stages the booking and returns the read-back. The booking is written only after Maria's own words contain a clear yes, and the write carries an idempotency key, so a retried delegation cannot book twice.
-6. She gets one confirmation text at the number on her record. The call, the transcript (encrypted) and every tool action are stored, and the front desk sees them in the dashboard a few seconds after she hangs up.
+6. The read-back said a confirmation text would follow, so her yes covers it, and she gets one at the number on her record (a "no text" gets none). The call, the transcript (encrypted) and every tool action are stored, and the front desk sees them in the dashboard a few seconds after she hangs up.
 
 Had Maria said "I have chest pain", the backend would have stopped the task (any pending change is dropped and further writes are refused), told her to hang up and call 911, and, if the clinic enabled it, transferred the call to the on-call line a few seconds later. It never gives medical advice.
 

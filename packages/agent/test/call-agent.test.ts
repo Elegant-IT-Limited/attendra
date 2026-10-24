@@ -3,7 +3,7 @@ import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@atte
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
-import { NOW, world } from './support';
+import { NOW, textingOn, world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(); });
@@ -36,8 +36,8 @@ describe('the call record', () => {
 });
 
 describe('booking over the phone', () => {
-  it('verifies, offers real slots, reads back, and books only after a clear yes, then texts once', async () => {
-    const c = await w.call();
+  it('verifies, offers real slots, reads back with the text, and books only after a clear yes, then texts once', async () => {
+    const c = await w.call(undefined, { clinic: textingOn(w.clinic) });
     c.caller('Hi, this is Maria Delgado, born March 4th 1985. I need a sick visit, my knee hurts.');
     const verify = await c.delegate([
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } },
@@ -49,8 +49,10 @@ describe('booking over the phone', () => {
     c.assistant('I have Tuesday at 8, 8:20 or 8:40 with Dr. Okafor.');
     c.caller('The first one please.');
     const offered = [...c.state.offered.keys()][0]!;
-    await c.delegate([{ tool: 'propose_booking', args: { slot_id: offered, replaces_appointment_id: null } }]);
+    const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: offered, replaces_appointment_id: null } }]);
     expect(await bookings()).toHaveLength(0); // proposing is not booking
+    // the text is said before the yes, so the yes covers it
+    expect(spoken(proposed)).toContain("I'll text you a confirmation at the number you're calling from, unless you'd rather not");
 
     c.assistant('Tuesday, September 29 at 8:00 AM with Dr. Nkem Okafor for a sick visit. Shall I book it?');
     c.caller('Yes, that works.');
@@ -62,6 +64,33 @@ describe('booking over the phone', () => {
     // the visit type comes back with it, so moving it looks for the same kind of visit
     const listed = (await c.delegate([{ tool: 'list_appointments', args: {} }])).results[0]!;
     expect(listed.data.appointments).toEqual([expect.objectContaining({ visit_type_id: 'vt_sick', visit: 'sick visit' })]);
+  });
+
+  it('books on "yes, but no text" and sends no confirmation; with texting off it never mentions one', async () => {
+    const book = async (clinic: Parameters<typeof w.call>[1], answer: string) => {
+      const c = await w.call(undefined, clinic);
+      c.caller('Maria Delgado, born March 4th 1985, sick visit please');
+      await c.delegate([
+        { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } },
+        { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
+      ]);
+      const proposed = await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
+      c.assistant('Tuesday at 8 with Dr. Okafor, and I will text you a confirmation. Shall I book it?');
+      c.caller(answer);
+      return { proposed, callId: c.callId, done: await c.delegate([{ tool: 'commit_pending', args: {} }]) };
+    };
+    const before = w.sms.length;
+    const had = new Set((await bookings()).map((a) => a.id));
+    const declined = await book({ clinic: textingOn(w.clinic) }, "Yes please, but no text, I don't need it.");
+    expect(spoken(declined.done)).toContain('"booked":true');
+    expect(w.sms.length).toBe(before);
+    const off = await book({}, 'Yes, that works.');
+    expect(spoken(off.proposed)).not.toContain('text you a confirmation');
+    expect(w.sms.length).toBe(before);
+    // the two visits it booked are cancelled again, so the tests after it count as before
+    for (const a of (await bookings()).filter((x) => !had.has(x.id))) {
+      await w.backend.scheduler.cancel(DEMO_CLINIC.id, { patientId: w.patientIds.maria!, appointmentId: a.id, callId: declined.callId, idempotencyKey: `test-cleanup-${a.id}` });
+    }
   });
 
   it('does not book on a hedge, even when the planner tries to commit', async () => {
@@ -193,7 +222,7 @@ describe('booking over the phone', () => {
 
   it('texts a booking for a patient it just added only to the number they are calling from', async () => {
     const book = async (caller: string | null, phone: string) => {
-      const c = await w.call(caller);
+      const c = await w.call(caller, { clinic: textingOn(w.clinic) });
       c.caller('I am new, Zoe Quill, March 3 1991, sick visit');
       await c.delegate([
         { tool: 'verify_caller', args: { full_name: 'Zoe Quill', date_of_birth: 'March 3 1991', phone } },
@@ -356,6 +385,18 @@ describe('safety', () => {
     const out = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'lisinopril 10 mg', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
     expect(spoken(out)).toContain('Say nothing about approval');
     expect(c.state.outcome).toBe('task_created');
+  });
+
+  it('with texting on, asks whether the caller wants the decision by text before logging a refill, and keeps the answer', async () => {
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    const c = await w.call(undefined, { clinic: textingOn(w.clinic) });
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: '303-555-0163' } }]);
+    const asked = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'atorvastatin', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
+    expect(asked.errors).toEqual(['ask_text_updates']);
+    expect(spoken(asked)).toContain('Would you like a text at that number when the team has decided? Message and data rates may apply');
+    await c.delegate([{ tool: 'create_refill_request', args: { medication: 'atorvastatin', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163', text_updates: false } }]);
+    expect(create.mock.calls.at(-1)![1].details).toMatchObject({ medication: 'atorvastatin', texts: 'no' });
+    create.mockRestore();
   });
 
   it('calls back at the number they are calling from when the caller says it is fine, and asks for one when it is withheld', async () => {
