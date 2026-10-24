@@ -51,6 +51,7 @@ export const es: LanguagePack = {
   textSent: 'Listo, se lo acabo de enviar.',
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
+  refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],

@@ -295,8 +295,12 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const pharmacy = details.pharmacy?.trim();
       if (template === 'refill_sent' && (!pharmacy || /pick ?up|clinic|recoger/i.test(pharmacy))) return 'skipped';
       const { config } = found;
+      // a request from a call is texted only when the caller said yes to the text on it; one the team
+      // logged itself, on the team's word, as before
+      if (found.task.callId ? details.texts !== 'yes' : details.texts === 'no') return 'skipped';
       const language = config.languages.includes(found.language as never) ? (found.language as typeof config.primaryLanguage) : config.primaryLanguage;
-      const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
+      // with the clinic's texting off (its registration not approved), the text is recorded as not sent, and why
+      const messenger = new TwilioMessenger(d.db, d.cipher, textingOf(config).enabled ? d.texts ?? null : null, () => config.phoneNumbers[0]!, {
         actor: 'worker', dailyCap: d.sms?.dailyCap, monthlyCap: d.sms?.monthlyCap, alerts: d.alerts, log: d.log,
         statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
       });
