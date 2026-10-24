@@ -99,13 +99,26 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       // the codes only; the summary's text stays in Attendra
       if (saved === 'saved') await emit(clinicId, { type: 'call.summary.ready', key: callId, data: { callId, intent: summary.intent, sentiment: summary.sentiment, needsReview: summary.needsReview } });
       // a call that ended with the caller's request unfinished becomes a request, so a person gets back to them
-      if (saved === 'saved' && needsFollowUp(call, summary)) {
+      // one open request per caller: another call from the same number about an unfinished thing joins the one the team has
+      if (saved === 'saved' && needsFollowUp(call, summary) && !(await summaries.openRequestFromSameNumber(clinicId, callId))) {
         const task = await tasks.create(clinicId, {
           type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `follow_up:${callId}`,
           details: {
             reason: summary.reviewReason ?? 'The call ended without the caller\'s request done.',
             ...(summary.followUp ? { suggested: summary.followUp } : {}),
             // whoever picks it up can call back without opening the call
+            ...(call.fromNumber ? { callback_number: call.fromNumber } : {}),
+          },
+        });
+        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: 'follow_up', patientId: call.patientId, callId } });
+      }
+      // an emergency is a check on the caller, not a callback: always in the team's queue, urgent, even when they said no to a callback
+      if (saved === 'saved' && call.emergency) {
+        const task = await tasks.create(clinicId, {
+          type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `emergency:${callId}`, urgent: true,
+          details: {
+            reason: 'Emergency language on the call. Check on the caller as your protocol says.',
+            ...(summary.followUp ? { suggested: summary.followUp } : {}),
             ...(call.fromNumber ? { callback_number: call.fromNumber } : {}),
           },
         });
@@ -372,7 +385,9 @@ const SETTLED = new Set(['booked', 'rescheduled', 'cancelled', 'transferred']);
  * refill, a new patient). Emergencies have their own place at the top of Today.
  */
 export function needsFollowUp(call: { outcome: string | null; emergency: boolean; tasks: { type: string }[]; transcript?: { speaker: 'caller' | 'agent'; text: string }[] }, summary: { needsReview: boolean }): boolean {
-  return summary.needsReview && !call.emergency && call.tasks.length === 0 && !SETTLED.has(call.outcome ?? '') && !declinedCallback(call.transcript ?? []);
+  // a caller who hung up before saying anything is a missed call in the list, not work for the team
+  const spoke = (call.transcript ?? []).some((t) => t.speaker === 'caller' && t.text.trim().length > 0);
+  return summary.needsReview && !call.emergency && call.tasks.length === 0 && !SETTLED.has(call.outcome ?? '') && !declinedCallback(call.transcript ?? []) && (spoke || call.transcript === undefined);
 }
 
 const OFFERED_CALLBACK = /\b(call(ing)? you back|callback|call back|have (someone|somebody|the team|a member of the team)[^.?!]* (call|contact|reach) you|devolver(le|te) la llamada|que (le|te) llamen)\b/i;

@@ -4,6 +4,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls, from a tester's calls on 2026-10-24 and live evals)
+
+- **The call ends when both sides said goodbye.** The assistant's goodbye answered by the caller's ("Take care." "Take care, bye") ends the call 2.5 s later, even with a request still at the backend; no "waiting in silence" nudge ever follows a caller's goodbye (it made the assistant speak again, twice). "I'll get back to you" counts as leaving; "talk to you soon" and "see you" count as the assistant's goodbye.
+- **Every emergency call opens one urgent request** ("Check on the caller as your protocol says"), even when the caller said no to a callback: it is a safety check, not a callback.
+- **No transfer that does not exist.** With no transfer numbers the assistant never offers to connect anyone (front desk or on-call); with some, only those targets. With texting off it gives the detail out loud instead of offering a text or a callback for it.
+- **A booking's confirmation text is said** ("a confirmation text is on its way") and, asked again, said to be sent.
+- **A card or SSN read out is stopped first**: the assistant says the clinic does not take them by phone before anything else, and the call's review reason says so.
+- **"How many times have I called?"**: the assistant may say how many calls came from the number in the last 30 days (no content).
+- **Fewer requests:** none for a call where the caller never spoke; none when the same number already has an open follow-up or callback from the last 14 days (emergencies still get theirs).
+- Never the same sentence twice in a call (voice prompt). Evals: a choice question after a new set of times is not a repeat; sec-enumeration forbids confirmations, not the refusal's wording.
+
 ### Changed (the dashboard, from a tester's UI round on 2026-10-24)
 
 - **One name for one thing.** A vet's "Specialty" and "Animals and services" (or "Sees people for") are called the same on the list, its filters ("Any specialty", "Any animal or service"), the card, the edit form and Settings, Fields and lists; the built-in fields listed there are the edit form's labels, word for word. "Kind of animal", "Kind of request" and "What it is about" likewise.

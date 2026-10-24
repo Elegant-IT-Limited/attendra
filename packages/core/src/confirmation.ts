@@ -34,7 +34,7 @@ export function askedToHangUp(lastCallerTurn: string): boolean {
   return HANG_UP.test(t) && !KEEP_ON.test(t);
 }
 // a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
-const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|another time|adios|hasta luego|chao|chau|me tengo que ir|(te |le )?(llamo|llamar[eé]) (luego|despu[eé]s|m[aá]s tarde|otro d[ií]a))\b/;
+const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|(i'?ll|i will) get back to you|another time|adios|hasta luego|chao|chau|me tengo que ir|(te |le )?(llamo|llamar[eé]) (luego|despu[eé]s|m[aá]s tarde|otro d[ií]a))\b/;
 
 /**
  * May the call end? Two steps, like a front desk: the assistant has asked whether

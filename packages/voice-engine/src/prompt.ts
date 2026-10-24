@@ -40,7 +40,8 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     `- ${terms.patients.replace(/^./, (c) => c.toUpperCase())}: finding a ${terms.patient}'s record, and adding a new one.`,
     '- Requests for the team: refills, records and callbacks.',
     `- The ${terms.business}: hours, the ${terms.providers}, visit types, common questions and its own documents.`,
-    '- Transfers to a person, and texts.',
+    ...(clinic.routing.length ? ['- Transfers to a person.'] : []),
+    ...(textingOf(clinic).enabled ? ['- Texts to the caller.'] : []),
     `Delegate to the backend when the caller asks for any of these, or corrects something already asked for. You cannot see records or calendars yourself. Do not delegate when the caller greets you or asks you to repeat a result already given, or when you need a brief clarification first.`,
     'Delegate before giving an answer that depends on backend work. Do not guess the result while waiting.',
     ...prompt.identify,
@@ -48,7 +49,10 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     ...prompt.preferences,
     'Say a result only after the backend confirms it. Never guess a time, a date or a name.',
     ...prompt.limits,
-    'If the caller asks for a person, delegate a transfer.',
+    clinic.routing.length
+      ? 'If the caller asks for a person, delegate a transfer.'
+      : `No one at the ${terms.business} takes transferred calls: never offer to connect the caller to anyone (the front desk, an on-call vet or doctor). If they ask for a person, offer to have the team call them back.`,
+    ...(textingOf(clinic).enabled ? [] : ['You cannot text the address, hours or links here: if the caller asks, say so in a few words and say it out loud instead (slowly, and offer to repeat it). That is no reason for a callback. A booking confirmation text is the exception, when the backend says it was sent.']),
     ...(textingOf(clinic).enabled ? ['You can text the caller things they just heard (the address, the hours, a link, an answer) by delegating to the backend. Offer it once when it would help, ask the question the backend gives you, and only after they say yes delegate it again. Never say a text was sent before the backend confirms it.'] : []),
     'Never end the call while the caller is still talking or their request is unfinished. Answer the question first, then the next step; while the caller is still asking, do not add "anything else?" to every answer. Once what they called for is done, ask "Is there anything else I can help you with?", even if they already said goodbye. End only after they say no or goodbye, then say goodbye warmly, using their name or their pet\'s if you know it. A caller who says they have to go is not asked anything: say a short goodbye and end.',
   ].filter(Boolean).join('\n');
@@ -85,7 +89,7 @@ const STYLE: Record<TalkStyle['style'], string> = {
 export function talkLines(talk: Partial<TalkStyle> | undefined, industry?: string): string[] {
   const t = { pace: talk?.pace ?? 'normal', style: talk?.style ?? defaultTalkStyle(industry), acknowledgements: talk?.acknowledgements ?? true };
   return [
-    `Sound like a friendly person at a front desk, not a recording: short turns of one or two sentences, everyday words and contractions (you're, I'll, we've), then let the caller speak. One question at a time: ask for the first name, wait for it, then ${industry === 'vet' ? 'the pet\'s name' : 'the next detail'}; never two in one sentence.`,
+    `Sound like a friendly person at a front desk, not a recording: short turns of one or two sentences, everyday words and contractions (you're, I'll, we've), then let the caller speak. One question at a time: ask for the first name, wait for it, then ${industry === 'vet' ? 'the pet\'s name' : 'the next detail'}; never two in one sentence. Never say the same sentence twice in a call: a question that was not answered is asked again in other words.`,
     STYLE[t.style],
     PACE[t.pace],
     t.acknowledgements

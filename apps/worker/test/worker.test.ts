@@ -18,8 +18,8 @@ let calls: CallRepository;
 let n = 0;
 
 /** A finished call with a line or two of transcript, as the voice service leaves it. */
-async function closedCall(clinicId = DEMO_CLINIC.id, opts: { closed?: boolean; emergency?: boolean } = {}) {
-  const callId = await calls.open(clinicId, `live_worker_${++n}`, '+13035550147');
+async function closedCall(clinicId = DEMO_CLINIC.id, opts: { closed?: boolean; emergency?: boolean; from?: string } = {}) {
+  const callId = await calls.open(clinicId, `live_worker_${++n}`, opts.from ?? '+13035550147');
   await calls.appendSegment(clinicId, callId, { speaker: 'caller', text: 'Hi, this is Maria Delgado, born March 4th 1985.', startMs: 0, endMs: 900 });
   await calls.recordAction(clinicId, callId, { tool: 'verify_caller', argsRedacted: ['full_name', 'date_of_birth'], result: { ok: true, verified: true }, taskRevision: 1 });
   if (opts.closed !== false) await calls.close(clinicId, callId, { reason: 'caller_hangup', voiceSeconds: 42, outcome: opts.emergency ? 'emergency' : 'info', emergency: !!opts.emergency });
@@ -96,36 +96,46 @@ describe('follow-up requests', () => {
   const tasksOf = (callId: string) => withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, callId)));
 
   it('opens one follow-up request for a flagged call that settled nothing, and closing it reviews the call', async () => {
-    const callId = await closedCall();
+    const callId = await closedCall(DEMO_CLINIC.id, { from: '+13035550166' });
     await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
     await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
     const opened = await tasksOf(callId);
     expect(opened.map((x) => x.type)).toEqual(['follow_up']);
     // the number the caller rang from is on the request, so the team can call back (2026-10-23)
     const details = JSON.parse(cipher.decrypt(opened[0]!.detailsEnc, phiContext(DEMO_CLINIC.id, 'tasks.details'))) as Record<string, string>;
-    expect(details.callback_number).toBe('+13035550147');
+    expect(details.callback_number).toBe('+13035550166');
     // and the call shows it to staff
     const shown = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, callId, 'u_ana');
-    expect(shown!.callerNumber).toBe('+13035550147');
+    expect(shown!.callerNumber).toBe('+13035550166');
     // a second call from that number knows the first, and the read is audited
-    const again = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '(303) 555-0147');
-    const history = await new CallSummaryRepository(t.db, cipher).historyFor(DEMO_CLINIC.id, '+13035550147', again);
+    const again = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '(303) 555-0166');
+    const history = await new CallSummaryRepository(t.db, cipher).historyFor(DEMO_CLINIC.id, '+13035550166', again);
     expect(history).toContain('The caller wanted a visit for their son');
     expect(history).toContain('Still open for the team: follow up');
+    expect(history).toMatch(/^Calls from this number in the last 30 days: [1-9]\d*\./);
     expect((await audits(DEMO_CLINIC.id, 'call.history.read')).map((a) => a.entityId)).toContain(again);
     expect(await new CallSummaryRepository(t.db, cipher).historyFor(DEMO_CLINIC.id, '+13035550199', again)).toBeNull();
+    // the same number calling again about something unfinished joins the open request instead of opening another
+    const third = await closedCall(DEMO_CLINIC.id, { from: '+13035550166' });
+    await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId: third });
+    expect(await tasksOf(third)).toEqual([]);
     const desk = new FrontDeskRepository(t.db, cipher);
     expect(await desk.completeTask(DEMO_CLINIC.id, opened[0]!.id, 'u_ana', 'called_back')).toBe('done');
     expect((await summaryOf(DEMO_CLINIC.id, callId))!.reviewedAt).not.toBeNull();
   });
 
-  it('opens none for a booked call, an emergency, or a call that already made a request', async () => {
+  it('opens none for a booked call or a call that already made a request; an emergency gets one urgent check instead', async () => {
     const booked = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '+13035550147');
     await calls.close(DEMO_CLINIC.id, booked, { reason: 'caller_hangup', voiceSeconds: 60, outcome: 'booked', emergency: false });
     const emergency = await closedCall(DEMO_CLINIC.id, { emergency: true });
     for (const callId of [booked, emergency]) await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
     expect(await tasksOf(booked)).toEqual([]);
-    expect(await tasksOf(emergency)).toEqual([]);
+    // an emergency is a check on the caller, not a callback: one urgent request, even when they said no to a callback (2026-10-24)
+    const checks = await tasksOf(emergency);
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ type: 'follow_up', urgent: true });
+    await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId: emergency });
+    expect(await tasksOf(emergency)).toHaveLength(1);
   });
 });
 
@@ -147,7 +157,7 @@ describe('the retention purge', () => {
 
     const results = await h.purgeRetention();
     expect(results.find((r) => r.clinicId === OTHER.id)).toMatchObject({ clinicId: OTHER.id, transcriptLines: 1, summaries: 1, callActions: oldActions });
-    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // 2555 days by default
+    expect(results.find((r) => r.clinicId === DEMO_CLINIC.id)).toMatchObject({ transcriptLines: 0, summaries: 0, callActions: 0 }); // a year by default
     expect(await actionsOf(old)).toBe(0);
     expect(await actionsOf(recent)).toBe(recentActions);
     expect(await lines(old)).toBe(0);
