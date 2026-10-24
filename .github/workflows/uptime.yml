@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
+    inputs:
+      slack_test:
+        description: Also post a test line to Slack, to check the alert path
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -25,7 +30,15 @@ jobs:
       - name: Check the website, the dashboard, the API and the voice service
         env:
           SLACK: ${{ secrets.UPTIME_SLACK_WEBHOOK_URL }}
+          SLACK_TEST: ${{ inputs.slack_test }}
         run: |
+          # a run started by hand can check the Slack path itself; a failure here is said in the run
+          if [ "$SLACK_TEST" = "true" ]; then
+            if [ -z "$SLACK" ]; then echo "::error::UPTIME_SLACK_WEBHOOK_URL is not set"; exit 1; fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{"text":"[uptime] :white_check_mark: Test: the outside uptime check can post here. Nothing is wrong."}' "$SLACK" || true)
+            echo "slack test -> $code"
+            [ "$code" = "200" ] || { echo "::error::Slack answered $code"; exit 1; }
+          fi
           # what to call, how, and the answers that mean "up"
           checks=(
             "GET https://getattendra.com/ 200 website"
