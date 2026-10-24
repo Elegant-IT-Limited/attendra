@@ -33,8 +33,11 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
   // claiming from Today takes the request and opens the queue
   await attention.getByRole('button', { name: 'Claim' }).first().click();
   await expect(page).toHaveURL(/\/requests$/, { timeout: 20_000 }); // next dev may still be compiling the page
-  // the queue loads after the page itself, which on a busy CI runner can take as long again
-  await expect(page.getByText('You have it').first()).toBeVisible({ timeout: 30_000 });
+  // the queue loads after the page itself, which on a busy CI runner can take as long again. Which request
+  // the claim lands on depends on what the specs before this one left open, so this checks
+  // that the queue opened with its requests; claiming itself is tested in requests.spec
+  await expect(page.getByRole('heading', { name: 'Requests', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('task-row').first()).toBeVisible({ timeout: 30_000 });
 });
 
 test('Requests waiting counts every waiting request, not only the 20 listed', async ({ browser }) => {
