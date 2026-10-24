@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (texts consent, 2026-10-30)
+
+- **A confirmation text is said before the yes.** When a booking, a move or a cancellation would be confirmed by text, the read-back says so ("I'll text you a confirmation at the number you're calling from, unless you'd rather not"), so the caller's yes covers it. "Yes, but no text" books and sends no text.
+- **Confirmations need texting on.** Like every other text, a confirmation goes out only when the clinic's texting is on, which a hosted clinic gets once its texting registration is approved.
+- **The reminder offer says the terms:** "Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime."
+
 ### Changed (dashboard, 2026-10-29)
 
 - **Requests is one list.** Open requests come in three groups, Urgent, Waiting (nobody has them) and Claimed, each row saying who, what they need (the medicine, the topic, the reason, the assistant's suggestion), the detail that goes with it (pharmacy, the number to call back), how long it has waited, where it came from and who has it; an urgent one has a red edge. A row opens the request on the right with its details, notes and actions, and the other requests from the same call.
