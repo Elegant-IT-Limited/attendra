@@ -7,8 +7,15 @@ export async function openAs(browser: Browser, role: keyof typeof STATE, prepare
   const page = await context.newPage();
   await prepare?.(page);
   await page.goto('/');
-  // the Today screen; the redirect waits on /me, which a busy dev server or CI runner can take many seconds to answer
-  await expect(page).toHaveURL(/\/c\/[^/]+$/, { timeout: 30_000 });
+  // the Today screen; the redirect waits on /me, which a busy dev server or CI runner can take many seconds
+  // to answer, and now and then never makes: then the page is loaded once more (main runs #236, #243)
+  const today = /\/c\/[^/]+$/;
+  try {
+    await expect(page).toHaveURL(today, { timeout: 20_000 });
+  } catch {
+    await page.goto('/');
+    await expect(page).toHaveURL(today, { timeout: 30_000 });
+  }
   return page;
 }
 
