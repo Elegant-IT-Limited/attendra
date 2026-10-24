@@ -426,7 +426,7 @@ describe('call control', () => {
     expect((await second).some((o) => o.type === 'commentary' && o.content.includes('214 Maple Street'))).toBe(true);
   });
 
-  it('tells the caller it is still checking at 7 s and again at 15 s, never every few seconds', async () => {
+  it('tells the caller it is still checking at 7 s, then at 15, 30 and 45 s, never every few seconds', async () => {
     const c = await w.call();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -444,7 +444,9 @@ describe('call control', () => {
       expect(early).toHaveLength(3);
       expect(early[2]).toContain('Thank the caller for waiting');
       await vi.advanceTimersByTimeAsync(6000);
-      expect(early).toHaveLength(3); // twice, not every few seconds
+      expect(early).toHaveLength(3); // every 15 s at most, not every few seconds
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(early).toHaveLength(4); // at 30 s
       release();
       expect(spoken(await pending)).toContain('Dr. Raman');
     } finally {
@@ -452,14 +454,19 @@ describe('call control', () => {
     }
   });
 
-  it('never leaves a caller waiting more than 25 s: an apology and a callback offer, and the late answer is dropped', async () => {
+  it('never leaves a caller waiting more than 60 s, and never cuts off a slow answer before: an apology and a callback offer, the late answer dropped', async () => {
     const c = await w.call();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       let release!: () => void;
       const slow = { plan: () => new Promise<{ say: string }>((r) => { release = () => r({ say: 'Dr. Raman is free Monday at 9.' }); }) };
       const pending = c.delegate([], slow, () => {});
-      await vi.advanceTimersByTimeAsync(25_000);
+      await vi.advanceTimersByTimeAsync(40_000);
+      let settled = false;
+      void pending.then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false); // a registration and its first times can take this long
+      await vi.advanceTimersByTimeAsync(20_000);
       const said = spoken(await pending);
       expect(said).toContain('taking longer than it should');
       expect(said).toContain('call you back');
