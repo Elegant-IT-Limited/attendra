@@ -100,6 +100,8 @@ export const REFUSALS: Record<string, string> = {
 export const GENDER_LABEL: Record<string, string> = { female: 'Female', male: 'Male', other: 'Other', undisclosed: 'Prefers not to say' };
 
 export const TASK_TYPES: Record<string, string> = { refill: 'Prescription refill', callback: 'Callback', voicemail: 'Voicemail', review: 'New patient to check', follow_up: 'Follow up' };
+/** The built-in kinds of request in one order, the same in the Requests filter and in New request. */
+export const TASK_KIND_ORDER = ['callback', 'refill', 'voicemail', 'review', 'follow_up'] as const;
 /** A request type in the clinic's words: a vet clinic checks a new pet, not a new patient. */
 export const taskType = (type: string, patient = 'patient') => (type === 'review' ? `New ${patient} to check` : TASK_TYPES[type] ?? type);
 /** A pet's sex, or a person's gender, as the record shows it. */

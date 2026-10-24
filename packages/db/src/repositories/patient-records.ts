@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Gender, namesMatch, normalizeName, parseDob } from '@attendra/core';
-import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
 import { patientSetKey, recordView } from './audit';
+import { callerKey } from './calls';
 import { auditResults } from './front-desk';
 import { findSameIdentity, isSameIdentity, patientLookupKey, phoneKey, readGenderColumn, sealPatient } from './patients';
 
@@ -162,19 +163,30 @@ export class PatientRecords {
     });
   }
 
-  /** One patient with their household, appointments, the calls they were verified on, and their requests. */
+  /**
+   * One patient with their household (everyone on the same phone: an owner's pets, a parent's
+   * children), appointments, and, as one profile for that phone number, every call from the
+   * number (verified or not) and the requests of anyone on it or from those calls.
+   */
   async profile(clinicId: string, patientId: string, userId: string) {
     return withClinic(this.db, clinicId, async (tx) => {
       const [row] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
       if (!row) return null;
-      const visits = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId))).orderBy(desc(appointments.startsAt));
-      const theirCalls = await tx.select({ id: calls.id, startedAt: calls.startedAt, outcome: calls.outcome, emergency: calls.emergencyFlag, channel: calls.channel, voiceSeconds: calls.voiceSeconds })
-        .from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.patientId, patientId))).orderBy(desc(calls.startedAt)).limit(100);
-      const requests = await tx.select().from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.patientId, patientId))).orderBy(desc(tasks.createdAt)).limit(100);
-      // everyone on the same phone: a parent and their children
+      // everyone on the same phone: a parent and their children, an owner's pets
       const family = row.phoneHash
         ? await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, row.phoneHash), ne(patients.id, patientId))).limit(20)
         : [];
+      const phoneNumber = this.card(clinicId, row).phone;
+      const fromHash = phoneNumber ? this.cipher.hash(callerKey(clinicId, phoneNumber)) : null;
+      const visits = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId))).orderBy(desc(appointments.startsAt));
+      const theirCalls = await tx.select({ id: calls.id, startedAt: calls.startedAt, outcome: calls.outcome, emergency: calls.emergencyFlag, channel: calls.channel, voiceSeconds: calls.voiceSeconds, patientId: calls.patientId })
+        .from(calls).where(and(eq(calls.clinicId, clinicId), fromHash ? or(eq(calls.patientId, patientId), eq(calls.fromHash, fromHash)) : eq(calls.patientId, patientId)))
+        .orderBy(desc(calls.startedAt)).limit(100);
+      const onPhone = [patientId, ...family.map((f) => f.id)];
+      const callIds = theirCalls.map((c) => c.id);
+      const requests = await tx.select().from(tasks).where(and(eq(tasks.clinicId, clinicId),
+        callIds.length ? or(inArray(tasks.patientId, onPhone), inArray(tasks.callId, callIds)) : inArray(tasks.patientId, onPhone)))
+        .orderBy(desc(tasks.createdAt)).limit(100);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.viewed', entity: 'patient', entityId: patientId });
       await auditResults(tx, clinicId, userId, family.map((f) => f.id));
       return {
@@ -183,9 +195,9 @@ export class PatientRecords {
         customFields: row.customEnc ? JSON.parse(this.cipher.decrypt(row.customEnc, phiContext(clinicId, 'patients.custom'))) as Record<string, string> : {},
         household: family.map((f) => this.card(clinicId, f)).sort((a, b) => a.dob.localeCompare(b.dob)),
         appointments: visits,
-        calls: theirCalls.map((c) => ({ ...c, voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds) })),
+        calls: theirCalls.map(({ patientId: about, ...c }) => ({ ...c, voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds), forThisRecord: about === patientId })),
         requests: requests.map((t) => ({
-          id: t.id, type: t.type, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
+          id: t.id, type: t.type, patientId: t.patientId, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
           details: JSON.parse(this.cipher.decrypt(t.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>,
         })),
       };

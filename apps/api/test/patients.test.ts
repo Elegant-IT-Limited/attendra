@@ -1,5 +1,5 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
-import { createPhiCipher, PostgresPatientDirectory } from '@attendra/db';
+import { CallRepository, createPhiCipher, PostgresPatientDirectory } from '@attendra/db';
 import { TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -97,11 +97,20 @@ describe('a patient\'s record', () => {
     await api.t.db.execute(sql`update calls set patient_id = ${api.patientIds.maria!} where id = ${api.callId}`);
     const p = (await api.request('GET', `${C}/${api.patientIds.maria}`, { cookie: as.staff })).json();
     expect(p).toMatchObject({ name: 'Maria Delgado', dob: '1985-03-04', phone: '+13035550147', appointments: [] });
-    expect(p.calls).toEqual([expect.objectContaining({ id: api.callId, outcome: 'task_created' })]);
+    expect(p.calls).toEqual([expect.objectContaining({ id: api.callId, outcome: 'task_created', forThisRecord: true })]);
     expect(p.requests).toEqual([expect.objectContaining({ id: api.taskId, type: 'refill', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
     expect((await audit('patient.viewed')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria });
     expect((await api.request('GET', `${C}/00000000-0000-4000-8000-000000000000`, { cookie: as.staff })).statusCode).toBe(404);
     expect((await api.request('GET', `${C}/not-a-uuid`, { cookie: as.staff })).statusCode).toBe(404);
+  });
+
+  it('is one profile for the phone number: a call from the number the assistant never verified is there too (2026-10-24)', async () => {
+    const calls = new CallRepository(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    const unverified = await calls.open(DEMO_CLINIC.id, 'live_api_owner', '(303) 555-0147');
+    await calls.close(DEMO_CLINIC.id, unverified, { reason: 'caller_hangup', voiceSeconds: 20, outcome: 'info', emergency: false });
+    const p = (await api.request('GET', `${C}/${api.patientIds.maria}`, { cookie: as.staff })).json();
+    expect(p.calls).toEqual(expect.arrayContaining([expect.objectContaining({ id: unverified, forThisRecord: false }), expect.objectContaining({ id: api.callId, forThisRecord: true })]));
+    expect(p.requests.every((r: { patientId: string | null }) => 'patientId' in r)).toBe(true);
   });
 
   it('lists the patients this person opened last, newest first, and nobody else\'s', async () => {
