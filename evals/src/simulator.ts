@@ -110,7 +110,8 @@ function questionsIn(line: string): string[] {
 /** Two questions are the same question when they are the same words (case, punctuation and accents aside); a confirmation asked once per change is not. */
 function sameQuestion(a: string, b: string): boolean {
   const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter(Boolean).join(' ');
-  if (/anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(a) && /anything else|is that right|shall i book|is that correct|book (it|that)\?/i.test(b)) return false;
+  // the closing and confirming questions, and "how can I help?" once at the greeting and once after finding the caller, are no repeat
+  if (/anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar/i.test(a) && /anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar/i.test(b)) return false;
   const [x, y] = [norm(a), norm(b)];
   return x.length >= 12 && x === y;
 }

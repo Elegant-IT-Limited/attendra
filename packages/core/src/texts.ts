@@ -11,8 +11,13 @@ export const SMS_TEMPLATE_NAMES = Object.keys(PACKS.en.sms) as SmsTemplateName[]
  * "Reply STOP". Everything else is fixed: the name first, the facts from the settings,
  * and the opt-out last, as the carriers registered it.
  */
+/** A US or Canadian number as people write it, (516) 447-2575; any other number as given. */
+export const readablePhone = (n: string): string => (/^\+1\d{10}$/.test(n) ? `(${n.slice(2, 5)}) ${n.slice(5, 8)}-${n.slice(8)}` : n);
+
 export function renderText(template: SmsTemplateName, vars: Record<string, string>, language: Language = 'en', wording?: { label?: string; extra?: string }): string {
-  let body = PACKS[language].sms[template](vars);
+  const v = { ...vars };
+  for (const k of ['clinicPhone', 'hospitalPhone'] as const) if (v[k]) v[k] = readablePhone(v[k]);
+  let body = PACKS[language].sms[template](v);
   const label = wording?.label?.trim();
   const extra = wording?.extra?.trim();
   const lead = `${vars.clinic}: `;

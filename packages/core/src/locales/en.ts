@@ -9,6 +9,16 @@ const when = (start: Date, timeZone: string) => {
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
+/**
+ * A text to one person: "Hi Abdul, Flippy's check-up with Dr. Ruiz…" when the call gave the names,
+ * "Your visit…" when it did not. name is the person the text goes to (the owner, the patient or the
+ * parent), pet the pet, provider the vet or doctor, visit the kind of visit (pets only: a person's visit
+ * type is never put in a text). Each is left out when unknown, never shown empty.
+ */
+const hi = (v: Record<string, string>, rest: string) => (v.name ? `Hi ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
+const whose = (v: Record<string, string>) => (v.pet ? `${v.pet}'s` : 'your');
+const visitOf = (v: Record<string, string>) => `${whose(v)} ${v.visit || 'visit'}${v.provider ? ` with ${v.provider}` : ''}`;
+
 export const en: LanguagePack = {
   code: 'en',
   name: 'English',
@@ -25,19 +35,19 @@ export const en: LanguagePack = {
     `${w} ${providerKind === 'room' ? `in the ${provider.replace(/^the /i, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())}` : `with ${provider}`} for ${/^[aeiou]/i.test(visit) ? 'an' : 'a'} ${visit}${replacing ? `, moving it from ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
-    booking_confirmed: (v) => `${v.clinic}: you're booked for ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
-    request_ready: (v) => `${v.clinic}: your request is ready to pick up. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_sent: (v) => `${v.clinic}: your request was sent to ${v.pharmacy}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_not_approved: (v) => `${v.clinic}: about your recent request, please call us on ${v.clinicPhone}. Reply STOP to opt out.`,
-    change_confirmed: (v) => `${v.clinic}: your appointment has moved to ${v.when}. To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
-    cancel_confirmed: (v) => `${v.clinic}: your appointment on ${v.when} is cancelled. To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    booking_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} is booked for ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    request_ready: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request is ready to pick up.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_sent: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request was sent to ${v.pharmacy}.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
+    change_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} has moved to ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    cancel_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} on ${v.when} is cancelled.`)} To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,
     hours: (v) => `${v.clinic} hours: ${v.hours}. Reply STOP to opt out.`,
     emergency_hospital: (v) => `${v.clinic}: emergency vet: ${v.hospital}, ${v.hospitalAddress}, ${v.hospitalPhone}. If a person is hurt or in danger, call ${v.emergencyNumber}. Reply STOP to opt out.`,
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
     answer: (v) => `${v.clinic}: ${v.answer} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
     link: (v) => `${v.clinic}: ${v.label}: ${v.url} Reply STOP to opt out.`,
-    reminder: (v) => `${v.clinic}: a reminder of ${v.pet ? `${v.pet}'s` : 'your'} visit on ${v.when}. Reply C to confirm, or call ${v.clinicPhone} to change it. Reply STOP to opt out.`,
+    reminder: (v) => `${v.clinic}: ${hi(v, `a reminder of ${visitOf(v)} on ${v.when}.`)} Reply C to confirm, or call ${v.clinicPhone} to change it. Reply STOP to opt out.`,
   },
   textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
   textSent: "Done, I've just sent it.",
