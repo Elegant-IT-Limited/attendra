@@ -80,13 +80,16 @@ function exampleVars(c: ClinicConfig): Record<string, string> {
 }
 
 /** A template on screen: the fixed text, each filled-in part as a tag, the clinic's own words outlined. */
-function Template({ body, names, testId }: { body: string; names: Record<string, string>; testId: string }) {
+function Template({ body, names, testId, words = {} }: { body: string; names: Record<string, string>; testId: string; words?: Record<string, string | undefined> }) {
   const parts = body.split(SLOTS);
   return (
     <p className="max-w-xl whitespace-pre-wrap break-words rounded-2xl rounded-bl-sm border border-border bg-surface px-3.5 py-2.5 text-sm leading-7" data-testid={testId}>
       {parts.map((p, i) => (i % 2 === 0 ? <Fragment key={i}>{p}</Fragment>
         : p === 'yourLead' || p === 'yourLine'
-          ? <span key={i} className="rounded-md border border-dashed border-warning bg-warning-soft px-1.5 py-0.5 text-xs font-medium">{names[p]}</span>
+          // the clinic's own words where they go, as typed; an empty place shows what goes there
+          ? words[p]
+            ? <span key={i} className="rounded-md bg-warning-soft px-1 py-0.5 font-medium">{words[p]}</span>
+            : <span key={i} className="rounded-md border border-dashed border-warning bg-warning-soft px-1.5 py-0.5 text-xs font-medium">{names[p]}</span>
           : <span key={i} className="rounded-md bg-primary-soft px-1.5 py-0.5 text-xs font-medium text-primary">{`{${names[p] ?? p}}`}</span>))}
     </p>
   );
@@ -111,10 +114,10 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
   const example = exampleVars(config);
   const languages = config.languages.filter((l): l is 'en' | 'es' => l === 'en' || l === 'es');
   const first = languages[0] ?? 'en';
-  // the clinic's words where they go: what it wrote, or an outlined place for them
-  const slotted = (w: TextWording | undefined, editing: boolean) => ({
-    ...(w?.label ? { label: w.label } : editing ? { label: slot('yourLead') } : {}),
-    ...(w?.extra ? { extra: w.extra } : editing ? { extra: slot('yourLine') } : {}),
+  // the clinic's own words, marked where they go (shown highlighted); none set, nothing marked
+  const slotted = (w: TextWording | undefined) => ({
+    ...(w?.label ? { label: slot('yourLead') } : {}),
+    ...(w?.extra ? { extra: slot('yourLine') } : {}),
   });
   const set = (t: SmsTemplateName, lang: 'en' | 'es', patch: Partial<TextWording>) => {
     const cur = texting.wording[t] ?? {};
@@ -148,7 +151,7 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                       </div>
                       <Button type="button" size="sm" variant="outline" aria-expanded={editing} onClick={() => setOpen(editing ? null : t)}>{editing ? 'Done' : 'Add your words'}</Button>
                     </div>
-                    {!editing && <Template testId={`text-${t}`} names={names} body={renderText(t, tmpl, first, slotted(texting.wording[t]?.[first], false))} />}
+                    {!editing && <Template testId={`text-${t}`} names={names} words={{ yourLead: texting.wording[t]?.[first]?.label, yourLine: texting.wording[t]?.[first]?.extra }} body={renderText(t, tmpl, first, slotted(texting.wording[t]?.[first]))} />}
                     {editing && languages.map((lang) => {
                       const w = texting.wording[t]?.[lang] ?? {};
                       const sent = renderText(t, example, lang, w);
@@ -157,8 +160,9 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                       return (
                         <div key={lang} className="space-y-2">
                           {languages.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{lang === 'es' ? 'Spanish' : 'English'}</p>}
-                          <p className="text-xs font-medium text-text-muted">The template</p>
-                          <Template testId={`template-${t}-${lang}`} names={names} body={renderText(t, tmpl, lang, slotted(w, true))} />
+                          {/* one preview: the text with its tags, and the clinic's words in place as they are typed */}
+                          <Template testId={`template-${t}-${lang}`} names={names} words={{ yourLead: w.label, yourLine: w.extra }}
+                            body={renderText(t, tmpl, lang, { label: slot('yourLead'), extra: slot('yourLine') })} />
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm">
                               <span className="font-medium">{names.yourLead}, after your name <span className="font-normal text-text-muted">(up to 40 characters)</span></span>
@@ -170,9 +174,11 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                             </label>
                           </div>
                           {!check.success && <p className="text-xs text-danger" role="alert">{check.error.issues[0]?.message}</p>}
-                          <p className="text-xs font-medium text-text-muted">How it arrives, with made-up names</p>
-                          <Bubble testId={`preview-${t}-${lang}`}>{sent}</Bubble>
                           <p className={`text-xs ${segments > 1 ? 'text-warn' : 'text-text-muted'}`}>About {sent.length} characters: {segments === 1 ? '1 text' : `${segments} texts`}. Names change the length a little.</p>
+                          <details className="group text-sm">
+                            <summary className="focus-ring cursor-pointer rounded text-xs font-medium text-primary hover:underline">See it as a client gets it, with made-up names</summary>
+                            <div className="mt-2"><Bubble testId={`preview-${t}-${lang}`}>{sent}</Bubble></div>
+                          </details>
                         </div>
                       );
                     })}
