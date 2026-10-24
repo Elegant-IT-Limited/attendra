@@ -3,7 +3,7 @@
 import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
 import { type CustomField, localDateOf, multiValues } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronDown, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -19,10 +19,11 @@ import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, dob, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = {
   topic: 'Topic',
@@ -59,7 +60,11 @@ function Requests() {
   const router = useRouter();
   const pathname = usePathname();
   const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
+  // the request open in the side panel: closed when it is marked done and when the list switches
+  // between Open and Done, so a request never reopens by itself over the list it moved to
+  const [openId, setOpenId] = useState<string | null>(null);
   const setStatus = (s: 'open' | 'done') => {
+    setOpenId(null);
     const q = new URLSearchParams(search.toString());
     if (s === 'done') q.set('status', 'done'); else q.delete('status');
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
@@ -127,7 +132,7 @@ function Requests() {
     },
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
-      else if (action === 'done') toast({ tone: 'success', message: 'Marked done.' });
+      else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
       else if (action === 'assign') toast({ tone: 'success', message: `Given to ${team.data?.members.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
@@ -233,25 +238,134 @@ function Requests() {
           Nobody can approve refills yet. On the <Link href={`/c/${clinicId}/team`} className="underline">Team page</Link>, tick Approves refills for your {terms.patient === 'pet' ? 'veterinarians' : 'prescribers'}.
         </Alert>
       )}
-      {tasks.isPending ? <div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-56" /><Skeleton className="h-56" /></div> : !shown.length ? (
+      {tasks.isPending ? <Card className="space-y-2 p-4"><Skeleton className="h-12" /><Skeleton className="h-12" /><Skeleton className="h-12" /></Card> : !shown.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
           {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {shown.map((t) => (
-            <RequestCard key={t.id} fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
-              canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')} canApprove={!!clinic?.approvesRefills}
-              onAct={(action, body) => act.mutate({ task: t, action, body })} />
-          ))}
-        </div>
+        <RequestList tasks={shown} status={status} patientWord={terms.patient} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} openId={openId} onOpen={setOpenId} />
       )}
       </div>
+      {/* one request at a time, on the right: its details, notes and actions, and what else came from the same call */}
+      {(() => {
+        const t = shown.find((x) => x.id === openId);
+        const siblings = t?.callId ? shown.filter((x) => x.callId === t.callId && x.id !== t.id) : [];
+        return (
+          <Panel open={!!t} onOpenChange={(o) => { if (!o) setOpenId(null); }} side="right" className="max-w-xl"
+            title={t ? `${nameOf(t)}: ${taskType(t.type, terms.patient)}` : 'Request'}>
+            {t && (
+              <div className="space-y-4">
+                <RequestCard bare fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
+                  canWork={can('tasks:work')} canReassign={can('tasks:reassign')} canOpenPatient={can('patients:read')} canApprove={!!clinic?.approvesRefills}
+                  onAct={(action, body) => act.mutate({ task: t, action, body })} />
+                {siblings.length > 0 && (
+                  <section aria-labelledby="same-call" className="space-y-2">
+                    <h3 id="same-call" className="text-xs font-semibold uppercase tracking-wide text-text-muted">From the same call</h3>
+                    <ul className="space-y-2">
+                      {siblings.map((x) => {
+                        const Icon = ICONS[x.type] ?? Phone;
+                        return (
+                          <li key={x.id}>
+                            <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => setOpenId(x.id)}>
+                              <Icon className="size-4 shrink-0 text-primary" aria-hidden />
+                              <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x).main}</span></span>
+                              <ChevronRight className="size-4 text-text-muted" aria-hidden />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            )}
+          </Panel>
+        );
+      })()}
     </>
   );
 }
 
-function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct }: {
+/** Who a request is about, as the list and the panel name it. */
+const nameOf = (t: Task) => t.patientName ?? t.details.pet_name ?? ([t.details.first_name, t.details.last_name].filter(Boolean).join(' ') || 'Caller not verified');
+
+/** What a request needs, in one line, and the detail that goes with it: the most important things, without opening it. */
+function needOf(t: Task): { main: string; sub: string } {
+  const d = t.details;
+  const callBack = d.callback_number ? `Call back on ${phone(d.callback_number)}` : null;
+  const main = d.medication ?? d.topic ?? d.reason ?? (t.type === 'follow_up' ? d.suggested ?? t.followUp : null) ?? (t.type === 'review' ? 'Check the details the assistant took' : null) ?? taskType(t.type);
+  const next = t.type === 'follow_up' ? d.suggested ?? t.followUp : null;
+  const sub = [d.pharmacy, d.owner_name && d.owner_name !== nameOf(t) ? `Owner ${d.owner_name}` : null, next ? `Suggested: ${next}` : null, callBack, d.possible_duplicate ? 'Worth a look: maybe already on file' : null]
+    .filter((x): x is string => !!x && x !== main).join(' · ');
+  return { main, sub };
+}
+
+/**
+ * The queue as one list: urgent requests first, then the ones nobody has, then the claimed
+ * ones, each a row with who, what they need, how long it has waited and who has it. A row
+ * opens the request on the right, so the list never moves under the reader.
+ */
+function RequestList({ tasks, status, patientWord, tz, today, meId, openId, onOpen }: {
+  tasks: Task[]; status: 'open' | 'done'; patientWord: string; tz: string; today: string; meId?: string; openId: string | null; onOpen: (id: string) => void;
+}) {
+  const groups: { title: string; tasks: Task[] }[] = status === 'done'
+    ? [{ title: 'Done', tasks }]
+    : [
+      { title: 'Urgent', tasks: tasks.filter((t) => t.urgent) },
+      { title: 'Waiting', tasks: tasks.filter((t) => !t.urgent && !t.assigneeUserId) },
+      { title: 'Claimed', tasks: tasks.filter((t) => !t.urgent && t.assigneeUserId) },
+    ].filter((g) => g.tasks.length);
+  return (
+    <Card className="overflow-hidden">
+      {groups.map((g) => (
+        <div key={g.title} role="group" aria-label={`${g.title}, ${g.tasks.length}`} className="border-t border-border first:border-t-0">
+          {status === 'open' && <h3 className="border-b border-border bg-surface-sunken px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-muted">{g.title} · {g.tasks.length}</h3>}
+          <ul className="divide-y divide-border">
+            {g.tasks.map((t) => <li key={t.id}><RequestRow task={t} patientWord={patientWord} tz={tz} today={today} meId={meId} selected={t.id === openId} onOpen={() => onOpen(t.id)} /></li>)}
+          </ul>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }: { task: Task; patientWord: string; tz: string; today: string; meId?: string; selected: boolean; onOpen: () => void }) {
+  const Icon = ICONS[t.type] ?? Phone;
+  const open = t.status === 'open';
+  const need = needOf(t);
+  const at = open ? t.createdAt : t.doneAt ?? t.createdAt;
+  return (
+    <button type="button" data-testid="task-row" onClick={onOpen} aria-current={selected || undefined}
+      className={cn('focus-ring relative grid w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-left text-sm hover:bg-surface-sunken/60',
+        'md:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,1.6fr)_8.5rem_auto_1rem]', selected && 'bg-primary-soft hover:bg-primary-soft')}>
+      {open && t.urgent && <span className="absolute inset-y-0 left-0 w-1 rounded-r bg-danger" aria-hidden />}
+      <span className="flex size-9 items-center justify-center rounded-full bg-primary-soft text-primary md:order-1"><Icon className="size-4" aria-hidden /></span>
+      <span className="min-w-0 md:order-2">
+        <span className="block truncate font-medium">{nameOf(t)}</span>
+        <span className="block truncate text-xs text-text-muted">{taskType(t.type, patientWord)}</span>
+      </span>
+      <span className="flex flex-wrap justify-end gap-1.5 md:order-5">
+        {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
+        {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue' : 'Due'} {t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
+        {!open ? <Badge tone="ok">{t.outcome ? TASK_OUTCOMES[t.outcome] : 'Done'}</Badge>
+          : t.assigneeUserId ? <Badge tone="accent"><Hand /> {t.assigneeUserId === meId ? 'You have it' : `${t.assigneeName ?? 'Someone'} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
+      </span>
+      <span className="col-span-2 col-start-2 min-w-0 md:order-3 md:col-span-1 md:col-start-auto">
+        <span className="block truncate">{need.main}</span>
+        {need.sub && <span className="block truncate text-xs text-text-muted">{need.sub}</span>}
+      </span>
+      <span className="hidden min-w-0 text-xs md:order-4 md:block">
+        <time dateTime={at} title={clinicTime(at, tz, 'long')} className="block font-medium text-text">{open ? ago(Date.now() - Date.parse(at)) : clinicTime(at, tz)}</time>
+        <span className="block truncate text-text-muted">{t.callId ? 'From a call' : 'Added by the team'}</span>
+      </span>
+      <ChevronRight className="hidden size-4 text-text-muted md:order-6 md:block" aria-hidden />
+    </button>
+  );
+}
+
+function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct, bare }: {
+  /** Inside the side panel: no card edge of its own. */
+  bare?: boolean;
   task: Task; fields: CustomField[]; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean; canApprove: boolean;
   onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
@@ -266,7 +380,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
   const open = t.status === 'open';
 
   return (
-    <Card className="flex flex-col" data-testid="task">
+    <Card className={cn('flex flex-col', bare && 'border-0 shadow-none')} data-testid="task">
       <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary"><Icon className="size-4" /></span>
@@ -400,42 +514,73 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
     onError: (e) => setError(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
   });
   return (
-    <Panel open={open} onOpenChange={onOpenChange} title="New request" description="Write down something for the team: a voicemail, a walk-in's question, a call you took. It joins the same queue as the assistant's."
+    <Panel open={open} onOpenChange={onOpenChange} side="right" className="max-w-xl" title="New request" description="Write down something for the team: a voicemail, a walk-in's question, a call you took. It joins the same queue as the assistant's."
       footer={(
         <>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={save.isPending} disabled={draft.reason.trim().length < 3} onClick={() => save.mutate()}>Add request</Button>
         </>
       )}>
-      <div className="space-y-4">
-        <Field label="Kind of request">
-          {(p) => <Select {...p} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
-            <optgroup label="Built in">
-              {/* the same list as the filter; a new pet or patient to check is the assistant's own, with the record it is about */}
-              {TASK_KIND_ORDER.map((k) => <option key={k} value={k} disabled={k === 'review'}>{taskType(k, patientWord)}{k === 'review' ? ' (added by the assistant)' : ''}</option>)}
-            </optgroup>
-            {topics.length > 0 && <optgroup label="Your kinds of request">{topics.map((t) => <option key={t} value={`topic:${t}`}>{t}</option>)}</optgroup>}
-          </Select>}
-        </Field>
-        {refill && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Medicine" hint="Optional.">{(p) => <Input {...p} maxLength={120} value={draft.medication} onChange={(e) => setDraft({ ...draft, medication: e.target.value })} />}</Field>
-            <Field label="Pharmacy" hint="Or pick up at the clinic. Optional.">{(p) => <Input {...p} maxLength={120} value={draft.pharmacy} onChange={(e) => setDraft({ ...draft, pharmacy: e.target.value })} />}</Field>
+      <div className="space-y-6">
+        <fieldset className="space-y-2">
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">1 · What kind</legend>
+          <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Kind of request">
+            {/* the same kinds as the filter; a new pet or patient to check is the assistant's own, with the record it is about */}
+            {TASK_KIND_ORDER.map((k) => {
+              const Icon = ICONS[k] ?? Phone;
+              const off = k === 'review';
+              return (
+                <button key={k} type="button" disabled={off} aria-pressed={draft.kind === k} onClick={() => setDraft({ ...draft, kind: k })}
+                  className={cn('focus-ring flex items-start gap-3 rounded-lg border border-border-strong bg-surface p-3 text-left text-sm hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-55',
+                    draft.kind === k && 'border-primary bg-primary-soft ring-1 ring-primary hover:bg-primary-soft')}>
+                  <Icon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                  <span><span className="block font-medium">{taskType(k, patientWord)}</span>
+                    <span className="block text-xs text-text-muted">{off ? 'Added by the assistant, with the record it is about' : taskExplained(k, patientWord === 'pet')}</span></span>
+                </button>
+              );
+            })}
+            {topics.map((t) => (
+              <button key={t} type="button" aria-pressed={draft.kind === `topic:${t}`} onClick={() => setDraft({ ...draft, kind: `topic:${t}` })}
+                className={cn('focus-ring flex items-start gap-3 rounded-lg border border-border-strong bg-surface p-3 text-left text-sm hover:bg-surface-sunken',
+                  draft.kind === `topic:${t}` && 'border-primary bg-primary-soft ring-1 ring-primary hover:bg-primary-soft')}>
+                <Flag className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                <span><span className="block font-medium">{t}</span><span className="block text-xs text-text-muted">One of your own kinds</span></span>
+              </button>
+            ))}
           </div>
-        )}
-        <Field label="Call back on" hint="The number to reach them on, if there is one.">
-          {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
-        </Field>
-        <Field label="What it is about">
-          {(p) => <Textarea {...p} rows={3} maxLength={300} value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="e.g. Wants a dental cleaning for Bella next month" />}
-        </Field>
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.urgent} onChange={(e) => setDraft({ ...draft, urgent: e.target.checked })} /> Urgent</label>
-          <Field label="Due" className="w-44">{(p) => <Input {...p} type="date" value={draft.dueOn} onChange={(e) => setDraft({ ...draft, dueOn: e.target.value })} />}</Field>
-        </div>
+        </fieldset>
+        <fieldset className="space-y-3">
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">2 · Who to reach</legend>
+          <Field label="Call back on" hint="The number to reach them on, if there is one.">
+            {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
+          </Field>
+        </fieldset>
+        <fieldset className="space-y-3">
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">3 · Details</legend>
+          {refill && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Medicine" hint="Optional.">{(p) => <Input {...p} maxLength={120} value={draft.medication} onChange={(e) => setDraft({ ...draft, medication: e.target.value })} />}</Field>
+              <Field label="Pharmacy" hint="Or pick up at the clinic. Optional.">{(p) => <Input {...p} maxLength={120} value={draft.pharmacy} onChange={(e) => setDraft({ ...draft, pharmacy: e.target.value })} />}</Field>
+            </div>
+          )}
+          {refill && <Alert tone="info">Only a {patientWord === 'pet' ? 'veterinarian' : 'prescriber'} marked as approving refills on the Team page decides it: sent, ready or not approved.</Alert>}
+          <Field label="What it is about" hint="In a sentence, for whoever picks it up.">
+            {(p) => <Textarea {...p} rows={3} maxLength={300} value={draft.reason} onChange={(e) => setDraft({ ...draft, reason: e.target.value })} placeholder="e.g. Wants a dental cleaning for Bella next month" />}
+          </Field>
+        </fieldset>
+        <fieldset className="space-y-3">
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">4 · When</legend>
+          <div className="grid items-end gap-4 sm:grid-cols-2">
+            <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={draft.urgent} onChange={(e) => setDraft({ ...draft, urgent: e.target.checked })} />
+              <span><span className="block font-medium">Urgent</span><span className="block text-xs text-text-muted">It goes to the top for everyone</span></span>
+            </label>
+            <Field label="Due" hint="Optional.">{(p) => <Input {...p} type="date" value={draft.dueOn} onChange={(e) => setDraft({ ...draft, dueOn: e.target.value })} />}</Field>
+          </div>
+        </fieldset>
         {fields.length > 0 && (
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Your own fields</legend>
+            <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">5 · Your own fields</legend>
             <CustomFieldInputs idPrefix="new-req-cf" compact fields={fields} values={custom} onChange={(id, v) => setCustom((c) => ({ ...c, [id]: v }))} />
           </fieldset>
         )}

@@ -10,8 +10,14 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(page.getByText('The patient asked for a refill. Check with the care team, then call them back.')).toBeVisible();
 
   await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
-  const card = page.getByTestId('task').first();
+  // the queue is a list of rows; a row opens its request in the side panel
+  const row = page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first();
+  await row.click();
+  const card = page.getByTestId('task');
   await expect(card.getByText(/Prescription refill, came in/)).toBeVisible();
+  // whose request it is, from the panel's title ("Name: Prescription refill"), to find it again among the done ones
+  const name = ((await page.getByRole('dialog').getByRole('heading').first().textContent()) ?? '').split(':')[0]!.trim();
+  expect(name.length).toBeGreaterThan(0);
   await card.getByRole('button', { name: 'Claim' }).click();
   await expect(card.getByText('You have it')).toBeVisible();
 
@@ -26,10 +32,13 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(card.getByText(/decides this one/)).toBeVisible();
   await card.getByLabel('Outcome').selectOption({ label: 'Called back' });
   await card.getByRole('button', { name: 'Mark done' }).click();
-  await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toHaveCount(0);
+  // done, it leaves the open list, and its panel closes with it
+  await expect(card).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  const done = page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' });
+  await page.getByTestId('task-row').filter({ hasText: name }).filter({ hasText: 'Called back' }).first().click();
+  const done = page.getByTestId('task');
+  await expect(done.getByText('Pharmacy confirmed they have it in stock.')).toBeVisible();
   await expect(done.getByText('Called back', { exact: true })).toBeVisible();
   // when it was closed and by whom, not when it came in
   await expect(done.getByText(/^Prescription refill, closed \w{3} \d{1,2} \w{3} \d{1,2}:\d{2} [AP]M by Jordan \(front desk\)$/)).toBeVisible();
@@ -40,7 +49,7 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await page.getByRole('link', { name: /Prescription refill\s*Done/ }).click();
   await expect(page).toHaveURL(/\/requests\?status=done$/);
   await expect(page.getByRole('button', { name: 'Done', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('task').filter({ hasText: 'Pharmacy confirmed they have it in stock.' })).toBeVisible();
+  await expect(page.getByTestId('task-row').filter({ hasText: name }).first()).toBeVisible();
 });
 
 test('an old /tasks link lands on Requests with its filter', async ({ browser }) => {
@@ -55,6 +64,7 @@ test('a claim someone else won says so once', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   await page.getByRole('link', { name: /^Requests/ }).click();
   await page.route((u) => u.pathname.endsWith('/claim'), (route) => route.fulfill({ status: 409, json: { error: 'task_taken', message: 'Someone else holds this request, or it is already done.' } }));
-  await page.getByTestId('task').first().getByRole('button', { name: 'Claim' }).click();
+  await page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first().click();
+  await page.getByTestId('task').getByRole('button', { name: 'Claim' }).click();
   await expect(page.getByText('Someone else holds this request, or it is already done.')).toHaveCount(1);
 });
