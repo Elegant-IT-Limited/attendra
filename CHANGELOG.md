@@ -4,6 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (operations, 2026-10-28)
+
+- **Spend alerts from Twilio's own count.** The worker keeps two daily Twilio usage triggers in place: texts past `ATTENDRA_SPEND_ALERT_SMS_USD` ($10) and the whole Twilio bill past `ATTENDRA_SPEND_ALERT_TOTAL_USD` ($25) in a day. Twilio calls the voice service's signed `/webhooks/twilio/spend-alert`, which says it in Slack.
+- **An uptime check from outside.** `.github/workflows/uptime.yml` calls the website, the dashboard, the API, the account pages and the voice service every 10 minutes from GitHub's servers, three tries each, and posts to Slack (`UPTIME_SLACK_WEBHOOK_URL`) when one is not answering.
+
+### Fixed (CI)
+
+- The e2e sign-in waits up to 30 s for the Today screen (a busy runner took over 15 s on main, 2026-10-24).
+
 ### Changed (texts, 2026-10-27)
 
 - **Texts are guarded against fraud and runaway cost.** A text goes only to a number in the clinic's own country; in North America never to a premium (900), toll-free or Caribbean +1 number, where texting fraud runs up bills. A clinic sends at most `ATTENDRA_SMS_DAILY_CAP` texts in 24 hours (now 150, was 500) and `ATTENDRA_SMS_MONTHLY_CAP` in a calendar month (2,000). A blocked number, 80% of the daily limit and either limit reached are said in Slack.

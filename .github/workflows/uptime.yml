@@ -1,0 +1,56 @@
+# Uptime: every 10 minutes, from GitHub's servers, outside ours: is Attendra answering?
+# A server that is down cannot say so itself, so this check lives elsewhere. Each address
+# gets three tries 20 s apart; one that still fails is posted to Slack (the repository
+# secret UPTIME_SLACK_WEBHOOK_URL) and fails the run. Free: the repository is public.
+name: uptime
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # forks have no reason to watch our servers
+    if: github.repository == 'Elegant-IT-Limited/attendra'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the website, the dashboard, the API and the voice service
+        env:
+          SLACK: ${{ secrets.UPTIME_SLACK_WEBHOOK_URL }}
+        run: |
+          # what to call, how, and the answers that mean "up"
+          checks=(
+            "GET https://getattendra.com/ 200 website"
+            "GET https://app.getattendra.com/sign-in 200 dashboard"
+            "GET https://app.getattendra.com/api/v1/health 200 api"
+            "GET https://app.getattendra.com/account/signup 200 account-pages"
+            "POST https://app.getattendra.com/webhooks/openai 400,401 voice-service"
+          )
+          down=()
+          for c in "${checks[@]}"; do
+            read -r method url want name <<< "$c"
+            code=000
+            for try in 1 2 3; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -X "$method" --max-time 15 "$url" || true)
+              [[ ",$want," == *",$code,"* ]] && break
+              if [ "$try" -lt 3 ]; then sleep 20; fi
+            done
+            echo "$name $method $url -> $code (up: $want)"
+            [[ ",$want," == *",$code,"* ]] || down+=("$name ($code)")
+          done
+          if [ ${#down[@]} -gt 0 ]; then
+            text="[uptime] :rotating_light: Attendra is not answering from outside: ${down[*]}. Checked 3 times, 20 s apart. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            if [ -n "$SLACK" ]; then
+              curl -s -o /dev/null -X POST -H 'content-type: application/json' --data "$(jq -n --arg t "$text" '{text: $t}')" "$SLACK" || true
+            fi
+            echo "::error::$text"
+            exit 1
+          fi
