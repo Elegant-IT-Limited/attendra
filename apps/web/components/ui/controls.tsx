@@ -40,13 +40,13 @@ export function Switch({ id, label, hint, checked, onCheckedChange, disabled }: 
 
 /** One choice from a few, all visible. */
 export function RadioGroup<T extends string>({ label, value, onValueChange, options, disabled }: {
-  label: string; value: T; onValueChange: (v: T) => void; options: { value: T; label: ReactNode; hint?: ReactNode }[]; disabled?: boolean;
+  label: string; value: T; onValueChange: (v: T) => void; options: { value: T; label: ReactNode; hint?: ReactNode; disabled?: boolean }[]; disabled?: boolean;
 }) {
   return (
     <R.Root aria-label={label} value={value} onValueChange={(v) => onValueChange(v as T)} disabled={disabled} className="space-y-2">
       {options.map((o) => (
-        <label key={o.value} className="flex cursor-pointer items-start gap-3 text-base">
-          <R.Item value={o.value} className="focus-ring mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface data-[state=checked]:border-primary max-md:size-5">
+        <label key={o.value} className={`flex items-start gap-3 text-base ${o.disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+          <R.Item value={o.value} disabled={o.disabled} className="focus-ring mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface data-[state=checked]:border-primary max-md:size-5">
             <R.Indicator className="size-2 rounded-full bg-primary" />
           </R.Item>
           <span><span className="font-medium">{o.label}</span>{o.hint && <span className="block text-sm text-text-muted">{o.hint}</span>}</span>

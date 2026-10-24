@@ -37,6 +37,8 @@ export interface CallContext {
   log?: Logger;
   /** A browser test call cannot be transferred: the assistant says where it would have connected the caller. */
   channel?: 'phone' | 'web';
+  /** Told when a caller waited this many milliseconds for an answer (the voice service alerts on it). */
+  onSlow?: (ms: number) => void;
 }
 
 /** What a tool hands back: data for the planner, and optionally a call-control action. */

@@ -426,7 +426,7 @@ describe('call control', () => {
     expect((await second).some((o) => o.type === 'commentary' && o.content.includes('214 Maple Street'))).toBe(true);
   });
 
-  it('tells the caller once that it is still checking when a request takes long', async () => {
+  it('tells the caller it is still checking at 7 s and again at 15 s, never every few seconds', async () => {
     const c = await w.call();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -440,10 +440,31 @@ describe('call control', () => {
       await vi.advanceTimersByTimeAsync(2000);
       expect(early).toHaveLength(2);
       expect(early[1]).toContain('still checking');
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(early).toHaveLength(2); // once, not every few seconds
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(early).toHaveLength(3);
+      expect(early[2]).toContain('Thank the caller for waiting');
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(early).toHaveLength(3); // twice, not every few seconds
       release();
       expect(spoken(await pending)).toContain('Dr. Raman');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never leaves a caller waiting more than 25 s: an apology and a callback offer, and the late answer is dropped', async () => {
+    const c = await w.call();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let release!: () => void;
+      const slow = { plan: () => new Promise<{ say: string }>((r) => { release = () => r({ say: 'Dr. Raman is free Monday at 9.' }); }) };
+      const pending = c.delegate([], slow, () => {});
+      await vi.advanceTimersByTimeAsync(25_000);
+      const said = spoken(await pending);
+      expect(said).toContain('taking longer than it should');
+      expect(said).toContain('call you back');
+      release();
+      expect(said).not.toContain('Dr. Raman');
     } finally {
       vi.useRealTimers();
     }
