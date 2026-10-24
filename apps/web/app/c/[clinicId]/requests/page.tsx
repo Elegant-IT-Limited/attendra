@@ -60,7 +60,11 @@ function Requests() {
   const router = useRouter();
   const pathname = usePathname();
   const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
+  // the request open in the side panel: closed when it is marked done and when the list switches
+  // between Open and Done, so a request never reopens by itself over the list it moved to
+  const [openId, setOpenId] = useState<string | null>(null);
   const setStatus = (s: 'open' | 'done') => {
+    setOpenId(null);
     const q = new URLSearchParams(search.toString());
     if (s === 'done') q.set('status', 'done'); else q.delete('status');
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
@@ -70,8 +74,6 @@ function Requests() {
   // one of the clinic's own kinds of request (Settings, Fields and lists): the request's topic
   const [topic, setTopic] = useState('');
   const [adding, setAdding] = useState(false);
-  // the request open in the side panel; it closes by itself when the request leaves the list (marked done)
-  const [openId, setOpenId] = useState<string | null>(null);
   const [who, setWho] = useState<Who>('everyone');
   // what is typed narrows the list as it is typed; the dates are the clinic's own days
   const [text, setText] = useState('');
@@ -130,7 +132,7 @@ function Requests() {
     },
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
-      else if (action === 'done') toast({ tone: 'success', message: 'Marked done.' });
+      else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
       else if (action === 'assign') toast({ tone: 'success', message: `Given to ${team.data?.members.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
