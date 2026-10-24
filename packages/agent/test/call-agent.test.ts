@@ -387,6 +387,18 @@ describe('safety', () => {
     expect(c.state.outcome).toBe('task_created');
   });
 
+  it('with texting on, asks whether the caller wants the decision by text before logging a refill, and keeps the answer', async () => {
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    const c = await w.call(undefined, { clinic: textingOn(w.clinic) });
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'James Whitaker', date_of_birth: '09/09/1962', phone: '303-555-0163' } }]);
+    const asked = await c.delegate([{ tool: 'create_refill_request', args: { medication: 'atorvastatin', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163' } }]);
+    expect(asked.errors).toEqual(['ask_text_updates']);
+    expect(spoken(asked)).toContain('Would you like a text at that number when the team has decided? Message and data rates may apply');
+    await c.delegate([{ tool: 'create_refill_request', args: { medication: 'atorvastatin', pharmacy: 'Walgreens on Colfax', callback_number: '+13035550163', text_updates: false } }]);
+    expect(create.mock.calls.at(-1)![1].details).toMatchObject({ medication: 'atorvastatin', texts: 'no' });
+    create.mockRestore();
+  });
+
   it('calls back at the number they are calling from when the caller says it is fine, and asks for one when it is withheld', async () => {
     const create = vi.spyOn(w.backend.tasks, 'create');
     const c = await w.call('+13035550163');

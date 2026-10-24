@@ -39,7 +39,8 @@ export const ToolArgs = {
   propose_cancellation: z.object({ appointment_id: z.string() }),
   commit_pending: z.object({}),
   // callback_number null: the number they are calling from, when the caller says that one is fine
-  create_refill_request: z.object({ medication: z.string().min(2), pharmacy: z.string().min(2), callback_number: z.string().min(7).nullable().default(null) }),
+  // text_updates: the caller's answer to the text offer (true yes, false no); null when it was not asked
+  create_refill_request: z.object({ medication: z.string().min(2), pharmacy: z.string().min(2), callback_number: z.string().min(7).nullable().default(null), text_updates: z.boolean().nullable().default(null) }),
   create_callback: z.object({
     reason: z.string().min(3).max(200), callback_number: z.string().min(7).nullable().default(null),
     // one of the clinic's own request topics, as get_clinic_info lists them, when one fits

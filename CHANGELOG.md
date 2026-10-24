@@ -8,6 +8,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - **A confirmation text is said before the yes.** When a booking, a move or a cancellation would be confirmed by text, the read-back says so ("I'll text you a confirmation at the number you're calling from, unless you'd rather not"), so the caller's yes covers it. "Yes, but no text" books and sends no text.
 - **Confirmations need texting on.** Like every other text, a confirmation goes out only when the clinic's texting is on, which a hosted clinic gets once its texting registration is approved.
+- **Refill decisions by text only on a yes.** With texting on, the assistant asks before logging a refill request: "Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime." The answer is kept on the request; a request from a call is texted only when the caller said yes (one the team logs itself, as before). With the clinic's texting off, the text is recorded as not sent, and why.
 - **The reminder offer says the terms:** "Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime."
 
 ### Changed (dashboard, 2026-10-29)

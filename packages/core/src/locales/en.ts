@@ -53,6 +53,7 @@ export const en: LanguagePack = {
   textSent: "Done, I've just sent it.",
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
+  refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
   shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],

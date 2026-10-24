@@ -309,12 +309,31 @@ describe('the worker on pg-boss', () => {
 });
 
 describe('a refill ready to pick up', () => {
+  // texting on, as for a clinic whose texting registration is approved
+  let saved: unknown;
+  beforeAll(async () => {
+    saved = await clinicById(t.db, DEMO_CLINIC.id);
+    await t.db.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || '{"enabled": true}'::jsonb) where id = ${DEMO_CLINIC.id}`);
+  });
+  afterAll(async () => { await t.db.execute(sql`update clinics set config = ${JSON.stringify(saved)}::jsonb where id = ${DEMO_CLINIC.id}`); });
+
+  it('texts a request from a call only when the caller said yes to the text', async () => {
+    const sent: string[] = [];
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts: { send: async (m) => { sent.push(m.body); return { sid: `SM${'b'.repeat(31)}${sent.length}` }; } } });
+    for (const [key, texts] of [['refill-no-text', 'no'], ['refill-not-asked', undefined]] as const) {
+      const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: key, details: { medication: 'x', pharmacy: 'pick up', callback_number: '+13035550178', ...(texts ? { texts } : {}) } });
+      await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
+      expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('skipped');
+    }
+    expect(sent).toEqual([]);
+  });
+
   it('texts the number the caller left, once, from the clinic\'s number, without naming the medication', async () => {
     const sent: { from: string; to: string; body: string }[] = [];
     const texts = { send: async (m: { from: string; to: string; body: string }) => { sent.push(m); return { sid: `SM${'a'.repeat(31)}${sent.length}` }; } };
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts });
     const queue = new PostgresTaskQueue(t.db, cipher);
-    const { id } = await queue.create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: 'refill-ready-1', details: { medication: 'lisinopril 10 mg', pharmacy: 'pick up at the clinic', callback_number: '+13035550163' } });
+    const { id } = await queue.create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: 'refill-ready-1', details: { medication: 'lisinopril 10 mg', pharmacy: 'pick up at the clinic', callback_number: '+13035550163', texts: 'yes' } });
     // not yet approved: nothing goes out
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('skipped');
     await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
@@ -326,7 +345,7 @@ describe('a refill ready to pick up', () => {
   });
 
   const approvedRefill = async (key: string, callId: string) => {
-    const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId, patientId: null, idempotencyKey: key, details: { medication: 'x', pharmacy: 'y', callback_number: '+13035550177' } });
+    const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId, patientId: null, idempotencyKey: key, details: { medication: 'x', pharmacy: 'y', callback_number: '+13035550177', texts: 'yes' } });
     await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
     return id;
   };
@@ -336,7 +355,7 @@ describe('a refill ready to pick up', () => {
     const sent: string[] = [];
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, texts: { send: async (m) => { sent.push(m.body); return { sid: `SM${'f'.repeat(31)}${sent.length}` }; } } });
     const decided = async (key: string, outcome: string, pharmacy: string) => {
-      const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: key, details: { medication: 'carprofen 75 mg', pharmacy, callback_number: '+13035550177' } });
+      const { id } = await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'refill', callId: await closedCall(), patientId: null, idempotencyKey: key, details: { medication: 'carprofen 75 mg', pharmacy, callback_number: '+13035550177', texts: 'yes' } });
       await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: outcome as 'refill_sent' }).where(eq(schema.tasks.id, id)));
       return id;
     };

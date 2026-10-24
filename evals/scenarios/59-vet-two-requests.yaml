@@ -18,7 +18,7 @@ turns:
     delegate:
       - commit_pending: {}
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
-      - create_refill_request: { medication: Bravecto, pharmacy: pick up at the clinic, callback_number: null }
+      - create_refill_request: { medication: Bravecto, pharmacy: pick up at the clinic, callback_number: null, text_updates: true }
   - assistant: "Biscuit is booked. Mochi's Bravecto refill is with the team for a vet to review. Anything else I can help with?"
   - caller: No, that's everything. Thanks, bye.
     reply: "Goodbye, Linh."

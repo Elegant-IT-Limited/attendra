@@ -593,10 +593,15 @@ export async function runTool(
     case 'create_refill_request': {
       const callback = callbackNumber(args, ctx);
       if (!callback) return NO_CALLBACK_NUMBER();
+      // the team's decision goes out by text only on a yes, asked before the request is logged
+      const textUpdates = typeof args.text_updates === 'boolean' ? args.text_updates : null;
+      if (textingOf(clinic).enabled && textUpdates === null) {
+        return refuse('ask_text_updates', `Ask once: "${pack.refillTextOffer}" Then call create_refill_request again with the same details and text_updates true or false.`);
+      }
       const task = await backend.tasks.create(clinic.id, {
         type: 'refill', callId: ctx.callId, patientId: state.verifiedPatient!.id,
         idempotencyKey: key(ctx.callId, 'refill', String(args.medication).toLowerCase()),
-        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: callback },
+        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: callback, ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) },
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
