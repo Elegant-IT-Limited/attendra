@@ -269,6 +269,11 @@ export const Faq = z.object({
   answer: z.string().max(600),
 });
 
+/** The longest a clinic keeps call transcripts and summaries: three years. */
+export const MAX_RETENTION_DAYS = 1095;
+/** What a clinic can choose in Settings, Call records. */
+export const RETENTION_CHOICES = [90, 180, 365, 730, 1095] as const;
+
 const ClinicConfigShape = z.object({
   id: z.string(),
   name: z.string(),
@@ -340,8 +345,9 @@ const ClinicConfigShape = z.object({
     reviewedAt: z.iso.datetime(),
     version: z.string().regex(/^[0-9a-f]{8}$/),
   }).optional(),
-  // transcripts and call summaries older than this are deleted; about 7 years by default, as many US states keep records
-  retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650, 'at most 10 years').default(2555),
+  // transcripts and call summaries older than this are deleted: a year by default, three at most (a longer value saved
+  // before this limit is kept at three years); the medical record itself lives in the clinic's own system
+  retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650).default(365).transform((d) => Math.min(d, MAX_RETENTION_DAYS)),
   recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
     .default({ enabled: false })
     .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice that plays before the call is recorded'),
@@ -427,8 +433,9 @@ export type ClinicConfig = z.infer<typeof ClinicConfig>;
  * callers should not hear it; but a clinic may be called something like it, so
  * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
  */
-export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting'; message: string }[] {
-  const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting'; message: string }[] = [];
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address'; message: string }[] {
+  const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address'; message: string }[] = [];
+  if (!c.address?.trim()) out.push({ path: 'address', message: 'No address yet. Callers who ask where you are hear that the assistant does not have it. Add it below, under Address.' });
   if (c.texting?.enabled && c.texting.kinds.directions && !c.address?.trim()) out.push({ path: 'texting', message: 'Directions texts are on, but the clinic has no address. Add it under General.' });
   if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });
   if (c.assistantName && /attendra/i.test(c.assistantName)) out.push({ path: 'assistantName', message: 'The assistant is named after the software. Callers should hear a name of the clinic\'s own.' });

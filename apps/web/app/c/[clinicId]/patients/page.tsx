@@ -12,6 +12,7 @@ import { PatientLine, PatientSearch } from '@/components/patients/patient-search
 import { ImportPanel } from '@/components/import-panel';
 import { PageHeader } from '@/components/shell';
 import { Button, buttonStyles } from '@/components/ui/button';
+import { Tabs } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
@@ -81,17 +82,15 @@ export default function Patients() {
           <CardContent className="py-5">
             {/* one filter row, the same as on the other lists: which patients, then the dropdowns */}
             <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
-            <div className="flex gap-1" role="group" aria-label="Which patients">
-              <Button size="sm" variant={onlyNew ? 'ghost' : 'outline'} aria-pressed={!onlyNew} onClick={() => setOnlyNew(false)}>All {terms.patients}</Button>
-              <Button size="sm" variant={onlyNew ? 'outline' : 'ghost'} aria-pressed={onlyNew} onClick={() => setOnlyNew(true)}>Added by the assistant, to check</Button>
-            </div>
+            <Tabs variant="pills" label={`Which ${terms.patients}`} value={onlyNew ? 'new' : 'all'} onValueChange={(v) => setOnlyNew(v === 'new')}
+              tabs={[{ value: 'all', label: `All ${terms.patients}` }, { value: 'new', label: 'Added by the assistant, to check' }]} />
             {(pet && speciesList.length > 0) || filterable.length > 0 ? (
               <>
                 {pet && speciesList.length > 0 && (
                   <>
                     <Label htmlFor="pet-species" className="sr-only">Kind of animal</Label>
                     <Select id="pet-species" className="h-8 w-40" value={species} onChange={(e) => setSpecies(e.target.value)}>
-                      <option value="">Any kind</option>
+                      <option value="">Any kind of animal</option>
                       {speciesList.map((s) => <option key={s} value={s}>{s}</option>)}
                     </Select>
                   </>

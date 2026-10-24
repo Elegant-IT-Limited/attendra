@@ -1,5 +1,6 @@
 import type { CallForSummary } from '@attendra/db';
 import { describe, expect, it, vi } from 'vitest';
+import { declinedCallback, needsFollowUp } from '../src/runtime';
 import { JobError, LocalSummariser, ModelSummariser, SUMMARY_INSTRUCTIONS } from '../src/summarise';
 
 const CALL: CallForSummary = {
@@ -154,5 +155,22 @@ describe('the local summariser', () => {
     const s = await local.summarise({ ...CALL, transcript: [{ speaker: 'caller', text: 'Hola, soy Maria Delgado, quiero una cita para mañana por favor' }] });
     expect(s.summary).toMatch(/^The caller spoke Spanish\./);
     expect(s.summary).not.toContain('Maria');
+  });
+});
+
+describe('a callback the caller said no to', () => {
+  const t = (...turns: [('caller' | 'agent'), string][]) => turns.map(([speaker, text]) => ({ speaker, text }));
+  it('opens no follow-up request when the caller declined the last callback offered', () => {
+    // a tester's call of 2026-10-23: "Would you like me to request a callback?" "No"
+    expect(declinedCallback(t(['agent', 'I don\'t have the next holiday date, but I can have someone from the team call you with that information. Would you like me to request a callback?'], ['caller', 'No']))).toBe(true);
+    expect(declinedCallback(t(['agent', 'Would you like a callback?'], ['caller', 'No thanks, I\'m fine.']))).toBe(true);
+    expect(declinedCallback(t(['agent', '¿Quiere que le llamen del equipo? Puedo pedir que le llamen.'], ['caller', 'No gracias']))).toBe(true);
+  });
+  it('still follows up when the caller said yes, or was never asked', () => {
+    expect(declinedCallback(t(['agent', 'Would you like a callback?'], ['caller', 'Yes please']))).toBe(false);
+    expect(declinedCallback(t(['agent', 'We are open 8 to 6.'], ['caller', 'No']))).toBe(false);
+    expect(declinedCallback(t(['agent', 'Would you like a callback?'], ['caller', 'No'], ['agent', 'Shall I have the team call you back about Susi?'], ['caller', 'Yes']))).toBe(false);
+    expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: t(['agent', 'Would you like a callback?'], ['caller', 'No']) }, { needsReview: true })).toBe(false);
+    expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: [] }, { needsReview: true })).toBe(true);
   });
 });

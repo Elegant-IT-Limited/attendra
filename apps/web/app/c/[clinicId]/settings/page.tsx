@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -94,6 +94,7 @@ function withoutBlankRows(c: ClinicConfig): ClinicConfig {
     requestTopics: c.requestTopics?.filter((t) => !BLANK.named(t)),
     customFields: c.customFields?.filter((f) => f.label.trim()),
     menuLinks: c.menuLinks?.filter((l) => l.label.trim() || !/^(https?:\/\/)?$/.test(l.url.trim())),
+    phoneNumbers: c.phoneNumbers.filter((n) => n.trim()),
   };
 }
 
@@ -514,7 +515,7 @@ export default function Settings() {
           </div>
         </Section>
 
-        <Section id="links" title="Links in your menu" description="Your own tools in everyone's menu: your practice software, your booking page, a form. They open in a new tab."
+        <Section id="links" title="Links in your menu" description="Shortcuts for your team, not for callers: your practice software, a lab portal, a form. Each shows in this dashboard's menu on the left, for everyone at the clinic, and opens in a new tab. The assistant does not use them; links it may text a caller are under Texting."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => addOrFocus(c.menuLinks ?? [], (l) => !l.label.trim() && /^(https?:\/\/)?$/.test(l.url.trim()), (_l, i) => `item-link-${i}`, () => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); })}><Plus /> Link</Button>}>
           {!c.menuLinks?.length && <EmptyNote>No links yet.</EmptyNote>}
           <Sortable items={(c.menuLinks ?? [])} keyOf={(_l, i) => String(i)} label={(l) => l.label} disabled={!writable || save.isPending} onMove={(f, t) => set({ menuLinks: moved(c.menuLinks ?? [], f, t) })} className="space-y-5">
@@ -530,18 +531,33 @@ export default function Settings() {
         </Section>
 
         <Section id="records" title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
-          <Field label="Keep transcripts and summaries for (days)" htmlFor="retention" hint={`About ${(c.retentionDays / 365).toFixed(1)} years. Between 30 and 3650; the default, 2555 days, is 7 years.`}>
-            <Input id="retention" type="number" min={30} max={3650} className="w-32" value={c.retentionDays} onChange={(e) => set({ retentionDays: Number(e.target.value) })} />
+          <Field label="Keep transcripts and summaries for" htmlFor="retention" hint="One year unless you choose otherwise; three years at most. Your own records system keeps the medical record.">
+            <Select id="retention" className="w-48" value={String(c.retentionDays)} onChange={(e) => set({ retentionDays: Number(e.target.value) })}>
+              {[...new Set([...RETENTION_CHOICES, c.retentionDays])].sort((a, b) => a - b).map((d) => <option key={d} value={d}>{d % 365 === 0 ? `${d / 365} year${d === 365 ? '' : 's'}` : d === 180 ? '6 months' : `${d} days`}</option>)}
+            </Select>
           </Field>
         </Section>
 
-        <Section id="numbers" title="Phone numbers" description={clinic?.accountLinks.length ? 'The numbers this clinic answers on. To get a number or change it, open Phone number under Account in the menu.' : 'The numbers this clinic answers on. Your Attendra operator sets them up.'}>
-          <ul className="space-y-2">{c.phoneNumbers.map((n) => (
-            <li key={n} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-sunken/60 px-3 py-2 text-sm">
-              <span className="font-medium tabular-nums">{phone(n)}</span>
-              <span className="text-text-muted">{assistantNumbers.has(n) ? 'Your assistant\'s number: calls to it reach the assistant' : 'Your clinic\'s own line: forward it to the assistant\'s number'}</span>
-            </li>
-          ))}</ul>
+        <Section id="numbers" title="Phone numbers" description={`The assistant's number is where calls reach the assistant${clinic?.accountLinks.length ? ': to get or change it, open Phone number under Account in the menu' : ': your Attendra operator sets it up'}. Your clinic's own line is the number clients call today; you forward it to the assistant's number, and "Check my forwarding" calls it.`}>
+          <ul className="space-y-2">
+            {c.phoneNumbers.map((n, i) => (assistantNumbers.has(n) ? (
+              <li key={`a-${n}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-sunken/60 px-3 py-2 text-sm">
+                <span className="font-medium tabular-nums">{phone(n)}</span>
+                <span className="text-text-muted">Your assistant&apos;s number: calls to it reach the assistant</span>
+              </li>
+            ) : (
+              <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
+                <Input aria-label="Your clinic's own line" className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable} placeholder={countryCopy(c).phone.local}
+                  onBlur={(e) => { const v = e.target.value.trim() ? asE164(c, e.target.value) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
+                <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
+                {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}
+              </li>
+            )))}
+          </ul>
+          {writable && c.phoneNumbers.filter((n) => !assistantNumbers.has(n)).length < 3 && (
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => set({ phoneNumbers: [...c.phoneNumbers, ''] })}><Plus /> Your clinic&apos;s own line</Button>
+          )}
         </Section>
       </fieldset>
       </div>
