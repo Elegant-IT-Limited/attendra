@@ -602,6 +602,8 @@ export const HostingPlan = z.object({
   status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
   /** Call minutes a month included at this clinic. */
   includedMinutes: z.number().int().min(0).max(100_000),
+  /** Texts a month included at this clinic; a hosting layer from before texts were counted leaves it out. */
+  includedTexts: z.number().int().min(0).max(1_000_000).optional(),
   /** The minutes' month: phone calls from periodStart count toward includedMinutes; it starts again at periodEnd. */
   periodStart: z.iso.datetime().nullable(),
   periodEnd: z.iso.datetime().nullable(),
@@ -614,7 +616,7 @@ export const HostingPlan = z.object({
   manageUrl: SafeLink.nullable(),
 });
 /** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
-export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable() });
+export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
 
 // the oldest 20, and how many are waiting in all
 export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),

@@ -40,6 +40,16 @@ describe('provisioning', () => {
     await at('2026-09-02T16:00:00Z', 300, 'web');
     await at('2026-09-03T16:00:00Z', 60, 'phone', false);
     await at('2026-10-01T15:00:00Z', 60);
-    expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121 });
+    expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121, texts: 0 });
+  });
+
+  it('counts the texts the carrier took in the period, never one refused before sending', async () => {
+    const text = (key: string, sid: string | null, sentAt: string | null) => t.db.execute(sql`insert into sms_messages (clinic_id, template, to_hash, status, idempotency_key, provider_sid, sent_at)
+      values ('clinic_oak', 'booking_confirmed', 'h', ${sid ? 'sent' : 'not_sent'}, ${key}, ${sid}, ${sentAt}::timestamptz)`);
+    await text('a', 'SM1', '2026-09-05T15:00:00Z');
+    await text('b', 'SM2', '2026-09-30T23:59:00Z');
+    await text('c', null, null);
+    await text('d', 'SM3', '2026-10-01T00:00:00Z');
+    expect((await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).texts).toBe(2);
   });
 });

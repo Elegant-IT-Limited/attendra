@@ -111,7 +111,7 @@ const TEXTS: Record<string, string> = {
   directions: 'the address and a map link', hours: 'the opening hours', emergency_hospital: 'the emergency hospital\'s details', provider: 'a doctor\'s details', answer: 'an answer', link: 'one of the clinic\'s links', reminder: 'an appointment reminder',
 };
 const NOT_SENT: Record<string, string> = {
-  opted_out: 'the number opted out', rate_limited: 'too many texts to that number today', no_number: 'no mobile number',
+  opted_out: 'the number opted out', rate_limited: 'too many texts today', monthly_limit: 'the monthly safety limit on texts', not_textable: 'a number outside the country, premium or toll-free', no_number: 'no mobile number',
   texting_off: 'texting is off', test_call: 'a test call never texts anyone', unregistered: 'text registration is not approved yet', carrier: 'the carrier refused it',
 };
 

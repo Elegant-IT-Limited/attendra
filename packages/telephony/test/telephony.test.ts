@@ -1,6 +1,6 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { createPhiCipher, schema, seedDemo, withClinic } from '@attendra/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { callerNumber, confirmByReply, dialledCandidates, dialledNumber, maskedHeaders, MAX_TEXTS_PER_NUMBER_PER_DAY, trimEnd, recordSmsStanding, smsKeyword, smsStatusUrl, TEMPLATES, twilioSignatureValid, twiml, TwilioMessenger } from '../src';
@@ -107,6 +107,26 @@ describe('SMS confirmations', () => {
     expect(await row('sms:many:8')).toMatchObject({ status: 'not_sent', failureReason: 'rate_limited' });
     const capped = new TwilioMessenger(t.db, cipher, { send: async () => ({ sid: `SM${'4'.repeat(32)}` }) }, () => '+13035550100', { dailyCap: 1 });
     expect(await capped.sendTemplate(DEMO_CLINIC.id, { to: '+13035550175', template: 'request_ready', idempotencyKey: 'sms:cap', vars })).toMatchObject({ status: 'not_sent', reason: 'rate_limited' });
+  });
+
+  it('never texts a number abroad, premium, toll-free or in the Caribbean, stops at the monthly limit, and says so in Slack', async () => {
+    let calls = 0;
+    const alerts: string[] = [];
+    const sender = { send: async () => { calls++; return { sid: `SM${'5'.repeat(32)}` }; } };
+    const messenger = new TwilioMessenger(t.db, cipher, sender, () => '+13035550100', { alerts: { alert: (kind) => alerts.push(kind) } });
+    for (const [i, to] of ['+447700900123', '+18765550100', '+19005550100', '+18885550100'].entries()) {
+      expect(await messenger.sendTemplate(DEMO_CLINIC.id, { to, template: 'request_ready', idempotencyKey: `sms:abroad:${i}`, vars })).toMatchObject({ status: 'not_sent', reason: 'not_textable' });
+    }
+    expect(calls).toBe(0);
+    expect(alerts).toEqual(['text_blocked', 'text_blocked', 'text_blocked', 'text_blocked']);
+    // Canada is fine
+    expect(await messenger.sendTemplate(DEMO_CLINIC.id, { to: '+14165550100', template: 'request_ready', idempotencyKey: 'sms:canada', vars })).toMatchObject({ status: 'sent' });
+    // this month's texts so far reach a limit set at them: the next one waits for the 1st
+    const [{ n }] = (await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`select count(*)::int as n from sms_messages where clinic_id = ${DEMO_CLINIC.id} and status <> 'not_sent'`))).rows as [{ n: number }];
+    const full = new TwilioMessenger(t.db, cipher, sender, () => '+13035550100', { monthlyCap: n, alerts: { alert: (kind) => alerts.push(kind) } });
+    expect(await full.sendTemplate(DEMO_CLINIC.id, { to: '+13035550177', template: 'request_ready', idempotencyKey: 'sms:month', vars })).toMatchObject({ status: 'not_sent', reason: 'monthly_limit' });
+    expect(alerts.at(-1)).toBe('text_limit');
+    expect(calls).toBe(1);
   });
 
   it('marks a number the carrier says opted out (21610), and does not try it again', async () => {
