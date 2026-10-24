@@ -85,11 +85,15 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
   test('every tab list has a name, and its panel is named by the selected tab', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     const clinic = new URL(page.url()).pathname.split('/')[2];
-    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['requests', 'Status', 'Open'], ['schedule', 'View', 'Day']] as const) {
+    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['schedule', 'View', 'Day']] as const) {
       await page.goto(`/c/${clinic}/${path}`);
       await expect(page.getByRole('tablist', { name: list })).toBeVisible();
       await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible();
     }
+    // a filter switch with no panels of its own (Requests' Open / Done, like Pets') is a named group of pressed buttons
+    await page.goto(`/c/${clinic}/requests`);
+    await expect(page.getByRole('group', { name: 'Status' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Open' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {
