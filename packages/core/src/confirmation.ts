@@ -21,6 +21,26 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
   return yes && !hedge;
 }
 
+// "no text, thanks", "don't text me", "sin mensajes": the caller turns down the confirmation text, not the change
+const NO_TEXT = /\b(no|not|don'?t|do not|without|sin)\b[^.?!]{0,25}\b(texts?|texting|messages?|sms|mensajes?|textos?)\b/g;
+/** Whether the caller's answer to a read-back turns down the confirmation text ("yes, but no text"). */
+export function declinesText(callerText: string): boolean {
+  return new RegExp(NO_TEXT.source).test(normalise(callerText));
+}
+const NO_TEXT_CLAUSE = new RegExp(`(\\b(but|and|just|though|pero|y)\\b[\\s,]*)?${NO_TEXT.source}`);
+/**
+ * The part of the answer that is about the change, without the "no text" part: "yes please,
+ * but no text, I don't need it" is "yes please". When the refusal comes first ("no text, but
+ * yes, book it"), what follows it.
+ */
+export function withoutTextRefusal(callerText: string): string {
+  const t = normalise(callerText);
+  const m = NO_TEXT_CLAUSE.exec(t);
+  if (!m) return t;
+  const before = t.slice(0, m.index).replace(/[\s,;:-]+$/, '').trim();
+  return before || t.slice(m.index + m[0].length).replace(/^([\s,;:.!-]|\b(please|thanks|thank you|por favor|gracias|but|pero)\b)+/, '').trim();
+}
+
 const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no thanks|no thank you|have a (good|nice|great) (day|one)|adios|hasta luego|eso es todo|nada mas|chao|chau)\b/;
 const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|gracias)\b/;
 const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;

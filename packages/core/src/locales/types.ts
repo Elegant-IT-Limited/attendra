@@ -67,6 +67,10 @@ export interface LanguagePack {
   shortDays: [string, string, string, string, string, string, string];
   /** Asked once after a booking, when the clinic sends reminders and the caller has not agreed yet. */
   reminderOffer: string;
+  /** Asked before a refill request is logged, when texting is on: only a yes gets the team's decision by text. */
+  refillTextOffer: string;
+  /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */
+  confirmTextNote: (v: { target: 'calling' | 'file' }) => string;
   /** The answer to a reply of C to a reminder. */
   smsConfirmed: (v: { clinic: string; when: string }) => string;
   /** The answer to a text sent to the clinic's number that is not STOP or START: replies are not read. */

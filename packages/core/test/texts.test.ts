@@ -29,3 +29,16 @@ describe('personal texts', () => {
     expect(textableNumber({ phoneNumbers: ['+442079460000'] }, '+447700900123')).toBe(true);
   });
 });
+
+describe('turning down the confirmation text', () => {
+  it('keeps the yes to the change and drops the text, in English and Spanish', async () => {
+    const { declinesText, withoutTextRefusal, isClearYes } = await import('../src');
+    const yesToChange = (t: string) => isClearYes(declinesText(t) ? withoutTextRefusal(t) : t, ['en', 'es']);
+    for (const t of ["Yes please, but no text, I don't need it.", 'No text please, but yes, book it.', 'Sí, pero sin mensajes.']) {
+      expect(declinesText(t)).toBe(true);
+      expect(yesToChange(t)).toBe(true);
+    }
+    expect(declinesText('Yes, that works.')).toBe(false);
+    expect(yesToChange('No, not that time')).toBe(false);
+  });
+});

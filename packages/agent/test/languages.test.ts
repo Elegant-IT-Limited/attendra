@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { answerFromFaqs, type CallAgent } from '../src';
-import { world } from './support';
+import { textingOn, world } from './support';
 
 type Out = Awaited<ReturnType<CallAgent['onDelegation']>>;
 const said = (out: Out) => out.flatMap((o) => (o.type === 'commentary' || o.type === 'instructions' ? [o.content] : [])).join(' ');
@@ -12,7 +12,7 @@ describe('a Spanish call at Maple Street', () => {
   afterAll(() => w.t.close());
 
   it('starts in English, then offers, reads back and texts in Spanish once the caller speaks it', async () => {
-    const c = await w.call();
+    const c = await w.call(undefined, { clinic: textingOn(w.clinic) });
     expect(c.state.language).toBe('en');
     c.caller('Hola, soy Maria Delgado, nací el 4 de marzo de 1985. Necesito una cita, por favor.');
     expect(c.state.language).toBe('es');

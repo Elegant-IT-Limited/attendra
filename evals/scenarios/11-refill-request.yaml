@@ -7,7 +7,7 @@ turns:
     reply: "Thanks, James. I've sent your lisinopril request to the care team, with Walgreens on Colfax as the pharmacy. They'll review it and call you if they have any questions."
     delegate:
       - verify_caller: { full_name: James Whitaker, date_of_birth: 9/9/1962 }
-      - create_refill_request: { medication: lisinopril 10 mg, pharmacy: Walgreens on Colfax, callback_number: "+13035550163" }
+      - create_refill_request: { medication: lisinopril 10 mg, pharmacy: Walgreens on Colfax, callback_number: "+13035550163", text_updates: true }
 expect:
   outcome: task_created
   verified: true

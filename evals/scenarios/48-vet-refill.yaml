@@ -8,7 +8,7 @@ turns:
     reply: "Thanks, Daniel. I've sent Pepper's meloxicam refill request to the vet, for pick-up at the clinic. They'll call you if they have any questions."
     delegate:
       - verify_caller: { owner_name: Daniel Brooks, pet_name: Pepper }
-      - create_refill_request: { medication: meloxicam, pharmacy: pick up at the clinic, callback_number: "+17205550173" }
+      - create_refill_request: { medication: meloxicam, pharmacy: pick up at the clinic, callback_number: "+17205550173", text_updates: true }
 expect:
   outcome: task_created
   verified: true
