@@ -30,6 +30,7 @@ const app = createVoiceApp({
   twilio: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN } : undefined,
   publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL,
   smsDailyCap: env.ATTENDRA_SMS_DAILY_CAP,
+  smsMonthlyCap: env.ATTENDRA_SMS_MONTHLY_CAP,
   internalToken: env.VOICE_INTERNAL_TOKEN,
   browserCallMaxSeconds: env.BROWSER_CALL_MAX_SECONDS,
   jobs: bossQueue(boss),

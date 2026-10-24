@@ -55,7 +55,7 @@ export function PlanBanner({ clinicId }: { clinicId: string }) {
   );
 }
 
-/** The month's phone minutes against the plan's, for every member. */
+/** The month's phone minutes and texts against the plan's, for every member. */
 export function PlanMeter({ clinicId }: { clinicId: string }) {
   const { clinic } = useClinic(clinicId);
   const { data } = usePlan(clinicId);
@@ -79,9 +79,10 @@ export function PlanMeter({ clinicId }: { clinicId: string }) {
   if (plan.status === 'canceled' || data.minutesUsed === null) return null;
   const used = data.minutesUsed;
   const over = used - plan.includedMinutes;
+  const texts = plan.includedTexts !== undefined && data.textsUsed !== null;
   return (
     <Card>
-      <CardHeader><CardTitle>Call minutes this month</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{texts ? 'Calls and texts this month' : 'Call minutes this month'}</CardTitle></CardHeader>
       <CardContent className="space-y-2 pt-2">
         <p className="text-sm"><span className="text-xl font-semibold tabular-nums">{used}</span> <span className="text-text-muted">of {plan.includedMinutes} included</span></p>
         <Meter value={used} max={plan.includedMinutes} label="Call minutes used this month" />
@@ -89,6 +90,15 @@ export function PlanMeter({ clinicId }: { clinicId: string }) {
           {over > 0 ? `${over} minutes over the plan; they are billed per minute. ` : `${plan.includedMinutes - used} minutes left. `}
           {plan.periodEnd ? `The count starts again on ${dateOf(plan.periodEnd, clinic.timezone)}.` : ''}
         </p>
+        {data.textsUsed !== null && plan.includedTexts !== undefined && (
+          <div className="space-y-2 border-t border-border pt-3" data-testid="texts-meter">
+            <p className="text-sm"><span className="text-xl font-semibold tabular-nums">{data.textsUsed}</span> <span className="text-text-muted">of {plan.includedTexts} texts included</span></p>
+            <Meter value={data.textsUsed} max={plan.includedTexts} label="Texts sent this month" />
+            <p className="text-xs text-text-muted">
+              {data.textsUsed > plan.includedTexts ? `${data.textsUsed - plan.includedTexts} texts over the plan; they are billed per text.` : `${plan.includedTexts - data.textsUsed} texts left.`}
+            </p>
+          </div>
+        )}
         {clinic.role === 'owner' && plan.manageUrl && <a className="text-sm font-medium text-primary underline-offset-2 hover:underline" href={plan.manageUrl}>Plan and billing</a>}
       </CardContent>
     </Card>

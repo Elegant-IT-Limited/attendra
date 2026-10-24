@@ -16,16 +16,15 @@ export class PlanController {
 
   @Get()
   @Requires('calls:list')
-  @ApiOperation({ summary: 'The hosting plan, if any, and the phone minutes used in its month. Counts only, for every member.' })
+  @ApiOperation({ summary: 'The hosting plan, if any, and the phone minutes and texts used in its month. Counts only, for every member.' })
   @ApiOkResponse({ schema: schemaOf(ClinicPlan) })
   async get(@Param('clinicId') clinicId: string): Promise<ClinicPlan> {
     const parsed = HostingPlan.safeParse(await hostingPlanOf(this.db, clinicId));
-    if (!parsed.success) return { plan: null, minutesUsed: null };
+    if (!parsed.success) return { plan: null, minutesUsed: null, textsUsed: null };
     const plan = parsed.data;
-    // rounded up to the minute once, as the hosting layer bills them
-    const minutesUsed = plan.status !== 'trial' && plan.periodStart
-      ? Math.ceil((await phoneUsage(this.db, clinicId, new Date(plan.periodStart), this.now())).seconds / 60)
-      : null;
-    return { plan, minutesUsed };
+    if (plan.status === 'trial' || !plan.periodStart) return { plan, minutesUsed: null, textsUsed: null };
+    const usage = await phoneUsage(this.db, clinicId, new Date(plan.periodStart), this.now());
+    // minutes rounded up once, as the hosting layer bills them; texts as the carrier took them
+    return { plan, minutesUsed: Math.ceil(usage.seconds / 60), textsUsed: usage.texts };
   }
 }

@@ -67,6 +67,21 @@ export function asE164(clinic: { phoneNumbers: string[] }, typed: string): strin
   return national.length >= 7 && national.length + code.length <= 15 ? `+${code}${national}` : t;
 }
 
+// +1 area codes outside the US and Canada (the Caribbean and Bermuda), where premium-rate
+// text fraud is common, plus premium and toll-free codes no text should go to
+const NANP_NOT_TEXTED = new Set(['242', '246', '264', '268', '284', '345', '441', '473', '649', '658', '664', '721', '758', '767', '784', '809', '829', '849', '868', '869', '876', '900',
+  '800', '833', '844', '855', '866', '877', '888']);
+
+/**
+ * Whether a text may go to this number from this clinic: a number in the clinic's own
+ * country, and in North America a US or Canadian one that is not premium or toll-free.
+ * Texts to anywhere else are how texting fraud runs up a bill, so they never go.
+ */
+export function textableNumber(clinic: { phoneNumbers: string[] }, e164: string): boolean {
+  if (!inClinicCountry(clinic, e164)) return false;
+  return callingCode(e164) !== '1' || !NANP_NOT_TEXTED.has(e164.slice(2, 5));
+}
+
 /** Whether a number is in the same country as the clinic's own first number. */
 export function inClinicCountry(clinic: { phoneNumbers: string[] }, e164: string): boolean {
   const code = callingCode(e164);

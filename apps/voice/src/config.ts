@@ -23,7 +23,8 @@ const Env = z.object({
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
   // this service's public https address: Twilio sends text replies (STOP) and delivery reports to it
   ATTENDRA_VOICE_PUBLIC_URL: optional(z.string().url()),
-  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(500)),
+  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(150)),
+  ATTENDRA_SMS_MONTHLY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(1_000_000).default(2000)),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
   BROWSER_CALL_MAX_SECONDS: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(300)),
   // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged

@@ -26,7 +26,9 @@ export const TEXT_TEMPLATES: Record<string, string> = {
 
 const REASONS: Record<string, string> = {
   opted_out: 'the number has opted out (replied STOP)',
-  rate_limited: 'too many texts to that number today',
+  rate_limited: 'too many texts today, to that number or from the clinic',
+  monthly_limit: 'the clinic reached its monthly safety limit on texts',
+  not_textable: 'texts go only to mobile numbers in your country, never premium or toll-free ones',
   no_number: 'no mobile number on file',
   texting_off: 'texting is off',
   unregistered: 'text registration (A2P) is not approved yet',
