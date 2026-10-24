@@ -545,12 +545,12 @@ export async function runTool(
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
-      state.done.push(`booked ${pending.readback}`);
+      state.done.push(`booked ${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
       return {
         ok: true,
         data: {
           booked: true, when: pending.readback, sms_sent: smsSent,
-          done: 'This visit is booked. Say so once; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.',
+          done: `This visit is booked. Say so once${smsSent ? ', and that a confirmation text is on its way to the number on file (asked for one, say it has been sent)' : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
         },

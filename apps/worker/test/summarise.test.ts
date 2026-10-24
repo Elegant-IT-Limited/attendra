@@ -171,6 +171,8 @@ describe('a callback the caller said no to', () => {
     expect(declinedCallback(t(['agent', 'We are open 8 to 6.'], ['caller', 'No']))).toBe(false);
     expect(declinedCallback(t(['agent', 'Would you like a callback?'], ['caller', 'No'], ['agent', 'Shall I have the team call you back about Susi?'], ['caller', 'Yes']))).toBe(false);
     expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: t(['agent', 'Would you like a callback?'], ['caller', 'No']) }, { needsReview: true })).toBe(false);
-    expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: [] }, { needsReview: true })).toBe(true);
+    expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: t(['caller', 'Hi, I need help with my dog.']) }, { needsReview: true })).toBe(true);
+    // a caller who hung up before saying anything is a missed call, not a request
+    expect(needsFollowUp({ outcome: 'abandoned', emergency: false, tasks: [], transcript: t(['agent', 'Thanks for calling Zaru.']) }, { needsReview: true })).toBe(false);
   });
 });
