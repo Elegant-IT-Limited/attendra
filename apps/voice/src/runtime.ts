@@ -4,7 +4,7 @@ import {
   CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
 } from '@attendra/db';
-import { type KnowledgeBase, PACKS, speakSlot } from '@attendra/core';
+import { callUsNumber, type KnowledgeBase, PACKS, readablePhone, speakSlot } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
@@ -127,14 +127,14 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
         if (word === 'confirm') {
           // C to a reminder: the next visit it was about is confirmed, and the clinic's webhooks hear of it
           const visit = await confirmByReply(db, cipher, clinic.id, from);
-          if (!visit) return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: clinic.phoneNumbers[0]! });
+          if (!visit) return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: readablePhone(callUsNumber(clinic)) });
           if (rt.jobs) {
             await eventSink(rt.jobs, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'could not queue an event'))
               .emit(clinic.id, { type: 'appointment.confirmed', key: visit.id, data: { appointmentId: visit.id, patientId: visit.patientId, via: 'text' } });
           }
           return PACKS[clinic.primaryLanguage].smsConfirmed({ clinic: clinic.name, when: speakSlot(visit.startsAt, clinic.timezone, clinic.primaryLanguage) });
         }
-        return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: clinic.phoneNumbers[0]! });
+        return PACKS[clinic.primaryLanguage].smsNoReplies({ clinicPhone: readablePhone(callUsNumber(clinic)) });
       },
       status: async (job) => {
         if (!(SMS_STATUSES as readonly string[]).includes(job.status)) return;

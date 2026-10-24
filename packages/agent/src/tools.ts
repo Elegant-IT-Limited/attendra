@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, callUsNumber, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -189,7 +189,24 @@ export async function runTool(
    * checks them: nobody can have visits texted to someone else's phone by making up a patient.
    * Changes and cancellations follow the clinic's switch for them.
    */
-  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string): Promise<boolean> => {
+  /**
+   * The names a text uses, when the call has them: the owner (a pet's) or the patient, the pet, the vet or
+   * doctor, and the kind of visit, for pets only. Never an empty one.
+   */
+  const personal = (facts: { providerId?: string; visitTypeId?: string } = {}): Record<string, string> => {
+    const p = state.verifiedPatient;
+    const pets = clinic.industry === 'vet';
+    const first = (s: string | null | undefined) => s?.trim().split(/\s+/)[0] ?? '';
+    const name = first(pets ? state.verifiedOwner : p?.firstName);
+    const provider = facts.providerId ? clinic.providers.find((x) => x.id === facts.providerId) : undefined;
+    const visit = pets && facts.visitTypeId ? clinic.visitTypes.find((x) => x.id === facts.visitTypeId) : undefined;
+    return {
+      ...(name ? { name } : {}), ...(pets && p?.firstName ? { pet: p.firstName } : {}),
+      ...(provider && provider.kind !== 'room' ? { provider: localName(provider, lang) } : {}),
+      ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
+    };
+  };
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}): Promise<boolean> => {
     const patient = state.verifiedPatient;
     if (!patient?.phone) return false;
     if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return false;
@@ -198,7 +215,7 @@ export async function runTool(
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
-        vars: { clinic: clinic.name, when: when(start), clinicPhone: clinic.phoneNumbers[0]! },
+        vars: { clinic: clinic.name, when: when(start), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
         kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
       });
       if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
@@ -535,7 +552,7 @@ export async function runTool(
       }
       // a move is confirmed as a move, a new booking as a booking
       const smsSent = result.status === 'booked'
-        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id)
+        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId })
         : false;
       // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
       const reminders = textingOf(clinic).reminders;
@@ -779,7 +796,7 @@ export function textContent(
   clinic: ClinicConfig, state: Pick<CallState, 'answersGiven'>, now: Date, lang: keyof typeof PACKS,
 ): { template: SmsTemplate; vars: Record<string, string> } | null {
   const texting = textingOf(clinic);
-  const clinicPhone = clinic.phoneNumbers[0]!;
+  const clinicPhone = callUsNumber(clinic);
   switch (kind) {
     case 'directions': {
       const address = clinic.address?.trim();
