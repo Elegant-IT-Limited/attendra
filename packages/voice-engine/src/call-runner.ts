@@ -37,7 +37,7 @@ export const ASKED_HANGUP_MS = 2500;
  */
 export const SPOKEN_MS_PER_CHAR = 80;
 /** An assistant turn that ends the call in words: "Goodbye.", "Have a great day!", "Adiós." */
-const GOODBYE = /\b(good ?bye|bye(-bye| now)?|have a (good|great|nice|lovely|wonderful) (day|evening|night|weekend|afternoon|morning)|take care|adi[oó]s|hasta (luego|pronto)|que tenga (un )?(buen|feliz|lindo) (d[ií]a|tarde|noche|fin de semana)|cu[ií]dese)\W*$/i;
+const GOODBYE = /\b(good ?bye|bye(-bye| now)?|have a (good|great|nice|lovely|wonderful) (day|evening|night|weekend|afternoon|morning)|take care|talk (to you )?soon|speak (to you )?soon|see you( soon| then| later)?|adi[oó]s|hasta (luego|pronto)|que tenga (un )?(buen|feliz|lindo) (d[ií]a|tarde|noche|fin de semana)|cu[ií]dese)\W*$/i;
 
 export class CallRunner {
   private readonly seen = new Set<string>();
@@ -201,11 +201,15 @@ export class CallRunner {
       this.log.info({ session_id: this.sessionId }, 'ending the call after the assistant\'s goodbye');
       return this.dispatch([{ type: 'hangup' }]);
     }
-    // the caller asked for the call to end ("cut the call", "hang up"): a goodbye may be said, then it ends;
-    // no nudge ever answers that with more talk
+    // the caller asked for the call to end ("cut the call", "hang up"), or answered the assistant's goodbye with
+    // their own ("Take care." "Take care, bye"): it ends. Anything still being looked up is dropped, never waited
+    // for: a goodbye sent to the backend as a question kept a caller on the line for a minute (2026-10-24)
     const callerLast = [...turns].reverse().find((t) => t.speaker === 'caller');
-    if (callerLast && askedToHangUp(callerLast.text) && now - this.callerSaidAt >= ASKED_HANGUP_MS && !this.pending && this.agent.canEndByStaff()) {
-      this.log.info({ session_id: this.sessionId }, 'ending the call: the caller asked for it');
+    const agentLast = [...turns].reverse().find((t) => t.speaker === 'agent');
+    const byeAfterBye = last?.speaker === 'caller' && !!agentLast && GOODBYE.test(agentLast.text.trim()) && saidGoodbye(last.text, agentLast.text);
+    if (callerLast && (askedToHangUp(callerLast.text) || byeAfterBye) && now - this.callerSaidAt >= ASKED_HANGUP_MS && this.agent.canEndByStaff()) {
+      this.log.info({ session_id: this.sessionId, pending: this.pending }, byeAfterBye ? 'ending the call: both sides said goodbye' : 'ending the call: the caller asked for it');
+      this.agent.state.revision++;
       return this.dispatch([{ type: 'hangup', afterMs: 1 }]);
     }
     // a promise to call back that no request backs: the assistant is told to make it, once it has finished speaking
@@ -218,7 +222,9 @@ export class CallRunner {
     // the caller spoke after the assistant's voice had finished, nothing has come back, and
     // no tool is at work. A caller's words that arrive while the reply is still playing
     // (transcription can lag the reply) are not a wait.
-    if (this.callerSaidAt > this.speakingUntil && !this.pending && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
+    // a caller whose last words were a goodbye is not waiting: a nudge there made the assistant start talking again (Flippy, 2026-10-24)
+    const leaving = last?.speaker === 'caller' && saidGoodbye(last.text, agentLast?.text ?? '');
+    if (this.callerSaidAt > this.speakingUntil && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
       this.log.info({ session_id: this.sessionId, nudge: this.nudged }, 'the caller is waiting in silence: nudging the assistant');
       return this.dispatch(this.agent.onSilence(this.nudged));

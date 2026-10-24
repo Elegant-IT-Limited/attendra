@@ -433,8 +433,9 @@ export type ClinicConfig = z.infer<typeof ClinicConfig>;
  * callers should not hear it; but a clinic may be called something like it, so
  * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
  */
-export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address'; message: string }[] {
-  const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address'; message: string }[] = [];
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address' | 'industry' | 'emergencyHospital'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address' | 'emergency'; message: string }[] {
+  const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address' | 'emergency'; message: string }[] = [];
+  if (c.industry === 'vet' && !c.emergencyHospital) out.push({ path: 'emergency', message: 'No emergency hospital yet. An owner whose animal is in danger hears only "go to the nearest 24-hour emergency vet". Add yours under Emergency hospitals.' });
   if (!c.address?.trim()) out.push({ path: 'address', message: 'No address yet. Callers who ask where you are hear that the assistant does not have it. Add it below, under Address.' });
   if (c.texting?.enabled && c.texting.kinds.directions && !c.address?.trim()) out.push({ path: 'texting', message: 'Directions texts are on, but the clinic has no address. Add it under General.' });
   if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });

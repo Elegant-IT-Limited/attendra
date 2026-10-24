@@ -12,17 +12,17 @@ import { TextStatus } from '@/components/calls/text-status';
 import { CustomFieldInputs, CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { useSettled } from '@/components/patients/patient-search';
 import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, phone, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
-import { cn } from '@/lib/utils';
+import { Segmented } from '@/components/ui/tabs';
 
 const DETAIL_LABELS: Record<string, string> = {
   topic: 'Topic',
@@ -160,22 +160,19 @@ function Requests() {
           ))}
         </dl>
       </details>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="Status">
-          {(['open', 'done'] as const).map((s) => (
-            <button key={s} id={`requests-tab-${s}`} aria-controls="requests-panel" role="tab" aria-selected={status === s} onClick={() => setStatus(s)}
-              className={cn('rounded px-3 py-1 text-sm focus-ring', status === s ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
-              {s === 'open' ? 'Open' : 'Done'}
-            </button>
-          ))}
-        </div>
+      {/* the same filter bar as Pets and Veterinarians: a card, the switch first, then search and the dropdowns */}
+      <Card className="mb-4"><CardContent className="py-4">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+        <Segmented label="Status" value={status} onValueChange={setStatus} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />
         <Label htmlFor="request-type" className="sr-only">Type</Label>
         <Select id="request-type" className="h-8 w-48" value={topic ? `topic:${topic}` : type} onChange={(e) => {
           const v = e.target.value;
           if (v.startsWith('topic:')) { setType(''); setTopic(v.slice(6)); } else { setTopic(''); setType(v); }
         }}>
           <option value="">Any kind of request</option>
-          {Object.keys(TASK_TYPES).map((k) => <option key={k} value={k}>{taskType(k, terms.patient)}</option>)}
+          <optgroup label="Built in">
+            {TASK_KIND_ORDER.map((k) => <option key={k} value={k}>{taskType(k, terms.patient)}</option>)}
+          </optgroup>
           {topics.length > 0 && (
             <optgroup label="Your kinds of request">
               {topics.map((t) => <option key={t.id} value={`topic:${t.name}`}>{t.name}</option>)}
@@ -220,7 +217,8 @@ function Requests() {
         )}
         {filtered && <Button size="sm" variant="ghost" onClick={() => { setType(''); setTopic(''); setWho('everyone'); setText(''); setFrom(''); setTo(''); setFieldFilter({ id: '', value: '' }); }}><X /> Clear</Button>}
       </div>
-      <div role="tabpanel" id="requests-panel" aria-labelledby={`requests-tab-${status}`}>
+      </CardContent></Card>
+      <div aria-label={status === 'open' ? 'Open requests' : 'Done requests'} role="region">
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
       {team.data && !team.data.members.some((m) => m.approvesRefills) && tasks.data?.tasks.some((t) => t.type === 'refill' && t.status === 'open') && (
         <Alert tone="warn" className="mb-5">
@@ -404,15 +402,12 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
         <Field label="Kind of request">
           {(p) => <Select {...p} value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value })}>
             <optgroup label="Built in">
-              <option value="callback">{taskType('callback')}</option>
-              <option value="refill">{taskType('refill')}</option>
-              <option value="voicemail">{taskType('voicemail')}</option>
-              <option value="follow_up">{taskType('follow_up')}</option>
+              {/* the same list as the filter; a new pet or patient to check is the assistant's own, with the record it is about */}
+              {TASK_KIND_ORDER.map((k) => <option key={k} value={k} disabled={k === 'review'}>{taskType(k, patientWord)}{k === 'review' ? ' (added by the assistant)' : ''}</option>)}
             </optgroup>
             {topics.length > 0 && <optgroup label="Your kinds of request">{topics.map((t) => <option key={t} value={`topic:${t}`}>{t}</option>)}</optgroup>}
           </Select>}
         </Field>
-        <p className="-mt-2 text-xs text-text-muted">{taskType('review', patientWord)} is added by the assistant, with the {patientWord} it is about.</p>
         {refill && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Medicine" hint="Optional.">{(p) => <Input {...p} maxLength={120} value={draft.medication} onChange={(e) => setDraft({ ...draft, medication: e.target.value })} />}</Field>

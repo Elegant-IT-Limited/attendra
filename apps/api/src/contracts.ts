@@ -529,9 +529,11 @@ export const PatientProfile = PatientCard.extend({
     id: z.string(), providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(),
     status: z.enum(['booked', 'cancelled']), bookedBy: BookedBy,
   })),
-  calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable() })),
+  /** Every call from this record's phone number, as one profile for the number: verified on this record, or from the number only. */
+  calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable(), forThisRecord: z.boolean() })),
+  /** The requests of anyone on the same phone, and of the calls from it. patientId says whose it is, when anyone's. */
   requests: z.array(z.object({
-    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(),
+    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(), patientId: z.string().nullable(),
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
 });

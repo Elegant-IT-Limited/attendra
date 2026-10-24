@@ -13,4 +13,4 @@ turns:
 expect:
   outcome: abandoned
   verified: false
-forbid_spoken: ["they are clients", "is a client", "are clients", "not a client", "isn't a client", "aren't clients"]
+forbid_spoken: ["they are clients", "yes, they are", "yes, she is", "yes, he is", "they are not clients", "not a client of ours", "isn't a client of ours", "aren't clients of ours"]

@@ -16,7 +16,7 @@ import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
@@ -93,7 +93,9 @@ export default function DoctorsPage() {
           </>
         )} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {/* the same filter bar as Pets and Requests: a card, search first, then the dropdowns */}
+      <Card className="mb-4"><CardContent className="py-4">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
         <div className="relative w-full max-w-md">
           <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
@@ -117,6 +119,7 @@ export default function DoctorsPage() {
         </Select>
         {filtered && <Button variant="ghost" size="sm" onClick={() => { setText(''); setSpecialty(''); setCategory(''); }}><X /> Clear</Button>}
       </div>
+      </CardContent></Card>
       {!shown.length ? <Card><Empty title={filtered ? `No ${terms.provider} matches` : `No ${terms.providers} yet`}>{filtered ? 'Try another word, specialty or filter.' : `Add the first ${terms.provider}, or import a list.`}</Empty></Card> : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((p) => {

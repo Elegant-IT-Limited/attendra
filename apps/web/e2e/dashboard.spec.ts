@@ -51,9 +51,13 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
     const tasks = page.getByTestId('task');
-    await expect(tasks).toHaveCount(11); // 5 from the eval calls, a refill and a callback from this week's, 4 follow-ups for flagged calls
-    const first = tasks.filter({ hasText: 'James Whitaker' }); // newest first, so his refill is no longer at the top
-    await expect(first.getByText('James Whitaker')).toBeVisible();
+    // 5 from the eval calls, a refill and a callback from this week's, 3 follow-ups for flagged calls (a second call from the
+    // same number joins its open one), and 3 urgent checks for the emergency calls (every emergency opens one, 2026-10-24)
+    await expect(tasks).toHaveCount(13);
+    // his refill card: newest first, so it is no longer at the top, and he has other requests now (an urgent check, a follow-up)
+    const first = tasks.filter({ hasText: 'James Whitaker' }).filter({ hasText: 'Prescription refill' });
+    await expect(first).toHaveCount(1);
+    await expect(first.getByText('James Whitaker').first()).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
     await expect(first.getByText('You have it')).toBeVisible();
     await first.getByRole('button', { name: 'Release' }).click();
@@ -62,8 +66,8 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await first.getByRole('button', { name: 'Mark done' }).click();
     await first.getByLabel('Outcome').selectOption({ label: 'Called back' });
     await first.getByRole('button', { name: 'Mark done' }).click();
-    await expect(tasks).toHaveCount(10);
-    await page.getByRole('tab', { name: 'Done' }).click();
+    await expect(tasks).toHaveCount(12);
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(tasks).toHaveCount(1);
   });
 
@@ -81,11 +85,15 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
   test('every tab list has a name, and its panel is named by the selected tab', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     const clinic = new URL(page.url()).pathname.split('/')[2];
-    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['requests', 'Status', 'Open'], ['schedule', 'View', 'Day']] as const) {
+    for (const [path, list, tab] of [['calls', 'Which calls', 'All calls'], ['schedule', 'View', 'Day']] as const) {
       await page.goto(`/c/${clinic}/${path}`);
       await expect(page.getByRole('tablist', { name: list })).toBeVisible();
       await expect(page.getByRole('tabpanel', { name: tab })).toBeVisible();
     }
+    // a filter switch with no panels of its own (Requests' Open / Done, like Pets') is a named group of pressed buttons
+    await page.goto(`/c/${clinic}/requests`);
+    await expect(page.getByRole('group', { name: 'Status' })).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Status' }).getByRole('button', { name: 'Open' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('front desk cannot change settings or open the audit log', async ({ browser }) => {

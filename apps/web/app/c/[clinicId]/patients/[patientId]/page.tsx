@@ -91,10 +91,14 @@ export default function PatientPage() {
             {p.guardianName && <span>{p.species ? 'Owner' : 'Parent or guardian'} {p.guardianName}</span>}
             {provider(p.usualProviderId) && <span>Usually sees {provider(p.usualProviderId)}</span>}
           </p>
-          {p.household.length > 0 && (
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted">
-              <Users className="size-3.5" aria-hidden /> On the same phone:
-              {p.household.map((h, i) => <span key={h.id}><Link className="text-primary hover:underline" href={`/c/${clinicId}/patients/${h.id}`}>{h.name}</Link>{i < p.household.length - 1 ? ',' : ''}</span>)}
+          {/* one profile per phone number: the owner (or parent) and everyone on that number */}
+          {p.phone && (
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-muted" data-testid="household">
+              <Users className="size-3.5" aria-hidden />
+              <span>{pet ? `${p.guardianName ? `${p.guardianName}'s` : 'This owner\'s'} ${p.household.length ? 'pets' : 'pet'} on ${phone(p.phone)}:` : `On ${phone(p.phone)}:`}</span>
+              <span className="font-medium text-text">{p.name}</span>
+              {p.household.map((h) => <Link key={h.id} className="text-primary hover:underline" href={`/c/${clinicId}/patients/${h.id}`}>{h.name}</Link>)}
+              <span>· {p.calls.length} call{p.calls.length === 1 ? '' : 's'} from this number · {p.requests.filter((r) => r.status === 'open').length} open request{p.requests.filter((r) => r.status === 'open').length === 1 ? '' : 's'}</span>
             </p>
           )}
           <p className="text-xs text-text-muted">Times are {zoneLabel(tz)}. Opening this record is in the audit log.</p>
@@ -142,13 +146,14 @@ export default function PatientPage() {
         )}
         {tab === 'calls' && (
           <Card>
-            {p.calls.length === 0 ? <Empty title="No verified calls">{pet ? 'Calls appear here once the assistant has found this pet by the owner\'s name, the pet\'s name and the phone.' : 'Calls appear here once the assistant has verified the caller as this patient by name, date of birth and phone.'}</Empty> : (
+            {p.calls.length === 0 ? <Empty title="No calls from this number yet">{pet ? 'Every call from the owner\'s phone number appears here, whichever pet it was about.' : 'Every call from this phone number appears here.'}</Empty> : (
               <ul className="divide-y divide-border">
                 {p.calls.map((c) => (
                   <li key={c.id}>
                     <Link href={`/c/${clinicId}/calls/${c.id}`} className="flex flex-wrap items-center gap-3 px-5 py-3 text-sm hover:bg-surface-sunken">
                       <span className="flex-1 font-medium">{clinicTime(c.startedAt, tz)}</span>
                       <Outcome outcome={c.outcome} emergency={c.emergency} />
+                      {!c.forThisRecord && <Badge>From this number</Badge>}
                       {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
                       <span className="w-16 text-right tabular-nums text-text-muted">{duration(c.voiceSeconds)}</span>
                       <span className="text-primary">Transcript</span>
@@ -169,12 +174,12 @@ export default function PatientPage() {
         )}
         {tab === 'requests' && (
           <Card>
-            {p.requests.length === 0 ? <Empty title="No requests">Refill and callback requests the assistant takes for this {terms.patient} appear here.</Empty> : (
+            {p.requests.length === 0 ? <Empty title="No requests">Requests for anyone on this phone number, and from calls from it, appear here.</Empty> : (
               <ul className="divide-y divide-border">
                 {p.requests.map((r) => (
                   <li key={r.id} className="flex flex-wrap items-start gap-3 px-5 py-3 text-sm">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{taskType(r.type, terms.patient)}</p>
+                      <p className="font-medium">{taskType(r.type, terms.patient)}{r.patientId && r.patientId !== p.id && <span className="font-normal text-text-muted"> · {p.household.find((h) => h.id === r.patientId)?.name ?? 'another on this number'}</span>}</p>
                       <p className="text-text-muted">{Object.entries(r.details).filter(([k]) => k !== 'callback_number').map(([, v]) => v).join(', ') || 'No details'}</p>
                       <p className="text-xs text-text-muted">{clinicTime(r.createdAt, tz)}</p>
                     </div>

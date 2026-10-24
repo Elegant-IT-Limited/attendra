@@ -76,14 +76,35 @@ export class CallSummaryRepository {
           gt(calls.startedAt, since), isNotNull(calls.endedAt)))
         .orderBy(desc(calls.startedAt)).limit(3);
       if (!rows.length) return null;
+      // how many times this number called in the 30 days (ended calls, this one aside), for "how many times have I called?"
+      const [count] = await tx.select({ n: sql<number>`count(*)::int` }).from(calls)
+        .where(and(eq(calls.clinicId, clinicId), eq(calls.fromHash, this.cipher.hash(callerKey(clinicId, fromNumber))), ne(calls.id, exceptCallId),
+          gt(calls.startedAt, since), isNotNull(calls.endedAt)));
       const open = await tx.select({ callId: tasks.callId, type: tasks.type }).from(tasks)
         .where(and(eq(tasks.clinicId, clinicId), inArray(tasks.callId, rows.map((r) => r.id)), eq(tasks.status, 'open')));
       await tx.insert(auditLogs).values({ clinicId, actor: 'assistant', action: 'call.history.read', entity: 'call', entityId: exceptCallId, callId: exceptCallId });
-      return rows.map((r) => {
+      return [`Calls from this number in the last 30 days: ${count?.n ?? rows.length}.`, ...rows.map((r) => {
         const s = decryptSummary(this.cipher, clinicId, r.summary);
         const still = open.filter((t) => t.callId === r.id).map((t) => t.type.replace('_', ' '));
         return `${r.startedAt.toISOString()}: ${s.summary}${still.length ? ` Still open for the team: ${still.join(', ')}.` : ''}`;
-      }).join('\n');
+      })].join('\n');
+    });
+  }
+
+  /**
+   * Whether the team already has an open follow-up or callback from this call's number, from
+   * the last 14 days: a caller who rings three times about one thing is one request, not three.
+   * Matched on the number's keyed hash; no number is read.
+   */
+  async openRequestFromSameNumber(clinicId: string, callId: string, now = new Date()): Promise<boolean> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [call] = await tx.select({ fromHash: calls.fromHash }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call?.fromHash) return false;
+      const since = new Date(now.getTime() - 14 * 86_400_000);
+      const [row] = await tx.select({ id: tasks.id }).from(tasks).innerJoin(calls, eq(calls.id, tasks.callId))
+        .where(and(eq(tasks.clinicId, clinicId), eq(calls.fromHash, call.fromHash), ne(calls.id, callId), eq(tasks.status, 'open'),
+          inArray(tasks.type, ['follow_up', 'callback']), gt(calls.startedAt, since))).limit(1);
+      return !!row;
     });
   }
 
