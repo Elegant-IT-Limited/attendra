@@ -13,6 +13,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed (calls, from a tester's calls on 2026-10-24 and live evals)
 
+- **A slow answer is no longer cut off.** The 25 s deadline from the last release cut off real registrations mid-way (a new patient heard an apology, then "you're already on file"; live evals, 2026-10-25). The caller now hears "still checking" at 7, 15, 30 and 45 s, and the apology with a callback offer only at 60 s.
 - **The call ends when both sides said goodbye.** The assistant's goodbye answered by the caller's ("Take care." "Take care, bye") ends the call 2.5 s later, even with a request still at the backend; no "waiting in silence" nudge ever follows a caller's goodbye (it made the assistant speak again, twice). "I'll get back to you" counts as leaving; "talk to you soon" and "see you" count as the assistant's goodbye.
 - **Every emergency call opens one urgent request** ("Check on the caller as your protocol says"), even when the caller said no to a callback: it is a safety check, not a callback.
 - **No transfer that does not exist.** With no transfer numbers the assistant never offers to connect anyone (front desk or on-call); with some, only those targets. With texting off it gives the detail out loud instead of offering a text or a callback for it.

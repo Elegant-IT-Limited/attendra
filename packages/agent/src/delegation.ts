@@ -28,10 +28,13 @@ const AFTER_SPEECH_MS = 3500;
 const VIP_AFTER_MS = 6000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
-/** A second "still checking" for a wait that goes on. */
-const HOLD_AGAIN_MS = 15_000;
-/** No caller waits longer than this for an answer: they hear an apology and a callback offer instead. */
-export const ANSWER_DEADLINE_MS = 25_000;
+/** More "still checking" for a wait that goes on: a new patient's registration and first times can take 30 s or more. */
+const HOLD_AGAIN_MS = [15_000, 30_000, 45_000] as const;
+/**
+ * The last resort: no caller waits longer than this; they hear an apology and a callback offer, and the late answer is
+ * dropped. 25 s cut off real registrations mid-way (live evals, 2026-10-25), so it sits well past a slow but working answer.
+ */
+export const ANSWER_DEADLINE_MS = 60_000;
 /** A wait this long is logged as slow and reported (Slack). */
 const SLOW_MS = 10_000;
 /** What the voice hears while a request runs. Not to be said: the answer usually comes in a moment. */
@@ -425,9 +428,9 @@ export class CallAgent {
       setTimeout(() => {
         if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
       }, HOLD_AFTER_MS),
-      setTimeout(() => {
-        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Thank the caller for waiting, in a few different words, and say it will be just a moment.' });
-      }, HOLD_AGAIN_MS),
+      ...HOLD_AGAIN_MS.map((ms) => setTimeout(() => {
+        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Thank the caller for waiting, in a few different words than before, and say it will be just a moment.' });
+      }, ms)),
     ] : [];
     const startedAt = Date.now();
     let toolCalls = 0;
