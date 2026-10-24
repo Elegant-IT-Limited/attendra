@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { asE164, ClinicConfig, type Language, type Messenger, PACKS, renderText, smsSegments, type TextRefusal, type TextRequest, type TextResult, textingOf } from '@attendra/core';
+import { asE164, ClinicConfig, textableNumber, type Language, type Messenger, PACKS, renderText, smsSegments, type TextRefusal, type TextRequest, type TextResult, textingOf } from '@attendra/core';
 import { type Database, type PhiCipher, phoneKey, schema, withClinic } from '@attendra/db';
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 
@@ -19,8 +19,13 @@ export { smsSegments };
 
 /** Texts to one number from one clinic in 24 hours, across calls and jobs. */
 export const MAX_TEXTS_PER_NUMBER_PER_DAY = 8;
-/** Texts from one clinic in 24 hours, unless ATTENDRA_SMS_DAILY_CAP says otherwise. */
-export const DEFAULT_SMS_DAILY_CAP = 500;
+/** Texts from one clinic in 24 hours, unless ATTENDRA_SMS_DAILY_CAP says otherwise: well above a busy clinic's day, well below a runaway. */
+export const DEFAULT_SMS_DAILY_CAP = 150;
+/**
+ * Texts from one clinic in a calendar month (UTC), unless ATTENDRA_SMS_MONTHLY_CAP says
+ * otherwise: four times the plan's 500, so a clinic's overage can never pass 1,500 texts.
+ */
+export const DEFAULT_SMS_MONTHLY_CAP = 2000;
 /** Twilio: the number replied STOP to this sender. */
 const OPTED_OUT = 21610;
 
@@ -41,6 +46,10 @@ export interface MessengerOptions {
   actor?: string;
   /** Texts one clinic may send in 24 hours. */
   dailyCap?: number;
+  /** Texts one clinic may send in a calendar month. */
+  monthlyCap?: number;
+  /** Where a limit reached or a blocked number is said (Slack); without it, only logged. */
+  alerts?: { alert(kind: string, text: string): void };
   /** Where Twilio reports delivery for this clinic's texts; none, and the status stays "sent". */
   statusCallback?: (clinicId: string) => string | undefined;
   log?: { warn(obj: object, msg: string): void };
@@ -117,23 +126,41 @@ export class TwilioMessenger implements Messenger {
     if (input.testCall) return refuse('test_call');
     if (!/^\+[1-9]\d{7,14}$/.test(to)) return refuse('no_number');
     if (!this.sender || !from) return refuse('texting_off');
+    // only to the clinic's own country, never a premium, toll-free or Caribbean +1 number
+    if (!textableNumber({ phoneNumbers: [from] }, to)) {
+      this.options.alerts?.alert('text_blocked', `A text to a number outside the US and Canada, or a premium one, was not sent. Clinic ${clinicId}.`);
+      return refuse('not_textable');
+    }
 
-    const day = new Date(Date.now() - 24 * 3600_000);
-    const counted = (extra: ReturnType<typeof eq>) => and(eq(smsMessages.clinicId, clinicId), ne(smsMessages.status, 'not_sent'), ne(smsMessages.id, id), gt(smsMessages.createdAt, day), extra);
+    const now = new Date();
+    const day = new Date(now.getTime() - 24 * 3600_000);
+    const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const counted = (extra: ReturnType<typeof eq>, since = day) => and(eq(smsMessages.clinicId, clinicId), ne(smsMessages.status, 'not_sent'), ne(smsMessages.id, id), gt(smsMessages.createdAt, since), extra);
     const standing = await withClinic(this.db, clinicId, async (tx) => {
       const [opt] = await tx.select({ status: smsOptOuts.status }).from(smsOptOuts).where(and(eq(smsOptOuts.clinicId, clinicId), eq(smsOptOuts.toHash, toHash)));
       const [toNumber] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(counted(eq(smsMessages.toHash, toHash)));
       const [clinic] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(counted(eq(smsMessages.clinicId, clinicId)));
-      return { optedOut: opt?.status === 'opted_out', toNumber: toNumber!.n, clinic: clinic!.n };
+      const [monthly] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(counted(eq(smsMessages.clinicId, clinicId), month));
+      return { optedOut: opt?.status === 'opted_out', toNumber: toNumber!.n, clinic: clinic!.n, month: monthly!.n };
     });
     if (standing.optedOut) return refuse('opted_out');
     const cap = this.options.dailyCap ?? DEFAULT_SMS_DAILY_CAP;
     if (standing.toNumber >= MAX_TEXTS_PER_NUMBER_PER_DAY) return refuse('rate_limited');
+    const monthCap = this.options.monthlyCap ?? DEFAULT_SMS_MONTHLY_CAP;
+    if (standing.month >= monthCap) {
+      this.options.log?.warn({ clinic_id: clinicId, cap: monthCap }, 'the clinic reached its monthly text limit');
+      if (standing.month === monthCap) this.options.alerts?.alert('text_limit', `Clinic ${clinicId} reached ${monthCap} texts this month; texts stop until the 1st. Raise ATTENDRA_SMS_MONTHLY_CAP only if this is real use.`);
+      return refuse('monthly_limit');
+    }
     if (standing.clinic >= cap) {
       this.options.log?.warn({ clinic_id: clinicId, cap }, 'the clinic reached its daily text limit');
+      if (standing.clinic === cap) this.options.alerts?.alert('text_limit', `Clinic ${clinicId} reached ${cap} texts in 24 hours; more wait until tomorrow. Check it is real use.`);
       return refuse('rate_limited');
     }
-    if (standing.clinic + 1 === Math.ceil(cap * 0.8)) this.options.log?.warn({ clinic_id: clinicId, cap }, 'the clinic has used 80% of its daily text limit');
+    if (standing.clinic + 1 === Math.ceil(cap * 0.8)) {
+      this.options.log?.warn({ clinic_id: clinicId, cap }, 'the clinic has used 80% of its daily text limit');
+      this.options.alerts?.alert('text_limit', `Clinic ${clinicId} has sent ${standing.clinic + 1} texts in 24 hours, 80% of its daily limit of ${cap}.`);
+    }
 
     try {
       const statusCallback = this.options.statusCallback?.(clinicId);

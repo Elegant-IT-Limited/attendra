@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { callUsNumber, readablePhone, renderText } from '../src';
+import { callUsNumber, readablePhone, renderText, textableNumber } from '../src';
 
 describe('personal texts', () => {
   const clinic = { clinic: 'Zaru Pet Clinic', clinicPhone: '+15164472575', when: 'Wednesday, October 28 at 10:00 AM' };
@@ -19,5 +19,13 @@ describe('personal texts', () => {
     expect(callUsNumber({ phoneNumbers: ['+15163630790', '+15164472575'] })).toBe('+15164472575');
     expect(callUsNumber({ phoneNumbers: ['+15163630790'] })).toBe('+15163630790');
     expect(readablePhone('+442079460000')).toBe('+442079460000');
+  });
+
+  it('texts only numbers in the clinic\'s country, never premium, toll-free or Caribbean +1 numbers', () => {
+    const us = { phoneNumbers: ['+15163630790'] };
+    expect(textableNumber(us, '+15164470090')).toBe(true);
+    expect(textableNumber(us, '+14165550100')).toBe(true);
+    for (const n of ['+447700900123', '+18765550100', '+18095550100', '+19005550100', '+18005550100']) expect(textableNumber(us, n)).toBe(false);
+    expect(textableNumber({ phoneNumbers: ['+442079460000'] }, '+447700900123')).toBe(true);
   });
 });

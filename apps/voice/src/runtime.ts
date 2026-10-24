@@ -35,6 +35,7 @@ export interface VoiceRuntime {
   publicUrl?: string;
   /** Texts one clinic may send in 24 hours. */
   smsDailyCap?: number;
+  smsMonthlyCap?: number;
   internalToken?: string;
   browserCallMaxSeconds?: number;
   /** Where a closed call is announced, so the worker summarises it. */
@@ -113,7 +114,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
         const from = clinicNumbers.get(clinicId);
         if (!from) throw new Error(`no sending number known for clinic ${clinicId}`);
         return from;
-      }, { dailyCap: rt.smsDailyCap, log: rt.log, statusCallback: rt.publicUrl ? (clinicId) => smsStatusUrl(rt.publicUrl!, clinicId) : undefined }),
+      }, { dailyCap: rt.smsDailyCap, monthlyCap: rt.smsMonthlyCap, alerts: rt.alerts, log: rt.log, statusCallback: rt.publicUrl ? (clinicId) => smsStatusUrl(rt.publicUrl!, clinicId) : undefined }),
     },
     sms: rt.twilio && rt.publicUrl ? {
       authToken: rt.twilio.authToken,

@@ -116,7 +116,7 @@ describe('provisioning', () => {
     const from = new Date(Date.now() - 86_400_000).toISOString();
     const to = new Date(Date.now() + 86_400_000).toISOString();
     const usage = await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/usage?from=${from}&to=${to}`, { authorization: auth });
-    expect(usage.json()).toEqual({ calls: 1, seconds: 95 });
+    expect(usage.json()).toEqual({ calls: 1, seconds: 95, texts: 0 });
 
     // the forwarding check and the quiet-line alert: calls since a moment, and one from a number, by its hash
     const caller = '+13035550147';
@@ -142,7 +142,7 @@ describe('provisioning', () => {
   it('keeps the hosting plan, which every member sees with the month\'s phone minutes; none on a self-hosted clinic', async () => {
     const G = `/api/v1/clinics/${DEMO_CLINIC.id}/plan`;
     const viewer = await api.signIn('vic@maple.example', true);
-    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null });
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null, textsUsed: null });
 
     await api.t.db.execute(sql`update calls set started_at = now() - interval '1 hour', ended_at = now() - interval '1 hour' + interval '125 seconds', channel = 'phone' where id = ${api.callId}`);
     const plan = {
@@ -150,7 +150,7 @@ describe('provisioning', () => {
       trialEndsAt: null, trialDays: 14, endsAt: null, manageUrl: '/account/billing/clinic_maple',
     };
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan }, authorization: auth })).statusCode).toBe(204);
-    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan, minutesUsed: 3 });
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan, minutesUsed: 3, textsUsed: 0 });
 
     // a trial counts no minutes; a link a browser would run is refused; an unknown clinic is a 404
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, status: 'trial', trialEndsAt: plan.periodEnd } }, authorization: auth })).statusCode).toBe(204);
@@ -161,6 +161,6 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan }, authorization: 'Bearer wrong' })).statusCode).toBe(401);
 
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: null }, authorization: auth })).statusCode).toBe(204);
-    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null });
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null, textsUsed: null });
   });
 });

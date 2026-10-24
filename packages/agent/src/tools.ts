@@ -668,7 +668,8 @@ export async function runTool(
       }).catch((err: unknown) => { ctx.log?.warn({ call_id: ctx.callId, err }, 'text failed'); return null; });
       if (!sent || sent.status === 'not_sent') {
         if (sent?.reason === 'opted_out') return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
-        if (sent?.reason === 'rate_limited') return refuse('rate_limited', 'Say the text can\'t be sent right now, and read it out instead.');
+        if (sent?.reason === 'rate_limited' || sent?.reason === 'monthly_limit') return refuse('rate_limited', 'Say the text can\'t be sent right now, and read it out instead.');
+        if (sent?.reason === 'not_textable') return refuse('not_textable', 'Say texts can only go to a mobile number in this country, and read it out instead.');
         return refuse('not_sent', 'Say the text didn\'t go through, and read it out instead.');
       }
       if (sent.status === 'sent') state.textsSent++;

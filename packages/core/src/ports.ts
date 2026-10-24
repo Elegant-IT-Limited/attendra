@@ -112,7 +112,7 @@ export interface AuditLog {
 
 export type SmsTemplate = keyof LanguagePack['sms'];
 /** Why a text did not go: refused before the carrier, or refused by it. */
-export type TextRefusal = 'opted_out' | 'rate_limited' | 'no_number' | 'texting_off' | 'unregistered' | 'carrier' | 'test_call';
+export type TextRefusal = 'opted_out' | 'rate_limited' | 'monthly_limit' | 'not_textable' | 'no_number' | 'texting_off' | 'unregistered' | 'carrier' | 'test_call';
 
 export interface TextRequest {
   to: string; template: SmsTemplate; vars: Record<string, string>; idempotencyKey: string; language?: Language;

@@ -13,7 +13,8 @@ const Env = z.object({
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   // where Twilio reports delivery of texts: the voice service's public address
   ATTENDRA_VOICE_PUBLIC_URL: optional(z.string().url()),
-  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(500)),
+  ATTENDRA_SMS_DAILY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(100_000).default(150)),
+  ATTENDRA_SMS_MONTHLY_CAP: z.preprocess(blank, z.coerce.number().int().min(1).max(1_000_000).default(2000)),
   // texts the team's decisions (a refill ready to pick up); without both, nothing is texted
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
