@@ -2,7 +2,7 @@
 import { connect, createPhiCipher } from '@attendra/db';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { loadEnv } from './config';
-import { TwilioFallback, twilioSender } from '@attendra/telephony';
+import { SPEND_ALERT_PATH, spendTriggers, TwilioFallback, TwilioSpendAlerts, twilioSender } from '@attendra/telephony';
 import twilio from 'twilio';
 import { bossQueue, createBoss, eventSink } from './queue';
 import { embedderFromEnv, startWorker, summariserFromEnv } from './runtime';
@@ -23,6 +23,10 @@ await startWorker({
   sms: { publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL, dailyCap: env.ATTENDRA_SMS_DAILY_CAP, monthlyCap: env.ATTENDRA_SMS_MONTHLY_CAP },
   alerts,
   // the backup route needs the trunk as well as the account
+  // Twilio calls the voice service when a day's spend passes a line; it needs the service's public address
+  spend: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.ATTENDRA_VOICE_PUBLIC_URL
+    ? { client: new TwilioSpendAlerts(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), callbackUrl: `${env.ATTENDRA_VOICE_PUBLIC_URL.replace(/\/+$/, '')}${SPEND_ALERT_PATH}`, triggers: spendTriggers(env.ATTENDRA_SPEND_ALERT_SMS_USD, env.ATTENDRA_SPEND_ALERT_TOTAL_USD) }
+    : undefined,
   fallback: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_TRUNK_SID
     ? { client: new TwilioFallback(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN), trunkSid: env.TWILIO_TRUNK_SID, slackWebhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL }
     : undefined,
