@@ -36,7 +36,7 @@ test.describe('screenshots', () => {
     await page.screenshot({ path: out('call-detail'), fullPage: true });
 
     await page.getByRole('link', { name: /^Requests/ }).click();
-    await expect(page.getByTestId('task').first()).toBeVisible();
+    await expect(page.getByTestId('task-row').first()).toBeVisible();
     await page.screenshot({ path: out('tasks') });
 
     await page.getByRole('link', { name: 'Settings' }).click();

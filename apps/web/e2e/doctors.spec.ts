@@ -57,7 +57,7 @@ test('requests can be searched and narrowed to days', async ({ browser }) => {
   await page.getByLabel('Search requests').fill('zzzz-nothing');
   await expect(page.getByText('Nothing matches these filters.')).toBeVisible();
   await page.getByRole('button', { name: 'Clear' }).click();
-  await expect(page.getByTestId('task').first()).toBeVisible();
+  await expect(page.getByTestId('task-row').first()).toBeVisible();
 });
 
 test('the schedule lists cancelled visits on their own, as a history', async ({ browser }) => {
