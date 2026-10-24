@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -13,9 +13,16 @@ import type { Scenario } from './scenario';
 // Every scenario is a call on Monday 28 September 2026 at 8 pm in Denver, after hours.
 export const SIM_NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
-/** The demo clinic, with the scenario's settings changed and checked the way Settings checks a save. */
-export const clinicOf = (scenario: Scenario): ClinicConfig =>
-  scenario.settings ? ClinicConfig.parse({ ...DEMO_CLINICS[scenario.clinic], ...scenario.settings }) : DEMO_CLINICS[scenario.clinic];
+/**
+ * The demo clinic, with the scenario's settings changed and checked the way Settings checks a save.
+ * Texting is on, as for a clinic whose texting registration is approved (confirmations go out only
+ * then), unless the scenario sets texting itself.
+ */
+export const clinicOf = (scenario: Scenario): ClinicConfig => {
+  const base = DEMO_CLINICS[scenario.clinic];
+  const approved = { ...base, texting: { ...textingOf(base), enabled: true } };
+  return ClinicConfig.parse({ ...approved, ...scenario.settings });
+};
 const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
 /** Each demo clinic's seed: the clinic and its patients. */
 export const SEEDS = { maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend } as const;

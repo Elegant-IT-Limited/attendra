@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, callUsNumber, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, callUsNumber, declinesText, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -183,12 +183,20 @@ export async function runTool(
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang);
   const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
   /**
-   * A confirmation text for a change just made, sent without asking. The change stands
-   * whatever happens to the text; it is never reported as failed. A patient the assistant
-   * just added is texted only at the number they are calling from, until the front desk
-   * checks them: nobody can have visits texted to someone else's phone by making up a patient.
-   * Changes and cancellations follow the clinic's switch for them.
+   * Where a confirmation text for this change would go, or null when none would: texting must be
+   * on (its registration approved), the patient must have a phone, and changes and cancellations
+   * follow the clinic's switch for them. A patient the assistant just added is texted only at the
+   * number they are calling from, until the front desk checks them: nobody can have visits texted
+   * to someone else's phone by making up a patient.
    */
+  const confirmationTarget = (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed'): 'calling' | 'file' | null => {
+    const patient = state.verifiedPatient;
+    if (!textingOf(clinic).enabled || !patient?.phone) return null;
+    if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return null;
+    const calling = !!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone);
+    if (patient.isNew && !calling) return null;
+    return calling ? 'calling' : 'file';
+  };
   /**
    * The names a text uses, when the call has them: the owner (a pet's) or the patient, the pet, the vet or
    * doctor, and the kind of visit, for pets only. Never an empty one.
@@ -206,12 +214,14 @@ export async function runTool(
       ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
     };
   };
-  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}): Promise<boolean> => {
+  /**
+   * A confirmation text for a change just made. The read-back said it would come, so the caller's
+   * yes is their consent to it; a caller who said no to the text gets none. The change stands
+   * whatever happens to the text; it is never reported as failed.
+   */
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false): Promise<boolean> => {
     const patient = state.verifiedPatient;
-    if (!patient?.phone) return false;
-    if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return false;
-    const textable = !patient.isNew || (!!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone));
-    if (!textable) return false;
+    if (declined || !patient?.phone || !confirmationTarget(template)) return false;
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
@@ -488,7 +498,9 @@ export async function runTool(
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
-      return { ok: true, data: { say: `Read this back and ask for a clear yes: ${readback}.` } };
+      // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
+      const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
+      return { ok: true, data: { say: target ? `Read this back, say "${pack.confirmTextNote({ target })}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.` } };
     }
 
     case 'propose_cancellation': {
@@ -501,14 +513,18 @@ export async function runTool(
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
       state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
-      return { ok: true, data: { say: `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
+      const target = confirmationTarget('cancel_confirmed');
+      return { ok: true, data: { say: target ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${pack.confirmTextNote({ target })}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
     }
 
     case 'commit_pending': {
       const pending = state.pending;
       if (!pending) return refuse('nothing_pending', 'There is nothing to confirm. Propose the change first.');
       if (pending.readbackAtMs === null) return refuse('not_read_back', `Read it back first: ${pending.readback}.`);
-      if (!isClearYes(state.answerToReadback(), clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
+      // "yes, but no text": a yes to the change, and no confirmation text
+      const answer = state.answerToReadback();
+      const noText = declinesText(answer);
+      if (!isClearYes(noText ? withoutTextRefusal(answer) : answer, clinic.languages)) return refuse('no_clear_yes', `Do not make the change yet. Ask again: ${pending.readback}?`);
       const patient = state.verifiedPatient!;
 
       if (pending.kind === 'cancel') {
@@ -520,7 +536,7 @@ export async function runTool(
         if (cancelled.status === 'cancelled') {
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
-        const smsSent = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId);
+        const smsSent = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId, {}, noText);
         return { ok: true, data: { cancelled: true, sms_sent: smsSent } };
       }
 
@@ -552,7 +568,7 @@ export async function runTool(
       }
       // a move is confirmed as a move, a new booking as a booking
       const smsSent = result.status === 'booked'
-        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId })
+        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText)
         : false;
       // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
       const reminders = textingOf(clinic).reminders;
