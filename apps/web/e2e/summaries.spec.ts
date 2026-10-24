@@ -40,6 +40,7 @@ test.describe.serial('call summaries', () => {
   test('a request the assistant created shows the suggested next step', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: /^Requests/ }).click();
-    await expect(page.getByTestId('task').filter({ hasText: 'Suggested' }).first()).toContainText(/Review the refill request|Call the caller back|Call back/);
+    // a follow-up's row says the assistant's suggestion without opening it
+    await expect(page.getByTestId('task-row').filter({ hasText: 'Suggested' }).first()).toContainText(/Review the refill request|Call the caller back|Call back/);
   });
 });
