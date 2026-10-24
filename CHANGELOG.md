@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (texts, 2026-10-27)
+
+- **Texts are guarded against fraud and runaway cost.** A text goes only to a number in the clinic's own country; in North America never to a premium (900), toll-free or Caribbean +1 number, where texting fraud runs up bills. A clinic sends at most `ATTENDRA_SMS_DAILY_CAP` texts in 24 hours (now 150, was 500) and `ATTENDRA_SMS_MONTHLY_CAP` in a calendar month (2,000). A blocked number, 80% of the daily limit and either limit reached are said in Slack.
+- **Texts are counted.** The hosting layer's usage endpoint returns the period's texts (those the carrier took) beside the minutes, and the Today page shows the month's texts against the plan's when the plan includes texts.
+
 ### Changed (dashboard, 2026-10-24)
 
 - **One profile per phone number.** A pet's (or patient's) page shows everyone on the same phone, every call from that number (verified or not, marked "From this number") and the requests of anyone on it, with counts in the header.

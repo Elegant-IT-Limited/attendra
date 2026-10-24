@@ -32,7 +32,7 @@ export interface WorkerDeps {
   /** Sends texts (Twilio). Without it, nothing is texted and the request stays as it was closed. */
   texts?: SmsSender;
   /** The voice service's public address, where Twilio reports delivery; and the clinic's daily text limit. */
-  sms?: { publicUrl?: string; dailyCap?: number };
+  sms?: { publicUrl?: string; dailyCap?: number; monthlyCap?: number };
   /** Where alerts go (Slack): a job that gave up, texts the carrier refuses. */
   alerts?: Alerter;
   /** The backup route in Twilio (a Function on the trunk's disaster recovery URL): kept in place and current. */
@@ -191,7 +191,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           )));
         if (!due.length) continue;
         const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
-          actor: 'worker', dailyCap: d.sms?.dailyCap, log: d.log,
+          actor: 'worker', dailyCap: d.sms?.dailyCap, monthlyCap: d.sms?.monthlyCap, alerts: d.alerts, log: d.log,
           statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
         });
         for (const { a, p, language } of due) {
@@ -295,7 +295,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const { config } = found;
       const language = config.languages.includes(found.language as never) ? (found.language as typeof config.primaryLanguage) : config.primaryLanguage;
       const messenger = new TwilioMessenger(d.db, d.cipher, d.texts ?? null, () => config.phoneNumbers[0]!, {
-        actor: 'worker', dailyCap: d.sms?.dailyCap, log: d.log,
+        actor: 'worker', dailyCap: d.sms?.dailyCap, monthlyCap: d.sms?.monthlyCap, alerts: d.alerts, log: d.log,
         statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
       });
       // a refusal (texts off, opted out, no number) is kept on the request for staff to see
