@@ -54,8 +54,10 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     // 5 from the eval calls, a refill and a callback from this week's, 3 follow-ups for flagged calls (a second call from the
     // same number joins its open one), and 3 urgent checks for the emergency calls (every emergency opens one, 2026-10-24)
     await expect(tasks).toHaveCount(13);
-    const first = tasks.filter({ hasText: 'James Whitaker' }); // newest first, so his refill is no longer at the top
-    await expect(first.getByText('James Whitaker')).toBeVisible();
+    // his refill card: newest first, so it is no longer at the top, and he has other requests now (an urgent check, a follow-up)
+    const first = tasks.filter({ hasText: 'James Whitaker' }).filter({ hasText: 'Prescription refill' });
+    await expect(first).toHaveCount(1);
+    await expect(first.getByText('James Whitaker').first()).toBeVisible();
     await first.getByRole('button', { name: 'Claim' }).click();
     await expect(first.getByText('You have it')).toBeVisible();
     await first.getByRole('button', { name: 'Release' }).click();
