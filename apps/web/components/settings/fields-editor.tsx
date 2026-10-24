@@ -23,8 +23,10 @@ const newFieldId = () => `field_${Math.random().toString(36).slice(2, 8)}`;
  * goes to that one instead. Fields and a dropdown's choices are put in order by dragging.
  * Dropdowns and yes-or-no fields become filters on the list.
  */
-export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer }: {
+export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer, columnLabel }: {
   id: string; title: string; description: string; fields: CustomField[]; onChange: (fields: CustomField[]) => void; disabled: boolean; placeholder: string;
+  /** What "show it" means on this kind of record ("Show on the Pets list"); left out where every field always shows. */
+  columnLabel?: string;
   /** The fields every record has anyway, shown so nobody adds them twice. */
   builtIn?: readonly string[];
   /** The section's own Save, like every list's. */
@@ -56,7 +58,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
       {(f, i, handle) => (
         <Item handle={handle} id={`${id}-${f.id}`} removeLabel={`Remove ${f.label || 'this field'}`} onRemove={() => onChange(fields.filter((_, j) => j !== i))}>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
-            <Field label="Label"><Input maxLength={40} value={f.label} placeholder={placeholder} disabled={disabled} onChange={(e) => upd(i, { label: e.target.value })} /></Field>
+            <Field label="Name"><Input maxLength={40} value={f.label} placeholder={placeholder} disabled={disabled} onChange={(e) => upd(i, { label: e.target.value })} /></Field>
             <Field label="Kind">
               <Select value={f.kind} disabled={disabled} onChange={(e) => {
                 const kind = e.target.value as CustomField['kind'];
@@ -75,7 +77,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
             <Checkbox id={`${id}-${f.id}-required`} label="Must be filled in" checked={!!f.required} disabled={disabled} onCheckedChange={(v) => upd(i, { required: v || undefined })} />
-            <Checkbox id={`${id}-${f.id}-column`} label="Show as a column on the list" checked={!!f.column} disabled={disabled} onCheckedChange={(v) => upd(i, { column: v || undefined })} />
+            {columnLabel && <Checkbox id={`${id}-${f.id}-column`} label={columnLabel} checked={!!f.column} disabled={disabled} onCheckedChange={(v) => upd(i, { column: v || undefined })} />}
           </div>
         </Item>
       )}

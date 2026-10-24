@@ -312,7 +312,11 @@ export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
 /** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
 export const NewTask = z.object({
-  type: z.enum(['callback', 'follow_up']),
+  /** "New patient to check" is the assistant's own: it adds the patient it is about. */
+  type: z.enum(['callback', 'refill', 'voicemail', 'follow_up']),
+  /** For a refill: the medicine and where it goes, as staff wrote them. */
+  medication: z.string().trim().max(120).nullable().optional(),
+  pharmacy: z.string().trim().max(120).nullable().optional(),
   /** One of the clinic's own kinds of request (Settings, Fields and lists), when one fits. */
   topic: z.string().trim().max(80).nullable().optional(),
   reason: z.string().trim().min(3, 'say what it is about').max(300),

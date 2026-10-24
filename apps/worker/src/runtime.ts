@@ -371,6 +371,23 @@ const SETTLED = new Set(['booked', 'rescheduled', 'cancelled', 'transferred']);
  * it settled what they wanted, and it did not already open a request (a callback, a
  * refill, a new patient). Emergencies have their own place at the top of Today.
  */
-export function needsFollowUp(call: { outcome: string | null; emergency: boolean; tasks: { type: string }[] }, summary: { needsReview: boolean }): boolean {
-  return summary.needsReview && !call.emergency && call.tasks.length === 0 && !SETTLED.has(call.outcome ?? '');
+export function needsFollowUp(call: { outcome: string | null; emergency: boolean; tasks: { type: string }[]; transcript?: { speaker: 'caller' | 'agent'; text: string }[] }, summary: { needsReview: boolean }): boolean {
+  return summary.needsReview && !call.emergency && call.tasks.length === 0 && !SETTLED.has(call.outcome ?? '') && !declinedCallback(call.transcript ?? []);
+}
+
+const OFFERED_CALLBACK = /\b(call(ing)? you back|callback|call back|have (someone|somebody|the team|a member of the team)[^.?!]* (call|contact|reach) you|devolver(le|te) la llamada|que (le|te) llamen)\b/i;
+const NO = /^\W*(no|nope|nah|no thanks?|no thank you|not needed|no need|i'?m (fine|good|ok(ay)?)|that'?s (fine|ok(ay)?)|it'?s fine|no gracias|no hace falta)\b/i;
+/**
+ * The caller said no to the last callback the assistant offered: a follow-up request would
+ * have the team call someone who said not to. The call is still flagged for review when the
+ * summary says so; the summary says they declined.
+ */
+export function declinedCallback(transcript: { speaker: 'caller' | 'agent'; text: string }[]): boolean {
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    const t = transcript[i]!;
+    if (t.speaker !== 'agent' || !OFFERED_CALLBACK.test(t.text)) continue;
+    const reply = transcript.slice(i + 1).find((x) => x.speaker === 'caller');
+    return !!reply && NO.test(reply.text);
+  }
+  return false;
 }

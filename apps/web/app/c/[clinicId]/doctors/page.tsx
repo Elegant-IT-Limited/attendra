@@ -23,7 +23,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
-import { useTerms } from '@/lib/terms';
+import { providerTerms, useTerms } from '@/lib/terms';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
@@ -97,16 +97,16 @@ export default function DoctorsPage() {
         <div className="relative w-full max-w-md">
           <Label htmlFor="doctor-search" className="sr-only">Find a {terms.provider}</Label>
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-          <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={terms.patient === 'pet' ? 'Name, specialty or what they see' : 'Name, specialty or what they see people for'} />
+          <Input id="doctor-search" type="search" className="pl-9" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={terms.patient === 'pet' ? 'Name, specialty, animal or service' : 'Name, specialty or reason'} />
         </div>
         <Label htmlFor="doctor-specialty" className="sr-only">Specialty</Label>
         <Select id="doctor-specialty" className="w-48" value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
-          <option value="">All specialties</option>
+          <option value="">{providerTerms(terms.patient === 'pet').anySpecialty}</option>
           {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <Label htmlFor="doctor-category" className="sr-only">{terms.patient === 'pet' ? 'Sees' : 'Sees people for'}</Label>
+        <Label htmlFor="doctor-category" className="sr-only">{providerTerms(terms.patient === 'pet').sees}</Label>
         <Select id="doctor-category" className="w-48" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">Any category</option>
+          <option value="">{providerTerms(terms.patient === 'pet').anySees}</option>
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
         <Label htmlFor="doctor-sort" className="sr-only">Sort</Label>
@@ -117,7 +117,7 @@ export default function DoctorsPage() {
         </Select>
         {filtered && <Button variant="ghost" size="sm" onClick={() => { setText(''); setSpecialty(''); setCategory(''); }}><X /> Clear</Button>}
       </div>
-      {!shown.length ? <Card><Empty title={filtered ? `No ${terms.provider} matches` : `No ${terms.providers} yet`}>{filtered ? 'Try another word, specialty or category.' : `Add the first ${terms.provider}, or import a list.`}</Empty></Card> : (
+      {!shown.length ? <Card><Empty title={filtered ? `No ${terms.provider} matches` : `No ${terms.providers} yet`}>{filtered ? 'Try another word, specialty or filter.' : `Add the first ${terms.provider}, or import a list.`}</Empty></Card> : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((p) => {
             const away = p.timeOff.filter((t) => t.to >= today).sort((a, b) => a.from.localeCompare(b.from));
@@ -134,7 +134,7 @@ export default function DoctorsPage() {
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
-                  {p.categories.length > 0 && <><dt className="text-text-muted">For</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
+                  {p.categories.length > 0 && <><dt className="text-text-muted">{providerTerms(terms.patient === 'pet').sees}</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
                   <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
                   <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
@@ -252,8 +252,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           <Combobox id="doc-specialty" label="Specialty" value={d.specialty ?? ''} options={lists.specialties} onChange={(specialty) => set({ specialty })} placeholder={pets ? 'Pick one, or type: General practice, Surgery' : 'Pick one, or type: Family medicine'} />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="doc-categories">{pets ? 'Animals and services they see' : 'What they see people for'}</Label>
-          <ChipsPicker id="doc-categories" label={pets ? 'Animals and services they see' : 'What they see people for'} values={categories} suggestions={lists.categories} onChange={setCategories}
+          <Label htmlFor="doc-categories">{providerTerms(pets).sees}</Label>
+          <ChipsPicker id="doc-categories" label={providerTerms(pets).sees} values={categories} suggestions={lists.categories} onChange={setCategories}
             placeholder={pets ? 'Type, or pick below: Dogs, Exotics…' : 'Type, or pick below: Children…'} />
           <p className="text-xs text-text-muted">The assistant tells callers, so they pick the right {terms.provider}. Rename or order the list under Settings, Fields and lists.</p>
         </div>

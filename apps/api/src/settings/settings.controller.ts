@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, LIST_NAMES, type ListName } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, inClinicCountry, LIST_NAMES, type ListName } from '@attendra/core';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Res, UnprocessableEntityException } from '@nestjs/common';
@@ -38,8 +38,7 @@ export class SettingsController {
     const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     // the numbers calls come in on (the assistant's own), so the page can tell them from the clinic's line
-    const assistantNumbers = (await this.db.select({ e164: schema.phoneNumbers.e164 }).from(schema.phoneNumbers)
-      .where(and(eq(schema.phoneNumbers.clinicId, clinicId), eq(schema.phoneNumbers.status, 'active')))).map((r) => r.e164);
+    const assistantNumbers = await this.assistantNumbers(clinicId);
     return { version: stored.version, assistantNumbers, ...(await this.who(clinicId, stored)) };
   }
 
@@ -120,9 +119,21 @@ export class SettingsController {
     // and the voice engine is the operator's choice (provisioning), never Settings'
     const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine };
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
-    // in order: the first number is the one confirmations are texted from
+    // the assistant's numbers are Attendra's (they route calls); the clinic's own lines are the clinic's to keep right.
+    // In order: the assistant's first, as they were, since the first number is the one confirmations are texted from
     if (JSON.stringify(next.phoneNumbers) !== JSON.stringify(current.phoneNumbers)) {
-      throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'phone numbers are managed by your Attendra operator' }] });
+      const assistant = await this.assistantNumbers(clinicId);
+      const gone = current.phoneNumbers.find((n) => assistant.includes(n) && !next.phoneNumbers.includes(n));
+      if (gone || next.phoneNumbers.some((n) => assistant.includes(n) && !current.phoneNumbers.includes(n))) {
+        throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'the assistant\'s numbers are managed on the Phone number page' }] });
+      }
+      const own = [...new Set(next.phoneNumbers.filter((n) => !assistant.includes(n)))];
+      if (own.length > 3) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'up to 3 of your own lines' }] });
+      const abroad = own.find((n) => !inClinicCountry(current, n));
+      if (abroad) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'your own line must be in the clinic\'s country' }] });
+      if (this.options.demoMode) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'numbers cannot be changed in demo mode' }] });
+      next.phoneNumbers = [...current.phoneNumbers.filter((n) => assistant.includes(n)), ...own];
+      if (!next.phoneNumbers.length) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'keep at least one number' }] });
     }
     // checked here, not in the schema: a number saved before the rule must not stop calls, and the voice service falls back to the country's
     const emergency = emergencyNumberProblem(next);
@@ -135,6 +146,12 @@ export class SettingsController {
     if (saved.status === 'conflict') return this.conflict(clinicId, staff.userId);
     reply.header('etag', etag(saved.version));
     return next;
+  }
+
+  /** The numbers calls come in on: the assistant's own, from provisioning. */
+  private async assistantNumbers(clinicId: string): Promise<string[]> {
+    return (await this.db.select({ e164: schema.phoneNumbers.e164 }).from(schema.phoneNumbers)
+      .where(and(eq(schema.phoneNumbers.clinicId, clinicId), eq(schema.phoneNumbers.status, 'active')))).map((r) => r.e164);
   }
 }
 

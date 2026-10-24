@@ -32,13 +32,17 @@ export class TasksController {
    */
   @Post()
   @Requires('tasks:work')
-  @ApiOperation({ summary: 'Write down a request by hand: a callback or a follow-up, with the number to call back on. Audited.' })
+  @ApiOperation({ summary: 'Write down a request by hand: a callback, a refill, a voicemail or a follow-up, with the number to call back on. Audited.' })
   @ApiBody({ schema: schemaOf(NewTask) })
   async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(NewTask)) body: z.infer<typeof NewTask>, @CurrentStaff() staff: Staff): Promise<{ id: string }> {
     const config = ClinicConfig.parse(await this.desk.settings(clinicId));
     const topic = body.topic ? config.requestTopics?.find((t) => t.name === body.topic)?.name : undefined;
     if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
-    const details: Record<string, string> = { reason: body.reason, ...(topic ? { topic } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}) };
+    const refill = body.type === 'refill';
+    const details: Record<string, string> = {
+      reason: body.reason, ...(topic ? { topic } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}),
+      ...(refill && body.medication ? { medication: body.medication } : {}), ...(refill && body.pharmacy ? { pharmacy: body.pharmacy } : {}),
+    };
     const task = await new PostgresTaskQueue(this.db, this.cipher, `user:${staff.userId}`).create(clinicId, { type: body.type, callId: null, patientId: null, idempotencyKey: `manual:${randomUUID()}`, details });
     if (body.urgent !== undefined || body.dueOn !== undefined) await this.desk.planTask(clinicId, task.id, { urgent: body.urgent, dueOn: body.dueOn }, staff.userId);
     await this.events.emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: body.type, patientId: null, callId: null } });

@@ -4,6 +4,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (the dashboard, from Tamal's UI round on 2026-10-24)
+
+- **One name for one thing.** A vet's "Specialty" and "Animals and services" (or "Sees people for") are called the same on the list, its filters ("Any specialty", "Any animal or service"), the card, the edit form and Settings, Fields and lists; the built-in fields listed there are the edit form's labels, word for word. "Kind of animal", "Kind of request" and "What it is about" likewise.
+- **Pets: a real switch** between all pets and those the assistant added, the same pill switch as other filters.
+- **Your own fields where you look for them.** Add pet has the clinic's own fields; New request has them too, and every request card lists every field ("Not filled in" until someone fills it). The editor says "Name" (it said "Label") and each section says where its fields show; "Show on the Pets list" replaces "Show as a column".
+- **New request takes every kind:** Callback, Prescription refill (with medicine and pharmacy), Voicemail, Follow up and the clinic's own kinds; "New pet to check" stays the assistant's, and the form says so.
+- **The clinic's own line can be changed** in Settings, Phone numbers (up to three, in the clinic's country). The assistant's numbers stay as they are and first, since they route calls and send texts.
+- **Settings say what is missing:** no address is a warning at the top of Settings. Menu links say they are shortcuts for the team, not for callers.
+- **Call records are kept a year by default**, three years at most, chosen from a list (90 days to 3 years); a longer value saved before is kept at three years.
+- **No follow-up request when the caller said no** to the last callback offered; the call can still need review, and its summary says they declined.
+
 ### Fixed (calls, from Tamal's test calls on 2026-10-23)
 
 - **A callback is taken on the yes.** "Okay" to a callback creates it at once, from the number the caller is calling from; the assistant no longer asks "is this the best number?" first (a caller who hung up then had no request).
