@@ -363,7 +363,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
         const between = transcript.slice(asked[i]!.at + 1, asked[j]!.at).filter((l) => l.speaker === 'caller').map((l) => l.text.toLowerCase());
         // asked again on request ("say that again", "what?", "sorry?") is not a repeat
         const askedToRepeat = between.some((t) => /\b(again|repeat|what\?|sorry\?|pardon|didn't catch|did not catch|say that)\b/.test(t));
-        if (between.length && !askedToRepeat && sameQuestion(asked[i]!.q, asked[j]!.q)) { check(false, `asked the same question twice: "${asked[i]!.q}" and later "${asked[j]!.q}"`); i = asked.length; break; }
+        // "Which time works for you?" after a new set of times (the caller changed the day: Wednesday, not Tuesday) is a new
+        // question: the reply around it differs, not only the question
+        const around = (at: number, q: string) => transcript[at]!.text.replace(q, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+        const newOffer = around(asked[i]!.at, asked[i]!.q) !== around(asked[j]!.at, asked[j]!.q) && around(asked[j]!.at, asked[j]!.q).length > 12;
+        if (between.length && !askedToRepeat && !newOffer && sameQuestion(asked[i]!.q, asked[j]!.q)) { check(false, `asked the same question twice: "${asked[i]!.q}" and later "${asked[j]!.q}"`); i = asked.length; break; }
       }
     }
   }

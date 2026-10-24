@@ -4,6 +4,25 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (dashboard, 2026-10-24)
+
+- **One profile per phone number.** A pet's (or patient's) page shows everyone on the same phone, every call from that number (verified or not, marked "From this number") and the requests of anyone on it, with counts in the header.
+- **The kind lists match.** The Requests filter and New request list the built-in kinds in one order under "Built in", then the clinic's own; in New request "New pet to check" shows greyed out, "added by the assistant".
+- **One filter bar on every list.** Pets, Veterinarians and Requests each put their switch, search and dropdowns in the same card; Requests' Open/Done is the same pill switch as Pets'.
+- **Settings:** a warning when a veterinary clinic has no emergency hospital; "+ Your clinic's own line" moves to an empty row already there; the example number uses the clinic's area code; "While you are closed" explains booking at night ("Book visits for your open hours, at any time of day").
+
+### Fixed (calls, from a tester's calls on 2026-10-24 and live evals)
+
+- **A slow answer is no longer cut off.** The 25 s deadline from the last release cut off real registrations mid-way (a new patient heard an apology, then "you're already on file"; live evals, 2026-10-25). The caller now hears "still checking" at 7, 15, 30 and 45 s, and the apology with a callback offer only at 60 s.
+- **The call ends when both sides said goodbye.** The assistant's goodbye answered by the caller's ("Take care." "Take care, bye") ends the call 2.5 s later, even with a request still at the backend; no "waiting in silence" nudge ever follows a caller's goodbye (it made the assistant speak again, twice). "I'll get back to you" counts as leaving; "talk to you soon" and "see you" count as the assistant's goodbye.
+- **Every emergency call opens one urgent request** ("Check on the caller as your protocol says"), even when the caller said no to a callback: it is a safety check, not a callback.
+- **No transfer that does not exist.** With no transfer numbers the assistant never offers to connect anyone (front desk or on-call); with some, only those targets. With texting off it gives the detail out loud instead of offering a text or a callback for it.
+- **A booking's confirmation text is said** ("a confirmation text is on its way") and, asked again, said to be sent.
+- **A card or SSN read out is stopped first**: the assistant says the clinic does not take them by phone before anything else, and the call's review reason says so.
+- **"How many times have I called?"**: the assistant may say how many calls came from the number in the last 30 days (no content).
+- **Fewer requests:** none for a call where the caller never spoke; none when the same number already has an open follow-up or callback from the last 14 days (emergencies still get theirs).
+- Never the same sentence twice in a call (voice prompt). Evals: a choice question after a new set of times is not a repeat; sec-enumeration forbids confirmations, not the refusal's wording.
+
 ### Changed (the dashboard, from a tester's UI round on 2026-10-24)
 
 - **One name for one thing.** A vet's "Specialty" and "Animals and services" (or "Sees people for") are called the same on the list, its filters ("Any specialty", "Any animal or service"), the card, the edit form and Settings, Fields and lists; the built-in fields listed there are the edit form's labels, word for word. "Kind of animal", "Kind of request" and "What it is about" likewise.
