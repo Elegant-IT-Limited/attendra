@@ -466,6 +466,13 @@ export type CustomField = z.infer<typeof CustomField>;
 export type RoutingRule = z.infer<typeof RoutingRule>;
 
 /** The name a provider or visit type is said with in a language, falling back to the clinic's own. */
+/**
+ * The number a text tells people to call: the clinic's own line, the one its clients know, when it
+ * has one (Settings keeps the assistant's numbers first and the clinic's own lines after them);
+ * otherwise the assistant's. Texts themselves go out from the assistant's number.
+ */
+export const callUsNumber = (clinic: Pick<ClinicConfig, 'phoneNumbers'>): string => clinic.phoneNumbers[1] ?? clinic.phoneNumbers[0]!;
+
 export const localName = (thing: { name: string; names?: Partial<Record<Language, string>> }, language: Language) =>
   thing.names?.[language] ?? thing.name;
 

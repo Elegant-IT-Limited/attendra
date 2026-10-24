@@ -19,7 +19,7 @@ import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, dob, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -31,6 +31,14 @@ const DETAIL_LABELS: Record<string, string> = {
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
 };
+/** A detail as people read it: numbers you can tap, dates in words, the kind and sex capitalised. */
+function shownDetail(k: string, v: string) {
+  if ((k === 'callback_number' || k === 'phone') && /^\+?\d[\d\s().-]{6,}$/.test(v)) return <a className="hover:underline" href={`tel:${v}`}>{phone(v)}</a>;
+  if (k === 'date_of_birth' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return dob(v);
+  if (k === 'species' || k === 'sex' || k === 'gender') return v.charAt(0).toUpperCase() + v.slice(1);
+  return v;
+}
+
 /** Sent to the pharmacy, ready to pick up, or not approved: only members marked as approving refills on the Team page. */
 const DECISIONS = new Set(['refill_sent', 'refill_ready', 'refill_declined']);
 const ICONS = { refill: Pill, callback: PhoneCall, voicemail: Voicemail, review: UserCheck, follow_up: Flag } as const;
@@ -280,10 +288,11 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
         {Object.entries(t.details).map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-text-muted">{DETAIL_LABELS[k] ?? k}</dt>
-            <dd>{k === 'callback_number' ? <a className="hover:underline" href={`tel:${v}`}>{phone(v)}</a> : v}</dd>
+            <dd>{shownDetail(k, v)}</dd>
           </div>
         ))}
-        {open && t.followUp && t.followUp !== t.details.suggested && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
+        {/* the call's one next step belongs on its follow-up; on a callback or a pet to check it repeated what the card says */}
+        {open && t.type === 'follow_up' && t.followUp && t.followUp !== t.details.suggested && <><dt className="text-text-muted">Suggested by the assistant</dt><dd>{t.followUp}</dd></>}
         {!open && t.outcome && <><dt className="text-text-muted">Outcome</dt><dd className="font-medium">{TASK_OUTCOMES[t.outcome]}</dd></>}
         {!open && t.outcome === 'refill_ready' && <><dt className="text-text-muted">Text</dt><dd><TextStatus clinicId={clinicId} filter={{ taskId: t.id }} timeZone={tz} empty="No text recorded yet. It goes out within a minute of closing." /></dd></>}
         {fields.map((f) => (
