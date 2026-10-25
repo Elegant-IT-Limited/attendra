@@ -6,6 +6,9 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Fixed (calls, from the first test calls with texting on, 2026-10-25)
 
+- **A known number is greeted like a front desk does.** When the clinic has exactly one client on the number calling (the owner, for a pet), the assistant asks "Am I speaking with Sam?" instead of asking for a name: that first name only, nothing else from a record before the check, and never again after a no. Two families on one phone get the usual question. Reading the name is audited (`patient.name_on_file.read`).
+- **A no comes first.** The assistant no longer opens with "Sure, let's see" before saying it can't do something.
+- **A caller who was added as new is not "not verified".** The call's review reason no longer says the caller could not be verified when the assistant added them as a new patient or pet for the team to check.
 - **One callback per call.** A caller who was offered a callback twice in one call (once for the booking, once more later) got two requests for the team. `create_callback` now keeps one per call for each purpose (one of the clinic's topics, a privacy request, or anything else); a second one says the team already has it.
 - **No text offered to a number that can't get one.** A caller on a number abroad (or a premium or toll-free one) was offered a text, told it failed, asked for another number and then told another number isn't allowed, four tries in all. The assistant now knows from the start that the number can't get texts, gives everything out loud, never asks for another number, and never promises a booking confirmation by text to such a number.
 
