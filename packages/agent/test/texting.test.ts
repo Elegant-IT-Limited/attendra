@@ -61,7 +61,11 @@ describe('texting during a call', () => {
     const off = await w.call('+13035550147');
     expect((await off.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['texting_off']);
     const noProvider = await w.call('+13035550147', { clinic: TEXTING }); // provider details are off by default
-    expect((await noProvider.delegate([{ tool: 'send_text', args: { kind: 'provider', ref: 'prov_okafor', to: null } }])).errors).toEqual(['texting_off']);
+    const kindOff = await noProvider.delegate([{ tool: 'send_text', args: { kind: 'provider', ref: 'prov_okafor', to: null } }]);
+    expect(kindOff.errors).toEqual(['texting_off']);
+    // the clinic does text, just not this one: never "texting isn't set up" (a test call, 2026-10-25)
+    expect(said(kindOff.results[0]!)).toContain("can't text that one");
+    expect(said(kindOff.results[0]!)).toContain('Never say texting is not set up');
   });
 
   it('texts only the caller\'s number or the one on file, never another', async () => {

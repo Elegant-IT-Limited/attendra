@@ -16,6 +16,41 @@ export function openingInstruction(clinic: ClinicConfig): string {
   return `The call has just been answered. Greet the caller now, in ${PACKS[clinic.primaryLanguage].name}, before they say anything. Say exactly: "${clinic.greeting}"${notice} Then pause and listen. Say this greeting only once in the whole call.`;
 }
 
+/**
+ * The opening for a caller on the clinic's VIP list: a short hello that says who is
+ * speaking (an AI assistant, as every greeting must) and that the call is being passed
+ * to the team, with no "how can I help?" before a transfer the caller did not ask for.
+ */
+export function vipOpening(clinic: ClinicConfig, vipName: string): string {
+  const first = vipName.trim().split(/\s+/)[0] ?? '';
+  const who = clinic.assistantName;
+  const line = clinic.primaryLanguage === 'es'
+    ? `Hola${first ? ` ${first}` : ''}, gracias por llamar a ${clinic.name}. Le habla ${who ? `${who}, ` : ''}el asistente de IA de la clínica. Le comunico con nuestro equipo ahora mismo.`
+    : `Hi${first ? ` ${first}` : ''}, thanks for calling ${clinic.name}. This is ${who ? `${who}, ` : ''}the clinic's AI assistant. I'm connecting you with our team now.`;
+  const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
+  return `The call has just been answered. This caller is on the clinic's VIP list and is being passed straight to the team. Greet them now, before they say anything. Say exactly: "${line}"${notice} Then say nothing more: do not ask how you can help, and do not say the usual greeting.`;
+}
+
+/**
+ * What the voice knows about the number calling, the way a front desk sees caller ID:
+ * how often it called lately and, when the clinic has exactly one person on file for it,
+ * that person's first name. Never what earlier calls were about: that waits for the
+ * backend's identity check. From the backend's history lines; null when there is none.
+ */
+export function callerContext(history: string | null): string | null {
+  if (!history) return null;
+  const name = /^Name on file for this number: (.+)\.$/m.exec(history)?.[1]?.trim() ?? null;
+  const count = Number(/^Calls from this number in the last 30 days: (\d+)\./m.exec(history)?.[1] ?? 0);
+  if (!name && !count) return null;
+  return [
+    `About the number calling, from the clinic's records (like caller ID):${count ? ` it called ${count} time${count === 1 ? '' : 's'} in the last 30 days.` : ''}${name ? ` One person is on file for it: ${name}.` : ''}`,
+    name
+      ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
+      : 'You do not know who is calling yet: when it helps, ask for their first name and their pet\'s name to bring up their details.',
+    `If the caller asks whether you know them or have their history, say yes, you can see they have called before${name ? '' : ', and ask for their first name and their pet\'s name to bring up their details'}. Never say you have no history, no record, or that you just answer calls as they come in. What earlier calls were about is said only after the backend has checked who they are.`,
+  ].join(' ');
+}
+
 export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
   const open = isOpen(clinic, now);
   const others = clinic.languages.filter((l) => l !== clinic.primaryLanguage);
