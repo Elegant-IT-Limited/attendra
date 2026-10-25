@@ -30,13 +30,13 @@ export class EngineRouter implements VoiceEngine {
   }
 
   /** Takes a phone call with a given engine, whatever the clinic chose: the call came in on it. */
-  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date) {
+  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date, opening?: string) {
     this.bySession.set(sessionId, engine);
-    await engine.accept(sessionId, clinic, now);
+    await (opening === undefined ? engine.accept(sessionId, clinic, now) : engine.accept(sessionId, clinic, now, opening));
   }
 
-  async accept(sessionId: string, clinic: ClinicConfig, now: Date) {
-    return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now);
+  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string) {
+    return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now, opening);
   }
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {

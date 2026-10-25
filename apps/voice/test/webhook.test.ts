@@ -97,10 +97,13 @@ describe('the OpenAI webhook', () => {
       const app = buildServer(d);
       await post(app, incoming(`wh_vip_${at}`, '+13035550100'));
       await app.close();
-      return JSON.stringify(sideband.send.mock.calls);
+      // the VIP's hello is the opening itself: who is speaking, and that they are being put through
+      return JSON.stringify(sideband.send.mock.calls) + JSON.stringify(engine.accept.mock.calls.map((c) => (c as unknown[])[3] ?? null));
     };
     // Tuesday 29 September 2026, 10 am in Denver: open
     expect(await run('2026-09-29T16:00:00Z', vipClinic)).toContain('VIP list');
+    expect(await run('2026-09-29T16:00:00Z', vipClinic)).toContain("I'm connecting you with our team now.");
+    expect(await run('2026-09-29T16:00:00Z', vipClinic)).not.toContain('How can I help');
     expect(await run('2026-09-29T16:00:00Z', DEMO_CLINIC)).not.toContain('VIP list');
     // 10 pm: the front desk takes no transfers, so the assistant answers as usual
     expect(await run('2026-09-30T04:00:00Z', vipClinic)).not.toContain('VIP list');
