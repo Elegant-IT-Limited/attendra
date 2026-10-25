@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls, from a tester's VIP and caller-ID test calls, 2026-10-25)
+
+- **A VIP hears a hello and is put through.** A caller on the VIP list heard the usual greeting, "How can I help you today?", and then, without a pause, "I'm connecting you with a member of our team now." The opening is now one line for them: "Hi Jamie, thanks for calling Willow Creek. This is Maya, the clinic's AI assistant. I'm connecting you with our team now." (in Spanish too), with no question before the transfer. The call summary no longer flags a VIP transfer for review because no request was heard.
+- **The voice knows what caller ID shows.** At the start of every phone call the voice is told how often this number called in the last 30 days and, when the clinic has exactly one person on file for it, their first name. It asks "Am I speaking with Sam?" when the caller says what they need, and asked "do you have my history?" it says it can see they have called before and asks for the details it needs. It never again says "I don't have your history" or "I just pick up calls as they come in". What earlier calls were about still waits for the identity check.
+- **No silent start.** One call waited 15 seconds in silence before the greeting, which came only when the caller said hello: GPT-Live had held it. When nobody has said a word 4 seconds after the call is answered, the voice is now told once to greet.
+- **"I can't text that one", not "texting isn't set up".** When the clinic texts but not a particular thing (a vet's details are off by default), the assistant says it can't text that one and reads it out, instead of saying texting is not available on this line.
+
 ### Fixed (calls, from the first test calls with texting on, 2026-10-25)
 
 - **A known number is greeted like a front desk does.** When the clinic has exactly one client on the number calling (the owner, for a pet), the assistant asks "Am I speaking with Sam?" instead of asking for a name: that first name only, nothing else from a record before the check, and never again after a no. Two families on one phone get the usual question. Reading the name is audited (`patient.name_on_file.read`).

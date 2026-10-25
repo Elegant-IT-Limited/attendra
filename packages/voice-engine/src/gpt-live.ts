@@ -47,12 +47,12 @@ export class GptLiveEngine implements VoiceEngine {
     private readonly openSideband: (sessionId: string) => SidebandSocket = (id) => new SidebandWS(client, { session_id: id }),
   ) {}
 
-  private session(clinic: ClinicConfig, now: Date) {
+  private session(clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic)) {
     return {
       model: this.model,
       instructions: conversationPrompt(clinic, now),
       // GPT-Live waits for the caller unless told to speak first (OpenAI: "Greet before the caller speaks")
-      input: [{ type: 'message' as const, role: 'developer' as const, content: [{ type: 'input_text' as const, text: openingInstruction(clinic) }] }],
+      input: [{ type: 'message' as const, role: 'developer' as const, content: [{ type: 'input_text' as const, text: opening }] }],
       audio: { output: { voice: clinic.voice } },
       // client delegation: our backend runs every tool, so identity checks,
       // confirmations and audit stay in code we own
@@ -61,9 +61,9 @@ export class GptLiveEngine implements VoiceEngine {
     };
   }
 
-  async accept(sessionId: string, clinic: ClinicConfig, now: Date) {
-    await this.client.live.sessions.accept(sessionId, { session: { type: 'live', ...this.session(clinic, now) } });
-    this.openings.set(sessionId, openingInstruction(clinic));
+  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic)) {
+    await this.client.live.sessions.accept(sessionId, { session: { type: 'live', ...this.session(clinic, now, opening) } });
+    this.openings.set(sessionId, opening);
   }
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {

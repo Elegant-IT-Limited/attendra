@@ -41,6 +41,7 @@ export const SUMMARY_INSTRUCTIONS = [
   'Set needsReview when staff should look at the call: emergency language, a caller who could not be verified, a request the assistant could not complete, an upset caller, or anything unclear. Give the reason in one short sentence.',
   'followUp is one short action for staff, such as "Call the patient back about the refill", or null when nothing is needed.',
   'When the assistant offered a callback and the caller said no, say so in the summary ("The caller said no to a callback."), and set followUp to null unless something else needs staff.',
+  'When the assistant put the caller straight through to the team at the start (a caller on the clinic\'s VIP list), the team took the call: say so, and do not set needsReview or followUp only because the caller\'s request was not heard.',
 ].join('\n');
 
 function callText(call: CallForSummary, maxChars: number): string {

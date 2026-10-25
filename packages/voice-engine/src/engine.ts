@@ -9,7 +9,8 @@ import type { CommentaryAppendEvent, InstructionsAppendEvent, ThinkingAppendEven
  */
 export interface VoiceEngine {
   readonly name: string;
-  accept(sessionId: string, clinic: ClinicConfig, now: Date): Promise<void>;
+  /** `opening`: what to say first, when not the clinic's usual greeting (a VIP's hello). */
+  accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string): Promise<void>;
   /**
    * Starts a conversation with a browser instead of a phone: takes the browser's
    * WebRTC offer, returns the session id and the answer for the browser to apply.
