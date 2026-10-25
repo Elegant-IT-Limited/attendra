@@ -57,6 +57,8 @@ function callText(call: CallForSummary, maxChars: number): string {
 
 const said = (call: CallForSummary, code: string) => call.actions.some((a) => a.result.error === code);
 const ran = (call: CallForSummary, tool: string) => call.actions.some((a) => a.tool === tool);
+/** A new patient or pet added on the call: who they are is then known, and the team checks them. */
+const registered = (call: CallForSummary) => call.actions.some((a) => a.tool === 'register_patient' && !a.result.error);
 const endedOnError = (call: CallForSummary) => call.closeReason === 'error' || call.closeReason === 'connection_lost' || !!call.closeReason?.startsWith('socket closed');
 
 /**
@@ -70,7 +72,7 @@ export function requiredReview(call: CallForSummary): { reason: string; followUp
   if (ran(call, 'abusive_caller')) return { reason: 'The caller used insulting or threatening language.', followUp: 'Decide whether anyone should contact the caller.' };
   if (said(call, 'needs_staff')) return { reason: 'Two patient records share the caller\'s name and date of birth.', followUp: 'Confirm which patient called and call them back.' };
   if (said(call, 'too_many_attempts')) return { reason: 'The caller could not be verified after three tries.', followUp: 'Call the caller back to confirm who they are.' };
-  if (ran(call, 'verify_caller') && !call.actions.some((a) => a.result.verified === true)) return { reason: 'The caller could not be verified.', followUp: 'Call the caller back to confirm who they are.' };
+  if (ran(call, 'verify_caller') && !call.actions.some((a) => a.result.verified === true) && !registered(call)) return { reason: 'The caller could not be verified.', followUp: 'Call the caller back to confirm who they are.' };
   if (endedOnError(call)) return { reason: 'The call ended on an error.', followUp: 'Check whether the caller needs a call back.' };
   return null;
 }
@@ -146,7 +148,7 @@ export class LocalSummariser implements Summariser {
 
     const sentences: string[] = [];
     if (language !== 'en') sentences.push(`The caller spoke ${PACKS[language].name}.`);
-    if (triedToVerify) sentences.push(verified ? 'The caller was verified by name and date of birth.' : 'The caller could not be verified.');
+    if (triedToVerify) sentences.push(verified ? 'The caller was verified.' : registered(call) ? 'The caller was new and was added for the team to check.' : 'The caller could not be verified.');
     if (call.emergency) {
       sentences.push('The caller used emergency language, and the assistant stopped and gave the emergency number.');
       if (transferred) sentences.push('The call was transferred to the on-call line.');
