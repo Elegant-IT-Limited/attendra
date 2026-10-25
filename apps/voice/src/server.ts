@@ -3,7 +3,7 @@ import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner }
 import { ClinicConfig, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
-import { CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine } from '@attendra/voice-engine';
+import { callerContext, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -418,8 +418,13 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       a.observer = (e) => live.publish(callId, e);
       deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel }, 'call accepted');
       const done = runner.start();
-      // a VIP caller hears the greeting, then goes straight to the front desk
+      // a VIP caller hears their hello, then goes straight to the front desk
       if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
+      // what caller ID would show a front desk: how often this number called, and the one name on file
+      else {
+        const known = callerContext(history);
+        if (known) await runner.act([{ type: 'instructions', delegationId: null, content: known }]);
+      }
       opts.onReady?.();
       await done;
     } catch (err) {
@@ -477,11 +482,14 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       if (router && clinic.voiceEngine && clinic.voiceEngine !== came) {
         deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: clinic.voiceEngine, came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
       }
-      if (router) await router.acceptWith(via, sessionId, clinic, now());
-      else await deps.engine.accept(sessionId, clinic, now());
+      // a VIP is greeted by name and told they are being put through, not asked how to help first
+      const vip = vipRoute(clinic, from, now());
+      const opening = vip ? vipOpening(clinic, vip.name) : undefined;
+      const vipArgs = opening ? [opening] as const : [] as const;
+      if (router) await router.acceptWith(via, sessionId, clinic, now(), ...vipArgs);
+      else await deps.engine.accept(sessionId, clinic, now(), ...vipArgs);
       accepted = true;
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
-      const vip = vipRoute(clinic, from, now());
       if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
       await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri });
     } catch (err) {

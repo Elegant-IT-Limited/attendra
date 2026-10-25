@@ -308,7 +308,8 @@ export class CallAgent {
     this.emit({ type: 'staff', action: 'vip' });
     this.emitState();
     return [
-      { type: 'instructions', delegationId: null, content: `This caller is on the clinic's VIP list. Right after your greeting, say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
+      // the hello itself says they are being put through (vipOpening): nothing to add, no question to ask
+      { type: 'instructions', delegationId: null, content: 'This caller is on the clinic\'s VIP list and is being passed to the team now. After your hello, say nothing more and ask nothing.' },
       // after the greeting and the line, whatever their length: the runner waits for quiet
       { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true },
     ];

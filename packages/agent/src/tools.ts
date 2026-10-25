@@ -650,7 +650,9 @@ export async function runTool(
       const texting = textingOf(clinic);
       const kind = args.kind as 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link';
       const ref = (args.ref as string | null) ?? null;
-      if (!texting.enabled || !texting.kinds[kind]) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
+      if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
+      // the clinic texts, just not this: never "texting isn't set up"
+      if (!texting.kinds[kind]) return refuse('texting_off', 'The clinic does not send this one by text (it sends other things). Say in a few words that you can\'t text that one, then say it out loud, slowly, and offer to repeat it. Never say texting is not set up or not available on this line.');
       // in an emergency the only text is where to take the animal, and only then
       if (state.emergencyLocked && kind !== 'emergency_hospital') return refuse('emergency_in_progress', 'Do not text anything else now. Repeat where to take the animal.');
       if (!state.emergencyLocked && kind === 'emergency_hospital') return refuse('not_an_emergency', 'That text is only for an animal emergency. Read the hospital\'s details out instead if they ask.');

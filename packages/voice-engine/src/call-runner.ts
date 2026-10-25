@@ -26,6 +26,13 @@ const HANGUP_MAX_WAIT_MS = 20_000;
 const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
 /** The caller finished and nothing came back: a word to the assistant after this long, and again after the second. */
 export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
+/**
+ * The call is up and the assistant has said nothing, nor has the caller: after this long it
+ * is told once to greet now. GPT-Live sometimes held its greeting until the caller spoke,
+ * 15 seconds into a call (2026-10-25).
+ */
+export const OPENING_NUDGE_MS = 4000;
+const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Greet them now, exactly as you were told to at the start of the call, then listen.';
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
 /** After the caller asked for the call to end ("can you cut the call?"), how long it may stay up for the assistant's goodbye. */
@@ -56,6 +63,9 @@ export class CallRunner {
   /** A transfer or a hang-up is on its way: the assistant is meant to be quiet. */
   private ending = false;
   private watchdog: NodeJS.Timeout | null = null;
+  /** When the runner started, and whether the silent-start nudge went out. */
+  private startedAt = 0;
+  private openingNudged = false;
 
   constructor(
     private readonly sessionId: string,
@@ -67,6 +77,9 @@ export class CallRunner {
   ) {}
 
   start(): Promise<void> {
+    this.startedAt = Date.now();
+    // checks from the first second, not from the first event: a silent start has no events
+    this.watch();
     return new Promise((resolve) => {
       this.sideband.onEvent((event) => { void this.handle(event).catch((err) => this.log.error({ session_id: this.sessionId, err }, 'event handling failed')); });
       this.sideband.onError((err) => this.log.warn({ session_id: this.sessionId, err }, 'sideband error'));
@@ -193,6 +206,12 @@ export class CallRunner {
   private async check() {
     if (this.closed || this.ending || this.agent.state.endedByStaff) return;
     const now = Date.now();
+    // nobody has said a word since the call was answered: the greeting is overdue
+    if (!this.openingNudged && this.startedAt && !this.agentSpokeAt && !this.callerSaidAt && now - this.startedAt >= OPENING_NUDGE_MS) {
+      this.openingNudged = true;
+      this.log.info({ session_id: this.sessionId }, 'the assistant has not greeted the caller: nudging it');
+      return this.dispatch([{ type: 'instructions', delegationId: null, content: OPENING_NUDGE }]);
+    }
     const turns = this.agent.state.turns;
     const last = turns.at(-1);
     // the assistant said goodbye, nobody has spoken since, and the call was allowed to end:
