@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ClinicConfig, DEMO_CLINIC } from '@attendra/core';
 import { type Outbound, ResponsesPlanner } from '../src';
 
 const commentary = (out: Outbound[]) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
@@ -20,6 +21,21 @@ describe('the production planner', () => {
     const [body, options] = create.mock.calls[0]! as [Record<string, unknown>, Record<string, unknown>];
     expect(body).toMatchObject({ model: 'gpt-test', store: false, max_output_tokens: 1000 });
     expect(options).toEqual({ timeout: 15_000, maxRetries: 1 });
+  });
+
+  it('is told the one name on file to ask "Am I speaking with ...?", and never to offer a text to a number abroad', async () => {
+    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Done.' }));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-test');
+    const texting = ClinicConfig.parse({ ...DEMO_CLINIC, texting: { enabled: true } });
+    const known = await w.call('+13035550147', { clinic: texting, history: 'Name on file for this number: Abdul.' });
+    await known.delegate([], planner);
+    const input = JSON.stringify((create.mock.calls[0]![0] as { input: unknown }).input);
+    expect(input).toContain('Name on file for this number: Abdul.');
+    expect(input).toContain('Am I speaking with <that name>?');
+    expect(input).not.toContain('cannot get texts');
+    const abroad = await w.call('+8801712345678', { clinic: texting });
+    await abroad.delegate([], planner);
+    expect(JSON.stringify((create.mock.calls.at(-1)![0] as { input: unknown }).input)).toContain('cannot get texts');
   });
 
   it('after its last round, creates the callback it promises, or asks for a number when there is none', async () => {

@@ -83,6 +83,28 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /**
+   * The one first name on file for this number (the owner for a pet, else the patient),
+   * so the assistant can ask "Am I speaking with Abdul?" as a front desk does when caller
+   * ID shows a client. Only when there is exactly one: two families on one phone give
+   * nothing. A first name only, never a pet or a record; reading it is audited.
+   */
+  async nameOnFile(clinicId: string, phone: string, callId: string): Promise<string | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select({ first: patients.firstNameEnc, guardian: patients.guardianNameEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).limit(20);
+      if (!rows.length) return null;
+      const names = new Map(rows.map((r) => {
+        const n = (r.guardian ? this.cipher.decrypt(r.guardian, ctx('guardian_name')) : this.cipher.decrypt(r.first, ctx('first_name'))).trim().split(/\s+/)[0] ?? '';
+        return [n.toLowerCase(), n] as const;
+      }).filter(([k]) => k));
+      if (names.size !== 1) return null;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.name_on_file.read', entity: 'call', entityId: callId, callId });
+      return [...names.values()][0]!;
+    });
+  }
+
+  /**
    * A new patient, added on a call. The same person already on file (same name, date
    * of birth and phone) is not added again: the caller gave exactly what verification
    * asks for, so they are that patient. Someone else with the same name and birthday

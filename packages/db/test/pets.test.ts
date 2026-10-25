@@ -35,6 +35,19 @@ describe('pets at a veterinary clinic', () => {
     expect(await dir.findPet(C, 'Linh Nguyen', 'Mochi', '+17205550199')).toEqual({ status: 'not_found' });
   });
 
+  it('gives the one owner\'s first name on file for a number, nothing for two families or an unknown number, and audits it', async () => {
+    const dir = new PostgresPatientDirectory(t.db, cipher);
+    const callId = await new CallRepository(t.db, cipher).open(C, 'sess_name', null);
+    await dir.register(C, { firstName: 'Rex', lastName: 'Okafor', dob: '2025-01-01', gender: 'male', phone: '+17205550181', guardianName: 'Chidi Okafor', callId, species: 'Dog' });
+    await dir.register(C, { firstName: 'Tiny', lastName: 'Okafor', dob: '2025-02-01', gender: 'female', phone: '+17205550181', guardianName: 'chidi', callId, species: 'Cat' });
+    expect(await dir.nameOnFile(C, '(720) 555-0181', callId)).toBe('Chidi');
+    await dir.register(C, { firstName: 'Bolt', lastName: 'Reyes', dob: '2025-03-01', gender: 'male', phone: '+17205550181', guardianName: 'Ana Reyes', callId, species: 'Dog' });
+    expect(await dir.nameOnFile(C, '+17205550181', callId)).toBeNull();
+    expect(await dir.nameOnFile(C, '+17205550999', callId)).toBeNull();
+    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.name_on_file.read' and call_id = ${callId}`)).rows;
+    expect(audit).toEqual([{ n: 1 }]);
+  });
+
   it('adds a new pet with its owner as the guardian and keeps the kind of animal encrypted', async () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const callId = await new CallRepository(t.db, cipher).open(C, 'sess_pet', null);

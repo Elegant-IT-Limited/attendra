@@ -103,6 +103,12 @@ describe('the review flag', () => {
     expect(s.reviewReason).toContain(reason);
   });
 
+  it('does not call a caller who was added as new "not verified" (Tamal\'s call, 2026-10-25)', async () => {
+    const added = persuasive({ actions: [{ tool: 'verify_caller', result: { ok: false, error: 'not_verified' } }, { tool: 'register_patient', result: { ok: true } }] } as Partial<CallForSummary>);
+    const s = await new ModelSummariser(fixed(talkedOutOfIt).client, 'm').summarise(added);
+    expect(s.reviewReason ?? '').not.toContain('could not be verified');
+  });
+
   it('keeps the model\'s own flag and reason when it flags a call no rule covers', async () => {
     const s = await new ModelSummariser(fixed({ ...GOOD, needsReview: true, reviewReason: 'The caller sounded confused about the time.' }).client, 'm').summarise(CALL);
     expect(s).toMatchObject({ needsReview: true, reviewReason: 'The caller sounded confused about the time.' });
@@ -129,7 +135,7 @@ describe('the local summariser', () => {
 
   it('describes a booking from the call\'s facts', async () => {
     expect(await local.summarise(CALL)).toEqual({
-      summary: 'The caller was verified by name and date of birth. The assistant booked an appointment after the caller confirmed it.',
+      summary: 'The caller was verified. The assistant booked an appointment after the caller confirmed it.',
       intent: 'book', sentiment: 'calm', needsReview: false, reviewReason: null, followUp: null,
     });
   });
