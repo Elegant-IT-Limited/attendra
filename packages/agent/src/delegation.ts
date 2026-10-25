@@ -26,6 +26,8 @@ export const clamp = (s: string) => (s.length <= MAX_APPEND_CHARS ? s : `${s.sli
 const AFTER_SPEECH_MS = 3500;
 /** A VIP hears the greeting and one line first: at least this long, then until the assistant is quiet. */
 const VIP_AFTER_MS = 6000;
+/** A paused clinic's message (call back, the emergency hospital) is longer than a hello: the hang-up waits for it. */
+const PAUSED_HANGUP_AFTER_MS = 10_000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
 /** More "still checking" for a wait that goes on: a new patient's registration and first times can take 30 s or more. */
@@ -312,6 +314,24 @@ export class CallAgent {
       { type: 'instructions', delegationId: null, content: 'This caller is on the clinic\'s VIP list and is being passed to the team now. After your hello, say nothing more and ask nothing.' },
       // after the greeting and the line, whatever their length: the runner waits for quiet
       { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true },
+    ];
+  }
+
+  /**
+   * The clinic's assistant is paused (its plan's free minutes are used up, or a payment is missing): the
+   * caller hears the paused opening (pausedOpening), then goes to the front desk when it takes transfers
+   * now, or the call ends. Nothing is booked or asked; the call is recorded as paused, and not billed.
+   */
+  paused(uri: string | null): Outbound[] {
+    const s = this.state;
+    s.revision++;
+    s.answeringPaused = true;
+    s.outcome = uri ? 'transferred' : 'abandoned';
+    this.emitState();
+    void this.actions?.record({ tool: 'answering_paused', argsRedacted: {}, result: { step: uri ? 'transferred' : 'message' }, revision: s.revision }).catch(() => {});
+    return [
+      { type: 'instructions', delegationId: null, content: 'The clinic\'s assistant is not answering calls right now. After the line you were given, say nothing more and ask nothing.' },
+      uri ? { type: 'transfer', uri, afterMs: VIP_AFTER_MS, quiet: true } : { type: 'hangup', afterMs: PAUSED_HANGUP_AFTER_MS },
     ];
   }
 

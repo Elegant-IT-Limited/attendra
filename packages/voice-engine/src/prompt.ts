@@ -32,6 +32,34 @@ export function vipOpening(clinic: ClinicConfig, vipName: string): string {
 }
 
 /**
+ * The opening while the clinic's assistant is paused (its plan): who is speaking (an AI
+ * assistant, as every greeting must), then either that the caller is being passed to the
+ * team, or that the clinic can't take the call now, when to call back, and, for an
+ * animal in danger, the clinic's emergency hospital. No question is asked.
+ */
+export function pausedOpening(clinic: ClinicConfig, transferring: boolean): string {
+  const who = clinic.assistantName;
+  const es = clinic.primaryLanguage === 'es';
+  const hospital = clinic.emergencyHospital;
+  // where to go meanwhile in an emergency: the clinic's emergency hospital, or the nearest one
+  const urgent = clinic.industry !== 'vet'
+    ? (es ? ' Si es una emergencia, llame a su número local de emergencias.' : ' If this is an emergency, please call your local emergency number.')
+    : hospital
+      ? (es ? ` Si su mascota necesita atención urgente, llame a ${hospital.name} al ${hospital.phone}.` : ` If your pet needs urgent care, please call ${hospital.name} at ${hospital.phone}.`)
+      : (es ? ' Si su mascota necesita atención urgente, acuda al hospital veterinario de urgencias 24 horas más cercano.' : ' If your pet needs urgent care, please go to the nearest 24-hour emergency vet.');
+  const intro = es
+    ? `Gracias por llamar a ${clinic.name}. Le habla ${who ? `${who}, ` : ''}el asistente de IA de la clínica.`
+    : `Thanks for calling ${clinic.name}. This is ${who ? `${who}, ` : ''}the clinic's AI assistant.`;
+  const rest = transferring
+    ? (es ? ' Le comunico con nuestro equipo ahora mismo.' : ' I\'m connecting you with our team now.')
+    : (es ? ' No podemos atender su llamada en este momento. Por favor, vuelva a llamar en nuestro horario de atención.' : ' We can\'t take your call right now. Please call back during our opening hours.')
+      + urgent
+      + (es ? ' Gracias.' : ' Thank you.');
+  const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
+  return `The call has just been answered. The clinic's assistant is not answering calls right now. Speak now, before the caller says anything. Say exactly: "${intro}${rest}"${notice} Then say nothing more: do not ask how you can help, and do not say the usual greeting.`;
+}
+
+/**
  * What the voice knows about the number calling, the way a front desk sees caller ID:
  * how often it called lately and, when the clinic has exactly one person on file for it,
  * that person's first name. Never what earlier calls were about: that waits for the

@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import type OpenAI from 'openai';
 import { describe, expect, it, vi } from 'vitest';
-import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, type SidebandSocket, vipOpening } from '../src';
+import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, pausedOpening, type SidebandSocket, vipOpening } from '../src';
 
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
@@ -55,6 +55,18 @@ describe('GptLiveEngine browser calls', () => {
     expect(text).toContain("AI assistant. I'm connecting you with our team now.");
     expect(text).not.toContain(DEMO_CLINIC.greeting);
     expect(text).toContain('do not ask how you can help');
+  });
+
+  it('while the assistant is paused: says it is an AI assistant, then puts the caller through or says when to call back and where to go in an emergency', () => {
+    const through = pausedOpening(DEMO_CLINIC, true);
+    expect(through).toContain("the clinic's AI assistant");
+    expect(through).toContain("I'm connecting you with our team now.");
+    const back = pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } }, false);
+    expect(back).toContain('Please call back during our opening hours.');
+    expect(back).toContain('Front Range Animal ER');
+    expect(back).not.toContain('connecting you');
+    expect(pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: undefined }, false)).toContain('nearest 24-hour emergency vet');
+    expect(pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, true)).toContain('Le comunico con nuestro equipo');
   });
 
   it('tells the voice what caller ID would show: the call count and the one name on file, never the calls\' content', () => {

@@ -614,6 +614,11 @@ export const HostingPlan = z.object({
   endsAt: z.iso.datetime().nullable(),
   /** Where an owner manages the plan. */
   manageUrl: SafeLink.nullable(),
+  /**
+   * A line the hosting layer wants on every page (free minutes nearly used, the assistant paused until a card
+   * is added): what the owner reads, with the link to the plan, and what the rest of the team reads.
+   */
+  notice: z.object({ level: z.enum(['warn', 'danger']), owner: z.string().min(1).max(300), team: z.string().min(1).max(300) }).nullable().optional(),
 });
 /** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });

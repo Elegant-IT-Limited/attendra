@@ -37,7 +37,11 @@ export function PlanBanner({ clinicId }: { clinicId: string }) {
   const manage = owner && plan.manageUrl ? <a className="font-medium underline underline-offset-2" href={plan.manageUrl}>{plan.status === 'trial' ? 'Choose your plan' : 'Plan and billing'}</a> : null;
   let tone: 'info' | 'warn' | 'danger';
   let text: string;
-  if (plan.status === 'trial' && plan.trialEndsAt && owner) {
+  // the hosting layer's own line comes first: free minutes nearly used, the assistant paused until a card is added
+  if (plan.notice) {
+    tone = plan.notice.level;
+    text = owner ? plan.notice.owner : plan.notice.team;
+  } else if (plan.status === 'trial' && plan.trialEndsAt && owner) {
     const left = daysLeft(plan.trialEndsAt, Date.now());
     tone = left <= 3 ? 'warn' : 'info';
     text = left > 0 ? `Free trial: ${left} ${left === 1 ? 'day' : 'days'} left, until ${dateOf(plan.trialEndsAt, clinic.timezone)}.` : 'Your free trial has ended. Choose your plan to take real calls.';
