@@ -64,7 +64,7 @@ export default function TextingSettings() {
   const rem = (patch: Partial<Draft['reminders']>) => set({ reminders: { ...r, ...patch } });
   const dirty = JSON.stringify(draft) !== JSON.stringify(Texting.parse(c.texting ?? {}));
   const kinds: { k: TextKind; label: string; hint: string; show?: boolean; disabled?: string }[] = [
-    { k: 'change_confirmed', label: 'Appointment changes', hint: 'A confirmation when a visit is moved or cancelled on the phone, like the booking confirmation. Sent without asking.' },
+    { k: 'change_confirmed', label: 'Appointment changes', hint: 'A confirmation when a visit is moved or cancelled on the phone, like the booking confirmation. The read-back says the text will follow, so the caller\'s yes covers it, and "no text" is kept.' },
     { k: 'directions', label: 'Address and directions', hint: 'Your address and a map link.', disabled: c.address?.trim() ? undefined : 'Add the clinic\'s address under General first.' },
     { k: 'hours', label: 'Opening hours', hint: 'Your weekly hours, and any day you are closed in the next two weeks.' },
     { k: 'emergency_hospital', label: 'Emergency hospital', hint: 'During an animal emergency: the hospital\'s name, address and phone, after the caller says yes. The only text the assistant sends in an emergency.', show: pet },

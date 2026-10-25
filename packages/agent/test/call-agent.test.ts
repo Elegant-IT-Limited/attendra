@@ -415,6 +415,21 @@ describe('safety', () => {
     create.mockRestore();
   });
 
+  it('takes one callback per call for the same purpose, however it is worded (a test call, 2026-10-25)', async () => {
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    const c = await w.call('+13035550163');
+    const first = await c.delegate([{ tool: 'create_callback', args: { reason: 'Call David in the morning to arrange an appointment for Ananta', callback_number: null, topic: null } }]);
+    const second = await c.delegate([{ tool: 'create_callback', args: { reason: 'Call David in the morning to arrange a new-client exam', callback_number: null, topic: null } }]);
+    expect(first.results[0]!.data.already).toBeUndefined();
+    expect(second.results[0]!.data).toMatchObject({ task_id: first.results[0]!.data.task_id, already: true });
+    expect(spoken(second)).toContain('do not take another');
+    // a privacy request is its own purpose
+    const privacy = await c.delegate([{ tool: 'create_callback', args: { reason: 'Privacy request: delete my data', callback_number: null, topic: null } }]);
+    expect(privacy.results[0]!.data.task_id).not.toBe(first.results[0]!.data.task_id);
+    expect(new Set(create.mock.calls.map(([, input]) => input.idempotencyKey)).size).toBe(2);
+    create.mockRestore();
+  });
+
   it('answers from the common questions when no document does, and searches for the topic, not the clinic name', async () => {
     const c = await w.call();
     c.caller('Where are you? What is the address?');
