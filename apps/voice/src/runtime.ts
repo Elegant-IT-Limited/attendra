@@ -73,6 +73,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
   const { db, cipher } = rt;
   const calls = new CallRepository(db, cipher);
   const summaries = new CallSummaryRepository(db, cipher);
+  const directory = new PostgresPatientDirectory(db, cipher);
   const clinicNumbers = new Map<string, string>();
   // texts go out from the clinic's main number, whichever line was dialled
   const remember = (config: unknown) => {
@@ -87,7 +88,11 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
     openCall: (clinicId, sessionId, from, channel, startedBy) => calls.open(clinicId, sessionId, from, channel, startedBy),
-    historyFor: (clinicId, from, callId) => summaries.historyFor(clinicId, from, callId),
+    // the earlier calls from this number, and the one first name on file for it, as a front desk's caller ID shows
+    historyFor: async (clinicId, from, callId) => {
+      const [calls, name] = await Promise.all([summaries.historyFor(clinicId, from, callId), directory.nameOnFile(clinicId, from, callId)]);
+      return [name ? `Name on file for this number: ${name}.` : null, calls].filter(Boolean).join('\n') || null;
+    },
     actionsFor: (clinicId, callId) => ({
       record: (a) => calls.recordAction(clinicId, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }),
     }),
@@ -104,7 +109,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
       },
     }),
     backend: {
-      patients: new PostgresPatientDirectory(db, cipher),
+      patients: directory,
       scheduler: new BuiltinScheduler(db),
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
