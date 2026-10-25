@@ -203,7 +203,7 @@ export const Texting = z.object({
   // the switch for texts asked for on a call; a hosted clinic has it turned on when its texting registration is approved
   enabled: z.boolean().default(false),
   kinds: z.object({
-    // a confirmation when a visit is moved or cancelled on the phone, sent without asking, like the booking one
+    // a confirmation when a visit is moved or cancelled on the phone, like the booking one: the read-back says it will follow
     change_confirmed: z.boolean().default(true),
     directions: z.boolean().default(true),
     hours: z.boolean().default(true),
