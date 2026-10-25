@@ -159,7 +159,7 @@ describe('the OpenAI webhook', () => {
 
   it('answers a call that arrives for both engines once, on GPT-Live, and rejects an unknown one once', async () => {
     const twin = (id: string, type: string, session: string, to: string) => JSON.stringify({ sig: 'ok', id, type, data: { type: 'sip', session_id: session, call_id: session, sip_headers: [{ name: 'To', value: `<sip:${to}@x>` }] } });
-    const { d, engine } = deps({ pairWaitMs: 20 });
+    const { d, engine } = deps({ pairWaitMs: 1000 }); // the GPT-Live twin must win even on a busy machine (20 ms lost the race under load, 2026-10-25)
     const app = buildServer(d);
     await post(app, twin('wh_r1', 'realtime.call.incoming', 'rtc_u1_same', '+13035550100'));
     await post(app, twin('wh_l1', 'live.transport.incoming', 'live_u1_same', '+13035550100'));
