@@ -109,6 +109,30 @@ describe('the OpenAI webhook', () => {
     expect(await run('2026-09-30T04:00:00Z', vipClinic)).not.toContain('VIP list');
   });
 
+  it('while the assistant is paused, puts every caller through to the front desk, or says when to call back and ends the call', async () => {
+    const paused = { ...DEMO_CLINIC, answeringPaused: true, vipCallers: [{ name: 'Partner clinic', phone: '+13035550147' }] };
+    const run = async (at: string) => {
+      const sideband = { send: vi.fn(), onEvent: vi.fn(), onError: vi.fn(), onClose: (h: (code: number) => void) => void setTimeout(() => h(1000), 0), close: vi.fn() };
+      const { d, engine } = deps({ clinicForNumber: async () => paused, now: () => new Date(at) });
+      engine.attach.mockReturnValue(sideband);
+      const app = buildServer(d);
+      await post(app, incoming(`wh_paused_${at}`, '+13035550100'));
+      await app.close();
+      return JSON.stringify(sideband.send.mock.calls) + JSON.stringify(engine.accept.mock.calls.map((c) => (c as unknown[])[3] ?? null));
+    };
+    // Tuesday 10 am in Denver: the front desk takes transfers
+    const open = await run('2026-09-29T16:00:00Z');
+    expect(open).toContain('not answering calls right now');
+    expect(open).toContain("I'm connecting you with our team now.");
+    expect(open).not.toContain('VIP list');
+    expect(open).not.toContain('How can I help');
+    // 10 pm: no transfer, so when to call back, and where to go in an emergency
+    const closed = await run('2026-09-30T04:00:00Z');
+    expect(closed).toContain('Please call back during our opening hours.');
+    expect(closed).toContain('emergency number');
+    expect(closed).not.toContain('connecting you');
+  });
+
   it('rejects a call to a number no clinic owns with SIP 404', async () => {
     const alert = vi.fn();
     const { d, engine } = deps({ alerts: { alert, note: vi.fn(), flush: async () => {} } });

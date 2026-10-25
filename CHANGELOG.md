@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (hosting)
+
+- **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.
+- **A line from the hosting layer on every page.** The plan can carry a notice (free minutes nearly used, the assistant paused until a card is added). The owner reads it with the link to the plan; the team reads its own version.
+
 ### Fixed (calls, from Tamal's VIP and caller-ID test calls, 2026-10-25)
 
 - **A VIP hears a hello and is put through.** A caller on the VIP list heard the usual greeting, "How can I help you today?", and then, without a pause, "I'm connecting you with a member of our team now." The opening is now one line for them: "Hi Tamal, thanks for calling Zaru. This is Zizu, the clinic's AI assistant. I'm connecting you with our team now." (in Spanish too), with no question before the transfer. The call summary no longer flags a VIP transfer for review because no request was heard.

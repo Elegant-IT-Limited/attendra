@@ -41,6 +41,11 @@ describe('provisioning', () => {
     await at('2026-09-03T16:00:00Z', 60, 'phone', false);
     await at('2026-10-01T15:00:00Z', 60);
     expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121, texts: 0 });
+    // a call taken while the assistant was paused (a short line, then the front desk) is not billed
+    const [paused] = (await t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, channel)
+      values ('clinic_oak', 's_paused', '2026-09-04T15:00:00Z'::timestamptz, '2026-09-04T15:00:20Z'::timestamptz, 'phone') returning id`)).rows as [{ id: string }];
+    await t.db.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values ('clinic_oak', ${paused.id}, 'answering_paused', '{}', '{"step":"transferred"}', 1)`);
+    expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121, texts: 0 });
   });
 
   it('counts the texts the carrier took in the period, never one refused before sending', async () => {
