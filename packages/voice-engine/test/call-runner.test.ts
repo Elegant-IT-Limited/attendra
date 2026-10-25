@@ -41,6 +41,25 @@ describe('the GPT-Live call runner', () => {
     ]);
   });
 
+  it('tells a silent assistant to greet, once, when nobody has spoken 4 s into the call (2026-10-25)', async () => {
+    vi.useFakeTimers();
+    const silent = harness(new ScriptedPlanner([]));
+    void silent.runner.start();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(silent.sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(silent.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('Greet them now') }]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(silent.sent).toHaveLength(1);
+    // a greeting on time is never nudged
+    const greeted = harness(new ScriptedPlanner([]));
+    void greeted.runner.start();
+    await greeted.runner.handle(delta('out', 'g1', 'Thanks for calling Maple Street.', 100));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(greeted.sent).toEqual([]);
+    vi.useRealTimers();
+  });
+
   it('ignores a replayed event instead of running the delegation twice', async () => {
     const plan = vi.fn(async () => ({ say: 'ok' }));
     const h = harness({ plan });
