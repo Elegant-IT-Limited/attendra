@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, audienceLine, type ClinicConfig, industryPack, MEDICAL_REFUSAL, NO_INFORMATION, PACKS, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, MEDICAL_REFUSAL, NO_INFORMATION, PACKS, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -121,7 +121,11 @@ export class ResponsesPlanner implements Planner {
     const earlier = input.history
       ? `\n\nEarlier calls from the number this caller is calling from (our records, newest first):\n${input.history}\nUse them to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
       : '';
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}${earlier}` }];
+    // a caller on a number abroad (or premium, toll-free) is never offered a text, so never told one failed
+    const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))
+      ? '\n\nThe number this caller is calling from cannot get texts (it is not a mobile number in the clinic\'s country). Do not offer to text anything and never ask for another number: give the address, hours and every other detail out loud. A verified caller\'s number on file may still get a booking confirmation.'
+      : '';
+    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}${earlier}${noTexts}` }];
 
     for (let round = 0; round < this.maxRounds; round++) {
       const res = await this.openai.responses.create({
@@ -161,6 +165,7 @@ export function stateLine(state: CallState): string {
       : 'patient not verified',
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
+    ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),
     ...(state.done.length ? [`done on this call: ${state.done.join('; ')} (final: do not look these up or doubt them)`] : []),
   ].join('; ');
 }
