@@ -103,6 +103,13 @@ describe('provisioning', () => {
     expect((await api.request('GET', `/api/v1/clinics/${DEMO_CLINIC.id}/settings/meta`, { cookie: await api.signIn('omar@maple.example', true) })).json()).toMatchObject({ updatedBy: { name: 'Attendra' } });
     expect((await api.request('PUT', `${P}/clinics/clinic_none/texting`, { body: { enabled: true }, authorization: auth })).statusCode).toBe(404);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/texting`, { body: { enabled: false }, authorization: auth })).statusCode).toBe(204);
+    // the assistant paused by the hosting layer (the plan), and answering again; Settings never changes it
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/answering`, { body: { paused: true }, authorization: auth })).statusCode).toBe(204);
+    const pausedNow = async () => ((await api.t.db.execute(sql`select config->'answeringPaused' as p from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { p: unknown }).p;
+    expect(await pausedNow()).toBe(true);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/answering`, { body: { paused: true }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/answering`, { body: { paused: false }, authorization: auth })).statusCode).toBe(204);
+    expect(await pausedNow()).toBe(false);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
     expect(await clinicForNumber(api.t.db, '+13035550177')).toMatchObject({ id: DEMO_CLINIC.id });
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/numbers/12345`, { authorization: auth })).statusCode).toBe(422);

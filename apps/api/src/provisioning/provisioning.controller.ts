@@ -45,6 +45,7 @@ const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes:
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
+const AnsweringSwitch = z.object({ paused: z.boolean() });
 const PlanBody = z.object({ plan: HostingPlan.nullable() });
 const Closed = z.object({ closed: z.boolean() });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
@@ -182,6 +183,22 @@ export class ProvisioningController {
       const c = ClinicConfig.parse(current);
       if ((c.texting?.enabled ?? false) === body.enabled) return { result: true };
       return { save: { ...c, texting: { ...textingOf(c), enabled: body.enabled } }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * The assistant paused or answering again: the hosting layer pauses it when a plan's free minutes are used up
+   * or a payment is missing. Paused, calls go to the front desk while it takes transfers, or hear a short message.
+   */
+  @Put('clinics/:clinicId/answering')
+  @HttpCode(204)
+  async answering(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(AnsweringSwitch)) body: z.infer<typeof AnsweringSwitch>) {
+    this.check(authorization);
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', 'clinic.answering.' + (body.paused ? 'paused' : 'resumed'), clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if ((c.answeringPaused ?? false) === body.paused) return { result: true };
+      return { save: { ...c, answeringPaused: body.paused }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
   }
