@@ -292,6 +292,9 @@ const ClinicConfigShape = z.object({
   booking: BookingRules.optional(),
   // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default
   voiceEngine: z.enum(['gpt-live', 'gpt-realtime']).optional(),
+  // the hosting layer pauses the assistant (a plan's free minutes used up, a payment missing): calls go to the
+  // front desk while it takes transfers, or hear a short message. Set by provisioning, never in Settings
+  answeringPaused: z.boolean().optional(),
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)

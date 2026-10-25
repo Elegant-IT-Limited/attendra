@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
-import { ClinicConfig, vipRoute } from '@attendra/core';
+import { ClinicConfig, resolveTransfer, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
-import { callerContext, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, vipOpening } from '@attendra/voice-engine';
+import { callerContext, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -362,7 +362,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null } } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
     const timers: NodeJS.Timeout[] = [];
@@ -418,8 +418,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       a.observer = (e) => live.publish(callId, e);
       deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel }, 'call accepted');
       const done = runner.start();
+      // the clinic's assistant is paused: a short line, then the front desk or the end of the call
+      if (opts.paused) await runner.act(a.paused(opts.paused.uri));
       // a VIP caller hears their hello, then goes straight to the front desk
-      if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
+      else if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
       // what caller ID would show a front desk: how often this number called, and the one name on file
       else {
         const known = callerContext(history);
@@ -482,16 +484,20 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       if (router && clinic.voiceEngine && clinic.voiceEngine !== came) {
         deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: clinic.voiceEngine, came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
       }
-      // a VIP is greeted by name and told they are being put through, not asked how to help first
-      const vip = vipRoute(clinic, from, now());
-      const opening = vip ? vipOpening(clinic, vip.name) : undefined;
+      // a paused assistant (the clinic's plan) puts every caller through to the front desk while it takes
+      // transfers, or tells them when to call back; a VIP is greeted by name and put through
+      const front = clinic.answeringPaused ? resolveTransfer(clinic, 'front_desk', now()) : null;
+      const paused = front ? { uri: front.ok ? front.uri : null } : undefined;
+      const vip = paused ? null : vipRoute(clinic, from, now());
+      const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
       const vipArgs = opening ? [opening] as const : [] as const;
       if (router) await router.acceptWith(via, sessionId, clinic, now(), ...vipArgs);
       else await deps.engine.accept(sessionId, clinic, now(), ...vipArgs);
       accepted = true;
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
-      if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
-      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri });
+      if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
+      else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
+      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       deps.alerts?.alert('call_failed', `A call could not be set up${accepted ? ' after it was answered' : ' and was turned away'}: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown error'}.`);

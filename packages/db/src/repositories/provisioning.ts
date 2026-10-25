@@ -151,11 +151,15 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
   });
 }
 
-/** Phone calls in [from, to): how many, and their length in seconds, start to end; and the texts sent. Browser test calls are not counted. */
+/**
+ * Phone calls in [from, to): how many, and their length in seconds, start to end; and the texts sent. Browser
+ * test calls are not counted, nor calls taken while the assistant was paused (a short line, then the front desk).
+ */
 export async function phoneUsage(db: Database, clinicId: string, from: Date, to: Date): Promise<{ calls: number; seconds: number; texts: number }> {
   const [row] = (await db.execute(sql`
     select count(*)::int as calls, coalesce(sum(ceil(extract(epoch from (ended_at - started_at)))), 0)::int as seconds
-    from calls where clinic_id = ${clinicId} and channel = 'phone' and ended_at is not null and started_at >= ${from} and started_at < ${to}`)).rows as [{ calls: number; seconds: number }];
+    from calls where clinic_id = ${clinicId} and channel = 'phone' and ended_at is not null and started_at >= ${from} and started_at < ${to}
+      and not exists (select 1 from call_actions a where a.call_id = calls.id and a.tool = 'answering_paused')`)).rows as [{ calls: number; seconds: number }];
   // a text counts once the carrier took it (Twilio gave it an id), delivered or not; one refused before sending never does
   const [sms] = (await db.execute(sql`
     select count(*)::int as texts from sms_messages

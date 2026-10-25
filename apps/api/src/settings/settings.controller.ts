@@ -117,7 +117,8 @@ export class SettingsController {
     if (!merged.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(merged.error) });
     // the emergency review is recorded on its own route, by the person who did it; Settings keeps it as it is
     // and the voice engine is the operator's choice (provisioning), never Settings'
-    const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine };
+    // and so is a pause of the assistant (provisioning, from the plan)
+    const next = { ...merged.data, emergencyReview: current.emergencyReview, voiceEngine: current.voiceEngine, answeringPaused: current.answeringPaused };
     if (next.id !== clinicId) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'id', message: 'the clinic id cannot change' }] });
     // the assistant's numbers are Attendra's (they route calls); the clinic's own lines are the clinic's to keep right.
     // In order: the assistant's first, as they were, since the first number is the one confirmations are texted from
