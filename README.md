@@ -1,12 +1,12 @@
 # Attendra
 
-**An open-source AI receptionist for medical practices.** It answers the clinic's phone line day and night, in English and Spanish, verifies the caller, adds new patients, tells callers about the doctors, books, moves and cancels appointments, takes refill and callback requests, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
+**An open-source AI receptionist for veterinary clinics, and for medical practices through its industry packs.** It answers the clinic's phone line day and night, in English and Spanish, checks who is calling (the owner and the pet at a vet clinic), adds new pets or patients, tells callers about the vets or doctors, books, moves and cancels appointments, takes refill and callback requests, sends animal emergencies to the clinic's emergency hospital, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
 
 Attendra is built and maintained by [Elegant IT Limited](https://eleganttechbd.com), an AI-native software development studio, and is the kind of production AI system the studio builds for clients.
 
 Twilio carries the call over SIP to OpenAI GPT-Live, which holds the conversation. Every decision that matters (who the caller is, which times are really free, whether the caller said yes, what gets written, who is told) runs in this repository's TypeScript backend, where it can be tested, audited and self-hosted.
 
-> **Status: v0.5.1, pre-pilot.** The call path, the backend brain, the scheduler, doctors and their hours, patient identity with families and new patients, the dashboard with live updates, live calls, summaries, the clinic's knowledge, webhooks, quality tracking and MCP all work and are tested. Reminders and the waitlist come next, once Twilio is live (see the [roadmap](docs/roadmap.md)). Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
+> **Status: v0.9.0, private beta.** Attendra runs in production at [getattendra.com](https://getattendra.com) for invited vet clinics: real phone lines over a Twilio Elastic SIP trunk with a backup route, texts with the caller's consent, the dashboard with live calls, summaries, webhooks and MCP, all tested on 110 scripted call scenarios (see the [changelog](CHANGELOG.md) and the [roadmap](docs/roadmap.md)). For medical practices, Attendra is *HIPAA-ready*, not HIPAA-certified: you need BAAs with your providers before any real patient data goes through it. Read [docs/hipaa.md](docs/hipaa.md) first.
 
 ## One call, end to end
 
