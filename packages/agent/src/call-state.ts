@@ -36,6 +36,8 @@ export class CallState {
   registrations = 0;
   /** The identity check has found nobody on this call: only then may the assistant add a new patient. */
   notFound = false;
+  /** The number they are calling from can't get texts (abroad, premium, toll-free): no text is offered again. */
+  callerNotTextable = false;
   /** Slots the caller has actually been offered. A booking can only use one of these. */
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;

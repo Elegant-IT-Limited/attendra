@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, callUsNumber, declinesText, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, callUsNumber, declinesText, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
-  hospitalFor, hoursSummary, type SmsTemplate, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
+  hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -76,6 +76,9 @@ function topicOf(question: string, clinicName: string): string {
   return topic.length >= 2 ? topic : question;
 }
 /** The number to call back: the one the caller gave, or else the number they are calling from. */
+/** What to say when a number can't get texts: once, out loud instead, and never a hunt for another number. */
+const NOT_TEXTABLE = 'This number can\'t get texts: it isn\'t a mobile number in the clinic\'s country. Say so in a few words and read it out slowly instead. Don\'t offer a text again on this call, and never ask for another number to text.';
+
 const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null }) =>
   (typeof args.callback_number === 'string' && args.callback_number.trim() ? args.callback_number.trim() : null) ?? ctx.callerNumber;
 const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
@@ -192,6 +195,8 @@ export async function runTool(
   const confirmationTarget = (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed'): 'calling' | 'file' | null => {
     const patient = state.verifiedPatient;
     if (!textingOf(clinic).enabled || !patient?.phone) return null;
+    // a number that can't get texts (abroad, premium, toll-free) is never promised one
+    if (!textableNumber(clinic, asE164(clinic, patient.phone))) return null;
     if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return null;
     const calling = !!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone);
     if (patient.isNew && !calling) return null;
@@ -617,11 +622,13 @@ export async function runTool(
       if (!callback) return NO_CALLBACK_NUMBER();
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
-        idempotencyKey: key(ctx.callId, 'callback', String(args.reason).toLowerCase()),
+        // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once
+        idempotencyKey: key(ctx.callId, 'callback', topic?.id ?? (/^privacy request/i.test(String(args.reason)) ? 'privacy' : 'general')),
         details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: callback },
       });
       if (!state.emergencyLocked) state.outcome = 'task_created';
-      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
+      if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
+      await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id } };
     }
 
@@ -654,9 +661,14 @@ export async function runTool(
       let target: 'this' | 'file' = 'this';
       if (asked) {
         if (ctx.callerNumber && samePhone(asked, ctx.callerNumber)) to = ctx.callerNumber;
-        else if (onFile && samePhone(asked, onFile)) { to = onFile; target = 'file'; } else return refuse('number_not_allowed', 'Texts go only to the number they are calling from or the number on their file. Offer those; never another number.');
+        else if (onFile && samePhone(asked, onFile)) { to = onFile; target = 'file'; } else return refuse('number_not_allowed', 'Texts go only to the number they are calling from or the number on their file. Offer those; never ask for another number.');
       } else if (ctx.callerNumber) to = ctx.callerNumber;
       if (!to) return refuse('no_number', 'Say you can\'t see the number they\'re calling from, and ask whether they\'d like it sent to the number on their file.');
+      // a number abroad, premium or toll-free never gets a text: known before anything is asked
+      if (!textableNumber(clinic, asE164(clinic, to))) {
+        if (target === 'this') state.callerNotTextable = true;
+        return refuse('not_textable', NOT_TEXTABLE);
+      }
       if (backend.messenger.optedOut && await backend.messenger.optedOut(clinic.id, to)) {
         return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
       }
@@ -690,7 +702,7 @@ export async function runTool(
       if (!sent || sent.status === 'not_sent') {
         if (sent?.reason === 'opted_out') return refuse('opted_out', `Say: "${pack.textRefused({ reason: 'opted_out' })}" Then read it out, slowly.`);
         if (sent?.reason === 'rate_limited' || sent?.reason === 'monthly_limit') return refuse('rate_limited', 'Say the text can\'t be sent right now, and read it out instead.');
-        if (sent?.reason === 'not_textable') return refuse('not_textable', 'Say texts can only go to a mobile number in this country, and read it out instead.');
+        if (sent?.reason === 'not_textable') return refuse('not_textable', NOT_TEXTABLE);
         return refuse('not_sent', 'Say the text didn\'t go through, and read it out instead.');
       }
       if (sent.status === 'sent') state.textsSent++;

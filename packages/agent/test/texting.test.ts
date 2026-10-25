@@ -71,6 +71,19 @@ describe('texting during a call', () => {
     expect((await hidden.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['no_number']);
   });
 
+  it('never offers a text to a number abroad, and says so once (a test call from abroad, 2026-10-25)', async () => {
+    const c = await w.call('+8801712345678', { clinic: TEXTING });
+    c.caller('Can you text me the location?');
+    const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
+    expect(out.errors).toEqual(['not_textable']);
+    expect(said(out.results[0]!)).toContain('never ask for another number');
+    expect(c.state.callerNotTextable).toBe(true);
+    expect(w.sms).toHaveLength(0);
+    // and a premium US number is the same
+    const premium = await w.call('+19005550123', { clinic: TEXTING });
+    expect((await premium.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['not_textable']);
+  });
+
   it('has nothing to send for an answer not given, an unknown link, or no address', async () => {
     const c = await w.call('+13035550147', { clinic: TEXTING });
     expect((await c.delegate([{ tool: 'send_text', args: { kind: 'answer', ref: 'faq_fasting', to: null } }])).errors).toEqual(['nothing_to_send']);
