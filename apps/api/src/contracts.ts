@@ -636,6 +636,10 @@ export const HostingPlan = z.object({
   endsAt: z.iso.datetime().nullable(),
   /** Where an owner manages the plan. */
   manageUrl: SafeLink.nullable(),
+  /** Where an owner adds another location to this business (same business, one bill); a hosting layer from before leaves it out. */
+  addLocationUrl: SafeLink.nullable().optional(),
+  /** Where an owner opens a separate business on the same login (its own plan, trial, setup and team). */
+  newClinicUrl: SafeLink.nullable().optional(),
   /**
    * A line the hosting layer wants on every page (free minutes nearly used, the assistant paused until a card
    * is added): what the owner reads, with the link to the plan, and what the rest of the team reads.

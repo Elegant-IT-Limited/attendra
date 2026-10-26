@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (an owner opens a second, separate clinic with the same login)
+
+- **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.
+- **In the dashboard.** On a hosted plan, owners find "Add a location" (same business, one bill) and "Create a new clinic" (a separate business with its own plan) in the account menu, and in the clinic switcher when they work at more than one clinic. The links come from the hosting layer's plan (`addLocationUrl`, `newClinicUrl`), so a self-hosted install shows neither, and staff never see them.
+
 ### Fixed (the dashboard handles a busy API, and open tabs ask less of it)
 
 - **"Too many requests" is never silent.** The dashboard tries a request the API turned away (429) again after its `Retry-After`, or 2 then 5 seconds, at most twice; then a dialog says "Attendra is busy for a moment. Try again in a few seconds." The patient search and the slot picker say the same instead of an empty list.

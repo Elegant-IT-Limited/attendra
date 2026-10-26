@@ -22,6 +22,28 @@ export async function createOrganizationWithClinic(db: Database, org: { id: stri
   });
 }
 
+/**
+ * A second, separate business for someone who already owns one: a new organization and
+ * its first clinic, with this login as its owner. Nothing is copied from their other
+ * clinics. Only an owner, checked here: staff sign up with another email, because a work
+ * email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.
+ */
+export async function openOrganizationForOwner(db: Database, userId: string, org: { id: string; name: string; plan: string }, config: ClinicConfig): Promise<'not_found' | 'not_confirmed' | 'not_an_owner' | 'opened'> {
+  const c = ClinicConfig.parse(config);
+  return db.transaction(async (tx) => {
+    const [user] = await tx.select({ verified: authUsers.emailVerified }).from(authUsers).where(eq(authUsers.id, userId));
+    if (!user) return 'not_found';
+    if (!user.verified) return 'not_confirmed';
+    const [owns] = await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).limit(1);
+    if (!owns) return 'not_an_owner';
+    await tx.insert(organizations).values({ id: org.id, name: org.name, slug: org.id, plan: org.plan });
+    await tx.insert(clinics).values({ id: c.id, orgId: org.id, name: c.name, timezone: c.timezone, config: c });
+    await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: org.id, userId, role: 'owner' });
+    await tx.insert(auditLogs).values({ clinicId: c.id, actor: `user:${userId}`, action: 'organization.created.by_owner', entity: 'organization', entityId: org.id });
+    return 'opened';
+  });
+}
+
 /** What a new location takes from the organization's first clinic: the same assistant. Hours, doctors, address, transfers and hospitals are its own. */
 const SHARED = ['texting', 'languages', 'primaryLanguage', 'assistantName', 'voice', 'retentionDays', 'faqs', 'requestTopics', 'customFields', 'menuLinks', 'talk'] as const;
 

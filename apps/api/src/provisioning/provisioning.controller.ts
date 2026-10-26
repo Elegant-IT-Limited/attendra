@@ -2,7 +2,7 @@
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
@@ -40,6 +40,14 @@ const NewAccount = z.object({
    * older than its confirmation link (48 hours).
    */
   replaceUnconfirmed: z.boolean().default(false),
+});
+// an owner's second business: the same login, so no owner details; userId is the engine's, from /me
+const ForUser = z.object({
+  userId: z.string().min(1).max(100),
+  organization: NewAccount.shape.organization,
+  clinic: NewAccount.shape.clinic,
+  testCallMinutes: NewAccount.shape.testCallMinutes,
+  plan: NewAccount.shape.plan,
 });
 const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes: z.number().int().min(0).max(600).optional() });
 const Email = z.object({ email: z.email().max(254) });
@@ -116,6 +124,32 @@ export class ProvisioningController {
       throw new HttpException({ error: 'not_opened' }, 500);
     }
     return { organizationId, clinicId: config.id, userId };
+  }
+
+  /**
+   * A separate business for someone who already owns a clinic, on the same login: a new
+   * organization and clinic with its own plan, trial, setup and team, starting empty. 403
+   * not_an_owner unless the login owns at least one organization (staff sign up with
+   * another email); 409 not_confirmed for a login whose email was never confirmed.
+   */
+  @Post('accounts/for-user')
+  @HttpCode(201)
+  async openForOwner(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(ForUser)) body: z.infer<typeof ForUser>) {
+    this.check(authorization);
+    let config: ClinicConfig;
+    try {
+      config = starterClinic({ id: newId('clinic'), ...body.clinic });
+    } catch {
+      throw new HttpException({ error: 'invalid_request', issues: [{ path: 'clinic', message: 'unknown time zone or number' }] }, 422);
+    }
+    const organizationId = newId('org');
+    const result = await openOrganizationForOwner(this.db, body.userId, { id: organizationId, name: body.organization.name, plan: body.plan }, config);
+    if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result === 'not_confirmed') throw new HttpException({ error: 'not_confirmed' }, 409);
+    if (result === 'not_an_owner') throw new HttpException({ error: 'not_an_owner' }, 403);
+    if (body.testCallMinutes !== undefined) await setTestCallLimit(this.db, config.id, body.testCallMinutes * 60);
+    this.log.info({ user_id: body.userId, organization_id: organizationId, clinic_id: config.id }, 'provisioning: an owner opened another organization');
+    return { organizationId, clinicId: config.id, userId: body.userId };
   }
 
   /** Another location in an organization: its own clinic, with the first one's assistant settings. Everyone in the organization sees it. */
