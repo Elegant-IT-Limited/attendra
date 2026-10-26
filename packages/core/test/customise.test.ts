@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyListChange, asE164, listUsage, managedList, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { applyListChange, asE164, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -177,5 +177,34 @@ describe('fields and lists of the clinic\'s own', () => {
     expect(next.providers.some((p) => p.categories.includes(`${first} care`))).toBe(true);
     expect(Object.values(listUsage(c, 'categories')).every((n) => n > 0)).toBe(true);
     expect(managedList(c, 'species')).toContain('Dog');
+  });
+
+  it('refuses a value not on a list, whatever its case, but never one the record already has', () => {
+    const c = ClinicConfig.parse({ ...RIVERBEND_CLINIC, lists: { specialties: ['General practice', 'Exotic pets'] } });
+    expect(onList(managedList(c, 'specialties'), ' general PRACTICE ')).toBe(true);
+    expect(notOnListProblem(c, 'specialties', ['general practice'])).toBeNull();
+    expect(notOnListProblem(c, 'specialties', ['Surgery'])).toBe('"Surgery" is not on your list. Pick one from the list, or add it to the list first (Settings, Fields and lists).');
+    expect(notOnListProblem(c, 'specialties', ['Surgery'], ['surgery'])).toBeNull(); // the doctor already had it
+    expect(notOnListProblem(c, 'species', ['hamster'])).toMatch(/"hamster" is not on your list/);
+    expect(notOnListProblem(c, 'species', ['dog'])).toBeNull();
+  });
+
+  it('adds what an import brings to a kept list, at its end, and leaves a list the records make alone', () => {
+    const kept = ClinicConfig.parse({ ...RIVERBEND_CLINIC, lists: { specialties: ['General practice'] } });
+    expect(withListValues(kept, 'specialties', ['Surgery', 'general practice', 'surgery']).lists?.specialties).toEqual(['General practice', 'Surgery']);
+    const derived = ClinicConfig.parse(RIVERBEND_CLINIC);
+    expect(withListValues(derived, 'categories', ['Horses'])).toBe(derived);
+    // species start from the usual kinds of animal, so the first new one keeps the list from then on
+    expect(withListValues(derived, 'species', ['hamster']).lists?.species).toEqual([...managedList(derived, 'species'), 'Hamster']);
+  });
+});
+
+describe('the stand-in a new clinic starts with', () => {
+  it('is listed only while it is the only one, or while it has visits on screen', () => {
+    const standIn = { id: 'prov_1', placeholder: true };
+    const real = { id: 'prov_ruiz' };
+    expect(shownProviders([standIn]).map((p) => p.id)).toEqual(['prov_1']);
+    expect(shownProviders([standIn, real]).map((p) => p.id)).toEqual(['prov_ruiz']);
+    expect(shownProviders([standIn, real], ['prov_1']).map((p) => p.id)).toEqual(['prov_1', 'prov_ruiz']);
   });
 });

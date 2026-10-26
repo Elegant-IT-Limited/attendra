@@ -37,6 +37,8 @@ test.describe.serial('patients', () => {
     const dialog = page.getByRole('dialog', { name: 'New booking' });
     await expect(dialog.getByText('For Tessa Okoro')).toBeVisible();
     await dialog.getByLabel('Visit type').selectOption({ label: 'New patient visit (60 min)' });
+    // a doctor added by an earlier spec can see new patients too, so the doctor is chosen
+    await dialog.getByLabel('Provider').selectOption({ label: 'Dr. Nkem Okafor' });
     await dialog.getByRole('button', { name: 'Later week' }).click();
     await dialog.getByRole('radio').first().click();
     await dialog.getByRole('button', { name: 'Next', exact: true }).click();

@@ -12,6 +12,7 @@ import { CustomFieldInputs } from '@/components/patients/custom-fields';
 import { useProblem } from '@/components/ui/toast';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
+import { useAddToList } from '@/lib/lists';
 
 /**
  * A patient's name, date of birth and phone, and a parent or guardian for a child.
@@ -33,6 +34,9 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   const [form, setForm] = useState<Omit<PatientInput, 'gender'> & { gender: Gender | '' }>({ firstName: '', lastName: '', dob: '', phone: '', guardianName: '', species: '', ...initial, gender: initial?.gender ?? '' });
   // a vet clinic's records are pets: found on a call by the owner's full name, the pet's name and the phone
   const pet = industryPack(config.data?.industry).identity === 'pet';
+  // the kind of animal is picked from the clinic's list; owners and managers can add to it from here
+  const addSpecies = useAddToList(clinicId, 'species');
+  const [speciesError, setSpeciesError] = useState<string | null>(null);
   // what did not work, or is worth a look, opens in a dialog in the middle of the screen
   const showProblem = useProblem();
   const setProblem = (p: { text: string; existing?: string }) => showProblem({
@@ -71,10 +75,20 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
     },
     onError: (e) => {
       if (e instanceof ApiFailure && e.status === 409) setProblem({ text: pet ? 'This pet is already on file: the same name, owner, birthday and phone number.' : 'This patient is already on file: the same name, date of birth and phone number.', existing: (e.body as { id?: string }).id });
-      else if (e instanceof ApiFailure && e.body.issues?.length) setProblem({ text: e.body.issues.map((i) => i.message).join('. ') });
+      else if (e instanceof ApiFailure && e.body.issues?.length) {
+        // a kind of animal not on the list is said under its field
+        setSpeciesError(e.body.issues.find((i) => i.path === 'species')?.message ?? null);
+        const rest = e.body.issues.filter((i) => i.path !== 'species');
+        if (rest.length) setProblem({ text: rest.map((i) => i.message).join('. ') });
+      }
       else setProblem({ text: 'That did not save. Check your connection and try again.' });
     },
   });
+  // an edit that leaves the kind of animal as it was does not send it, so a pet keeps one that is not on the list
+  const speciesSent = (v: string | null | undefined) => {
+    const now = v?.trim().toLowerCase() || null;
+    return patientId && now === (initial?.species?.trim().toLowerCase() || null) ? undefined : now;
+  };
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -83,7 +97,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
       const owner = (form.guardianName ?? '').trim().replace(/\s+/g, ' ');
       if (owner.split(' ').length < 2) { setProblem({ text: 'Add the owner\'s first and last name.' }); return; }
       // stored as the assistant stores a pet: its own name, the owner's last name, the owner as the guardian
-      save.mutate({ firstName: form.firstName.trim(), lastName: owner.split(' ').at(-1)!, dob: form.dob, gender: form.gender, phone: form.phone.trim(), guardianName: owner, species: form.species?.trim().toLowerCase() || null, textsOk: form.textsOk });
+      save.mutate({ firstName: form.firstName.trim(), lastName: owner.split(' ').at(-1)!, dob: form.dob, gender: form.gender, phone: form.phone.trim(), guardianName: owner, species: speciesSent(form.species), textsOk: form.textsOk });
       return;
     }
     save.mutate({ ...form, species: undefined, gender: form.gender, firstName: form.firstName.trim(), lastName: form.lastName.trim(), phone: form.phone.trim(), guardianName: child ? form.guardianName?.trim() || null : null });
@@ -100,8 +114,9 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           <div className="space-y-1.5">
             <Label htmlFor="species">Kind of animal</Label>
             {/* the clinic's own list, in its order (Settings, Fields and lists); stored in lower case */}
-            <Combobox id="species" label="Kind of animal" required maxLength={40} value={form.species ?? ''} onChange={(species) => setForm({ ...form, species })} placeholder="Pick one, or type: dog, cat…"
-              options={(config.data ? managedList(config.data, 'species') : [...DEFAULT_SPECIES]).map((k) => ({ value: k.toLowerCase(), label: k }))} />
+            <Combobox id="species" label="Kind of animal" required value={form.species ?? ''} onChange={(species) => { setForm({ ...form, species: species.toLowerCase() }); setSpeciesError(null); }} placeholder="Pick from your list"
+              options={(config.data ? managedList(config.data, 'species') : [...DEFAULT_SPECIES]).map((k) => ({ value: k.toLowerCase(), label: k }))}
+              onAdd={addSpecies} addLabel="Add a kind of animal" error={speciesError} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="dob">Birthday</Label>

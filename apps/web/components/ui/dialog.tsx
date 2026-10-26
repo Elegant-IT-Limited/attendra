@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * A panel on the right (side="right") or a centred dialog. Both trap focus, close
- * with Escape or the close button, and give focus back to what opened them.
+ * with Escape or the close button, and give focus back to what opened them. Escape
+ * inside [data-own-escape] belongs to that field, not to the panel.
  */
 export function Panel({ open, onOpenChange, title, description, side = 'center', children, footer, className, stacked }: {
   open: boolean;
@@ -26,6 +27,8 @@ export function Panel({ open, onOpenChange, title, description, side = 'center',
       <D.Portal>
         <D.Overlay className={cn('fixed inset-0 bg-overlay animate-fade-in', stacked ? 'z-[65]' : 'z-40')} />
         <D.Content
+          // a field that uses Escape itself (adding to a list inside a form) keeps it: the panel and what was filled in stay
+          onEscapeKeyDown={(e) => { if (e.target instanceof Element && e.target.closest('[data-own-escape]')) e.preventDefault(); }}
           className={cn('fixed flex flex-col', stacked ? 'z-[70]' : 'z-50', 'bg-surface-raised text-text shadow-lg focus-visible:outline-none',
             side === 'right'
               ? 'inset-y-0 right-0 w-full max-w-md border-l border-border animate-slide-in'

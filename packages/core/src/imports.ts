@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, type Gender, Provider } from './clinic';
+import { type ClinicConfig, DEFAULT_SPECIES, type Gender, type ListName, managedList, onList, Provider } from './clinic';
 import { parseDob, phoneDigits } from './identity';
 import { ageOn } from './providers';
 
@@ -97,7 +97,7 @@ export function patientTemplate(): string {
   ]);
 }
 
-export type RowResult<T> = { line: number; name: string; ok: true; value: T; existingId?: string } | { line: number; name: string; ok: false; message: string };
+export type RowResult<T> = { line: number; name: string; ok: true; value: T; existingId?: string; /** What the row adds to the clinic's lists. */ note?: string } | { line: number; name: string; ok: false; message: string };
 
 const split = (v: string) => v.split(';').map((x) => x.trim()).filter(Boolean);
 const yes = (v: string) => (v === '' ? true : /^(y|yes|true|1)$/i.test(v) ? true : /^(n|no|false|0)$/i.test(v) ? false : null);
@@ -125,7 +125,7 @@ function hoursOf(v: string): { open: string; close: string }[] | string {
  * same schema as one doctor added on the page, so the import cannot save anything the
  * page would refuse.
  */
-export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers' | 'visitTypes'>): RowResult<Provider>[] {
+export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'lists'>): RowResult<Provider>[] {
   const rows = records(text);
   if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
   if (rows.length && !rows[0]!.headers.includes('name')) return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names, with a name column; download the template' }];
@@ -145,6 +145,11 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       if (!match) return fail(`"${v}" is not a visit type in Settings (${clinic.visitTypes.map((t) => t.name).join(', ')})`);
       visitTypeIds.push(match.id);
     }
+    // in the list's own spelling, so the page's filters find them; a value not on the clinic's lists joins them
+    // when the file is imported, and the check before it says so on the row (the manager's OK)
+    const spelled = (name: 'specialties' | 'categories', v: string) => managedList(clinic, name).find((x) => onList([x], v)) ?? v;
+    const adds = [r.get('specialty'), ...split(r.get('categories'))].filter((v, i) => v && !onList(managedList(clinic, i === 0 ? 'specialties' : 'categories'), v)
+      && !onList(i === 0 ? (existing?.specialty ? [existing.specialty] : []) : existing?.categories ?? [], v));
     const gender = r.get('gender') === '' ? undefined : readGender(r.get('gender'));
     if (gender === null) return fail('gender is female, male, other or prefer not to say');
     const accepting = yes(r.get('accepting_new_patients'));
@@ -171,8 +176,8 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       id: existing?.id ?? newProviderId(name),
       name,
       gender: keep(r.get('gender'), gender, existing?.gender),
-      specialty: keep(r.get('specialty'), r.get('specialty') || undefined, existing?.specialty),
-      categories: keep(r.get('categories'), split(r.get('categories')), existing?.categories) ?? [],
+      specialty: keep(r.get('specialty'), r.get('specialty') ? spelled('specialties', r.get('specialty')) : undefined, existing?.specialty),
+      categories: keep(r.get('categories'), split(r.get('categories')).map((v) => spelled('categories', v)), existing?.categories) ?? [],
       ages: existing && min === '' && max === '' ? existing.ages : min === '' && max === '' ? undefined : { min: min === '' ? 0 : Number(min), max: max === '' ? null : Number(max) },
       acceptingNewPatients: keep(r.get('accepting_new_patients'), accepting, existing?.acceptingNewPatients) ?? true,
       visitTypeIds: visitTypeIds.length ? visitTypeIds : existing?.visitTypeIds ?? clinic.visitTypes.map((v) => v.id),
@@ -180,8 +185,26 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       timeOff: keep(r.get('time_off'), timeOff, existing?.timeOff) ?? [],
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => `${i.path.join('.') || 'row'}: ${i.message}`).join('; '));
-    return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}) };
+    return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}), ...(adds.length ? { note: listNote(adds) } : {}) };
   });
+}
+
+/** What an import row adds to the clinic's lists, as the check before the import says it. */
+const listNote = (adds: string[]) => `adds ${adds.map((v) => `"${v}"`).join(', ')} to your lists`;
+
+/**
+ * The clinic's list with the values an import brings that are not on it yet, at its end. A list
+ * the clinic has not kept yet follows the doctors' records, so it needs nothing (species start
+ * from the usual kinds of animal, so theirs is kept from then on).
+ */
+export function withListValues<C extends Pick<ClinicConfig, 'lists' | 'providers'>>(c: C, name: ListName, values: string[]): C {
+  if (!c.lists?.[name] && name !== 'species') return c;
+  const list = managedList(c, name);
+  const added: string[] = [];
+  for (const v of values.map((x) => x.trim()).filter(Boolean)) {
+    if (!onList(list, v) && !onList(added, v)) added.push(name === 'species' ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+  }
+  return added.length ? { ...c, lists: { ...c.lists, [name]: [...list, ...added] } } : c;
 }
 
 export interface PatientRow { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; /** They agreed to reminder texts (texts_ok). */ textsOk?: boolean }
@@ -244,7 +267,7 @@ export function petTemplate(): string {
  * Pets from a spreadsheet, stored as the assistant stores a pet it adds on a call:
  * its own name, the owner's last name, the owner as the guardian, the owner's phone.
  */
-export function readPets(text: string, today: string, northAmerica = true): RowResult<PatientRow & { species: string }>[] {
+export function readPets(text: string, today: string, northAmerica = true, speciesList: readonly string[] = DEFAULT_SPECIES): RowResult<PatientRow & { species: string }>[] {
   const rows = records(text);
   if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
   if (rows.length && !['pet_name', 'species', 'birthday', 'owner_name', 'owner_phone'].every((c) => rows[0]!.headers.includes(c))) {
@@ -271,6 +294,8 @@ export function readPets(text: string, today: string, northAmerica = true): RowR
     const key = `${pet.toLowerCase()}|${owner.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this pet is in the file twice');
     seen.add(key);
-    return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species, textsOk: agreed(r.get('texts_ok')) } };
+    // a kind of animal not on the clinic's list joins it when the file is imported; the check before says so
+    const note = onList(speciesList, species) ? {} : { note: listNote([species]) };
+    return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species, textsOk: agreed(r.get('texts_ok')) }, ...note };
   });
 }

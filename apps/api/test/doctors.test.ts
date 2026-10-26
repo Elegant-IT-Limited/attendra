@@ -10,7 +10,7 @@ let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 
 const stored = async () => ClinicConfig.parse(((await api.t.db.execute(sql`select config from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { config: unknown }).config);
 const kim = {
-  name: 'Dr. Jae Kim', gender: 'male', specialty: 'Pediatrics', categories: ['Children', 'Asthma'], ages: { min: 0, max: 17 }, acceptingNewPatients: true,
+  name: 'Dr. Jae Kim', gender: 'male', specialty: 'Pediatrics', categories: ['Children', 'Vaccinations'], ages: { min: 0, max: 17 }, acceptingNewPatients: true,
   visitTypeIds: ['vt_sick', 'vt_new'], hours: { '1': [{ open: '09:00', close: '13:00' }] }, timeOff: [{ from: '2026-12-24', to: '2026-12-31' }],
 };
 
@@ -58,8 +58,48 @@ describe('doctors', () => {
     expect((await stored()).providers.find((p) => p.id === id)?.names).toEqual({ es: 'el doctor Jae Kim' });
     // the Doctors page sends back what it loaded, names included
     const loaded = (await stored()).providers.find((p) => p.id === id)!;
-    await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...loaded, specialty: 'Pediatric care' } });
-    expect((await stored()).providers.find((p) => p.id === id)).toMatchObject({ specialty: 'Pediatric care', names: { es: 'el doctor Jae Kim' } });
+    await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...loaded, specialty: 'Family medicine' } });
+    expect((await stored()).providers.find((p) => p.id === id)).toMatchObject({ specialty: 'Family medicine', names: { es: 'el doctor Jae Kim' } });
+  });
+
+  it('takes a specialty and categories only from the clinic\'s lists, and keeps what a doctor already has', async () => {
+    // not on the list: refused under its field, in a plain sentence
+    const typed = await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, specialty: 'Surgery' } });
+    expect(typed.statusCode).toBe(422);
+    expect(typed.json().issues).toEqual([{ path: 'specialty', message: '"Surgery" is not on your list. Pick one from the list, or add it to the list first (Settings, Fields and lists).' }]);
+    const chip = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale', categories: ['Children', 'Asthma'] } });
+    expect(chip.statusCode).toBe(422);
+    expect(chip.json().issues[0].path).toBe('categories');
+    // added to the list (the "+ Add a specialty…" choice), then it is taken
+    const lists = `/api/v1/clinics/${DEMO_CLINIC.id}/settings/lists/specialties`;
+    const before = await stored();
+    expect((await api.request('PUT', lists, { cookie: as.owner, body: { values: ['Family medicine', 'Pediatrics', 'Surgery'] } })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, specialty: 'Surgery' } })).statusCode).toBe(200);
+    // a value already on the doctor that has left the list stays when the doctor is saved again: nothing is lost
+    await api.t.db.execute(sql`update clinics set config = jsonb_set(config, '{lists,specialties}', '["Family medicine", "Pediatrics"]') where id = ${DEMO_CLINIC.id}`);
+    expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, specialty: 'Surgery', acceptingNewPatients: false } })).statusCode).toBe(200);
+    expect((await stored()).providers.find((p) => p.id === id)!.specialty).toBe('Surgery');
+    // and put back as it was for the tests below
+    await api.t.db.execute(sql`update clinics set config = ${JSON.stringify({ ...before, providers: (await stored()).providers.map((p) => (p.id === id ? { ...p, specialty: 'Pediatrics' } : p)) })}::jsonb where id = ${DEMO_CLINIC.id}`);
+  });
+
+  it('lets the stand-in a new clinic starts with go once a real doctor is added, unless a visit points at it', async () => {
+    const before = await stored();
+    const standIn = { id: 'prov_1', name: 'our doctor', visitTypeIds: ['vt_sick'], placeholder: true, categories: [], acceptingNewPatients: true, timeOff: [] };
+    const put = async (config: unknown) => api.t.db.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
+    await put({ ...before, providers: [...before.providers, standIn] });
+    const added = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale' } });
+    expect(added.statusCode).toBe(201);
+    expect((await stored()).providers.some((p) => p.id === 'prov_1')).toBe(false);
+    // with a visit on file, it stays in the settings, and the dashboard and the assistant pass it by
+    await put({ ...(await stored()), providers: [...(await stored()).providers, standIn] });
+    await api.t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+      values (${DEMO_CLINIC.id}, ${api.patientIds.maria}, 'prov_1', 'vt_sick', '2026-09-01T15:00:00Z', '2026-09-01T15:20:00Z', 'doctors-test-stand-in', ${api.users.owner})`);
+    const vale = (await stored()).providers.find((p) => p.name === 'Dr. Ines Vale')!;
+    expect((await api.request('PUT', `${C}/${vale.id}`, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale', acceptingNewPatients: false } })).statusCode).toBe(200);
+    expect((await stored()).providers.some((p) => p.id === 'prov_1')).toBe(true);
+    await api.t.db.execute(sql`delete from appointments where provider_id = 'prov_1'`);
+    await put({ ...before, providers: before.providers });
   });
 
   it('keeps doctors when Settings is saved from a page opened before they were added', async () => {
@@ -100,6 +140,8 @@ describe('doctors', () => {
     ].join('\n');
     const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
     expect(dry.rows.map((r: { status: string }) => r.status)).toEqual(['add', 'update', 'error', 'error']);
+    // what a row adds to the clinic's lists is said before anything is imported: the manager's OK
+    expect(dry.rows[0].message).toBe('adds "Dermatology", "Skin", "Allergies" to your lists');
     expect((await stored()).providers.some((p) => p.name === 'Dr. Lee Park')).toBe(false);
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
     expect(real.counts).toEqual({ add: 1, update: 1, skip: 0, error: 2 });

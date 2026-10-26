@@ -530,6 +530,21 @@ export function applyListChange(c: ClinicConfig, name: ListName, values: string[
   return next;
 }
 
+/** Whether a value is on one of the clinic's lists, whatever its case: "dog" is the list's "Dog". */
+export const onList = (list: readonly string[], value: string) => list.some((v) => v.toLowerCase() === value.trim().toLowerCase());
+
+/**
+ * A value staff picked that is not on the clinic's list, as a field's problem: values a
+ * record already has (`kept`) are not refused, so saving a record never loses what it had.
+ * Null when every value is on the list.
+ */
+export function notOnListProblem(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListName, values: string[], kept: string[] = []): string | null {
+  const list = managedList(c, name);
+  const stray = values.find((v) => v.trim() && !onList(list, v) && !onList(kept, v));
+  if (!stray) return null;
+  return `"${stray.trim()}" is not on your list. Pick one from the list, or add it to the list first (Settings, Fields and lists).`;
+}
+
 /** How many doctors use each value of a list: before a value is removed, the clinic sees what it touches. */
 export function listUsage(c: Pick<ClinicConfig, 'providers'>, name: ListName): Record<string, number> {
   const out: Record<string, number> = {};

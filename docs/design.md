@@ -48,7 +48,7 @@ All in `apps/web/components/ui`.
 | `useToast` | Something done ("Saved."): a note at the bottom of the screen, wherever the page is scrolled, with Undo where undoing makes sense. |
 | `useProblem` | Something not done, or worth a look: a dialog in the middle of the screen, read and closed with OK. Save errors list each thing to fix. |
 | `useConfirm` | A question before something that cannot be taken back, or that changes other records. |
-| `Combobox` | A value from one of the clinic's lists that can also be typed new (a specialty, a kind of animal). Never a bare `datalist`, which hides the list once something is typed. |
+| `Combobox`, `ChipsPicker` | One value, or several as chips, picked from one of the clinic's lists (a specialty, a kind of animal, what a vet sees). Typing only narrows the list; nothing typed is kept on its own. Owners and managers get a last choice, "+ Add a specialty…", that adds to the list and picks it. A value a record already has that is not on the list is kept and marked "Not on your list", with "Add to the list". Never a bare `datalist`, which hides the list once something is typed. |
 | `Sortable` | Every list the clinic puts in order (fields, choices, visit types, hospitals, transfers, links, kinds of request, lists): drag the handle with a mouse or a finger, or focus it and press the up and down arrows. |
 | `Skeleton`, `Empty` | Loading; nothing here yet. An empty state says what will appear and offers one next step. |
 | `Avatar`, `Kbd`, `StatCard`, `Sparkline`, `RelativeTime`, `AnimatedNumber` | People, keys, figures with a trend in plain SVG, and times. |

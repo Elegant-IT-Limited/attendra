@@ -327,6 +327,22 @@ describe('pets, at a vet clinic', () => {
     expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ firstName: 'Biscuits', species: 'dog' });
   });
 
+  it('takes the kind of animal only from the clinic\'s list; an edit that leaves it out keeps one that is not', async () => {
+    const typed = await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Nibbles', species: 'hamster' } });
+    expect(typed.statusCode).toBe(422);
+    expect(typed.json().issues).toEqual([{ path: 'species', message: '"hamster" is not on your list. Pick one from the list, or add it to the list first (Settings, Fields and lists).' }]);
+    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Nibbles', species: 'rabbit' } })).statusCode).toBe(201);
+  });
+
+  it('adds a kind of animal an imported file brings to the clinic\'s list, and says so before importing', async () => {
+    const csv = 'pet_name,species,sex,birthday,owner_name,owner_phone\nSpike,hedgehog,male,2023-03-01,Lina Haddad,(303) 555-0166\n';
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows[0]).toMatchObject({ status: 'add', message: 'adds "hedgehog" to your lists' });
+    expect((await api.request('GET', S, { cookie: as.owner })).json().lists?.species).toBeUndefined();
+    expect((await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json().counts).toMatchObject({ add: 1 });
+    expect((await api.request('GET', S, { cookie: as.owner })).json().lists.species).toContain('Hedgehog');
+  });
+
   it('imports pets from a pet spreadsheet', async () => {
     const csv = 'pet_name,species,sex,birthday,owner_name,owner_phone\nPepper,cat,female,2022-03-01,Lina Haddad,(303) 555-0166\n';
     const res = await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } });

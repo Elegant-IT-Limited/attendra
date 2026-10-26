@@ -17,6 +17,11 @@ describe('importing pets', () => {
     expect(readPets('first_name,last_name\nA,B\n', '2026-10-18')[0]).toMatchObject({ ok: false, message: expect.stringContaining('pet_name') });
   });
 
+  it('says on the row when a kind of animal is not on the clinic\'s list: importing adds it', () => {
+    const csv = 'pet_name,species,birthday,owner_name,owner_phone\nRex,Dog,2020-01-01,Ana Ruiz,3035550100\nNibbles,hamster,2024-01-01,Ana Ruiz,3035550100\n';
+    expect(readPets(csv, '2026-10-18', true, ['Dog', 'Cat']).map((r) => r.ok && (r.note ?? null))).toEqual([null, 'adds "hamster" to your lists']);
+  });
+
   it('reads an optional texts_ok column as a yes to reminder texts', () => {
     const csv = 'pet_name,species,birthday,owner_name,owner_phone,texts_ok\nRex,dog,2020-01-01,Ana Ruiz,3035550100,yes\nMia,cat,2020-01-01,Ana Ruiz,3035550100,\n';
     expect(readPets(csv, '2026-10-18').map((r) => r.ok && r.value.textsOk)).toEqual([true, false]);

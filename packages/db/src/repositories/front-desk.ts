@@ -542,6 +542,16 @@ export class FrontDeskRepository {
     return within ? count(within) : withClinic(this.db, clinicId, count);
   }
 
+  /** Every visit with a provider, past or to come, in any state: a provider something still points at is kept in the settings. Inside `updateSettings`, pass its transaction. */
+  async visitsWithProvider(clinicId: string, providerId: string, within?: Tx): Promise<number> {
+    const count = async (tx: Tx) => {
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(appointments)
+        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId))) as [{ n: number }];
+      return n;
+    };
+    return within ? count(within) : withClinic(this.db, clinicId, count);
+  }
+
   /**
    * Saves a validated ClinicConfig. The caller checks that the id and phone numbers are
    * unchanged. With `expectedVersion`, it saves only over that version: someone else's
