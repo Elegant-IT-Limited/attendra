@@ -17,6 +17,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - **A vet's own fields reach the assistant.** Fields the clinic adds to its vets (Settings, Fields, Veterinarians, such as "Qualifications") are given to the assistant under their labels, so "What are Dr. Ruiz's qualifications?" is answered from the field. Each field has a switch, "The assistant may tell callers", on by default, to keep one for the team (a licence number). Pets' and requests' own fields are never told to callers, as before.
 
+### Fixed (Requests: Assign to)
+
+- **A request can be handed to anyone.** Assign to left out whoever held the request and was hidden when nobody else was left, so a request held by the owner could not be handed on, and a clinic with one working member saw no names. It now lists everyone who works requests, yourself and the owner included, the holder marked, and "Unassigned" releases it. The list comes from a new `GET /clinics/:id/tasks/assignees` (`tasks:reassign`, names only).
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

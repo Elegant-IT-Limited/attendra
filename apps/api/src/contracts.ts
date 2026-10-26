@@ -309,6 +309,8 @@ export const TextList = z.object({ texts: z.array(TextItem) });
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
+/** Who a request can be given to: everyone who works requests here, the person asking included, by name, and whether they approve refills. */
+export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean() })) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
 /** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
 export const NewTask = z.object({
@@ -692,6 +694,7 @@ export type PatientSaved = z.infer<typeof PatientSaved>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
 export type Overview = z.infer<typeof Overview>;
 export type WaitingTasks = z.infer<typeof WaitingTasks>;
+export type TaskAssignees = z.infer<typeof TaskAssignees>;
 export type Member = z.infer<typeof Member>;
 export type MemberList = z.infer<typeof MemberList>;
 export type AddedMember = z.infer<typeof AddedMember>;
