@@ -323,12 +323,17 @@ export function PageHeader({ title, description, actions }: { title: string; des
  */
 function ClinicSwitcher({ current, others, onPick, grow }: { current: { id: string; name: string }; others: { id: string; name: string }[]; onPick: (id: string) => void; grow: GrowLink[] }) {
   return (
-    <select aria-label="Location" value={current.id} onChange={(e) => (e.target.value.startsWith('go:') ? window.location.assign(e.target.value.slice(3)) : onPick(e.target.value))}
+    <select aria-label="Location" value={current.id} onChange={(e) => {
+      // an owner's link is looked up by its place in the list: the address comes from the plan, never from the page
+      const link = /^grow:\d$/.test(e.target.value) ? grow[Number(e.target.value.slice(5))] : undefined;
+      if (link) window.location.assign(link.href);
+      else onPick(e.target.value);
+    }}
       className="focus-ring -ml-1 w-full truncate rounded-md border-none bg-transparent py-0.5 pl-1 pr-6 text-base font-medium hover:bg-surface-sunken">
       {[current, ...others].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       {grow.length > 0 && (
         <optgroup label="For owners">
-          {grow.map((l) => <option key={l.href} value={`go:${l.href}`}>+ {l.label} ({l.hint.toLowerCase()})</option>)}
+          {grow.map((l, i) => <option key={l.href} value={`grow:${i}`}>+ {l.label} ({l.hint.toLowerCase()})</option>)}
         </optgroup>
       )}
     </select>
