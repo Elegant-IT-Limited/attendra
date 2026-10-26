@@ -78,26 +78,32 @@ test('a manager gives a request to the front desk, takes it, gives it back, and 
   const card = page.getByTestId('task');
   await expect(card.getByText('Unclaimed')).toBeVisible();
   const assign = card.getByLabel('Assign to');
+  // the screen changes at once; each step waits for the server's answer before the next, as a person would see the toast
+  const choose = async (label: string) => {
+    const answered = page.waitForResponse((r) => r.request().method() === 'POST' && /\/tasks\/[^/]+\/(assign|release)$/.test(r.url()));
+    await assign.selectOption({ label });
+    expect((await answered).ok()).toBe(true);
+  };
   // everyone who works requests, the manager included; nobody holds it yet
   await expect(assign).toHaveValue('');
   await expect(assign.locator('option', { hasText: 'Jordan (front desk)' })).toHaveCount(1);
   await expect(assign.locator('option', { hasText: 'Priya (practice manager) (you)' })).toHaveCount(1);
 
-  await assign.selectOption({ label: 'Jordan (front desk)' });
+  await choose('Jordan (front desk)');
   await expect(page.getByText('Given to Jordan (front desk).')).toBeVisible();
   await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
   await expect(assign.locator('option:checked')).toHaveText('Jordan (front desk), has it');
 
   // taken back: the manager gives it to themselves
-  await assign.selectOption({ label: 'Priya (practice manager) (you)' });
+  await choose('Priya (practice manager) (you)');
   await expect(card.getByText('You have it')).toBeVisible();
   await expect(assign.locator('option:checked')).toHaveText('Priya (practice manager) (you), has it');
 
-  await assign.selectOption({ label: 'Jordan (front desk)' });
+  await choose('Jordan (front desk)');
   await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
 
   // and back to the queue
-  await assign.selectOption({ label: 'Unassigned' });
+  await choose('Unassigned');
   await expect(page.getByText('Released. It is back in the queue.')).toBeVisible();
   await expect(card.getByText('Unclaimed')).toBeVisible();
   await expect(assign).toHaveValue('');
