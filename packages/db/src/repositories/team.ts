@@ -22,6 +22,18 @@ export async function listMembers(db: Database, orgId: string) {
     .where(eq(memberships.organizationId, orgId)).orderBy(authUsers.name);
 }
 
+/**
+ * Who a request can be given to at a clinic: everyone in its organization who works
+ * requests (every role but viewer), owners included, by name and whether they approve
+ * refills. Owner connection, like listMembers; no email, nothing about their sign-in.
+ */
+export async function requestAssignees(db: Database, clinicId: string) {
+  return db.select({ userId: authUsers.id, name: authUsers.name, approvesRefills: memberships.approvesRefills }).from(memberships)
+    .innerJoin(authUsers, eq(authUsers.id, memberships.userId))
+    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+    .where(and(eq(clinics.id, clinicId), ne(memberships.role, 'viewer'))).orderBy(authUsers.name);
+}
+
 /** Whether a person still has to replace a temporary password, and until when it works. */
 export async function passwordState(db: Database, by: { userId: string } | { email: string }) {
   const [row] = await db.select({ id: authUsers.id, mustChange: authUsers.mustChangePassword, expiresAt: authUsers.temporaryPasswordExpiresAt })

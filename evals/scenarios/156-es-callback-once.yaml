@@ -1,0 +1,20 @@
+id: es-callback-once
+title: "Spanish: a callback asked for twice in one call is taken once; the second time the assistant says the team already has it"
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es]
+caller_number: "+17205550174"
+facts: "Eres Carmen Ortiz y hablas español. Quieres que alguien de la clínica te llame por una factura, al número desde el que llamas. Más tarde vuelves a pedir que te llamen por lo mismo."
+turns:
+  - caller: Hola, soy Carmen Ortiz. ¿Me pueden llamar por una factura? A este número está bien.
+    reply: "Claro, Carmen. Le pido al equipo que le llame por la factura a este número."
+    delegate:
+      - create_callback: { reason: question about a bill, callback_number: null }
+  - caller: Gracias. Y por favor que me llamen también por lo de la factura, ¿eh?
+    reply: "Ya está anotado, Carmen: el equipo ya tiene su pedido y le llamará."
+    delegate:
+      - create_callback: { reason: question about a bill, callback_number: null }
+expect:
+  outcome: task_created
+  language: es
+  spoken_contains: ["already has a callback request from this call"]

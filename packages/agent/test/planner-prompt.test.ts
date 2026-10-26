@@ -70,7 +70,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
     const openai = { responses: { create: async (req: { tools: typeof tools }) => { tools = req.tools; return { output: [], output_text: 'ok' }; } } };
     await new ResponsesPlanner(openai as never, 'test-model').plan({ clinic: RIVERBEND_CLINIC, state: new CallState(), nowLine: 'Today is Monday.' }, async () => ({ ok: true, data: {} }));
     const verify = tools.find((t) => t.name === 'verify_caller')!;
-    expect(Object.keys(verify.parameters.properties)).toEqual(['owner_name', 'pet_name', 'phone']);
+    expect(Object.keys(verify.parameters.properties)).toEqual(['owner_name', 'pet_name', 'phone', 'species']);
     expect(verify.description).toContain('Find the pet');
     expect(Object.keys(tools.find((t) => t.name === 'register_patient')!.parameters.properties)).toContain('species');
   });

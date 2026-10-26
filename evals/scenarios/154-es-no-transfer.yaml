@@ -1,0 +1,24 @@
+id: es-no-transfer
+title: "Spanish: at a clinic with no transfer lines, asking for a person gets a callback, never \"le comunico\""
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es, settings]
+caller_number: "+17205550174"
+settings:
+  routing: []
+facts: "Eres Carmen Ortiz y hablas español. Quieres hablar con alguien de la recepción sobre una factura. El número desde el que llamas sirve para que te devuelvan la llamada."
+turns:
+  - caller: Hola, ¿me puede comunicar con alguien de la recepción, por favor? Es por una factura.
+    reply: "Ahora no puedo pasarle con nadie, pero puedo pedir que alguien de la clínica le llame por la factura. ¿Le parece bien al número desde el que llama?"
+    delegate:
+      - transfer_call: { target: front_desk }
+  - caller: Sí, está bien.
+    reply: "Listo, el equipo le llamará por la factura."
+    delegate:
+      - create_callback: { reason: question about a bill, callback_number: null }
+expect:
+  outcome: task_created
+  refusals: [no_rule]
+  transfer_to: null
+  language: es
+forbid_spoken: ["Le comunico", "le paso con", "le transfiero"]

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
-import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, staffNames, staffRole, taskFacts } from '@attendra/db';
+import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffNames, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, NewTask, TaskAssign, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -103,6 +103,19 @@ export class TasksController {
   async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {
     const { tasks, total, byType } = await this.desk.waitingTasks(clinicId);
     return { tasks: tasks.map((t) => ({ ...t, createdAt: t.createdAt.toISOString() })), total, byType };
+  }
+
+  /**
+   * The names in "Assign to": everyone who works requests, owners and the person asking
+   * included. Its own route, not the Team list: that one is for managing people and
+   * carries their email and sign-in, which handing over a request does not need.
+   */
+  @Get('assignees')
+  @Requires('tasks:reassign')
+  @ApiOperation({ summary: 'Who a request can be given to: everyone who works requests here, by name. Owners and managers.' })
+  @ApiOkResponse({ schema: schemaOf(TaskAssignees) })
+  async assignees(@Param('clinicId') clinicId: string, @CurrentStaff() staff: Staff): Promise<TaskAssignees> {
+    return { people: (await requestAssignees(this.db, clinicId)).map((p) => ({ ...p, you: p.userId === staff.userId })) };
   }
 
   @Post(':taskId/claim')

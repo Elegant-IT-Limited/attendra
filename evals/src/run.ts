@@ -27,7 +27,8 @@ const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MOD
 // `--tag=hardcore` keeps the scenarios with that tag; `--transcripts` puts every call's transcript in the report, not only the failed ones
 const tag = process.argv.find((a) => a.startsWith('--tag='))?.slice(6);
 const transcripts = process.argv.includes('--transcripts');
-const scenarios = loadScenarios().filter((s) => (!only || s.id.includes(only)) && (!tag || s.tags.includes(tag)));
+// `--only=a,b` keeps the scenarios whose id contains any of them
+const scenarios = loadScenarios().filter((s) => (!only || only.split(',').some((o) => o && s.id.includes(o))) && (!tag || s.tags.includes(tag)));
 const c = (n: number) => (s: string) => (process.stdout.isTTY || process.env.FORCE_COLOR ? `\x1b[${n}m${s}\x1b[0m` : s);
 const [green, red, dim, bold] = [c(32), c(31), c(2), c(1)];
 

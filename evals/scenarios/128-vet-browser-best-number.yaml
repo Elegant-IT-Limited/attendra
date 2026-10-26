@@ -1,0 +1,39 @@
+id: vet-browser-best-number
+title: "A browser test call has no caller ID: the phone is asked once, as the best number to reach the owner, never as the number on the pet's file"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: null
+channel: web
+facts: "This is a test call from the browser, so there is no caller ID. You are Ray Chen. Waffles is your male dog, three years old, new to the clinic. The best number to reach you is 720 555 0192: give it once when asked. If you are asked for a number again, say you already gave it, a little annoyed. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I want to register my pet. I'm Ray Chen, and my dog is Waffles. He's new, a three year old male.
+    reply: "Thanks, Ray. What's the best number to reach you?"
+    delegate:
+      - register_patient: { pet_name: Waffles, owner_name: Ray Chen, species: dog, sex: male, birthday_or_age: three years old, phone: null }
+  - caller: It's 720 555 0192.
+    reply: "Waffles is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Waffles, owner_name: Ray Chen, species: dog, sex: male, birthday_or_age: three years old, phone: "720 555 0192" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Waffles is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required]
+  bookings_created: 1
+  sms_sent: 0
+  spoken_contains: ["What's the best number to reach you?"]
+forbid_spoken:
+  - number on waffles's file
+  - number on waffles' file
+  - phone number on file
+  - number you're calling from
+  - couldn't find

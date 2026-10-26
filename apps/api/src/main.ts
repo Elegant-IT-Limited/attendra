@@ -26,7 +26,7 @@ const openai = env.OPENAI_API_KEY ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) :
 const answerer = openai ? new ModelAnswerer(openai, env.ATTENDRA_BACKEND_MODEL) : new LocalAnswerer();
 // the greeting in a voice, for Settings' Listen button
 const voiceSamples = openai ? openAiVoiceSampler(openai, env.ATTENDRA_TTS_MODEL) : null;
-// "forgot password" emails go out through the hosting layer, which holds the mailer
+// "forgot password" and Team invitation emails go out through the hosting layer, which holds the mailer
 const mail = env.ATTENDRA_MAIL_HOOK_URL && env.ATTENDRA_PROVISIONING_TOKEN ? mailHook(env.ATTENDRA_MAIL_HOOK_URL, env.ATTENDRA_PROVISIONING_TOKEN, log) : null;
 const app = await createApi({
   db,
@@ -40,6 +40,7 @@ const app = await createApi({
   changes: pgChangeFeed(env.DATABASE_URL, (code) => log.warn({ code }, 'change notices: connection error')),
   knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
   voiceSamples,
+  mail,
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

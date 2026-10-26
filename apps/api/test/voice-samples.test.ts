@@ -64,3 +64,29 @@ describe('voices only the Live model has', () => {
     expect(hasPreview('marin') && !hasPreview('tempo')).toBe(true);
   });
 });
+
+describe('naming the assistant from a setup page', () => {
+  const A = `/api/v1/clinics/${DEMO_CLINIC.id}/settings/assistant`;
+  const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
+  it('offers the voices with a sample, and the greeting for a name, which a stock greeting follows', async () => {
+    const res = await api.request('GET', `${A}?assistantName=Nora`, { cookie: viewer });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { voices: { id: string; label: string }[]; suggested: Record<string, string>; savedIsSuggested: boolean };
+    expect(body.voices.map((v) => v.id)).toEqual([...PREVIEW_VOICES]);
+    expect(body.voices.find((v) => v.id === 'marin')?.label).toBe('Marin (the default)');
+    expect(body.suggested.en).toBe(`Thanks for calling ${DEMO_CLINIC.name}. I'm Nora, the clinic's AI assistant. How can I help you today?`);
+    expect(body.suggested.es).toContain('Soy Nora');
+    // the demo clinic's greeting is the one suggested for its name
+    expect(body.savedIsSuggested).toBe(true);
+    expect((await api.request('GET', A, { cookie: viewer })).json().suggested.en).toBe(DEMO_CLINIC.greeting);
+  });
+
+  it('a greeting the clinic wrote is kept; a name that is not one word and another clinic are refused', async () => {
+    const current = (await api.request('GET', S, { cookie: owner })).json() as Record<string, unknown>;
+    const own = 'Hello, Maple Street here. You are speaking with our AI assistant. What can we do for you?';
+    expect((await api.request('PUT', S, { cookie: owner, body: { ...current, greeting: own } })).statusCode).toBe(200);
+    expect((await api.request('GET', A, { cookie: owner })).json()).toMatchObject({ savedIsSuggested: false });
+    expect((await api.request('GET', `${A}?assistantName=${encodeURIComponent('Maya 2')}`, { cookie: owner })).statusCode).toBe(422);
+    expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/settings/assistant`, { cookie: owner })).statusCode).toBe(404);
+  });
+});

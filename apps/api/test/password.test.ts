@@ -124,12 +124,29 @@ describe('a temporary password', () => {
   });
 });
 
-describe('existing accounts', () => {
-  it('an email that already has an account with another practice is refused, never added silently', async () => {
+describe('existing accounts, where nothing can be emailed', () => {
+  it('an email that already has a login with another practice is invited, never added silently, and the answer names nothing', async () => {
     const res = await api.request('POST', `${C}/members`, { cookie: admin, body: { name: 'Otto Other', email: 'otto@other.example', role: 'viewer' } });
-    expect(res.statusCode).toBe(409);
-    expect(res.json()).toEqual({ error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' });
+    expect([res.statusCode, res.json()]).toEqual([201, { status: 'invite_sent', email: 'otto@other.example' }]);
     const members = (await api.request('GET', `${C}/members`, { cookie: admin })).json().members.map((m: { email: string }) => m.email);
     expect(members).not.toContain('otto@other.example');
+    const invited = (await api.request('GET', `${C}/invitations`, { cookie: admin })).json().invitations;
+    expect(invited).toEqual([expect.objectContaining({ email: 'otto@other.example', role: 'viewer', invitedBy: 'Olga Admin' })]);
+    expect((await api.request('DELETE', `${C}/invitations/${invited[0].id}`, { cookie: admin })).statusCode).toBe(204);
+  });
+
+  it('someone removed gets a new temporary password from the practice that removed them; another practice only invites them', async () => {
+    const added = (await api.request('POST', `${C}/members`, { cookie: admin, body: { name: 'Rhea Return', email: 'rhea@maple.example', role: 'staff' } })).json();
+    expect(added).toMatchObject({ status: 'invite_sent', email: 'rhea@maple.example', temporaryPassword: expect.any(String) });
+    issued.push(added.temporaryPassword);
+    expect((await api.request('DELETE', `${C}/members/${added.userId}`, { cookie: admin })).statusCode).toBe(204);
+    const otto = await api.signIn('otto@other.example', true);
+    const elsewhere = await api.request('POST', '/api/v1/clinics/clinic_other/members', { cookie: otto, body: { email: 'rhea@maple.example', role: 'staff' } });
+    expect([elsewhere.statusCode, elsewhere.json()]).toEqual([201, { status: 'invite_sent', email: 'rhea@maple.example' }]);
+    const back = (await api.request('POST', `${C}/members`, { cookie: admin, body: { email: 'rhea@maple.example', role: 'staff' } })).json();
+    expect(back).toMatchObject({ userId: added.userId, temporaryPassword: expect.any(String) });
+    expect(back.temporaryPassword).not.toBe(added.temporaryPassword);
+    issued.push(back.temporaryPassword);
+    expect((await signIn('rhea@maple.example', back.temporaryPassword)).statusCode).toBe(200);
   });
 });

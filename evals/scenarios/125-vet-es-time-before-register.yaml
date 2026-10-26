@@ -1,0 +1,40 @@
+id: vet-es-time-before-register
+title: "In Spanish: a time chosen before the pet is found is kept, read back after the pet is added, and booked on a yes"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550186"
+facts: "You are Sam Ortega and you speak only Spanish. You are calling from your own mobile, the number you are calling from. Bolt is your male puppy (un perro macho), about four months old (como cuatro meses), and he is new to the clinic. You want a first check-up this afternoon, and you pick the second time you are offered; you expect to be booked into exactly that time. Say sí to the read-back of that time."
+turns:
+  - caller: Hola, quiero traer a mi cachorro a su primera consulta esta tarde. ¿Hay algún veterinario libre después de la una?
+    reply: "Para una primera consulta esta tarde tengo {offered.0}, {offered.1} o {offered.2}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: "13:00", part_of_day: any }
+  - caller: La segunda, por favor. Soy Sam Ortega y el cachorro se llama Bolt.
+    reply: "La reservo en cuanto encuentre a Bolt. No encontré a Bolt todavía. ¿Es nuevo en la clínica?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+      - verify_caller: { owner_name: Sam Ortega, pet_name: Bolt }
+  - caller: Sí, es nuevo. Es un perro macho y tiene cuatro meses.
+    reply: "Bolt ya está registrado. Puedo {readback}. ¿Lo reservo?"
+    delegate:
+      - register_patient: { pet_name: Bolt, owner_name: Sam Ortega, species: perro, sex: male, birthday_or_age: cuatro meses, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: "13:00", part_of_day: any }
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Sí, por favor.
+    reply: "Listo. Bolt tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [identity_required, pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  offered_from_time: "13:00"
+  booked_on: "2026-09-28"
+  language: es
+forbid_spoken:
+  - me encargo
+  - me ocupo
+  - qué hora prefiere

@@ -20,11 +20,11 @@ class PlanQueue implements Planner {
   }
 }
 
-/** A fresh database with the Maple Street demo clinic in it. */
-export async function world() {
+/** A fresh database with the Maple Street demo clinic in it, or another demo clinic's seed (Riverbend's pets). */
+export async function world(seed: typeof seedDemo = seedDemo) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
-  const { patientIds, clinic } = await seedDemo(t.db, cipher);
+  const { patientIds, clinic } = await seed(t.db, cipher);
   const sms: { to: string; template: string; language?: string; when?: string }[] = [];
   const messenger: Messenger = { async sendTemplate(_clinic, m) { sms.push({ to: m.to, template: m.template, language: m.language, when: m.vars.when }); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   const events: DomainEvent[] = [];

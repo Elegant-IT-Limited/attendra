@@ -3,6 +3,9 @@ import { addMembership, type Database, markTemporaryPassword, type StaffRole } f
 import { randomBytes } from 'node:crypto';
 import type { Auth } from './auth';
 
+/** The roles in the words the dashboard uses, for emails. */
+export const ROLE_LABEL: Record<StaffRole, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
+
 /** 16 characters from 12 random bytes: over Better Auth's 12-character minimum, and short enough to read out. */
 export const temporaryPassword = () => randomBytes(12).toString('base64url');
 
@@ -21,6 +24,29 @@ export async function deleteNewAccount(auth: Auth, userId: string) {
   const ctx = await auth.$context;
   await ctx.internalAdapter.deleteAccounts(userId);
   await ctx.internalAdapter.deleteUser(userId);
+}
+
+/**
+ * An account for someone invited by email, with no password at all: nobody can sign in to
+ * it until the person sets one through the link in their invitation.
+ */
+export async function createInvitedAccount(auth: Auth, m: { email: string; name: string }) {
+  const ctx = await auth.$context;
+  return (await ctx.internalAdapter.createUser({ email: m.email.trim().toLowerCase(), name: m.name, emailVerified: true }, { method: 'admin' })).id;
+}
+
+/** Whether the account has a password of its own yet (one made by an invitation has none until the person sets it). */
+export async function hasPassword(auth: Auth, userId: string) {
+  const ctx = await auth.$context;
+  return !!(await ctx.internalAdapter.findCredentialAccount(userId))?.password;
+}
+
+/** A link to /reset-password that sets the account's password, working until `expiresAt`: the same kind "Forgot password" emails. */
+export async function setPasswordLink(auth: Auth, publicUrl: string, userId: string, expiresAt: Date) {
+  const ctx = await auth.$context;
+  const token = randomBytes(24).toString('base64url');
+  await ctx.internalAdapter.createVerificationValue({ identifier: `reset-password:${token}`, value: userId, expiresAt });
+  return `${publicUrl}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
 export async function findAccount(auth: Auth, email: string) {

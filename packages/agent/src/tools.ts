@@ -3,7 +3,7 @@ import {
   bookableProviders,
   addDays, ageOn, asE164, callUsNumber, declinesText, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
-  type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, speakSlot, specialtyFacts, type TaskQueue,
+  type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
   hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
@@ -86,6 +86,25 @@ const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not r
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
 
+/** No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked once. */
+const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${PACKS[lang].phoneQuestion({ callerId: false })}" Keep everything else they already gave; do not ask for it again.`;
+/** A time the caller chose, as the planner hears it: when, and with whom. */
+const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language']) => {
+  const provider = clinic.providers.find((p) => p.id === slot.providerId);
+  return `${speakSlot(slot.start, clinic.timezone, lang)}${provider ? ` with ${localName(provider, lang)}` : ''}`;
+};
+/**
+ * Once the pet or patient is found or added: the time they chose before, looked for again (it may have gone meanwhile, and
+ * the visit may now be a new patient's) and read back as a question, never dropped and never said to be done.
+ */
+const chosenNote = (state: CallState, clinic: ClinicConfig, lang: CallState['language']): { say?: string } => {
+  const slot = state.chosen;
+  if (!slot) return {};
+  const local = localParts(slot.start, clinic.timezone);
+  const time = `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`;
+  return { say: ` Before this, the caller chose ${choiceOf(slot, clinic, lang)}. Look for it again now with find_slots (from_date ${local.date}, from_time ${time}, provider_id ${slot.providerId}); if it is still free, propose_booking it, so it is read back as a question for their yes. If it was taken meanwhile, say so and offer the times find_slots returns.` };
+};
+
 /** What to ask when a date of birth is refused: the one part that is wrong, keeping everything else the caller said. */
 function dobAgain(said: string, now: Date, monthFirst: boolean): string {
   const problem = dobProblem(said, now, monthFirst ? 'mdy' : 'dmy');
@@ -166,9 +185,13 @@ export async function runTool(
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
   }
   if (PATIENT_TOOLS.has(name) && !state.verifiedPatient) {
-    return refuse('identity_required', trade.identity === 'pet'
-      ? 'Before that, ask for the owner\'s first name and the pet\'s name.'
-      : 'Before that, ask for the caller\'s full name and date of birth.');
+    // a time the caller chose before the pet or patient is found is kept, and read back once they are
+    const chosen = name === 'propose_booking' ? state.offered.get(String((parsed.data as { slot_id?: unknown }).slot_id)) : undefined;
+    if (chosen) state.chosen = chosen;
+    const keep = chosen ? `The caller chose ${choiceOf(chosen, ctx.clinic, state.language)}: that choice is kept, and the backend says how to book it once ${trade.identity === 'pet' ? 'the pet is found or added' : 'they are found or added'}. Say you will book it right after that, never that it is done or taken care of. ` : '';
+    return refuse('identity_required', keep + (trade.identity === 'pet'
+      ? 'Before that, find the pet with verify_caller, or add it with register_patient when the caller said it is new, asking only for what the caller has not said yet (the owner\'s first name, the pet\'s name).'
+      : 'Before that, ask for the caller\'s full name and date of birth.'));
   }
   // closed, at a clinic that takes requests out of hours: the team books in the morning. No
   // times are looked up either, so none is ever read out and then refused. A cancellation
@@ -178,6 +201,8 @@ export async function runTool(
   }
   const { clinic } = ctx;
   const args = parsed.data as Record<string, unknown>;
+  // what the caller said about who they are is kept for the planner, so nothing is asked twice
+  if (name === 'verify_caller' || name === 'register_patient') state.remember(args);
   // never let a webhook problem undo or hold up what the caller was told
   const emit = (e: DomainEvent) => backend.events?.emit(clinic.id, e).catch((err: unknown) => ctx.log?.warn({ call_id: ctx.callId, type: e.type, err }, 'event not queued'));
   // everything said back to the caller is in the language they are speaking
@@ -243,7 +268,7 @@ export async function runTool(
 
   switch (name) {
     case 'verify_caller': {
-      if (trade.identity === 'pet') return verifyPet(args, state, ctx, backend);
+      if (trade.identity === 'pet') return verifyPet(args, state, ctx, backend, lang);
       // the number on their file, as they said it, or else the number they are calling from
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
       if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
@@ -262,7 +287,8 @@ export async function runTool(
       if (found.status === 'found') {
         if (current?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
         state.verifiedPatient = found.patient;
-        return { ok: true, data: { verified: true, first_name: found.patient.firstName, age: ageOn(found.patient.dob, localDateOf(ctx.now(), clinic.timezone)) } };
+        state.newFromTurn = state.turns.length;
+        return { ok: true, data: { verified: true, first_name: found.patient.firstName, age: ageOn(found.patient.dob, localDateOf(ctx.now(), clinic.timezone)), ...chosenNote(state, clinic, lang) } };
       }
       state.verifyAttempts++;
       if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm their record, and offer a callback.');
@@ -279,7 +305,7 @@ export async function runTool(
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
-      if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach them, with the area code.');
+      if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the best phone number to reach them again, with the area code.' : askPhone(lang));
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       const today = localDateOf(ctx.now(), clinic.timezone);
@@ -293,8 +319,9 @@ export async function runTool(
       if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add anyone else, and offer a callback.');
       if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
       state.verifiedPatient = result.patient;
+      state.newFromTurn = state.turns.length;
       // the same details as someone on file: as good as a verification, and counted like one, so it is no way round the limit
-      if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: 'They are already a patient here: carry on as for any patient.' } }; }
+      if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: `They are already a patient here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } }; }
       state.registrations++;
       // the front desk checks every patient the assistant adds
       const task = await backend.tasks.create(clinic.id, {
@@ -309,7 +336,7 @@ export async function runTool(
       });
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
       const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.` } };
+      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time they chose.${chosenNote(state, clinic, lang).say}` : `look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.`}` } };
     }
 
     case 'get_clinic_info': {
@@ -335,8 +362,14 @@ export async function runTool(
           call_recording: clinic.recording?.enabled ? 'on: callers hear a notice at the start of the call' : 'off: calls are not recorded; a transcript and a summary are kept for the clinic',
           // the days the clinic has marked closed in the next four months, for "are you open on Thanksgiving?"
           closed_days_ahead: closedDaysAhead(clinic, today),
+          // and its shorter days after this week, for "are you open on Christmas Eve?"
+          ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
+          // the clinic's own line, the one its clients know, for "what's your number?"
+          phone: callUsNumber(clinic),
+          // where an animal goes when the clinic cannot see it, for a caller who asks before they need it
+          ...(emergencyHospitalFacts(clinic).length ? { emergency_hospitals: emergencyHospitalFacts(clinic) } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
@@ -379,7 +412,8 @@ export async function runTool(
       // the clinic books this one itself: a request for the team, never a time from the assistant
       if (visitType.staffOnly) return refuse('staff_books', 'The team books this visit themselves. Say so, and offer to take a request for them to call back with create_callback: what the visit is for, and the best number.');
       const patient = state.verifiedPatient;
-      if (patient?.isNew && visitType.audience === 'existing') {
+      // a caller who said they (or the pet) are new is looked for with a new patient's visit from the start, so a time they pick still fits once they are added
+      if ((patient?.isNew || (!patient && state.saidNew() === 'new')) && visitType.audience === 'existing') {
         return refuse('new_patient_visit_type', `New patients book one of these first: ${clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang)).join(', ')}.`);
       }
       if (patient && !patient.isNew && visitType.audience === 'new') {
@@ -503,6 +537,7 @@ export async function runTool(
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
       state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
       return { ok: true, data: { say: target ? `Read this back, say "${pack.confirmTextNote({ target })}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.` } };
@@ -748,15 +783,32 @@ function closedDaysAhead(clinic: ClinicConfig, today: string): string[] {
   return [...clinic.holidays, ...special].filter((d) => d.slice(0, 10) >= addDays(today, 7) && d.slice(0, 10) <= last).sort();
 }
 
+/** Days after the week get_clinic_info already lists, within 120 days, with hours of their own: "2026-12-24 (Christmas Eve): 09:00 to 13:00". */
+function specialHoursAhead(clinic: ClinicConfig, today: string): string[] {
+  const last = addDays(today, 120);
+  return (clinic.specialDays ?? []).filter((d) => d.windows.length && d.date >= addDays(today, 7) && d.date <= last)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => `${d.date}${d.note ? ` (${d.note})` : ''}: ${d.windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}`);
+}
+
+/** The clinic's emergency hospitals in its order of choice, each with its hours (none is around the clock). */
+function emergencyHospitalFacts(clinic: ClinicConfig) {
+  return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].flatMap((h) => (h
+    ? [{ name: h.name, phone: h.phone, address: h.address, hours: h.hours ? `${h.hours.open} to ${h.hours.close}` : 'open around the clock' }]
+    : []));
+}
+
 /**
  * The veterinary pack's identity check: a pet, by its owner's first name (or full name), its own name
  * and the phone on file. The same rules as for a person: three tries, the same answer
  * whichever detail was wrong, and two records only staff can tell apart go to staff.
  */
-async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend): Promise<ToolResult> {
+async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
   const { clinic } = ctx;
+  // "new" means added, never looked up: the registration checks the pet is not on file already
+  if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age), one at a time; it checks the pet is not on file already.');
   const phone = (args.phone as string | null) ?? ctx.callerNumber;
-  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on the pet\'s file, with the area code.');
+  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the phone number on the pet\'s file again, with the area code.' : askPhone(lang));
   const owner = String(args.owner_name);
   const pet = String(args.pet_name);
   if (!owner.trim()) return refuse('owner_name', 'Ask for the owner\'s first name. Keep the pet\'s name and the phone they already gave.');
@@ -766,19 +818,32 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const tried = identityKey(owner, pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
-  const found = await backend.patients.findPet(clinic.id, owner, pet, phone);
-  if (found.status === 'found') {
-    if (current?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
-    state.verifiedPatient = found.patient;
-    state.verifiedOwner = owner;
-    return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null } };
-  }
-  state.verifyAttempts++;
+  const found = await findPetOnce(owner, pet, phone, tried, state, ctx, backend);
+  if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang) } };
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
-  state.notFound = true;
-  state.identitiesTried.add(tried);
   // the same answer whichever detail was wrong: never confirm that a record exists
   return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, check the details one at a time: the owner's first name as it is on the pet's file, the pet's name, and the phone number on file if it is not the one they are calling from. ${triesLeft(state)}`);
+}
+
+/**
+ * One lookup of a pet by its owner, its name and the phone, counted like a try of the identity check: found, it is the
+ * pet this call is about; not found, these details are not looked up again.
+ */
+async function findPetOnce(owner: string, pet: string, phone: string, tried: string, state: CallState, ctx: CallContext, backend: Backend) {
+  const found = await backend.patients.findPet(ctx.clinic.id, owner, pet, phone);
+  if (found.status === 'found') {
+    if (state.verifiedPatient?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
+    state.verifiedPatient = found.patient;
+    state.verifiedOwner = owner;
+    state.newFromTurn = state.turns.length;
+    return found;
+  }
+  state.verifyAttempts++;
+  if (found.status === 'not_found') {
+    state.notFound = true;
+    state.identitiesTried.add(tried);
+  }
+  return found;
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
@@ -786,11 +851,10 @@ async function registerPet(
   args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, emit: (e: DomainEvent) => unknown, lang: CallState['language'],
 ): Promise<ToolResult> {
   const { clinic } = ctx;
-  if (!state.notFound) return refuse('verify_first', 'First look the pet up with verify_caller: the owner\'s name, the pet\'s name and the phone on file.');
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = (args.phone as string | null) ?? ctx.callerNumber;
-  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the best phone number to reach the owner, with the area code.');
+  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the best phone number to reach the owner again, with the area code.' : askPhone(lang));
   const owner = String(args.owner_name).trim();
   const ownerParts = owner.split(/\s+/);
   if (!owner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
@@ -799,6 +863,15 @@ async function registerPet(
   const petName = String(args.pet_name).trim();
   const species = String(args.species).trim().toLowerCase();
   const sex = args.sex === 'unknown' ? 'undisclosed' : (args.sex as Gender);
+  // A pet is added only when the identity check finds no such pet: a caller who said it is new is not made to wait for a
+  // lookup first, so the same check runs here, with the same details, counted as one of the tries. A pet already on file
+  // is found, never added twice, and the caller hears no more than they would from verify_caller.
+  const tried = identityKey(owner, petName, phone.replace(/\D/g, '').slice(-10));
+  if (!state.identitiesTried.has(tried)) {
+    const found = await findPetOnce(owner, petName, phone, tried, state, ctx, backend);
+    if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } };
+    if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
+  }
   const result = await backend.patients.register(clinic.id, {
     firstName: petName, lastName: ownerParts.length > 1 ? ownerParts.at(-1)! : '', dob: birth.dob, gender: sex, phone, guardianName: owner, callId: ctx.callId, species,
   });
@@ -806,7 +879,8 @@ async function registerPet(
   if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
   state.verifiedPatient = result.patient;
   state.verifiedOwner = owner;
-  if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: 'The pet is already on file here: carry on as for any patient.' } }; }
+  state.newFromTurn = state.turns.length;
+  if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } }; }
   state.registrations++;
   const task = await backend.tasks.create(clinic.id, {
     type: 'review', callId: ctx.callId, patientId: result.patient.id,
@@ -819,7 +893,7 @@ async function registerPet(
   });
   if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
   const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.` } };
+  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time the owner chose.${chosenNote(state, clinic, lang).say}` : `look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.`}` } };
 }
 
 /**

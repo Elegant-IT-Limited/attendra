@@ -1,0 +1,40 @@
+id: vet-es-new-after-lookup
+title: "In Spanish: a pet that was not found and is then said to be new is added at once, with no second lookup and nothing asked twice"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550184"
+facts: "You are Leo Grant and you speak only Spanish. You are calling from your own mobile, the number you are calling from. Mango is your female cat (gata), two years old (dos años), and she is new to the clinic: she is not registered anywhere here. If you are asked again whether she is registered or for the phone on her file, say you already told them she is new, a little annoyed. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, soy Leo Grant. Quiero una cita para mi gata Mango.
+    reply: "Gracias, Leo. No encontré a Mango. ¿Mango es nueva en la clínica?"
+    delegate:
+      - verify_caller: { owner_name: Leo Grant, pet_name: Mango }
+  - caller: Sí, es nueva, no está registrada. Es hembra y tiene dos años.
+    reply: "Bienvenida, Mango. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Leo Grant, pet_name: Mango }
+      - register_patient: { pet_name: Mango, owner_name: Leo Grant, species: gato, sex: female, birthday_or_age: dos años, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Mango tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified, pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+forbid_spoken:
+  - con esos datos
+  - número en el expediente
+  - número que tenemos
+  - qué tipo de animal
+  - hembra o macho
+  - qué edad tiene

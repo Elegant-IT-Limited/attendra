@@ -32,7 +32,7 @@ export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
  * 15 seconds into a call (2026-10-25).
  */
 export const OPENING_NUDGE_MS = 4000;
-const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Greet them now, exactly as you were told to at the start of the call, then listen.';
+const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Only if you have not started speaking and the caller has said nothing: greet them now, exactly as you were told to at the start of the call, then listen. If any part of the greeting was said, or the caller has spoken, never start it again: answer them.';
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
 /** After the caller asked for the call to end ("can you cut the call?"), how long it may stay up for the assistant's goodbye. */

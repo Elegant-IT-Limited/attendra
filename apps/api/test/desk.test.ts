@@ -86,6 +86,35 @@ describe('requests', () => {
     expect((await api.request('POST', `${O}/tasks/${callback}/assign`, { cookie: as.owner, body: { userId: api.users.staff } })).statusCode).toBe(404);
   });
 
+  it('lists who a request can be given to: everyone who works requests, the asker included, by name only; not for staff', async () => {
+    const res = await api.request('GET', `${C}/tasks/assignees`, { cookie: as.admin });
+    expect(res.statusCode).toBe(200);
+    // the owner always appears; the viewer and the other practice's people never do
+    expect(res.json().people).toEqual([
+      { userId: api.users.staff, name: 'Ana Front', you: false, approvesRefills: false },
+      { userId: api.users.admin, name: 'Olga Admin', you: true, approvesRefills: false },
+      { userId: api.users.owner, name: 'Omar Owner', you: false, approvesRefills: expect.any(Boolean) },
+    ]);
+    expect(res.body).not.toContain('@');
+    expect((await api.request('GET', `${C}/tasks/assignees`, { cookie: as.staff })).statusCode).toBe(403);
+    expect((await api.request('GET', `${C}/tasks/assignees`, { cookie: as.viewer })).statusCode).toBe(403);
+    expect((await api.request('GET', `${O}/tasks/assignees`, { cookie: as.owner })).statusCode).toBe(404);
+  });
+
+  it('hands a request around: from the front desk to the owner, back, released to the queue, and given again', async () => {
+    const assign = (userId: string) => api.request('POST', `${C}/tasks/${callback}/assign`, { cookie: as.owner, body: { userId } });
+    const holder = async () => (await list('?status=open', as.owner)).find((t) => t.id === callback)?.assigneeName;
+    expect((await assign(api.users.owner)).statusCode).toBe(204);
+    expect(await holder()).toBe('Omar Owner');
+    expect((await assign(api.users.staff)).statusCode).toBe(204);
+    expect(await holder()).toBe('Ana Front');
+    // the owner releases someone else's request
+    expect((await api.request('POST', `${C}/tasks/${callback}/release`, { cookie: as.owner })).statusCode).toBe(204);
+    expect(await holder()).toBeNull();
+    expect((await assign(api.users.staff)).statusCode).toBe(204);
+    expect(await holder()).toBe('Ana Front');
+  });
+
   it('marks a request urgent, first in the queue, with a due day; staff can, a viewer cannot, audited', async () => {
     const plan = (id: string, body: unknown, cookie = as.staff) => api.request('POST', `${C}/tasks/${id}/plan`, { cookie, body });
     const open = async () => (await list()).map(({ id, urgent, dueOn }) => ({ id, urgent, dueOn }));

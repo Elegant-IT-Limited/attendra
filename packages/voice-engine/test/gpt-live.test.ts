@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import type OpenAI from 'openai';
 import { describe, expect, it, vi } from 'vitest';
-import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, pausedOpening, type SidebandSocket, vipOpening } from '../src';
+import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, noCallerIdLine, pausedOpening, type SidebandSocket, vipOpening } from '../src';
 
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
@@ -21,10 +21,14 @@ describe('GptLiveEngine browser calls', () => {
     const web = (create.mock.calls[0] as unknown as [{ session: Record<string, unknown>; transport: unknown }])[0];
     const sip = (sessions.accept.mock.calls[0] as unknown as [string, { session: Record<string, unknown> }])[1].session;
     expect(web.transport).toEqual({ type: 'webrtc', sdp: 'v=0 offer' });
-    const { client: channel, ...shared } = web.session;
-    const { type, ...sipShared } = sip;
+    const { client: channel, instructions, ...shared } = web.session;
+    const { type, instructions: sipInstructions, ...sipShared } = sip;
     expect(type).toBe('live');
     expect(shared).toEqual(sipShared);
+    // the same prompt, and one line more: a browser call has no caller ID, so the best number is asked once
+    expect(instructions).toBe(`${String(sipInstructions)}\n${noCallerIdLine(DEMO_CLINIC)}`);
+    expect(instructions).toContain('"What\'s the best number to reach you?" or "¿Cuál es el mejor número para comunicarnos con usted?"');
+    expect(sipInstructions).not.toContain('there is no caller ID');
     expect(channel).toEqual({ data_channel: BROWSER_DATA_CHANNEL });
     expect(BROWSER_DATA_CHANNEL.allowed_client_events).toEqual(['session.close']);
   });
@@ -44,6 +48,11 @@ describe('GptLiveEngine browser calls', () => {
     const appends = sockets.all.flatMap((s) => s.sent).filter((e) => (e as { type: string }).type === 'session.instructions.append');
     expect(appends).toHaveLength(1);
     expect((appends[0] as { content: string; delegation_id: null }).delegation_id).toBeNull();
+    // by the time the sideband attaches the greeting may be under way, or the caller may have spoken over it: never again from the top
+    const again = (appends[0] as { content: string }).content;
+    expect(again).toMatch(/^Only if you have not started speaking yet and the caller has not said anything: /);
+    expect(again).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
+    expect(again).toContain('do not greet again and do not start over: answer what the caller said');
   });
 
   it('greets a VIP by name and says they are being put through, with no question first', async () => {
@@ -57,6 +66,13 @@ describe('GptLiveEngine browser calls', () => {
     expect(text).toContain('do not ask how you can help');
   });
 
+  it('greets a VIP in Spanish at a Spanish clinic, with the AI disclosure and no question', () => {
+    const es = vipOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, 'Carmen Ruiz');
+    expect(es).toContain(`Hola Carmen, gracias por llamar a ${DEMO_CLINIC.name}.`);
+    expect(es).toContain('asistente de IA de la clínica. Le comunico con nuestro equipo ahora mismo.');
+    expect(es).not.toContain('Hi Carmen');
+  });
+
   it('while the assistant is paused: says it is an AI assistant, then puts the caller through or says when to call back and where to go in an emergency', () => {
     const through = pausedOpening(DEMO_CLINIC, true);
     expect(through).toContain("the clinic's AI assistant");
@@ -67,6 +83,10 @@ describe('GptLiveEngine browser calls', () => {
     expect(back).not.toContain('connecting you');
     expect(pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: undefined }, false)).toContain('nearest 24-hour emergency vet');
     expect(pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, true)).toContain('Le comunico con nuestro equipo');
+    const esBack = pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es', industry: 'vet', emergencyHospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } }, false);
+    expect(esBack).toContain('Por favor, vuelva a llamar en nuestro horario de atención.');
+    expect(esBack).toContain('llame a Front Range Animal ER');
+    expect(esBack).not.toContain('Please call back');
   });
 
   it('tells the voice what caller ID would show: the call count and the one name on file, never the calls\' content', () => {
@@ -74,6 +94,7 @@ describe('GptLiveEngine browser calls', () => {
     const known = callerContext('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 5.\n2026-10-24T13:20:00.000Z: Booked a check-up for Scout.')!;
     expect(known).toContain('it called 5 times in the last 30 days');
     expect(known).toContain('"Am I speaking with Sam?"');
+    expect(known).toContain('"¿Hablo con Sam?"');
     expect(known).toContain('Never say you have no history');
     expect(known).not.toContain('Scout');
     const unnamed = callerContext('Calls from this number in the last 30 days: 2.\n2026-10-24T13:20:00.000Z: A question.')!;

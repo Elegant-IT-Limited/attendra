@@ -15,6 +15,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ApiKeysController } from './api-keys/api-keys.controller';
 import { AuditController } from './audit/audit.controller';
 import type { Auth } from './auth';
+import type { Mailer } from './mail-hook';
 import { CallsController } from './calls/calls.controller';
 import { ChangesController } from './changes/changes.controller';
 import { DoctorsController } from './doctors/doctors.controller';
@@ -24,7 +25,7 @@ import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { StaffGuard, toHeaders } from './http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PlanController } from './overview/plan.controller';
@@ -36,6 +37,7 @@ import { EmergencyReviewController } from './settings/emergency-review.controlle
 import { SettingsController } from './settings/settings.controller';
 import { VoiceSamplesController } from './voice-samples/voice-samples.controller';
 import { TasksController } from './tasks/tasks.controller';
+import { MyInvitationsController, TeamInvitationsController } from './team/invitations.controller';
 import { TeamController } from './team/team.controller';
 import { TextsController } from './texts/texts.controller';
 import pkg from '../package.json' with { type: 'json' };
@@ -66,6 +68,8 @@ export interface ApiDeps {
   changes?: ChangeFeed | null;
   /** Speaks the greeting in a voice, so Settings can play it. Without it the Listen button says samples are off. */
   voiceSamples?: VoiceSampler | null;
+  /** The hosting layer's mail hook. With it, Team invitations are emailed and nobody is shown a temporary password. */
+  mail?: Mailer | null;
 }
 
 // The Better Auth routes the dashboard uses. Everything else Better Auth could serve
@@ -87,7 +91,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -101,6 +105,7 @@ class ApiModule {
         { provide: WEBHOOK_GUARD, useValue: deps.webhooks ?? {} },
         { provide: CHANGES, useValue: deps.changes ?? null },
         { provide: VOICE_SAMPLES, useValue: deps.voiceSamples ?? null },
+        { provide: MAIL, useValue: deps.mail ?? null },
         { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
         { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },

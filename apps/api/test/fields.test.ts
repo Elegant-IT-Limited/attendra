@@ -37,7 +37,9 @@ describe('fields and lists of the clinic\'s own', () => {
   });
 
   it('keeps a doctor\'s own details, and asks for a required one', async () => {
-    await saveFields({ providerFields: [{ id: 'licence', label: 'Licence', kind: 'text', required: true }] });
+    await saveFields({ providerFields: [{ id: 'licence', label: 'Licence', kind: 'text', required: true }, { id: 'home', label: 'Home phone', kind: 'text', tellCallers: false }] });
+    // a field the clinic keeps for its team stays so; one saved without the switch is told to callers
+    expect((await settings()).providerFields?.map((f) => f.tellCallers)).toEqual([undefined, false]);
     const doc = (await settings()).providers[0]!;
     const rest = Object.fromEntries(Object.entries(doc).filter(([k]) => k !== 'id'));
     const missing = await api.request('PUT', `${C}/doctors/${doc.id}`, { cookie: admin, body: { ...rest, gender: doc.gender ?? 'female', custom: { licence: '' } } });

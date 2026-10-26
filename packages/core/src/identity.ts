@@ -95,8 +95,14 @@ function ordinalDays(s: string): string {
     .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\b/g, (w: string) => String(ORDINAL_DAYS[w]));
 }
 
+/** A Spanish day of the month said as a word, before "de <month>": "el quince de enero" is the 15th. */
+const DIAS = ['primero', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce', 'trece', 'catorce', 'quince',
+  'dieciseis', 'diecisiete', 'dieciocho', 'diecinueve', 'veinte', 'veintiuno', 'veintidos', 'veintitres', 'veinticuatro', 'veinticinco',
+  'veintiseis', 'veintisiete', 'veintiocho', 'veintinueve', 'treinta', 'treinta y uno'];
+const diasEs = (s: string) => s.replace(new RegExp(`\\b(uno|${DIAS.join('|')})\\b(?= de (${MONTHS_ES.join('|')})\\b)`, 'g'), (w: string) => String(w === 'uno' ? 1 : DIAS.indexOf(w) + 1));
+
 function readDob(input: string, order: 'mdy' | 'dmy'): [number, number, number] | null {
-  const s = ordinalDays(fold(input).toLowerCase())
+  const s = diasEs(ordinalDays(fold(input).toLowerCase()))
     .replace(/(\d)(st|nd|rd|th)\b/g, '$1')
     // "the 15th of January", "January the 15th"
     .replace(/\bthe /g, '').replace(/ of /g, ' ')
@@ -173,23 +179,25 @@ function birthIn(input: string, today: Date, order: 'mdy' | 'dmy'): { dob: strin
       .trim();
   }
   // "two or three": the first
-  plain = plain.replace(/\b(\d{1,2}|[a-z]+)\s+or\s+(?:\d{1,2}|[a-z]+)\b/, '$1')
+  plain = plain.replace(/\b(\d{1,2}|[a-z]+)\s+(?:or|o)\s+(?:\d{1,2}|[a-z]+)\b/, '$1')
     .replace(/\bthis year\b/, String(year)).replace(/\blast year\b/, String(year - 1)).replace(/\beste ano\b/, String(year))
     .replace(/,?\s*i think$/, '').trim();
   const exact = parseDob(plain, today, order) ?? parseDob(input, today, order);
   if (exact) return { dob: exact, estimated: false };
   // a month and a year, or "last January": the middle of that month, as an estimate
-  const monthYear = plain.match(/^(?:(last)\s+)?([a-z]+)(?:\s+(?:of\s+)?(\d{4}))?$/);
+  // in Spanish "enero de 2025", "el enero pasado"
+  const monthYear = plain.match(/^(?:(last)\s+)?([a-z]+)(?:\s+(pasado))?(?:\s+(?:of\s+|de\s+)?(\d{4}))?$/);
   const month = monthYear ? [MONTHS, MONTHS_ES].map((m) => m.indexOf(monthYear[2]!)).find((i) => i >= 0) : undefined;
-  if (monthYear && month !== undefined && (monthYear[1] || monthYear[3])) {
-    let y = monthYear[3] ? Number(monthYear[3]) : year;
-    if (!monthYear[3] && month >= today.getUTCMonth()) y -= 1;
+  if (monthYear && month !== undefined && (monthYear[1] || monthYear[3] || monthYear[4])) {
+    let y = monthYear[4] ? Number(monthYear[4]) : year;
+    if (!monthYear[4] && month >= today.getUTCMonth()) y -= 1;
     const d = `${y}-${String(month + 1).padStart(2, '0')}-15`;
     if (d <= today.toISOString().slice(0, 10) && y > year - 40) return { dob: d, estimated: true };
   }
   const half = /\band a half\b|\by medio\b/.test(plain);
   const s = plain.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-  const r = s.match(/(?:^|\s)(\d{1,2}|[a-z]+)(?:\s+and\s+a\s+half)?\s*(years?|yrs?|anos?|months?|mos?|meses|mes|weeks?|semanas?)(?:\s|$)/)
+  // a number as a whole word: "como dos años" is not "co" "mo(nths)"
+  const r = s.match(/(?:^|\s)(\d{1,2}|[a-z]+\b)(?:\s+and\s+a\s+half)?\s*(years?|yrs?|anos?|months?|mos?|meses|mes|weeks?|semanas?)(?:\s|$)/)
     ?? (s.match(/^(?:about|around|maybe|como|unos|unas)?\s*(\d{1,2}|[a-z]+)(?:\s+(?:years? old|anos))?$/) ? [s, s.replace(/^(?:about|around|maybe|como|unos|unas)\s*/, '').split(' ')[0]!, 'years'] : null);
   if (!r) return null;
   // a bare "a" is an article ("a rescue"), never an age without a unit

@@ -309,6 +309,8 @@ export const TextList = z.object({ texts: z.array(TextItem) });
 export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed']);
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
+/** Who a request can be given to: everyone who works requests here, the person asking included, by name, and whether they approve refills. */
+export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean() })) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
 /** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
 export const NewTask = z.object({
@@ -567,9 +569,29 @@ export const Member = z.object({
   approvesRefills: z.boolean(),
 });
 export const MemberList = z.object({ members: z.array(Member) });
-export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
+/** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
+export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
+/**
+ * The answer to adding a person: "invite sent", whatever the email. Where the deployment
+ * cannot send email, a new person instead gets an account and a temporary password, shown
+ * once, as before.
+ */
+export const AddResult = z.object({
+  status: z.literal('invite_sent'), email: z.string(),
+  userId: z.string().optional(), temporaryPassword: z.string().optional(), expiresInHours: z.number().optional(),
+});
+/** The invitations a team is waiting on. */
+export const TeamInvitationList = z.object({
+  invitations: z.array(z.object({ id: z.string(), email: z.string(), role: Role, approvesRefills: z.boolean(), invitedBy: z.string(), createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() })),
+});
+/** The invitations waiting for the signed-in person, from any clinic. */
+export const MyInvitationList = z.object({
+  invitations: z.array(z.object({ id: z.string(), clinicId: z.string(), clinicName: z.string(), role: Role, approvesRefills: z.boolean(), expiresAt: z.iso.datetime() })),
+});
+/** Accepted: the clinic to open. */
+export const AcceptedInvitation = z.object({ clinicId: z.string() });
 /** A new role, whether they may approve refills, or both. */
 export const ChangeMember = z.object({ role: Role.optional(), approvesRefills: z.boolean().optional() })
   .refine((b) => b.role !== undefined || b.approvesRefills !== undefined, 'give a role or approvesRefills');
@@ -619,6 +641,29 @@ export const HostingPlan = z.object({
    * is added): what the owner reads, with the link to the plan, and what the rest of the team reads.
    */
   notice: z.object({ level: z.enum(['warn', 'danger']), owner: z.string().min(1).max(300), team: z.string().min(1).max(300) }).nullable().optional(),
+  /**
+   * The owner's steps from a finished setup to real calls (the plan, a number, forwarding, texting), as the
+   * hosting layer keeps them: a card on Today until they are done. `optional`: real calls do not wait for it.
+   */
+  goLive: z.object({
+    setupUrl: SafeLink.nullable(),
+    steps: z.array(z.object({
+      title: z.string().min(1).max(80),
+      status: z.string().min(1).max(80),
+      state: z.enum(['done', 'todo', 'wait', 'problem']),
+      href: SafeLink.nullable(),
+      optional: z.boolean().default(false),
+    })).min(1).max(8),
+  }).nullable().optional(),
+});
+export const AssistantChoicesQuery = z.object({ assistantName: z.string().trim().regex(/^[\p{L}\p{M}]{2,24}$/u, 'the assistant name is one word of 2 to 24 letters').optional() });
+/** What setting up the assistant offers: the voices with a sample, and the greeting each language suggests for a name. */
+export const AssistantChoices = z.object({
+  voices: z.array(z.object({ id: z.string(), label: z.string() })),
+  /** The suggested greeting per language, for the name asked about (or the saved one). */
+  suggested: z.record(z.string(), z.string()),
+  /** The saved greeting is still the suggested one for the saved name, so it can follow a new name. */
+  savedIsSuggested: z.boolean(),
 });
 /** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
@@ -646,6 +691,7 @@ export type Health = z.infer<typeof Health>;
 export type Me = z.infer<typeof Me>;
 export type HostingPlan = z.infer<typeof HostingPlan>;
 export type ClinicPlan = z.infer<typeof ClinicPlan>;
+export type AssistantChoices = z.infer<typeof AssistantChoices>;
 export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;
@@ -692,9 +738,14 @@ export type PatientSaved = z.infer<typeof PatientSaved>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
 export type Overview = z.infer<typeof Overview>;
 export type WaitingTasks = z.infer<typeof WaitingTasks>;
+export type TaskAssignees = z.infer<typeof TaskAssignees>;
 export type Member = z.infer<typeof Member>;
 export type MemberList = z.infer<typeof MemberList>;
 export type AddedMember = z.infer<typeof AddedMember>;
+export type AddResult = z.infer<typeof AddResult>;
+export type TeamInvitationList = z.infer<typeof TeamInvitationList>;
+export type MyInvitationList = z.infer<typeof MyInvitationList>;
+export type AcceptedInvitation = z.infer<typeof AcceptedInvitation>;
 export type DoctorInput = z.infer<typeof DoctorInput>;
 export type DoctorList = z.infer<typeof DoctorList>;
 export type ImportResult = z.infer<typeof ImportResult>;

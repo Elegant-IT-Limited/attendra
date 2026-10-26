@@ -27,7 +27,7 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [not_verified]
+  refusals: [pet_is_new]
   bookings_created: 1
   sms_sent: 1
 forbid_spoken: ["microchip", "insurer", "insurance", "unclear", "which vet", "particular vet"]

@@ -4,8 +4,50 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls, registering a new pet, from a clinic's test calls, 2026-11-06)
+
+- **Each detail is asked once.** The call keeps every detail the caller has given (the owner's name, the pet's name, the kind of animal, sex, age, the phone), a correction replaces it, and the backend is told never to ask for them again. One caller was asked for the phone three times and for their first name twice.
+- **"New" means register, never search.** Once the caller says the pet is new, the assistant collects what registering still needs and registers it; `verify_caller` is refused (`pet_is_new`) until the caller says it may be on file after all. Registering checks the pet is not on file already, so nothing is added twice.
+- **The phone, asked the right way.** On a phone call: "Is the number you're calling from the best one for you?". On a browser test call, with no caller ID: "What's the best number to reach you?", once. Never "the number on Orbit's file" for a new pet.
+- **A chosen time is kept.** A time the caller picks before the pet is found or added is read back after that and booked on a clear yes; if it was taken meanwhile, the assistant says so and offers the next ones. "I'll take care of it" with nothing waiting for a yes is sent back to the backend.
+- **One greeting.** A caller who speaks over the greeting is answered, and the greeting never starts again.
+- **"Still checking" once per wait.** The hold line is said once; later ones thank the caller for waiting.
+- **From this batch's live run:** the kind of animal said before the lookup ("my cat Mango") is kept, so it is never asked again; "a first check-up", "we just adopted" and "su primera consulta" count as new, so the times offered are already a new pet's and the one picked still fits once the pet is added; and the voice knows who a call can go through to, so it never offers billing where nobody takes transfers.
+
+### Added (the assistant knows the clinic's own fields on each vet)
+
+- **A vet's own fields reach the assistant.** Fields the clinic adds to its vets (Settings, Fields, Veterinarians, such as "Qualifications") are given to the assistant under their labels, so "What are Dr. Ruiz's qualifications?" is answered from the field. Each field has a switch, "The assistant may tell callers", on by default, to keep one for the team (a licence number). Pets' and requests' own fields are never told to callers, as before.
+
+### Fixed (Requests: Assign to)
+
+- **A request can be handed to anyone.** Assign to left out whoever held the request and was hidden when nobody else was left, so a request held by the owner could not be handed on, and a clinic with one working member saw no names. It now lists everyone who works requests, yourself and the owner included, the holder marked, and "Unassigned" releases it. The list comes from a new `GET /clinics/:id/tasks/assignees` (`tasks:reassign`, names only).
+
+### Changed (the browser test call keeps going around the dashboard)
+
+- **A call bar.** The browser test call no longer ends when you leave the Test call page: it lives in the dashboard, with a bar on every page (the clinic, the time, mute, hang up and a link back). It ends on hang up, the time limit, closing or reloading the tab, signing out or switching clinic. If the microphone stops, the bar says "Your microphone stopped. Hang up and call again." and the call does not run on in silence.
+
+### Fixed (Spanish parity)
+
+- **Every behaviour that rests on words works in Spanish.** An audit of every change since 0.5.0 added what Spanish was missing: medical and dosing questions ("¿Le puedo dar ibuprofeno a mi perro?", "¿es grave?") and Spanish medicine names, internal words the assistant must never say, goodbyes and hanging up ("No corte la llamada" now keeps the call), callback promises, abuse and security in the usted form, authority claims, vet emergency phrases, pet ages ("como dos años"), and "¿Hablo con …?" for a known caller. The take-over and "taking too long" lines were English only; a Spanish call now hears them in Spanish. English gaps found on the way are fixed too ("isn't breathing", "what can I give him for the pain").
+- **Kept so.** `language-parity.test.ts` (core and agent) holds an English sentence and its Spanish twin for each behaviour, with the same expected result, and ten Spanish eval scenarios cover the recent fixes. CONTRIBUTING has a Languages section: words the caller or the assistant says ship with their Spanish twin.
+- **The vet emergency list changed**, so each clinic's emergency review shows as out of date until its vet reviews it again.
+
+### Added (invitations: one login, several clinics)
+
+- **Team, Add people takes several emails at once,** one per line or comma-separated, each with a role.
+- **Someone who already has a login is invited** instead of refused. They see "Maple Street invited you to its team as Front desk" in their own dashboard, with Accept and Decline, and get an email. Accepting adds the clinic to their clinic switcher; declining, or 7 days passing, ends it. The Team page lists pending invitations with Cancel.
+- **The clinic never learns who already uses Attendra.** Every email gets the same "Invite sent". Where the hosting layer sends email, a new address is invited the same way and sets its own password from the email; without it, a new address gets a temporary password, shown once, as before.
+- **Rules kept:** each clinic manages only its own team, passwords and two-step are never reset from another clinic, removing someone from one clinic leaves their others, only an owner invites an owner, and every invite, cancel, accept, decline and lapse is in the audit log. Migration 0038.
+- **Reading invitations never writes.** The banner and the Team page only read them; an invitation past its 7 days is left out by its date, and the worker closes it every hour with its audit row (`lapse-invitations`).
+
+### Fixed (every setting reaches the assistant)
+
+- **Nothing in Settings is hidden from the assistant by accident.** An audit of every setting found three a caller could need that never reached the call: the clinic's own phone number, the emergency hospitals when asked about ahead of time, and shorter opening hours more than a week ahead. `get_clinic_info` now returns them. `settings-coverage.test.ts` lists every setting with how it reaches the call (the prompt, `get_clinic_info`, enforced in code, or for the team only) and fails on a new one with no row.
+- **Settings says what callers never hear.** Links in your menu, and the fields on pets and requests, say "For your team only. The assistant does not read this to callers."
+
 ### Added (hosting)
 
+- **A Go live card on Today.** The hosting layer can list the steps left before real calls (plan, number, texting); the owner sees them on Today until all are done. Naming the assistant in setup updates a greeting the clinic never changed.
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.
 - **A line from the hosting layer on every page.** The plan can carry a notice (free minutes nearly used, the assistant paused until a card is added). The owner reads it with the link to the plan; the team reads its own version.
 

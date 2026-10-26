@@ -2,12 +2,21 @@
 import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
-import { coachingInstruction, DOING, type LiveEvent, shortName, TAKE_OVER_LINE } from './live';
+import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner } from './planner';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
-/** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"). */
-const CALLBACK_PROMISE = /\b(pass (that|this|it|your (message|request|details)) (along|on)|(have|get|ask) (someone|the team|our team|a team member|the clinic|staff|the staff|a vet|the vet|a veterinarian)( from the clinic)? (to )?(call|ring|get back to|contact) you|(will|'ll|is going to) (call|ring|get back to|contact) you|call you back|be in touch|let the team know|le (llamar[aá]n|llamaremos|devolver[aá]n la llamada)|alguien (le|te) llamar[aá])/i;
+/** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"), in English and Spanish, after `normalise`. */
+const CALLBACK_PROMISE = new RegExp([
+  String.raw`\b(pass (that|this|it|your (message|request|details)) (along|on)|(have|get|ask) (someone|the team|our team|a team member|the clinic|staff|the staff|a vet|the vet|a veterinarian)( from the clinic)? (to )?(call|ring|get back to|contact) you|(will|'ll|is going to) (call|ring|get back to|contact) you|call you back|be in touch|let the team know)`,
+  // "le paso el mensaje", "se lo hago saber al equipo", "alguien le llamará", "se pondrán en contacto"
+  String.raw`\b((le|se lo|se la) (paso|pasare|hago llegar|hare llegar) (el|su) (mensaje|recado|pedido)|(se lo|se la|le) (paso|pasare|hago llegar|hare llegar|hago saber|hare saber|dejo saber) al (equipo|personal|doctor|veterinario)|(le )?(aviso|avisare|informo|informare) al equipo|(le|lo|la|te) (llamaran|llamaremos|van a llamar|vamos a llamar|devolveran la llamada|devolveremos la llamada)|(alguien|el equipo|la clinica|el personal) (le|lo|la|te) (llamara|va a llamar|devolvera la llamada|contactara)|(se|nos) pondr(a|an|emos) en contacto)`,
+].join('|'));
+
+/** Whether the assistant's words promise that the team will call back or be in touch. */
+export function promisesCallback(agentText: string): boolean {
+  return CALLBACK_PROMISE.test(normalise(agentText));
+}
 
 /** What the voice engine should send or do. The engine owns the socket; the agent owns the decisions. */
 export type Outbound =
@@ -30,8 +39,18 @@ const VIP_AFTER_MS = 6000;
 const PAUSED_HANGUP_AFTER_MS = 10_000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
-/** More "still checking" for a wait that goes on: a new patient's registration and first times can take 30 s or more. */
-const HOLD_AGAIN_MS = [15_000, 30_000, 45_000] as const;
+/**
+ * A wait that goes on hears a thank-you, never "still checking" again: that is said once per wait, and two of them in a
+ * row (at 7 and 15 s) sounded like a machine stuck on a line (2026-11). A new pet's registration and first times can
+ * still take 30 s or more.
+ */
+const HOLD_AGAIN_MS = [30_000, 45_000] as const;
+/** Said once per wait, at HOLD_AFTER_MS. */
+const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+/** An answer that opens with "still checking" again, after the caller already heard it in this wait: that opening is dropped. */
+const STILL_CHECKING = /^\s*(?:(?:ok(?:ay)?|sorry|thanks?(?: you)?|gracias|perd[oó]n)[,.!]?\s+)?(?:i'?m |i am )?(?:still )(?:checking|working on (?:it|that)|looking(?: (?:it|that) up)?)[^.!?]*[.!?]\s*|^\s*(?:sigo|todav[ií]a estoy|a[uú]n estoy) (?:revisando|buscando|verificando|consultando|trabajando)[^.!?]*[.!?]\s*/i;
+/** Said later in a long wait instead of the same line again. */
+const HOLD_AGAIN_NOTE = 'Still working on it. Thank the caller for waiting, in a few words, and say it will be just a moment. Do not say again that you are still checking or still working on it.';
 /**
  * The last resort: no caller waits longer than this; they hear an apology and a callback offer, and the late answer is
  * dropped. 25 s cut off real registrations mid-way (live evals, 2026-10-25), so it sits well past a slow but working answer.
@@ -280,7 +299,7 @@ export class CallAgent {
     while (i >= 0 && s.turns[i]!.speaker !== 'agent') i--;
     if (i < 0 || i === this.promiseChecked) return [];
     this.promiseChecked = i;
-    if (!CALLBACK_PROMISE.test(s.turns[i]!.text)) return [];
+    if (!promisesCallback(s.turns[i]!.text)) return [];
     s.promiseNudges++;
     this.log.info({ call_id: this.ctx.callId, nth: s.promiseNudges }, 'the assistant promised a callback that is not recorded: asking for it');
     return [{ type: 'instructions', delegationId: null, content: 'You told the caller the team will get back to them, but no request exists yet. If the caller wants a callback, ask the backend now to create it with what they need; their number is the one they are calling from unless they gave another. Do not mention this note.' }];
@@ -294,7 +313,7 @@ export class CallAgent {
     this.emit({ type: 'staff', action: 'taken_over', by });
     this.emitState();
     return [
-      { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${TAKE_OVER_LINE}" Then say nothing more.` },
+      { type: 'instructions', delegationId: null, content: `Stop the current task. Say exactly: "${PACKS[this.state.language].takeOver}" Then say nothing more.` },
       { type: 'transfer', uri, afterMs: AFTER_SPEECH_MS, quiet: true },
     ];
   }
@@ -445,12 +464,13 @@ export class CallAgent {
     const progress: Outbound = { type: 'thinking', delegationId, content: PROGRESS_NOTE };
     if (emit) emit(progress); else out.push(progress);
     // a long wait is never silence: once, the caller hears that we are still on it
+    let held = false;
     const holds = emit ? [
       setTimeout(() => {
-        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
+        if (revision === this.state.revision) { held = true; emit({ type: 'thinking', delegationId, content: HOLD_NOTE }); }
       }, HOLD_AFTER_MS),
       ...HOLD_AGAIN_MS.map((ms) => setTimeout(() => {
-        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Thank the caller for waiting, in a few different words than before, and say it will be just a moment.' });
+        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: HOLD_AGAIN_NOTE });
       }, ms)),
     ] : [];
     const startedAt = Date.now();
@@ -512,19 +532,21 @@ export class CallAgent {
         // the answer is too slow to keep the caller waiting: anything it would still write is refused (the revision moves on)
         if (revision === this.state.revision) this.state.revision++;
         this.log.warn({ call_id: this.ctx.callId, revision, ms: Date.now() - startedAt, tools: toolCalls }, 'answer took too long: apologised and offered a callback');
-        out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.' });
+        out.push({ type: 'commentary', delegationId, content: PACKS[this.state.language].tooSlow });
         return out;
       }
       if (revision !== this.state.revision) {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];
       }
-      if (plan.say) out.push({ type: 'commentary', delegationId, content: clamp(plan.say) });
+      // "still checking" once per wait: after the hold line, the answer does not open with it again
+      const say = plan.say && held ? plan.say.replace(STILL_CHECKING, '').trim() || plan.say : plan.say;
+      if (say) out.push({ type: 'commentary', delegationId, content: clamp(say) });
       out.push(...controls);
     } catch (err) {
       this.log.error({ call_id: this.ctx.callId, err }, 'delegation failed');
       // never claim success on failure; hand the caller to a person instead
-      out.push({ type: 'commentary', delegationId, content: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.' });
+      out.push({ type: 'commentary', delegationId, content: PACKS[this.state.language].couldNotFinish });
     } finally {
       for (const h of holds) clearTimeout(h);
       const ms = Date.now() - startedAt;
