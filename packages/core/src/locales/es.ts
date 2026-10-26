@@ -52,6 +52,7 @@ export const es: LanguagePack = {
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
+  phoneQuestion: ({ callerId }) => (callerId ? '¿El número desde el que llama es el mejor para comunicarnos con usted?' : '¿Cuál es el mejor número para comunicarnos con usted?'),
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
@@ -87,4 +88,6 @@ export const es: LanguagePack = {
   yesAlone: /^(vale|por favor|si por favor)$/,
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
+  saysNew: words('(?:es|son|soy|somos) (?:completamente )?nuev[oa]s?|(?:paciente|cliente|mascota)s? nuev[oa]s?|nuev[oa]s? (?:paciente|cliente|mascota|aqui|en (?:la|su) clinica)|no (?:esta|estan|estoy) (?:registrad[oa]s?|en (?:su|el) sistema)|nunca (?:ha|han|he) (?:venido|ido|estado)|primera (?:vez|visita|consulta) (?:aqui|con ustedes|en (?:la|su) clinica)|(?:quiero|quisiera|necesito) registrar|registrar a (?:mi|mis|nuestr[oa]s?)'),
+  saysOnFile: words('no es nuev[oa]|ya (?:es|son) (?:paciente|cliente)s?|ya (?:esta|estan) (?:registrad[oa]s?|en (?:su|el) sistema)|ya (?:ha|han|hemos|he) (?:venido|ido|estado)|(?:puede|podria) (?:que )?(?:ya )?(?:este|estar) (?:registrad[oa]s?|en (?:su|el) sistema)'),
 };

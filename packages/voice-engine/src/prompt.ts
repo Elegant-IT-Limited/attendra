@@ -17,6 +17,24 @@ export function openingInstruction(clinic: ClinicConfig): string {
 }
 
 /**
+ * The opening again, once the sideband is attached (or as the nudge for a silent start): by then the greeting may be
+ * under way, or the caller may have spoken over it ("Hello?"), and a plain "greet now" made it start over (2026-11). It
+ * holds only for a call where nothing has been said yet.
+ */
+export function openingIfNotStarted(opening: string): string {
+  return `Only if you have not started speaking yet and the caller has not said anything: ${opening} If you have already said any part of a greeting, or the caller has spoken, do not greet again and do not start over: answer what the caller said.`;
+}
+
+/**
+ * What the voice knows on a browser test call: there is no caller ID, so the one phone question is the best number,
+ * asked once, in the caller's language.
+ */
+export function noCallerIdLine(clinic: ClinicConfig): string {
+  const asks = clinic.languages.map((l) => `"${PACKS[l].phoneQuestion({ callerId: false })}"`).join(' or ');
+  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new.`;
+}
+
+/**
  * The opening for a caller on the clinic's VIP list: a short hello that says who is
  * speaking (an AI assistant, as every greeting must) and that the call is being passed
  * to the team, with no "how can I help?" before a transfer the caller did not ask for.
@@ -85,7 +103,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
   const { terms, prompt } = industryPack(clinic.industry);
   return [
     `You answer the phone for ${clinic.name}.`,
-    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is.`,
+    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is. If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.`,
     clinic.recording.enabled && clinic.recording.notice ? `Then say: "${clinic.recording.notice}"` : '',
     // a name is for warmth, never for passing as a person
     `You are ${clinic.assistantName ? `${clinic.assistantName}, ` : ''}the ${terms.business}'s AI assistant. If asked, say you are an AI assistant. Never claim to be a person.`,

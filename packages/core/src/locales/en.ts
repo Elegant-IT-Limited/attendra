@@ -54,6 +54,7 @@ export const en: LanguagePack = {
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
+  phoneQuestion: ({ callerId }) => (callerId ? "Is the number you're calling from the best one for you?" : "What's the best number to reach you?"),
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
   shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -87,4 +88,6 @@ export const en: LanguagePack = {
   yesAlone: /^(ok|okay|confirm|confirmed)$/,
   hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,
   markers: /\b(the|and|you|my|is|appointment|please|thank|what|when|book|need|want|have|can|this|that|to|for|with)\b/g,
+  saysNew: /(?<!\bwhat)\b(is|are|am|'s|'re|'m) (brand |completely |totally )?new\b(?! (phone|number|cell|mobile|address|email))|\b((a |an )?new (patient|client|pet)|new (here|to (you|the clinic|your clinic|this clinic|the practice))|not (registered|on file|in (your|the) (system|records))|(never|not|hasn'?t|haven'?t|isn'?t|wasn'?t) (been )?(registered|been (there|here|in|to (you|the clinic|your clinic|this clinic)))|first (time|visit) (here|with you|at (the|your) clinic)|(want|like|need) to register|register (my|our|a|him|her|them))\b/,
+  saysOnFile: /\b((not|isn'?t|aren'?t) new|already (a |an )?(patient|client|registered|on file|in (your|the) (system|records))|(has|have|'s|'ve) been (there|here|in|to (you|the clinic|your clinic|this clinic)) before|(might|may|could|should) (already )?be (on file|registered|in (your|the) (system|records)))\b/,
 };

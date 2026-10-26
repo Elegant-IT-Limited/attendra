@@ -212,7 +212,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const actions: ActionRecorder | undefined = opts.record
     ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
-  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => now }, backend, observed, log, actions);
+  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => now, channel: scenario.channel }, backend, observed, log, actions);
   const segment = async (speaker: 'caller' | 'agent', text: string, startMs: number) => {
     if (opts.record) await calls.appendSegment(clinic.id, callId, { speaker, text, startMs, endMs: startMs + 1200 });
   };
@@ -222,8 +222,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let clock = 0;
   let delegations = 0;
   let lastReadback: string | null = null;
-  const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: clinic.greeting }];
-  await segment('agent', clinic.greeting, clock);
+  // a caller who speaks over the greeting has heard only its first words, and the call has them too
+  const opening = scenario.greeting_interrupted ? `${clinic.greeting.split(' ').slice(0, 6).join(' ')}…` : clinic.greeting;
+  if (scenario.greeting_interrupted) agent.onAgentTranscript(opening, clock, clock + 800);
+  const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: opening }];
+  await segment('agent', opening, clock);
   // live, a scenario with facts keeps only its opening line: a model playing the caller answers
   // whatever the real planner asks next, in the order it asks, up to ten caller lines
   const followUp = livePlanner && scenario.facts ? opts.followUp : undefined;
@@ -352,7 +355,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(spoken.some((s) => s.toLowerCase().includes(phrase.toLowerCase()) || (!!livePlanner && saysMostOf(s, phrase))), `never said "${phrase}"`);
   }
   // a forbidden phrase is one the assistant said: live, the tools' own notes to it ("Do not ask which vet") are not speech
-  const said = livePlanner ? transcript.filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
+  // the opening greeting is the clinic's own words, not the call's: a forbidden greeting is one said again
+  const said = livePlanner ? transcript.slice(1).filter((l) => l.speaker === 'assistant').map((l) => l.text) : spoken;
   for (const phrase of scenario.forbid_spoken) {
     check(!said.some((s) => s.toLowerCase().includes(phrase.toLowerCase())), `said the forbidden phrase "${phrase}"`);
   }

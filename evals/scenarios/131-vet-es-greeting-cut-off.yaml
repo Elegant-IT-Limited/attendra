@@ -1,0 +1,30 @@
+id: vet-es-greeting-cut-off
+title: "In Spanish: a caller who speaks over the greeting (\"¿Hola?\") is answered in Spanish, and the greeting is never started again"
+clinic: riverbend
+local_time: "10:00"
+greeting_interrupted: true
+facts: "You are Linh Nguyen and you speak only Spanish. You are calling from the number on Biscuit's file, the number you are calling from. You spoke over the greeting. Biscuit is your dog; you want a wellness exam (un chequeo), any vet, any time (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: ¿Hola? Perdón. Soy Linh, quiero un chequeo para mi perro Biscuit.
+    reply: "Hola, Linh. Encontré a Biscuit. Para un chequeo general tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Biscuit tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+forbid_spoken:
+  - thanks for calling
+  - gracias por llamar
+  - how can i help you and your pet today

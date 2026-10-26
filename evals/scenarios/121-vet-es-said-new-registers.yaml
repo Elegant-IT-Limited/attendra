@@ -1,0 +1,41 @@
+id: vet-es-said-new-registers
+title: "In Spanish: an owner who says at once that the pet is new is never looked up; each detail is asked once, and the pet is added and booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550182"
+facts: "You are Nora Quinn and you speak only Spanish. You are calling from your own mobile, the number you are calling from. Pixel is your female dog (perra), about a year old (como un año), and she has never been to this clinic. You already said she is new and a dog: if you are asked again, say so, a little annoyed. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero registrar a mi perrita en su clínica. Soy Nora Quinn y se llama Pixel. Es nueva, nunca ha venido a su clínica.
+    reply: "Bienvenida, Nora. Puedo registrar a Pixel. ¿Qué edad tiene?"
+    delegate:
+      - verify_caller: { owner_name: Nora Quinn, pet_name: Pixel }
+  - caller: Tiene un año.
+    reply: "Gracias. Pixel ya está registrada. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Pixel, owner_name: Nora Quinn, species: perro, sex: female, birthday_or_age: un año, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, por favor.
+    reply: "Listo. Pixel tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+forbid_spoken:
+  - no encontré
+  - es nueva
+  - qué tipo de animal
+  - qué animal es
+  - hembra o macho
+  - su nombre
+  - número en el expediente
+  - número que tenemos

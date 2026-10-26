@@ -1,0 +1,41 @@
+id: vet-es-detail-given-early
+title: "In Spanish: the owner's name and the kind of animal, said in the first sentence, are never asked for again while a new pet is added"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550191"
+facts: "You are Mia Lopez and you speak only Spanish. You are calling from your own mobile, the number you are calling from. Clover is your female cat (gata), about six months old (como seis meses), new to the clinic. You said your name and that Clover is a cat in your first sentence: if you are asked for either again, say so, a little annoyed. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, soy Mia Lopez y quiero una primera consulta para mi gata Clover.
+    reply: "Gracias, Mia. No encontré a Clover. ¿Clover es nueva en la clínica?"
+    delegate:
+      - verify_caller: { owner_name: Mia Lopez, pet_name: Clover }
+  - caller: Sí, es nueva. Es hembra.
+    reply: "Entendido. ¿Y qué edad tiene Clover?"
+  - caller: Unos seis meses.
+    reply: "Clover ya está registrada. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Clover, owner_name: Mia Lopez, species: gato, sex: female, birthday_or_age: unos seis meses, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Clover tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+forbid_spoken:
+  - qué tipo de animal
+  - qué animal es
+  - su nombre
+  - cómo se llama usted
+  - hembra o macho
+  - macho o hembra

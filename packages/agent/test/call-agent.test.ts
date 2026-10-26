@@ -482,7 +482,7 @@ describe('call control', () => {
     expect((await second).some((o) => o.type === 'commentary' && o.content.includes('214 Maple Street'))).toBe(true);
   });
 
-  it('tells the caller it is still checking at 7 s, then at 15, 30 and 45 s, never every few seconds', async () => {
+  it('says it is still checking once per wait, at 7 s, then only thanks the caller at 30 and 45 s: never the same line twice in a row', async () => {
     const c = await w.call();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -496,13 +496,15 @@ describe('call control', () => {
       await vi.advanceTimersByTimeAsync(2000);
       expect(early).toHaveLength(2);
       expect(early[1]).toContain('still checking');
+      await vi.advanceTimersByTimeAsync(14_000);
+      expect(early).toHaveLength(2); // nothing at 15 s: "still checking" twice in a row sounded stuck
       await vi.advanceTimersByTimeAsync(8000);
-      expect(early).toHaveLength(3);
+      expect(early).toHaveLength(3); // at 30 s, a thank-you
       expect(early[2]).toContain('Thank the caller for waiting');
-      await vi.advanceTimersByTimeAsync(6000);
-      expect(early).toHaveLength(3); // every 15 s at most, not every few seconds
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(early).toHaveLength(4); // at 30 s
+      expect(early[2]).toContain('Do not say again that you are still checking');
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(early).toHaveLength(4); // at 45 s
+      expect(early.filter((e) => e.includes('Tell the caller once'))).toHaveLength(1);
       release();
       expect(spoken(await pending)).toContain('Dr. Raman');
     } finally {

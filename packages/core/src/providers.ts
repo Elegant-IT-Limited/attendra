@@ -88,6 +88,13 @@ const KINDS: Record<string, string[]> = {
   snake: ['reptile', 'reptiles', 'exotic', 'exotics'], lizard: ['reptile', 'reptiles', 'exotic', 'exotics'], gecko: ['reptile', 'reptiles', 'exotic', 'exotics'],
   turtle: ['reptile', 'reptiles', 'exotic', 'exotics'], tortoise: ['reptile', 'reptiles', 'exotic', 'exotics'], puppy: ['dog', 'dogs', 'canine'], kitten: ['cat', 'cats', 'feline'],
   dog: ['canine'], cat: ['feline'], horse: ['equine', 'pony'], pony: ['horse', 'equine'], bird: ['avian'],
+  // the same in Spanish, as a Spanish-speaking owner names the animal: "perro", "gata", "conejo"
+  perro: ['dog', 'dogs', 'canine'], perra: ['dog', 'dogs', 'canine'], cachorro: ['dog', 'dogs', 'canine'], gato: ['cat', 'cats', 'feline'], gata: ['cat', 'cats', 'feline'],
+  gatito: ['cat', 'cats', 'feline'], conejo: ['rabbit', 'exotic', 'exotics', 'small', 'mammal'], huron: ['ferret', 'exotic', 'exotics', 'small', 'mammal'],
+  cobayo: ['guinea', 'exotic', 'exotics', 'small', 'mammal', 'pocket'], cuyo: ['guinea', 'exotic', 'exotics', 'small', 'mammal', 'pocket'],
+  loro: ['parrot', 'bird', 'birds', 'avian', 'exotic', 'exotics'], perico: ['parrot', 'bird', 'birds', 'avian', 'exotic', 'exotics'], pajaro: ['bird', 'birds', 'avian', 'exotic', 'exotics'],
+  ave: ['bird', 'birds', 'avian', 'exotic', 'exotics'], serpiente: ['snake', 'reptile', 'reptiles', 'exotic', 'exotics'], lagarto: ['lizard', 'reptile', 'reptiles', 'exotic', 'exotics'],
+  tortuga: ['turtle', 'reptile', 'reptiles', 'exotic', 'exotics'], caballo: ['horse', 'equine', 'pony'],
 };
 
 /** Words that name animals (not services), for telling "Rabbits" or "Exotics" from "Dentistry". */

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, type Language, redactSensitive, type Slot } from '@attendra/core';
+import { type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -13,6 +13,14 @@ interface PendingBase {
 
 /** A text the assistant offered: what, and where, and when the question was spoken. */
 export interface TextOffer { kind: string; ref: string | null; to: 'this' | 'file'; offeredAtMs: number; askedAtMs: number | null }
+
+/** The details a caller gives about who they are, by the names the tools take them in, and how the state line says each. */
+const DETAILS: Record<string, string> = {
+  owner_name: 'owner\'s name', pet_name: 'pet\'s name', species: 'kind of animal', sex: 'pet\'s sex', birthday_or_age: 'pet\'s age or birthday',
+  full_name: 'name', first_name: 'first name', last_name: 'last name', date_of_birth: 'date of birth', gender: 'gender', guardian_name: 'parent or guardian', phone: 'phone',
+};
+/** The assistant asked whether the pet (or the caller) is new: "Is Orbit new to the clinic?", "¿Orbit es nuevo?". */
+const ASKED_IF_NEW = /\b(new|nuev[oa]s?)\b[^.!]*\?/;
 
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
@@ -36,6 +44,15 @@ export class CallState {
   registrations = 0;
   /** The identity check has found nobody on this call: only then may the assistant add a new patient. */
   notFound = false;
+  /**
+   * What the caller has said about who they are (the owner's and the pet's names, the kind of animal, its sex and age,
+   * the phone), as the latest identity check or registration passed it: asked once, and a correction replaces it.
+   */
+  readonly known = new Map<string, string>();
+  /** The turn from which the caller's words about being new count: after a pet or patient is found or added, it is about the next one. */
+  newFromTurn = 0;
+  /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
+  chosen: Slot | null = null;
   /** The number they are calling from can't get texts (abroad, premium, toll-free): no text is offered again. */
   callerNotTextable = false;
   /** Slots the caller has actually been offered. A booking can only use one of these. */
@@ -97,6 +114,31 @@ export class CallState {
   abuse = 0;
   abuseTurn = -1;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
+
+  /** Keeps what a caller said about who they are, from an identity check's or a registration's arguments. */
+  remember(args: Record<string, unknown>) {
+    for (const [key, label] of Object.entries(DETAILS)) {
+      const value = args[key];
+      if (typeof value === 'string' && value.trim()) this.known.set(label, value.trim());
+    }
+  }
+
+  /**
+   * Whether the caller has said the pet (or they) are new to the clinic, by their own words since the last pet or patient
+   * was found or added: 'new' ("she's new", or yes to "Is Orbit new?"), 'on_file' when they said it may be on file after
+   * all, the latest of those, or null.
+   */
+  saidNew(): 'new' | 'on_file' | null {
+    for (let i = this.turns.length - 1; i >= this.newFromTurn; i--) {
+      const turn = this.turns[i]!;
+      if (turn.speaker !== 'caller') continue;
+      const said = newToClinic(turn.text);
+      if (said) return said;
+      const asked = this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent');
+      if (asked && ASKED_IF_NEW.test(normalise(asked.text)) && isClearYes(turn.text, LANGUAGES)) return 'new';
+    }
+    return null;
+  }
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
   addTranscript(speaker: Turn['speaker'], delta: string, startMs: number, endMs: number) {
