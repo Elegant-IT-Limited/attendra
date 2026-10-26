@@ -68,3 +68,37 @@ test('a claim someone else won says so once', async ({ browser }) => {
   await page.getByTestId('task').getByRole('button', { name: 'Claim' }).click();
   await expect(page.getByText('Someone else holds this request, or it is already done.')).toHaveCount(1);
 });
+
+test('a manager gives a request to the front desk, takes it, gives it back, and releases it', async ({ browser }) => {
+  // the demo's senior login is the practice manager; the list is the same for an owner, who is always on it
+  const page = await openAs(browser, 'manager');
+  await page.getByRole('link', { name: /^Requests/ }).click();
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible();
+  await page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first().click();
+  const card = page.getByTestId('task');
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  const assign = card.getByLabel('Assign to');
+  // everyone who works requests, the manager included; nobody holds it yet
+  await expect(assign).toHaveValue('');
+  await expect(assign.locator('option', { hasText: 'Jordan (front desk)' })).toHaveCount(1);
+  await expect(assign.locator('option', { hasText: 'Priya (practice manager) (you)' })).toHaveCount(1);
+
+  await assign.selectOption({ label: 'Jordan (front desk)' });
+  await expect(page.getByText('Given to Jordan (front desk).')).toBeVisible();
+  await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
+  await expect(assign.locator('option:checked')).toHaveText('Jordan (front desk), has it');
+
+  // taken back: the manager gives it to themselves
+  await assign.selectOption({ label: 'Priya (practice manager) (you)' });
+  await expect(card.getByText('You have it')).toBeVisible();
+  await expect(assign.locator('option:checked')).toHaveText('Priya (practice manager) (you), has it');
+
+  await assign.selectOption({ label: 'Jordan (front desk)' });
+  await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
+
+  // and back to the queue
+  await assign.selectOption({ label: 'Unassigned' });
+  await expect(page.getByText('Released. It is back in the queue.')).toBeVisible();
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  await expect(assign).toHaveValue('');
+});
