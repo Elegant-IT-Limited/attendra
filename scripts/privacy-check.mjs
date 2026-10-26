@@ -38,7 +38,7 @@ const madeUpDomain = (domain, local) => {
   if (MADE_UP_DOMAINS.some((m) => d === m || d.endsWith(`.${m}`))) return true;
   if (d.endsWith('.test') || d.endsWith('.example') || d === 'test' || d === 'example') return true;
   // OpenAI's SIP host, with a made-up project in front of it
-  return d.endsWith('openai.com') && /^proj_[a-z_]+$/.test(local);
+  return (d === 'openai.com' || d.endsWith('.openai.com')) && /^proj_[a-z_]+$/.test(local);
 };
 // a made-up project id is a plain lower-case word (proj_x, proj_abc, proj_example); real ones mix cases and digits
 const PROJECT = /proj_[A-Za-z0-9]+/g;

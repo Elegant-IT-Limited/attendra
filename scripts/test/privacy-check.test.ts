@@ -31,6 +31,7 @@ describe('the privacy check', () => {
     expect(checkLine('dana@oakhill.example, sam@example.com, robin@maple-demo.test, 1+x@users.noreply.github.com')).toEqual([]);
     expect(checkLine('write to someone@realmail.net')).toEqual(['an email address outside the made-up domains']);
     expect(checkLine('<sip:proj_example@sip.api.openai.com>')).toEqual([]);
+    expect(checkLine('<sip:proj_example@sip.notopenai.com>')).toEqual(['an email address outside the made-up domains']);
     expect(checkLine('<sip:proj_8hQ2xLm4Rt@sip.api.openai.com>')).toEqual(['an email address outside the made-up domains', 'a project id that is not made up']);
   });
 
