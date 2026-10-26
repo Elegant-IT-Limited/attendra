@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, Skeleton } from '@/components/ui/feedback';
-import { api } from '@/lib/api';
+import { api, BUSY, isBusy } from '@/lib/api';
 import { usePets } from '@/lib/terms';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -61,7 +61,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
         </Button>
       </div>
       {slots.isPending ? <Skeleton className="h-40" /> : slots.isError ? (
-        <p className="text-sm text-danger">Open times did not load. Try again in a moment.</p>
+        <p className="text-sm text-danger">{isBusy(slots.error) ? BUSY : 'Open times did not load. Try again in a moment.'}</p>
       ) : byDay.size === 0 ? (
         <Empty title="No open times this week">Try the next week, or another {pets ? 'veterinarian' : 'provider'}.</Empty>
       ) : (

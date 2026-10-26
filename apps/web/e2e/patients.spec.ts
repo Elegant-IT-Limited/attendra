@@ -51,4 +51,18 @@ test.describe.serial('patients', () => {
     await page.getByLabel('Find a patient').fill('720 555 0188');
     await expect(page.getByRole('list', { name: 'Matching patients' }).getByRole('link', { name: /Tessa Okoro/ })).toBeVisible();
   });
+
+  test('a busy API (429) is tried again, and the search result still appears', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    let searches = 0;
+    // the first search is turned away once, as the API does when it is busy; the retry goes through
+    await page.route((u) => u.pathname.endsWith('/patients/search'), (route) => (searches++ === 0
+      ? route.fulfill({ status: 429, headers: { 'retry-after': '1' }, json: { error: 'rate_limited' } })
+      : route.fallback()));
+    await page.getByRole('link', { name: 'Patients' }).click();
+    await page.getByLabel('Find a patient').fill('delg');
+    await expect(page.getByRole('list', { name: 'Matching patients' }).getByRole('link', { name: /^Maria Delgado/ })).toBeVisible();
+    expect(searches).toBeGreaterThanOrEqual(2);
+    await expect(page.getByText('Attendra is busy for a moment')).toHaveCount(0);
+  });
 });

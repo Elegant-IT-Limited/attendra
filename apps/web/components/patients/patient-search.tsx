@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/feedback';
 import { Input, Label } from '@/components/ui/input';
 import { shownValue } from '@/components/patients/custom-fields';
 import { Badge } from '@/components/ui/badge';
-import { api, useClinicConfig } from '@/lib/api';
+import { api, BUSY, isBusy, useClinicConfig } from '@/lib/api';
 import { age, dob, GENDER_LABEL, phone } from '@/lib/format';
 import { usePets } from '@/lib/terms';
 
@@ -68,7 +68,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
         <p className="text-xs text-text-muted">{hint}</p>
       </div>
       {!text.trim() ? empty : results.isPending ? <Skeleton className="h-24" /> : results.isError ? (
-        <p className="text-sm text-danger">The search did not work. Try again in a moment.</p>
+        <p className="text-sm text-danger">{isBusy(results.error) ? BUSY : 'The search did not work. Try again in a moment.'}</p>
       ) : !results.data?.patients.length ? (
         <p className="text-sm text-text-muted">{pets ? 'No pet matches. Check the spelling, or add it as a new pet.' : 'No patient matches. Check the spelling, or add them as a new patient.'}</p>
       ) : (

@@ -24,6 +24,7 @@ import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
+import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
@@ -145,8 +146,14 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
     if (IMPORT_ROUTES.includes(route.url) && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 3 * 1024 * 1024;
   });
 
-  // every route, Better Auth's included: sign-in is where guessing happens
-  await fastify.register(rateLimit, { max: deps.rateLimit ?? 600, timeWindow: 60_000 });
+  // every route, Better Auth's included: sign-in is where guessing happens. Counted per
+  // signed-in session, so a team behind one office connection is not one budget; per
+  // address for everything without a session (sign-in included)
+  const authContext = await deps.auth.$context;
+  await fastify.register(rateLimit, {
+    max: deps.rateLimit ?? 600, timeWindow: 60_000,
+    keyGenerator: rateLimitKey({ cookieName: authContext.authCookies.sessionToken.name, secret: authContext.secret }),
+  });
 
   // Method, route and status only. Bodies and query strings can carry PHI.
   fastify.addHook('onResponse', async (req, reply) => {

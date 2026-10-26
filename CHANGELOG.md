@@ -4,6 +4,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the dashboard handles a busy API, and open tabs ask less of it)
+
+- **"Too many requests" is never silent.** The dashboard tries a request the API turned away (429) again after its `Retry-After`, or 2 then 5 seconds, at most twice; then a dialog says "Attendra is busy for a moment. Try again in a few seconds." The patient search and the slot picker say the same instead of an empty list.
+- **Fewer requests from open pages.** Changes from the change feed are gathered and applied at most once every 2 seconds, only screens in view read again, and a hidden tab reads nothing until it is shown. Before, every change made every open page read the request count, the request list and the waiting list again.
+- **The limit counts per person.** The API's 600 requests a minute are counted per signed-in session (a session cookie the server signed), and per address only for requests without one, so a clinic's team behind one office connection no longer shares one budget. The sign-in limits and the forged-webhook limit are as they were.
+
 ### Fixed (a removed clinic is really deleted)
 
 - **Nothing of a deleted clinic is left.** Deleting a clinic closed 30 days ago (a removed location, or the provisioning `DELETE`) now also deletes its calls' steps and transcript lines, its documents' chunks, the invitations sent from it and the worker's jobs about it, children first, in the same transaction. When it was its organization's last clinic, the organization goes too, with its team, its invitations and every login left with no team. A new test reads every table in every schema with a clinic, organization or user column from the catalog, seeds a row in each and expects none after the purge, so a new table the purge forgets fails it.
