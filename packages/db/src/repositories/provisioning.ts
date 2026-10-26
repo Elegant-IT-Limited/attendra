@@ -4,7 +4,7 @@
 // none of it reads patient data.
 import { ClinicConfig, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { authAccounts, authSessions, authTwoFactors, authUsers, memberships } from '../auth-schema';
+import { authAccounts, authSessions, authTwoFactors, authUsers, invitations, memberships } from '../auth-schema';
 import type { Database } from '../client';
 import type { PhiCipher } from '../crypto';
 import { auditLogs, calls, clinics, organizations } from '../schema';
@@ -115,12 +115,16 @@ export async function setClinicClosed(db: Database, clinicId: string, closed: bo
 
 /**
  * Deletes a clinic closed at least 30 days ago, with everything recorded for it: calls,
- * transcripts, patients, appointments, requests, texts, documents, webhooks, keys and its
- * audit log. An open clinic, or one closed more recently, is left as it is.
+ * transcripts, the call's steps, patients, appointments, requests, texts, documents and their
+ * chunks, webhooks, keys, invitations sent from it, the worker's jobs about it and its audit
+ * log. When it was its organization's last clinic, the organization goes too, with its team
+ * and invitations, and every login left with no team. An open clinic, or one closed more
+ * recently, is left as it is. A test scans every table for a clinic, organization or user
+ * column, so a new table this forgets fails it.
  */
 export async function purgeClosedClinic(db: Database, clinicId: string, now = new Date()): Promise<'purged' | 'not_found' | 'open' | 'recent'> {
   return db.transaction(async (tx) => {
-    const [c] = await tx.select({ closedAt: clinics.closedAt }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
+    const [c] = await tx.select({ closedAt: clinics.closedAt, orgId: clinics.orgId }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
     if (!c) return 'not_found';
     if (!c.closedAt) return 'open';
     if (c.closedAt.getTime() > now.getTime() - CLOSED_KEPT_DAYS * 86_400_000) return 'recent';
@@ -135,10 +139,14 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from tasks where clinic_id = ${clinicId}`,
       sql`delete from appointments where clinic_id = ${clinicId}`,
       sql`delete from call_summaries where clinic_id = ${clinicId}`,
+      sql`delete from call_actions where clinic_id = ${clinicId}`,
+      sql`delete from call_segments where clinic_id = ${clinicId}`,
       sql`update patients set created_by_call_id = null where clinic_id = ${clinicId} and created_by_call_id is not null`,
       sql`delete from calls where clinic_id = ${clinicId}`,
       sql`delete from patients where clinic_id = ${clinicId}`,
+      sql`delete from knowledge_chunks where clinic_id = ${clinicId}`,
       sql`delete from knowledge_documents where clinic_id = ${clinicId}`,
+      sql`delete from invitations where clinic_id = ${clinicId}`,
       sql`delete from sms_messages where clinic_id = ${clinicId}`,
       sql`delete from sms_opt_outs where clinic_id = ${clinicId}`,
       sql`delete from api_keys where clinic_id = ${clinicId}`,
@@ -146,9 +154,33 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from phone_numbers where clinic_id = ${clinicId}`,
     ];
     for (const step of steps) await tx.execute(step);
+    // the worker's jobs carry the clinic's id in their data (pg-boss, in its own schema, once the worker has run here)
+    const [jobs] = (await tx.execute(sql`select to_regclass('pgboss.job') is not null as ok`)).rows as [{ ok: boolean }];
+    if (jobs.ok) await tx.execute(sql`delete from pgboss.job where data->>'clinicId' = ${clinicId}`);
     await tx.delete(clinics).where(eq(clinics.id, clinicId));
+    const [left] = await tx.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, c.orgId)).limit(1);
+    if (!left) await removeOrganization(tx, c.orgId);
     return 'purged';
   });
+}
+
+/** An organization with no clinic left: its team, its invitations, and the logins that belonged to no other team. */
+async function removeOrganization(tx: Pick<Database, 'select' | 'delete' | 'update'>, orgId: string) {
+  const team = (await tx.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.organizationId, orgId))).map((m) => m.userId);
+  await tx.delete(invitations).where(eq(invitations.organizationId, orgId));
+  await tx.delete(memberships).where(eq(memberships.organizationId, orgId));
+  await tx.update(authSessions).set({ activeOrganizationId: null }).where(eq(authSessions.activeOrganizationId, orgId));
+  await tx.delete(organizations).where(eq(organizations.id, orgId));
+  if (!team.length) return;
+  const staying = new Set((await tx.select({ userId: memberships.userId }).from(memberships).where(inArray(memberships.userId, team))).map((m) => m.userId));
+  const gone = team.filter((u) => !staying.has(u));
+  if (!gone.length) return;
+  // invitations they sent to other teams go with them, as their sign-in does
+  await tx.delete(invitations).where(inArray(invitations.inviterId, gone));
+  await tx.delete(authSessions).where(inArray(authSessions.userId, gone));
+  await tx.delete(authTwoFactors).where(inArray(authTwoFactors.userId, gone));
+  await tx.delete(authAccounts).where(inArray(authAccounts.userId, gone));
+  await tx.delete(authUsers).where(inArray(authUsers.id, gone));
 }
 
 /**

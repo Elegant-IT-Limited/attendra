@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (a removed clinic is really deleted)
+
+- **Nothing of a deleted clinic is left.** Deleting a clinic closed 30 days ago (a removed location, or the provisioning `DELETE`) now also deletes its calls' steps and transcript lines, its documents' chunks, the invitations sent from it and the worker's jobs about it, children first, in the same transaction. When it was its organization's last clinic, the organization goes too, with its team, its invitations and every login left with no team. A new test reads every table in every schema with a clinic, organization or user column from the catalog, seeds a row in each and expects none after the purge, so a new table the purge forgets fails it.
+
 ### Fixed (CI survives the Node crash)
 
 - **The eval report's retry works.** Node 24.21.0 crashed inside V8 in the eval report on main twice (exit 133), and the retry never ran: `pnpm eval` goes through `pnpm --filter`, which reports any failure as exit 1, and the guard only retries a crash by signal (128 or higher). The step now runs the report with `node` directly, so the real exit code comes through, and a crash is run once more. CI and the quality run pin Node 24.22.1, the newest Node 24 LTS patch.
