@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, leakIn,
-  parsePetBirth, saidGoodbye, withoutTextRefusal,
+  newToClinic, parsePetBirth, saidGoodbye, withoutTextRefusal,
 } from '../src';
 
 /**
@@ -33,6 +33,12 @@ const ROWS: Row[] = [
   ['isClearYes: sounds good', yes, 'Sounds good', 'Me parece bien', true],
   ['isClearYes: a hedge', yes, 'Yes, actually wait', 'Sí, pero espere', false],
   ['isClearYes: a maybe', yes, 'I think so', 'Creo que sí', false],
+  // the pet (or the caller) is new to the clinic, or may be on file after all
+  ['newToClinic: said new', newToClinic, "She's new, she's not registered", 'Es nueva, no está registrada', 'new'],
+  ['newToClinic: a first check-up', newToClinic, "I'd like to bring my puppy in for a first check-up", 'Quiero traer a mi cachorro a su primera consulta', 'new'],
+  ['newToClinic: just adopted', newToClinic, 'We just adopted a kitten', 'Acabamos de adoptar una gata', 'new'],
+  ['newToClinic: on file after all', newToClinic, 'Maybe she is already in your system', 'Puede que ya esté registrada', 'on_file'],
+  ['newToClinic: the first time free is not new', newToClinic, "I'll take the first appointment available", 'Quiero la primera cita disponible', null],
   // a yes that turns down the confirmation text
   ['declinesText: yes, but no text', declinesText, 'Yes, but no text please', 'Sí, pero sin mensaje, por favor', true],
   ['declinesText: do not text me', declinesText, "Don't text me", 'No me mande mensajes', true],

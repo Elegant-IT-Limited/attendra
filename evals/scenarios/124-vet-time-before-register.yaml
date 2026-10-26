@@ -29,7 +29,7 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [identity_required, not_verified]
+  refusals: [identity_required, pet_is_new]
   bookings_created: 1
   sms_sent: 1
   offered_from_time: "13:00"

@@ -99,7 +99,7 @@ export const vet: IndustryPack = {
       'Records (sent to another clinic, a groomer or a boarding place, or for travel): find the pet first, then take a request with create_callback, with the reason starting "Records request:" and saying where they should go. Never read records out on the phone.',
     ],
     descriptions: {
-      verify_caller: 'Find the pet by the owner\'s first name (a full name if they gave one), the pet\'s name and the phone number on file (null: the number they are calling from) before booking, changing or reading anything of theirs. Call it again to switch to another of the owner\'s pets.',
+      verify_caller: 'Find the pet by the owner\'s first name (a full name if they gave one), the pet\'s name and the phone number on file (null: the number they are calling from) before booking, changing or reading anything of theirs. Pass species when the caller has said what kind of animal it is ("my cat Mango"), else null. Call it again to switch to another of the owner\'s pets.',
       register_patient: 'Add a new pet, when the caller says the pet is new to the clinic (no lookup first: this checks the pet is not on file already) or verify_caller found nothing and they say it is new. Needs the pet\'s name, the owner\'s first name (and last name if they gave it), the kind of animal (dog, cat, rabbit...), its sex (female, male, or unknown), its birthday or age as the owner says it, and the phone (null: the number they are calling from). The pet is then found and can book.',
       get_clinic_info: 'Hours for today and the next 7 days, the veterinarians (what animals and services they see, weekly hours, time off, whether they take new patients, and the clinic\'s own details on each, such as qualifications, under details), the visit types, the emergency hospitals, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
       find_slots: 'Find up to 3 open appointment slots, optionally with one veterinarian (provider_id), or with the vets who see a kind of animal or service from get_clinic_info (specialty). No identity needed: use it to answer "who is free Monday" before asking who they are. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
@@ -108,7 +108,8 @@ export const vet: IndustryPack = {
   },
   toolArgs: {
     // the owner's first name (or full name), the pet's name, and the phone number on the pet's file: null means the number they are calling from
-    verify_caller: z.object({ owner_name: z.string().trim().min(2), pet_name: z.string().trim().min(1).max(60), phone }),
+    // species: the kind of animal when the caller has said it ("my cat Mango"), kept so it is never asked again; not part of the lookup
+    verify_caller: z.object({ owner_name: z.string().trim().min(2), pet_name: z.string().trim().min(1).max(60), phone, species: z.string().trim().min(2).max(40).nullable().default(null) }),
     // a new pet, after verify_caller found nothing and the caller said the pet is new
     register_patient: z.object({
       pet_name: z.string().trim().min(1).max(60), owner_name: z.string().trim().min(2).max(120),

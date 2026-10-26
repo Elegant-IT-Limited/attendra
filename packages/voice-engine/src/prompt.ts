@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
+/** Who a transfer reaches, in the words the voice uses for it. */
+const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
+
 /**
  * The conversation prompt GPT-Live starts with: voice, tone and when to hand work
  * to our backend. It carries clinic facts only, never patient data, and it is short
@@ -131,7 +134,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     'Say a result only after the backend confirms it. Never guess a time, a date or a name.',
     ...prompt.limits,
     clinic.routing.length
-      ? 'If the caller asks for a person, delegate a transfer.'
+      ? `If the caller asks for a person, delegate a transfer. Calls go through to ${[...new Set(clinic.routing.map((r) => TRANSFER_TO[r.target]))].join(' and ')} only (the backend says when): never offer to connect the caller to anyone else; for anything else, offer to have the team call them back.`
       : `No one at the ${terms.business} takes transferred calls: never offer to connect the caller to anyone (the front desk, an on-call vet or doctor). If they ask for a person, offer to have the team call them back.`,
     ...(textingOf(clinic).enabled ? [] : ['You cannot text the address, hours or links here: if the caller asks, say so in a few words and say it out loud instead (slowly, and offer to repeat it). That is no reason for a callback. A booking confirmation text is the exception, when the backend says it was sent.']),
     ...(textingOf(clinic).enabled ? ['You can text the caller things they just heard (the address, the hours, a link, an answer) by delegating to the backend. Offer it once when it would help, ask the question the backend gives you, and only after they say yes delegate it again. Never say a text was sent before the backend confirms it.'] : []),

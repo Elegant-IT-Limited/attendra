@@ -412,7 +412,8 @@ export async function runTool(
       // the clinic books this one itself: a request for the team, never a time from the assistant
       if (visitType.staffOnly) return refuse('staff_books', 'The team books this visit themselves. Say so, and offer to take a request for them to call back with create_callback: what the visit is for, and the best number.');
       const patient = state.verifiedPatient;
-      if (patient?.isNew && visitType.audience === 'existing') {
+      // a caller who said they (or the pet) are new is looked for with a new patient's visit from the start, so a time they pick still fits once they are added
+      if ((patient?.isNew || (!patient && state.saidNew() === 'new')) && visitType.audience === 'existing') {
         return refuse('new_patient_visit_type', `New patients book one of these first: ${clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang)).join(', ')}.`);
       }
       if (patient && !patient.isNew && visitType.audience === 'new') {
