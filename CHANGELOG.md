@@ -51,16 +51,16 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.
 - **A line from the hosting layer on every page.** The plan can carry a notice (free minutes nearly used, the assistant paused until a card is added). The owner reads it with the link to the plan; the team reads its own version.
 
-### Fixed (calls, from Tamal's VIP and caller-ID test calls, 2026-10-25)
+### Fixed (calls, from VIP and caller-ID test calls, 2026-10-25)
 
-- **A VIP hears a hello and is put through.** A caller on the VIP list heard the usual greeting, "How can I help you today?", and then, without a pause, "I'm connecting you with a member of our team now." The opening is now one line for them: "Hi Tamal, thanks for calling Zaru. This is Zizu, the clinic's AI assistant. I'm connecting you with our team now." (in Spanish too), with no question before the transfer. The call summary no longer flags a VIP transfer for review because no request was heard.
-- **The voice knows what caller ID shows.** At the start of every phone call the voice is told how often this number called in the last 30 days and, when the clinic has exactly one person on file for it, their first name. It asks "Am I speaking with Abdul?" when the caller says what they need, and asked "do you have my history?" it says it can see they have called before and asks for the details it needs. It never again says "I don't have your history" or "I just pick up calls as they come in". What earlier calls were about still waits for the identity check.
+- **A VIP hears a hello and is put through.** A caller on the VIP list heard the usual greeting, "How can I help you today?", and then, without a pause, "I'm connecting you with a member of our team now." The opening is now one line for them: "Hi Jamie, thanks for calling Willow Creek Pet Clinic. This is Maya, the clinic's AI assistant. I'm connecting you with our team now." (in Spanish too), with no question before the transfer. The call summary no longer flags a VIP transfer for review because no request was heard.
+- **The voice knows what caller ID shows.** At the start of every phone call the voice is told how often this number called in the last 30 days and, when the clinic has exactly one person on file for it, their first name. It asks "Am I speaking with Sam?" when the caller says what they need, and asked "do you have my history?" it says it can see they have called before and asks for the details it needs. It never again says "I don't have your history" or "I just pick up calls as they come in". What earlier calls were about still waits for the identity check.
 - **No silent start.** One call waited 15 seconds in silence before the greeting, which came only when the caller said hello: GPT-Live had held it. When nobody has said a word 4 seconds after the call is answered, the voice is now told once to greet.
 - **"I can't text that one", not "texting isn't set up".** When the clinic texts but not a particular thing (a vet's details are off by default), the assistant says it can't text that one and reads it out, instead of saying texting is not available on this line.
 
 ### Fixed (calls, from the first test calls with texting on, 2026-10-25)
 
-- **A known number is greeted like a front desk does.** When the clinic has exactly one client on the number calling (the owner, for a pet), the assistant asks "Am I speaking with Abdul?" instead of asking for a name: that first name only, nothing else from a record before the check, and never again after a no. Two families on one phone get the usual question. Reading the name is audited (`patient.name_on_file.read`).
+- **A known number is greeted like a front desk does.** When the clinic has exactly one client on the number calling (the owner, for a pet), the assistant asks "Am I speaking with Sam?" instead of asking for a name: that first name only, nothing else from a record before the check, and never again after a no. Two families on one phone get the usual question. Reading the name is audited (`patient.name_on_file.read`).
 - **A no comes first.** The assistant no longer opens with "Sure, let's see" before saying it can't do something.
 - **A caller who was added as new is not "not verified".** The call's review reason no longer says the caller could not be verified when the assistant added them as a new patient or pet for the team to check.
 - **One callback per call.** A caller who was offered a callback twice in one call (once for the booking, once more later) got two requests for the team. `create_callback` now keeps one per call for each purpose (one of the clinic's topics, a privacy request, or anything else); a second one says the team already has it.
@@ -104,7 +104,7 @@ Real phone lines: calls to production numbers through a Twilio Elastic SIP Trunk
 - **One filter bar on every list.** Pets, Veterinarians and Requests each put their switch, search and dropdowns in the same card; Requests' Open/Done is the same pill switch as Pets'.
 - **Settings:** a warning when a veterinary clinic has no emergency hospital; "+ Your clinic's own line" moves to an empty row already there; the example number uses the clinic's area code; "While you are closed" explains booking at night ("Book visits for your open hours, at any time of day").
 
-### Fixed (calls, from Tamal's calls on 2026-10-24 and live evals)
+### Fixed (calls, from test calls on 2026-10-24 and live evals)
 
 - **A slow answer is no longer cut off.** The 25 s deadline from the last release cut off real registrations mid-way (a new patient heard an apology, then "you're already on file"; live evals, 2026-10-25). The caller now hears "still checking" at 7, 15, 30 and 45 s, and the apology with a callback offer only at 60 s.
 - **The call ends when both sides said goodbye.** The assistant's goodbye answered by the caller's ("Take care." "Take care, bye") ends the call 2.5 s later, even with a request still at the backend; no "waiting in silence" nudge ever follows a caller's goodbye (it made the assistant speak again, twice). "I'll get back to you" counts as leaving; "talk to you soon" and "see you" count as the assistant's goodbye.
@@ -116,7 +116,7 @@ Real phone lines: calls to production numbers through a Twilio Elastic SIP Trunk
 - **Fewer requests:** none for a call where the caller never spoke; none when the same number already has an open follow-up or callback from the last 14 days (emergencies still get theirs).
 - Never the same sentence twice in a call (voice prompt). Evals: a choice question after a new set of times is not a repeat; sec-enumeration forbids confirmations, not the refusal's wording.
 
-### Changed (the dashboard, from Tamal's UI round on 2026-10-24)
+### Changed (the dashboard, from a UI review on 2026-10-24)
 
 - **One name for one thing.** A vet's "Specialty" and "Animals and services" (or "Sees people for") are called the same on the list, its filters ("Any specialty", "Any animal or service"), the card, the edit form and Settings, Fields and lists; the built-in fields listed there are the edit form's labels, word for word. "Kind of animal", "Kind of request" and "What it is about" likewise.
 - **Pets: a real switch** between all pets and those the assistant added, the same pill switch as other filters.
@@ -127,7 +127,7 @@ Real phone lines: calls to production numbers through a Twilio Elastic SIP Trunk
 - **Call records are kept a year by default**, three years at most, chosen from a list (90 days to 3 years); a longer value saved before is kept at three years.
 - **No follow-up request when the caller said no** to the last callback offered; the call can still need review, and its summary says they declined.
 
-### Fixed (calls, from Tamal's test calls on 2026-10-23)
+### Fixed (calls, from test calls on 2026-10-23)
 
 - **A callback is taken on the yes.** "Okay" to a callback creates it at once, from the number the caller is calling from; the assistant no longer asks "is this the best number?" first (a caller who hung up then had no request).
 - **No more long silences.** Every backend request logs how long it took; the caller hears "still checking" at 7 s and a thank-you for waiting at 15 s; after 25 s they hear an apology and a callback offer, the late answer is dropped, and a wait of 10 s or more alerts Slack (`slow_answer`).
@@ -143,7 +143,7 @@ Real phone lines: calls to production numbers through a Twilio Elastic SIP Trunk
 
 ### Added (texts)
 
-- **Your texts.** Settings, Texting shows every text as a client gets it, with sample details, in each of the clinic's languages, and its length in texts (an emoji makes it 70 characters a text, not 160). The clinic can add a few words after its name ("Zaru: Find our clinic here: …", up to 40 characters) and one line before the opt-out (up to 100); the name, the details and "Reply STOP" stay fixed, as the carriers registered them. No shortened links and no sales wording; Reset to the standard text. Rendering is shared (`renderText` in core), so the preview is the text that goes out.
+- **Your texts.** Settings, Texting shows every text as a client gets it, with sample details, in each of the clinic's languages, and its length in texts (an emoji makes it 70 characters a text, not 160). The clinic can add a few words after its name ("Willow Creek: Find our clinic here: …", up to 40 characters) and one line before the opt-out (up to 100); the name, the details and "Reply STOP" stay fixed, as the carriers registered them. No shortened links and no sales wording; Reset to the standard text. Rendering is shared (`renderText` in core), so the preview is the text that goes out.
 - **Every refill decision reaches the caller.** Besides "ready to pick up": "your request was sent to <pharmacy>" and "about your recent request, please call us", in English and Spanish, sent when the team closes a refill with that outcome; never the medicine, never the word refill. One picked up at the clinic gets no "sent to the pharmacy".
 
 ### Changed (the dashboard, from the first real setup)

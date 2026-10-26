@@ -209,7 +209,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
           if (!claimed.length) continue;
           const lang = config.languages.includes(language as never) ? (language as typeof config.primaryLanguage) : config.primaryLanguage;
           const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
-          // "Hi Abdul, a reminder of Flippy's check-up with Dr. Ruiz": the owner and the pet by name; a person by
+          // "Hi Sam, a reminder of Scout's check-up with Dr. Ruiz": the owner and the pet by name; a person by
           // first name, with the doctor, and never the kind of visit
           const pets = config.industry === 'vet';
           const firstName = d.cipher.decrypt(p.firstNameEnc, ctx('first_name'));
@@ -314,7 +314,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       // a refusal (texts off, opted out, no number) is kept on the request for staff to see
       const result = await messenger.sendTemplate(clinicId, {
         to: details.callback_number ?? '', template,
-        // the pet by name when the request has it ("Flippy's request is ready"); never the medicine
+        // the pet by name when the request has it ("Scout's request is ready"); never the medicine
         vars: { clinic: config.name, clinicPhone: callUsNumber(config), ...(details.pet_name ? { pet: details.pet_name } : {}), ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
         idempotencyKey: template === 'request_ready' ? `request-ready:${taskId}` : `${template}:${taskId}`, language, kind: 'auto',
         about: { callId: found.task.callId, patientId: found.task.patientId, taskId },

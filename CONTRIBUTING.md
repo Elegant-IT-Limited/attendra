@@ -12,6 +12,10 @@ Thank you for helping. Attendra answers calls from patients, so the bar is a lit
 
 Attendra speaks English and Spanish, and every behaviour works in both. A change to words the caller or the assistant says (a phrase list, a pattern, a refusal, a line said word for word) ships with its Spanish twin, a row in `packages/core/test/language-parity.test.ts` (the agent's checks: `packages/agent/test/language-parity.test.ts`), and a Spanish eval scenario when there is an English one. Spoken lines live in the language packs (`packages/core/src/locales`), never in the code that uses them.
 
+## Privacy
+
+No real people, pets, clinics, phone numbers, addresses or emails anywhere in the repo, its commit messages or its pull requests. Use made-up names in the style of the demo clinics, `555-0100` to `555-0199` numbers (`+17205550161`, `(720) 555-0161`) and `example.com` or a `.example` / `.test` domain. A finding from a real call is written as "a test call", never with the caller's details or where they called from. `scripts/privacy-check.mjs` checks the files, and on a pull request its title, body and commits, in CI; run `node scripts/privacy-check.mjs` before you push.
+
 ## Setup
 
 ```bash

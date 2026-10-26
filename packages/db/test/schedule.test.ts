@@ -6,7 +6,7 @@ import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
 const tz = DEMO_CLINIC.timezone;
-const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 const day = (date: string) => ({ from: zonedInstant(date, '00:00', tz), to: zonedInstant(date, '23:59', tz) });
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let schedule: ScheduleRepository;

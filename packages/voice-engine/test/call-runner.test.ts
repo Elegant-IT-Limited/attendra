@@ -356,14 +356,14 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     vi.useRealTimers();
   });
 
-  it('ends the call when both sides said goodbye, even with a goodbye still at the backend (Flippy, 2026-10-24)', async () => {
+  it('ends the call when both sides said goodbye, even with a goodbye still at the backend (a test call, 2026-10-24)', async () => {
     vi.useFakeTimers();
     // the voice model sent "Take care, bye" to the backend as a question; the backend never answers in time
     const h = harness({ plan: () => new Promise<never>(() => {}) });
     await h.runner.handle(delta('out', 'e1', 'Anything else I can help you with?', 100));
     await vi.advanceTimersByTimeAsync(3000);
     await h.runner.handle(delta('in', 'e2', 'No, fine', 3000));
-    await h.runner.handle(delta('out', 'e3', 'Thanks for calling, Abdul. Take care.', 3500));
+    await h.runner.handle(delta('out', 'e3', 'Thanks for calling, Sam. Take care.', 3500));
     await vi.advanceTimersByTimeAsync(1000);
     await h.runner.handle(delta('in', 'e4', 'Take care, bye', 5000));
     void h.runner.handle({ type: 'session.delegation.created', event_id: 'e5', delegation: { id: 'item_bye', target: 'client' } });
@@ -374,7 +374,7 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     await quiet.runner.handle(delta('out', 'e1', 'Anything else I can help you with?', 100));
     await vi.advanceTimersByTimeAsync(3000);
     await quiet.runner.handle(delta('in', 'e2', 'No, fine', 3000));
-    await quiet.runner.handle(delta('out', 'e3', 'Thanks for calling, Abdul. Take care.', 3500));
+    await quiet.runner.handle(delta('out', 'e3', 'Thanks for calling, Sam. Take care.', 3500));
     await vi.advanceTimersByTimeAsync(1000);
     await quiet.runner.handle(delta('in', 'e4', 'Take care, bye', 5000));
     await vi.advanceTimersByTimeAsync(10_000);

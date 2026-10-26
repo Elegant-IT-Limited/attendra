@@ -10,7 +10,7 @@ const when = (start: Date, timeZone: string) => {
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
 /**
- * A text to one person: "Hi Abdul, Flippy's check-up with Dr. Ruiz…" when the call gave the names,
+ * A text to one person: "Hi Sam, Scout's check-up with Dr. Ruiz…" when the call gave the names,
  * "Your visit…" when it did not. name is the person the text goes to (the owner, the patient or the
  * parent), pet the pet, provider the vet or doctor, visit the kind of visit (pets only: a person's visit
  * type is never put in a text). Each is left out when unknown, never shown empty.

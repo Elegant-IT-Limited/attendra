@@ -238,7 +238,7 @@ describe('settings', () => {
   it('keeps the assistant\'s numbers as they are, and lets the clinic keep its own line right', async () => {
     const assistant = DEMO_CLINIC.phoneNumbers[0]!;
     // the assistant's number routes calls: it cannot be removed or swapped for another
-    const gone = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+13035559999'] } });
+    const gone = await api.request('PUT', `${C}/settings`, { cookie: admin, body: { ...DEMO_CLINIC, phoneNumbers: ['+13035550126'] } });
     expect(gone.statusCode).toBe(422);
     expect(gone.json().issues[0]).toMatchObject({ path: 'phoneNumbers', message: expect.stringContaining('Phone number page') });
     // the clinic's own line can be added, changed and removed; the assistant's number stays first (it texts)

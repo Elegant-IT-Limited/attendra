@@ -27,14 +27,14 @@ describe('the production planner', () => {
     const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Done.' }));
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-test');
     const texting = ClinicConfig.parse({ ...DEMO_CLINIC, texting: { enabled: true } });
-    const known = await w.call('+13035550147', { clinic: texting, history: 'Name on file for this number: Abdul.' });
+    const known = await w.call('+13035550147', { clinic: texting, history: 'Name on file for this number: Sam.' });
     await known.delegate([], planner);
     const input = JSON.stringify((create.mock.calls[0]![0] as { input: unknown }).input);
-    expect(input).toContain('Name on file for this number: Abdul.');
+    expect(input).toContain('Name on file for this number: Sam.');
     expect(input).toContain('Am I speaking with <that name>?');
     expect(input).toContain('¿Hablo con <that name>?');
     expect(input).not.toContain('cannot get texts');
-    const abroad = await w.call('+8801712345678', { clinic: texting });
+    const abroad = await w.call('+447700900123', { clinic: texting });
     await abroad.delegate([], planner);
     expect(JSON.stringify((create.mock.calls.at(-1)![0] as { input: unknown }).input)).toContain('cannot get texts');
   });

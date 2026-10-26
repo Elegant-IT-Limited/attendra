@@ -84,7 +84,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
 
   /**
    * The one first name on file for this number (the owner for a pet, else the patient),
-   * so the assistant can ask "Am I speaking with Abdul?" as a front desk does when caller
+   * so the assistant can ask "Am I speaking with Sam?" as a front desk does when caller
    * ID shows a client. Only when there is exactly one: two families on one phone give
    * nothing. A first name only, never a pet or a record; reading it is audited.
    */

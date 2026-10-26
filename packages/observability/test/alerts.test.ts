@@ -6,11 +6,11 @@ describe('alerts for the people who run Attendra', () => {
     vi.useFakeTimers();
     const sent: string[] = [];
     const a = createAlerter({ webhookUrl: 'https://hooks.slack.com/services/T/B/x', service: 'voice', windowMs: 60_000, post: async (_u, body) => { sent.push((body as { text: string }).text); } });
-    a.alert('call_rejected', 'A call matched no clinic. Dialled: +15163630790.');
+    a.alert('call_rejected', 'A call matched no clinic. Dialled: +17205550160.');
     a.alert('call_rejected', 'again');
     a.alert('call_rejected', 'and again');
     await vi.advanceTimersByTimeAsync(0);
-    expect(sent).toEqual(['[voice] :rotating_light: call_rejected: A call matched no clinic. Dialled: …0790.']);
+    expect(sent).toEqual(['[voice] :rotating_light: call_rejected: A call matched no clinic. Dialled: …0160.']);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sent[1]).toBe('[voice] :warning: call_rejected: 2 more in the last 1 min. Latest: and again');
     await vi.advanceTimersByTimeAsync(60_000);
@@ -29,6 +29,6 @@ describe('alerts for the people who run Attendra', () => {
     down.note('started');
     await new Promise((r) => setTimeout(r, 0));
     expect(warn).toHaveBeenLastCalledWith({ err: { message: 'slack answered 500' } }, 'alert not sent');
-    expect(maskNumbers('from +1 (571) 656-1769 to 5163630790, clinic_6a2b')).toBe('from …1769 to …0790, clinic_6a2b');
+    expect(maskNumbers('from +1 (720) 555-0164 to 7205550160, clinic_6a2b')).toBe('from …0164 to …0160, clinic_6a2b');
   });
 });

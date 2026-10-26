@@ -34,7 +34,7 @@ export interface AlerterOptions {
 }
 
 const LAST4 = /\+?\d[\d\s().-]{6,}\d/g;
-/** Numbers in an alert are cut to their last 4 digits: "+15163630790" is "…0790". */
+/** Numbers in an alert are cut to their last 4 digits: "+17205550160" is "…0160". */
 export const maskNumbers = (text: string) => text.replace(LAST4, (m) => `…${m.replace(/\D/g, '').slice(-4)}`);
 
 const defaultPost = async (url: string, body: unknown) => {

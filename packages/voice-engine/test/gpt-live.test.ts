@@ -58,9 +58,9 @@ describe('GptLiveEngine browser calls', () => {
   it('greets a VIP by name and says they are being put through, with no question first', async () => {
     const { client, sessions } = fakeClient();
     const engine = new GptLiveEngine(client, 'gpt-live-1', fakeSockets().open);
-    await engine.accept('live_vip', DEMO_CLINIC, NOW, vipOpening(DEMO_CLINIC, 'Tamal Sidique'));
+    await engine.accept('live_vip', DEMO_CLINIC, NOW, vipOpening(DEMO_CLINIC, 'Jamie Cole'));
     const text = (sessions.accept.mock.calls[0] as unknown as [string, { session: { input: { content: { text: string }[] }[] } }])[1].session.input[0]!.content[0]!.text;
-    expect(text).toContain(`Hi Tamal, thanks for calling ${DEMO_CLINIC.name}.`);
+    expect(text).toContain(`Hi Jamie, thanks for calling ${DEMO_CLINIC.name}.`);
     expect(text).toContain("AI assistant. I'm connecting you with our team now.");
     expect(text).not.toContain(DEMO_CLINIC.greeting);
     expect(text).toContain('do not ask how you can help');
@@ -91,12 +91,12 @@ describe('GptLiveEngine browser calls', () => {
 
   it('tells the voice what caller ID would show: the call count and the one name on file, never the calls\' content', () => {
     expect(callerContext(null)).toBeNull();
-    const known = callerContext('Name on file for this number: Abdul.\nCalls from this number in the last 30 days: 5.\n2026-10-24T13:20:00.000Z: Booked a check-up for Flippy.')!;
+    const known = callerContext('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 5.\n2026-10-24T13:20:00.000Z: Booked a check-up for Scout.')!;
     expect(known).toContain('it called 5 times in the last 30 days');
-    expect(known).toContain('"Am I speaking with Abdul?"');
-    expect(known).toContain('"¿Hablo con Abdul?"');
+    expect(known).toContain('"Am I speaking with Sam?"');
+    expect(known).toContain('"¿Hablo con Sam?"');
     expect(known).toContain('Never say you have no history');
-    expect(known).not.toContain('Flippy');
+    expect(known).not.toContain('Scout');
     const unnamed = callerContext('Calls from this number in the last 30 days: 2.\n2026-10-24T13:20:00.000Z: A question.')!;
     expect(unnamed).not.toContain('Am I speaking with');
     expect(unnamed).toContain("ask for their first name and their pet's name");

@@ -7,11 +7,11 @@ export const SMS_TEMPLATE_NAMES = Object.keys(PACKS.en.sms) as SmsTemplateName[]
 
 /**
  * A text in the language the call was held in, with the clinic's own words when it set
- * any: a few words after its name ("Zaru: Find our clinic here: …") and one line before
+ * any: a few words after its name ("Willow Creek: Find our clinic here: …") and one line before
  * "Reply STOP". Everything else is fixed: the name first, the facts from the settings,
  * and the opt-out last, as the carriers registered it.
  */
-/** A US or Canadian number as people write it, (516) 447-2575; any other number as given. */
+/** A US or Canadian number as people write it, (720) 555-0161; any other number as given. */
 export const readablePhone = (n: string): string => (/^\+1\d{10}$/.test(n) ? `(${n.slice(2, 5)}) ${n.slice(5, 8)}-${n.slice(8)}` : n);
 
 export function renderText(template: SmsTemplateName, vars: Record<string, string>, language: Language = 'en', wording?: { label?: string; extra?: string }): string {

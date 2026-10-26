@@ -3,25 +3,25 @@ title: An owner who gives only a first name is looked up with it, never asked fo
 clinic: riverbend
 local_time: "14:00"
 caller_number: "+17205550193"
-facts: "You are Fahmida Hossain, calling from your own mobile, the number you are calling from. Maliha is your female cat, born on 15 January 2026, and she is new to the clinic. You already said she is a cat and used 'she'; if you are asked again, say so, a little annoyed. Any time works. Say yes to the first time offered and to the read-back."
+facts: "You are Jamie Cole, calling from your own mobile, the number you are calling from. Pepper is your female cat, born on 15 January 2026, and she is new to the clinic. You already said she is a cat and used 'she'; if you are asked again, say so, a little annoyed. Any time works. Say yes to the first time offered and to the read-back."
 turns:
-  - caller: Hi, I need an appointment for my cat. Her name is Maliha and I'm Fahmida.
-    reply: "Thanks, Fahmida. I couldn't find Maliha with us. Is she new to the clinic?"
+  - caller: Hi, I need an appointment for my cat. Her name is Pepper and I'm Jamie.
+    reply: "Thanks, Jamie. I couldn't find Pepper with us. Is she new to the clinic?"
     delegate:
-      - verify_caller: { owner_name: Fahmida, pet_name: Maliha }
+      - verify_caller: { owner_name: Jamie, pet_name: Pepper }
   - caller: Yes, she is new, she has never been to your clinic.
-    reply: "Welcome, Maliha. I will add her. How old is she, or when is her birthday?"
+    reply: "Welcome, Pepper. I will add her. How old is she, or when is her birthday?"
   - caller: She was born on the fifteenth of January 2026.
     reply: "Thank you. For a new patient exam I can offer {offered.0}, or {offered.1}."
     delegate:
-      - register_patient: { pet_name: Maliha, owner_name: Fahmida, species: cat, sex: female, birthday_or_age: the fifteenth of January 2026 }
+      - register_patient: { pet_name: Pepper, owner_name: Jamie, species: cat, sex: female, birthday_or_age: the fifteenth of January 2026 }
       - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
   - caller: The first one.
     reply: "Just to confirm: {readback}. Is that right?"
     delegate:
       - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
   - caller: Yes please.
-    reply: "Maliha is booked for {booked}."
+    reply: "Pepper is booked for {booked}."
     delegate:
       - commit_pending: {}
 expect:

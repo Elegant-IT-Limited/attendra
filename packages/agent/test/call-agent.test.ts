@@ -147,8 +147,8 @@ describe('booking over the phone', () => {
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
     // a pet: the same owner, pet and phone again use no try either
     const vet = await w.call(null, { clinic: RIVERBEND_CLINIC });
-    for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Fahmida Hossain', pet_name: 'Maliha', phone: '+13035051162' } }]);
-    await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'fahmida hossain', pet_name: 'MALIHA', phone: '(303) 505-1162' } }]);
+    for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]);
+    await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'jamie cole', pet_name: 'PEPPER', phone: '(720) 555-0165' } }]);
     expect(vet.state.verifyAttempts).toBe(1);
   });
 
@@ -340,7 +340,7 @@ describe('safety', () => {
 
   it('at a veterinary clinic, an owner who gave only a first name is looked up, never asked for a last name (2026-10-23)', async () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
-    const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Fahmida', pet_name: 'Maliha', phone: '+13035051162' } }]);
+    const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }]);
     expect(one.errors).toEqual(['not_verified']); // looked up (no such pet here), not refused for a missing last name
     expect(JSON.stringify(one.results)).not.toMatch(/last name/);
   });
@@ -415,7 +415,7 @@ describe('safety', () => {
     create.mockRestore();
   });
 
-  it('takes one callback per call for the same purpose, however it is worded (Tamal\'s call, 2026-10-25)', async () => {
+  it('takes one callback per call for the same purpose, however it is worded (a test call, 2026-10-25)', async () => {
     const create = vi.spyOn(w.backend.tasks, 'create');
     const c = await w.call('+13035550163');
     const first = await c.delegate([{ tool: 'create_callback', args: { reason: 'Call David in the morning to arrange an appointment for Ananta', callback_number: null, topic: null } }]);

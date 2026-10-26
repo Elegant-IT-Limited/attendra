@@ -122,7 +122,7 @@ describe('the clinic\'s knowledge, in Postgres', () => {
   let repo: KnowledgeRepository;
   const embedder = new LocalEmbedder();
   let kb: HybridKnowledgeBase;
-  const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+  const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 
   beforeAll(async () => {
     t = await openTestDatabase();

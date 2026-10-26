@@ -63,20 +63,20 @@ describe('texting during a call', () => {
     const noProvider = await w.call('+13035550147', { clinic: TEXTING }); // provider details are off by default
     const kindOff = await noProvider.delegate([{ tool: 'send_text', args: { kind: 'provider', ref: 'prov_okafor', to: null } }]);
     expect(kindOff.errors).toEqual(['texting_off']);
-    // the clinic does text, just not this one: never "texting isn't set up" (Tamal's call, 2026-10-25)
+    // the clinic does text, just not this one: never "texting isn't set up" (a test call, 2026-10-25)
     expect(said(kindOff.results[0]!)).toContain("can't text that one");
     expect(said(kindOff.results[0]!)).toContain('Never say texting is not set up');
   });
 
   it('texts only the caller\'s number or the one on file, never another', async () => {
     const c = await w.call('+13035550147', { clinic: TEXTING });
-    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: '+13035550999' } }])).errors).toEqual(['number_not_allowed']);
+    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: '+13035550122' } }])).errors).toEqual(['number_not_allowed']);
     const hidden = await w.call(null, { clinic: TEXTING });
     expect((await hidden.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['no_number']);
   });
 
-  it('never offers a text to a number abroad, and says so once (Tamal\'s call from Bangladesh, 2026-10-25)', async () => {
-    const c = await w.call('+8801712345678', { clinic: TEXTING });
+  it('never offers a text to a number abroad, and says so once (a test call from abroad, 2026-10-25)', async () => {
+    const c = await w.call('+447700900123', { clinic: TEXTING });
     c.caller('Can you text me the location?');
     const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
     expect(out.errors).toEqual(['not_textable']);

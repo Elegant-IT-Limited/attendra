@@ -267,7 +267,7 @@ describe('clinic languages and the assistant\'s name', () => {
     expect(ClinicConfig.safeParse(greeting).success).toBe(true);
     expect(clinicWarnings(greeting).map((w) => w.path).filter((p) => p !== 'address')).toEqual(['greeting']);
     expect(clinicWarnings({ ...base, assistantName: 'Attendra' }).map((w) => w.path).filter((p) => p !== 'address')).toEqual(['assistantName']);
-    // no address is said too: callers asking where the clinic is would hear nothing (Tamal's test, 2026-10-23)
+    // no address is said too: callers asking where the clinic is would hear nothing (a test call, 2026-10-23)
     expect(clinicWarnings({ ...base, address: undefined }).map((w) => w.path)).toContain('address');
     expect(clinicWarnings({ ...base, address: '88 Riverbend Road, Denver' }).map((w) => w.path)).not.toContain('address');
   });
