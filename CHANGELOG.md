@@ -4,6 +4,25 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (an owner opens a second, separate clinic with the same login)
+
+- **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.
+- **In the dashboard.** On a hosted plan, owners find "Add a location" (same business, one bill) and "Create a new clinic" (a separate business with its own plan) in the account menu, and in the clinic switcher when they work at more than one clinic. The links come from the hosting layer's plan (`addLocationUrl`, `newClinicUrl`), so a self-hosted install shows neither, and staff never see them.
+
+### Fixed (the dashboard handles a busy API, and open tabs ask less of it)
+
+- **"Too many requests" is never silent.** The dashboard tries a request the API turned away (429) again after its `Retry-After`, or 2 then 5 seconds, at most twice; then a dialog says "Attendra is busy for a moment. Try again in a few seconds." The patient search and the slot picker say the same instead of an empty list.
+- **Fewer requests from open pages.** Changes from the change feed are gathered and applied at most once every 2 seconds, only screens in view read again, and a hidden tab reads nothing until it is shown. Before, every change made every open page read the request count, the request list and the waiting list again.
+- **The limit counts per person.** The API's 600 requests a minute are counted per signed-in session (a session cookie the server signed), and per address only for requests without one, so a clinic's team behind one office connection no longer shares one budget. The sign-in limits and the forged-webhook limit are as they were.
+
+### Fixed (a removed clinic is really deleted)
+
+- **Nothing of a deleted clinic is left.** Deleting a clinic closed 30 days ago (a removed location, or the provisioning `DELETE`) now also deletes its calls' steps and transcript lines, its documents' chunks, the invitations sent from it and the worker's jobs about it, children first, in the same transaction. When it was its organization's last clinic, the organization goes too, with its team, its invitations and every login left with no team. A new test reads every table in every schema with a clinic, organization or user column from the catalog, seeds a row in each and expects none after the purge, so a new table the purge forgets fails it.
+
+### Fixed (CI survives the Node crash)
+
+- **The eval report's retry works.** Node 24.21.0 crashed inside V8 in the eval report on main twice (exit 133), and the retry never ran: `pnpm eval` goes through `pnpm --filter`, which reports any failure as exit 1, and the guard only retries a crash by signal (128 or higher). The step now runs the report with `node` directly, so the real exit code comes through, and a crash is run once more. CI and the quality run pin Node 24.22.1, the newest Node 24 LTS patch.
+
 ### Fixed (calls, registering a new pet, from a clinic's test calls, 2026-11-06)
 
 - **Each detail is asked once.** The call keeps every detail the caller has given (the owner's name, the pet's name, the kind of animal, sex, age, the phone), a correction replaces it, and the backend is told never to ask for them again. One caller was asked for the phone three times and for their first name twice.

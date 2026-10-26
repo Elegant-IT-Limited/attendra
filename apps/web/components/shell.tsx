@@ -2,7 +2,7 @@
 'use client';
 import type { TaskCount } from '@attendra/api/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, Search, Sun, UserRound } from 'lucide-react';
+import { BellRing, ExternalLink, Link2, LogOut, Monitor, Moon, MoreHorizontal, Plus, Search, Sun, UserRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
@@ -13,7 +13,7 @@ import { EmergencyAlerts } from '@/components/calls/live-now';
 import { useTestCall } from '@/components/calls/test-call';
 import { CommandPalette } from '@/components/command-palette';
 import { InvitationsBanner } from '@/components/invitations-banner';
-import { PlanBanner } from '@/components/plan';
+import { PlanBanner, usePlan } from '@/components/plan';
 import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
@@ -50,6 +50,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   if (config.data) setClinicCountry(config.data.phoneNumbers);
   // every screen updates as the clinic changes, without a refresh
   useClinicChanges(clinicId, !!clinic);
+  const plan = usePlan(clinicId);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
@@ -116,6 +117,11 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // the clinic's own links, from Settings, for everyone on the team
   const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
   const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
+  // a hosted plan's links, for owners only: another location of this business, or a separate business on this login
+  const grow: GrowLink[] = clinic.role !== 'owner' || !plan.data?.plan ? [] : [
+    { href: plan.data.plan.addLocationUrl, label: 'Add a location', hint: 'Same business, one bill' },
+    { href: plan.data.plan.newClinicUrl, label: 'Create a new clinic', hint: 'A separate business with its own plan' },
+  ].filter((l): l is GrowLink => !!l.href);
   // other locations: the same page there, without a record id that belongs to this one
   const others = (me?.clinics ?? []).filter((c) => c.id !== clinicId);
   const toClinic = (id: string) => router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
@@ -131,7 +137,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           <span className="font-semibold tracking-tight max-xl:sr-only">Attendra</span>
         </div>
         <div className="px-5 pb-3 max-xl:hidden">
-          {others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}
+          {others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} grow={grow} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}
           <p className="text-xs text-text-muted">{clinic.timezone.replaceAll('_', ' ')}</p>
         </div>
         <div className="px-3 pb-3 max-xl:px-2">
@@ -163,16 +169,16 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           )}
         </nav>
         <div className="border-t border-border p-3 max-xl:px-2">
-          <UserMenu user={user} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
+          <UserMenu user={user} grow={grow} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
         </div>
       </aside>
 
       {/* phone: a top bar */}
       <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
         <BrandMark className="size-7 shrink-0" />
-        <div className="min-w-0 flex-1">{others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}</div>
+        <div className="min-w-0 flex-1">{others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} grow={grow} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}</div>
         <button type="button" aria-label="Search and jump" onClick={() => setPalette(true)} className="focus-ring flex size-11 items-center justify-center rounded-md text-text-muted hover:bg-surface-sunken"><Search className="size-5" /></button>
-        <UserMenu compact user={user} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
+        <UserMenu compact user={user} grow={grow} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
       </header>
 
       <div className="min-w-0 pb-20 md:pb-0">
@@ -250,7 +256,10 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { value: 'dark', label: 'Dark', icon: Moon },
 ];
 
-function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: string; role: string }; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
+/** An owner's way to grow, on the hosting layer's pages: a full page load, like the other account links. */
+interface GrowLink { href: string; label: string; hint: string }
+
+function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { name: string; role: string }; grow: GrowLink[]; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
   const theme = useTheme();
   const [alerts, setAlerts] = useEmergencyAlerts();
   return (
@@ -277,6 +286,12 @@ function UserMenu({ user, onSignOut, onShortcuts, compact }: { user: { name: str
             <BellRing className="size-4 text-text-muted" aria-hidden />Alert me to emergencies
             <M.ItemIndicator className="ml-auto text-xs text-primary">On</M.ItemIndicator>
           </M.CheckboxItem>
+          {grow.map((l) => (
+            <M.Item key={l.href} asChild className="flex cursor-pointer items-start gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
+              <a href={l.href}><Plus className="mt-1 size-4 shrink-0 text-text-muted" aria-hidden /><span><span className="block">{l.label}</span><span className="block text-xs text-text-muted">{l.hint}</span></span></a>
+            </M.Item>
+          ))}
+          {grow.length > 0 && <M.Separator className="my-1 h-px bg-border" />}
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
           <M.Item asChild className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
             <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your account: password and two-step</a>
@@ -302,12 +317,25 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-/** The clinic this screen is for, and the others the person works at: picking one opens the same page there. */
-function ClinicSwitcher({ current, others, onPick }: { current: { id: string; name: string }; others: { id: string; name: string }[]; onPick: (id: string) => void }) {
+/**
+ * The clinic this screen is for, and the others the person works at: picking one opens the same page there.
+ * An owner on a hosted plan also finds adding a location and opening a new clinic at the end.
+ */
+function ClinicSwitcher({ current, others, onPick, grow }: { current: { id: string; name: string }; others: { id: string; name: string }[]; onPick: (id: string) => void; grow: GrowLink[] }) {
   return (
-    <select aria-label="Location" value={current.id} onChange={(e) => onPick(e.target.value)}
+    <select aria-label="Location" value={current.id} onChange={(e) => {
+      // an owner's link is looked up by its place in the list: the address comes from the plan, never from the page
+      const link = /^grow:\d$/.test(e.target.value) ? grow[Number(e.target.value.slice(5))] : undefined;
+      if (link) window.location.assign(link.href);
+      else onPick(e.target.value);
+    }}
       className="focus-ring -ml-1 w-full truncate rounded-md border-none bg-transparent py-0.5 pl-1 pr-6 text-base font-medium hover:bg-surface-sunken">
       {[current, ...others].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+      {grow.length > 0 && (
+        <optgroup label="For owners">
+          {grow.map((l, i) => <option key={l.href} value={`grow:${i}`}>+ {l.label} ({l.hint.toLowerCase()})</option>)}
+        </optgroup>
+      )}
     </select>
   );
 }

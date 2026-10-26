@@ -79,6 +79,42 @@ describe('provisioning', () => {
     expect((await api.t.db.execute(sql`select entity_id from audit_logs where action = 'clinic.created' and clinic_id = ${opened.clinicId}`)).rows).toEqual([{ entity_id: clinicId }]);
   });
 
+  it('opens a second, separate clinic for an owner on the same login; never for staff or an unconfirmed login', async () => {
+    const opened = (await api.request('POST', `${P}/accounts`, { body: { ...account, owner: { ...account.owner, email: 'three@oakhill.example' } }, authorization: auth })).json();
+    const second = { organization: { name: 'Lakeside Pet Care' }, clinic: { name: 'Lakeside Pet Care', timezone: 'America/Denver', industry: 'vet', phone: '+13035550190' }, testCallMinutes: 5, plan: 'trial' };
+    const forUser = (userId: string, o: { authorization?: string } = { authorization: auth }) => api.request('POST', `${P}/accounts/for-user`, { body: { ...second, userId }, ...o });
+    expect((await forUser(opened.userId, {})).statusCode).toBe(401);
+    expect((await forUser('user_none')).statusCode).toBe(404);
+    // a login whose email was never confirmed opens nothing more
+    expect([(await forUser(opened.userId)).statusCode, (await forUser(opened.userId)).json()]).toEqual([409, { error: 'not_confirmed' }]);
+    await api.request('POST', `${P}/email-confirmations`, { body: { email: 'three@oakhill.example' }, authorization: auth });
+
+    // staff on someone else's team: a work email belongs to the clinic
+    const staffOnly = await forUser(api.users.staff);
+    expect([staffOnly.statusCode, staffOnly.json()]).toEqual([403, { error: 'not_an_owner' }]);
+
+    const res = await forUser(opened.userId);
+    expect(res.statusCode).toBe(201);
+    const made = res.json();
+    expect(made).toMatchObject({ userId: opened.userId });
+    expect(made.organizationId).not.toBe(opened.organizationId);
+    expect(made.clinicId).not.toBe(opened.clinicId);
+
+    // the switcher lists both clinics, owner of each; the new one starts empty, with its own name and greeting
+    const ok = await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'three@oakhill.example', password: account.owner.password } });
+    const cookie = ([] as string[]).concat(ok.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]).join('; ');
+    const me = (await api.request('GET', '/api/v1/me', { cookie })).json();
+    expect(me.clinics.map((c: { id: string; role: string }) => [c.id, c.role]).sort()).toEqual([[opened.clinicId, 'owner'], [made.clinicId, 'owner']].sort());
+    const settings = (await api.request('GET', `/api/v1/clinics/${made.clinicId}/settings`, { cookie })).json();
+    expect(settings).toMatchObject({ name: 'Lakeside Pet Care', timezone: 'America/Denver', phoneNumbers: ['+13035550190'] });
+    expect(settings.greeting).not.toContain('Oak Hill');
+    expect((await api.request('GET', `/api/v1/clinics/${made.clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 300, usedSeconds: 0 });
+    expect((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = 'organization.created.by_owner' and clinic_id = ${made.clinicId}`)).rows)
+      .toEqual([{ actor: `user:${opened.userId}`, entity_id: made.organizationId }]);
+    // the first business is untouched: still one clinic in its organization
+    expect((await api.t.db.execute(sql`select id from clinics where org_id = ${opened.organizationId}`)).rows).toEqual([{ id: opened.clinicId }]);
+  });
+
   it('sets which voice engine answers a clinic, which Settings cannot change', async () => {
     const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: 'gpt-realtime' }, authorization: auth })).statusCode).toBe(204);

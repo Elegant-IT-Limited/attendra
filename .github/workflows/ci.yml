@@ -11,20 +11,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version: 24, cache: pnpm }
+        with: { node-version: 24.22.1, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - name: unit, integration and eval scenarios (Postgres in-process)
         run: pnpm test
       # The same scenarios already passed in the step above; this prints the report. Node
-      # 24.21.0 has twice crashed inside V8 here (exit 133, a signal) under the in-process
+      # 24.21.0 twice crashed inside V8 here (exit 133, a signal) under the in-process
       # Postgres, so a crash by signal is tried once more. A failed scenario is not.
+      # It runs node directly: `pnpm eval` goes through `pnpm --filter`, which turns any
+      # failure into exit 1, so the guard never saw the 133. Dry run (a child that dies on
+      # SIGTRAP as the crash did): `pnpm --filter` exit 1, `node` exit 133.
       - name: eval report
+        working-directory: evals
         run: |
           set +e
-          pnpm eval; code=$?
-          if [ "$code" -ge 128 ]; then echo "::warning::eval report crashed (exit $code); running it once more"; pnpm eval; code=$?; fi
+          node --import tsx src/run.ts; code=$?
+          if [ "$code" -ge 128 ]; then echo "::warning::eval report crashed (exit $code); running it once more"; node --import tsx src/run.ts; code=$?; fi
           exit $code
         env: { FORCE_COLOR: '1' }
       - name: dashboard builds
@@ -37,7 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version: 24, cache: pnpm }
+        with: { node-version: 24.22.1, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @attendra/web exec playwright install --with-deps chromium
       - name: dashboard end to end (demo API on an in-memory Postgres)
@@ -57,7 +61,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version: 24 }
+        with: { node-version: 24.22.1 }
       - name: the files, and the pull request's title, body and commit messages
         run: node scripts/privacy-check.mjs
         env:

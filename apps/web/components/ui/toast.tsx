@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
-import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Panel } from '@/components/ui/dialog';
+import { BUSY, BUSY_EVENT } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface Toast { id: number; message: string; action?: { label: string; onClick: () => void } }
@@ -63,6 +64,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const confirm = useCallback((c: Confirmation) => new Promise<boolean>((resolve) => {
     setAsking({ ...c, answer: (yes) => { setAsking(null); resolve(yes); } });
   }), []);
+  // a request the API kept turning away (429) after its retries: said once in the dialog, never an empty screen
+  useEffect(() => {
+    const busy = () => setProblem({ title: 'Busy for a moment', message: BUSY });
+    window.addEventListener(BUSY_EVENT, busy);
+    return () => window.removeEventListener(BUSY_EVENT, busy);
+  }, []);
   const value = useRef<Feedback>({ toast, problem: setProblem, confirm });
   value.current.toast = toast;
   value.current.confirm = confirm;
