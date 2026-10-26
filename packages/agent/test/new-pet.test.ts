@@ -22,7 +22,10 @@ describe('a caller who says the pet is new (2026-11)', () => {
       ['Es nueva, nunca ha venido', 'new'], ['No está registrado', 'new'], ['Quiero registrar a mi perro', 'new'],
       ["She's not new, she came last year", 'on_file'], ['maybe she is already in your system', 'on_file'],
       ['No es nuevo, ya ha venido antes', 'on_file'], ['Ya es paciente', 'on_file'],
+      ["I'd like to bring my puppy in for a first check-up", 'new'], ['We just adopted a kitten', 'new'],
+      ['Quiero traer a mi cachorro para su primera consulta', 'new'], ['Acabamos de adoptar una gata', 'new'],
       ["What's new?", null], ["I've got a new phone number", null], ['Hola, quiero una cita para Biscuit', null],
+      ["I'll take the first appointment available", null], ['Quiero la primera cita disponible', null],
     ] as const) expect(newToClinic(said), said).toBe(verdict);
     const s = new CallState();
     s.addTranscript('agent', 'I couldn\'t find Orbit. Is Orbit new to the clinic?', 0, 900);
@@ -54,6 +57,18 @@ describe('a caller who says the pet is new (2026-11)', () => {
     expect(stateLine(c.state, clinic)).toContain('kind of animal dog, pet\'s sex female, pet\'s age or birthday about a year');
     c.state.remember({ birthday_or_age: 'two years' });
     expect(stateLine(c.state, clinic)).toContain('pet\'s age or birthday two years');
+  });
+
+  it('keeps the kind of animal said before the lookup, and looks for a new pet\'s first visit before it is added (live eval, 2026-11-06)', async () => {
+    const c = await w.call('+17205550183', { clinic });
+    c.caller('Hi, I\'m Leo Grant, I\'d like to book my cat Mango in.');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Leo Grant', pet_name: 'Mango', phone: null, species: 'cat' } }]);
+    expect(stateLine(c.state, clinic)).toContain('kind of animal cat');
+    // "a first check-up" for a puppy is a new pet: its times are a new patient's, so the one picked still fits once it is added
+    const p = await w.call('+17205550184', { clinic });
+    p.caller('Hi, I\'d like to bring my puppy in for a first check-up this afternoon.');
+    const looked = await p.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, from_time: '13:00', part_of_day: 'any' } }]);
+    expect(looked.errors).toEqual(['new_patient_visit_type']);
   });
 
   it('finds a pet already on file instead of adding it twice, and tells the caller no more than the lookup would', async () => {

@@ -203,6 +203,11 @@ describe('the conversation prompt', () => {
     expect(conversationPrompt({ ...DEMO_CLINIC, texting: Texting.parse({ enabled: true }) }, NOW)).toMatch(/You can text the caller/);
   });
 
+  it('names the only people a call can go through to, so billing is never offered where nobody takes it (live eval, 2026-11-06)', () => {
+    expect(conversationPrompt(RIVERBEND_CLINIC, NOW)).toContain('Calls go through to the front desk and the on-call vet or doctor, for an emergency only');
+    expect(conversationPrompt({ ...RIVERBEND_CLINIC, routing: [] }, NOW)).toContain('never offer to connect the caller to anyone');
+  });
+
   it('says the greeting once only, never after a pause or a staff note, and never asks for the number they are calling from', () => {
     const p = conversationPrompt(DEMO_CLINIC, NOW);
     expect(p).toContain('Never say it again later in the call');

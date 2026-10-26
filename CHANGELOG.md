@@ -12,6 +12,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A chosen time is kept.** A time the caller picks before the pet is found or added is read back after that and booked on a clear yes; if it was taken meanwhile, the assistant says so and offers the next ones. "I'll take care of it" with nothing waiting for a yes is sent back to the backend.
 - **One greeting.** A caller who speaks over the greeting is answered, and the greeting never starts again.
 - **"Still checking" once per wait.** The hold line is said once; later ones thank the caller for waiting.
+- **From this batch's live run:** the kind of animal said before the lookup ("my cat Mango") is kept, so it is never asked again; "a first check-up", "we just adopted" and "su primera consulta" count as new, so the times offered are already a new pet's and the one picked still fits once the pet is added; and the voice knows who a call can go through to, so it never offers billing where nobody takes transfers.
 
 ### Added (the assistant knows the clinic's own fields on each vet)
 
