@@ -50,6 +50,10 @@ const ACTIONS: Record<string, string> = {
   'calls.listed': 'Looked at the call list with names',
   'calls.searched': 'Searched calls by patient',
   'member.removed': 'Removed a person from the team',
+  'member.invite.canceled': 'Cancelled an invitation to the team',
+  'member.invite.accepted': 'Accepted an invitation and joined the team',
+  'member.invite.declined': 'Declined an invitation to the team',
+  'member.invite.expired': 'An invitation to the team lapsed after 7 days',
   'member.password.reset': 'Issued a new temporary password',
   'patient.search.result': 'Saw a patient in search results',
   'call.live.watched': 'Watched a live call',
@@ -135,6 +139,7 @@ function describe(action: string) {
     const did = `An agent ${MCP_TOOLS[tool] ?? `used ${tool.replaceAll('_', ' ')}`}`;
     return outcome === 'refused' ? `${did}, refused: its key lacks the scope` : outcome === 'failed' ? `${did}, and it failed` : did;
   }
+  if (action.startsWith('member.invited:')) return `Invited a person to the team, as ${ROLE_WORDS[action.slice(15)] ?? action.slice(15)}`;
   if (action.startsWith('member.added:')) return `Added a person to the team, as ${ROLE_WORDS[action.slice(13)] ?? action.slice(13)}`;
   if (action.startsWith('member.role.changed:')) return `Changed someone's role to ${ROLE_WORDS[action.slice(20)] ?? action.slice(20)}`;
   if (action.startsWith('call.transferred.')) return `Transferred the call (${action.slice(17).replaceAll('_', ' ')})`;

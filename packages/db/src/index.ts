@@ -11,6 +11,7 @@ export * from './repositories/tasks';
 export * from './repositories/audit';
 export * from './repositories/schedule';
 export * from './repositories/team';
+export * from './repositories/invitations';
 export * from './repositories/provisioning';
 export * from './repositories/summaries';
 export * from './repositories/knowledge';

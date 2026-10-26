@@ -9,13 +9,14 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
   await expect(page.getByRole('row', { name: /Priya \(practice manager\).*You/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Add a person' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Add a person' });
-  await dialog.getByLabel('Name').fill('Riley Stone');
-  await dialog.getByLabel('Email').fill('riley@maple-demo.test');
-  await dialog.getByLabel('Role').selectOption({ label: 'Front desk' });
+  await page.getByRole('button', { name: 'Add people' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add people' });
+  await dialog.getByLabel('Emails').fill('Riley Stone <riley@maple-demo.test>');
+  await dialog.getByLabel('Role for riley@maple-demo.test').selectOption({ label: 'Front desk' });
   await dialog.getByRole('button', { name: 'Add to the team' }).click();
-  const added = page.getByRole('dialog', { name: 'Riley Stone is on the team' });
+  // the demo sends no email: someone new gets a temporary password, under the same "invite sent" as everyone
+  const added = page.getByRole('dialog', { name: 'Invites sent' });
+  await expect(added.getByText('riley@maple-demo.test: invite sent')).toBeVisible();
   await expect(added.getByText('Shown once')).toBeVisible();
   const password = (await added.getByTestId('temporary-password').textContent())!;
   expect(password).toMatch(/^[\w-]{16}$/);

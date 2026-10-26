@@ -569,9 +569,29 @@ export const Member = z.object({
   approvesRefills: z.boolean(),
 });
 export const MemberList = z.object({ members: z.array(Member) });
-export const AddMember = z.object({ name: z.string().trim().min(1, 'required').max(80), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
+/** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
+export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
+/**
+ * The answer to adding a person: "invite sent", whatever the email. Where the deployment
+ * cannot send email, a new person instead gets an account and a temporary password, shown
+ * once, as before.
+ */
+export const AddResult = z.object({
+  status: z.literal('invite_sent'), email: z.string(),
+  userId: z.string().optional(), temporaryPassword: z.string().optional(), expiresInHours: z.number().optional(),
+});
+/** The invitations a team is waiting on. */
+export const TeamInvitationList = z.object({
+  invitations: z.array(z.object({ id: z.string(), email: z.string(), role: Role, approvesRefills: z.boolean(), invitedBy: z.string(), createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() })),
+});
+/** The invitations waiting for the signed-in person, from any clinic. */
+export const MyInvitationList = z.object({
+  invitations: z.array(z.object({ id: z.string(), clinicId: z.string(), clinicName: z.string(), role: Role, approvesRefills: z.boolean(), expiresAt: z.iso.datetime() })),
+});
+/** Accepted: the clinic to open. */
+export const AcceptedInvitation = z.object({ clinicId: z.string() });
 /** A new role, whether they may approve refills, or both. */
 export const ChangeMember = z.object({ role: Role.optional(), approvesRefills: z.boolean().optional() })
   .refine((b) => b.role !== undefined || b.approvesRefills !== undefined, 'give a role or approvesRefills');
@@ -698,6 +718,10 @@ export type TaskAssignees = z.infer<typeof TaskAssignees>;
 export type Member = z.infer<typeof Member>;
 export type MemberList = z.infer<typeof MemberList>;
 export type AddedMember = z.infer<typeof AddedMember>;
+export type AddResult = z.infer<typeof AddResult>;
+export type TeamInvitationList = z.infer<typeof TeamInvitationList>;
+export type MyInvitationList = z.infer<typeof MyInvitationList>;
+export type AcceptedInvitation = z.infer<typeof AcceptedInvitation>;
 export type DoctorInput = z.infer<typeof DoctorInput>;
 export type DoctorList = z.infer<typeof DoctorList>;
 export type ImportResult = z.infer<typeof ImportResult>;

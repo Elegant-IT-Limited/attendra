@@ -31,6 +31,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Kept so.** `language-parity.test.ts` (core and agent) holds an English sentence and its Spanish twin for each behaviour, with the same expected result, and ten Spanish eval scenarios cover the recent fixes. CONTRIBUTING has a Languages section: words the caller or the assistant says ship with their Spanish twin.
 - **The vet emergency list changed**, so each clinic's emergency review shows as out of date until its vet reviews it again.
 
+### Added (invitations: one login, several clinics)
+
+- **Team, Add people takes several emails at once,** one per line or comma-separated, each with a role.
+- **Someone who already has a login is invited** instead of refused. They see "Maple Street invited you to its team as Front desk" in their own dashboard, with Accept and Decline, and get an email. Accepting adds the clinic to their clinic switcher; declining, or 7 days passing, ends it. The Team page lists pending invitations with Cancel.
+- **The clinic never learns who already uses Attendra.** Every email gets the same "Invite sent". Where the hosting layer sends email, a new address is invited the same way and sets its own password from the email; without it, a new address gets a temporary password, shown once, as before.
+- **Rules kept:** each clinic manages only its own team, passwords and two-step are never reset from another clinic, removing someone from one clinic leaves their others, only an owner invites an owner, and every invite, cancel, accept, decline and lapse is in the audit log. Migration 0038.
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

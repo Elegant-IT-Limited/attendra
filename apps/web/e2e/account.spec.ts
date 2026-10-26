@@ -19,13 +19,12 @@ test('a new team member picks a password, changes it from Your account, turns on
   test.slow();
   const manager = await openAs(browser, 'manager');
   await manager.getByRole('link', { name: 'Team' }).click();
-  await manager.getByRole('button', { name: 'Add a person' }).click();
-  const dialog = manager.getByRole('dialog', { name: 'Add a person' });
-  await dialog.getByLabel('Name').fill('Sam Reed');
-  await dialog.getByLabel('Email').fill('sam@maple-demo.test');
-  await dialog.getByLabel('Role').selectOption({ label: 'Front desk' });
+  await manager.getByRole('button', { name: 'Add people' }).click();
+  const dialog = manager.getByRole('dialog', { name: 'Add people' });
+  await dialog.getByLabel('Emails').fill('Sam Reed <sam@maple-demo.test>');
+  await dialog.getByLabel('Role for sam@maple-demo.test').selectOption({ label: 'Front desk' });
   await dialog.getByRole('button', { name: 'Add to the team' }).click();
-  const added = manager.getByRole('dialog', { name: 'Sam Reed is on the team' });
+  const added = manager.getByRole('dialog', { name: 'Invites sent' });
   const temporary = (await added.getByTestId('temporary-password').textContent())!;
   await added.getByRole('button', { name: 'Done' }).click();
 

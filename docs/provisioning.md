@@ -34,6 +34,17 @@ ATTENDRA_MAIL_HOOK_URL=https://accounts.internal/api/engine-mail   # called with
 
 It posts `{ type: 'password_reset', email, name, emailVerified, url }` with `Authorization: Bearer <provisioning token>`. The link works once, for one hour, and signs the person out everywhere when used. The sign-in page answers the same, as fast, whether or not the address has an account (the request is not waited for). Requests are limited to 5 an hour from one network address; the hosting layer should also limit emails per recipient. Without the hook, the page tells people to ask their practice owner or manager, who reset passwords on the Team page.
 
+## Team invitations
+
+With the same hook, Team > Add people emails an invitation to every address, and nobody is shown a temporary password: the answer is "invite sent" whatever the address, so a clinic never learns who already uses Attendra. The engine posts:
+
+```json
+{ "type": "team_invitation", "email": "sam@example.com", "name": "Sam Lee", "clinicName": "Maple Street", "role": "Front desk",
+  "expiresAt": "2026-11-13T15:00:00.000Z", "url": "https://dashboard.example/", "setPasswordUrl": "https://dashboard.example/reset-password?token=…" }
+```
+
+`url` opens the dashboard, where the person accepts or declines from a banner. `setPasswordUrl` is there only for an account with no password yet (one the invitation made): it works once, until the invitation lapses after 7 days. Without the hook, someone who already has a login is invited from the banner alone, and a new address gets an account and a temporary password, shown once, as before.
+
 ## Two-step sign-in
 
 The dashboard requires two-step sign-in by default. A hosted service whose accounts hold no patient health information, such as veterinary clinics, can make it optional:
