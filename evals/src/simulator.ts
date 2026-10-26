@@ -338,6 +338,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const ok = e.cites.length === 0 ? cited.length === 0 : fromFaq || (cited[0] === e.cites[0] && e.cites.every((t) => cited.includes(t)));
     check(ok, `cited ${JSON.stringify(cited)}, expected ${e.cites.length ? `${JSON.stringify(e.cites)}, the first leading` : 'nothing'}`);
   }
+  // what the tools handed the planner, whichever planner ran: the facts it answers from
+  const handed = JSON.stringify(observed.calls.map((c) => c.data)).toLowerCase();
+  for (const phrase of e.returned) check(handed.includes(phrase.toLowerCase()), `no tool result gave "${phrase}"`);
+  for (const phrase of e.never_returned) check(!handed.includes(phrase.toLowerCase()), `a tool result gave "${phrase}", which it must not`);
   if (e.answered_from) check(observed.sources.includes(e.answered_from), `answered from ${JSON.stringify(observed.sources)}, expected ${e.answered_from}`);
   if (e.language) check(state.language === e.language, `answered in ${state.language}, expected ${e.language}`);
   if (e.booked_with) check(createdRows.every((a) => a.providerId === e.booked_with), `booked with ${JSON.stringify(createdRows.map((a) => a.providerId))}, expected ${e.booked_with}`);
