@@ -1,0 +1,30 @@
+id: es-settings-vet-qualifications
+title: "In Spanish. Settings: the clinic adds its own vet field, Qualifications, and keeps a licence number for the team; asked about Dr. Ruiz's qualifications, the assistant answers from the field and never gives the licence"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, vet, language, es]
+settings:
+  providerFields:
+    - { id: quals, label: Qualifications, kind: text }
+    - { id: licence, label: Licence number, kind: text, tellCallers: false }
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new],
+        custom: { quals: "DVM, Fear Free Certified, 12 years with dogs and cats", licence: "CO-VET-55501" } }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new],
+        hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "You speak only Spanish. You are thinking of seeing Dr. Ruiz and only want to know her qualifications today. If asked for her licence number, you don't need it. Nothing booked; you will call back."
+turns:
+  - caller: Hola, ¿qué títulos y certificaciones tiene la doctora Ruiz?
+    reply: "La doctora Ruiz es DVM y tiene la certificación Fear Free, con 12 años de experiencia con perros y gatos. ¿Le gustaría una cita con ella?"
+    delegate:
+      - get_clinic_info: { question: Dr. Ruiz qualifications }
+  - caller: Muy bien, gracias. Llamo después para la cita.
+    reply: "Con gusto. Llame cuando quiera."
+expect:
+  outcome: info
+  language: es
+  returned: ["Fear Free Certified, 12 years with dogs and cats"]
+  never_returned: ["CO-VET-55501", "Licence number"]
+  spoken_contains: ["Fear Free"]
+forbid_spoken: ["CO-VET-55501", "no tengo esa información", "no tengo información"]

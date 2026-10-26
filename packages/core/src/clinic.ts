@@ -143,6 +143,9 @@ export const CustomField = z.object({
   required: z.boolean().optional(),
   // shown as a column on the list page
   column: z.boolean().optional(),
+  // a doctor's or vet's field only: whether the assistant may tell any caller who asks. Absent is yes;
+  // false keeps it for the team (a licence number, a home phone). Pets', patients' and requests' fields are never told this way
+  tellCallers: z.boolean().optional(),
 }).superRefine((f, ctx) => {
   if ((f.kind === 'choice' || f.kind === 'multi') && (f.options?.length ?? 0) < 2) ctx.addIssue({ code: 'custom', path: ['options'], message: 'a dropdown needs at least two choices' });
   const seen = new Set<string>();

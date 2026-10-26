@@ -104,8 +104,8 @@ function FieldsAndLists() {
         {tab === 'providers' && (
           <>
             <FieldsEditor id="provider-fields" title={`Fields on each ${terms.provider}`} disabled={!writable}
-              description={`Details about your ${terms.providers} that have no place yet, like a licence number or the languages they speak. Where they show: in the form to add or edit a ${terms.provider}, under More details, and on their card once filled in. The assistant does not use them.`}
-              placeholder="e.g. Licence number" fields={draft.providerFields ?? []} onChange={(providerFields: CustomField[]) => set({ providerFields })}
+              description={`Details about your ${terms.providers} that have no place yet, like a licence number or the languages they speak. Where they show: in the form to add or edit a ${terms.provider}, under More details, and on their card once filled in. The assistant tells callers who ask, like their qualifications; untick "The assistant may tell callers" to keep one for your team, like a licence number.`}
+              tellsCallers placeholder="e.g. Qualifications" fields={draft.providerFields ?? []} onChange={(providerFields: CustomField[]) => set({ providerFields })}
               builtIn={['Name', 'Is a', 'Gender', providerTerms(pet).specialty, providerTerms(pet).sees, 'Qualifications and certifications', ...(pet ? [] : ['Ages they see']), 'Visit types they can be booked for', 'Weekly hours', 'Days off', `Takes new ${terms.patients}`]}
               footer={saveButton('providerFields', 'fields')} />
             <ListEditor clinicId={clinicId} name="specialties" id="specialties" title={providerTerms(pet).specialty} disabled={!writable} placeholder={pet ? 'e.g. Surgery' : 'e.g. Family medicine'}

@@ -13,6 +13,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **One greeting.** A caller who speaks over the greeting is answered, and the greeting never starts again.
 - **"Still checking" once per wait.** The hold line is said once; later ones thank the caller for waiting.
 
+### Added (the assistant knows the clinic's own fields on each vet)
+
+- **A vet's own fields reach the assistant.** Fields the clinic adds to its vets (Settings, Fields, Veterinarians, such as "Qualifications") are given to the assistant under their labels, so "What are Dr. Ruiz's qualifications?" is answered from the field. Each field has a switch, "The assistant may tell callers", on by default, to keep one for the team (a licence number). Pets' and requests' own fields are never told to callers, as before.
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

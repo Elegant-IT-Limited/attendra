@@ -55,6 +55,9 @@ export const Scenario = z.object({
     emergency_instruction: z.boolean().default(false),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
+    // phrases the backend's tool results gave the planner (a vet's own field from get_clinic_info), and ones they never gave (a field kept for the team)
+    returned: z.array(z.string()).default([]),
+    never_returned: z.array(z.string()).default([]),
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
     booked_with: z.string().optional(), // the provider every booking made on the call must be with
