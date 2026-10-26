@@ -91,7 +91,7 @@ export function callerContext(history: string | null): string | null {
   return [
     `About the number calling, from the clinic's records (like caller ID):${count ? ` it called ${count} time${count === 1 ? '' : 's'} in the last 30 days.` : ''}${name ? ` One person is on file for it: ${name}.` : ''}`,
     name
-      ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
+      ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" (in Spanish, "¿Hablo con ${name}?") On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
       : 'You do not know who is calling yet: when it helps, ask for their first name and their pet\'s name to bring up their details.',
     `If the caller asks whether you know them or have their history, say yes, you can see they have called before${name ? '' : ', and ask for their first name and their pet\'s name to bring up their details'}. Never say you have no history, no record, or that you just answer calls as they come in. What earlier calls were about is said only after the backend has checked who they are.`,
   ].join(' ');

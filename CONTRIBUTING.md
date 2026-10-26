@@ -8,6 +8,10 @@ Thank you for helping. Attendra answers calls from patients, so the bar is a lit
 - **Rules live in code.** If the agent must or must not do something, enforce it in `packages/agent/src/tools.ts` or `packages/core`, and add a scenario in `evals/scenarios/` that tries to make it misbehave.
 - **No medical advice features.** Triage, diagnosis, symptom interpretation and prescription decisions are out of scope and will not be merged.
 
+## Languages
+
+Attendra speaks English and Spanish, and every behaviour works in both. A change to words the caller or the assistant says (a phrase list, a pattern, a refusal, a line said word for word) ships with its Spanish twin, a row in `packages/core/test/language-parity.test.ts` (the agent's checks: `packages/agent/test/language-parity.test.ts`), and a Spanish eval scenario when there is an English one. Spoken lines live in the language packs (`packages/core/src/locales`), never in the code that uses them.
+
 ## Setup
 
 ```bash

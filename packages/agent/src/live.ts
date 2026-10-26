@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ToolName } from '@attendra/core';
+import { PACKS, type ToolName } from '@attendra/core';
 
 /**
  * What staff watching a live call see, as it happens. Captions are what was said, so
@@ -51,4 +51,5 @@ export function coachingInstruction(note: string): string {
   ].join(' ');
 }
 
-export const TAKE_OVER_LINE = "I'm connecting you with a member of our team now.";
+/** The English take-over line; a call hears its own language's (`takeOver` in the language pack). */
+export const TAKE_OVER_LINE = PACKS.en.takeOver;

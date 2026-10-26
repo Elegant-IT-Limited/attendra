@@ -32,6 +32,7 @@ describe('the production planner', () => {
     const input = JSON.stringify((create.mock.calls[0]![0] as { input: unknown }).input);
     expect(input).toContain('Name on file for this number: Abdul.');
     expect(input).toContain('Am I speaking with <that name>?');
+    expect(input).toContain('¿Hablo con <that name>?');
     expect(input).not.toContain('cannot get texts');
     const abroad = await w.call('+8801712345678', { clinic: texting });
     await abroad.delegate([], planner);

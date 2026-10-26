@@ -25,6 +25,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - **A call bar.** The browser test call no longer ends when you leave the Test call page: it lives in the dashboard, with a bar on every page (the clinic, the time, mute, hang up and a link back). It ends on hang up, the time limit, closing or reloading the tab, signing out or switching clinic. If the microphone stops, the bar says "Your microphone stopped. Hang up and call again." and the call does not run on in silence.
 
+### Fixed (Spanish parity)
+
+- **Every behaviour that rests on words works in Spanish.** An audit of every change since 0.5.0 added what Spanish was missing: medical and dosing questions ("¿Le puedo dar ibuprofeno a mi perro?", "¿es grave?") and Spanish medicine names, internal words the assistant must never say, goodbyes and hanging up ("No corte la llamada" now keeps the call), callback promises, abuse and security in the usted form, authority claims, vet emergency phrases, pet ages ("como dos años"), and "¿Hablo con …?" for a known caller. The take-over and "taking too long" lines were English only; a Spanish call now hears them in Spanish. English gaps found on the way are fixed too ("isn't breathing", "what can I give him for the pain").
+- **Kept so.** `language-parity.test.ts` (core and agent) holds an English sentence and its Spanish twin for each behaviour, with the same expected result, and ten Spanish eval scenarios cover the recent fixes. CONTRIBUTING has a Languages section: words the caller or the assistant says ship with their Spanish twin.
+- **The vet emergency list changed**, so each clinic's emergency review shows as out of date until its vet reviews it again.
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

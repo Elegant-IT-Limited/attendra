@@ -86,6 +86,11 @@ export interface LanguagePack {
   /** The one warning an insulting caller hears, and the goodbye when the call is ended for it: said word for word. */
   abuseWarning: string;
   abuseGoodbye: string;
+  /** Said word for word when a person takes the call over, before the transfer. */
+  takeOver: string;
+  /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
+  tooSlow: string;
+  couldNotFinish: string;
   /** The fixed self-harm instruction. `crisisLine` is 988 in the United States, and absent where there is no national line. */
   selfHarmScript: (emergencyNumber: string, crisisLine: string | null) => string;
   /** Emergency phrases, in every script and spelling a transcriber may return. Reviewed like decision 0005. */

@@ -30,7 +30,7 @@ Everything the backend writes for the caller follows that language: offered time
 
 US Spanish, always usted. Dates are said as "martes, 29 de septiembre a las 3:00 p.m.". The emergency phrases cover chest pain, not breathing, stroke signs, heavy bleeding, unconsciousness and seizures, self-harm, overdose and poison, and a closing throat. Yes words include sí (only on its own, since "si" is also "if"), claro, correcto, está bien, de acuerdo and perfecto; "vale" and "por favor" count only as the whole answer. Hedges include no, espere, mejor, tal vez, quizás, pero, prefiero, aunque and any question.
 
-The 988 Suicide and Crisis Lifeline is given in Spanish at United States clinics. Five evals cover Spanish: a booking, a hedge, chest pain, a refill and three wrong dates of birth.
+The 988 Suicide and Crisis Lifeline is given in Spanish at United States clinics. The Spanish evals (tag `es`) cover a booking, a hedge, chest pain, a refill, three wrong dates of birth, and the Spanish twin of each fix since: a known caller, "sí, pero sin mensaje", goodbyes, no transfer line, a card number, one callback per call, medical questions and pushes on the rules. `packages/core/test/language-parity.test.ts` checks every behaviour that rests on words gives the same answer in both languages.
 
 ## Adding a language
 
@@ -42,6 +42,7 @@ A language is one pack: a file in `packages/core/src/locales/` (`en.ts`, `es.ts`
 - the read-back templates for a booking, a move and a cancellation, for a provider who is a person and one that is a room;
 - the booking text message, which says when and where, never why;
 - the emergency and self-harm scripts, which take the clinic's number;
+- the lines said word for word: the abuse warning and goodbye, the take-over line, and the apologies for a slow or failed answer;
 - the emergency phrases, "not an emergency", the yes words, the words that are a yes only on their own, and the hedge words;
 - marker words for choosing the call's language.
 
@@ -54,6 +55,7 @@ To add one:
 3. Write emergency phrases for every kind in the English pack, with a test for each in `packages/core/test/languages.test.ts`, and have a clinician who works in that language review them (see [safety](safety.md)).
 4. Add at least five evals in the language: a booking, a hedge, an emergency, a refill and a wrong date of birth.
 5. If dates of birth are said differently, teach `parseDob` in `identity.ts`.
-6. Have a native speaker check every line of the pack and listen to recorded test calls before it is used with patients.
+6. Teach the checks that read words outside the pack the new language: medical questions (`medical.ts`), abuse (`abuse.ts`), security (`security.ts`), goodbyes and the "no text" answer (`confirmation.ts`), a pet's age (`identity.ts`), the animal emergencies (`industries/vet.ts`) and the callback promise (`packages/agent/src/delegation.ts`), with a column in the language-parity tests.
+7. Have a native speaker check every line of the pack and listen to recorded test calls before it is used with patients.
 
 A clinic configuration saved with a language code Attendra does not ship still loads: the code is dropped, and the primary language and greeting fall back to one the clinic still offers.

@@ -41,20 +41,20 @@ export function withoutTextRefusal(callerText: string): string {
   return before || t.slice(m.index + m[0].length).replace(/^([\s,;:.!-]|\b(please|thanks|thank you|por favor|gracias|but|pero)\b)+/, '').trim();
 }
 
-const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no thanks|no thank you|have a (good|nice|great) (day|one)|adios|hasta luego|eso es todo|nada mas|chao|chau)\b/;
+const GOODBYE = /\b(bye|goodbye|good bye|that'?s all|that is all|nothing else|no thanks|no thank you|have a (good|nice|great) (day|one)|adios|hasta luego|hasta pronto|nos vemos|eso es todo|nada mas|que (tenga|le vaya) (un )?(buen|bonito|lindo|excelente|feliz)? ?(dia|tarde|noche|bien)|chao|chau)\b/;
 const NOTHING_MORE = /^(no|nope|nah|no gracias|that'?s it|thanks|thank you|gracias)\b/;
 const ANYTHING_ELSE = /anything else|any other|something else|algo mas|otra cosa/;
-const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|espere|pregunta)\b|\?/;
+const MORE_TO_SAY = /\b(but|also|one more|another|actually|wait|question|pero|tambien|una cosa mas|en realidad|ademas|espere|pregunta)\b|\?/;
 // a caller who asks for the call to end, in so many words: "can you cut the call?", "please hang up", "cuelgue"
-const HANG_UP = /\b(hang up|hangup|(cut|end|drop|close|stop|finish|disconnect)( the| this)? (call|line|phone)|you can go now|cuelgue|cuelga|corte la llamada|termine la llamada)\b/;
-const KEEP_ON = /\b(do ?n'?t|do not|please don'?t|no)\s+(hang up|cut|end|drop|disconnect)|\bno cuelgue\b/;
+const HANG_UP = /\b(hang up|hangup|(cut|end|drop|close|stop|finish|disconnect)( the| this)? (call|line|phone)|you can go now|cuelgue|cuelga|(puede|puedes|podria|ya puede|ya puedes) colgar|(corte|cortar|termine|terminar|finalice|finalizar)( la| esta)? llamada)\b/;
+const KEEP_ON = /\b(do ?n'?t|do not|please don'?t|no)\s+(hang up|cut|end|drop|disconnect)|\bno (me )?(cuelgue|cuelgues|cuelga|corte|cortes|termine|termines)\b/;
 /** The caller asked, in so many words, for the call to end. */
 export function askedToHangUp(lastCallerTurn: string): boolean {
   const t = normalise(lastCallerTurn).trim();
   return HANG_UP.test(t) && !KEEP_ON.test(t);
 }
 // a caller who is leaving the call themselves, whatever was asked: nobody is kept on the line for "anything else?"
-const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|(i'?ll|i will) get back to you|another time|adios|hasta luego|chao|chau|me tengo que ir|(te |le )?(llamo|llamar[eé]) (luego|despu[eé]s|m[aá]s tarde|otro d[ií]a))\b/;
+const LEAVING = /\b(bye|goodbye|good bye|(have|got|need) to (go|run)|gotta go|talk (to you )?later|(i'?ll|i will|i'?m going to) (call|ring|phone) (you |u )?(back|again)( later| another time| tomorrow)?|call (you )?back later|(i'?ll|i will) get back to you|another time|adios|hasta luego|chao|chau|me tengo que ir|tengo que (irme|colgar)|hablamos (luego|despues|mas tarde|otro dia|manana)|((te|le|la|lo) )?(vuelvo a llamar|volvere a llamar)( luego| despues| mas tarde| otro dia| manana)?|((te|le|la|lo) )?(llamo|llamare) (luego|despues|mas tarde|otro dia|manana)|(despues |luego )?(te|le) (aviso|confirmo) (luego|despues|mas tarde))\b/;
 
 /**
  * May the call end? Two steps, like a front desk: the assistant has asked whether

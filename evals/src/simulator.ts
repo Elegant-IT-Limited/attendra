@@ -212,7 +212,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const actions: ActionRecorder | undefined = opts.record
     ? { record: (a) => calls.recordAction(clinic.id, callId, { tool: a.tool, argsRedacted: a.argsRedacted, result: a.result, taskRevision: a.revision, patientId: a.patientId }) }
     : undefined;
-  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => now, channel: scenario.channel }, backend, observed, log, actions);
+  const agent = new CallAgent(state, { clinic, callId, callerNumber: callerNumber, now: () => now, channel: scenario.channel, history: scenario.history ?? null }, backend, observed, log, actions);
   const segment = async (speaker: 'caller' | 'agent', text: string, startMs: number) => {
     if (opts.record) await calls.appendSegment(clinic.id, callId, { speaker, text, startMs, endMs: startMs + 1200 });
   };
