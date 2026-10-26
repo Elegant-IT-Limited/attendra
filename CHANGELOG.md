@@ -33,6 +33,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Logs that explain a call.** At info, with ids and times and never the caller's words: delegation created, planner request started and answered, sideband open, reconnecting, reconnected and closed, the assistant's first words (time from the start) and each reply's start and end.
 - **Evals.** Eight new scenarios, English and Spanish twins (160 to 167): a turn the voice let go (`dropped:`), a number without an area code, the pet's details first then "is it new?", and the greeting on time (`silent_start:`, through the real call runner). Tests: one-voice.test.ts, turns-and-phones.test.ts, call-runner (watchdog, replay after a reconnect, logs), language parity.
 
+### Fixed (the dashboard opens the clinic you were in)
+
+- **Home opens the last clinic.** The dashboard keeps the clinic last opened in this browser (`attendra.lastClinic`), and `/` opens it: after an account page, after signing in again, and after "Create a new clinic", whose page links to the new clinic. It is used only while the person still belongs to it; otherwise home opens the first clinic, as before. Before, coming back from an account page opened the first clinic in the list, not the one you were in.
+
 ### Added (an owner opens a second, separate clinic with the same login)
 
 - **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.

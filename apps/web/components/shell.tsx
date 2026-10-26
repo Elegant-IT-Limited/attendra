@@ -22,6 +22,7 @@ import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { useClinicChanges } from '@/lib/changes';
 import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
+import { rememberClinic } from '@/lib/last-clinic';
 import { markSignedOut } from '@/lib/next';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
@@ -50,6 +51,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   if (config.data) setClinicCountry(config.data.phoneNumbers);
   // every screen updates as the clinic changes, without a refresh
   useClinicChanges(clinicId, !!clinic);
+  // home opens this clinic next time, from an account page or after signing in again
+  useEffect(() => { if (clinic) rememberClinic(clinic.id); }, [clinic]);
   const plan = usePlan(clinicId);
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
