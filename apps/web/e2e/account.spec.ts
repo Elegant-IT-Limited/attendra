@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { openAs, signInPatiently } from './session';
+import { newContext, openAs, signInPatiently } from './session';
 
 /** The 6-digit code an authenticator app shows now for a base32 secret (RFC 6238: SHA-1, 30 seconds). */
 function totp(secret: string, at = Date.now()) {
@@ -29,7 +29,7 @@ test('a new team member picks a password, changes it from Your account, turns on
   await added.getByRole('button', { name: 'Done' }).click();
 
   // the first sign-in: their own password before anything else
-  const sam = await (await browser.newContext()).newPage();
+  const sam = await (await newContext(browser)).newPage();
   await sam.goto('/sign-in');
   await sam.getByLabel('Email').fill('sam@maple-demo.test');
   await sam.getByLabel('Password').fill(temporary);
@@ -116,7 +116,7 @@ test('signing in again after the session ended opens the page you were on', asyn
 });
 
 test('a wrong password says so, and a forgotten one is sent to the manager when no email is set up', async ({ browser }) => {
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await newContext(browser)).newPage();
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('nobody@maple-demo.test');
   await page.getByLabel('Password').fill('not the password at all');
