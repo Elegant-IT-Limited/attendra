@@ -12,7 +12,7 @@ import { JobError, LocalSummariser, type Summariser } from '../src/summarise';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
-const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let calls: CallRepository;
 let n = 0;
@@ -394,7 +394,7 @@ describe('a refill ready to pick up', () => {
 });
 
 describe('appointment reminders', () => {
-  const REM = { ...DEMO_CLINIC, id: 'clinic_reminders', name: 'Reminder Vets', industry: 'vet' as const, phoneNumbers: ['+13035550300'],
+  const REM = { ...DEMO_CLINIC, id: 'clinic_reminders', name: 'Reminder Vets', industry: 'vet' as const, phoneNumbers: ['+13035550124'],
     texting: Texting.parse({ reminders: { enabled: true, hoursBefore: 24 } }) };
   const tz = DEMO_CLINIC.timezone;
   let patientId: string;
@@ -420,7 +420,7 @@ describe('appointment reminders', () => {
     expect(await h('21:00').appointmentReminders()).toEqual({ sent: 0 }); // quiet hours
     expect(await h('10:30').appointmentReminders()).toEqual({ sent: 1 });
     expect(await h('10:40').appointmentReminders()).toEqual({ sent: 0 }); // claimed once
-    expect(bodies).toEqual([expect.stringMatching(/^Reminder Vets: A reminder of Biscuit's sick visit with Dr\. Nkem Okafor on Wednesday, October 7 at 10:00 AM\. Reply C to confirm, or call \(303\) 555-0300/)]);
+    expect(bodies).toEqual([expect.stringMatching(/^Reminder Vets: A reminder of Biscuit's sick visit with Dr\. Nkem Okafor on Wednesday, October 7 at 10:00 AM\. Reply C to confirm, or call \(303\) 555-0124/)]);
     const [row] = await withClinic(t.db, REM.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, soon)));
     expect(row!.reminderSentAt).toBeInstanceOf(Date);
     expect(row!.reminderSmsId).toEqual(expect.any(String));

@@ -12,7 +12,7 @@ import { addMember } from '../src/members';
 
 export const ORIGIN = 'http://localhost:3000';
 export const PASSWORD = 'correct horse battery staple';
-export const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+export const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 
 /** RFC 6238 TOTP (SHA-1, 30 s, 6 digits) from an otpauth:// URI, as an authenticator app computes it. */
 export function totp(uri: string, at = Date.now()) {

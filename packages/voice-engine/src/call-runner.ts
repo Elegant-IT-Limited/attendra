@@ -241,7 +241,7 @@ export class CallRunner {
     // the caller spoke after the assistant's voice had finished, nothing has come back, and
     // no tool is at work. A caller's words that arrive while the reply is still playing
     // (transcription can lag the reply) are not a wait.
-    // a caller whose last words were a goodbye is not waiting: a nudge there made the assistant start talking again (Scout, 2026-10-24)
+    // a caller whose last words were a goodbye is not waiting: a nudge there made the assistant start talking again (a test call, 2026-10-24)
     const leaving = last?.speaker === 'caller' && saidGoodbye(last.text, agentLast?.text ?? '');
     if (this.callerSaidAt > this.speakingUntil && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;

@@ -21,7 +21,7 @@ describe('migration 0017', () => {
     // a patient as the schema stood then: the seed of today writes columns 0020 adds
     await saveClinic(db, 'org_demo', DEMO_CLINIC);
     const [{ id: maria }] = (await db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc) values (${DEMO_CLINIC.id}, 'x', 'x', 'x', 'x') returning id`)).rows as [{ id: string }];
-    await saveClinic(db, 'org_other', { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other', phoneNumbers: ['+13035550200'] });
+    await saveClinic(db, 'org_other', { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other', phoneNumbers: ['+13035550120'] });
     await db.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key) values ('clinic_other', 'callback', ${maria}, 'x', 'cross-1')`);
 
     await expect(migrate(client)).rejects.toThrow(/migration 0017 found rows that link across clinics[\s\S]*1 requests whose patient is in another clinic/);

@@ -356,7 +356,7 @@ describe('a caller is never left in silence, and a goodbye ends the call', () =>
     vi.useRealTimers();
   });
 
-  it('ends the call when both sides said goodbye, even with a goodbye still at the backend (Scout, 2026-10-24)', async () => {
+  it('ends the call when both sides said goodbye, even with a goodbye still at the backend (a test call, 2026-10-24)', async () => {
     vi.useFakeTimers();
     // the voice model sent "Take care, bye" to the backend as a question; the backend never answers in time
     const h = harness({ plan: () => new Promise<never>(() => {}) });

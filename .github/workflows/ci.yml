@@ -48,6 +48,25 @@ jobs:
         # CI reports to the log only (github, list), so there is no HTML report: the traces of the failed tests are in test-results
         with: { name: playwright-traces, path: apps/web/test-results, retention-days: 7 }
 
+  # No real people, pets, clinics, phone numbers, addresses or emails in this public repo
+  # (CONTRIBUTING.md, Privacy). The private list is a repository secret, so a fork's pull
+  # request checks the public rules only; findings never print the words they matched.
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 24 }
+      - name: the files, and the pull request's title, body and commit messages
+        run: node scripts/privacy-check.mjs
+        env:
+          PRIVACY_DENYLIST: ${{ secrets.PRIVACY_DENYLIST }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
   secrets:
     runs-on: ubuntu-latest
     steps:

@@ -70,13 +70,13 @@ describe('texting during a call', () => {
 
   it('texts only the caller\'s number or the one on file, never another', async () => {
     const c = await w.call('+13035550147', { clinic: TEXTING });
-    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: '+13035550999' } }])).errors).toEqual(['number_not_allowed']);
+    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: '+13035550122' } }])).errors).toEqual(['number_not_allowed']);
     const hidden = await w.call(null, { clinic: TEXTING });
     expect((await hidden.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['no_number']);
   });
 
   it('never offers a text to a number abroad, and says so once (a test call from abroad, 2026-10-25)', async () => {
-    const c = await w.call('+8801712345678', { clinic: TEXTING });
+    const c = await w.call('+447700900123', { clinic: TEXTING });
     c.caller('Can you text me the location?');
     const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
     expect(out.errors).toEqual(['not_textable']);

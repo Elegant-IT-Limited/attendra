@@ -31,14 +31,14 @@ describe('SIP headers from a Twilio Elastic SIP Trunk', () => {
 describe('dialled number candidates', () => {
   it('reads To first, then other headers, never the caller headers, and masks numbers for logs', () => {
     const headers = [
-      { name: 'From', value: '<sip:+8801700000000@x>' },
+      { name: 'From', value: '<sip:+447700900000@x>' },
       { name: 'To', value: '"Clinic" <sip:proj_abc@sip.api.openai.com;transport=tls>' },
       { name: 'Diversion', value: '<sip:7205550160@pstn.twilio.com>;reason=unconditional' },
       { name: 'X-Called', value: '+17205550160' },
       { name: 'Call-ID', value: '03782086-4ce9-44bf-8b0d-4e303d2cc590' },
     ];
     expect(dialledCandidates(headers)).toEqual(['+17205550160']);
-    expect(dialledCandidates([{ name: 'To', value: '<sip:+13035550100@x>' }, { name: 'X-Other', value: '+19995550000' }])).toEqual(['+13035550100', '+19995550000']);
+    expect(dialledCandidates([{ name: 'To', value: '<sip:+13035550100@x>' }, { name: 'X-Other', value: '+19995550121' }])).toEqual(['+13035550100', '+19995550121']);
     expect(maskedHeaders(headers).join('|')).not.toContain('7205550160');
     expect(maskedHeaders(headers).join('|')).toContain('7205***0160');
   });
@@ -193,6 +193,6 @@ describe('a reply of C to a reminder', () => {
     const [row] = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, reminded)));
     expect(row).toMatchObject({ confirmedVia: 'text', confirmedAt: now });
     expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+13035550147', now)).toBeNull(); // nothing left to confirm
-    expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+13035550999', now)).toBeNull(); // nobody with that number
+    expect(await confirmByReply(t.db, cipher, DEMO_CLINIC.id, '+13035550122', now)).toBeNull(); // nobody with that number
   });
 });
