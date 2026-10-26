@@ -45,6 +45,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ### Added (hosting)
 
+- **A Go live card on Today.** The hosting layer can list the steps left before real calls (plan, number, texting); the owner sees them on Today until all are done. Naming the assistant in setup updates a greeting the clinic never changed.
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.
 - **A line from the hosting layer on every page.** The plan can carry a notice (free minutes nearly used, the assistant paused until a card is added). The owner reads it with the link to the plan; the team reads its own version.
 
