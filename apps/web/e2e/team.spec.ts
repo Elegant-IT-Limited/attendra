@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAs, signInPatiently } from './session';
+import { newContext, openAs, signInPatiently } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
   // one long journey through two people and a dozen pages, each compiled on first use by next dev
@@ -31,7 +31,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(page.getByText('Added a person to the team, as front desk').first()).toBeVisible();
 
   // Riley signs in with the temporary password, as a viewer now
-  const riley = await (await browser.newContext()).newPage();
+  const riley = await (await newContext(browser)).newPage();
   await riley.goto('/sign-in');
   await riley.getByLabel('Email').fill('riley@maple-demo.test');
   await riley.getByLabel('Password').fill(password);
@@ -75,7 +75,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
 });
 
 test('too many sign-ins in a row are told to wait a few seconds', async ({ browser }) => {
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await newContext(browser)).newPage();
   await page.route('**/api/auth/sign-in/**', (route) => route.fulfill({ status: 429, headers: { 'x-retry-after': '9' }, json: { message: 'Too many requests' } }));
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('riley@maple-demo.test');
