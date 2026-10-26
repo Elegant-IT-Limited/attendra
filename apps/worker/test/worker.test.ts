@@ -1,5 +1,5 @@
 import { DEMO_CLINIC, Texting, zonedInstant } from '@attendra/core';
-import { CallRepository, CallSummaryRepository, clinicById, createPhiCipher, FrontDeskRepository, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
+import { CallRepository, CallSummaryRepository, clinicById, createPhiCipher, FrontDeskRepository, invitationsFor, inviteToTeam, KnowledgeRepository, PostgresPatientDirectory, PostgresTaskQueue, phiContext, purgeCallRecords, purgeWebhookRecords, saveClinic, schema, seedDemo, WebhookRepository, withClinic, workerJobs } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { and, eq, sql } from 'drizzle-orm';
@@ -469,5 +469,25 @@ describe('the backup route', () => {
     expect(result).toMatchObject({ removed: 0 });
     expect(got!.get('+13035550100')).toMatchObject({ clinic: DEMO_CLINIC.name, forwardTo: '+13035550101' });
     expect(await handlers({ boss: { send: async () => null } as never, db: t.db, cipher, summariser: new LocalSummariser(), log }).fallbackSync()).toBe('off');
+  });
+});
+
+describe('team invitations nobody answered', () => {
+  it('are closed by the worker after 7 days, with an audit row dated when each lapsed; reading them changes nothing', async () => {
+    await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_inviter', 'Inviter', 'inviter@maple.example', true)`);
+    const sent = new Date('2026-11-06T15:00:00Z');
+    const invited = await inviteToTeam(t.db, 'org_demo', DEMO_CLINIC.id, { userId: 'u_inviter', role: 'owner' }, { email: 'late@elsewhere.example', role: 'staff' }, sent);
+    if (invited.result !== 'done') throw new Error(invited.result);
+    const later = new Date(sent.getTime() + 8 * 86_400_000);
+    const status = async () => ((await t.db.execute(sql`select status from invitations where id = ${invited.id}`)).rows[0] as { status: string }).status;
+    expect(await invitationsFor(t.db, 'late@elsewhere.example', later)).toEqual([]);
+    expect(await status()).toBe('pending');
+    expect(await audits(DEMO_CLINIC.id, 'member.invite.expired')).toHaveLength(0);
+    const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => later });
+    expect(await h.lapseInvitations()).toBe(1);
+    expect(await status()).toBe('expired');
+    const [row] = await audits(DEMO_CLINIC.id, 'member.invite.expired');
+    expect(row).toMatchObject({ actor: 'system', entityId: invited.id, at: invited.expiresAt });
+    expect(await h.lapseInvitations()).toBe(0);
   });
 });

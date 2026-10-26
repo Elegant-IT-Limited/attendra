@@ -10,8 +10,13 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(page.getByText('The patient asked for a refill. Check with the care team, then call them back.')).toBeVisible();
 
   await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
+  // the filtered list replaces the open one when the search answers: wait until every row is a refill, or the click lands
+  // on a row that is about to go (in CI it came 88 ms before the filtered list, and no panel opened)
+  const rows = page.getByTestId('task-row');
+  await expect(rows.filter({ hasNotText: 'Prescription refill' })).toHaveCount(0);
+  await expect(rows.first()).toBeVisible();
   // the queue is a list of rows; a row opens its request in the side panel
-  const row = page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first();
+  const row = rows.filter({ hasText: 'Unclaimed' }).first();
   await row.click();
   const card = page.getByTestId('task');
   await expect(card.getByText(/Prescription refill, came in/)).toBeVisible();

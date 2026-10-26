@@ -151,7 +151,11 @@ test.describe.serial('the schedule', () => {
     await dialog.getByRole('button', { name: /James Whitaker/ }).click();
     await dialog.getByLabel('Visit type').selectOption({ label: 'Annual physical (40 min)' });
     await dialog.getByLabel('Provider').selectOption({ label: 'Dr. Nkem Okafor' });
+    // the week's title changes when the later week is shown: only then are its times the ones to pick from
+    const week = dialog.getByRole('button', { name: 'Later week' }).locator('xpath=preceding-sibling::p');
+    const thisWeek = await week.textContent();
     await dialog.getByRole('button', { name: 'Later week' }).click();
+    await expect(week).not.toHaveText(thisWeek ?? '');
     await dialog.getByRole('radio').first().click();
     await dialog.getByRole('button', { name: 'Next', exact: true }).click();
     await dialog.getByRole('button', { name: 'Next', exact: true }).click(); // past the note
