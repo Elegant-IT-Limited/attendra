@@ -23,6 +23,11 @@ export function Section({ id, title, description, children, action }: { id?: str
   );
 }
 
+/** Under a section callers never hear about: a caller who asks is offered a callback, as for anything the assistant does not know. */
+export function TeamOnly() {
+  return <p className="text-sm text-text-muted" data-testid="team-only">For your team only. The assistant does not read this to callers.</p>;
+}
+
 /**
  * A setting's label, its control and a hint, stacked. The control gets an id and is
  * tied to the label and the hint, so every field in a list of rows (visit types,

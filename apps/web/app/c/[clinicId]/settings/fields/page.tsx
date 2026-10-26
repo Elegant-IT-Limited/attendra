@@ -88,7 +88,7 @@ function FieldsAndLists() {
       <div className="space-y-6">
         {tab === 'patients' && (
           <>
-            <FieldsEditor id="patient-fields" title={`Fields on each ${terms.patient}`} disabled={!writable}
+            <FieldsEditor id="patient-fields" title={`Fields on each ${terms.patient}`} disabled={!writable} teamOnly
               description={`Details you keep that have no place yet, like ${pet ? 'a microchip number, an insurer or a vaccine due date' : 'an insurer or a reminder date'}. Where they show: in Add ${terms.patient}, on each ${terms.patient}'s page under Details, and on the ${terms.patients} list when ticked. Dropdowns and yes-or-no fields also filter the list. Removing a field hides what was filled in.`} columnLabel={`Show on the ${terms.title('patients')} list`}
               placeholder={pet ? 'e.g. Microchip' : 'e.g. Insurance member ID'} fields={draft.customFields ?? []} onChange={(customFields: CustomField[]) => set({ customFields })}
               builtIn={pet ? ['Pet\'s name', 'Kind of animal', 'Sex', 'Birthday', 'Owner', 'Phone', 'Usual vet', 'Reminder consent'] : ['First name', 'Last name', 'Date of birth', 'Gender', 'Phone', 'Parent or guardian', 'Usual doctor']}
@@ -119,7 +119,7 @@ function FieldsAndLists() {
 
         {tab === 'requests' && (
           <>
-            <FieldsEditor id="request-fields" title="Fields on each request" disabled={!writable}
+            <FieldsEditor id="request-fields" title="Fields on each request" disabled={!writable} teamOnly
               description="Details your team adds to a request, like an insurance claim number or a follow-up reason. Where they show: in New request, and on every request card (&ldquo;Not filled in&rdquo; until someone fills them, with Edit details). Dropdowns and yes-or-no fields also filter the Requests page."
               placeholder="e.g. Pharmacy" fields={draft.requestFields ?? []} onChange={(requestFields: CustomField[]) => set({ requestFields })}
               builtIn={['Kind of request', pet ? 'Pet' : 'Patient', 'Call back on', 'What it is about', 'Who has it', 'Urgent', 'Due', 'Notes']}

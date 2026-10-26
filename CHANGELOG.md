@@ -38,6 +38,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **The clinic never learns who already uses Attendra.** Every email gets the same "Invite sent". Where the hosting layer sends email, a new address is invited the same way and sets its own password from the email; without it, a new address gets a temporary password, shown once, as before.
 - **Rules kept:** each clinic manages only its own team, passwords and two-step are never reset from another clinic, removing someone from one clinic leaves their others, only an owner invites an owner, and every invite, cancel, accept, decline and lapse is in the audit log. Migration 0038.
 
+### Fixed (every setting reaches the assistant)
+
+- **Nothing in Settings is hidden from the assistant by accident.** An audit of every setting found three a caller could need that never reached the call: the clinic's own phone number, the emergency hospitals when asked about ahead of time, and shorter opening hours more than a week ahead. `get_clinic_info` now returns them. `settings-coverage.test.ts` lists every setting with how it reaches the call (the prompt, `get_clinic_info`, enforced in code, or for the team only) and fails on a new one with no row.
+- **Settings says what callers never hear.** Links in your menu, and the fields on pets and requests, say "For your team only. The assistant does not read this to callers."
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

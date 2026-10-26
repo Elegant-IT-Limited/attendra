@@ -8,7 +8,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
-import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
+import { EmptyNote, Field, Item, Section, TeamOnly } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SpecialDaysEditor } from '@/components/settings/special-days';
 import { moved, Sortable } from '@/components/ui/sortable';
@@ -517,6 +517,7 @@ export default function Settings() {
 
         <Section id="links" title="Links in your menu" description="Shortcuts for your team, not for callers: your practice software, a lab portal, a form. Each shows in this dashboard's menu on the left, for everyone at the clinic, and opens in a new tab. The assistant does not use them; links it may text a caller are under Texting."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => addOrFocus(c.menuLinks ?? [], (l) => !l.label.trim() && /^(https?:\/\/)?$/.test(l.url.trim()), (_l, i) => `item-link-${i}`, () => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); })}><Plus /> Link</Button>}>
+          <TeamOnly />
           {!c.menuLinks?.length && <EmptyNote>No links yet.</EmptyNote>}
           <Sortable items={(c.menuLinks ?? [])} keyOf={(_l, i) => String(i)} label={(l) => l.label} disabled={!writable || save.isPending} onMove={(f, t) => set({ menuLinks: moved(c.menuLinks ?? [], f, t) })} className="space-y-5">
           {(l, i, handle) => (
