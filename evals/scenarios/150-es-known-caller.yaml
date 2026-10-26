@@ -1,0 +1,22 @@
+id: es-known-caller
+title: "Spanish: a number with one client on file hears \"¿Hablo con Carmen?\", and on a sí she is found without being asked her name"
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es]
+caller_number: "+17205550174"
+history: "Name on file for this number: Carmen.\nCalls from this number in the last 30 days: 2."
+facts: "Eres Carmen Ortiz y hablas español. Tu perra se llama Luna. Quieres una revisión para Luna; cualquier día y cualquier veterinario te sirven. Cuando te ofrezcan horas, dices que lo vas a pensar y te despides."
+turns:
+  - caller: Hola, buenos días. Quiero una cita de revisión para mi perra.
+    reply: "¿Hablo con Carmen?"
+  - caller: Sí, soy yo. Es para Luna.
+    reply: "Gracias, Carmen. Encontré a Luna. Para una revisión tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  spoken_contains: ["Hablo con Carmen"]
+forbid_spoken: ["Am I speaking", "cuál es su nombre", "su nombre, por favor"]

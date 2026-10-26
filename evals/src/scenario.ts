@@ -39,6 +39,9 @@ export const Scenario = z.object({
   // settings the clinic changed, as Settings saves them (top-level keys of its config, whole values): the call
   // must follow them. A second location is the same clinic with its own name, hours, vets and hospital.
   settings: z.record(z.string(), z.unknown()).optional(),
+  // what the clinic's records say about the number calling, as the voice service gives it to the backend
+  // ("Name on file for this number: Carmen."): a known caller is greeted by name
+  history: z.string().optional(),
   turns: z.array(Turn).min(1),
   // live only: what the caller knows beyond their scripted lines (a pharmacy, a callback number, a yes to a
   // reminder). With it, a model playing the caller answers the real planner's follow-up questions after the

@@ -1,0 +1,27 @@
+id: es-yes-no-text
+title: "Spanish: \"sí, pero sin mensaje\" to the read-back books the visit and sends no confirmation text"
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es, texting]
+caller_number: "+17205550174"
+facts: "Eres Carmen Ortiz y hablas español. Tu perra se llama Luna. Quieres una revisión para Luna; la primera hora que te ofrezcan te sirve. A la confirmación dices que sí, pero que no quieres el mensaje de texto."
+turns:
+  - caller: Hola, soy Carmen Ortiz. Quiero una revisión para mi perra Luna.
+    reply: "Gracias, Carmen. Encontré a Luna. Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. Le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien. ¿Se la reservo?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, pero sin mensaje, por favor.
+    reply: "Listo, Luna tiene cita {booked}. No le enviaré ningún mensaje."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 0
+  language: es

@@ -66,6 +66,13 @@ describe('GptLiveEngine browser calls', () => {
     expect(text).toContain('do not ask how you can help');
   });
 
+  it('greets a VIP in Spanish at a Spanish clinic, with the AI disclosure and no question', () => {
+    const es = vipOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, 'Carmen Ruiz');
+    expect(es).toContain(`Hola Carmen, gracias por llamar a ${DEMO_CLINIC.name}.`);
+    expect(es).toContain('asistente de IA de la clínica. Le comunico con nuestro equipo ahora mismo.');
+    expect(es).not.toContain('Hi Carmen');
+  });
+
   it('while the assistant is paused: says it is an AI assistant, then puts the caller through or says when to call back and where to go in an emergency', () => {
     const through = pausedOpening(DEMO_CLINIC, true);
     expect(through).toContain("the clinic's AI assistant");
@@ -76,6 +83,10 @@ describe('GptLiveEngine browser calls', () => {
     expect(back).not.toContain('connecting you');
     expect(pausedOpening({ ...DEMO_CLINIC, industry: 'vet', emergencyHospital: undefined }, false)).toContain('nearest 24-hour emergency vet');
     expect(pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es' }, true)).toContain('Le comunico con nuestro equipo');
+    const esBack = pausedOpening({ ...DEMO_CLINIC, primaryLanguage: 'es', industry: 'vet', emergencyHospital: { name: 'Front Range Animal ER', phone: '+13035550199', address: '1 Main St, Denver CO' } }, false);
+    expect(esBack).toContain('Por favor, vuelva a llamar en nuestro horario de atención.');
+    expect(esBack).toContain('llame a Front Range Animal ER');
+    expect(esBack).not.toContain('Please call back');
   });
 
   it('tells the voice what caller ID would show: the call count and the one name on file, never the calls\' content', () => {
@@ -83,6 +94,7 @@ describe('GptLiveEngine browser calls', () => {
     const known = callerContext('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 5.\n2026-10-24T13:20:00.000Z: Booked a check-up for Scout.')!;
     expect(known).toContain('it called 5 times in the last 30 days');
     expect(known).toContain('"Am I speaking with Sam?"');
+    expect(known).toContain('"¿Hablo con Sam?"');
     expect(known).toContain('Never say you have no history');
     expect(known).not.toContain('Scout');
     const unnamed = callerContext('Calls from this number in the last 30 days: 2.\n2026-10-24T13:20:00.000Z: A question.')!;

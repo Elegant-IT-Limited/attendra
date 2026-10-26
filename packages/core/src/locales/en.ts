@@ -61,6 +61,9 @@ export const en: LanguagePack = {
   smsNoReplies: ({ clinicPhone }) => `This number does not read replies. Please call ${clinicPhone}.`,
   abuseWarning: 'I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back.',
   abuseGoodbye: 'I\'m going to end the call now. You\'re welcome to call back any time. Goodbye.',
+  takeOver: 'I\'m connecting you with a member of our team now.',
+  tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
+  couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +
     `"If this is a medical emergency, please hang up and call ${n} right away." ` +
@@ -73,7 +76,7 @@ export const en: LanguagePack = {
     ' Stay warm and brief. Do not give medical advice.',
   emergencyPhrases: [
     ['cardiac', /\b(chest (pain|pressure|tightness|hurts?)|heart attack|pain (in|down) my (left )?arm)\b/],
-    ['breathing', /\b(can'?t|cannot|can not|hard to|trouble|struggling to) breathe?\b|\bnot breathing\b|\bshort(ness)? of breath\b|\bchoking\b/],
+    ['breathing', /\b(can'?t|cannot|can not|hard to|trouble|struggling to) breathe?\b|\b(not|isn'?t|wasn'?t) breathing\b|\bshort(ness)? of breath\b|\bchoking\b/],
     ['stroke', /\b(stroke|face (is )?droop(ing)?|slurr(ed|ing) (speech|words)|can'?t (move|feel) (my )?(arm|leg|face))\b/],
     ['bleeding', /\b(won'?t stop bleeding|bleeding (a lot|heavily|badly)|lots of blood|coughing (up )?blood|vomiting blood)\b/],
     ['unresponsive', /\b(unconscious|passed out|not (waking|responding)|unresponsive|seizure|fitting)\b/],

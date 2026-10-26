@@ -59,6 +59,9 @@ export const es: LanguagePack = {
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
   abuseGoodbye: 'Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós.',
+  takeOver: 'Le comunico con una persona de nuestro equipo ahora mismo.',
+  tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
+  couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +
@@ -84,7 +87,7 @@ export const es: LanguagePack = {
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),
   // "si" is also "if" ("si puede el martes"), so it counts only as its own word at the start, before a pause or the end
-  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es').source}`, 'u'),
+  yes: new RegExp(`^si(?=\\s*[,.!]|$)|${words('claro|correcto|esta bien|de acuerdo|perfecto|exacto|adelante|confirmo|reservela|hagalo|asi es|me parece bien|suena bien|me sirve').source}`, 'u'),
   yesAlone: /^(vale|por favor|si por favor)$/,
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
