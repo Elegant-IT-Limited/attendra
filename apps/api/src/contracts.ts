@@ -641,6 +641,29 @@ export const HostingPlan = z.object({
    * is added): what the owner reads, with the link to the plan, and what the rest of the team reads.
    */
   notice: z.object({ level: z.enum(['warn', 'danger']), owner: z.string().min(1).max(300), team: z.string().min(1).max(300) }).nullable().optional(),
+  /**
+   * The owner's steps from a finished setup to real calls (the plan, a number, forwarding, texting), as the
+   * hosting layer keeps them: a card on Today until they are done. `optional`: real calls do not wait for it.
+   */
+  goLive: z.object({
+    setupUrl: SafeLink.nullable(),
+    steps: z.array(z.object({
+      title: z.string().min(1).max(80),
+      status: z.string().min(1).max(80),
+      state: z.enum(['done', 'todo', 'wait', 'problem']),
+      href: SafeLink.nullable(),
+      optional: z.boolean().default(false),
+    })).min(1).max(8),
+  }).nullable().optional(),
+});
+export const AssistantChoicesQuery = z.object({ assistantName: z.string().trim().regex(/^[\p{L}\p{M}]{2,24}$/u, 'the assistant name is one word of 2 to 24 letters').optional() });
+/** What setting up the assistant offers: the voices with a sample, and the greeting each language suggests for a name. */
+export const AssistantChoices = z.object({
+  voices: z.array(z.object({ id: z.string(), label: z.string() })),
+  /** The suggested greeting per language, for the name asked about (or the saved one). */
+  suggested: z.record(z.string(), z.string()),
+  /** The saved greeting is still the suggested one for the saved name, so it can follow a new name. */
+  savedIsSuggested: z.boolean(),
 });
 /** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
@@ -668,6 +691,7 @@ export type Health = z.infer<typeof Health>;
 export type Me = z.infer<typeof Me>;
 export type HostingPlan = z.infer<typeof HostingPlan>;
 export type ClinicPlan = z.infer<typeof ClinicPlan>;
+export type AssistantChoices = z.infer<typeof AssistantChoices>;
 export type CallSummary = z.infer<typeof CallSummary>;
 export type CallList = z.infer<typeof CallList>;
 export type CallDetail = z.infer<typeof CallDetail>;

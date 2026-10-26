@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, inClinicCountry, LIST_NAMES, type ListName } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel } from '@attendra/core';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
-import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Res, UnprocessableEntityException } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, DB, FRONT_DESK } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
-import { ListChange } from '../contracts';
+import { AssistantChoices, AssistantChoicesQuery, ListChange } from '../contracts';
 import type { z } from 'zod';
 
 @ApiTags('settings')
@@ -40,6 +40,27 @@ export class SettingsController {
     // the numbers calls come in on (the assistant's own), so the page can tell them from the clinic's line
     const assistantNumbers = await this.assistantNumbers(clinicId);
     return { version: stored.version, assistantNumbers, ...(await this.who(clinicId, stored)) };
+  }
+
+  /**
+   * For a setup page that names the assistant: the voices it can play a sample of, and the
+   * greeting each language suggests for a name. A greeting the clinic never changed follows
+   * the name; one it wrote itself is kept.
+   */
+  @Get('assistant')
+  @Requires('settings:read')
+  @ApiOperation({ summary: 'The voices with a sample, and the greeting suggested for an assistant name, with whether the saved greeting is still the suggested one' })
+  @ApiOkResponse({ schema: schemaOf(AssistantChoices) })
+  async assistant(@Param('clinicId') clinicId: string, @Query(new ZodPipe(AssistantChoicesQuery)) q: z.infer<typeof AssistantChoicesQuery>): Promise<AssistantChoices> {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const c = ClinicConfig.parse(stored);
+    const suggest = (assistantName: string | null) => PACKS[c.primaryLanguage].greeting({ assistantName, clinicName: c.name });
+    return {
+      voices: PREVIEW_VOICES.map((id) => ({ id, label: voiceLabel(id) })),
+      suggested: Object.fromEntries(LANGUAGES.map((l) => [l, PACKS[l].greeting({ assistantName: (q.assistantName ?? c.assistantName)?.trim() || null, clinicName: c.name })])),
+      savedIsSuggested: c.greeting === suggest(c.assistantName?.trim() || null),
+    };
   }
 
   /**

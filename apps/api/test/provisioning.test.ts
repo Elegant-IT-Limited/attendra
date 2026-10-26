@@ -167,6 +167,16 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/clinic_none/plan`, { body: { plan }, authorization: auth })).statusCode).toBe(404);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan }, authorization: 'Bearer wrong' })).statusCode).toBe(401);
 
+    // the owner's steps to real calls, for the card on Today; a link a browser would run is refused there too
+    const goLive = { setupUrl: '/account/setup/clinic_maple', steps: [
+      { title: 'Choose your plan', status: 'Active', state: 'done', href: '/account/billing/clinic_maple', optional: false },
+      { title: 'Get your assistant\'s number', status: 'To do', state: 'todo', href: '/account/numbers/clinic_maple', optional: false },
+    ] };
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, goLive } }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', G, { cookie: viewer })).json()).toMatchObject({ plan: { goLive } });
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, goLive: { ...goLive, setupUrl: 'javascript:alert(1)' } } }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: { ...plan, goLive: { setupUrl: null, steps: [{ ...goLive.steps[0], href: '//evil.example' }] } } }, authorization: auth })).statusCode).toBe(422);
+
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: null }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null, textsUsed: null });
   });
