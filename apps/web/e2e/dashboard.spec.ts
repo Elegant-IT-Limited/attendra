@@ -180,4 +180,22 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByText('Changed clinic settings').first()).toBeVisible();
     await expect(page.getByText('Read a call transcript').first()).toBeVisible();
   });
+
+  test('settings say which sections callers never hear about; a doctor\'s own field is told to callers unless it is kept for the team', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Settings' }).click();
+    const line = 'For your team only. The assistant does not read this to callers.';
+    await expect(page.locator('#links').getByTestId('team-only')).toHaveText(line);
+    await page.getByRole('link', { name: 'Requests and kinds of request' }).click();
+    await expect(page.locator('#request-fields').getByTestId('team-only')).toHaveText(line);
+    await page.getByRole('tab', { name: /Doctors|Veterinarians/ }).click();
+    const fields = page.locator('#provider-fields');
+    await expect(fields.getByTestId('team-only')).toHaveCount(0);
+    await fields.getByRole('button', { name: 'Field', exact: true }).click();
+    const tell = fields.getByRole('checkbox', { name: 'The assistant may tell callers' });
+    await expect(tell).toBeChecked();
+    await tell.click();
+    await expect(tell).not.toBeChecked();
+    await page.close(); // nothing saved
+  });
 });

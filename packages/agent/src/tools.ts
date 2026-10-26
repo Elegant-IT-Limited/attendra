@@ -362,8 +362,14 @@ export async function runTool(
           call_recording: clinic.recording?.enabled ? 'on: callers hear a notice at the start of the call' : 'off: calls are not recorded; a transcript and a summary are kept for the clinic',
           // the days the clinic has marked closed in the next four months, for "are you open on Thanksgiving?"
           closed_days_ahead: closedDaysAhead(clinic, today),
+          // and its shorter days after this week, for "are you open on Christmas Eve?"
+          ...(specialHoursAhead(clinic, today).length ? { special_hours_ahead: specialHoursAhead(clinic, today) } : {}),
           answer: answer?.answer ?? null, source: answer?.id ?? null,
           ...(clinic.address ? { address: clinic.address } : {}), ...(clinic.website ? { website: clinic.website } : {}),
+          // the clinic's own line, the one its clients know, for "what's your number?"
+          phone: callUsNumber(clinic),
+          // where an animal goes when the clinic cannot see it, for a caller who asks before they need it
+          ...(emergencyHospitalFacts(clinic).length ? { emergency_hospitals: emergencyHospitalFacts(clinic) } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
@@ -774,6 +780,21 @@ function closedDaysAhead(clinic: ClinicConfig, today: string): string[] {
   const last = addDays(today, 120);
   const special = (clinic.specialDays ?? []).filter((d) => !d.windows.length).map((d) => `${d.date}${d.note ? ` (${d.note})` : ''}`);
   return [...clinic.holidays, ...special].filter((d) => d.slice(0, 10) >= addDays(today, 7) && d.slice(0, 10) <= last).sort();
+}
+
+/** Days after the week get_clinic_info already lists, within 120 days, with hours of their own: "2026-12-24 (Christmas Eve): 09:00 to 13:00". */
+function specialHoursAhead(clinic: ClinicConfig, today: string): string[] {
+  const last = addDays(today, 120);
+  return (clinic.specialDays ?? []).filter((d) => d.windows.length && d.date >= addDays(today, 7) && d.date <= last)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((d) => `${d.date}${d.note ? ` (${d.note})` : ''}: ${d.windows.map((w) => `${w.open} to ${w.close}`).join(' and ')}`);
+}
+
+/** The clinic's emergency hospitals in its order of choice, each with its hours (none is around the clock). */
+function emergencyHospitalFacts(clinic: ClinicConfig) {
+  return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].flatMap((h) => (h
+    ? [{ name: h.name, phone: h.phone, address: h.address, hours: h.hours ? `${h.hours.open} to ${h.hours.close}` : 'open around the clock' }]
+    : []));
 }
 
 /**
