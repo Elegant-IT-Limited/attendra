@@ -48,7 +48,9 @@ describe('the GPT-Live call runner', () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(silent.sent).toEqual([]);
     await vi.advanceTimersByTimeAsync(2000);
-    expect(silent.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('Greet them now') }]);
+    expect(silent.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('greet them now') }]);
+    // a caller who spoke over a greeting is answered, never greeted from the top again
+    expect((silent.sent[0] as { content: string }).content).toContain('If any part of the greeting was said, or the caller has spoken, never start it again');
     await vi.advanceTimersByTimeAsync(10_000);
     expect(silent.sent).toHaveLength(1);
     // a greeting on time is never nudged
@@ -204,6 +206,7 @@ describe('the conversation prompt', () => {
   it('says the greeting once only, never after a pause or a staff note, and never asks for the number they are calling from', () => {
     const p = conversationPrompt(DEMO_CLINIC, NOW);
     expect(p).toContain('Never say it again later in the call');
+    expect(p).toContain('If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.');
     expect(p).toContain('Ask for the caller\'s first name only');
     expect(p).toContain('Never ask for the phone number they are calling from');
     expect(p).toContain('unless the backend has done it in this call');

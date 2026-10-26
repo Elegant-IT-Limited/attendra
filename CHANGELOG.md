@@ -4,6 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls, registering a new pet, from a clinic's test calls, 2026-11-06)
+
+- **Each detail is asked once.** The call keeps every detail the caller has given (the owner's name, the pet's name, the kind of animal, sex, age, the phone), a correction replaces it, and the backend is told never to ask for them again. One caller was asked for the phone three times and for their first name twice.
+- **"New" means register, never search.** Once the caller says the pet is new, the assistant collects what registering still needs and registers it; `verify_caller` is refused (`pet_is_new`) until the caller says it may be on file after all. Registering checks the pet is not on file already, so nothing is added twice.
+- **The phone, asked the right way.** On a phone call: "Is the number you're calling from the best one for you?". On a browser test call, with no caller ID: "What's the best number to reach you?", once. Never "the number on Orbit's file" for a new pet.
+- **A chosen time is kept.** A time the caller picks before the pet is found or added is read back after that and booked on a clear yes; if it was taken meanwhile, the assistant says so and offers the next ones. "I'll take care of it" with nothing waiting for a yes is sent back to the backend.
+- **One greeting.** A caller who speaks over the greeting is answered, and the greeting never starts again.
+- **"Still checking" once per wait.** The hold line is said once; later ones thank the caller for waiting.
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.

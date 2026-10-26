@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import type { DataChannelConfig } from 'openai/resources/live/live';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt, openingInstruction } from './prompt';
+import { conversationPrompt, noCallerIdLine, openingIfNotStarted, openingInstruction } from './prompt';
 
 /**
  * What a browser tab may see and do on its own data channel. It is untrusted, so
@@ -68,8 +68,10 @@ export class GptLiveEngine implements VoiceEngine {
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
     // no retries: a retried create would be a second, billed session
+    const session = this.session(clinic, now);
     const created = await this.client.live.create({
-      session: { ...this.session(clinic, now), client: { data_channel: BROWSER_DATA_CHANNEL } },
+      // no caller ID on a browser call: the voice asks for the best number, once
+      session: { ...session, instructions: `${session.instructions}\n${noCallerIdLine(clinic)}`, client: { data_channel: BROWSER_DATA_CHANNEL } },
       transport: { type: 'webrtc', sdp: sdpOffer },
     }, { timeout: 10_000, maxRetries: 0 });
     this.browser.add(created.session.id);
@@ -83,11 +85,12 @@ export class GptLiveEngine implements VoiceEngine {
 
   attach(sessionId: string): Sideband {
     const ws = this.openSideband(sessionId);
-    // the same opening again, once, now that we can reach the session; the SDK holds it until the socket opens
+    // the same opening again, once, now that we can reach the session; the SDK holds it until the socket opens. By then
+    // the greeting may be under way or the caller may have spoken over it: it never starts the greeting over
     const opening = this.openings.get(sessionId);
     if (opening) {
       this.openings.delete(sessionId);
-      ws.send({ type: 'session.instructions.append', event_id: `opening_${sessionId}`, delegation_id: null, content: opening } as never);
+      ws.send({ type: 'session.instructions.append', event_id: `opening_${sessionId}`, delegation_id: null, content: openingIfNotStarted(opening) } as never);
     }
     if (this.browser.has(sessionId)) {
       this.sockets.set(sessionId, ws);

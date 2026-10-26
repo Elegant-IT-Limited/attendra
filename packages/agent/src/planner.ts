@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, MEDICAL_REFUSAL, NO_INFORMATION, PACKS, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import { z } from 'zod';
@@ -48,6 +48,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye. A caller who says they have to go, or says goodbye with nothing pending, gets a short goodbye and end_call: ask them nothing, not even "anything else".',
     'Once a change is committed it is done: do not look for times again, do not check it, and never say it was not completed. The state line lists what is done on this call.',
     'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it. Offer that callback once: if they try again instead, do not offer it again in the same words; say you cannot check more details on this call, that the team can help them on a callback or at the desk, and ask what else you can do.',
+    'A time the caller picks before they (or their pet) are found: call propose_booking with it all the same. The backend keeps the choice and, once they are found or added, says how to read it back and book it on their yes. Until then say you will book it right after that; never "I\'ll take care of it", and never that it is booked or done.',
     'Every change is two steps: propose it, let the assistant read it back, and commit only after the caller says yes. Until then nothing is booked: read it back as a question ("Shall I book ...?"), never as done ("is set", "is booked"). When they say yes, call commit_pending straight away, without looking anything up again.',
     'Take a callback request only after the caller asked to be called back, or said yes when you offered one. When what they want cannot be done now, say so and offer the request in the same reply; take it after their yes. A yes ("okay", "sure", "yes please") is taken at once with create_callback, callback_number null (the number they are calling from), before any other question; then say the team will call them back on that number. Never ask first whether that number is the best one.',
     `For a medical question (symptoms, whether something is serious, medicines or doses), say: "${MEDICAL_REFUSAL}" Then offer a visit or a callback. Preparing for a visit (fasting before blood work, what to bring, how long it takes) is a clinic question, not a medical one: look in search_knowledge or get_clinic_info first and answer from what they return.`,
@@ -125,7 +126,15 @@ export class ResponsesPlanner implements Planner {
     const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))
       ? '\n\nThe number this caller is calling from cannot get texts (it is not a mobile number in the clinic\'s country). Do not offer to text anything and never ask for another number: give the address, hours and every other detail out loud. A verified caller\'s number on file may still get a booking confirmation.'
       : '';
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state)}${earlier}${noTexts}` }];
+    // the phone, asked the right way and once: caller ID is confirmed, never asked for; with none, the best number
+    const pack = PACKS[state.language];
+    const phone = input.callerNumber
+      ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
+      : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new.`;
+    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state, input.clinic)}${earlier}${noTexts}${phone}` }];
+    let corrected = false;
+    const doneBefore = state.done.length;
+    const requestBefore = state.requestMade;
 
     for (let round = 0; round < this.maxRounds; round++) {
       const res = await this.openai.responses.create({
@@ -135,7 +144,14 @@ export class ResponsesPlanner implements Planner {
         include: ['reasoning.encrypted_content'],
       }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
       const calls = res.output.filter((o) => o.type === 'function_call');
-      if (!calls.length) return { say: res.output_text?.trim() || null };
+      const say = res.output_text?.trim() || null;
+      // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
+      if (!calls.length && !corrected && round < this.maxRounds - 1 && say && emptyPromise(say, state, doneBefore) && state.requestMade === requestBefore) {
+        corrected = true;
+        conversation.push({ role: 'assistant', content: say }, { role: 'user', content: EMPTY_PROMISE_NOTE });
+        continue;
+      }
+      if (!calls.length) return { say };
       for (const item of res.output) {
         if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
       }
@@ -157,12 +173,34 @@ export class ResponsesPlanner implements Planner {
   }
 }
 
-export function stateLine(state: CallState): string {
+/** The assistant's words that say something will be done ("I'll take care of it", "me encargo"), with nothing behind them. */
+const PROMISE = /\b(i'?ll|i will|let me|i'?m going to) (take care of (it|that|this|everything)|get (it|that|this|you) (booked|done|sorted|set up|in)|book (it|that|this|you|him|her|them)|handle (it|that|this)|sort (it|that|this) out)\b|\b(yo )?me (encargo|ocupo)\b|\b(se )?lo (reservo|agendo|programo)\b|\bya (lo|la) (reservo|agendo)\b/;
+const EMPTY_PROMISE_NOTE = 'You said you would take care of it, but nothing is waiting for the caller\'s yes and nothing was done. Do the next step now with the tools (find the pet or patient, add them, or propose the time they chose so it is read back), or say plainly what you still need from the caller, as one question. Never promise a step that has not happened.';
+
+/** Said with a condition ("as soon as I've found Orbit", "en cuanto la encuentre"), a promise says what it waits for. */
+const WAITS_FOR = /\b(as soon as|once|after|when|en cuanto|cuando|despues de|luego de|apenas)\b/;
+
+/** A reply that promises to do something, with nothing staged for a yes, nothing done on this request, and nothing it waits for. */
+export function emptyPromise(say: string, state: CallState, doneBefore = state.done.length): boolean {
+  const t = normalise(say);
+  return !state.pending && state.done.length === doneBefore && PROMISE.test(t) && !WAITS_FOR.test(t);
+}
+
+export function stateLine(state: CallState, clinic?: ClinicConfig): string {
+  const pets = clinic?.industry === 'vet';
+  const saidNew = !state.verifiedPatient && pets && state.saidNew() === 'new';
+  const chosen = state.chosen && clinic ? state.chosen : null;
+  const provider = chosen ? clinic!.providers.find((p) => p.id === chosen.providerId) : undefined;
   return [
     state.verifiedPatient ? `patient verified as ${state.verifiedPatient.firstName}${state.verifiedPatient.isNew ? ' (new patient)' : ''}`
+      // the caller said the pet is new: it is added, never looked up
+      : saidNew ? 'the caller said the pet is new: add it with register_patient as soon as it has what it needs (it checks the pet is not on file already); never look it up with verify_caller, and never ask whether it is new again'
       // looked up and not found: the next step is to ask whether they are new (then register_patient), never the same lookup again
       : state.notFound ? 'looked up and not found: if the caller says they are new, call register_patient with what they gave; if they give a new or corrected detail (the phone number on file, a spelling), call verify_caller again with it at once; never say nothing was found without a lookup, and never repeat the same details'
       : 'patient not verified',
+    // what the caller already said is never asked again; the latest value is the one that counts
+    ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
+    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

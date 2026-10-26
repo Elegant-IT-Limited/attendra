@@ -75,3 +75,16 @@ export function saidGoodbye(lastCallerTurn: string, lastAgentTurns = ''): boolea
   if (more) return false;
   return ANYTHING_ELSE.test(normalise(lastAgentTurns)) && (GOODBYE.test(t) || NOTHING_MORE.test(t));
 }
+
+/**
+ * Whether the caller's words say the pet (or they) are new to the clinic: 'new' ("she's new", "he's not registered",
+ * "es nueva"), 'on_file' when they say it may be on file after all ("she's not new", "he's been there before", "ya es
+ * paciente"), or null when they say neither. In any language, like a hedge: a caller who switches language still means
+ * it. "Not new" wins over "new" in the same words.
+ */
+export function newToClinic(callerText: string): 'new' | 'on_file' | null {
+  const t = normalise(callerText);
+  if (LANGUAGES.some((l) => PACKS[l].saysOnFile.test(t))) return 'on_file';
+  if (LANGUAGES.some((l) => PACKS[l].saysNew.test(t))) return 'new';
+  return null;
+}

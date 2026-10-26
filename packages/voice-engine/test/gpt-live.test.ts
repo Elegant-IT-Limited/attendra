@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import type OpenAI from 'openai';
 import { describe, expect, it, vi } from 'vitest';
-import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, pausedOpening, type SidebandSocket, vipOpening } from '../src';
+import { BROWSER_DATA_CHANNEL, callerContext, GptLiveEngine, noCallerIdLine, pausedOpening, type SidebandSocket, vipOpening } from '../src';
 
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
@@ -21,10 +21,14 @@ describe('GptLiveEngine browser calls', () => {
     const web = (create.mock.calls[0] as unknown as [{ session: Record<string, unknown>; transport: unknown }])[0];
     const sip = (sessions.accept.mock.calls[0] as unknown as [string, { session: Record<string, unknown> }])[1].session;
     expect(web.transport).toEqual({ type: 'webrtc', sdp: 'v=0 offer' });
-    const { client: channel, ...shared } = web.session;
-    const { type, ...sipShared } = sip;
+    const { client: channel, instructions, ...shared } = web.session;
+    const { type, instructions: sipInstructions, ...sipShared } = sip;
     expect(type).toBe('live');
     expect(shared).toEqual(sipShared);
+    // the same prompt, and one line more: a browser call has no caller ID, so the best number is asked once
+    expect(instructions).toBe(`${String(sipInstructions)}\n${noCallerIdLine(DEMO_CLINIC)}`);
+    expect(instructions).toContain('"What\'s the best number to reach you?" or "¿Cuál es el mejor número para comunicarnos con usted?"');
+    expect(sipInstructions).not.toContain('there is no caller ID');
     expect(channel).toEqual({ data_channel: BROWSER_DATA_CHANNEL });
     expect(BROWSER_DATA_CHANNEL.allowed_client_events).toEqual(['session.close']);
   });
@@ -44,6 +48,11 @@ describe('GptLiveEngine browser calls', () => {
     const appends = sockets.all.flatMap((s) => s.sent).filter((e) => (e as { type: string }).type === 'session.instructions.append');
     expect(appends).toHaveLength(1);
     expect((appends[0] as { content: string; delegation_id: null }).delegation_id).toBeNull();
+    // by the time the sideband attaches the greeting may be under way, or the caller may have spoken over it: never again from the top
+    const again = (appends[0] as { content: string }).content;
+    expect(again).toMatch(/^Only if you have not started speaking yet and the caller has not said anything: /);
+    expect(again).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
+    expect(again).toContain('do not greet again and do not start over: answer what the caller said');
   });
 
   it('greets a VIP by name and says they are being put through, with no question first', async () => {

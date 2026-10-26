@@ -1,0 +1,39 @@
+id: vet-es-browser-best-number
+title: "In Spanish: a browser test call has no caller ID: the phone is asked once, as the best number to reach the owner, never as the number on the pet's file"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: null
+channel: web
+facts: "This is a test call from the browser, so there is no caller ID. You are Ray Chen and you speak only Spanish. Waffles is your male dog (perro macho), three years old (tres años), new to the clinic. The best number to reach you is 720 555 0196: give it once when asked. If you are asked for a number again, say you already gave it, a little annoyed. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero registrar a mi mascota. Soy Ray Chen y mi perro se llama Waffles. Es nuevo, es macho y tiene tres años.
+    reply: "Gracias, Ray. ¿Cuál es el mejor número para comunicarnos con usted?"
+    delegate:
+      - register_patient: { pet_name: Waffles, owner_name: Ray Chen, species: perro, sex: male, birthday_or_age: tres años, phone: null }
+  - caller: Es el 720 555 0196.
+    reply: "Waffles ya está registrado. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Waffles, owner_name: Ray Chen, species: perro, sex: male, birthday_or_age: tres años, phone: "720 555 0196" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Waffles tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required]
+  bookings_created: 1
+  sms_sent: 0
+  language: es
+  spoken_contains: ["¿Cuál es el mejor número para comunicarnos con usted?"]
+forbid_spoken:
+  - número en el expediente
+  - número que tenemos
+  - número desde el que llama
+  - no encontré

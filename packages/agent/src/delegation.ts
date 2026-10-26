@@ -30,8 +30,18 @@ const VIP_AFTER_MS = 6000;
 const PAUSED_HANGUP_AFTER_MS = 10_000;
 /** How long a request may run before the caller hears that it is still being worked on. */
 const HOLD_AFTER_MS = 7000;
-/** More "still checking" for a wait that goes on: a new patient's registration and first times can take 30 s or more. */
-const HOLD_AGAIN_MS = [15_000, 30_000, 45_000] as const;
+/**
+ * A wait that goes on hears a thank-you, never "still checking" again: that is said once per wait, and two of them in a
+ * row (at 7 and 15 s) sounded like a machine stuck on a line (2026-11). A new pet's registration and first times can
+ * still take 30 s or more.
+ */
+const HOLD_AGAIN_MS = [30_000, 45_000] as const;
+/** Said once per wait, at HOLD_AFTER_MS. */
+const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+/** An answer that opens with "still checking" again, after the caller already heard it in this wait: that opening is dropped. */
+const STILL_CHECKING = /^\s*(?:(?:ok(?:ay)?|sorry|thanks?(?: you)?|gracias|perd[oó]n)[,.!]?\s+)?(?:i'?m |i am )?(?:still )(?:checking|working on (?:it|that)|looking(?: (?:it|that) up)?)[^.!?]*[.!?]\s*|^\s*(?:sigo|todav[ií]a estoy|a[uú]n estoy) (?:revisando|buscando|verificando|consultando|trabajando)[^.!?]*[.!?]\s*/i;
+/** Said later in a long wait instead of the same line again. */
+const HOLD_AGAIN_NOTE = 'Still working on it. Thank the caller for waiting, in a few words, and say it will be just a moment. Do not say again that you are still checking or still working on it.';
 /**
  * The last resort: no caller waits longer than this; they hear an apology and a callback offer, and the late answer is
  * dropped. 25 s cut off real registrations mid-way (live evals, 2026-10-25), so it sits well past a slow but working answer.
@@ -445,12 +455,13 @@ export class CallAgent {
     const progress: Outbound = { type: 'thinking', delegationId, content: PROGRESS_NOTE };
     if (emit) emit(progress); else out.push(progress);
     // a long wait is never silence: once, the caller hears that we are still on it
+    let held = false;
     const holds = emit ? [
       setTimeout(() => {
-        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Tell the caller in a few words that you are still checking.' });
+        if (revision === this.state.revision) { held = true; emit({ type: 'thinking', delegationId, content: HOLD_NOTE }); }
       }, HOLD_AFTER_MS),
       ...HOLD_AGAIN_MS.map((ms) => setTimeout(() => {
-        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: 'Still working on it. Thank the caller for waiting, in a few different words than before, and say it will be just a moment.' });
+        if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: HOLD_AGAIN_NOTE });
       }, ms)),
     ] : [];
     const startedAt = Date.now();
@@ -519,7 +530,9 @@ export class CallAgent {
         this.log.info({ call_id: this.ctx.callId, revision, current: this.state.revision }, 'discarding result of an outdated request');
         return [];
       }
-      if (plan.say) out.push({ type: 'commentary', delegationId, content: clamp(plan.say) });
+      // "still checking" once per wait: after the hold line, the answer does not open with it again
+      const say = plan.say && held ? plan.say.replace(STILL_CHECKING, '').trim() || plan.say : plan.say;
+      if (say) out.push({ type: 'commentary', delegationId, content: clamp(say) });
       out.push(...controls);
     } catch (err) {
       this.log.error({ call_id: this.ctx.callId, err }, 'delegation failed');
