@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (CI survives the Node crash)
+
+- **The eval report's retry works.** Node 24.21.0 crashed inside V8 in the eval report on main twice (exit 133), and the retry never ran: `pnpm eval` goes through `pnpm --filter`, which reports any failure as exit 1, and the guard only retries a crash by signal (128 or higher). The step now runs the report with `node` directly, so the real exit code comes through, and a crash is run once more. CI and the quality run pin Node 24.22.1, the newest Node 24 LTS patch.
+
 ### Fixed (calls, registering a new pet, from a clinic's test calls, 2026-11-06)
 
 - **Each detail is asked once.** The call keeps every detail the caller has given (the owner's name, the pet's name, the kind of animal, sex, age, the phone), a correction replaces it, and the backend is told never to ask for them again. One caller was asked for the phone three times and for their first name twice.
