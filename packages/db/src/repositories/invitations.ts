@@ -45,9 +45,11 @@ export async function inviteToTeam(db: Database, orgId: string, clinicId: string
   });
 }
 
-/** The invitations a team is waiting on, oldest first, with who sent each. Lapsed ones are closed first. */
+/**
+ * The invitations a team is waiting on, oldest first, with who sent each. Only reads: a lapsed one is
+ * left out by its date, and the worker closes it and audits it (lapseInvitations).
+ */
 export async function teamInvitations(db: Database, orgId: string, now = new Date()) {
-  await lapseInvitations(db, now);
   const rows = await db.select({
     id: invitations.id, email: invitations.email, role: invitations.role, approvesRefills: invitations.approvesRefills,
     invitedBy: authUsers.name, createdAt: invitations.createdAt, expiresAt: invitations.expiresAt,
@@ -71,9 +73,11 @@ export async function cancelInvitation(db: Database, orgId: string, actor: { use
   });
 }
 
-/** The open invitations for a signed-in person's email, with the clinic each came from. A closed clinic's are left out. */
+/**
+ * The open invitations for a signed-in person's email, with the clinic each came from. A closed clinic's
+ * are left out. Only reads, since the banner asks on every page: a lapsed one is left out by its date.
+ */
 export async function invitationsFor(db: Database, email: string, now = new Date()) {
-  await lapseInvitations(db, now);
   const rows = await db.select({
     id: invitations.id, clinicId: clinics.id, clinicName: clinics.name, role: invitations.role, approvesRefills: invitations.approvesRefills, expiresAt: invitations.expiresAt,
   }).from(invitations).innerJoin(clinics, eq(clinics.id, invitations.clinicId))
@@ -105,16 +109,20 @@ export async function answerInvitation(db: Database, person: { userId: string; e
   });
 }
 
-/** Closes every invitation whose 7 days are over, with an audit row dated when it lapsed. */
-export async function lapseInvitations(db: Database, now = new Date()) {
-  await db.transaction((tx) => lapse(tx, now));
+/**
+ * Closes every invitation whose 7 days are over, with an audit row dated when it lapsed, and says how
+ * many. The worker runs it on a schedule; inviting, cancelling and answering run it before they change one.
+ */
+export async function lapseInvitations(db: Database, now = new Date()): Promise<number> {
+  return db.transaction((tx) => lapse(tx, now));
 }
 
-async function lapse(tx: Tx, now: Date, where = sql`true`) {
+async function lapse(tx: Tx, now: Date, where = sql`true`): Promise<number> {
   const lapsed = (await tx.execute(sql`update invitations set status = 'expired', decided_at = expires_at
     where status = 'pending' and expires_at <= ${now.toISOString()}::timestamptz and ${where}
     returning id, organization_id, expires_at`)).rows as { id: string; organization_id: string; expires_at: string | Date }[];
   for (const l of lapsed) await audit(tx, l.organization_id, 'system', 'member.invite.expired', l.id, new Date(l.expires_at));
+  return lapsed.length;
 }
 
 /** One row in every clinic of the organization, as for every other team change. */

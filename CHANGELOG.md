@@ -38,6 +38,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Someone who already has a login is invited** instead of refused. They see "Maple Street invited you to its team as Front desk" in their own dashboard, with Accept and Decline, and get an email. Accepting adds the clinic to their clinic switcher; declining, or 7 days passing, ends it. The Team page lists pending invitations with Cancel.
 - **The clinic never learns who already uses Attendra.** Every email gets the same "Invite sent". Where the hosting layer sends email, a new address is invited the same way and sets its own password from the email; without it, a new address gets a temporary password, shown once, as before.
 - **Rules kept:** each clinic manages only its own team, passwords and two-step are never reset from another clinic, removing someone from one clinic leaves their others, only an owner invites an owner, and every invite, cancel, accept, decline and lapse is in the audit log. Migration 0038.
+- **Reading invitations never writes.** The banner and the Team page only read them; an invitation past its 7 days is left out by its date, and the worker closes it every hour with its audit row (`lapse-invitations`).
 
 ### Fixed (every setting reaches the assistant)
 

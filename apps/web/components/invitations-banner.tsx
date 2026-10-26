@@ -18,7 +18,7 @@ export function InvitationsBanner() {
   const router = useRouter();
   const queries = useQueryClient();
   const problem = useProblem();
-  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<MyInvitationList>('/me/invitations'), refetchInterval: 5 * 60_000 });
+  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<MyInvitationList>('/me/invitations'), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 });
   const answer = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) => api<AcceptedInvitation | undefined>(`/me/invitations/${id}/${accept ? 'accept' : 'decline'}`, { method: 'POST' }),
     onSuccess: async (r) => {

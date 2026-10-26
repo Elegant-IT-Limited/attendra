@@ -167,8 +167,16 @@ describe('declining, cancelling and lapsing', () => {
     now = new Date(now.getTime() + 7 * 86_400_000 - 60_000);
     expect((await mine(dee)).map((i) => i.id)).toEqual([inv!.id]);
     now = new Date(now.getTime() + 2 * 60_000);
+    // reading never writes: the lapsed invitation is left out by its date, still pending, with no audit row yet
+    const state = async () => ({
+      status: ((await api.t.db.execute(sql`select status from invitations where id = ${inv!.id}`)).rows[0] as { status: string }).status,
+      audits: (await audits()).length,
+    });
+    const before = await state();
     expect(await mine(dee)).toEqual([]);
     expect((await pending()).map((r) => r.email)).not.toContain('dee@other.example');
+    expect(await state()).toEqual(before);
+    expect(before.status).toBe('pending');
     expect((await api.request('POST', `${ME}/${inv!.id}/accept`, { cookie: dee })).statusCode).toBe(404);
     const lapsed = (await audits()).filter((r) => r.entity_id === inv!.id).at(-1)!;
     expect([lapsed.action, lapsed.actor, new Date(lapsed.at).toISOString()]).toEqual(['member.invite.expired', 'system', inv!.expiresAt]);
