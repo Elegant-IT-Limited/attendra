@@ -10,8 +10,13 @@ test('front desk claims a refill request, adds a note, and closes it with an out
   await expect(page.getByText('The patient asked for a refill. Check with the care team, then call them back.')).toBeVisible();
 
   await page.getByLabel('Type').selectOption({ label: 'Prescription refill' });
+  // the filtered list replaces the open one when the search answers: wait until every row is a refill, or the click lands
+  // on a row that is about to go (in CI it came 88 ms before the filtered list, and no panel opened)
+  const rows = page.getByTestId('task-row');
+  await expect(rows.filter({ hasNotText: 'Prescription refill' })).toHaveCount(0);
+  await expect(rows.first()).toBeVisible();
   // the queue is a list of rows; a row opens its request in the side panel
-  const row = page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first();
+  const row = rows.filter({ hasText: 'Unclaimed' }).first();
   await row.click();
   const card = page.getByTestId('task');
   await expect(card.getByText(/Prescription refill, came in/)).toBeVisible();
@@ -67,4 +72,44 @@ test('a claim someone else won says so once', async ({ browser }) => {
   await page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first().click();
   await page.getByTestId('task').getByRole('button', { name: 'Claim' }).click();
   await expect(page.getByText('Someone else holds this request, or it is already done.')).toHaveCount(1);
+});
+
+test('a manager gives a request to the front desk, takes it, gives it back, and releases it', async ({ browser }) => {
+  // the demo's senior login is the practice manager; the list is the same for an owner, who is always on it
+  const page = await openAs(browser, 'manager');
+  await page.getByRole('link', { name: /^Requests/ }).click();
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible();
+  await page.getByTestId('task-row').filter({ hasText: 'Unclaimed' }).first().click();
+  const card = page.getByTestId('task');
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  const assign = card.getByLabel('Assign to');
+  // the screen changes at once; each step waits for the server's answer before the next, as a person would see the toast
+  const choose = async (label: string) => {
+    const answered = page.waitForResponse((r) => r.request().method() === 'POST' && /\/tasks\/[^/]+\/(assign|release)$/.test(r.url()));
+    await assign.selectOption({ label });
+    expect((await answered).ok()).toBe(true);
+  };
+  // everyone who works requests, the manager included; nobody holds it yet
+  await expect(assign).toHaveValue('');
+  await expect(assign.locator('option', { hasText: 'Jordan (front desk)' })).toHaveCount(1);
+  await expect(assign.locator('option', { hasText: 'Priya (practice manager) (you)' })).toHaveCount(1);
+
+  await choose('Jordan (front desk)');
+  await expect(page.getByText('Given to Jordan (front desk).')).toBeVisible();
+  await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
+  await expect(assign.locator('option:checked')).toHaveText('Jordan (front desk), has it');
+
+  // taken back: the manager gives it to themselves
+  await choose('Priya (practice manager) (you)');
+  await expect(card.getByText('You have it')).toBeVisible();
+  await expect(assign.locator('option:checked')).toHaveText('Priya (practice manager) (you), has it');
+
+  await choose('Jordan (front desk)');
+  await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
+
+  // and back to the queue
+  await choose('Unassigned');
+  await expect(page.getByText('Released. It is back in the queue.')).toBeVisible();
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  await expect(assign).toHaveValue('');
 });

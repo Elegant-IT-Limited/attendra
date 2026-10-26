@@ -1,0 +1,41 @@
+id: vet-time-before-register
+title: A time chosen before the pet is found is kept, read back after the pet is added, and booked on a yes; nothing is said to be taken care of before that
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550185"
+facts: "You are Sam Ortega, calling from your own mobile, the number you are calling from. Bolt is your male puppy (a dog), about four months old, and he is new to the clinic. You want a first check-up this afternoon, and you pick the second time you are offered; you expect to be booked into exactly that time. Say yes to the read-back of that time."
+turns:
+  - caller: Hi, I'd like to bring my puppy in for a first check-up this afternoon. Is any vet free after one?
+    reply: "For a new patient exam this afternoon I have {offered.0}, {offered.1}, or {offered.2}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: "13:00", part_of_day: any }
+  # the plan tries to book before the pet is found, on purpose: the backend keeps the choice and asks for the pet first
+  - caller: The second one, please. I'm Sam Ortega, and the puppy is Bolt.
+    reply: "I'll book that as soon as I've found Bolt. I couldn't find Bolt with us yet. Is he new to the clinic?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+      - verify_caller: { owner_name: Sam Ortega, pet_name: Bolt }
+  - caller: Yes, he's new. He's a male dog, about four months old.
+    reply: "Bolt is added. I can book him for {readback}. Shall I?"
+    delegate:
+      - register_patient: { pet_name: Bolt, owner_name: Sam Ortega, species: dog, sex: male, birthday_or_age: about four months old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: "13:00", part_of_day: any }
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Bolt is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [identity_required, pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  offered_from_time: "13:00"
+  booked_on: "2026-09-28"
+forbid_spoken:
+  - take care of it
+  - taken care of
+  - which time would you like
+  - which time works

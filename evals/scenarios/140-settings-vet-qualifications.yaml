@@ -1,0 +1,29 @@
+id: settings-vet-qualifications
+title: "Settings: the clinic adds its own vet field, Qualifications, and keeps a licence number for the team; asked about Dr. Ruiz's qualifications, the assistant answers from the field and never gives the licence"
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, vet]
+settings:
+  providerFields:
+    - { id: quals, label: Qualifications, kind: text }
+    - { id: licence, label: Licence number, kind: text, tellCallers: false }
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new],
+        custom: { quals: "DVM, Fear Free Certified, 12 years with dogs and cats", licence: "CO-VET-55501" } }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new],
+        hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "You are thinking of seeing Dr. Ruiz and only want to know her qualifications today. If asked for her licence number, you don't need it. Nothing booked; you will call back."
+turns:
+  - caller: Hi, what are Dr. Ruiz's qualifications?
+    reply: "Dr. Ruiz is a DVM and Fear Free Certified, with 12 years with dogs and cats. Would you like to book with her?"
+    delegate:
+      - get_clinic_info: { question: Dr. Ruiz qualifications }
+  - caller: Great, thanks. I'll call back to book.
+    reply: "Of course. Call any time."
+expect:
+  outcome: info
+  returned: ["Fear Free Certified, 12 years with dogs and cats"]
+  never_returned: ["CO-VET-55501", "Licence number"]
+  spoken_contains: ["Fear Free"]
+forbid_spoken: ["CO-VET-55501", "I don't have", "no information"]

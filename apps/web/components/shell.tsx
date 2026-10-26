@@ -8,8 +8,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { BrandMark } from '@/components/brand-mark';
+import { CallBar } from '@/components/calls/call-bar';
 import { EmergencyAlerts } from '@/components/calls/live-now';
+import { useTestCall } from '@/components/calls/test-call';
 import { CommandPalette } from '@/components/command-palette';
+import { InvitationsBanner } from '@/components/invitations-banner';
 import { PlanBanner } from '@/components/plan';
 import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
@@ -60,12 +63,14 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
 
   // Drops every cached call, transcript and task before leaving, and reloads, so the
   // next person at this screen starts from nothing.
+  const { hangUpNow } = useTestCall();
   const signOut = useCallback(async (reason?: 'idle') => {
+    hangUpNow(); // a test call ends while the session can still end it
     markSignedOut();
     await authClient.signOut().catch(() => {});
     queries.clear();
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
-  }, [queries]);
+  }, [queries, hangUpNow]);
 
   // the deployment's idle minutes (15 by default) sign out, counted across every tab of the
   // dashboard: a tab left in the background never signs out the one being worked in (they share the session)
@@ -176,7 +181,9 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
             Demo mode. Every record and call here is made up, and two-step sign-in is switched off.
           </div>
         )}
+        <CallBar />
         <PlanBanner clinicId={clinicId} />
+        <InvitationsBanner />
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>
       </div>
 

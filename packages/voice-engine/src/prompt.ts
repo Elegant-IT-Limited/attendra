@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
+/** Who a transfer reaches, in the words the voice uses for it. */
+const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
+
 /**
  * The conversation prompt GPT-Live starts with: voice, tone and when to hand work
  * to our backend. It carries clinic facts only, never patient data, and it is short
@@ -14,6 +17,24 @@ import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen,
 export function openingInstruction(clinic: ClinicConfig): string {
   const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
   return `The call has just been answered. Greet the caller now, in ${PACKS[clinic.primaryLanguage].name}, before they say anything. Say exactly: "${clinic.greeting}"${notice} Then pause and listen. Say this greeting only once in the whole call.`;
+}
+
+/**
+ * The opening again, once the sideband is attached (or as the nudge for a silent start): by then the greeting may be
+ * under way, or the caller may have spoken over it ("Hello?"), and a plain "greet now" made it start over (2026-11). It
+ * holds only for a call where nothing has been said yet.
+ */
+export function openingIfNotStarted(opening: string): string {
+  return `Only if you have not started speaking yet and the caller has not said anything: ${opening} If you have already said any part of a greeting, or the caller has spoken, do not greet again and do not start over: answer what the caller said.`;
+}
+
+/**
+ * What the voice knows on a browser test call: there is no caller ID, so the one phone question is the best number,
+ * asked once, in the caller's language.
+ */
+export function noCallerIdLine(clinic: ClinicConfig): string {
+  const asks = clinic.languages.map((l) => `"${PACKS[l].phoneQuestion({ callerId: false })}"`).join(' or ');
+  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new.`;
 }
 
 /**
@@ -73,7 +94,7 @@ export function callerContext(history: string | null): string | null {
   return [
     `About the number calling, from the clinic's records (like caller ID):${count ? ` it called ${count} time${count === 1 ? '' : 's'} in the last 30 days.` : ''}${name ? ` One person is on file for it: ${name}.` : ''}`,
     name
-      ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
+      ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" (in Spanish, "¿Hablo con ${name}?") On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
       : 'You do not know who is calling yet: when it helps, ask for their first name and their pet\'s name to bring up their details.',
     `If the caller asks whether you know them or have their history, say yes, you can see they have called before${name ? '' : ', and ask for their first name and their pet\'s name to bring up their details'}. Never say you have no history, no record, or that you just answer calls as they come in. What earlier calls were about is said only after the backend has checked who they are.`,
   ].join(' ');
@@ -85,7 +106,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
   const { terms, prompt } = industryPack(clinic.industry);
   return [
     `You answer the phone for ${clinic.name}.`,
-    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is.`,
+    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is. If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.`,
     clinic.recording.enabled && clinic.recording.notice ? `Then say: "${clinic.recording.notice}"` : '',
     // a name is for warmth, never for passing as a person
     `You are ${clinic.assistantName ? `${clinic.assistantName}, ` : ''}the ${terms.business}'s AI assistant. If asked, say you are an AI assistant. Never claim to be a person.`,
@@ -113,7 +134,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
     'Say a result only after the backend confirms it. Never guess a time, a date or a name.',
     ...prompt.limits,
     clinic.routing.length
-      ? 'If the caller asks for a person, delegate a transfer.'
+      ? `If the caller asks for a person, delegate a transfer. Calls go through to ${[...new Set(clinic.routing.map((r) => TRANSFER_TO[r.target]))].join(' and ')} only (the backend says when): never offer to connect the caller to anyone else; for anything else, offer to have the team call them back.`
       : `No one at the ${terms.business} takes transferred calls: never offer to connect the caller to anyone (the front desk, an on-call vet or doctor). If they ask for a person, offer to have the team call them back.`,
     ...(textingOf(clinic).enabled ? [] : ['You cannot text the address, hours or links here: if the caller asks, say so in a few words and say it out loud instead (slowly, and offer to repeat it). That is no reason for a callback. A booking confirmation text is the exception, when the backend says it was sent.']),
     ...(textingOf(clinic).enabled ? ['You can text the caller things they just heard (the address, the hours, a link, an answer) by delegating to the backend. Offer it once when it would help, ask the question the backend gives you, and only after they say yes delegate it again. Never say a text was sent before the backend confirms it.'] : []),

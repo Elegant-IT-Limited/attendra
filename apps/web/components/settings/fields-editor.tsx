@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { CUSTOM_FIELD_KINDS, type CustomField } from '@attendra/core';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
+import { EmptyNote, Field, Item, Section, TeamOnly } from '@/components/settings/section';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
 import { Input, Select } from '@/components/ui/input';
@@ -23,10 +23,14 @@ const newFieldId = () => `field_${Math.random().toString(36).slice(2, 8)}`;
  * goes to that one instead. Fields and a dropdown's choices are put in order by dragging.
  * Dropdowns and yes-or-no fields become filters on the list.
  */
-export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer, columnLabel }: {
+export function FieldsEditor({ id, title, description, fields, onChange, disabled, placeholder, builtIn, footer, columnLabel, tellsCallers, teamOnly }: {
   id: string; title: string; description: string; fields: CustomField[]; onChange: (fields: CustomField[]) => void; disabled: boolean; placeholder: string;
   /** What "show it" means on this kind of record ("Show on the Pets list"); left out where every field always shows. */
   columnLabel?: string;
+  /** Each field has "The assistant may tell callers", on unless the clinic keeps it for the team: a doctor's or vet's fields only. */
+  tellsCallers?: boolean;
+  /** Fields callers never hear about (pets', patients' and requests'): says so under the title. */
+  teamOnly?: boolean;
   /** The fields every record has anyway, shown so nobody adds them twice. */
   builtIn?: readonly string[];
   /** The section's own Save, like every list's. */
@@ -52,6 +56,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
   return (
     <Section id={id} title={title} description={description}
       action={<Button type="button" size="sm" variant="outline" disabled={disabled || fields.length >= 20} onClick={add}><Plus /> Field</Button>}>
+      {teamOnly && <TeamOnly />}
       {builtIn && builtIn.length > 0 && <BuiltIn names={builtIn} />}
       {!fields.length && <EmptyNote>No fields of your own yet. Add one for anything you keep that has no place yet.</EmptyNote>}
       <Sortable items={fields} keyOf={(f) => f.id} label={(f) => f.label} disabled={disabled} onMove={(from, to) => onChange(moved(fields, from, to))} className="space-y-5">
@@ -78,6 +83,7 @@ export function FieldsEditor({ id, title, description, fields, onChange, disable
           <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
             <Checkbox id={`${id}-${f.id}-required`} label="Must be filled in" checked={!!f.required} disabled={disabled} onCheckedChange={(v) => upd(i, { required: v || undefined })} />
             {columnLabel && <Checkbox id={`${id}-${f.id}-column`} label={columnLabel} checked={!!f.column} disabled={disabled} onCheckedChange={(v) => upd(i, { column: v || undefined })} />}
+            {tellsCallers && <Checkbox id={`${id}-${f.id}-tell`} label="The assistant may tell callers" checked={f.tellCallers !== false} disabled={disabled} onCheckedChange={(v) => upd(i, { tellCallers: v ? undefined : false })} />}
           </div>
         </Item>
       )}

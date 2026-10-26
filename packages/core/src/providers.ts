@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { toMinutes } from './time';
 import { type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
+import { sharedCustomFacts } from './custom-fields';
 import { windowsOn } from './hours';
 import type { Language } from './locales';
 import { addDays } from './time';
@@ -46,9 +47,10 @@ export const audienceLine = (v: Pick<VisitType, 'audience'>) =>
 /**
  * The clinic's providers as the assistant may describe them to any caller: no patient
  * data, nothing a caller needs to be verified for. Time off is listed for the next
- * four weeks only, which is as far as anyone asks on a call.
+ * four weeks only, which is as far as anyone asks on a call. The clinic's own fields
+ * on each one come under their labels, except those it keeps for the team.
  */
-export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'hours'>, today: string, language: Language) {
+export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'hours' | 'providerFields'>, today: string, language: Language) {
   const horizon = addDays(today, 28);
   return bookableProviders(clinic.providers).map((p) => ({
     provider_id: p.id,
@@ -67,8 +69,11 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
     // a part of a day says which part: "2026-10-22 13:00 to 18:00", never the whole day
     away: p.timeOff.filter((t) => t.to >= today && t.from <= horizon).map((t) => (t.start && t.end ? `${t.from} ${t.start} to ${t.end}` : t.from === t.to ? t.from : `${t.from} to ${t.to}`)),
     ...(p.credentials?.length ? { credentials: p.credentials } : {}),
+    ...withDetails(sharedCustomFacts(clinic.providerFields, p.custom)),
   }));
 }
+
+const withDetails = (details: Record<string, string>) => (Object.keys(details).length ? { details } : {});
 
 const IGNORED = new Set(['doctor', 'doctors', 'specialist', 'specialists', 'department', 'clinic', 'the', 'for', 'and', 'with']);
 const wordsOf = (s: string) =>
@@ -88,6 +93,13 @@ const KINDS: Record<string, string[]> = {
   snake: ['reptile', 'reptiles', 'exotic', 'exotics'], lizard: ['reptile', 'reptiles', 'exotic', 'exotics'], gecko: ['reptile', 'reptiles', 'exotic', 'exotics'],
   turtle: ['reptile', 'reptiles', 'exotic', 'exotics'], tortoise: ['reptile', 'reptiles', 'exotic', 'exotics'], puppy: ['dog', 'dogs', 'canine'], kitten: ['cat', 'cats', 'feline'],
   dog: ['canine'], cat: ['feline'], horse: ['equine', 'pony'], pony: ['horse', 'equine'], bird: ['avian'],
+  // the same in Spanish, as a Spanish-speaking owner names the animal: "perro", "gata", "conejo"
+  perro: ['dog', 'dogs', 'canine'], perra: ['dog', 'dogs', 'canine'], cachorro: ['dog', 'dogs', 'canine'], gato: ['cat', 'cats', 'feline'], gata: ['cat', 'cats', 'feline'],
+  gatito: ['cat', 'cats', 'feline'], conejo: ['rabbit', 'exotic', 'exotics', 'small', 'mammal'], huron: ['ferret', 'exotic', 'exotics', 'small', 'mammal'],
+  cobayo: ['guinea', 'exotic', 'exotics', 'small', 'mammal', 'pocket'], cuyo: ['guinea', 'exotic', 'exotics', 'small', 'mammal', 'pocket'],
+  loro: ['parrot', 'bird', 'birds', 'avian', 'exotic', 'exotics'], perico: ['parrot', 'bird', 'birds', 'avian', 'exotic', 'exotics'], pajaro: ['bird', 'birds', 'avian', 'exotic', 'exotics'],
+  ave: ['bird', 'birds', 'avian', 'exotic', 'exotics'], serpiente: ['snake', 'reptile', 'reptiles', 'exotic', 'exotics'], lagarto: ['lizard', 'reptile', 'reptiles', 'exotic', 'exotics'],
+  tortuga: ['turtle', 'reptile', 'reptiles', 'exotic', 'exotics'], caballo: ['horse', 'equine', 'pony'],
 };
 
 /** Words that name animals (not services), for telling "Rabbits" or "Exotics" from "Dentistry". */

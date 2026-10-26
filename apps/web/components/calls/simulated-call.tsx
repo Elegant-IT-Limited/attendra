@@ -6,7 +6,7 @@ import { PlayCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { useTestCall } from './test-call';
 
 /**
  * The local demo can play a scripted call through the real assistant, with no audio
@@ -16,9 +16,11 @@ import { api } from '@/lib/api';
 export function SimulatedCall({ clinicId }: { clinicId: string }) {
   const router = useRouter();
   const problem = useProblem();
+  // held by the clinic's frame, like a browser test call: the call bar shows it on every page until it ends
+  const { startSimulated } = useTestCall();
   const start = useMutation({
-    mutationFn: () => api<{ callId: string }>(`/clinics/${clinicId}/test-calls/simulated`, { method: 'POST' }),
-    onSuccess: ({ callId }) => router.push(`/c/${clinicId}/calls/${callId}/live`),
+    mutationFn: startSimulated,
+    onSuccess: (callId) => router.push(`/c/${clinicId}/calls/${callId}/live`),
     onError: () => problem({ title: 'Not started', message: 'The simulated call did not start. Try again.' }),
   });
   return (

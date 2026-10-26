@@ -69,6 +69,11 @@ export interface LanguagePack {
   reminderOffer: string;
   /** Asked before a refill request is logged, when texting is on: only a yes gets the team's decision by text. */
   refillTextOffer: string;
+  /**
+   * The one question about the caller's phone number for a new pet or patient: on a call with caller ID,
+   * whether that number is the best one; with none (a browser test call, a hidden number), the best number.
+   */
+  phoneQuestion: (v: { callerId: boolean }) => string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */
   confirmTextNote: (v: { target: 'calling' | 'file' }) => string;
   /** The answer to a reply of C to a reminder. */
@@ -81,6 +86,11 @@ export interface LanguagePack {
   /** The one warning an insulting caller hears, and the goodbye when the call is ended for it: said word for word. */
   abuseWarning: string;
   abuseGoodbye: string;
+  /** Said word for word when a person takes the call over, before the transfer. */
+  takeOver: string;
+  /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
+  tooSlow: string;
+  couldNotFinish: string;
   /** The fixed self-harm instruction. `crisisLine` is 988 in the United States, and absent where there is no national line. */
   selfHarmScript: (emergencyNumber: string, crisisLine: string | null) => string;
   /** Emergency phrases, in every script and spelling a transcriber may return. Reviewed like decision 0005. */
@@ -100,6 +110,11 @@ export interface LanguagePack {
 
   /** Words that suggest a caller is speaking this language, for choosing the reply language. */
   markers: RegExp;
+
+  /** The caller says the pet (or they) are new to the clinic: "she's new", "he's not registered", "first time". */
+  saysNew: RegExp;
+  /** The caller says it may be on file after all: "she's already a patient", "he's been there before", "not new". */
+  saysOnFile: RegExp;
 }
 
 /** Word edges that work for any script: JavaScript's \b only knows ASCII letters. */

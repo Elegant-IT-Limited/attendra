@@ -54,7 +54,7 @@ for (const theme of ['light', 'dark'] as const) {
       ['Patients', `/c/${c}/patients`, 'Find a patient'],
       ['Requests', `/c/${c}/requests`, 'What each kind of request means'],
       ['Calls', `/c/${c}/calls`, 'What the assistant did'],
-      ['Team', `/c/${c}/team`, 'Add a person'],
+      ['Team', `/c/${c}/team`, 'Add people'],
       ['Settings', `/c/${c}/settings`, 'Greeting'],
       ['Knowledge', `/c/${c}/settings/knowledge`, 'Add a document'],
       ['Integrations', `/c/${c}/settings/integrations`, 'Add an endpoint'],

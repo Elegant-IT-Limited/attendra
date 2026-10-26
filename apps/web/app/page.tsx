@@ -2,6 +2,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { InvitationsBanner } from '@/components/invitations-banner';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { ApiFailure, useMe } from '@/lib/api';
@@ -32,11 +33,15 @@ export default function Home() {
   if (me.isError && !(me.error instanceof ApiFailure && me.error.status < 500)) {
     return <Empty title="Attendra did not load" action={<Button variant="outline" onClick={() => void me.refetch()}>Try again</Button>}>The server did not answer. Try again in a moment.</Empty>;
   }
+  // an invitation can wait here too, for someone on no team yet: accepting opens the clinic
   if (me.data && !first) {
     return (
-      <Empty title="No clinic yet" action={<Button variant="outline" onClick={() => signOutAndLeave(() => authClient.signOut())}>Sign out</Button>}>
-        Your account is not a member of any clinic. Ask your practice owner to add you.
-      </Empty>
+      <>
+        {!mustChange && !needsTwoStep && <InvitationsBanner />}
+        <Empty title="No clinic yet" action={<Button variant="outline" onClick={() => signOutAndLeave(() => authClient.signOut())}>Sign out</Button>}>
+          Your account is not a member of any clinic. Ask your practice owner to add you.
+        </Empty>
+      </>
     );
   }
   return <div className="mx-auto mt-24 max-w-sm space-y-3"><Skeleton className="h-6 w-40" /><Skeleton className="h-4 w-64" /></div>;

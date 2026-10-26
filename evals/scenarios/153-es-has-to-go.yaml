@@ -1,0 +1,22 @@
+id: es-has-to-go
+title: "Spanish: the owner has to go mid-booking (\"tengo que irme, vuelvo a llamar\"); nothing is booked and the call ends without \"¿algo más?\""
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es]
+caller_number: "+17205550174"
+turns:
+  - caller: Hola, soy Carmen Ortiz. Necesito una revisión para Luna.
+    reply: "Gracias, Carmen. Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Ay, perdón, tengo que irme. Vuelvo a llamar más tarde.
+    reply: "No se preocupe, Carmen. Llame cuando quiera. Adiós."
+    delegate:
+      - end_call: { reason: the caller has to go }
+expect:
+  outcome: abandoned
+  verified: true
+  bookings_created: 0
+  language: es
+forbid_spoken: ["algo más", "¿se la reservo?"]

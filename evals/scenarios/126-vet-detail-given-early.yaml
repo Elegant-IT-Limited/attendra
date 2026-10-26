@@ -1,0 +1,41 @@
+id: vet-detail-given-early
+title: The owner's name and the kind of animal, said in the first sentence, are never asked for again while a new pet is added
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550187"
+facts: "You are Mia Lopez, calling from your own mobile, the number you are calling from. Clover is your female cat, about six months old, new to the clinic. You said your name and that Clover is a cat in your first sentence: if you are asked for either again, say so, a little annoyed. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I'm Mia Lopez, and I'd like a first visit for my cat Clover.
+    reply: "Thanks, Mia. I couldn't find Clover with us. Is Clover new to the clinic?"
+    delegate:
+      - verify_caller: { owner_name: Mia Lopez, pet_name: Clover }
+  - caller: Yes, she's new. She's a girl.
+    reply: "Got it. And how old is Clover?"
+  - caller: About six months.
+    reply: "Clover is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Clover, owner_name: Mia Lopez, species: cat, sex: female, birthday_or_age: about six months, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Clover is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken:
+  - what kind of animal
+  - is clover a cat
+  - is clover a dog
+  - your name
+  - your first name
+  - female or male
+  - male or female

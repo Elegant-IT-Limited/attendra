@@ -30,11 +30,18 @@ export const Scenario = z.object({
   clinic: z.enum(['maple', 'cedar_park', 'riverbend']).default('maple'),
   // defaults to the clinic's first demo patient: Maria at Maple Street, Ruth at Cedar Park, Biscuit's owner at Riverbend
   caller_number: z.string().nullable().optional(),
+  // a browser test call from the dashboard: no caller ID (set caller_number to null too), and no transfers
+  channel: z.enum(['phone', 'web']).default('phone'),
+  // the caller speaks over the greeting ("Hello?"): the call has only its first words, and must never start it again
+  greeting_interrupted: z.boolean().default(false),
   // the clinic's local time of the call on its day (Monday 28 September 2026); 20:00, after hours, unless set
   local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   // settings the clinic changed, as Settings saves them (top-level keys of its config, whole values): the call
   // must follow them. A second location is the same clinic with its own name, hours, vets and hospital.
   settings: z.record(z.string(), z.unknown()).optional(),
+  // what the clinic's records say about the number calling, as the voice service gives it to the backend
+  // ("Name on file for this number: Carmen."): a known caller is greeted by name
+  history: z.string().optional(),
   turns: z.array(Turn).min(1),
   // live only: what the caller knows beyond their scripted lines (a pharmacy, a callback number, a yes to a
   // reminder). With it, a model playing the caller answers the real planner's follow-up questions after the
@@ -51,6 +58,9 @@ export const Scenario = z.object({
     emergency_instruction: z.boolean().default(false),
     language: z.enum(LANGUAGES).optional(), // the language the call ended in
     spoken_contains: z.array(z.string()).default([]), // phrases the backend must have given the voice model, like the 999 line
+    // phrases the backend's tool results gave the planner (a vet's own field from get_clinic_info), and ones they never gave (a field kept for the team)
+    returned: z.array(z.string()).default([]),
+    never_returned: z.array(z.string()).default([]),
     answered_from: z.string().optional(), // the FAQ entry a clinic question must be answered from
     cites: z.array(z.string()).optional(), // documents a knowledge answer must cite, the first as the best match; an empty list means none
     booked_with: z.string().optional(), // the provider every booking made on the call must be with

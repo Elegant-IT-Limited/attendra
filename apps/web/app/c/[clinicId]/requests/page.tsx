@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { MemberList, Task, TaskList } from '@attendra/api/contracts';
+import type { Task, TaskAssignees, TaskList } from '@attendra/api/contracts';
 import { type CustomField, localDateOf, multiValues } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
@@ -98,8 +98,8 @@ function Requests() {
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
-  // the people a manager can hand a request to
-  const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('tasks:reassign') && can('members:manage') });
+  // the people a manager can hand a request to: everyone who works requests, the manager included
+  const team = useQuery({ queryKey: ['assignees', clinicId], queryFn: () => api<TaskAssignees>(`/clinics/${clinicId}/tasks/assignees`), enabled: can('tasks:reassign') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
   const toast = useToast();
   type Act = { task: Task; action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan'; body?: ActBody };
@@ -116,7 +116,7 @@ function Requests() {
         if (t.id !== task.id) return t;
         if (action === 'claim') return { ...t, ...mine };
         if (action === 'release') return { ...t, assigneeUserId: null, assigneeName: null };
-        if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.members.find((m) => m.userId === body!.userId)?.name ?? null };
+        if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.people.find((m) => m.userId === body!.userId)?.name ?? null };
         if (action === 'plan') return { ...t, ...(body!.urgent !== undefined ? { urgent: body!.urgent } : {}), ...(body!.dueOn !== undefined ? { dueOn: body!.dueOn } : {}) };
         if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, at: new Date().toISOString(), body: body!.body! }] };
         return null; // done: it leaves the open list
@@ -133,7 +133,7 @@ function Requests() {
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
       else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
-      else if (action === 'assign') toast({ tone: 'success', message: `Given to ${team.data?.members.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
+      else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
       else toast({ tone: 'success', message: 'Released. It is back in the queue.' });
@@ -146,7 +146,7 @@ function Requests() {
   if (!can('tasks:read')) {
     return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role can see calls and settings, not requests, because they name {terms.patients}.</Empty></Card></>;
   }
-  const teammates = (team.data?.members ?? []).filter((m) => m.role !== 'viewer');
+  const teammates = team.data?.people ?? [];
   // the clinic's own field, filtered here: the values are already on the cards
   const shown = (tasks.data?.tasks ?? []).filter((t) => (!filterField || !fieldFilter.value
     || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value))
@@ -233,7 +233,7 @@ function Requests() {
       </CardContent></Card>
       <div aria-label={status === 'open' ? 'Open requests' : 'Done requests'} role="region">
       {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
-      {team.data && !team.data.members.some((m) => m.approvesRefills) && tasks.data?.tasks.some((t) => t.type === 'refill' && t.status === 'open') && (
+      {team.data && can('members:manage') && !team.data.people.some((m) => m.approvesRefills) && tasks.data?.tasks.some((t) => t.type === 'refill' && t.status === 'open') && (
         <Alert tone="warn" className="mb-5">
           Nobody can approve refills yet. On the <Link href={`/c/${clinicId}/team`} className="underline">Team page</Link>, tick Approves refills for your {terms.patient === 'pet' ? 'veterinarians' : 'prescribers'}.
         </Alert>
@@ -366,7 +366,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
 function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, busy, teammates, canWork, canReassign, canOpenPatient, canApprove, onAct, bare }: {
   /** Inside the side panel: no card edge of its own. */
   bare?: boolean;
-  task: Task; fields: CustomField[]; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: MemberList['members'];
+  task: Task; fields: CustomField[]; patientWord: string; clinicId: string; tz: string; today: string; meId?: string; busy: boolean; teammates: TaskAssignees['people'];
   canWork: boolean; canReassign: boolean; canOpenPatient: boolean; canApprove: boolean;
   onAct: (action: 'claim' | 'done' | 'release' | 'notes' | 'assign' | 'plan', body?: ActBody) => void;
 }) {
@@ -456,12 +456,16 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
             </>
           ) : (
             <>
-              {canReassign && teammates.length > 0 && (
+              {canReassign && (
                 <>
+                  {/* who has it now, chosen; any other name gives it to them, Unassigned puts it back in the queue */}
                   <Label htmlFor={`assign-${t.id}`} className="sr-only">Assign to</Label>
-                  <Select id={`assign-${t.id}`} className="mr-auto h-8 w-40" value="" disabled={busy} onChange={(e) => e.target.value && onAct('assign', { userId: e.target.value })}>
-                    <option value="">Assign to…</option>
-                    {teammates.filter((m) => m.userId !== t.assigneeUserId).map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
+                  <Select id={`assign-${t.id}`} className="mr-auto h-8 w-44" title="Assign to" value={t.assigneeUserId ?? ''} disabled={busy}
+                    onChange={(e) => { const to = e.target.value; if (to === (t.assigneeUserId ?? '')) return; if (to) onAct('assign', { userId: to }); else onAct('release'); }}>
+                    <option value="">Unassigned</option>
+                    {teammates.map((m) => <option key={m.userId} value={m.userId}>{m.name}{m.you ? ' (you)' : ''}{m.userId === t.assigneeUserId ? ', has it' : ''}</option>)}
+                    {/* someone no longer on the list (removed, or now a viewer) still shows as who has it */}
+                    {t.assigneeUserId && !teammates.some((m) => m.userId === t.assigneeUserId) && <option value={t.assigneeUserId}>{t.assigneeName ?? 'Someone'}, has it</option>}
                   </Select>
                 </>
               )}

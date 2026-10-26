@@ -1,0 +1,20 @@
+id: es-goodbye-ends-call
+title: "Spanish: after \"¿algo más?\", \"no, eso es todo, que tenga buen día\" ends the call"
+clinic: riverbend
+local_time: "10:00"
+tags: [language, es]
+caller_number: "+17205550174"
+facts: "Hablas español. Quieres saber a qué hora cierra la clínica hoy. Cuando te pregunten si necesitas algo más, dices que no y te despides."
+turns:
+  - caller: Hola, buenos días. ¿A qué hora cierran hoy?
+    reply: "Hoy cerramos a las seis de la tarde."
+    delegate:
+      - get_clinic_info: { question: hours today }
+  - assistant: "¿Hay algo más en lo que le pueda ayudar?"
+  - caller: No, eso es todo, gracias. Que tenga buen día.
+    reply: "Igualmente. Adiós."
+    delegate:
+      - end_call: { reason: the caller said no to anything else and said goodbye }
+expect:
+  outcome: info
+  language: es

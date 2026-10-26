@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useProblem, useToast } from '@/components/ui/toast';
-import type { AddedMember, Member, MemberList } from '@attendra/api/contracts';
+import type { AddedMember, AddResult, Health, Member, MemberList, TeamInvitationList } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, KeyRound, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
+import { Check, Copy, KeyRound, MailCheck, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/shell';
@@ -13,9 +13,10 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
-import { Input, Label, Select } from '@/components/ui/input';
+import { Label, Select, Textarea } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
+import { clinicTime } from '@/lib/format';
 
 const ROLES: { id: Member['role']; label: string; detail: string }[] = [
   { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
@@ -40,6 +41,8 @@ export default function Team() {
     else if (n) problem({ title: 'Not changed', message: n.text });
   };
   const members = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
+  // invitations not answered yet: someone invited accepts or declines from their own dashboard
+  const invitations = useQuery({ queryKey: ['members', clinicId, 'invitations'], queryFn: () => api<TeamInvitationList>(`/clinics/${clinicId}/invitations`), enabled: can('members:manage') });
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
@@ -72,6 +75,12 @@ export default function Team() {
     onError: (e) => { setUnlocking(null); setNotice({ tone: 'warn', text: message(e) }); },
     onSettled: refresh,
   });
+  const cancel = useMutation({
+    mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/invitations/${id}`, { method: 'DELETE' }),
+    onSuccess: () => setNotice({ tone: 'info', text: 'Invitation cancelled.' }),
+    onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
+    onSettled: refresh,
+  });
   const remove = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'DELETE' }),
     onSuccess: (_r, m) => { setNotice({ tone: 'info', text: `${m.name} is off the team and signed out.` }); setRemoving(null); },
@@ -87,7 +96,7 @@ export default function Team() {
   return (
     <>
       <PageHeader title="Team" description={`Who can sign in to this clinic, and what each person can do.${(me?.clinics.length ?? 0) > 1 ? ' Everyone on the team sees all your locations.' : ''}`}
-        actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add a person</Button>} />
+        actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add people</Button>} />
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
@@ -140,9 +149,29 @@ export default function Team() {
             </Table>
           )}
       </Card>
+      {!!invitations.data?.invitations.length && (
+        <Card className="mt-4" data-testid="invitations">
+          <Table>
+            <THead><tr><TH>Invited</TH><TH>Role</TH><TH className="hidden md:table-cell">Sent by</TH><TH className="hidden md:table-cell">Ends</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
+            <tbody>
+              {invitations.data.invitations.map((i) => (
+                <TRow key={i.id}>
+                  <TD><p className="font-medium">{i.email}</p><p className="text-xs text-text-muted">Invite sent, waiting for an answer</p></TD>
+                  <TD><Badge>{label(i.role)}</Badge></TD>
+                  <TD className="hidden md:table-cell">{i.invitedBy}</TD>
+                  <TD className="hidden md:table-cell">{clinic ? clinicTime(i.expiresAt, clinic.timezone) : ''}</TD>
+                  <TD className="text-right">
+                    {(i.role !== 'owner' || myRole === 'owner') && <Button size="sm" variant="ghost" disabled={cancel.isPending} aria-label={`Cancel the invitation to ${i.email}`} onClick={() => cancel.mutate(i.id)}>Cancel</Button>}
+                  </TD>
+                </TRow>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      )}
       <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
 
-      <AddPerson clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
+      <AddPeople clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
       <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}
         description="They are signed out everywhere, their password stops working, and you get a temporary one to pass on in person."
         footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Keep it</Button><Button variant="danger" loading={reset.isPending} onClick={() => resetting && reset.mutate(resetting)}>Reset password</Button></>}>
@@ -166,48 +195,103 @@ export default function Team() {
   );
 }
 
-function AddPerson({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
-  // two-step sign-in is mentioned only where the deployment asks for it
-  const twoStepRequired = useMe().data?.twoFactorRequired ?? true;
-  const [form, setForm] = useState({ name: '', email: '', role: 'staff', approvesRefills: false });
-  const [added, setAdded] = useState<(AddedMember & { name: string; email: string }) | null>(null);
-  const problem = useProblem();
+type Row = { email: string; name?: string };
+type Outcome = { email: string; name: string; result?: AddResult; error?: string };
+
+/** "riley@example.com", or "Riley Stone <riley@example.com>", one per line or separated by commas. */
+function parsePeople(text: string): { rows: Row[]; invalid: string[] } {
+  const rows: Row[] = [];
+  const invalid: string[] = [];
+  for (const part of text.split(/[\n,;]+/).map((p) => p.trim()).filter(Boolean)) {
+    const named = /^(.*?)\s*<\s*([^>\s]+)\s*>$/.exec(part);
+    const email = (named ? named[2]! : part).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid.push(part);
+    else if (!rows.some((r) => r.email === email)) rows.push({ email, name: named?.[1]?.replace(/^"|"$/g, '').trim() || undefined });
+  }
+  return { rows, invalid };
+}
+
+/**
+ * Several people at once, each with a role. Every email gets the same answer, "invite sent",
+ * so the team never learns who already uses Attendra. Where the deployment cannot send
+ * email, someone new gets a temporary password, shown once, to pass on in person.
+ */
+function AddPeople({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
+  const emailed = useQuery({ queryKey: ['health'], queryFn: () => api<Health>('/health') }).data?.passwordReset ?? false;
+  const [text, setText] = useState('');
+  const [roleOf, setRoleOf] = useState<Record<string, { role: Member['role']; approvesRefills: boolean }>>({});
+  const [outcomes, setOutcomes] = useState<Outcome[] | null>(null);
+  const { rows, invalid } = parsePeople(text);
+  const settings = (email: string) => roleOf[email] ?? { role: 'staff' as const, approvesRefills: false };
   const add = useMutation({
-    mutationFn: () => api<AddedMember>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ ...form, approvesRefills: form.role !== 'viewer' && form.approvesRefills }) }),
-    onSuccess: (r) => { setAdded({ ...r, name: form.name, email: form.email }); onAdded(); },
-    onError: (e) => problem({ title: 'Not added', message: message(e) }),
+    mutationFn: async () => {
+      const done: Outcome[] = [];
+      // one at a time, in the order typed: each is its own change in the audit log
+      for (const r of rows) {
+        const { role, approvesRefills } = settings(r.email);
+        const name = r.name ?? r.email.split('@')[0]!;
+        try {
+          done.push({ email: r.email, name, result: await api<AddResult>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ email: r.email, name: r.name, role, approvesRefills: role !== 'viewer' && approvesRefills }) }) });
+        } catch (e) {
+          done.push({ email: r.email, name, error: message(e) });
+        }
+      }
+      return done;
+    },
+    onSuccess: (done) => { setOutcomes(done); onAdded(); },
   });
-  const close = (o: boolean) => { if (!o) { setAdded(null); setForm({ name: '', email: '', role: 'staff', approvesRefills: false }); add.reset(); } onOpenChange(o); };
-  const submit = (e: FormEvent) => { e.preventDefault(); add.mutate(); };
+  const close = (o: boolean) => { if (!o) { setOutcomes(null); setText(''); setRoleOf({}); add.reset(); } onOpenChange(o); };
+  const submit = (e: FormEvent) => { e.preventDefault(); if (rows.length && !invalid.length) add.mutate(); };
+  const failed = outcomes?.filter((o) => o.error).length ?? 0;
 
   return (
-    <Panel open={open} onOpenChange={close} title={added ? `${added.name} is on the team` : 'Add a person'}
-      description={added ? undefined : `They sign in with their email and a temporary password${twoStepRequired ? ', then set up two-step sign-in' : ''}.`}
-      footer={added ? <Button onClick={() => close(false)}>Done</Button> : undefined}>
-      {added ? (
-        <OneTimePassword email={added.email} password={added.temporaryPassword} />
+    <Panel open={open} onOpenChange={close} title={outcomes ? (failed ? 'Some were not added' : 'Invites sent') : 'Add people'}
+      description={outcomes ? undefined : emailed ? 'Each person gets an email invitation to join, with the role you pick.'
+        : 'Each person is invited with the role you pick. Someone new to Attendra gets a temporary password, shown once, to pass on in person.'}
+      footer={outcomes ? <Button onClick={() => close(false)}>Done</Button> : undefined}>
+      {outcomes ? (
+        <ul className="space-y-4" data-testid="add-results">
+          {outcomes.map((o) => (
+            <li key={o.email} className="space-y-2">
+              <p className="flex items-center gap-2 text-base">
+                {o.error ? <span className="text-danger">{o.email}: {o.error}</span>
+                  : <><MailCheck className="size-4 text-primary" aria-hidden /><span><span className="font-medium">{o.email}</span>: invite sent</span></>}
+              </p>
+              {o.result?.temporaryPassword && <OneTimePassword email={o.email} password={o.result.temporaryPassword} />}
+            </li>
+          ))}
+        </ul>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <fieldset disabled={add.isPending} className="space-y-4">
-            <div className="space-y-1.5"><Label htmlFor="member-name">Name</Label><Input id="member-name" required maxLength={80} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="space-y-1.5"><Label htmlFor="member-email">Email</Label><Input id="member-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
             <div className="space-y-1.5">
-              <Label htmlFor="member-role">Role</Label>
-              <Select id="member-role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </Select>
-              <p className="text-xs text-text-muted">{ROLES.find((r) => r.id === form.role)?.detail}</p>
+              <Label htmlFor="people-emails">Emails</Label>
+              <Textarea id="people-emails" rows={4} required value={text} onChange={(e) => setText(e.target.value)} placeholder={'riley@example.com\nSam Lee <sam@example.com>'} />
+              <p className="text-xs text-text-muted">One per line, or separated by commas. To give someone new a name, write it before the email: Sam Lee &lt;sam@example.com&gt;.</p>
+              {invalid.length > 0 && <p className="text-sm text-danger">Not an email address: {invalid.join(', ')}</p>}
             </div>
-            {/* a viewer never closes requests, so the question is not asked for one */}
-            {form.role !== 'viewer' && (
-              <Checkbox id="member-refills" label="Approves refills" checked={form.approvesRefills}
-                hint="A veterinarian who may close a refill as sent to the pharmacy, ready to pick up or not approved."
-                onCheckedChange={(v) => setForm({ ...form, approvesRefills: v })} />
-            )}
+            {rows.map((r) => {
+              const s = settings(r.email);
+              const set = (next: Partial<typeof s>) => setRoleOf({ ...roleOf, [r.email]: { ...s, ...next } });
+              return (
+                <div key={r.email} className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3" data-testid="person-row">
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium">{r.name ? `${r.name}, ` : ''}{r.email}</p>
+                  <Label htmlFor={`role-${r.email}`} className="sr-only">Role for {r.email}</Label>
+                  <Select id={`role-${r.email}`} className="h-8 w-44" value={s.role} onChange={(e) => set({ role: e.target.value as Member['role'] })}>
+                    {roles.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                  </Select>
+                  {/* a viewer never closes requests, so the question is not asked for one */}
+                  {s.role !== 'viewer' && (
+                    <Checkbox id={`refills-${r.email}`} label="Approves refills" checked={s.approvesRefills} onCheckedChange={(v) => set({ approvesRefills: v })} />
+                  )}
+                </div>
+              );
+            })}
+            {rows.length > 0 && <p className="text-xs text-text-muted">{ROLES.map((r) => `${r.label}: ${r.detail}`).join(' ')}</p>}
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => close(false)}>Cancel</Button>
-            <Button type="submit" disabled={add.isPending}>{add.isPending ? 'Adding…' : 'Add to the team'}</Button>
+            <Button type="submit" disabled={add.isPending || !rows.length || invalid.length > 0}>{add.isPending ? 'Adding…' : rows.length > 1 ? `Add ${rows.length} people` : 'Add to the team'}</Button>
           </div>
         </form>
       )}

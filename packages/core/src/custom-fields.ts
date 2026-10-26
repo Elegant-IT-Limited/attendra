@@ -7,6 +7,24 @@ export const CUSTOM_TEXT_MAX = 200;
 export const MULTI_SEPARATOR = ' | ';
 export const multiValues = (v: string | undefined) => (v ? v.split('|').map((x) => x.trim()).filter(Boolean) : []);
 
+/** Whether the assistant may tell any caller a doctor's or vet's own field: yes, unless the clinic keeps it for the team. */
+export const tellsCallers = (f: Pick<CustomField, 'tellCallers'>) => f.tellCallers !== false;
+
+/**
+ * A doctor's or vet's own details as any caller may hear them, under the clinic's labels:
+ * { "Qualifications": "DVM, 12 years with small animals" }. Fields kept for the team, fields
+ * the clinic removed and empty ones are left out; a multi-choice value reads as a list.
+ */
+export function sharedCustomFacts(fields: CustomField[] | undefined, values: Record<string, string> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const f of fields ?? []) {
+    const v = values?.[f.id]?.trim();
+    if (!v || !tellsCallers(f)) continue;
+    out[f.label] = f.kind === 'multi' ? multiValues(v).join(', ') : v;
+  }
+  return out;
+}
+
 /**
  * Checks the values staff typed for a record against the clinic's own fields: the
  * whole set, which replaces what the record had. An empty value leaves the field

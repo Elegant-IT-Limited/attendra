@@ -2,6 +2,7 @@
 'use client';
 import type { ClinicPlan } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
+import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api, useClinic } from '@/lib/api';
 import { daysLeft } from '@/lib/format';
@@ -104,6 +105,41 @@ export function PlanMeter({ clinicId }: { clinicId: string }) {
           </div>
         )}
         {clinic.role === 'owner' && plan.manageUrl && <a className="text-sm font-medium text-primary underline-offset-2 hover:underline" href={plan.manageUrl}>Plan and billing</a>}
+      </CardContent>
+    </Card>
+  );
+}
+
+const GO_LIVE_TONE: Record<'done' | 'todo' | 'wait' | 'problem', BadgeTone> = { done: 'ok', todo: 'neutral', wait: 'warn', problem: 'danger' };
+
+/**
+ * The owner's steps from setup to real calls, as the hosting layer keeps them: the plan,
+ * a number, forwarding, texting. Shown on Today until they are done; nothing on a
+ * self-hosted install.
+ */
+export function GoLiveCard({ clinicId }: { clinicId: string }) {
+  const { clinic } = useClinic(clinicId);
+  const { data } = usePlan(clinicId);
+  const goLive = data?.plan?.goLive;
+  if (!goLive || clinic?.role !== 'owner' || goLive.steps.every((s) => s.state === 'done')) return null;
+  const left = goLive.steps.filter((s) => !s.optional && s.state !== 'done').length;
+  return (
+    <Card data-testid="go-live">
+      <CardHeader><CardTitle>Go live</CardTitle></CardHeader>
+      <CardContent className="space-y-3 pt-2">
+        <p className="text-sm text-text-muted">{left > 0 ? `${left} to go before real calls reach your assistant.` : 'Real calls reach your assistant. The rest can follow.'}</p>
+        <ol className="divide-y divide-border">
+          {goLive.steps.map((s) => (
+            <li key={s.title} className="flex items-center gap-3 py-2 text-sm">
+              <span className="min-w-0 flex-1">
+                {s.href && s.state !== 'done' ? <a className="font-medium text-primary underline-offset-2 hover:underline" href={s.href}>{s.title}</a> : <span className="font-medium">{s.title}</span>}
+                {s.optional && <span className="text-text-muted"> (optional)</span>}
+              </span>
+              <Badge tone={GO_LIVE_TONE[s.state]}>{s.status}</Badge>
+            </li>
+          ))}
+        </ol>
+        {goLive.setupUrl && <a className="text-sm font-medium text-primary underline-offset-2 hover:underline" href={goLive.setupUrl}>Open setup</a>}
       </CardContent>
     </Card>
   );

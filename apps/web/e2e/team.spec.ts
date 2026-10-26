@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openAs, signInPatiently } from './session';
+import { newContext, openAs, signInPatiently } from './session';
 
 test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
   // one long journey through two people and a dozen pages, each compiled on first use by next dev
@@ -9,13 +9,14 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
   await expect(page.getByRole('row', { name: /Priya \(practice manager\).*You/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Add a person' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Add a person' });
-  await dialog.getByLabel('Name').fill('Riley Stone');
-  await dialog.getByLabel('Email').fill('riley@maple-demo.test');
-  await dialog.getByLabel('Role').selectOption({ label: 'Front desk' });
+  await page.getByRole('button', { name: 'Add people' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add people' });
+  await dialog.getByLabel('Emails').fill('Riley Stone <riley@maple-demo.test>');
+  await dialog.getByLabel('Role for riley@maple-demo.test').selectOption({ label: 'Front desk' });
   await dialog.getByRole('button', { name: 'Add to the team' }).click();
-  const added = page.getByRole('dialog', { name: 'Riley Stone is on the team' });
+  // the demo sends no email: someone new gets a temporary password, under the same "invite sent" as everyone
+  const added = page.getByRole('dialog', { name: 'Invites sent' });
+  await expect(added.getByText('riley@maple-demo.test: invite sent')).toBeVisible();
   await expect(added.getByText('Shown once')).toBeVisible();
   const password = (await added.getByTestId('temporary-password').textContent())!;
   expect(password).toMatch(/^[\w-]{16}$/);
@@ -30,7 +31,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await expect(page.getByText('Added a person to the team, as front desk').first()).toBeVisible();
 
   // Riley signs in with the temporary password, as a viewer now
-  const riley = await (await browser.newContext()).newPage();
+  const riley = await (await newContext(browser)).newPage();
   await riley.goto('/sign-in');
   await riley.getByLabel('Email').fill('riley@maple-demo.test');
   await riley.getByLabel('Password').fill(password);
@@ -74,7 +75,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
 });
 
 test('too many sign-ins in a row are told to wait a few seconds', async ({ browser }) => {
-  const page = await (await browser.newContext()).newPage();
+  const page = await (await newContext(browser)).newPage();
   await page.route('**/api/auth/sign-in/**', (route) => route.fulfill({ status: 429, headers: { 'x-retry-after': '9' }, json: { message: 'Too many requests' } }));
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('riley@maple-demo.test');
