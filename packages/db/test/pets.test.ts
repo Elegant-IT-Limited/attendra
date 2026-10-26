@@ -43,7 +43,7 @@ describe('pets at a veterinary clinic', () => {
     expect(await dir.nameOnFile(C, '(720) 555-0181', callId)).toBe('Chidi');
     await dir.register(C, { firstName: 'Bolt', lastName: 'Reyes', dob: '2025-03-01', gender: 'male', phone: '+17205550181', guardianName: 'Ana Reyes', callId, species: 'Dog' });
     expect(await dir.nameOnFile(C, '+17205550181', callId)).toBeNull();
-    expect(await dir.nameOnFile(C, '+17205550999', callId)).toBeNull();
+    expect(await dir.nameOnFile(C, '+17205550128', callId)).toBeNull();
     const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.name_on_file.read' and call_id = ${callId}`)).rows;
     expect(audit).toEqual([{ n: 1 }]);
   });

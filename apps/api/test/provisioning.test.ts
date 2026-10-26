@@ -131,7 +131,7 @@ describe('provisioning', () => {
     await api.t.db.execute(sql`update calls set started_at = now() - interval '10 minutes', ended_at = now() - interval '10 minutes' + interval '95 seconds' where id = ${api.callId}`);
     const check = (body: object) => api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/calls-check`, { body, authorization: auth });
     expect((await check({ since, from: caller })).json()).toMatchObject({ calls: 1, heard: true });
-    expect((await check({ since, from: '+13035550999' })).json()).toMatchObject({ calls: 1, heard: false });
+    expect((await check({ since, from: '+13035550122' })).json()).toMatchObject({ calls: 1, heard: false });
     const quiet = (await check({ since: new Date().toISOString() })).json();
     expect(quiet).toMatchObject({ calls: 0, lastCallAt: null, heard: null });
     expect(typeof quiet.openMinutes).toBe('number');

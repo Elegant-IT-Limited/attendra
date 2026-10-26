@@ -167,7 +167,7 @@ describe('the local summariser', () => {
 describe('a callback the caller said no to', () => {
   const t = (...turns: [('caller' | 'agent'), string][]) => turns.map(([speaker, text]) => ({ speaker, text }));
   it('opens no follow-up request when the caller declined the last callback offered', () => {
-    // a tester's call of 2026-10-23: "Would you like me to request a callback?" "No"
+    // a test call of 2026-10-23: "Would you like me to request a callback?" "No"
     expect(declinedCallback(t(['agent', 'I don\'t have the next holiday date, but I can have someone from the team call you with that information. Would you like me to request a callback?'], ['caller', 'No']))).toBe(true);
     expect(declinedCallback(t(['agent', 'Would you like a callback?'], ['caller', 'No thanks, I\'m fine.']))).toBe(true);
     expect(declinedCallback(t(['agent', '¿Quiere que le llamen del equipo? Puedo pedir que le llamen.'], ['caller', 'No gracias']))).toBe(true);
@@ -179,6 +179,6 @@ describe('a callback the caller said no to', () => {
     expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: t(['agent', 'Would you like a callback?'], ['caller', 'No']) }, { needsReview: true })).toBe(false);
     expect(needsFollowUp({ outcome: 'info', emergency: false, tasks: [], transcript: t(['caller', 'Hi, I need help with my dog.']) }, { needsReview: true })).toBe(true);
     // a caller who hung up before saying anything is a missed call, not a request
-    expect(needsFollowUp({ outcome: 'abandoned', emergency: false, tasks: [], transcript: t(['agent', 'Thanks for calling Willow Creek.']) }, { needsReview: true })).toBe(false);
+    expect(needsFollowUp({ outcome: 'abandoned', emergency: false, tasks: [], transcript: t(['agent', 'Thanks for calling Willow Creek Pet Clinic.']) }, { needsReview: true })).toBe(false);
   });
 });

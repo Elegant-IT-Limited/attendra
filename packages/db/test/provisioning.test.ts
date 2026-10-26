@@ -20,7 +20,7 @@ describe('provisioning', () => {
   it('points a number at a clinic, first in its numbers, moves it from another clinic, and releases it', async () => {
     expect(await assignNumber(t.db, 'clinic_oak', '+13125550199')).toBe(true);
     expect(await clinicForNumber(t.db, '+13125550199')).toMatchObject({ id: 'clinic_oak', phoneNumbers: ['+13125550199', '+13125550100'] });
-    const config = starterClinic({ id: 'clinic_elm', name: 'Elm Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550200' });
+    const config = starterClinic({ id: 'clinic_elm', name: 'Elm Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550127' });
     await createOrganizationWithClinic(t.db, { id: 'org_elm', name: 'Elm Vets', plan: 'trial' }, config);
     expect(await assignNumber(t.db, 'clinic_elm', '+13125550199')).toBe(true);
     expect(await clinicForNumber(t.db, '+13125550199')).toMatchObject({ id: 'clinic_elm' });

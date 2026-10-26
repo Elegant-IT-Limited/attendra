@@ -137,7 +137,7 @@ describe('the OpenAI webhook', () => {
     const alert = vi.fn();
     const { d, engine } = deps({ alerts: { alert, note: vi.fn(), flush: async () => {} } });
     const app = buildServer(d);
-    await post(app, incoming('wh_4', '+19995550000'));
+    await post(app, incoming('wh_4', '+19995550121'));
     await app.close();
     expect(engine.reject).toHaveBeenCalledWith('live_abc', 404);
     expect(engine.accept).not.toHaveBeenCalled();
@@ -187,8 +187,8 @@ describe('the OpenAI webhook', () => {
     const app = buildServer(d);
     await post(app, twin('wh_r1', 'realtime.call.incoming', 'rtc_u1_same', '+13035550100'));
     await post(app, twin('wh_l1', 'live.transport.incoming', 'live_u1_same', '+13035550100'));
-    await post(app, twin('wh_r2', 'realtime.call.incoming', 'rtc_u1_none', '+19995550000'));
-    await post(app, twin('wh_l2', 'live.transport.incoming', 'live_u1_none', '+19995550000'));
+    await post(app, twin('wh_r2', 'realtime.call.incoming', 'rtc_u1_none', '+19995550121'));
+    await post(app, twin('wh_l2', 'live.transport.incoming', 'live_u1_none', '+19995550121'));
     await app.close();
     expect(engine.accept).toHaveBeenCalledTimes(1);
     expect(engine.accept).toHaveBeenCalledWith('live_u1_same', expect.anything(), expect.any(Date));

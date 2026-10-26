@@ -10,7 +10,7 @@ const tz = DEMO_CLINIC.timezone;
 // Monday 28 September 2026, 8 pm in Denver. Tuesday the 29th is a working day for both providers.
 const NOW = zonedInstant('2026-09-28', '20:00', tz);
 const at = (date: string, time: string) => zonedInstant(date, time, tz);
-const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let ids: Record<string, string>;

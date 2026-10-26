@@ -15,7 +15,7 @@ import { LocalSummariser } from '../src/summarise';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
-const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550200'] };
+const OTHER = { ...DEMO_CLINIC, id: 'clinic_other', name: 'Other Clinic', phoneNumbers: ['+13035550120'] };
 
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let boss: PgBoss;

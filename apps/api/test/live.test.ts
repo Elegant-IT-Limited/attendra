@@ -130,7 +130,7 @@ describe('staff actions', () => {
     const foreign = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+442079460123' } });
     expect(foreign.statusCode).toBe(422);
     expect(foreign.json().issues[0]).toMatchObject({ path: 'number', message: expect.stringContaining('+1') });
-    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550987' } })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550125' } })).statusCode).toBe(200);
     expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: null } })).statusCode).toBe(200);
     expect((await audits('member.transfer_number.set')).length).toBeGreaterThanOrEqual(2);
     expect(await audits('member.transfer_number.cleared')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.users.admin, counts: null }]);
