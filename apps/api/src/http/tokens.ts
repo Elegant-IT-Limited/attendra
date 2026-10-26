@@ -21,6 +21,8 @@ export const WEBHOOK_GUARD = Symbol('webhook-guard');
 export const CHANGES = Symbol('changes');
 /** Speaks a short text in a built-in voice, for Settings. Null when the deployment has no OpenAI key. */
 export const VOICE_SAMPLES = Symbol('voice-samples');
+/** The hosting layer's mail hook (ATTENDRA_MAIL_HOOK_URL). Null when the deployment cannot send email. */
+export const MAIL = Symbol('mail');
 export interface VoiceSampler { sample(voice: string, text: string): Promise<Buffer> }
 
 /** Starts and ends browser test calls on the voice service. Null when the deployment has none. */

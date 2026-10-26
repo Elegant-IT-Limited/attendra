@@ -2,6 +2,7 @@ import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { MailRequest } from '../src/mail-hook';
+import { addMember } from '../src/members';
 import { PASSWORD, startApi, totp } from './helpers';
 
 const TOKEN = 'a-provisioning-token-for-tests-0123456789';
@@ -18,6 +19,11 @@ afterAll(() => api.close());
 const signIn = (email: string, password: string) => api.request('POST', '/api/auth/sign-in/email', { body: { email, password } });
 const cookieOf = (res: { headers: Record<string, unknown> }) => ([] as string[]).concat((res.headers['set-cookie'] as string[] | string | undefined) ?? []).map((c) => c.split(';')[0]).join('; ');
 const C = `/api/v1/clinics/${DEMO_CLINIC.id}`;
+// someone on the team with a temporary password, from "Reset password" (adding a person here invites them by email)
+async function withTemporaryPassword(email: string, name: string) {
+  const userId = await addMember(api.auth, api.t.db, { email, name, password: PASSWORD, orgId: 'org_demo', role: 'staff' });
+  return { userId, ...(await api.request('POST', `${C}/members/${userId}/reset-password`, { cookie: owner })).json() as { temporaryPassword: string } };
+}
 
 describe('what the sign-in page is told it can offer', () => {
   it('forgot password, sign-up and a new confirmation link on a hosted deployment', async () => {
@@ -52,7 +58,7 @@ describe('forgot password', () => {
   });
 
   it('a reset ends a temporary password too', async () => {
-    const added = (await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Tess Temp', email: 'tess@maple.example', role: 'staff' } })).json();
+    const added = await withTemporaryPassword('tess@maple.example', 'Tess Temp');
     expect(added.temporaryPassword).toEqual(expect.any(String));
     await api.request('POST', '/api/auth/request-password-reset', { body: { email: 'tess@maple.example' } });
     const token = new URL(mails.at(-1)!.url).searchParams.get('token')!;
@@ -64,7 +70,7 @@ describe('forgot password', () => {
 
 describe('an expired temporary password', () => {
   it('is only reported to someone who typed it right: a wrong password gets the ordinary answer', async () => {
-    const added = (await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Exp Ired', email: 'exp@maple.example', role: 'staff' } })).json();
+    const added = await withTemporaryPassword('exp@maple.example', 'Exp Ired');
     await api.t.db.execute(sql`update auth_users set temporary_password_expires_at = now() - interval '1 hour' where email = 'exp@maple.example'`);
     const wrong = await signIn('exp@maple.example', 'not the password at all');
     expect(wrong.statusCode).toBe(401);
@@ -119,33 +125,23 @@ describe('a lost phone', () => {
 describe('someone removed, added back', () => {
   // a fresh session: the tests above sign the owner out everywhere
   beforeAll(async () => { owner = await api.signIn('omar@maple.example'); });
-  it('gets a new temporary password instead of "already uses Attendra"', async () => {
-    const added = (await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Rhea Return', email: 'rhea@maple.example', role: 'staff' } })).json();
-    await signIn('rhea@maple.example', added.temporaryPassword);
-    expect((await api.request('DELETE', `${C}/members/${added.userId}`, { cookie: owner })).statusCode).toBe(204);
+  it('is invited like anyone with a login: their own password, no temporary one, and accepting puts them back', async () => {
+    const userId = await addMember(api.auth, api.t.db, { email: 'rhea@maple.example', name: 'Rhea Return', password: PASSWORD, orgId: 'org_demo', role: 'staff' });
+    expect((await api.request('DELETE', `${C}/members/${userId}`, { cookie: owner })).statusCode).toBe(204);
     const back = await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Rhea Return', email: 'rhea@maple.example', role: 'staff' } });
-    expect(back.statusCode).toBe(201);
-    expect(back.json().userId).toBe(added.userId);
-    expect(back.json().temporaryPassword).not.toBe(added.temporaryPassword);
-    expect((await signIn('rhea@maple.example', back.json().temporaryPassword)).statusCode).toBe(200);
+    expect([back.statusCode, back.json()]).toEqual([201, { status: 'invite_sent', email: 'rhea@maple.example' }]);
+    const rhea = await api.signIn('rhea@maple.example');
+    const [invite] = (await api.request('GET', '/api/v1/me/invitations', { cookie: rhea })).json().invitations;
+    expect((await api.request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { cookie: rhea })).json()).toEqual({ clinicId: DEMO_CLINIC.id });
+    expect((await api.request('GET', '/api/v1/me', { cookie: rhea })).json().clinics.map((c: { id: string }) => c.id)).toEqual([DEMO_CLINIC.id]);
   });
 
-  it('only by the practice that removed them: another one cannot take over a login nobody uses', async () => {
-    const opened = (await api.request('POST', `${P}/accounts`, { authorization: `Bearer ${TOKEN}`, body: { organization: { name: 'Quarry Vets' }, clinic: { name: 'Quarry Vets', timezone: 'America/Denver', industry: 'vet', phone: '+13035550122' }, owner: { name: 'Quinn Quarry', email: 'quinn@quarry.example', password: 'quinn has a long password' } } })).json();
-    await api.request('POST', `${P}/email-confirmations`, { authorization: `Bearer ${TOKEN}`, body: { email: 'quinn@quarry.example' } });
-    const quinn = cookieOf(await signIn('quinn@quarry.example', 'quinn has a long password'));
-    const rhea = (await api.request('GET', `${C}/members`, { cookie: owner })).json().members.find((m: { email: string }) => m.email === 'rhea@maple.example');
-    expect((await api.request('DELETE', `${C}/members/${rhea.userId}`, { cookie: owner })).statusCode).toBe(204);
-    const elsewhere = await api.request('POST', `/api/v1/clinics/${opened.clinicId}/members`, { cookie: quinn, body: { name: 'Rhea', email: 'rhea@maple.example', role: 'staff' } });
-    expect([elsewhere.statusCode, elsewhere.json().error]).toEqual([409, 'account_exists']);
-    expect(elsewhere.json().temporaryPassword).toBeUndefined();
-    expect((await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Rhea Return', email: 'rhea@maple.example', role: 'staff' } })).statusCode).toBe(201);
-  });
-
-  it('someone at another practice: a neutral answer that names nothing', async () => {
+  it('someone at another practice: the same "invite sent" as a new address, naming nothing', async () => {
     const res = await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Otto', email: 'otto@other.example', role: 'staff' } });
-    expect(res.statusCode).toBe(409);
-    expect(res.json().message).not.toMatch(/practice|uses Attendra/i);
+    const fresh = await api.request('POST', `${C}/members`, { cookie: owner, body: { name: 'Nova New', email: 'nova@maple.example', role: 'staff' } });
+    expect([res.statusCode, fresh.statusCode]).toEqual([201, 201]);
+    expect(Object.keys(res.json())).toEqual(Object.keys(fresh.json()));
+    expect(res.json()).toEqual({ status: 'invite_sent', email: 'otto@other.example' });
   });
 });
 

@@ -90,6 +90,10 @@ export const invitations = pgTable('invitations', {
   inviterId: text('inviter_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   expiresAt: ts('expires_at').notNull(),
   createdAt: ts('created_at').notNull().defaultNow(),
+  // ours, not Better Auth's (migration 0038): the location it was sent from, refills, and when it was answered
+  clinicId: text('clinic_id'),
+  approvesRefills: boolean('approves_refills').notNull().default(false),
+  decidedAt: ts('decided_at'),
 });
 
 /** The map Better Auth's Drizzle adapter reads, keyed by the model names set in the API's auth config. */

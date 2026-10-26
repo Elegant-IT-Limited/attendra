@@ -35,9 +35,9 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
   const log = createLogger({ name: 'test', level: opts.logs ? 'debug' : 'info', destination: new Writable({ write: (c, _e, done) => { opts.logs?.push(String(c)); done(); } }) });
-  // with `mails`, "forgot password" works and every email the engine asks for is kept there
-  const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log,
-    passwordReset: opts.mails ? async (m) => { opts.mails!.push(m); } : undefined });
+  // with `mails`, "forgot password" and invitation emails work, and every email the engine asks for is kept there
+  const mail = opts.mails ? async (m: MailRequest) => { opts.mails!.push(m); } : null;
+  const auth = createAuth(t.db, { publicUrl: ORIGIN, secret: 'test-secret-that-is-at-least-32-characters', rateLimit: false, log, passwordReset: mail ?? undefined });
   const users = {
     owner: await addMember(auth, t.db, { email: 'omar@maple.example', name: 'Omar Owner', password: PASSWORD, orgId: 'org_demo', role: 'owner' }),
     admin: await addMember(auth, t.db, { email: 'olga@maple.example', name: 'Olga Admin', password: PASSWORD, orgId: 'org_demo', role: 'admin' }),
@@ -55,7 +55,7 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples, mail });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -86,5 +86,5 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
     return cookie;
   }
 
-  return { t, app, request, signIn, users, patientIds, callId, taskId, close: async () => { await app.close(); await t.close(); } };
+  return { t, app, auth, request, signIn, users, patientIds, callId, taskId, close: async () => { await app.close(); await t.close(); } };
 }

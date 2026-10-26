@@ -12,6 +12,7 @@ import { CallBar } from '@/components/calls/call-bar';
 import { EmergencyAlerts } from '@/components/calls/live-now';
 import { useTestCall } from '@/components/calls/test-call';
 import { CommandPalette } from '@/components/command-palette';
+import { InvitationsBanner } from '@/components/invitations-banner';
 import { PlanBanner } from '@/components/plan';
 import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
@@ -182,6 +183,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         )}
         <CallBar />
         <PlanBanner clinicId={clinicId} />
+        <InvitationsBanner />
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-6 outline-none md:px-8 md:py-8">{children}</main>
       </div>
 
