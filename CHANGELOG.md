@@ -21,6 +21,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 - **A request can be handed to anyone.** Assign to left out whoever held the request and was hidden when nobody else was left, so a request held by the owner could not be handed on, and a clinic with one working member saw no names. It now lists everyone who works requests, yourself and the owner included, the holder marked, and "Unassigned" releases it. The list comes from a new `GET /clinics/:id/tasks/assignees` (`tasks:reassign`, names only).
 
+### Changed (the browser test call keeps going around the dashboard)
+
+- **A call bar.** The browser test call no longer ends when you leave the Test call page: it lives in the dashboard, with a bar on every page (the clinic, the time, mute, hang up and a link back). It ends on hang up, the time limit, closing or reloading the tab, signing out or switching clinic. If the microphone stops, the bar says "Your microphone stopped. Hang up and call again." and the call does not run on in silence.
+
 ### Added (hosting)
 
 - **The assistant can be paused.** The hosting layer pauses a clinic's assistant (`PUT /provisioning/clinics/:id/answering`), for example when a plan's free minutes are used up. While paused, a caller hears one short line from the AI assistant and goes to the front desk while it takes transfers. Otherwise they hear when to call back and where to go in an emergency (the clinic's emergency hospital), and the call ends. Nothing is booked, and those calls are not counted in the minutes billed. Settings never changes the pause. Migration 0037 adds an index for it.
