@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, ownerMatches, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, soundsLike, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
 import { and, count, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, patients } from '../schema';
+import { auditLogs, clinics, patients } from '../schema';
 
 const lastName = (full: string) => normalizeName(full).split(' ').at(-1) ?? '';
 const firstName = (full: string) => normalizeName(full).split(' ')[0] ?? '';
@@ -63,21 +63,24 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /**
-   * A pet, by its owner's name, its own name and the owner's phone. Narrows by the
-   * keyed phone hash, then decrypts only those rows to compare the pet's name (the
-   * record's first name) and the owner's (its guardian). Audited like findByIdentity.
+   * A pet, by the number it is on and its name as the caller says it. Narrows by the keyed phone
+   * hash (the household), then decrypts only those rows to compare the pet's name: the same name,
+   * else one that sounds like it (soundsLike), so "Minnie" finds Mini. The owner's name plays no
+   * part: the number is the household, and names are spelled any way. Two pets on the number that
+   * sound alike go to staff. Audited like findByIdentity.
    */
-  async findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup> {
+  async findPet(clinicId: string, petName: string, phone: string, callId?: string): Promise<PatientLookup> {
     return withClinic(this.db, clinicId, async (tx) => {
       const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
-      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone)))));
+      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt);
       const pet = firstName(petName);
-      const matches = rows.filter((r) => firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) === pet
-        && !!r.guardianNameEnc && ownerMatches(ownerName, this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name'))));
+      const named = rows.map((r) => ({ r, name: firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) }));
+      const exact = named.filter((x) => x.name === pet);
+      const matches = (exact.length ? exact : named.filter((x) => soundsLike(pet, x.name))).map((x) => x.r);
       if (matches.length > 1) return { status: 'ambiguous' } as const;
       const match = matches[0];
       if (!match) return { status: 'not_found' } as const;
-      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified', entity: 'patient', entityId: match.id });
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified.by_number', entity: 'patient', entityId: match.id, callId: callId ?? null });
       return { status: 'found', patient: this.callPatient(clinicId, match) } as const;
     });
   }
@@ -90,34 +93,51 @@ export class PostgresPatientDirectory implements PatientDirectory {
    */
   async nameOnFile(clinicId: string, phone: string, callId: string): Promise<string | null> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
-      const rows = await tx.select({ first: patients.firstNameEnc, guardian: patients.guardianNameEnc }).from(patients)
-        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).limit(20);
-      if (!rows.length) return null;
-      const names = new Map(rows.map((r) => {
-        const n = (r.guardian ? this.cipher.decrypt(r.guardian, ctx('guardian_name')) : this.cipher.decrypt(r.first, ctx('first_name'))).trim().split(/\s+/)[0] ?? '';
-        return [n.toLowerCase(), n] as const;
-      }).filter(([k]) => k));
-      if (names.size !== 1) return null;
+      const owner = await this.owner(tx, clinicId, phone);
+      if (!owner) return null;
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.name_on_file.read', entity: 'call', entityId: callId, callId });
-      return [...names.values()][0]!;
+      return owner;
     });
   }
 
   /**
-   * The first names of one owner's pets on this number, so an owner caller ID knows can pick one
-   * ("Is this for Biscuit or Max?"). Only the pets whose owner on file matches the name given: on a
-   * family number, another owner's pets are never named. At most three, with `more` for the rest;
-   * a first name only, never a record. Reading them is audited; finding none is not.
+   * The owner of a number: the first name on the first record registered with it (its guardian, or
+   * the patient at a clinic for people). One number is one household with one owner, so a name said
+   * on a later call never changes it.
    */
-  async petsOnNumber(clinicId: string, phone: string, ownerName: string, callId: string): Promise<{ names: string[]; more: boolean }> {
+  private async owner(tx: Tx, clinicId: string, phone: string): Promise<string | null> {
+    const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+    const [first] = await tx.select({ first: patients.firstNameEnc, guardian: patients.guardianNameEnc }).from(patients)
+      .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(1);
+    if (!first) return null;
+    const name = (first.guardian ? this.cipher.decrypt(first.guardian, ctx('guardian_name')) : this.cipher.decrypt(first.first, ctx('first_name'))).trim().split(/\s+/)[0] ?? '';
+    return name || null;
+  }
+
+  /** The number's owner, as written on its first record, and the first names of its pets in the order they were registered, for the dashboard's pet form. Audited by how many were read, never by the number. */
+  async household(clinicId: string, phone: string): Promise<{ owner: string | null; pets: string[] }> {
     return withClinic(this.db, clinicId, async (tx) => {
       const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
-      const rows = await tx.select({ first: patients.firstNameEnc, guardian: patients.guardianNameEnc }).from(patients)
+      const owner = await this.ownerOnFile(tx, clinicId, phone);
+      const rows = await tx.select({ first: patients.firstNameEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(20);
+      if (rows.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.household.read', entity: 'household', entityId: String(rows.length) });
+      return { owner, pets: rows.map((r) => this.cipher.decrypt(r.first, ctx('first_name')).trim().split(/\s+/)[0] ?? '').filter(Boolean) };
+    });
+  }
+
+  /**
+   * The first names of the pets on this number, the household, so a caller the number knows can pick
+   * one ("Is this for Biscuit or Max?"). At most three, with `more` for the rest; a first name only,
+   * never a record. Reading them is audited; finding none is not.
+   */
+  async petsOnNumber(clinicId: string, phone: string, callId: string): Promise<{ names: string[]; more: boolean }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select({ first: patients.firstNameEnc }).from(patients)
         .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(20);
       const names = new Map<string, string>();
       for (const r of rows) {
-        if (!r.guardian || !ownerMatches(ownerName, this.cipher.decrypt(r.guardian, ctx('guardian_name')))) continue;
         const n = this.cipher.decrypt(r.first, ctx('first_name')).trim().split(/\s+/)[0] ?? '';
         if (n && !names.has(n.toLowerCase())) names.set(n.toLowerCase(), n);
       }
@@ -151,8 +171,10 @@ export class PostgresPatientDirectory implements PatientDirectory {
       if ((added?.n ?? 0) >= MAX_NEW_PATIENTS_PER_PHONE_PER_DAY) return { status: 'limited' } as const;
       const full = `${p.firstName} ${p.lastName}`;
       const similar = (await this.candidates(tx, clinicId, full, p.dob)).some((r) => namesMatch(full, this.fullName(clinicId, r)));
+      // one number, one owner: a pet added under a number that has one joins that owner, whatever name was said now
+      const owner = p.guardianName !== null ? await this.ownerOnFile(tx, clinicId, p.phone) : null;
       const [row] = await tx.insert(patients).values({
-        clinicId, ...sealPatient(this.cipher, clinicId, { ...p, guardianName: p.guardianName }), status: 'new', createdByCallId: p.callId,
+        clinicId, ...sealPatient(this.cipher, clinicId, { ...p, guardianName: owner ?? p.guardianName }), status: 'new', createdByCallId: p.callId,
       }).returning();
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id, callId: p.callId });
       return { status: 'created', patient: this.callPatient(clinicId, row!), similar } as const;
@@ -168,6 +190,14 @@ export class PostgresPatientDirectory implements PatientDirectory {
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.created', entity: 'patient', entityId: row!.id });
       return row!.id;
     });
+  }
+
+  /** The guardian name on the first record registered with the number, as written there, or null when the number is new. */
+  private async ownerOnFile(tx: Tx, clinicId: string, phone: string): Promise<string | null> {
+    const [first] = await tx.select({ guardian: patients.guardianNameEnc }).from(patients)
+      .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(1);
+    const name = first?.guardian ? this.cipher.decrypt(first.guardian, phiContext(clinicId, 'patients.guardian_name')).trim() : '';
+    return name || null;
   }
 
   private candidates(tx: Tx, clinicId: string, fullName: string, dob: string) {
@@ -190,6 +220,7 @@ export class PostgresPatientDirectory implements PatientDirectory {
       isNew: r.status === 'new',
       gender: readGenderColumn(this.cipher, clinicId, r.genderEnc),
       species: r.speciesEnc ? this.cipher.decrypt(r.speciesEnc, ctx('species')) : null,
+      guardianName: r.guardianNameEnc ? this.cipher.decrypt(r.guardianNameEnc, ctx('guardian_name')) : null,
       textsOk: !!r.smsConsentAt,
     };
   }
@@ -277,4 +308,43 @@ export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Pro
     });
   }
   return { checked, changed, withoutPhone, duplicates };
+}
+
+/**
+ * One number, one owner: every pet on a number is put under the owner of its first-registered record, the name as
+ * written there (the rule from 2026-11; records made before it could carry a second owner's name on a family number).
+ * Counts only, never a name: how many numbers had more than one owner name, and how many pets were moved. With
+ * `apply` false nothing is written. Safe to run more than once.
+ */
+export async function unifyHouseholds(db: Database, cipher: PhiCipher, opts: { apply: boolean }): Promise<{ clinics: number; numbers: number; pets: number }> {
+  const ids = (await db.select({ id: clinics.id }).from(clinics)).map((c) => c.id);
+  let numbers = 0;
+  let pets = 0;
+  for (const clinicId of ids) {
+    const ctx = phiContext(clinicId, 'patients.guardian_name');
+    const moved = await withClinic(db, clinicId, async (tx) => {
+      const rows = await tx.select({ id: patients.id, phoneHash: patients.phoneHash, guardian: patients.guardianNameEnc, createdAt: patients.createdAt }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), isNotNull(patients.phoneHash), isNotNull(patients.guardianNameEnc))).orderBy(patients.createdAt);
+      const byNumber = new Map<string, typeof rows>();
+      for (const r of rows) byNumber.set(r.phoneHash!, [...(byNumber.get(r.phoneHash!) ?? []), r]);
+      let touched = 0;
+      let changed = 0;
+      for (const group of byNumber.values()) {
+        const owner = cipher.decrypt(group[0]!.guardian!, ctx);
+        const others = group.slice(1).filter((r) => normalizeName(cipher.decrypt(r.guardian!, ctx)) !== normalizeName(owner));
+        if (!others.length) continue;
+        touched++;
+        changed += others.length;
+        if (!opts.apply) continue;
+        for (const r of others) {
+          await tx.update(patients).set({ guardianNameEnc: cipher.encrypt(owner, ctx) }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
+          await tx.insert(auditLogs).values({ clinicId, actor: 'system', action: 'patient.owner.unified', entity: 'patient', entityId: r.id });
+        }
+      }
+      return { touched, changed };
+    });
+    numbers += moved.touched;
+    pets += moved.changed;
+  }
+  return { clinics: ids.length, numbers, pets };
 }

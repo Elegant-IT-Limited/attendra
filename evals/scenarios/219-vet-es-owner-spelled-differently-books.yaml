@@ -1,0 +1,36 @@
+id: vet-es-owner-spelled-differently-books
+title: "Spanish: the owner's name arrives spelled differently (\"Lin\" for Linh); the number is the household, so her pets are offered and the booking goes through"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, language, es]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado, y el reconocimiento de voz escribe tu nombre como Lin. Tu gata Mochi necesita un chequeo. Cualquier veterinario y cualquier hora te sirven. Di sí a la confirmación."
+turns:
+  - caller: Hola, quiero reservar un chequeo, por favor.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí, soy Lin.
+    reply: "Gracias. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Lin, pet_name: null }
+  - caller: Para Mochi.
+    reply: "Para un chequeo general de Mochi tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Lin, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]
+forbid_spoken: ["no coinciden", "no encontré"]

@@ -118,7 +118,7 @@ export default function Knowledge() {
             {docs.isPending ? <div className="space-y-3 p-5"><Skeleton className="h-8" /><Skeleton className="h-8" /></div>
               : docs.isError ? <Alert tone="danger" className="m-5">The documents did not load.</Alert>
                 : !docs.data.documents.length ? <Empty title="No documents yet" icon={<FileText />}>The assistant answers clinic questions from the FAQ until you add documents.</Empty> : (
-                  <Table>
+                  <Table label="Documents">
                     <THead><tr><TH>Title</TH><TH>Status</TH><TH className="text-right">Chunks</TH><TH className="hidden md:table-cell">Added</TH>{writable && <TH><span className="sr-only">Delete</span></TH>}</tr></THead>
                     <tbody>
                       {docs.data.documents.map((d) => (

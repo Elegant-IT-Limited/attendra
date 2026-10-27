@@ -116,6 +116,8 @@ export class CallState {
   /** After a booking, the question about reminder texts: asked once, answered once. */
   reminderOffer: { patientId: string; offeredAtMs: number; askedAtMs: number | null } | null = null;
   remindersAsked = false;
+  /** When the caller last heard "still checking" on this call (wall clock), so a wait soon after does not say it again. */
+  heldAtMs: number | null = null;
   /** How many times the assistant had to be told to answer a caller left waiting in silence. */
   silenceNudges = 0;
   /** Caller turns with insults or threats in them, and the last such turn (each counts once). */

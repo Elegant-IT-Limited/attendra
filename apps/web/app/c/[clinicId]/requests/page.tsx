@@ -19,7 +19,7 @@ import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, phone, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, personName, phone, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -133,7 +133,7 @@ function Requests() {
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
       else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
-      else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate'}.` });
+      else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${personName(team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate')}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
       else toast({ tone: 'success', message: 'Released. It is back in the queue.' });
@@ -294,7 +294,7 @@ const nameOf = (t: Task, patientWord: string) => t.patientName ?? t.details.pet_
   || t.details.name || (t.callId ? 'Caller not verified' : `No ${patientWord} linked`));
 
 /** Who wrote a request down: "Added by Ana Front"; one from a call says so. */
-const madeBy = (t: Task) => (t.callId ? 'From a call' : t.createdBy ? `Added by ${t.createdBy.name ?? 'a former team member'}` : 'Added by the team');
+const madeBy = (t: Task) => (t.callId ? 'From a call' : t.createdBy ? `Added by ${t.createdBy.name === null ? 'a former team member' : personName(t.createdBy.name)}` : 'Added by the team');
 
 /** What a request needs, in one line, and the detail that goes with it: the most important things, without opening it. */
 function needOf(t: Task, patientWord: string): { main: string; sub: string } {
@@ -355,7 +355,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
         {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
         {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue' : 'Due'} {t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
         {!open ? <Badge tone="ok">{t.outcome ? TASK_OUTCOMES[t.outcome] : 'Done'}</Badge>
-          : t.assigneeUserId ? <Badge tone="accent"><Hand /> {t.assigneeUserId === meId ? 'You have it' : `${t.assigneeName ?? 'Someone'} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
+          : t.assigneeUserId ? <Badge tone="accent"><Hand /> {t.assigneeUserId === meId ? 'You have it' : `${t.assigneeName === null ? 'Someone' : personName(t.assigneeName)} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
       </span>
       <span className="col-span-2 col-start-2 min-w-0 md:order-3 md:col-span-1 md:col-start-auto">
         <span className="block truncate">{need.main}</span>
@@ -395,14 +395,14 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
               : <p className="truncate font-medium">{nameOf(t, patientWord)}</p>}
-            <p className="text-xs text-text-muted">{taskType(t.type, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
+            <p className="text-xs text-text-muted">{taskType(t.type, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName === null ? '' : ` by ${personName(t.doneByName)}`}`}</p>
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
           {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
           {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue, due ' : 'Due '}{t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
           {!open ? <Badge tone="ok">Done</Badge>
-            : t.assigneeUserId ? <Badge tone="accent"><Hand /> {mine ? 'You have it' : `${t.assigneeName ?? 'Someone'} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
+            : t.assigneeUserId ? <Badge tone="accent"><Hand /> {mine ? 'You have it' : `${t.assigneeName === null ? 'Someone' : personName(t.assigneeName)} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
         </div>
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
@@ -444,7 +444,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
               <Avatar name={n.author ?? '?'} src={n.authorAvatarUrl} size="sm" />
               <div className="min-w-0">
                 <p className="whitespace-pre-wrap">{n.body}</p>
-                <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former team member'}, {clinicTime(n.at, tz)}</p>
+                <p className="mt-1 text-xs text-text-muted">{n.author === null ? 'A former team member' : personName(n.author)}, {clinicTime(n.at, tz)}</p>
               </div>
             </div>
           ))}
@@ -483,9 +483,9 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
                   <Select id={`assign-${t.id}`} className="mr-auto h-8 w-44" title="Assign to" value={t.assigneeUserId ?? ''} disabled={busy}
                     onChange={(e) => { const to = e.target.value; if (to === (t.assigneeUserId ?? '')) return; if (to) onAct('assign', { userId: to }); else onAct('release'); }}>
                     <option value="">Unassigned</option>
-                    {teammates.map((m) => <option key={m.userId} value={m.userId}>{m.name}{m.you ? ' (you)' : ''}{m.userId === t.assigneeUserId ? ', has it' : ''}</option>)}
+                    {teammates.map((m) => <option key={m.userId} value={m.userId}>{personName(m.name)}{m.you ? ' (you)' : ''}{m.userId === t.assigneeUserId ? ', has it' : ''}</option>)}
                     {/* someone no longer on the list (removed, or now a viewer) still shows as who has it */}
-                    {t.assigneeUserId && !teammates.some((m) => m.userId === t.assigneeUserId) && <option value={t.assigneeUserId}>{t.assigneeName ?? 'Someone'}, has it</option>}
+                    {t.assigneeUserId && !teammates.some((m) => m.userId === t.assigneeUserId) && <option value={t.assigneeUserId}>{t.assigneeName === null ? 'Someone' : personName(t.assigneeName)}, has it</option>}
                   </Select>
                 </>
               )}

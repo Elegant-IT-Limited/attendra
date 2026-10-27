@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, DEFAULT_SPECIES, type Gender, type ListName, managedList, onList, Provider } from './clinic';
+import { type ClinicConfig, DEFAULT_SPECIES, type Gender, type ListName, MANAGED_LIST_MAX, managedList, onList, Provider } from './clinic';
 import { parseDob, phoneDigits } from './identity';
 import { ageOn } from './providers';
 
@@ -97,7 +97,7 @@ export function patientTemplate(): string {
   ]);
 }
 
-export type RowResult<T> = { line: number; name: string; ok: true; value: T; existingId?: string; /** What the row adds to the clinic's lists. */ note?: string } | { line: number; name: string; ok: false; message: string };
+export type RowResult<T> = { line: number; name: string; ok: true; value: T; existingId?: string; /** What the row adds to the clinic's lists, as the check before the import says it. */ note?: string; /** The values themselves, for the import to say which found no room. */ adds?: string[] } | { line: number; name: string; ok: false; message: string };
 
 const split = (v: string) => v.split(';').map((x) => x.trim()).filter(Boolean);
 const yes = (v: string) => (v === '' ? true : /^(y|yes|true|1)$/i.test(v) ? true : /^(n|no|false|0)$/i.test(v) ? false : null);
@@ -185,26 +185,53 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       timeOff: keep(r.get('time_off'), timeOff, existing?.timeOff) ?? [],
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => `${i.path.join('.') || 'row'}: ${i.message}`).join('; '));
-    return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}), ...(adds.length ? { note: listNote(adds) } : {}) };
+    return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}), ...(adds.length ? { note: listNote(adds), adds } : {}) };
   });
 }
 
 /** What an import row adds to the clinic's lists, as the check before the import says it. */
 const listNote = (adds: string[]) => `adds ${adds.map((v) => `"${v}"`).join(', ')} to your lists`;
+/** What an import row brings that the clinic's list has no room for, as its row says it. */
+const listFullNote = (over: string[]) => `${over.map((v) => `"${v}"`).join(', ')} not added to your list: it already has ${MANAGED_LIST_MAX} values; remove one in Settings, Fields and lists`;
 
 /**
- * The clinic's list with the values an import brings that are not on it yet, at its end. A list
- * the clinic has not kept yet follows the doctors' records, so it needs nothing (species start
- * from the usual kinds of animal, so theirs is kept from then on).
+ * What an import row says about the clinic's lists once it is imported: what it added, and
+ * what found no room (`over`, from leftOffList). Null when it brought nothing new.
  */
-export function withListValues<C extends Pick<ClinicConfig, 'lists' | 'providers'>>(c: C, name: ListName, values: string[]): C {
-  if (!c.lists?.[name] && name !== 'species') return c;
-  const list = managedList(c, name);
+export function listRowNote(adds: readonly string[] | undefined, over: readonly string[]): string | null {
+  const added = (adds ?? []).filter((v) => !onList(over, v));
+  const left = (adds ?? []).filter((v) => onList(over, v));
+  return [added.length ? listNote(added) : null, left.length ? listFullNote(left) : null].filter(Boolean).join('; ') || null;
+}
+
+/**
+ * The values an import brings sorted into the ones that join the clinic's list and the ones it has
+ * no room for: a list holds at most MANAGED_LIST_MAX values, so the new ones join it in file order
+ * until it is full. A list the clinic has not kept yet follows the doctors' records, so it takes
+ * nothing (species start from the usual kinds of animal, so theirs is kept from then on).
+ */
+function splitForList(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListName, values: string[]): { added: string[]; over: string[] } {
   const added: string[] = [];
+  const over: string[] = [];
+  if (!c.lists?.[name] && name !== 'species') return { added, over };
+  const list = managedList(c, name);
   for (const v of values.map((x) => x.trim()).filter(Boolean)) {
-    if (!onList(list, v) && !onList(added, v)) added.push(name === 'species' ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+    if (onList(list, v) || onList(added, v) || onList(over, v)) continue;
+    if (list.length + added.length < MANAGED_LIST_MAX) added.push(name === 'species' ? v.charAt(0).toUpperCase() + v.slice(1) : v);
+    else over.push(v);
   }
-  return added.length ? { ...c, lists: { ...c.lists, [name]: [...list, ...added] } } : c;
+  return { added, over };
+}
+
+/** The clinic's list with the values an import brings that are not on it yet, at its end, while it has room. */
+export function withListValues<C extends Pick<ClinicConfig, 'lists' | 'providers'>>(c: C, name: ListName, values: string[]): C {
+  const { added } = splitForList(c, name, values);
+  return added.length ? { ...c, lists: { ...c.lists, [name]: [...managedList(c, name), ...added] } } : c;
+}
+
+/** The values an import brings that the clinic's list has no room for: withListValues leaves exactly these off. */
+export function leftOffList(c: Pick<ClinicConfig, 'lists' | 'providers'>, name: ListName, values: string[]): string[] {
+  return splitForList(c, name, values).over;
 }
 
 export interface PatientRow { firstName: string; lastName: string; dob: string; gender: Gender; phone: string; guardianName: string | null; /** They agreed to reminder texts (texts_ok). */ textsOk?: boolean }
@@ -253,7 +280,7 @@ export const PET_GUIDE = [
   'species: the kind of animal, like dog, cat or rabbit. One that is not on your list is added to it when you import.',
   'sex: female, male or unknown. Empty means unknown.',
   'birthday: YYYY-MM-DD, like 2021-05-14, or month/day/year. If only the age is known, use the same day that many years ago. Not after today.',
-  'owner_first_name and owner_last_name: leave the last name empty if the owner goes by one name. The assistant finds the pet by the owner\'s name, the pet\'s name and the phone. A file with one owner_name column still works.',
+  'owner_first_name and owner_last_name: leave the last name empty if the owner goes by one name. The assistant finds the pet by the phone number and the pet\'s name; the owner\'s name is how it greets them. A file with one owner_name column still works.',
   'owner_phone: with the area code. One owner\'s pets share a number: each pet gets a row of its own.',
   'texts_ok (optional): yes when the owner agreed to reminder texts. Empty means no.',
   'A pet already on file with the same name, owner, birthday and phone is skipped, so the same file can be uploaded twice safely.',
@@ -302,7 +329,7 @@ export function readPets(text: string, today: string, northAmerica = true, speci
     if (seen.has(key)) return fail('this pet is in the file twice');
     seen.add(key);
     // a kind of animal not on the clinic's list joins it when the file is imported; the check before says so
-    const note = onList(speciesList, species) ? {} : { note: listNote([species]) };
+    const note = onList(speciesList, species) ? {} : { note: listNote([species]), adds: [species] };
     return { line: r.line, name, ok: true as const, value: { firstName: pet, lastName, dob, gender, phone, guardianName: owner, species, textsOk: agreed(r.get('texts_ok')) }, ...note };
   });
 }

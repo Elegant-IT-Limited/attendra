@@ -1,5 +1,5 @@
 id: vet-no-caller-id-asks-which-pet
-title: "No caller ID (a browser test call): the owner gives her name, the assistant asks which pet and never names one from the records"
+title: "No caller ID (a browser test call): the owner gives her name, is asked for the number on file, and the pets on that number are offered to pick from"
 clinic: riverbend
 local_time: "10:00"
 tags: [no-demo, pets-on-number]
@@ -8,14 +8,14 @@ channel: web
 facts: "This is a test call from the browser, so there is no caller ID. You are Linh Nguyen. Your dog Biscuit needs a check-up. The phone number on his file is 720 555 0172."
 turns:
   - caller: Hi, this is Linh Nguyen. I'd like to book a check-up.
-    reply: "Thanks, Linh. Which pet is the check-up for?"
+    reply: "Thanks, Linh. What's the best number to reach you?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
-  - caller: For Biscuit.
-    reply: "What's the phone number on Biscuit's file?"
-    delegate:
-      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null }
   - caller: It's 720 555 0172.
+    reply: "Thanks. Is this for Biscuit or Mochi, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
+  - caller: For Biscuit.
     reply: "Thanks, I've found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: "720 555 0172" }
@@ -23,6 +23,5 @@ turns:
 expect:
   outcome: abandoned
   verified: true
-  refusals: [pet_name, phone_required]
-  never_returned: ["Mochi", "pets_on_number"]
-forbid_spoken: ["Mochi", "Biscuit or", "Is this for"]
+  refusals: [phone_required]
+  returned: ["Is this for Biscuit or Mochi, or a new pet?"]

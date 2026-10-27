@@ -2,6 +2,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { ScrollRegion } from '@/components/ui/scroll-region';
 import { useClinic } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +22,7 @@ export function SettingsNav({ clinicId }: { clinicId: string }) {
   const base = `/c/${clinicId}/settings`;
   return (
     // one line on a phone too: it scrolls sideways instead of wrapping
-    <div className="mb-6 overflow-x-auto">
+    <ScrollRegion label="Settings pages" className="mb-6">
       <nav aria-label="Settings" className="flex w-max min-w-full gap-1 border-b border-border">
         {SETTINGS_PAGES.filter((p) => !p.permission || can(p.permission)).map((p) => {
           const href = `${base}${p.href}`;
@@ -34,6 +35,6 @@ export function SettingsNav({ clinicId }: { clinicId: string }) {
           );
         })}
       </nav>
-    </div>
+    </ScrollRegion>
   );
 }

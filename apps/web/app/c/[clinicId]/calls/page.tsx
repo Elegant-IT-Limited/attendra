@@ -143,7 +143,7 @@ function Calls() {
         ) : shown.length === 0 ? (
           <Empty title="No calls here">{searching ? 'No verified caller by that name. Calls where nobody was verified cannot be found by name.' : filter === 'all' && !filtered ? 'Calls appear as soon as the assistant answers one.' : 'Nothing matches these filters.'}</Empty>
         ) : (
-          <Table>
+          <Table label="Calls">
             <THead><tr><TH>When</TH><TH>Outcome</TH><TH>Caller</TH><TH className="hidden md:table-cell">What the assistant did</TH><TH className="text-right">Length</TH></tr></THead>
             <tbody>
               {shown.map((c) => (

@@ -97,7 +97,7 @@ export default function QualityPage() {
 
           <Card>
             <CardHeader><CardTitle>Week by week</CardTitle></CardHeader>
-            <Table density="compact">
+            <Table density="compact" label="Week by week">
               <THead><tr><TH>Week of</TH><TH className="text-right">Calls</TH>{METRICS.map((m) => <TH key={m.key} className="text-right" title={m.explain}>{m.label}</TH>)}</tr></THead>
               <tbody>
                 {weeks.map((w) => (

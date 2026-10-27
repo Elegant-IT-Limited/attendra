@@ -248,4 +248,33 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/plan`, { body: { plan: null }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null, textsUsed: null });
   });
+
+  it('gives the hosting layer a location at a glance, and renames one: the dashboard and the business on /me follow (2026-11)', async () => {
+    const opened = (await api.request('POST', `${P}/accounts`, { body: { ...account, organization: { name: 'Cedar Row Vets' }, clinic: { ...account.clinic, name: 'Cedar Row Vets', phone: '+13125550107' }, owner: { name: 'Rowan Cedar', email: 'rowan@cedarrow.example', password: 'a-long-password-1' } }, authorization: auth, origin: null })).json();
+    const location = (await api.request('POST', `${P}/organizations/${opened.organizationId}/clinics`, { body: { clinic: { name: 'Cedar Row Downtown', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550108' } }, authorization: auth })).json();
+    // at a glance: counts only, the number, the city from the address
+    expect((await api.request('GET', `${P}/clinics/${location.clinicId}/overview`)).statusCode).toBe(401);
+    expect((await api.request('GET', `${P}/clinics/clinic_none/overview`, { authorization: auth })).statusCode).toBe(404);
+    const glance = await api.request('GET', `${P}/clinics/${location.clinicId}/overview`, { authorization: auth });
+    expect(glance.statusCode).toBe(200);
+    expect(glance.json()).toEqual({ name: 'Cedar Row Downtown', phoneNumber: '+13125550108', city: null, callsToday: 0, openRequests: 0 });
+    // the rename: under the field when it is too short, 204 and everywhere otherwise
+    const short = await api.request('PUT', `${P}/clinics/${location.clinicId}/name`, { body: { name: 'C' }, authorization: auth });
+    expect(short.statusCode).toBe(422);
+    expect(short.json().issues[0]).toMatchObject({ path: 'name' });
+    expect((await api.request('PUT', `${P}/clinics/${location.clinicId}/name`, { body: { name: 'Downtown' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/name`, { body: { name: 'Downtown' }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.request('GET', `${P}/clinics/${location.clinicId}/overview`, { authorization: auth })).json().name).toBe('Downtown');
+    expect((await api.request('POST', `${P}/email-confirmations`, { body: { email: 'rowan@cedarrow.example' }, authorization: auth })).statusCode).toBe(204);
+    const ok = await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'rowan@cedarrow.example', password: 'a-long-password-1' } });
+    const cookie = ([] as string[]).concat(ok.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]).join('; ');
+    const me = (await api.request('GET', '/api/v1/me', { cookie })).json();
+    expect(me.clinics).toEqual([
+      expect.objectContaining({ name: 'Cedar Row Vets', organizationId: opened.organizationId, organizationName: 'Cedar Row Vets' }),
+      expect.objectContaining({ id: location.clinicId, name: 'Downtown', organizationId: opened.organizationId, organizationName: 'Cedar Row Vets' }),
+    ]);
+    expect((await api.request('GET', `/api/v1/clinics/${location.clinicId}/settings`, { cookie })).json().name).toBe('Downtown');
+    const audit = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${location.clinicId} and action = 'clinic.renamed'`)).rows;
+    expect(audit).toEqual([{ n: 1 }]);
+  });
 });

@@ -30,7 +30,7 @@ export class MeController {
     const clinics = await clinicsForUser(this.db, staff.userId);
     const avatarAt = (await avatarStamps(this.db, [staff.userId])).get(staff.userId);
     return {
-      user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword, avatarUrl: avatarUrl(staff.userId, avatarAt) },
+      user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword, avatarUrl: avatarUrl(staff.userId, avatarAt), nameMissing: !staff.name.trim() },
       demoMode: this.options.demoMode,
       twoFactorRequired: !this.options.demoMode && this.options.twoFactor !== 'optional',
       idleMinutes: this.options.idleMinutes ?? 15,
@@ -38,6 +38,7 @@ export class MeController {
       simulatedCalls: !!this.voice?.simulatedCalls,
       clinics: clinics.map((c) => ({
         id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role), approvesRefills: c.approvesRefills,
+        organizationId: c.orgId, organizationName: c.orgName,
         accountLinks: c.role === 'owner' ? (this.options.accountLinks ?? []).map((l) => ({ label: l.label, href: l.href.replaceAll('{clinicId}', encodeURIComponent(c.clinicId)) })) : [],
       })),
     };

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { LanguagePack } from './types';
+import { daysAhead, type LanguagePack } from './types';
 
-const when = (start: Date, timeZone: string) => {
-  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(start);
+const when = (start: Date, timeZone: string, now?: Date) => {
   const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start);
+  const soon = now ? daysAhead(start, timeZone, now) : null;
+  // the same day is "today", the next "tomorrow", the rest of the week its day; after that the date too
+  if (soon === 0) return `today at ${time}`;
+  if (soon === 1) return `tomorrow at ${time}`;
+  const day = new Intl.DateTimeFormat('en-US', soon !== null && soon > 1 && soon < 7 ? { timeZone, weekday: 'long' } : { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(start);
   return `${day} at ${time}`;
 };
 
@@ -81,6 +85,13 @@ export const en: LanguagePack = {
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
+    noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
+    lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day} for you.`
+      : kind === 'times' ? 'One moment, I\'ll look at the times.'
+      : kind === 'pet' && pet ? `Let me find ${pet}.`
+      : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
+      : 'Let me look that up.',
+    dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'today' : daysFromToday === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]!),
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +

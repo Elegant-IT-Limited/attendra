@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { ageOn, countryCopy, DEFAULT_SPECIES, type Gender, industryPack, localDateOf, managedList } from '@attendra/core';
-import type { PatientInput, PatientSaved } from '@attendra/api/contracts';
+import type { Household, PatientInput, PatientSaved } from '@attendra/api/contracts';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
 import { Checkbox } from '@/components/ui/controls';
@@ -41,7 +41,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   const [owner, setOwner] = useState(() => ownerParts(initial?.guardianName ?? '', initial?.lastName ?? ''));
   // what is wrong with one field, said under it
   const [errors, setErrors] = useState<Partial<Record<'firstName' | 'lastName' | 'dob' | 'gender' | 'phone' | 'guardianName' | 'species', string>>>({});
-  // a vet clinic's records are pets: found on a call by the owner's name, the pet's name and the phone
+  // a vet clinic's records are pets: found on a call by the phone number (the household) and the pet's name
   const pet = industryPack(config.data?.industry).identity === 'pet';
   // the kind of animal is picked from the clinic's list; owners and managers can add to it from here
   const addSpecies = useAddToList(clinicId, 'species');
@@ -99,6 +99,30 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
     return patientId && now === (initial?.species?.trim().toLowerCase() || null) ? undefined : now;
   };
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => { setForm({ ...form, [k]: e.target.value }); setErrors((x) => ({ ...x, [k]: undefined })); };
+  // one number, one owner: a pet added under a number the clinic knows joins its owner, so the owner's name comes from
+  // the number as it is typed (a new pet's, not an edit's), and the pets already on it are shown
+  const [household, setHousehold] = useState<Household | null>(null);
+  const digits = form.phone.replace(/\D/g, '');
+  useEffect(() => {
+    if (!pet || patientId || digits.length < 10) { setHousehold(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      api<Household>(`/clinics/${clinicId}/patients/household`, { method: 'POST', body: JSON.stringify({ phone: form.phone.trim() }) })
+        .then((h) => { if (live) setHousehold(h.owner ? h : null); })
+        .catch(() => { if (live) setHousehold(null); });
+    }, 400);
+    return () => { live = false; clearTimeout(t); };
+  // the number's digits are what changes the lookup
+  }, [digits, pet, patientId, clinicId, form.phone]);
+  useEffect(() => {
+    if (household?.owner) {
+      // the number's owner as written on its first record: the first word is the first name, the rest the last
+      const [first = '', ...rest] = household.owner.trim().split(/\s+/);
+      setOwner({ first, last: rest.join(' ') });
+      setErrors((x) => ({ ...x, guardianName: undefined, lastName: undefined }));
+    }
+  }, [household]);
+  const ownerFromNumber = !!household?.owner;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     // checked here, so each problem shows under its own field before anything is sent
@@ -152,20 +176,21 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="owner-first">Owner&apos;s first name</Label>
-            <Input id="owner-first" required maxLength={60} autoComplete="off" value={owner.first} {...err('guardianName')}
+            <Input id="owner-first" required maxLength={60} autoComplete="off" value={owner.first} readOnly={ownerFromNumber} aria-describedby={ownerFromNumber ? 'owner-from-number' : undefined} {...err('guardianName')}
               onChange={(e) => { setOwner({ ...owner, first: e.target.value }); setErrors((x) => ({ ...x, guardianName: undefined })); }} />
             {problem('guardianName')}
+            {ownerFromNumber && <p id="owner-from-number" data-testid="owner-from-number" className="text-xs text-text-muted">This number is {household!.owner}&apos;s: the pet joins them. Already on it: {household!.pets.join(', ')}.</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="owner-last">Owner&apos;s last name <span className="font-normal text-text-muted">(optional)</span></Label>
-            <Input id="owner-last" maxLength={60} autoComplete="off" value={owner.last} aria-describedby={errors.lastName ? 'lastName-error' : 'owner-last-hint'} aria-invalid={errors.lastName ? true : undefined}
+            <Input id="owner-last" maxLength={60} autoComplete="off" value={owner.last} readOnly={ownerFromNumber} aria-describedby={errors.lastName ? 'lastName-error' : 'owner-last-hint'} aria-invalid={errors.lastName ? true : undefined}
               onChange={(e) => { setOwner({ ...owner, last: e.target.value }); setErrors((x) => ({ ...x, lastName: undefined })); }} />
             {errors.lastName ? problem('lastName') : <p id="owner-last-hint" className="text-xs text-text-muted">Leave empty if they go by one name.</p>}
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="phone">Owner&apos;s phone</Label>
             <Input id="phone" type="tel" required minLength={10} autoComplete="off" value={form.phone} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} {...err('phone')} />
-            {errors.phone ? problem('phone') : <p className="text-xs text-text-muted">With the area code. The assistant finds the pet by this number, the owner&apos;s name and the pet&apos;s name.</p>}
+            {errors.phone ? problem('phone') : <p className="text-xs text-text-muted">With the area code. The number is the household: the assistant finds the pet by this number and the pet&apos;s name, and texts it after every booking.</p>}
           </div>
         </fieldset>
       ) : (

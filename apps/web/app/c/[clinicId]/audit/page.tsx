@@ -11,7 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, zoneLabel } from '@/lib/format';
+import { clinicTime, dayTitle, personName, zoneLabel } from '@/lib/format';
 
 const ACTIONS: Record<string, string> = {
   'call.transcript.viewed': 'Read a call transcript',
@@ -166,7 +166,8 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
   if (a.startsWith('user:')) {
     const id = a.slice(5);
     if (id === meId) return <span>You</span>;
-    return names.has(id) ? <span>{names.get(id)}</span> : <span>A former team member <span className="font-mono text-xs text-text-muted">{id.slice(0, 8)}</span></span>;
+    // someone no longer on the team: their name is gone with them, and an id fragment would say nothing to anyone
+    return <span>{names.get(id) ?? 'A former team member'}</span>;
   }
   return <span className="text-text-muted">{a}</span>;
 }
@@ -206,7 +207,7 @@ export default function Audit() {
   const { clinic, data: me, can, isPending: meLoading } = useClinic(clinicId);
   const allowed = can('audit:read');
   const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
-  const names = new Map((team.data?.members ?? []).map((m) => [m.userId, m.name]));
+  const names = new Map((team.data?.members ?? []).map((m) => [m.userId, personName(m.name)]));
   const config = useClinicConfig(clinicId);
   const providers = new Map((config.data?.providers ?? []).map((p) => [p.id, p.name]));
   const entries = useInfiniteQuery({
@@ -232,7 +233,7 @@ export default function Audit() {
           : entries.isError ? <Alert tone="danger" className="m-4">The audit log did not load. Refresh the page to try again.</Alert>
           : rows.length === 0 ? <Empty title="Nothing recorded yet">Views of patient data and every change appear here as they happen.</Empty>
             : (
-              <Table>
+              <Table label="Audit log">
                 <THead><tr><TH>When</TH><TH>Who</TH><TH>What</TH><TH className="hidden md:table-cell">Record</TH></tr></THead>
                 <tbody>
                   {rows.map((e) => (

@@ -4,7 +4,7 @@ import { memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
-import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, patients, smsMessages, taskNotes, tasks } from '../schema';
+import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, organizations, patients, smsMessages, taskNotes, tasks } from '../schema';
 import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
@@ -17,9 +17,9 @@ type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
  * withClinic for the clinic it returns.
  */
 export async function clinicsForUser(db: Database, userId: string) {
-  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, role: memberships.role, approvesRefills: memberships.approvesRefills })
-    .from(memberships).innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(memberships.userId, userId), isNull(clinics.closedAt))).orderBy(clinics.name);
+  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, orgName: organizations.name, role: memberships.role, approvesRefills: memberships.approvesRefills })
+    .from(memberships).innerJoin(clinics, eq(clinics.orgId, memberships.organizationId)).innerJoin(organizations, eq(organizations.id, clinics.orgId))
+    .where(and(eq(memberships.userId, userId), isNull(clinics.closedAt))).orderBy(organizations.name, clinics.name);
 }
 
 export async function staffRole(db: Database, userId: string, clinicId: string): Promise<StaffRole | null> {

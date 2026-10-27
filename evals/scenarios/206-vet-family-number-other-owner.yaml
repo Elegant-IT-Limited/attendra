@@ -1,5 +1,5 @@
 id: vet-family-number-other-owner
-title: "A family number with two owners: the second owner hears only her own pet's name, never the other owner's pets"
+title: "A family number: whoever calls from it is the household and hears every pet on the number to pick from; she picks her own"
 clinic: riverbend
 local_time: "10:00"
 tags: [no-demo, pets-on-number, family-number]
@@ -7,10 +7,10 @@ history: "Calls from this number in the last 30 days: 1."
 facts: "You are Grace Hale, calling from the family phone. Your cat is Juniper and she needs a check-up. Any vet and any time are fine."
 turns:
   - caller: Hi, it's Grace Hale. I'd like to book a check-up.
-    reply: "Thanks, Grace. Is this for Juniper, or a new pet?"
+    reply: "Thanks, Grace. Is this for Biscuit, Mochi or Juniper, or a new pet?"
     delegate:
       - verify_caller: { owner_name: Grace Hale, pet_name: null }
-  - caller: Yes, for Juniper.
+  - caller: For Juniper.
     reply: "I've found Juniper. For a wellness exam I can offer {offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { owner_name: Grace Hale, pet_name: Juniper }
@@ -18,6 +18,4 @@ turns:
 expect:
   outcome: abandoned
   verified: true
-  returned: ["Is this for Juniper, or a new pet?"]
-  never_returned: ["Biscuit", "Mochi", "Linh"]
-forbid_spoken: ["Biscuit", "Mochi", "Linh"]
+  returned: ["Is this for Biscuit, Mochi or Juniper, or a new pet?"]

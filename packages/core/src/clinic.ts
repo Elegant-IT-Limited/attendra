@@ -157,7 +157,9 @@ export const CustomField = z.object({
 });
 
 /** A list the clinic keeps in order: specialties, what vets see, kinds of animal. */
-export const ManagedList = z.array(z.string().trim().min(1).max(40)).max(60).refine((l) => new Set(l.map((x) => x.toLowerCase())).size === l.length, 'a value is listed twice');
+/** The most values a list holds; what an import brings past it is left off, and its row says so. */
+export const MANAGED_LIST_MAX = 60;
+export const ManagedList = z.array(z.string().trim().min(1).max(40)).max(MANAGED_LIST_MAX).refine((l) => new Set(l.map((x) => x.toLowerCase())).size === l.length, 'a value is listed twice');
 export const LIST_NAMES = ['specialties', 'categories', 'species'] as const;
 /** The kinds of animal a vet clinic starts with, until it keeps its own list. */
 export const DEFAULT_SPECIES = ['Dog', 'Cat', 'Rabbit', 'Bird', 'Guinea pig', 'Ferret', 'Reptile', 'Horse'] as const;

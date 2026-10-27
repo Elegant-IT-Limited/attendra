@@ -1,0 +1,25 @@
+id: vet-es-no-vet-for-the-animal
+title: "Spanish: the clinic's only vet sees dogs only; for a cat the assistant says so and offers a request for the team, in the backend's own words"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, settings, language, es]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+facts: "Llamas desde el número registrado y hablas español. Tu gata Mochi necesita un chequeo. Si la clínica no puede atender gatos, di que sí a una solicitud para el equipo."
+turns:
+  - caller: Hola, soy Linh. Mochi necesita un chequeo.
+    reply: "Dr. Elena Ruiz solo atiende dogs, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a Mochi?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Sí, por favor.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número. ¿Hay algo más en lo que le pueda ayudar?"
+    delegate:
+      - create_callback: { reason: "Agendar un chequeo para Mochi, una gata: ningún veterinario atiende gatos", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  language: es
+  refusals: [no_provider_for_animal]
+  spoken_contains: ["Dr. Elena Ruiz solo atiende", "¿Quiere que deje una solicitud para que el equipo agende a Mochi?"]

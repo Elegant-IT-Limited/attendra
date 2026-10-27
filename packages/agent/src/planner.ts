@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localDateOf, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -18,7 +18,17 @@ export interface Planner {
 }
 
 /** `callerNumber` is the number the call came from, when there is one. */
-export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null; history?: string | null }
+export interface PlannerInput {
+  clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null; history?: string | null;
+  /** The clock, for "today" and "Thursday" in what is said while a lookup runs. */
+  now?: Date;
+  /**
+   * Called once, the moment the first round starts a read tool, with a line for the voice to say right away ("Let me
+   * check Thursday for you."): what the backend is doing, never a result. Nothing for a write, so nothing is ever said as
+   * done before the backend confirms it. Given, the first round is streamed.
+   */
+  onLookup?: (line: string) => void;
+}
 export interface PlannerOutput { say: string | null; quiet?: string; timing?: PlannerTiming }
 /**
  * How long the model itself took for one request (all its rounds, tools apart), with which model and effort, and whether
@@ -29,6 +39,10 @@ export interface PlannerOutput { say: string | null; quiet?: string; timing?: Pl
  */
 export interface PlannerTiming {
   model: string; effort: ReasoningEffort | null; tier: ServiceTier | null; simple: boolean; rounds: number; modelMs: number;
+  /** From the request's start to the first thing the voice was told to say: the lookup line, else the answer. */
+  firstWordsMs: number;
+  /** A lookup line was said while the first round's tool ran. */
+  announced: boolean;
   /** A round failed on the main model and the request went on with the fallback model (`model` is then the fallback). */
   fallback: boolean;
   requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
@@ -91,7 +105,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
   return [
     `You are the backend for the phone assistant of ${clinic.name}. ${nowLine}`,
     'You receive the conversation so far and must handle the caller\'s latest request with the tools.',
-    `When the caller has said who they are, even only in part, and nobody is verified yet, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. ${clinic.industry === 'vet' ? 'At this veterinary clinic the owner\'s first name, the pet\'s name and the phone are enough: never ask for the owner\'s last name; when nothing is found, ask whether the pet is new.' : 'With only a first name, ask just for the last name, never for a "full name".'} Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong. Once they have said they are not new, never ask that again: say which detail did not match and ask for it once more.`,
+    `When the caller has said who they are, even only in part, and nobody is verified yet, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. ${clinic.industry === 'vet' ? 'At this veterinary clinic the phone number (caller ID, or the number they say) and the pet\'s name find the pet: the owner\'s name only greets them or adds a new pet, so never hold a pet back for it, and never ask for a last name; when no pet by that name is on the number, ask whether the pet is new.' : 'With only a first name, ask just for the last name, never for a "full name".'} Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong. Once they have said they are not new, never ask that again: say which detail did not match and ask for it once more.`,
     ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye. A caller who says they have to go, or says goodbye with nothing pending, gets a short goodbye and end_call: ask them nothing, not even "anything else".',
     'Once a change is committed it is done: do not look for times again, do not check it, and never say it was not completed. The state line lists what is done on this call.',
@@ -138,6 +152,38 @@ function languageLine(clinic: ClinicConfig): string {
   return `Write what the assistant says ${write}.${usted} Pass questions to get_clinic_info and search_knowledge in ${primary}, in a few words.`;
 }
 
+/** The tools whose start is worth a word to the caller: reads only. A write is never announced, so nothing is said as done before the backend confirms it. */
+const READ_TOOLS = new Set<string>(['find_slots', 'get_clinic_info', 'search_knowledge', 'list_appointments', 'visit_summary', 'verify_caller']);
+
+/**
+ * What the voice says the moment the backend starts a lookup, from the tool and its arguments: "Let me check Thursday for
+ * you.", "Let me find Mochi.", "Let me look that up." Null for anything that is not a read, or a read with nothing to name.
+ */
+export function lookupLine(name: string, args: unknown, input: Pick<PlannerInput, 'clinic' | 'now'>, state: CallState): string | null {
+  if (!READ_TOOLS.has(name)) return null;
+  const pack = PACKS[state.language];
+  const a = (args ?? {}) as Record<string, unknown>;
+  if (name === 'find_slots') {
+    const from = typeof a.from_date === 'string' ? a.from_date : null;
+    const now = input.now ?? new Date();
+    const today = localDateOf(now, input.clinic.timezone);
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from) && from >= today) {
+      const days = Math.round((Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10)) - Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10))) / 86_400_000);
+      return pack.spoken.lookingUp({ kind: 'times_on', day: pack.spoken.dayWord({ daysFromToday: days, weekday: weekdayOf(from) }) });
+    }
+    return pack.spoken.lookingUp({ kind: 'times' });
+  }
+  if (name === 'verify_caller') {
+    const pet = typeof a.pet_name === 'string' && a.pet_name.trim() && input.clinic.industry === 'vet' ? a.pet_name.trim() : null;
+    return pet ? pack.spoken.lookingUp({ kind: 'pet', pet }) : null;
+  }
+  if (name === 'list_appointments' || name === 'visit_summary') {
+    const pet = state.verifiedPatient?.firstName ?? null;
+    return pet ? pack.spoken.lookingUp({ kind: 'visits', pet }) : pack.spoken.lookingUp({ kind: 'info' });
+  }
+  return pack.spoken.lookingUp({ kind: 'info' });
+}
+
 /** The date and today's hours stay in the rules for the call; the clock time goes to the end of the request, where it changes nothing cached. */
 export function splitNow(nowLine: string): { date: string; time: string | null } {
   const m = /,\s*(\d{1,2}:\d{2}) clinic time\./.exec(nowLine);
@@ -169,17 +215,32 @@ export class ResponsesPlanner implements Planner {
   ) {}
 
   /** One round of the model, with or without streaming; the final response either way, and when the first visible token came. */
-  private async round(body: Omit<ResponseCreateParams, 'stream'>, asked: number): Promise<{ res: Response; firstTokenMs: number | null }> {
-    if (!this.measure.firstToken) {
+  private async round(body: Omit<ResponseCreateParams, 'stream'>, asked: number, onCall?: (name: string, args: unknown) => void): Promise<{ res: Response; firstTokenMs: number | null }> {
+    if (!this.measure.firstToken && !onCall) {
       return { res: await this.openai.responses.create(body, { timeout: this.limits.timeoutMs, maxRetries: 1 }), firstTokenMs: null };
     }
     const abort = new AbortController();
     const cap = setTimeout(() => abort.abort(), this.limits.timeoutMs);
     try {
       const stream = await this.openai.responses.create({ ...body, stream: true }, { timeout: this.limits.timeoutMs, maxRetries: 1, signal: abort.signal });
+      // a client that answers whole (a fake in the tests): the first tool call is still told, then the answer as it is
+      if (!(Symbol.asyncIterator in Object(stream))) {
+        const whole = stream as unknown as Response;
+        const first = whole.output?.find((o) => o.type === 'function_call');
+        if (onCall && first) onCall(first.name, safeJson(first.arguments));
+        return { res: whole, firstTokenMs: null };
+      }
       let firstTokenMs: number | null = null;
       let res: Response | null = null;
+      // the tool calls as they stream: the name comes first, the arguments when they are complete
+      const calls = new Map<string, string>();
+      let told = false;
       for await (const event of stream) {
+        if (onCall && event.type === 'response.output_item.added' && event.item.type === 'function_call') calls.set(event.item.id ?? event.item.call_id, event.item.name);
+        if (onCall && !told && event.type === 'response.function_call_arguments.done') {
+          const name = calls.get(event.item_id);
+          if (name) { told = true; onCall(name, safeJson(event.arguments)); }
+        }
         // the first thing the voice could use: words or a tool call, not the reasoning before them
         if (firstTokenMs === null && (event.type === 'response.output_text.delta' || event.type === 'response.function_call_arguments.delta'
           || (event.type === 'response.output_item.added' && event.item.type !== 'reasoning'))) firstTokenMs = Math.round(performance.now() - asked);
@@ -221,7 +282,7 @@ export class ResponsesPlanner implements Planner {
       ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
       : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
-    const known = stateLine(state, input.clinic);
+    const known = stateLine(state, input.clinic, input.now);
     // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
     // fixed notes (its records, its number), then the transcript, which only grows; the state line and the clock come last,
     // since they change every turn (the time was in the first line of the rules, which rewrote the whole prefix each minute)
@@ -237,11 +298,21 @@ export class ResponsesPlanner implements Planner {
     const faster = simple ? this.speed.simple : undefined;
     let model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
+    const planStart = performance.now();
     const timing: PlannerTiming = {
-      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, fallback: false, requests: [], toolMs: 0,
+      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, firstWordsMs: 0, announced: false, fallback: false, requests: [], toolMs: 0,
       prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
     };
-    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs) } });
+    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs), firstWordsMs: timing.announced ? timing.firstWordsMs : Math.round(performance.now() - planStart) } });
+    // the first round's first read tool: the voice says what the backend is doing, at once, in the caller's language
+    const announce = input.onLookup ? (name: string, args: unknown) => {
+      if (timing.announced) return;
+      const line = lookupLine(name, args, input, state);
+      if (!line) return;
+      timing.announced = true;
+      timing.firstWordsMs = Math.round(performance.now() - planStart);
+      input.onLookup!(line);
+    } : undefined;
 
     for (let round = 0; round < this.maxRounds; round++) {
       const asked = performance.now();
@@ -257,7 +328,7 @@ export class ResponsesPlanner implements Planner {
       });
       let answer: Awaited<ReturnType<ResponsesPlanner['round']>>;
       try {
-        answer = await this.round(body(), asked);
+        answer = await this.round(body(), asked, round === 0 ? announce : undefined);
       } catch (err) {
         // a round that timed out or errored is tried once more on the fallback model, and the request stays on it;
         // a second failure is the request's (the caller hears the apology and the callback offer, as before)
@@ -266,7 +337,7 @@ export class ResponsesPlanner implements Planner {
         model = fallback;
         timing.model = fallback;
         timing.fallback = true;
-        answer = await this.round(body(), asked);
+        answer = await this.round(body(), asked, round === 0 ? announce : undefined);
       }
       const { res, firstTokenMs } = answer;
       timing.rounds++;
@@ -328,7 +399,7 @@ export function emptyPromise(say: string, state: CallState, doneBefore = state.d
   return !state.pending && state.done.length === doneBefore && PROMISE.test(t) && !WAITS_FOR.test(t);
 }
 
-export function stateLine(state: CallState, clinic?: ClinicConfig): string {
+export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): string {
   const pets = clinic?.industry === 'vet';
   const saidNew = !state.verifiedPatient && pets && state.saidNew() === 'new';
   const chosen = state.chosen && clinic ? state.chosen : null;
@@ -342,7 +413,7 @@ export function stateLine(state: CallState, clinic?: ClinicConfig): string {
       : 'patient not verified',
     // what the caller already said is never asked again; the latest value is the one that counts
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
-    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
+    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

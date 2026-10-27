@@ -107,8 +107,8 @@ export default function ApiKeysPage() {
             // the keys in use first; revoked and expired ones stay on record, out of the way
             const inUse = list.data.keys.filter((k) => k.status === 'active');
             const past = list.data.keys.filter((k) => k.status !== 'active');
-            const table = (keys: ApiKeyView[]) => (
-              <Table>
+            const table = (keys: ApiKeyView[], label: string) => (
+              <Table label={label}>
                 <THead><tr><TH>Name</TH><TH>Scopes</TH><TH>Status</TH><TH className="hidden md:table-cell">Last used</TH><TH><span className="sr-only">Revoke</span></TH></tr></THead>
                 <tbody>
                   {keys.map((k) => (
@@ -125,11 +125,11 @@ export default function ApiKeysPage() {
             );
             return (
               <>
-                {inUse.length ? table(inUse) : <Empty title="No key in use" icon={<KeyRound />}>Make one on the left. Revoked and expired keys stop working at once.</Empty>}
+                {inUse.length ? table(inUse, 'Keys in use') : <Empty title="No key in use" icon={<KeyRound />}>Make one on the left. Revoked and expired keys stop working at once.</Empty>}
                 {past.length > 0 && (
                   <details className="border-t border-border">
                     <summary className="cursor-pointer px-5 py-3 text-sm text-text-muted hover:text-text">Revoked and expired keys ({past.length}). They no longer work and cannot be copied; they stay here as a record.</summary>
-                    {table(past)}
+                    {table(past, 'Revoked and expired keys')}
                   </details>
                 )}
               </>

@@ -3,10 +3,10 @@
 import { Check, ChevronsUpDown, MapPin, PlusSquare, Search, X } from 'lucide-react';
 import { Dialog as D, DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { groupClinics, type SwitcherClinic, switcherTitle } from '@/lib/clinics';
 import { cn } from '@/lib/utils';
 
-/** A clinic the person works at, with their role there in words ("Owner", "Front desk"). */
-export interface SwitcherClinic { id: string; name: string; role: string }
+export type { SwitcherClinic } from '@/lib/clinics';
 /** An owner's link to the hosting layer's pages (from the plan): a full page load. */
 export interface SwitcherLink { href: string; label: string; hint: string }
 
@@ -21,10 +21,10 @@ export function ClinicTile({ clinic, className }: { clinic: { id: string; name: 
   return <span aria-hidden className={cn('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-text', tint(clinic.id), className)}>{initials(clinic.name)}</span>;
 }
 
-function Label({ clinic }: { clinic: SwitcherClinic }) {
+function Label({ clinic, title }: { clinic: SwitcherClinic; title?: string }) {
   return (
     <span className="min-w-0 flex-1 text-left">
-      <span className="block truncate text-base font-medium">{clinic.name}</span>
+      <span className="block truncate text-base font-medium">{title ?? clinic.name}</span>
       <span className="block truncate text-xs text-text-muted">{clinic.role}</span>
     </span>
   );
@@ -65,7 +65,9 @@ export function ClinicSwitcher({ current, clinics, grow, onPick, sheet }: {
     onPick(id);
   };
   const q = query.trim().toLowerCase();
-  const shown = q ? clinics.filter((c) => c.name.toLowerCase().includes(q)) : clinics;
+  const shown = q ? clinics.filter((c) => c.name.toLowerCase().includes(q) || c.organizationName?.toLowerCase().includes(q)) : clinics;
+  const groups = groupClinics(shown);
+  const nested = 'pl-4';
   const searchBox = clinics.length >= SEARCH_FROM && (
     <div className="relative px-1 pb-1">
       <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
@@ -85,9 +87,9 @@ export function ClinicSwitcher({ current, clinics, grow, onPick, sheet }: {
     return <><Icon className="size-4 shrink-0 text-text-muted" aria-hidden /><span className="min-w-0 flex-1"><span className="block">{l.label}</span><span className="block text-xs text-text-muted">{l.hint}</span></span></>;
   };
   const trigger = (
-    <button type="button" aria-label={`${current.name}, ${current.role}: switch clinic`}
+    <button type="button" aria-label={`${switcherTitle(current, clinics)}, ${current.role}: switch clinic`}
       className="focus-ring flex w-full min-w-0 items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-surface-sunken data-[state=open]:bg-surface-sunken">
-      <ClinicTile clinic={current} /><Label clinic={current} /><ChevronsUpDown className="size-4 shrink-0 text-text-muted" aria-hidden />
+      <ClinicTile clinic={current} /><Label clinic={current} title={switcherTitle(current, clinics)} /><ChevronsUpDown className="size-4 shrink-0 text-text-muted" aria-hidden />
     </button>
   );
 
@@ -105,11 +107,18 @@ export function ClinicSwitcher({ current, clinics, grow, onPick, sheet }: {
             <div className="overflow-y-auto px-2 pb-3">
               {searchBox}
               <ul>
-                {shown.map((c) => (
-                  <li key={c.id}>
-                    <button type="button" data-clinic aria-current={c.id === current.id ? 'true' : undefined} onClick={() => pick(c.id)} className={cn(row, 'focus-ring')}>
-                      <ClinicTile clinic={c} /><Label clinic={c} />{c.id === current.id && <Check className="size-4 shrink-0 text-primary" aria-label="Current" />}
-                    </button>
+                {groups.map((g) => (
+                  <li key={g.id}>
+                    {g.name && <p className={cn(head, 'pt-2')} data-testid="business">{g.name}</p>}
+                    <ul>
+                      {g.clinics.map((c) => (
+                        <li key={c.id}>
+                          <button type="button" data-clinic aria-current={c.id === current.id ? 'true' : undefined} onClick={() => pick(c.id)} className={cn(row, 'focus-ring', g.name && nested)}>
+                            <ClinicTile clinic={c} /><Label clinic={c} />{c.id === current.id && <Check className="size-4 shrink-0 text-primary" aria-label="Current" />}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>
@@ -133,11 +142,16 @@ export function ClinicSwitcher({ current, clinics, grow, onPick, sheet }: {
           <M.Label className={head}>Your clinics</M.Label>
           {searchBox}
           <M.RadioGroup value={current.id} onValueChange={pick}>
-            {shown.map((c) => (
-              <M.RadioItem key={c.id} value={c.id} textValue={c.name} className={row}>
-                <ClinicTile clinic={c} /><Label clinic={c} />
-                <M.ItemIndicator><Check className="size-4 text-primary" aria-hidden /></M.ItemIndicator>
-              </M.RadioItem>
+            {groups.map((g) => (
+              <M.Group key={g.id}>
+                {g.name && <M.Label className={cn(head, 'pt-2')} data-testid="business">{g.name}</M.Label>}
+                {g.clinics.map((c) => (
+                  <M.RadioItem key={c.id} value={c.id} textValue={c.name} className={cn(row, g.name && nested)}>
+                    <ClinicTile clinic={c} /><Label clinic={c} />
+                    <M.ItemIndicator><Check className="size-4 text-primary" aria-hidden /></M.ItemIndicator>
+                  </M.RadioItem>
+                ))}
+              </M.Group>
             ))}
           </M.RadioGroup>
           {none}

@@ -29,6 +29,8 @@ interface Session {
   /** Everything the backend sent, for tests: instructions, commentary. */
   sent: SidebandCommand[];
   timers: Set<NodeJS.Timeout>;
+  /** The line being said: the next waits for it, so two never talk over each other. */
+  speaking: Promise<void>;
 }
 
 /**
@@ -43,7 +45,7 @@ export class SimulatedEngine implements VoiceEngine {
 
   /** Creates a session to attach to, as a browser call would. */
   create(script: SimulatedScript, id = `sim_${randomUUID()}`): string {
-    this.sessions.set(id, { id, script, handlers: [], closeHandlers: [], waiting: new Map(), clock: 0, closed: false, socketClosed: false, startedAt: Date.now(), sent: [], timers: new Set() });
+    this.sessions.set(id, { id, script, handlers: [], closeHandlers: [], waiting: new Map(), clock: 0, closed: false, socketClosed: false, startedAt: Date.now(), sent: [], timers: new Set(), speaking: Promise.resolve() });
     return id;
   }
 
@@ -115,19 +117,23 @@ export class SimulatedEngine implements VoiceEngine {
     for (const h of s.handlers) h(event);
   }
 
-  /** A line said in two or three fragments, as a transcriber sends them. */
-  private async say(s: Session, speaker: 'caller' | 'agent', text: string) {
-    const words = text.split(' ');
-    const size = Math.max(3, Math.ceil(words.length / 3));
-    for (let i = 0; i < words.length; i += size) {
+  /**
+   * A line said whole, as one transcript segment, after whatever is being said already. The
+   * script and the backend's instructions (a goodbye, a line to say exactly) both come through
+   * here, so their words never overlap on the clock: the transcript reads as a conversation.
+   */
+  private say(s: Session, speaker: 'caller' | 'agent', text: string): Promise<void> {
+    const turn = s.speaking.then(async () => {
       if (s.closed) return;
-      const delta = (i ? ' ' : '') + words.slice(i, i + size).join(' ');
       const start = s.clock;
-      s.clock += 400;
-      this.emit(s, { type: speaker === 'caller' ? 'session.input_transcript.delta' : 'session.output_transcript.delta', delta, start_ms: start, end_ms: s.clock });
+      // about as long as saying it takes: a quarter second a word, a second at least
+      s.clock += Math.max(1000, text.split(' ').length * 250);
+      this.emit(s, { type: speaker === 'caller' ? 'session.input_transcript.delta' : 'session.output_transcript.delta', delta: text, start_ms: start, end_ms: s.clock });
       await this.wait(s, 250);
-    }
-    s.clock += 300;
+      s.clock += 300;
+    });
+    s.speaking = turn;
+    return turn;
   }
 
   private wait(s: Session, ms: number) {

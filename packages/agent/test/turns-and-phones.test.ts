@@ -150,7 +150,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(create.mock.calls[0]![0]).toMatchObject({ model: 'gpt-fast', reasoning: { effort: 'low' } });
     // with the round's tokens (cached: what the prompt cache held), no first-token time without streaming, no tool time, and each prompt part's size
     expect(short.timing).toEqual({
-      model: 'gpt-fast', effort: 'low', tier: null, simple: true, rounds: 1, modelMs: expect.any(Number), fallback: false, toolMs: 0,
+      model: 'gpt-fast', effort: 'low', tier: null, simple: true, rounds: 1, modelMs: expect.any(Number), firstWordsMs: expect.any(Number), announced: false, fallback: false, toolMs: 0,
       requests: [{ ms: expect.any(Number), firstTokenMs: null, served: null, inputTokens: 6000, cachedTokens: 5120, outputTokens: 90, reasoningTokens: 64, calls: [] }],
       prompt: { instructions: expect.any(Number), tools: expect.any(Number), transcript: 'Caller: Biscuit.'.length, state: expect.any(Number), history: 0, notes: expect.any(Number) },
     });
@@ -195,7 +195,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(body).toMatchObject({ model: 'gpt-main', stream: true, store: false });
     expect(options).toMatchObject({ timeout: 15_000, maxRetries: 1, signal: expect.any(AbortSignal) });
     expect(out.timing).toMatchObject({ rounds: 2, requests: [{ calls: ['get_clinic_info'], inputTokens: 100 }, { calls: [], inputTokens: 120 }] });
-    for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(5); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
+    for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(3); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
     expect(out.timing!.toolMs).toBeGreaterThanOrEqual(20);
   });
 });

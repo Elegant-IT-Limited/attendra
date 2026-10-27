@@ -1,0 +1,29 @@
+id: vet-es-new-pet-joins-the-number
+title: "Spanish: a new pet under a number that has an owner joins that owner, whatever name the caller gives now, and the household shows all three"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, new-pet, language, es]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado y hoy das tu nombre como Lin. Tienes un cachorro nuevo, Pip, macho, de unos cuatro meses, y quieres una primera consulta. Cualquier veterinario y cualquier hora te sirven. Di sí a la confirmación."
+turns:
+  - caller: Hola, soy Lin. Tengo un cachorro nuevo, Pip, macho, de unos cuatro meses. ¿Puede venir a su primera consulta?
+    reply: "Gracias, Lin. Pip ya está registrado. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Pip, owner_name: Lin, species: perro, sex: male, birthday_or_age: unos cuatro meses, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Pip] }

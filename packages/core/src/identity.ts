@@ -213,3 +213,51 @@ function birthIn(input: string, today: Date, order: 'mdy' | 'dmy'): { dob: strin
   else d.setUTCDate(d.getUTCDate() - 7 * n);
   return { dob: d.toISOString().slice(0, 10), estimated: true };
 }
+
+/**
+ * Whether a name a caller said sounds like a name on file: the way a receptionist hears "Minnie" for
+ * "Mini" or "Sophia" for "Sofia". Both are folded to a spoken key (accents and case off, sh→s, ph→f,
+ * ck/q→k, c→k before a/o/u and →s before e/i/y, a double letter once, y→i, the vowels run together),
+ * then compared by edit distance: none under five letters, one change per four letters past that. "Mini" and
+ * "Max" are not alike; neither are "Biscuit" and "Bailey". Used only against the pets of one number,
+ * never to search a clinic.
+ */
+export function soundsLike(said: string, onFile: string): boolean {
+  const a = spokenKey(said);
+  const b = spokenKey(onFile);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const longest = Math.max(a.length, b.length);
+  // the first sound must agree: "Mini" and "Jenny" share every letter but the one people hear first
+  if (a[0] !== b[0]) return false;
+  return editDistance(a, b) <= Math.floor((longest - 1) / 4);
+}
+
+/** The spoken key of a name: what it sounds like, roughly, so spellings that sound alike meet. */
+export function spokenKey(name: string): string {
+  const first = fold(name).toLowerCase().trim().split(/\s+/)[0] ?? '';
+  return first
+    .replace(/[^a-z]/g, '')
+    // an "r" after the last vowel is barely heard ("Pepper", "Peppa")
+    .replace(/([aeiou])r$/, '$1')
+    .replace(/x/g, 'ks').replace(/sh|sch/g, 's').replace(/ph/g, 'f').replace(/ck|q/g, 'k').replace(/th/g, 't')
+    .replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k').replace(/z/g, 's').replace(/y/g, 'i').replace(/w/g, 'v')
+    .replace(/(.)\1+/g, '$1')
+    .replace(/[aeiou]+/g, 'a')
+    .replace(/^a+|a+$/g, (m, offset: number) => (offset === 0 ? 'a' : ''));
+}
+
+/** Levenshtein distance on two short strings. */
+export function editDistance(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = prev[0]!;
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const temp = prev[j]!;
+      prev[j] = Math.min(prev[j]! + 1, prev[j - 1]! + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diagonal = temp;
+    }
+  }
+  return prev[b.length]!;
+}

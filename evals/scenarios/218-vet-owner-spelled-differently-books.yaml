@@ -1,0 +1,35 @@
+id: vet-owner-spelled-differently-books
+title: "The owner's name arrives spelled differently (\"Lynn\" for Linh): the number is the household, so her pets are offered and the booking goes through"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen, calling from the number on file; speech-to-text writes your name as Lynn. Your cat Mochi needs a check-up. Any vet and any time are fine. Say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up.
+    reply: "Am I speaking with Linh?"
+  - caller: Yes, it's Lynn.
+    reply: "Thanks. Is this for Biscuit or Mochi, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: Lynn, pet_name: null }
+  - caller: Mochi.
+    reply: "For a wellness exam for Mochi I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Lynn, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Is this for Biscuit or Mochi, or a new pet?"]
+forbid_spoken: ["did not match", "didn't match", "couldn't find"]

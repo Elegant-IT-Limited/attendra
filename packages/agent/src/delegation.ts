@@ -45,8 +45,11 @@ const HOLD_AFTER_MS = 5000;
  * still take 30 s or more.
  */
 const HOLD_AGAIN_MS = [30_000, 45_000] as const;
-/** Said once per wait, at HOLD_AFTER_MS. */
+/** Said once per wait, at HOLD_AFTER_MS, and not again on the same call within HOLD_COOLDOWN_MS: a caller who heard it on the last request does not hear it twice in a minute (a test call, 2026-10-27). */
 const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+const HOLD_COOLDOWN_MS = 60_000;
+/** A wait past the budget while the line was said less than a minute ago: a thank-you instead, never "still checking" again. */
+const HOLD_QUIET_NOTE = 'Still working on it. Do not say again that you are still checking; if you say anything, thank the caller for waiting, in a few words.';
 /** An answer that opens with "still checking" again, after the caller already heard it in this wait: that opening is dropped. */
 const STILL_CHECKING = /^\s*(?:(?:ok(?:ay)?|sorry|thanks?(?: you)?|gracias|perd[oó]n)[,.!]?\s+)?(?:i'?m |i am )?(?:still )(?:checking|working on (?:it|that)|looking(?: (?:it|that) up)?)[^.!?]*[.!?]\s*|^\s*(?:sigo|todav[ií]a estoy|a[uú]n estoy) (?:revisando|buscando|verificando|consultando|trabajando)[^.!?]*[.!?]\s*/i;
 /** Said later in a long wait instead of the same line again. */
@@ -286,8 +289,8 @@ export class CallAgent {
     return [{
       type: 'instructions', delegationId: null,
       content: nth <= 1
-        ? `${words}They are waiting for your answer. Answer them now, in one or two short sentences; if it needs the backend, delegate it now. Do not ask them to repeat it.`
-        : `${words}They are still waiting. Say sorry for the wait in a few words, then answer them now; if it needs the backend, delegate it now. Never ask them to repeat it.`,
+        ? `${words}They are waiting for your answer. Answer them now, in one or two short sentences; if it needs the backend, delegate it now. Do not ask them to repeat it, and do not say you are still checking.`
+        : `${words}They are still waiting. Say sorry for the wait in a few words, then answer them now; if it needs the backend, delegate it now. Never ask them to repeat it, and do not say you are still checking.`,
     }];
   }
 
@@ -481,7 +484,11 @@ export class CallAgent {
     let held = false;
     const holds = emit ? [
       setTimeout(() => {
-        if (revision === this.state.revision) { held = true; emit({ type: 'thinking', delegationId, content: HOLD_NOTE }); }
+        if (revision !== this.state.revision) return;
+        held = true;
+        const recent = this.state.heldAtMs !== null && Date.now() - this.state.heldAtMs < HOLD_COOLDOWN_MS;
+        if (!recent) this.state.heldAtMs = Date.now();
+        emit({ type: 'thinking', delegationId, content: recent ? HOLD_QUIET_NOTE : HOLD_NOTE });
       }, HOLD_AFTER_MS),
       ...HOLD_AGAIN_MS.map((ms) => setTimeout(() => {
         if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: HOLD_AGAIN_NOTE });
@@ -540,9 +547,18 @@ export class CallAgent {
       }
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<'late'>((resolve) => { deadline = setTimeout(() => resolve('late'), ANSWER_DEADLINE_MS); });
+      // the first lookup's line goes to the voice the moment the planner starts it: the caller hears what is happening
+      // instead of silence, and the answer follows. A note for the voice, said in these words; never a result.
+      const onLookup = (line: string) => {
+        if (revision !== this.state.revision) return;
+        this.log.info({ call_id: this.ctx.callId, delegation_id: delegationId, ms: Date.now() - startedAt }, 'lookup announced');
+        const note: Outbound = { type: 'thinking', delegationId, content: `Say now, in these words: "${line}"` };
+        if (emit) emit(note); else out.push(note);
+      };
       const plan = await Promise.race([this.planner.plan({
         clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber, history: this.ctx.history ?? null,
         nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
+        now: this.ctx.now(), onLookup,
       }, execute), late]).finally(() => clearTimeout(deadline));
       if (plan !== 'late') timing = plan.timing;
       if (plan === 'late') {
@@ -574,6 +590,7 @@ export class CallAgent {
         call_id: this.ctx.callId, delegation_id: delegationId, ms, tools: toolCalls,
         ...(timing ? {
           model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, tier: timing.tier, fallback: timing.fallback, simple: timing.simple,
+          first_words_ms: timing.firstWordsMs, announced: timing.announced,
           tool_ms: timing.toolMs, prompt_chars: timing.prompt,
           requests: timing.requests.map((r) => ({
             ms: r.ms, first_token_ms: r.firstTokenMs, input_tokens: r.inputTokens, cached_tokens: r.cachedTokens,

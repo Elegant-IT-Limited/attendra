@@ -59,6 +59,20 @@ describe('recording a browser test call on this computer', () => {
     fetch.mockRestore();
   });
 
+  it('keeps the chunks in the order they arrive, drops empty ones, and falls back to WebM when the browser names no type', async () => {
+    const f = fakes([]);
+    const r = startCallRecording(stream('assistant'), stream('mic', 0), f.deps);
+    // a microphone with no audio track is left out of the mix
+    expect(f.connected).toEqual(['assistant']);
+    expect(f.recorders[0]!.options).toBeUndefined();
+    for (const data of ['one ', '', 'two ', 'three ']) f.recorders[0]!.ondataavailable?.({ data: new Blob([data]) } as BlobEvent);
+    const saved = await r.stop();
+    expect(await saved.blob.text()).toBe('one two three last second');
+    expect(saved.blob.type).toBe('audio/webm');
+    expect(saved.name).toBe('attendra-test-call-2026-11-08-1432.webm');
+    expect(f.recorders[0]!.state).toBe('inactive');
+  });
+
   it('names the file by its type', () => {
     expect(recordingName(new Date(2026, 0, 5, 9, 7), 'webm')).toBe('attendra-test-call-2026-01-05-0907.webm');
   });

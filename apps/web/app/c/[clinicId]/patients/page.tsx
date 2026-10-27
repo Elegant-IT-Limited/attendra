@@ -89,7 +89,7 @@ export default function Patients() {
                 {pet && speciesList.length > 0 && (
                   <>
                     <Label htmlFor="pet-species" className="sr-only">Kind of animal</Label>
-                    <Select id="pet-species" className="h-8 w-40" value={species} onChange={(e) => setSpecies(e.target.value)}>
+                    <Select id="pet-species" className="h-8 w-auto" value={species} onChange={(e) => setSpecies(e.target.value)}>
                       <option value="">Any kind of animal</option>
                       {speciesList.map((s) => <option key={s} value={s}>{s}</option>)}
                     </Select>

@@ -2,7 +2,7 @@
 // is, with no further model round (2026-11). Nothing is ever spoken as done before the tool returned ok.
 import { DEMO_CLINIC, localDateOf, localParts } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { type Outbound, ResponsesPlanner, type ToolResult } from '../src';
+import { lookupLine, type Outbound, ResponsesPlanner, type ToolResult } from '../src';
 import { textingOn, world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
@@ -214,5 +214,59 @@ describe('a round that fails is tried once more on the fallback model', () => {
     const both = vi.fn(async () => { throw new Error('down'); });
     await expect(new ResponsesPlanner({ responses: { create: both } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }))).rejects.toThrow('down');
     expect(both).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('the voice says what the backend is doing the moment a lookup starts', () => {
+  /** A streamed first round whose one tool call is `name` with `args`, then a plain answer round. */
+  const streaming = (name: string, args: Record<string, unknown>) => {
+    let round = 0;
+    const call = { type: 'function_call', name, call_id: 'c1', id: 'fc_1', arguments: JSON.stringify(args) };
+    async function* events() {
+      yield { type: 'response.created' };
+      yield { type: 'response.output_item.added', item: { type: 'function_call', id: 'fc_1', call_id: 'c1', name } };
+      yield { type: 'response.function_call_arguments.delta', delta: '{' };
+      yield { type: 'response.function_call_arguments.done', item_id: 'fc_1', arguments: JSON.stringify(args) };
+      yield { type: 'response.completed', response: { output: [call], usage: { input_tokens: 10, output_tokens: 5 } } };
+    }
+    return vi.fn(async (body: { stream?: boolean }) => {
+      if (round++ === 0) return body.stream ? events() : { output: [call], output_text: '' };
+      return { output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Here you are.' }] }], output_text: 'Here you are.' };
+    });
+  };
+
+  it('a read tool on the first round: the line is given before the tool runs, in the caller\'s language, with the day; writes get nothing', async () => {
+    const c = await w.call('+13035550147');
+    c.caller('Can I come in on Thursday?');
+    const order: string[] = [];
+    const now = new Date('2026-09-28T16:00:00Z'); // a Monday in Denver
+    const out = await new ResponsesPlanner({ responses: { create: streaming('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-01', part_of_day: 'any' }) } } as never, 'gpt-main')
+      .plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '', now, onLookup: (line) => order.push(`said: ${line}`) }, async (name) => { order.push(`ran: ${name}`); return { ok: true, data: { slots: [] } }; });
+    expect(order).toEqual(['said: Let me check Thursday for you.', 'ran: find_slots']);
+    expect(out.say).toBe('Here you are.');
+    expect(out.timing).toMatchObject({ announced: true, rounds: 2 });
+    expect(out.timing!.firstWordsMs).toBeLessThanOrEqual(out.timing!.modelMs + out.timing!.toolMs);
+    // today and tomorrow, in words; no date: the times
+    expect(lookupLine('find_slots', { from_date: '2026-09-28' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check today for you.');
+    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check tomorrow for you.');
+    expect(lookupLine('find_slots', { from_date: null }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('One moment, I\'ll look at the times.');
+    expect(lookupLine('get_clinic_info', { question: 'parking' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me look that up.');
+    // a write is never announced: nothing is said as done before the backend confirms it
+    for (const name of ['propose_booking', 'commit_pending', 'register_patient', 'create_callback', 'send_text', 'end_call']) expect(lookupLine(name, {}, { clinic: DEMO_CLINIC, now }, c.state)).toBeNull();
+    // Spanish
+    const es = await w.call('+13035550147');
+    es.caller('¿Puedo ir el jueves?');
+    expect(lookupLine('find_slots', { from_date: '2026-10-01' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar el jueves.');
+    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar mañana.');
+    expect(lookupLine('verify_caller', { pet_name: 'Mochi' }, { clinic: { ...DEMO_CLINIC, industry: 'vet' }, now }, es.state)).toBe('Déjeme buscar a Mochi.');
+  });
+
+  it('through the call agent, the line reaches the voice as a note to say now, and the answer follows as commentary', async () => {
+    const c = await w.call('+13035550147');
+    c.caller('Can I come in tomorrow?');
+    const notes: string[] = [];
+    const out = await c.delegate([], new ResponsesPlanner({ responses: { create: streaming('get_clinic_info', { question: 'hours' }) } } as never, 'gpt-main'), (o) => { if (o.type === 'thinking') notes.push(o.content); });
+    expect(notes).toContain('Say now, in these words: "Let me look that up."');
+    expect(commentary(out)).toBe('Here you are.');
   });
 });

@@ -34,7 +34,9 @@ export const Health = z.object({
 export const AvatarUrl = z.string().nullable();
 
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl,
+    /** They have not written their name yet (added by email alone): the dashboard asks for it once. */
+    nameMissing: z.boolean() }),
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
@@ -45,6 +47,8 @@ export const Me = z.object({
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()),
+    /** The business the clinic belongs to: its locations are grouped under it in the clinic switcher. */
+    organizationId: z.string(), organizationName: z.string(),
     /** May approve or decline refills: marked on the Team page. */
     approvesRefills: z.boolean(),
     /** Links the deployment adds to the menu (billing, setup), for owners only. */
@@ -470,6 +474,10 @@ const personName = z.string().trim().min(1, 'required').max(80);
 const phoneNumber = z.string().trim().max(30).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
 const PatientStatus = z.enum(['active', 'new']);
 
+/** The number a pet is being added under: who owns it and which pets are on it already, for the pet form (2026-11). */
+export const HouseholdQuery = z.object({ phone: z.string().trim().min(10).max(30) });
+export const Household = z.object({ owner: z.string().nullable(), pets: z.array(z.string()) });
+export type Household = z.infer<typeof Household>;
 export const PatientSearch = z.object({
   query: z.string().trim().min(1, 'type something to search for').max(100),
   /** new: only patients the assistant added that nobody has checked yet. */
@@ -569,7 +577,11 @@ export const ImportResult = z.object({
     status: z.enum(['add', 'update', 'skip', 'error']),
     message: z.string().nullable(),
   })),
-  counts: z.object({ add: z.number().int(), update: z.number().int(), skip: z.number().int(), error: z.number().int() }),
+  counts: z.object({
+    add: z.number().int(), update: z.number().int(), skip: z.number().int(), error: z.number().int(),
+    /** imported, but a value of theirs found no room on the clinic's list (60 at most); its message says which */
+    notListed: z.number().int(),
+  }),
 });
 
 export const Member = z.object({
@@ -636,6 +648,11 @@ export const Overview = z.object({
 /** A link the hosting layer gives: a path on this site or an https address, nothing a browser would run. */
 const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.startsWith('//')) || v.startsWith('https://'), 'expected a path or an https address');
 /** The hosting layer's plan for a clinic, as it sets it: what the dashboard shows of the month's minutes and the trial. */
+/** A clinic's name as the hosting layer renames a location: the dashboard and the assistant follow. */
+export const ClinicName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(60, 'at most 60 characters') });
+/** A location at a glance for the hosting layer's Locations page: counts only, no call or patient details. */
+export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
+export type ClinicOverview = z.infer<typeof ClinicOverview>;
 export const HostingPlan = z.object({
   status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
   /** Call minutes a month included at this clinic. */

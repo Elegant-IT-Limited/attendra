@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { ApiFailure, useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { clinicToOpen } from '@/lib/last-clinic';
-import { signOutAndLeave, takeNext } from '@/lib/next';
+import { askForNameOnce, signOutAndLeave, takeNext } from '@/lib/next';
 
 /**
  * Where a signed-in person goes: a temporary password first, then two-step sign-in where
- * it is required, then the page they were on their way to, else the clinic they were last in
- * (while they still belong to it), else their first.
+ * it is required, then Your profile once when they have no name yet, then the page they
+ * were on their way to, else the clinic they were last in (while they still belong to it),
+ * else their first.
  */
 export default function Home() {
   const me = useMe();
@@ -26,6 +27,8 @@ export default function Home() {
     if (!me.data) return;
     if (mustChange) return router.replace('/change-password');
     if (needsTwoStep) return router.replace('/setup-two-factor');
+    // someone added by email alone writes their name first, once; the page they were going to keeps
+    if (me.data.user.nameMissing && askForNameOnce()) return router.replace('/profile');
     // the page they were going to (account pages are another app behind /account: a full load)
     const next = takeNext();
     if (next) window.location.assign(next);
