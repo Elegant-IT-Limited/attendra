@@ -1,0 +1,47 @@
+id: vet-es-two-pets-other-owner
+title: "In Spanish: someone else calls from a number with another owner's two pets; after a no to \"¿Hablo con Linh?\" they are never told those pets, even when they ask, and their own new pet goes on the number they give"
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets, new-pet, has-appointment, es]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Sam Park and you speak only Spanish. You share this phone with your roommate Linh. You do not know the names of Linh's pets, and you ask once which pets are on this number and whether any of them has a visit booked. Your own dog (perro) Toby, a male (macho), about three years old (tres años), has never been to the clinic. He should be on your own mobile, 720 555 0169, not this phone: give it when asked for a number, or say it when he is added (setecientos veinte, cinco cinco cinco, cero uno seis nueve). Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero llevar a mi perro.
+    reply: "¿Hablo con Linh?"
+  # the plan reads the appointments before anyone is found, on purpose: the backend refuses
+  - caller: No, soy Sam, comparto este teléfono con Linh. ¿Qué mascotas tienen con este número? ¿Alguna tiene cita?
+    reply: "Solo puedo ayudarle con su propia mascota, Sam. ¿Cómo se llama su perro?"
+    delegate:
+      - list_appointments: {}
+  # the plan tries Linh's name with the caller's dog, on purpose: nothing is found, and nothing is said about who is on file
+  - caller: Toby. Es nuevo, nunca ha venido. Es macho y tiene tres años. Póngalo en mi celular, el 720 555 0169.
+    reply: "Bienvenido, Toby. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Toby }
+      - register_patient: { pet_name: Toby, owner_name: Sam, species: perro, sex: male, birthday_or_age: tres años, phone: "720 555 0169" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Toby tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+  # the plan reads the appointments again, now that Toby is found: only Toby's, never the other owner's pets'
+  - caller: ¿Hay algo más reservado con este número?
+    reply: "La única cita que veo es la de Toby, {booked}."
+    delegate:
+      - list_appointments: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [identity_required, pet_is_new]
+  bookings_created: 1
+  # a new pet on a number other than the one calling gets no text until the team checks it
+  sms_sent: 0
+  language: es
+  household: { phone: "+17205550172", names: [Biscuit, Mochi] }
+  never_returned: [Biscuit, Mochi, Nguyen, wellness, revisión]
+forbid_spoken: [Biscuit, Mochi, jueves]

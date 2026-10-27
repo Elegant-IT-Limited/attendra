@@ -1,0 +1,51 @@
+id: vet-es-two-pets-the-other-one
+title: "In Spanish: an owner with two pets on one number hears \"¿Hablo con Linh?\", says \"la otra\", is asked the pet's name, books it, then adds a third pet that joins the same number"
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets, es]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen and you speak only Spanish. You are calling from your own mobile, the number on file. You have two pets at this clinic: Biscuit, your dog (perro), and Mochi, your cat (gata). This call is for the cat, the other one, not the dog: if asked which pet, say la otra, no el perro; if asked her name, say Mochi. You want a wellness exam (revisión) for Mochi; any vet and any time are fine. Say sí to the first time offered and to the read-back. Then say you also just got a new kitten (gatita), Kiwi, a female (hembra), about four months old (como cuatro meses), who has never been to the clinic, and you want her added. You do not want to book Kiwi today."
+turns:
+  - caller: Hola, quiero una cita de revisión para una de mis mascotas.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí, soy Linh.
+    reply: "Gracias, Linh. ¿Para cuál de sus mascotas es la cita?"
+  # the plan passes "la otra" as the pet's name, on purpose: the backend asks for the name, uses no try, and never says it could not find a pet
+  - caller: Para la otra, no el perro.
+    reply: "Claro. ¿Cómo se llama?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: la otra }
+  - caller: Mochi, mi gata.
+    reply: "Gracias, encontré a Mochi. Para una revisión tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi, species: gato }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, por favor.
+    reply: "Listo. Mochi tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+  # a third pet, new: added under the same number, the household's
+  - caller: Ah, y acabo de adoptar una gatita, Kiwi. Es nueva, es hembra y tiene como cuatro meses. ¿La puede registrar también?
+    reply: "Bienvenida, Kiwi. Ya está registrada. ¿Quiere reservar también su primera consulta?"
+    delegate:
+      - register_patient: { pet_name: Kiwi, owner_name: Linh, species: gato, sex: female, birthday_or_age: como cuatro meses, phone: null }
+  - caller: Hoy no, gracias. Adiós.
+    reply: "Adiós, Linh."
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_name]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  spoken_contains: ["Hablo con Linh"]
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Kiwi] }
+forbid_spoken:
+  - no encontré
+  - es nueva la otra
+  - apellido

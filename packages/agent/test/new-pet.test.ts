@@ -160,4 +160,22 @@ describe('"still checking" once per wait (2026-11)', () => {
       vi.useRealTimers();
     }
   });
+
+  it('asks for the name when the caller only points at a pet ("the other one", "la otra"), with no lookup and no try used (2026-11)', async () => {
+    for (const [said, pet] of [['The other one, not the dog.', 'the other one'], ['Para la otra, no el perro.', 'la otra'], ['My cat.', 'my cat']] as const) {
+      const c = await w.call('+17205550172', { clinic });
+      c.caller(said);
+      const before = await pets();
+      const looked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: pet, phone: null } }]);
+      expect(looked.errors, said).toEqual(['pet_name']);
+      const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: pet, owner_name: 'Linh', species: 'cat', sex: 'female', birthday_or_age: 'two years', phone: null } }]);
+      expect(added.errors, said).toEqual(['pet_name']);
+      expect(c.state.verifyAttempts).toBe(0);
+      expect(c.state.notFound).toBe(false); // never "could not find the pet" for pointing at one
+      expect(await pets()).toBe(before);
+      // the name, once said, finds the pet
+      const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Mochi', phone: null } }]);
+      expect(found.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
+    }
+  });
 });

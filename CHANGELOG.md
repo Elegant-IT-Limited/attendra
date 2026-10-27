@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (calls: two pets on one number)
+
+- **"The other one" asks for the name.** A pet's "name" that only points at one of the owner's pets ("the other one", "my cat", "la otra", "no el perro") is not looked up: the assistant asks what the pet is called, uses none of the caller's three tries, and never says a pet was not found. A real name with such words in it ("Little Bear", "Mi Amor") is still a name. English and Spanish.
+- **Evals for the same journey by phone,** each with its Spanish twin: an owner with two pets on one number is asked "Am I speaking with Linh?", says "the other one", gives the name, books, then adds a third pet that joins the same number; a pet not on file is asked about once, added under the same number and booked; someone else on that number who says no to the name is never told the owner's pets or their visits, even when they ask, and their own pet goes on the number they give. The evals check the household in the database the way the pet page reads it, and that the name in a call's history is the one the records give for the number.
+
 ### Added (a request says who made it)
 
 - **"Added by" with a name and a role.** A request someone wrote down with New request says "Added by Jordan (Front desk), Mon 26 Oct 6:03 PM" in its panel, with their picture, and "Added by Jordan" on its row, open or done. Requests from calls still say they came from the call, with its link. Who added it is kept on the request (`created_by_user_id`, migration 0040, filled in for requests already in the queue from their audit rows). The API's task views carry `createdBy` (name, role and `avatarUrl`; null for the assistant's), the MCP's `list_open_requests` carries `createdBy` (name and role), never an email; someone no longer on the team is "a former team member".

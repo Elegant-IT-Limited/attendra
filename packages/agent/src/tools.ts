@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -824,12 +824,19 @@ function emergencyHospitalFacts(clinic: ClinicConfig) {
 }
 
 /**
+ * "The other one", "my cat": the caller said which pet, not its name. Nothing is looked up and no try is used, so an
+ * owner with two pets on one number is never told a pet was not found for pointing at it.
+ */
+const noPetName = () => refuse('pet_name', 'That is not the pet\'s name: the caller said which pet, not what it is called. Nothing was looked up and no try is used. Ask only for the pet\'s name; never say a pet was not found. Keep the owner\'s name and everything else they gave.');
+
+/**
  * The veterinary pack's identity check: a pet, by its owner's first name (or full name), its own name
  * and the phone on file. The same rules as for a person: three tries, the same answer
  * whichever detail was wrong, and two records only staff can tell apart go to staff.
  */
 async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
   const { clinic } = ctx;
+  if (pointsAtPet(String(args.pet_name))) return noPetName();
   // "new" means added, never looked up: the registration checks the pet is not on file already
   if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age), one at a time; it checks the pet is not on file already.');
   // the pet described as a new client does (its age, its sex) and nothing said about being new: asked first, once, never looked up blind
@@ -881,6 +888,7 @@ async function registerPet(
   args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, emit: (e: DomainEvent) => unknown, lang: CallState['language'],
 ): Promise<ToolResult> {
   const { clinic } = ctx;
+  if (pointsAtPet(String(args.pet_name))) return noPetName();
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = (args.phone as string | null) ?? ctx.callerNumber;

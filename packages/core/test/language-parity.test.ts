@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, leakIn,
-  describesPet, newToClinic, parsePetBirth, saidGoodbye, withoutTextRefusal,
+  describesPet, newToClinic, parsePetBirth, pointsAtPet, saidGoodbye, withoutTextRefusal,
 } from '../src';
 
 /**
@@ -44,6 +44,13 @@ const ROWS: Row[] = [
   ['describesPet: its sex', describesPet, "It's a female cat", 'Es una gata hembra', true],
   ['describesPet: a date in two weeks is not an age', describesPet, 'Can I bring Biscuit in two weeks?', '¿Puedo llevar a Biscuit en dos semanas?', false],
   ['describesPet: a name and a visit is not a description', describesPet, "It's for my dog Biscuit, he needs a check-up", 'Es para mi perro Biscuit, necesita una revisión', false],
+  // a pet's "name" that only points at one of the owner's pets: nothing to look up, the name is asked for
+  ['pointsAtPet: the other one', pointsAtPet, 'the other one', 'la otra', true],
+  ['pointsAtPet: not the dog, the other one', pointsAtPet, 'Not the dog, the other one', 'No el perro, el otro', true],
+  ['pointsAtPet: my cat', pointsAtPet, 'my cat', 'mi gata', true],
+  ['pointsAtPet: a name', pointsAtPet, 'Mochi', 'Mochi', false],
+  ['pointsAtPet: a name with a pointer word in it', pointsAtPet, 'Little Bear', 'Mi Amor', false],
+  ['pointsAtPet: a one-word name that is also a word', pointsAtPet, 'Kitten', 'Gata', false],
   // a yes that turns down the confirmation text
   ['declinesText: yes, but no text', declinesText, 'Yes, but no text please', 'Sí, pero sin mensaje, por favor', true],
   ['declinesText: do not text me', declinesText, "Don't text me", 'No me mande mensajes', true],

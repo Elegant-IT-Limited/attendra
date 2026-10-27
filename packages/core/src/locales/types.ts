@@ -124,6 +124,8 @@ export interface LanguagePack {
   saysOnFile: RegExp;
   /** The caller describes the pet the way a new client does: its age ("a year old") or its sex ("a female"). */
   describesPet: RegExp;
+  /** The whole "name" only points at a pet, with no name in it: "the other one", "my cat", "not the dog". */
+  pointsAtPet: RegExp;
 }
 
 /** Word edges that work for any script: JavaScript's \b only knows ASCII letters. */

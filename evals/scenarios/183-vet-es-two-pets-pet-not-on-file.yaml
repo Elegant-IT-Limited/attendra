@@ -1,0 +1,41 @@
+id: vet-es-two-pets-pet-not-on-file
+title: "In Spanish: an owner with two pets on one number names a third pet that is not on file; the assistant asks once whether it is new, adds it under the same number and books it"
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets, new-pet, es]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen and you speak only Spanish. You are calling from your own mobile, the number on file. You have two pets at this clinic already, and this call is for a third one, Canela, a female dog (perra) about one year old (un año) that you just adopted: she has never been to the clinic. If asked whether she is new, say sí. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, necesito una cita, por favor.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí. Es para Canela.
+    reply: "Gracias, Linh. No encontré a Canela. ¿Es la primera vez que Canela viene con nosotros?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Canela }
+  - caller: Sí, la acabamos de adoptar. Es una perra hembra de un año.
+    reply: "Bienvenida, Canela. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Canela, owner_name: Linh, species: perro, sex: female, birthday_or_age: un año, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Canela tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  spoken_contains: ["Hablo con Linh"]
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Canela] }
+forbid_spoken:
+  - qué tipo de animal
+  - hembra o macho
+  - qué edad tiene

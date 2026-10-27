@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
 import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
-import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
-import { eq } from 'drizzle-orm';
+import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
+import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { HybridKnowledgeBase, LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
@@ -208,6 +208,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       slot: { id: 'setup', providerId, visitTypeId, start: existing, end: new Date(existing.getTime() + minutes * 60_000) } });
   }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
+  // a name on file in the scenario's history is the one the records give for the number when the call starts, as the voice service reads it
+  const historyName = /^Name on file for this number: (.+)\.$/m.exec(scenario.history ?? '')?.[1] ?? null;
+  const recordsName = historyName && callerNumber && !opts.now ? await backend.patients.nameOnFile(clinic.id, callerNumber, callId) : historyName;
   const state = new CallState();
   const results: ToolResult[] = [];
   const queue: Planner[] = [];
@@ -393,6 +396,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   }
   // a time the clinic cannot take is never offered, whichever planner ran
   for (const problem of offeredOutsideHours(clinic, [...state.offered.values()])) check(false, `offered a time it must not: ${problem}`);
+  check(recordsName === historyName, `the history says the name on file is ${historyName}, the records give ${recordsName ?? 'none'}`);
+  // the household on the pet page: a record on that number, and everyone else on the same phone (the demo plays every call into one database, so only the eval checks it)
+  if (e.household && !opts.now) {
+    const names = await householdOf(db, cipher, clinic.id, e.household.phone);
+    const want = e.household.names.map((n) => n.toLowerCase()).sort();
+    check(JSON.stringify(names.map((n) => n.toLowerCase()).sort()) === JSON.stringify(want), `on ${e.household.phone}: ${JSON.stringify(names)}, expected ${JSON.stringify(e.household.names)}`);
+  }
   if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
   // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)
   if (livePlanner) {
@@ -452,6 +462,15 @@ async function silentStart(agent: CallAgent, greeting: string, log: ReturnType<t
   });
   await done;
   return told > 1 ? Number.POSITIVE_INFINITY : greeted;
+}
+
+/** The first names in a number's household, as the pet page shows it: one record on the number, then its household. */
+async function householdOf(db: Database, cipher: PhiCipher, clinicId: string, phone: string): Promise<string[]> {
+  const [one] = await withClinic(db, clinicId, (tx) => tx.select({ id: schema.patients.id }).from(schema.patients)
+    .where(and(eq(schema.patients.clinicId, clinicId), eq(schema.patients.phoneHash, cipher.hash(phoneKey(clinicId, phone))))).limit(1));
+  if (!one) return [];
+  const profile = await new PatientRecords(db, cipher).profile(clinicId, one.id, 'eval');
+  return profile ? [profile.firstName, ...profile.household.map((h) => h.firstName)] : [];
 }
 
 /** A log line at error level or above, as "message: the error's message". */

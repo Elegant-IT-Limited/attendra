@@ -98,3 +98,13 @@ export function describesPet(callerText: string): boolean {
   const t = normalise(callerText);
   return LANGUAGES.some((l) => PACKS[l].describesPet.test(t));
 }
+
+/**
+ * Whether a pet's "name" only points at one of the owner's pets ("the other one", "my cat", "la otra") with no name in
+ * it: the caller said which pet, not what it is called, so there is nothing to look up. A name with such words in it
+ * ("Little Bear", "Mi Amor") is still a name. In any language.
+ */
+export function pointsAtPet(petName: string): boolean {
+  const t = normalise(petName).trim();
+  return LANGUAGES.some((l) => PACKS[l].pointsAtPet.test(t));
+}
