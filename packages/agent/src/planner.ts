@@ -29,6 +29,8 @@ export interface PlannerOutput { say: string | null; quiet?: string; timing?: Pl
  */
 export interface PlannerTiming {
   model: string; effort: ReasoningEffort | null; tier: ServiceTier | null; simple: boolean; rounds: number; modelMs: number;
+  /** A round failed on the main model and the request went on with the fallback model (`model` is then the fallback). */
+  fallback: boolean;
   requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
 }
 /** `served` is the processing tier OpenAI reports for the round, when a tier was asked for. */
@@ -48,6 +50,8 @@ export interface PlannerSpeed {
   effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort };
   /** OpenAI's processing tier for every request ('fast' is priority processing, at twice the price); unset, the default. */
   tier?: ServiceTier;
+  /** A round that times out or errors is tried once more on this model, and the request's later rounds stay on it; unset, no retry. */
+  fallbackModel?: string;
 }
 export type ServiceTier = 'default' | 'fast' | 'priority' | 'flex';
 
@@ -231,17 +235,17 @@ export class ResponsesPlanner implements Planner {
     // a simple turn may go to the faster setting, when one is configured; the model's own time is measured either way
     const simple = simpleTurn(state);
     const faster = simple ? this.speed.simple : undefined;
-    const model = faster?.model ?? this.model;
+    let model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
     const timing: PlannerTiming = {
-      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, requests: [], toolMs: 0,
+      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, fallback: false, requests: [], toolMs: 0,
       prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
     };
     const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs) } });
 
     for (let round = 0; round < this.maxRounds; round++) {
       const asked = performance.now();
-      const { res, firstTokenMs } = await this.round({
+      const body = (): Omit<ResponseCreateParams, 'stream'> => ({
         model, instructions, input: conversation, tools, store: false,
         max_output_tokens: this.limits.maxOutputTokens,
         ...(effort ? { reasoning: { effort } } : {}),
@@ -250,7 +254,21 @@ export class ResponsesPlanner implements Planner {
         include: ['reasoning.encrypted_content'],
         // one cache per clinic: its calls share the fixed prefix (rules, tools, its own facts)
         prompt_cache_key: input.clinic.id,
-      }, asked);
+      });
+      let answer: Awaited<ReturnType<ResponsesPlanner['round']>>;
+      try {
+        answer = await this.round(body(), asked);
+      } catch (err) {
+        // a round that timed out or errored is tried once more on the fallback model, and the request stays on it;
+        // a second failure is the request's (the caller hears the apology and the callback offer, as before)
+        const fallback = this.speed.fallbackModel;
+        if (!fallback || model === fallback) throw err;
+        model = fallback;
+        timing.model = fallback;
+        timing.fallback = true;
+        answer = await this.round(body(), asked);
+      }
+      const { res, firstTokenMs } = answer;
       timing.rounds++;
       timing.modelMs += performance.now() - asked;
       const calls = res.output.filter((o) => o.type === 'function_call');

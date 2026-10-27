@@ -27,6 +27,7 @@ const speed: PlannerSpeed = {
   simple: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || process.env.ATTENDRA_BACKEND_SIMPLE_EFFORT
     ? { model: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || undefined, effort: effort('ATTENDRA_BACKEND_SIMPLE_EFFORT') } : undefined,
   tier: (process.env.ATTENDRA_BACKEND_SERVICE_TIER || undefined) as PlannerSpeed['tier'],
+  fallbackModel: process.env.ATTENDRA_BACKEND_FALLBACK_MODEL === 'none' ? undefined : process.env.ATTENDRA_BACKEND_FALLBACK_MODEL || 'gpt-6.1-terra',
 };
 // `--timings` also prints the planner model time of every live request, to compare speed settings request by request,
 // with each round's tokens and first-token time (rounds are streamed for that), and writes them all to
@@ -70,7 +71,7 @@ if (timings.length) {
     for (const t of timings) {
       const rounds = t.requests.map((r) => `${r.ms}${r.firstTokenMs !== null ? `(${r.firstTokenMs})` : ''}${r.calls.length ? ` ${r.calls.join('+')}` : ''}`).join(' · ');
       const tokens = t.requests.length ? `in ${t.requests.map((r) => `${r.inputTokens ?? '?'}/${r.cachedTokens ?? '?'}c`).join(',')} out ${t.requests.map((r) => `${r.outputTokens ?? '?'}/${r.reasoningTokens ?? '?'}r`).join(',')}` : '';
-      console.log(dim(`  ${t.scenario.padEnd(34)} ${(t.simple ? 'simple' : 'other').padEnd(6)} ${`${t.model}${t.effort ? `/${t.effort}` : ''}${t.tier ? `/${t.tier}` : ''}`.padEnd(18)} ${t.rounds} round${t.rounds === 1 ? ' ' : 's'} ${String(t.modelMs).padStart(6)} ms  tools ${String(t.toolMs).padStart(5)} ms  [${rounds}]  ${tokens}`));
+      console.log(dim(`  ${t.scenario.padEnd(34)} ${(t.simple ? 'simple' : 'other').padEnd(6)} ${`${t.model}${t.effort ? `/${t.effort}` : ''}${t.tier ? `/${t.tier}` : ''}${t.fallback ? '!' : ''}`.padEnd(18)} ${t.rounds} round${t.rounds === 1 ? ' ' : 's'} ${String(t.modelMs).padStart(6)} ms  tools ${String(t.toolMs).padStart(5)} ms  [${rounds}]  ${tokens}`));
     }
     console.log('');
   }
