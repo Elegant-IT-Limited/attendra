@@ -11,6 +11,8 @@ const when = (start: Date, timeZone: string) => {
 };
 
 const DIGITS = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
+/** A note written to follow a comma, said as a sentence of its own. */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The same personal texts as in English: the names when the call gave them, never empty ones. The kind of visit is not named in Spanish (its article depends on the word). */
 const hola = (v: Record<string, string>, rest: string) => (v.name ? `Hola ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
@@ -72,6 +74,17 @@ export const es: LanguagePack = {
   takeOver: 'Le comunico con una persona de nuestro equipo ahora mismo.',
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
+  spoken: {
+    readback: ({ readback, textNote }) => `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`,
+    cancelReadback: ({ readback, textNote }) => `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Es correcto?`,
+    done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'Listo, la cita queda reservada.' : kind === 'rescheduled' ? 'Listo, la cita queda cambiada.' : 'Listo, la cita queda cancelada.'}${textSent ? ' Le he enviado un mensaje de confirmación.' : ''} ${then}`,
+    anythingElse: '¿Hay algo más en lo que le pueda ayudar?',
+    goodbye: 'Que le vaya bien. ¡Adiós!',
+    callbackTaken: ({ sameNumber }) => `De acuerdo, se lo paso al equipo y alguien le llamará ${sameNumber ? 'a este número' : 'al número que me dio'}. ¿Hay algo más en lo que le pueda ayudar?`,
+    refillTaken: 'He enviado la solicitud de la receta al equipo; la revisarán y se pondrán en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
+    textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
+    reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
+  },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +
