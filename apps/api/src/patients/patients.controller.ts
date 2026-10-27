@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
 import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, managedList, notOnListProblem, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
-import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
+import { type FrontDeskRepository, type PhiCipher, PostgresPatientDirectory, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, PatientFilter, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
+import { CustomFieldValues, Household, HouseholdQuery, PatientFilter, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
+import { CIPHER, CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -25,6 +25,7 @@ export class PatientsController {
     @Inject(DB) private readonly db: Database,
     @Inject(CLOCK) private readonly now: () => Date,
     @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
+    @Inject(CIPHER) private readonly cipher: PhiCipher,
   ) {}
 
   private async clinic(clinicId: string) {
@@ -88,6 +89,18 @@ export class PatientsController {
   private withFields(p: Card, fields: { id: string }[]): PatientCard {
     const ids = new Set(fields.map((f) => f.id));
     return toCard({ ...p, custom: Object.fromEntries(Object.entries(p.custom).filter(([id]) => ids.has(id))) });
+  }
+
+  /** A POST, not a GET: a phone number in a URL ends up in logs. The number is the household: the pet form fills the owner from it. */
+  @Post('household')
+  @HttpCode(200)
+  @Requires('patients:read')
+  @ApiOperation({ summary: 'Who owns a phone number and which pets are on it already, so a pet added under a known number joins its owner. Audited by how many were read.' })
+  @ApiBody({ schema: schemaOf(HouseholdQuery) })
+  @ApiOkResponse({ schema: schemaOf(Household) })
+  async household(@Param('clinicId') clinicId: string, @Body(new ZodPipe(HouseholdQuery)) body: z.infer<typeof HouseholdQuery>, @CurrentStaff() staff: Staff): Promise<Household> {
+    const clinic = await this.clinic(clinicId);
+    return new PostgresPatientDirectory(this.db, this.cipher, `user:${staff.userId}`).household(clinicId, asE164(clinic, body.phone));
   }
 
   /** A POST, not a GET: what is typed can be a name or a date of birth, and URLs end up in logs. */

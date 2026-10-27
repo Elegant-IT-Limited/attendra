@@ -20,6 +20,7 @@
     "db:add-number": "pnpm --filter @attendra/db run add-number",
     "db:test-call-limit": "pnpm --filter @attendra/db run test-call-limit",
     "db:rehash-lookups": "pnpm --filter @attendra/db run rehash-lookups",
+    "db:households": "pnpm --filter @attendra/db run households",
     "add-member": "pnpm --filter @attendra/api add-member",
     "demo": "turbo run demo",
     "test:e2e": "pnpm --filter @attendra/web test:e2e"

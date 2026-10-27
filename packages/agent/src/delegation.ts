@@ -45,8 +45,11 @@ const HOLD_AFTER_MS = 5000;
  * still take 30 s or more.
  */
 const HOLD_AGAIN_MS = [30_000, 45_000] as const;
-/** Said once per wait, at HOLD_AFTER_MS. */
+/** Said once per wait, at HOLD_AFTER_MS, and not again on the same call within HOLD_COOLDOWN_MS: a caller who heard it on the last request does not hear it twice in a minute (a test call, 2026-10-27). */
 const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
+const HOLD_COOLDOWN_MS = 60_000;
+/** A wait past the budget while the line was said less than a minute ago: a thank-you instead, never "still checking" again. */
+const HOLD_QUIET_NOTE = 'Still working on it. Do not say again that you are still checking; if you say anything, thank the caller for waiting, in a few words.';
 /** An answer that opens with "still checking" again, after the caller already heard it in this wait: that opening is dropped. */
 const STILL_CHECKING = /^\s*(?:(?:ok(?:ay)?|sorry|thanks?(?: you)?|gracias|perd[oó]n)[,.!]?\s+)?(?:i'?m |i am )?(?:still )(?:checking|working on (?:it|that)|looking(?: (?:it|that) up)?)[^.!?]*[.!?]\s*|^\s*(?:sigo|todav[ií]a estoy|a[uú]n estoy) (?:revisando|buscando|verificando|consultando|trabajando)[^.!?]*[.!?]\s*/i;
 /** Said later in a long wait instead of the same line again. */
@@ -286,8 +289,8 @@ export class CallAgent {
     return [{
       type: 'instructions', delegationId: null,
       content: nth <= 1
-        ? `${words}They are waiting for your answer. Answer them now, in one or two short sentences; if it needs the backend, delegate it now. Do not ask them to repeat it.`
-        : `${words}They are still waiting. Say sorry for the wait in a few words, then answer them now; if it needs the backend, delegate it now. Never ask them to repeat it.`,
+        ? `${words}They are waiting for your answer. Answer them now, in one or two short sentences; if it needs the backend, delegate it now. Do not ask them to repeat it, and do not say you are still checking.`
+        : `${words}They are still waiting. Say sorry for the wait in a few words, then answer them now; if it needs the backend, delegate it now. Never ask them to repeat it, and do not say you are still checking.`,
     }];
   }
 
@@ -481,7 +484,11 @@ export class CallAgent {
     let held = false;
     const holds = emit ? [
       setTimeout(() => {
-        if (revision === this.state.revision) { held = true; emit({ type: 'thinking', delegationId, content: HOLD_NOTE }); }
+        if (revision !== this.state.revision) return;
+        held = true;
+        const recent = this.state.heldAtMs !== null && Date.now() - this.state.heldAtMs < HOLD_COOLDOWN_MS;
+        if (!recent) this.state.heldAtMs = Date.now();
+        emit({ type: 'thinking', delegationId, content: recent ? HOLD_QUIET_NOTE : HOLD_NOTE });
       }, HOLD_AFTER_MS),
       ...HOLD_AGAIN_MS.map((ms) => setTimeout(() => {
         if (revision === this.state.revision) emit({ type: 'thinking', delegationId, content: HOLD_AGAIN_NOTE });

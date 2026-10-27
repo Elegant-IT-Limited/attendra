@@ -18,7 +18,7 @@ describe('the planner\'s instructions follow the clinic\'s industry', () => {
 
   it('a veterinary clinic finds a pet by its owner, its name and the phone, and gives no advice about animals', () => {
     const prompt = systemPrompt(RIVERBEND_CLINIC, 'Today is Monday.');
-    expect(prompt).toContain('find the pet (the owner\'s first name, the pet\'s name and the phone on file)');
+    expect(prompt).toContain('find the pet (the phone number, which is the household, and the pet\'s name; the owner\'s name never finds a pet)');
     expect(prompt).toContain('Never give medical or first-aid advice for an animal');
     expect(prompt).not.toContain('date of birth and phone)');
   });

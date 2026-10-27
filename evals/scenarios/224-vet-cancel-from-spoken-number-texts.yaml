@@ -1,0 +1,25 @@
+id: vet-cancel-from-spoken-number-texts
+title: "A cancellation from a number the caller says (a browser test call): the pet is found on that number, the visit is cancelled, and the confirmation text goes to the number on file"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, has-appointment]
+caller_number: null
+channel: web
+facts: "This is a test call from the browser, so there is no caller ID. You are Linh Nguyen; the number on file is 720 555 0172. You want to cancel Biscuit's appointment on Thursday. Say yes to the read-back."
+turns:
+  - caller: Hi, it's Linh. I need to cancel Biscuit's appointment on Thursday. My number is 720 555 0172.
+    reply: "I see Biscuit's wellness exam on Thursday. So I'd cancel the appointment on Thursday. Is that right?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Yes.
+    reply: "Done, that appointment is cancelled."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  refusals: []
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]

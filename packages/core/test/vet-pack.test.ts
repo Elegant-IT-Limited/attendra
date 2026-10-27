@@ -10,7 +10,10 @@ describe('the veterinary pack', () => {
     expect(vet.identity).toBe('pet');
     const args = toolArgsFor('vet');
     expect(args.verify_caller.safeParse({ owner_name: 'Linh Nguyen', pet_name: 'Biscuit' }).success).toBe(true);
-    expect(args.verify_caller.safeParse({ full_name: 'Linh Nguyen', date_of_birth: 'May 10 2021' }).success).toBe(false);
+    // the owner's name is not needed to find a pet: the number and the pet's name are (2026-11)
+    expect(args.verify_caller.safeParse({ owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' }).success).toBe(true);
+    expect(args.verify_caller.parse({})).toMatchObject({ owner_name: null, pet_name: null, phone: null });
+    expect(args.verify_caller.safeParse({ owner_name: 'L', pet_name: 'Biscuit' }).success).toBe(false);
     expect(args.register_patient.safeParse({ pet_name: 'Ziggy', owner_name: 'Ava Patel', species: 'dog', sex: 'male', birthday_or_age: '8 months' }).success).toBe(true);
     // the clinic's tools are unchanged
     expect(toolArgsFor('clinic').verify_caller.safeParse({ full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' }).success).toBe(true);

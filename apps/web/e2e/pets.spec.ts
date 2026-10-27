@@ -45,4 +45,25 @@ test.describe.serial('pets at a vet clinic', () => {
     await dialog.getByRole('button', { name: 'Add and continue' }).click();
     await expect(dialog.getByText('For Tansy', { exact: true })).toBeVisible();
   });
+
+  test('a number the clinic knows fills in its owner, read-only, and names the pets already on it (one number, one owner)', async ({ browser }) => {
+    const page = await signInAgain(browser, 'Vet clinic manager');
+    await page.getByRole('link', { name: 'Pets', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Add pet' }).click();
+    const form = page.getByRole('dialog', { name: 'Add pet' });
+    await form.getByLabel('Pet\'s name').fill('Clover');
+    await form.getByLabel('Owner\'s phone').fill('(720) 555-0172');
+    const hint = form.getByTestId('owner-from-number');
+    await expect(hint).toContainText('This number is Linh Nguyen\'s: the pet joins them.');
+    await expect(hint).toContainText('Biscuit');
+    await expect(hint).toContainText('Mochi');
+    await expect(form.getByLabel('Owner\'s first name')).toHaveValue('Linh');
+    await expect(form.getByLabel('Owner\'s first name')).toHaveAttribute('readonly', '');
+    await expect(form.getByLabel('Owner\'s last name')).toHaveValue('Nguyen');
+    // another number: the owner's name is theirs to type again
+    await form.getByLabel('Owner\'s phone').fill('(720) 555-0199');
+    await expect(hint).toHaveCount(0);
+    await expect(form.getByLabel('Owner\'s first name')).not.toHaveAttribute('readonly', '');
+    await page.keyboard.press('Escape');
+  });
 });

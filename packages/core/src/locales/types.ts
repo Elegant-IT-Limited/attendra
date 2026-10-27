@@ -130,6 +130,8 @@ export interface LanguagePack {
     textSent: string;
     /** The caller's answer to the reminder offer, acknowledged. */
     reminders: (v: { agreed: boolean }) => string;
+    /** No vet here sees this kind of animal: the one vet's limit when there is one, then the request offered. */
+    noVetForAnimal: (v: { vet: string | null; animals: string | null; pet: string }) => string;
   };
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;

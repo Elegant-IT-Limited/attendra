@@ -641,7 +641,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await page.setViewportSize({ width: 1440, height: 900 });
   };
   const heading = (name: string | RegExp) => async () => { await expect(page.getByRole('heading', { name }).first()).toBeVisible({ timeout: 20_000 }); };
-  const url = (path: string) => () => page.goto(`${home}${path}`);
+  const url = (path: string) => async () => { await page.goto(`${home}${path}`); };
 
   await watch.step('10. Every other screen, at 1440 and 390 wide: Calls and a call record, Quality, Audit log, every Settings section and tab, Texting, Team, Requests filters, Schedule month and week, Pets search and import, Test call', {}, async () => {
     await look('Calls', url('/calls'), heading('Calls'));
@@ -694,7 +694,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await look('a pet', async () => { await page.goto(`${home}/patients`); await page.getByRole('link', { name: /^Biscuit\b/ }).first().click(); }, heading('Biscuit'));
     await look('Veterinarians', url('/doctors'), heading('Veterinarians'));
     await look('Test call', url('/test-call'), heading('Test call'));
-    await look('Your profile', () => page.goto('/profile'), heading('Your profile'));
+    await look('Your profile', async () => { await page.goto('/profile'); }, heading('Your profile'));
     await look('Today', url(''), heading('Today'));
   });
 });

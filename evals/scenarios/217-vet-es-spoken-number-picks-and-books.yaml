@@ -1,0 +1,38 @@
+id: vet-es-spoken-number-picks-and-books
+title: "Spanish: a number the caller says (a browser test call) is the household; the pets on it are offered, she picks one, it is booked, and the confirmation text goes to the number on file"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, language, es]
+caller_number: null
+channel: web
+facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Linh Nguyen y hablas español. El número de la ficha es 720 555 0172. Tu perro Biscuit necesita un chequeo. Cualquier veterinario y cualquier hora te sirven. Di sí a la confirmación."
+turns:
+  - caller: Hola, soy Linh. Quiero reservar un chequeo, por favor.
+    reply: "Gracias, Linh. ¿Cuál es el mejor número para comunicarnos con usted?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null, phone: null }
+  - caller: El 720 555 0172.
+    reply: "Gracias. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null, phone: "720 555 0172" }
+  - caller: Para Biscuit.
+    reply: "Para un chequeo general de Biscuit tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [phone_required]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]

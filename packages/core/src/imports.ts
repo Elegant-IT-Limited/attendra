@@ -253,7 +253,7 @@ export const PET_GUIDE = [
   'species: the kind of animal, like dog, cat or rabbit. One that is not on your list is added to it when you import.',
   'sex: female, male or unknown. Empty means unknown.',
   'birthday: YYYY-MM-DD, like 2021-05-14, or month/day/year. If only the age is known, use the same day that many years ago. Not after today.',
-  'owner_first_name and owner_last_name: leave the last name empty if the owner goes by one name. The assistant finds the pet by the owner\'s name, the pet\'s name and the phone. A file with one owner_name column still works.',
+  'owner_first_name and owner_last_name: leave the last name empty if the owner goes by one name. The assistant finds the pet by the phone number and the pet\'s name; the owner\'s name is how it greets them. A file with one owner_name column still works.',
   'owner_phone: with the area code. One owner\'s pets share a number: each pet gets a row of its own.',
   'texts_ok (optional): yes when the owner agreed to reminder texts. Empty means no.',
   'A pet already on file with the same name, owner, birthday and phone is skipped, so the same file can be uploaded twice safely.',

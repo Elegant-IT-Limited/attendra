@@ -2,10 +2,10 @@
 import {
   bookableProviders,
   addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
+  fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
-  hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
+  hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -85,6 +85,11 @@ const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t se
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
+/** The animals a vet lists, for the caller ("dogs and cats"), in the call's language where the clinic gave one. */
+const seesAnimals = (p: { categories: string[]; categoryNames?: Record<string, string> | undefined }, lang: CallState['language']): string | null => {
+  const names = p.categories.map((c) => (lang !== 'en' && p.categoryNames?.[c]) || c).map((c) => c.toLowerCase());
+  return names.length ? names.join(lang === 'es' ? ' y ' : ' and ') : null;
+};
 
 /** No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked once. */
 const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${PACKS[lang].phoneQuestion({ callerId: false })}" Keep everything else they already gave; do not ask for it again.`;
@@ -481,7 +486,17 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // a pet goes to a vet who sees its kind of animal; a vet who lists no animals sees them all
       if (!named && trade.identity === 'pet' && rules.matchAnimal && patient?.species) {
         const fit = providers.filter((p) => seesAnimal(p, patient.species!));
-        if (!fit.length) return refuse('no_provider_for_animal', `None of the clinic's vets is listed for a ${patient.species}. Say so, without guessing why, and offer a callback for the team to arrange it.`);
+        if (!fit.length) {
+          const only = providers.length === 1 ? providers[0] : undefined;
+          return {
+            ok: false,
+            data: {
+              error: 'no_provider_for_animal', say: `None of the clinic's vets is listed for a ${patient.species}. Say so, without guessing why, and offer a callback for the team to arrange it.`,
+              // the whole answer, in the backend's words: the vet's limit, then the request offered
+              spoken: pack.spoken.noVetForAnimal({ vet: only ? localName(only, lang) : null, animals: only ? seesAnimals(only, lang) : null, pet: patient.firstName }),
+            },
+          };
+        }
         providers = fit;
       }
       const now = ctx.now();
@@ -882,73 +897,71 @@ function emergencyHospitalFacts(clinic: ClinicConfig) {
 const noPetName = () => refuse('pet_name', 'That is not the pet\'s name: the caller said which pet, not what it is called. Nothing was looked up and no try is used. Ask only for the pet\'s name; never say a pet was not found. Keep the owner\'s name and everything else they gave.');
 
 /**
- * The veterinary pack's identity check: a pet, by its owner's first name (or full name), its own name
- * and the phone on file. The same rules as for a person: three tries, the same answer
- * whichever detail was wrong, and two records only staff can tell apart go to staff.
+ * The veterinary pack's identity check: the number (caller ID, or one the caller says) is the household,
+ * and a pet on it is found by its name as the caller says it, by sound. The owner's name is for the
+ * greeting and for a new pet, never to unlock a record. The same rules as for a person otherwise:
+ * three tries, the same answer whichever detail was wrong, and two records only staff can tell apart
+ * go to staff.
  */
 async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
   const { clinic } = ctx;
   if (pointsAtPet(String(args.pet_name))) return noPetName();
   // "new" means added, never looked up: the registration checks the pet is not on file already
-  if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age), one at a time; it checks the pet is not on file already.');
-  // the owner said who they are, and no pet yet
-  if (!(args.pet_name as string | null)?.trim()) return whichPet(String(args.owner_name), args, state, ctx, backend, lang);
+  if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age or birthday, the owner\'s first name).');
+  const phone = (args.phone as string | null) ?? ctx.callerNumber;
+  if (!phone) return refuse('phone_required', askPhone(lang));
+  // no pet named yet: the number's pets, to pick from
+  if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang);
   // the pet described as a new client does (its age, its sex) and nothing said about being new: asked first, once, never looked up blind.
   // Not after "Is this for Biscuit or Max, or a new pet?": that question already covered "new", and a call asks only one of the two
   if (!state.askedIfNew && !state.askedWhichPet && state.saidNew() === null && !state.askedWhetherNew() && describesPet(state.callerWordsSinceFound())) {
     state.askedIfNew = true;
-    return refuse('ask_if_new', `Before looking anything up, ask once, in these words: "${PACKS[lang].petNewQuestion({ pet: String(args.pet_name).trim() })}" If they say yes, add it with register_patient; if no, call verify_caller again with the same details. Keep everything they already gave.`);
+    return refuse('ask_if_new', `Before looking anything up, ask once, in these words: "${PACKS[lang].petNewQuestion({ pet: String(args.pet_name).trim() })}" If they say yes, add it with register_patient; if no, call verify_caller again with the same details.`);
   }
-  const phone = (args.phone as string | null) ?? ctx.callerNumber;
-  if (!phone) return refuse('phone_required', askPhone(lang));
-  const owner = String(args.owner_name);
   const pet = String(args.pet_name);
-  if (!owner.trim()) return refuse('owner_name', 'Ask for the owner\'s first name. Keep the pet\'s name and the phone they already gave.');
-  // the pet already found: nothing to do. Another of the owner's pets is checked like any
+  // the pet already found: nothing to do. Another of the household's pets is checked like any
   const current = state.verifiedPatient;
-  if (current && sameFirstWord(pet, current.firstName) && state.verifiedOwner && ownerMatches(owner, state.verifiedOwner)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
+  if (current && soundsLike(pet, current.firstName)) return { ok: true, data: { verified: true, pet_name: current.firstName } };
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
-  const tried = identityKey(owner, pet, phone.replace(/\D/g, '').slice(-10));
+  const tried = identityKey(pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
-  const found = await findPetOnce(owner, pet, phone, tried, state, ctx, backend);
+  const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang) } };
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
-  // the same answer whichever detail was wrong: never confirm that a record exists
-  return refuse('not_verified', `Say you could not find the pet. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that first: a new pet is added with register_patient.'} For a pet that is not new, check the details one at a time: the owner's first name as it is on the pet's file, the pet's name, and the phone number on file if it is not the one they are calling from. ${triesLeft(state)}`);
+  // the same answer whichever detail was wrong: never confirm what is on the number
+  return refuse('not_verified', `Say you could not find a pet by that name on this number. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
 }
 
 /**
- * The owner has said who they are but not which pet. Only on a call with real caller ID (never a number the caller just
- * says, as on a browser test call or from a hidden number), and only when the owner's name matches the owner on file for
- * that number, are their pets named to pick from, at most three: on a family number, never another owner's. Otherwise
- * the assistant asks which pet, with no name from the records, and a name that matched nobody uses one of the tries.
+ * The number is known but no pet is named yet: the pets on that number, the household, to pick from, at most
+ * three ("Is this for Biscuit or Max, or a new pet?"). With caller ID or with a number the caller says alike:
+ * the number is the household, and the confirmation text to the number on file is the safety net. A number
+ * with no pets gets the plain question, with no name from the records.
  */
-async function whichPet(owner: string, args: Record<string, unknown>, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
-  const ask = refuse('pet_name', 'Ask which pet the call is about, by its name, or whether it is a new pet. Never say a pet\'s name the caller has not said. Keep the owner\'s name they gave; do not ask for it again.');
-  const callerId = ctx.channel !== 'web' ? ctx.callerNumber : null;
-  const said = (args.phone as string | null) ?? null;
+async function whichPet(phone: string, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
+  const ask = refuse('pet_name', 'Ask which pet the call is about, by its name, or whether it is a new pet. Never say a pet\'s name the caller has not said. Keep what they already gave; do not ask for it again.');
   // "Is it new to us?" already asked this call: one question about "new" per call, so no pick question after it
-  if (!callerId || (said && !samePhone(said, callerId)) || !backend.patients.petsOnNumber || state.askedIfNew) return ask;
+  if (!backend.patients.petsOnNumber || state.askedIfNew) return ask;
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
-  const pets = await backend.patients.petsOnNumber(ctx.clinic.id, callerId, owner, ctx.callId);
-  if (!pets.names.length) { state.verifyAttempts++; return ask; }
+  const pets = await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
+  if (!pets.names.length) return ask;
   state.askedWhichPet = true;
   return { ok: true, data: {
     verified: false, pets_on_number: pets.names, more: pets.more,
-    say: `Ask, in these words: "${PACKS[lang].whichPet(pets)}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient. Say nothing else about these pets until one is found.`,
+    say: `Ask, in these words: "${PACKS[lang].whichPet(pets)}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number. Say nothing else about these pets until one is found.`,
   } };
 }
 
 /**
- * One lookup of a pet by its owner, its name and the phone, counted like a try of the identity check: found, it is the
- * pet this call is about; not found, these details are not looked up again.
+ * One lookup of a pet by the number and its name, counted like a try of the identity check: found, it is the
+ * pet this call is about; not found, that name is not looked up again on this number.
  */
-async function findPetOnce(owner: string, pet: string, phone: string, tried: string, state: CallState, ctx: CallContext, backend: Backend) {
-  const found = await backend.patients.findPet(ctx.clinic.id, owner, pet, phone);
+async function findPetOnce(pet: string, phone: string, tried: string, state: CallState, ctx: CallContext, backend: Backend) {
+  const found = await backend.patients.findPet(ctx.clinic.id, pet, phone, ctx.callId);
   if (found.status === 'found') {
     if (state.verifiedPatient?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
     state.verifiedPatient = found.patient;
-    state.verifiedOwner = owner;
+    state.verifiedOwner = found.patient.guardianName ?? state.verifiedOwner;
     state.newFromTurn = state.turns.length;
     return found;
   }
@@ -970,9 +983,9 @@ async function registerPet(
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = (args.phone as string | null) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
-  const owner = String(args.owner_name).trim();
+  const owner = String(args.owner_name ?? '').trim();
   const ownerParts = owner.split(/\s+/);
-  if (!owner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
+  if (!owner && !state.verifiedOwner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
   const birth = parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
   if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const petName = String(args.pet_name).trim();
@@ -981,19 +994,20 @@ async function registerPet(
   // A pet is added only when the identity check finds no such pet: a caller who said it is new is not made to wait for a
   // lookup first, so the same check runs here, with the same details, counted as one of the tries. A pet already on file
   // is found, never added twice, and the caller hears no more than they would from verify_caller.
-  const tried = identityKey(owner, petName, phone.replace(/\D/g, '').slice(-10));
+  const tried = identityKey(petName, phone.replace(/\D/g, '').slice(-10));
   if (!state.identitiesTried.has(tried)) {
-    const found = await findPetOnce(owner, petName, phone, tried, state, ctx, backend);
+    const found = await findPetOnce(petName, phone, tried, state, ctx, backend);
     if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } };
     if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   }
+  // under a number that has an owner, the pet joins that owner: the directory keeps the name on file
   const result = await backend.patients.register(clinic.id, {
-    firstName: petName, lastName: ownerParts.length > 1 ? ownerParts.at(-1)! : '', dob: birth.dob, gender: sex, phone, guardianName: owner, callId: ctx.callId, species,
+    firstName: petName, lastName: ownerParts.length > 1 ? ownerParts.at(-1)! : '', dob: birth.dob, gender: sex, phone, guardianName: owner || state.verifiedOwner, callId: ctx.callId, species,
   });
   if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add any other pets, and offer a callback.');
   if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
   state.verifiedPatient = result.patient;
-  state.verifiedOwner = owner;
+  state.verifiedOwner = result.patient.guardianName ?? owner ?? state.verifiedOwner;
   state.newFromTurn = state.turns.length;
   if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } }; }
   state.registrations++;

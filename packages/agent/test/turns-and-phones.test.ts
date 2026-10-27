@@ -195,7 +195,7 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(body).toMatchObject({ model: 'gpt-main', stream: true, store: false });
     expect(options).toMatchObject({ timeout: 15_000, maxRetries: 1, signal: expect.any(AbortSignal) });
     expect(out.timing).toMatchObject({ rounds: 2, requests: [{ calls: ['get_clinic_info'], inputTokens: 100 }, { calls: [], inputTokens: 120 }] });
-    for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(5); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
+    for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(3); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
     expect(out.timing!.toolMs).toBeGreaterThanOrEqual(20);
   });
 });

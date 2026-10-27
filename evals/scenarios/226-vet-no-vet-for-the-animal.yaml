@@ -1,0 +1,24 @@
+id: vet-no-vet-for-the-animal
+title: "The clinic's only vet sees dogs only: for a cat the assistant says so and offers a request for the team, in the backend's own words"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, settings]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new] }
+facts: "You are calling from the number on file. Your cat Mochi needs a check-up. If the clinic cannot see a cat, say yes to a request for the team."
+turns:
+  - caller: Hi, this is Linh. Mochi needs a check-up.
+    reply: "Dr. Elena Ruiz sees dogs only, so I can't book that here myself. Shall I take a request so the team can book Mochi?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Yes please.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number. Is there anything else I can help you with?"
+    delegate:
+      - create_callback: { reason: "Book a check-up for Mochi, a cat: no vet here sees cats", callback_number: null, topic: null }
+expect:
+  outcome: task_created
+  verified: true
+  refusals: [no_provider_for_animal]
+  spoken_contains: ["Dr. Elena Ruiz sees dogs only", "Shall I take a request so the team can book Mochi?"]

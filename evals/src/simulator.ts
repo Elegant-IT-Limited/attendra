@@ -220,7 +220,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // a second owner on Linh's number, as a family shares a phone: Grace Hale's cat Juniper
   // (once: the demo plays every scenario into one database)
   const seeded = new PostgresPatientDirectory(db, cipher, 'seed');
-  if (scenario.tags.includes('family-number') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Grace Hale', 'Juniper', RIVERBEND_PETS[0].phone)).status === 'not_found') {
+  if (scenario.tags.includes('family-number') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Juniper', RIVERBEND_PETS[0].phone)).status === 'not_found') {
     await seeded.create(clinic.id, { firstName: 'Juniper', lastName: 'Hale', dob: '2022-04-01', phone: RIVERBEND_PETS[0].phone, guardianName: 'Grace Hale', gender: 'female', species: 'cat' });
   }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);

@@ -35,7 +35,7 @@ export interface KnowledgeBase {
 }
 
 /** A verified patient as a call knows them: enough to book, confirm by text and pick a doctor who sees their age. */
-export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null; /** The kind of animal, for a pet. */ species?: string | null; /** They agreed to reminder texts. */ textsOk?: boolean }
+export interface CallPatient { id: string; firstName: string; phone: string | null; dob: string; isNew: boolean; gender: Gender | null; /** A pet's owner, as the number's first record names them. */ guardianName?: string | null; /** The kind of animal, for a pet. */ species?: string | null; /** They agreed to reminder texts. */ textsOk?: boolean }
 
 export type PatientLookup =
   | { status: 'found'; patient: CallPatient } // phone on file, for confirmations
@@ -67,7 +67,8 @@ export interface PatientDirectory {
    * file. The same answer as findByIdentity: found, nobody, or two records only staff
    * can tell apart.
    */
-  findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup>;
+  /** A pet by the number it is on (the household) and its name as the caller says it, matched by sound; the owner's name plays no part. */
+  findPet(clinicId: string, petName: string, phone: string, callId?: string): Promise<PatientLookup>;
   /** Records that they said yes to reminder texts on a call. */
   setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
   /**
@@ -75,7 +76,7 @@ export interface PatientDirectory {
    * three, `more` when there are others. Only the pets whose owner on file matches `ownerName`,
    * so a second family on the same number is never named. Nothing found gives no names.
    */
-  petsOnNumber?(clinicId: string, phone: string, ownerName: string, callId: string): Promise<{ names: string[]; more: boolean }>;
+  petsOnNumber?(clinicId: string, phone: string, callId: string): Promise<{ names: string[]; more: boolean }>;
 }
 
 export interface AppointmentSummary {

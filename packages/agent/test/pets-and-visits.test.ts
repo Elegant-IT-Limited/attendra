@@ -40,31 +40,41 @@ describe('an owner caller ID knows picks from their pets', () => {
     expect(String(out.results[0]!.data.say)).toContain('"¿Es para Biscuit o Mochi, o para una mascota nueva?"');
   });
 
-  it('never names a pet without caller ID: a hidden number, a browser test call, or a number the caller only says', async () => {
-    for (const [number, opts, phone] of [
-      [null, {}, null], [null, { channel: 'web' as const }, LINH], [LINH, { channel: 'web' as const }, null], [LINH, {}, '720 555 0173'],
-    ] as const) {
+  it('with no caller ID, asks for the number first; the number the caller says then opens its pets, as caller ID does (the text to the number on file is the safety net)', async () => {
+    // no number at all: asked for one, nothing named
+    for (const [number, opts] of [[null, {}], [null, { channel: 'web' as const }]] as const) {
       const c = await w.call(number, { clinic, ...opts });
-      const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone } }]);
-      expect(out.errors).toEqual(['pet_name']);
+      const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: null } }]);
+      expect(out.errors).toEqual(['phone_required']);
       expect(handed(out)).not.toMatch(/biscuit|mochi/i);
       expect(await audited('patient.pets_on_number.read', c.callId)).toBe(0);
     }
+    // a number the caller says, on a browser test call: that number's pets, to pick from
+    const web = await w.call(null, { clinic, channel: 'web' });
+    const out = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
+    expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Biscuit', 'Mochi'], more: false });
+    expect(await audited('patient.pets_on_number.read', web.callId)).toBe(1);
+    // a number with nothing on it: the plain question, no name
+    const unknown = await w.call(null, { clinic, channel: 'web' });
+    const none = await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
+    expect(none.errors).toEqual(['pet_name']);
+    expect(handed(none)).not.toMatch(/biscuit|mochi/i);
   });
 
-  it('on a family number names only the confirmed owner\'s pets, and a name that matches nobody uses a try', async () => {
+  it('a number is one household: whoever calls from it hears every pet on it, whatever name they give, and the owner\'s name never unlocks or blocks a pet', async () => {
     await directory().create(clinic.id, { firstName: 'Juniper', lastName: 'Hale', dob: '2022-04-01', phone: LINH, guardianName: 'Grace Hale', gender: 'female', species: 'cat' });
-    const grace = await w.call(LINH, { clinic });
-    const hers = await grace.delegate([{ tool: 'verify_caller', args: { owner_name: 'Grace', pet_name: null } }]);
-    expect(hers.results[0]!.data.pets_on_number).toEqual(['Juniper']);
-    expect(handed(hers)).not.toMatch(/biscuit|mochi/i);
-    const linh = await w.call(LINH, { clinic });
-    expect((await linh.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }])).results[0]!.data.pets_on_number).toEqual(['Biscuit', 'Mochi']);
-    const stranger = await w.call(LINH, { clinic });
-    const out = await stranger.delegate([{ tool: 'verify_caller', args: { owner_name: 'Ana', pet_name: null } }]);
-    expect(out.errors).toEqual(['pet_name']);
-    expect(handed(out)).not.toMatch(/biscuit|mochi|juniper/i);
-    expect(stranger.state.verifyAttempts).toBe(1);
+    for (const owner of ['Grace', 'Linh', 'Ana', 'Lynn Nguyen']) {
+      const c = await w.call(LINH, { clinic });
+      const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: owner, pet_name: null } }]);
+      expect(out.results[0]!.data.pets_on_number).toEqual(['Biscuit', 'Mochi', 'Juniper']);
+      expect(c.state.verifyAttempts).toBe(0);
+    }
+    // the pet by name, said any way, without the owner's name at all
+    const c = await w.call(LINH, { clinic });
+    const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Moochi' } }]);
+    expect(found.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
+    expect(c.state.verifiedOwner).toBe('Linh Nguyen');
+    expect(await audited('patient.identified.by_number', c.callId)).toBe(1);
   });
 
   it('names at most three, then "or another one"', async () => {
@@ -86,7 +96,7 @@ describe('one question about "new" per call: the pick question, or "Is it new to
     const c = await w.call(LINH, { clinic });
     c.caller('Yes, that\'s me, Linh.');
     const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
-    expect(asked.results[0]!.data.pets_on_number).toEqual(['Biscuit', 'Mochi']);
+    expect(asked.results[0]!.data.pets_on_number).toEqual(expect.arrayContaining(['Biscuit', 'Mochi']));
     c.assistant('Is this for Biscuit or Mochi, or a new pet?');
     c.caller('It\'s for Mochi, she\'s a two-year-old female cat.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Mochi', phone: null } }]);

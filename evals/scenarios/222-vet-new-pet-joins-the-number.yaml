@@ -1,0 +1,28 @@
+id: vet-new-pet-joins-the-number
+title: "A new pet under a number that has an owner joins that owner, whatever name the caller gives now, and the household on the pet page shows all three"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, new-pet]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen, calling from the number on file; today you give your name as Lynn. You have a new puppy, Pip, a male dog about four months old, and want a first visit. Any vet and any time are fine. Say yes to the read-back."
+turns:
+  - caller: Hi, it's Lynn. I have a new puppy, Pip, a male, about four months old. Could he come in for his first visit?
+    reply: "Thanks, Lynn. Pip is added. For a first visit I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Pip, owner_name: Lynn, species: dog, sex: male, birthday_or_age: about four months old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Pip] }

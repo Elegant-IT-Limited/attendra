@@ -470,6 +470,10 @@ const personName = z.string().trim().min(1, 'required').max(80);
 const phoneNumber = z.string().trim().max(30).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
 const PatientStatus = z.enum(['active', 'new']);
 
+/** The number a pet is being added under: who owns it and which pets are on it already, for the pet form (2026-11). */
+export const HouseholdQuery = z.object({ phone: z.string().trim().min(10).max(30) });
+export const Household = z.object({ owner: z.string().nullable(), pets: z.array(z.string()) });
+export type Household = z.infer<typeof Household>;
 export const PatientSearch = z.object({
   query: z.string().trim().min(1, 'type something to search for').max(100),
   /** new: only patients the assistant added that nobody has checked yet. */

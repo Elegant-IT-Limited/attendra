@@ -1,0 +1,29 @@
+id: vet-es-pet-name-sounds-alike
+title: "Spanish: the pet's name said first and heard as \"Moochi\"; matched by sound against the pets on the number, found, and booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, language, es]
+facts: "Llamas desde el número registrado y hablas español. Tu gata es Mochi (el reconocimiento de voz escribe Moochi). Necesita un chequeo; cualquier veterinario y cualquier hora te sirven. Di sí a la confirmación."
+turns:
+  - caller: Hola, soy Linh. Necesito un chequeo para Moochi.
+    reply: "Para un chequeo general de Mochi tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Moochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Mochi"]
+forbid_spoken: ["no encontré", "no coinciden"]

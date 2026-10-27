@@ -1,0 +1,28 @@
+id: vet-pet-name-sounds-alike
+title: "The pet's name said first and heard as \"Moochi\": matched by sound against the pets on the number, found, and booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household]
+facts: "You are calling from the number on file. Your cat is Mochi (speech-to-text writes Moochi). She needs a check-up; any vet and any time are fine. Say yes to the read-back."
+turns:
+  - caller: Hi, this is Linh. I need a check-up for Moochi.
+    reply: "For a wellness exam for Mochi I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Moochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Mochi"]
+forbid_spoken: ["couldn't find", "did not match"]

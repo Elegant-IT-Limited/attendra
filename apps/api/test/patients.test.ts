@@ -331,7 +331,7 @@ describe('pets, at a vet clinic', () => {
     expect(added.statusCode).toBe(201);
     expect((await api.request('GET', `${C}/${added.json().id}`, { cookie: as.staff })).json()).toMatchObject({ name: 'Mango', lastName: '', guardianName: 'Sol' });
     const directory = new PostgresPatientDirectory(api.t.db, createPhiCipher(TEST_DATA_KEY));
-    expect((await directory.findPet(DEMO_CLINIC.id, 'Sol', 'Mango', '+13035550178')).status).toBe('found');
+    expect((await directory.findPet(DEMO_CLINIC.id, 'Mango', '+13035550178')).status).toBe('found');
   });
 
   it('refuses a birthday after today where the clinic is, under the field', async () => {

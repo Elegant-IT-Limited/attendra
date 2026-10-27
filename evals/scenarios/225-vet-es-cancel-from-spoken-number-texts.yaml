@@ -1,0 +1,26 @@
+id: vet-es-cancel-from-spoken-number-texts
+title: "Spanish: a cancellation from a number the caller says (a browser test call); the pet is found on that number, the visit is cancelled, and the confirmation text goes to the number on file"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, household, has-appointment, language, es]
+caller_number: null
+channel: web
+facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Linh Nguyen y hablas español; el número de la ficha es 720 555 0172. Quieres cancelar la cita de Biscuit del jueves. Di sí a la confirmación."
+turns:
+  - caller: Hola, soy Linh. Necesito cancelar la cita de Biscuit del jueves. Mi número es 720 555 0172.
+    reply: "Veo el chequeo de Biscuit el jueves. Entonces, quiere cancelar la cita del jueves. ¿Es correcto?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
+      - list_appointments: {}
+      - propose_cancellation: { appointment_id: "$appointments[0]" }
+  - caller: Sí.
+    reply: "Listo, la cita queda cancelada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: cancelled
+  verified: true
+  language: es
+  refusals: []
+  sms_sent: 1
+  sms_templates: [cancel_confirmed]
