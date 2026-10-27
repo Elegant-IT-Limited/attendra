@@ -299,7 +299,8 @@ export default function Settings() {
                     </span>
                   ))}
                 </div>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setWindows(d, [...windows(d), windows(d).length ? { open: '13:00', close: '17:00' } : { open: '08:00', close: '17:00' }])}>
+                {/* the day in the name too: seven buttons that all read "More hours" say nothing to a screen reader */}
+                <Button type="button" size="sm" variant="ghost" aria-label={`${windows(d).length ? 'More hours' : 'Open this day'}, ${DAYS[Number(d)]}`} onClick={() => setWindows(d, [...windows(d), windows(d).length ? { open: '13:00', close: '17:00' } : { open: '08:00', close: '17:00' }])}>
                   <Plus /> {windows(d).length ? 'More hours' : 'Open this day'}
                 </Button>
               </div>

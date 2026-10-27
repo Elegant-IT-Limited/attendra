@@ -209,7 +209,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     // every day, 8 to 6: weekends too
     const hours = page.locator('#hours');
     for (const day of ['Saturday', 'Sunday']) {
-      await hours.locator('div.flex-wrap', { has: page.getByText(day, { exact: true }) }).first().getByRole('button', { name: 'Open this day' }).click();
+      await hours.getByRole('button', { name: `Open this day, ${day}`, exact: true }).click();
     }
     for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) {
       await page.getByLabel(`${day} opens`).fill('08:00');
