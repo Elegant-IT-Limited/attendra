@@ -1,0 +1,32 @@
+id: vet-silence-recovery
+title: "A turn the voice let go (no reply, no hand-off) is answered from the caller's own words after 5 s, never with \"say that again\""
+clinic: riverbend
+local_time: "10:00"
+tags: [silence]
+facts: "You are Linh Nguyen, calling from the number on Biscuit's file, the number you are calling from. Biscuit is your dog; you want a wellness exam, any vet, any time. Say yes to the first time offered and to the read-back. If you are asked to repeat what you said, say you already said it, a little annoyed."
+turns:
+  # the voice lets this turn go: the watchdog hands it the caller's words, and it hands them on to the backend
+  - caller: Hi, it's Linh. I'd like a wellness exam for my dog Biscuit, any time is fine.
+    dropped: true
+    reply: "Sorry for the wait, Linh. I found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken:
+  - say that again
+  - could you repeat
+  - repeat what you
+  - didn't catch

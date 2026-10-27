@@ -51,6 +51,8 @@ export class EngineRouter implements VoiceEngine {
   transfer(sessionId: string, targetUri: string) { return this.of(sessionId).transfer(sessionId, targetUri); }
   hangup(sessionId: string) { return this.of(sessionId).hangup(sessionId); }
 
+  sessionInfo(sessionId: string) { return this.of(sessionId).sessionInfo?.(sessionId) ?? null; }
+
   release(sessionId: string) {
     this.of(sessionId).release?.(sessionId);
     this.bySession.delete(sessionId);

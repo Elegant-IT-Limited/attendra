@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ResponsesPlanner } from '@attendra/agent';
+import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
   CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
   PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
@@ -29,6 +29,8 @@ export interface VoiceRuntime {
   realtimeModel?: string;
   defaultEngine?: 'gpt-live' | 'gpt-realtime';
   backendModel: string;
+  /** The backend's reasoning effort, and a faster setting for simple turns; unset, the model's defaults. */
+  backendSpeed?: PlannerSpeed;
   /** Without it, texts are recorded as not sent and the call carries on. */
   twilio?: { accountSid: string; authToken: string };
   /** This service's public address, which Twilio calls with replies and delivery reports. Without it they are not taken. */
@@ -52,7 +54,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
   return buildServer(wire(rt, {
     verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
     engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
-    planner: new ResponsesPlanner(openai, rt.backendModel),
+    planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed),
   }));
 }
 
@@ -60,7 +62,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
  * The voice service with no OpenAI at all: only simulated calls, for the local demo
  * without a key and for the e2e suite. It takes no phone or browser calls.
  */
-export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'webhookSecret' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel' | 'simulatedCalls'>) {
+export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'webhookSecret' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel' | 'backendSpeed' | 'simulatedCalls'>) {
   const engine = new SimulatedEngine();
   return buildServer(wire({ ...rt, simulatedCalls: false }, {
     verifyWebhook: async () => { throw new Error('this voice service takes no phone calls'); },
@@ -69,7 +71,7 @@ export function createSimulatedVoiceApp(rt: Omit<VoiceRuntime, 'openaiApiKey' | 
   }, engine));
 }
 
-function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
+function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeModel' | 'defaultEngine' | 'backendModel' | 'backendSpeed'>, parts: Pick<VoiceDeps, 'verifyWebhook' | 'engine' | 'planner'>, simulated?: SimulatedEngine): VoiceDeps {
   const { db, cipher } = rt;
   const calls = new CallRepository(db, cipher);
   const summaries = new CallSummaryRepository(db, cipher);

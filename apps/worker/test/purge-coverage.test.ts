@@ -65,6 +65,7 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into auth_accounts (id, user_id, account_id, provider_id) values ($1, $2, $2, 'credential')`, [`acc_${owner}`, owner]);
   await q(`insert into auth_sessions (id, user_id, token, expires_at, active_organization_id) values ($1, $2, $1, now() + interval '1 day', $3)`, [`ses_${owner}`, owner, orgId]);
   await q(`insert into auth_two_factors (id, user_id, secret, backup_codes) values ($1, $2, 'x', 'x')`, [`tf_${owner}`, owner]);
+  await q(`insert into user_avatars (user_id, bytes, content_type) values ($1, '\\x52494646', 'image/webp')`, [owner]);
   await q(`insert into memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')`, [`mem_${owner}`, orgId, owner]);
   await q(`insert into invitations (id, organization_id, email, role, inviter_id, expires_at, clinic_id) values ($1, $2, 'new.hire@example.com', 'staff', $3, now() + interval '7 days', $4)`, [`inv_${owner}`, orgId, owner, clinicId]);
   await q(`select set_config('app.clinic_id', $1, false)`, [clinicId]);
@@ -76,8 +77,8 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into call_summaries (call_id, clinic_id, body_enc, intent, sentiment, needs_review, model, reviewed_by_user_id) values ($1, $2, 'x', 'book', 'calm', false, 'm', $3)`, [call!.id, clinicId, owner]);
   const [appt] = await q<{ id: string }>(`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id, cancelled_by_user_id)
     values ($1, $2, 'prov', 'vt', now(), now() + interval '15 minutes', 'k', $3, $3) returning id`, [clinicId, patient!.id, owner]);
-  const [task] = await q<{ id: string }>(`insert into tasks (clinic_id, type, call_id, patient_id, details_enc, idempotency_key, assignee_user_id, done_by_user_id, assigned_by_user_id)
-    values ($1, 'callback', $2, $3, 'x', 'k', $4, $4, $4) returning id`, [clinicId, call!.id, patient!.id, owner]);
+  const [task] = await q<{ id: string }>(`insert into tasks (clinic_id, type, call_id, patient_id, details_enc, idempotency_key, assignee_user_id, done_by_user_id, assigned_by_user_id, created_by_user_id)
+    values ($1, 'callback', $2, $3, 'x', 'k', $4, $4, $4, $4) returning id`, [clinicId, call!.id, patient!.id, owner]);
   await q(`insert into task_notes (clinic_id, task_id, author_user_id, body_enc) values ($1, $2, $3, 'x')`, [clinicId, task!.id, owner]);
   await q(`insert into sms_messages (clinic_id, template, to_hash, idempotency_key, call_id, patient_id, task_id, appointment_id) values ($1, 'address', 'h', 'k', $2, $3, $4, $5)`, [clinicId, call!.id, patient!.id, task!.id, appt!.id]);
   await q(`insert into sms_opt_outs (clinic_id, to_hash, status, source) values ($1, 'h', 'opted_out', 'keyword')`, [clinicId]);

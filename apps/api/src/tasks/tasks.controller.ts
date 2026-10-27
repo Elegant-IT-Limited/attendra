@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
-import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffNames, staffRole, taskFacts } from '@attendra/db';
+import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffPeople, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import { CIPHER, DB, EVENTS, FRONT_DESK, JOBS } from '../http/tokens';
 import { randomUUID } from 'node:crypto';
 import type { JobQueue } from '@attendra/worker/queue';
 import { ZodPipe } from '../http/zod.pipe';
+import { avatarUrl } from '../me/avatar';
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 /** Sent to the pharmacy, ready to pick up, or not approved: each one says a vet decided. */
@@ -40,7 +41,7 @@ export class TasksController {
     if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
     const refill = body.type === 'refill';
     const details: Record<string, string> = {
-      reason: body.reason, ...(topic ? { topic } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}),
+      reason: body.reason, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}),
       ...(refill && body.medication ? { medication: body.medication } : {}), ...(refill && body.pharmacy ? { pharmacy: body.pharmacy } : {}),
     };
     const task = await new PostgresTaskQueue(this.db, this.cipher, `user:${staff.userId}`).create(clinicId, { type: body.type, callId: null, patientId: null, idempotencyKey: `manual:${randomUUID()}`, details });
@@ -77,13 +78,17 @@ export class TasksController {
       from: q.from && tz ? zonedInstant(q.from, '00:00', tz) : undefined,
       to: q.to && tz ? zonedInstant(addDays(q.to, 1), '00:00', tz) : undefined,
     }, staff.userId);
-    const names = await staffNames(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, t.doneByUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
+    // only people still on the team: a former member's name, role and picture are gone alike
+    const people = await staffPeople(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, t.doneByUserId, t.createdByUserId, ...t.notes.map((n) => n.authorUserId)].filter((x): x is string => !!x)));
+    const nameOf = (id: string | null) => (id ? people.get(id)?.name ?? null : null);
+    const pictureOf = (id: string) => avatarUrl(id, people.get(id)?.avatarAt);
     return {
-      tasks: tasks.map(({ assignedByUserId: _by, notes, ...t }) => ({
+      tasks: tasks.map(({ assignedByUserId: _by, createdByUserId: by, notes, ...t }) => ({
         ...t, createdAt: t.createdAt.toISOString(), claimedAt: iso(t.claimedAt), doneAt: iso(t.doneAt),
-        assigneeName: t.assigneeUserId ? names.get(t.assigneeUserId) ?? null : null,
-        doneByName: t.doneByUserId ? names.get(t.doneByUserId) ?? null : null,
-        notes: notes.map((n) => ({ id: n.id, author: names.get(n.authorUserId) ?? null, at: n.at.toISOString(), body: n.body })),
+        assigneeName: nameOf(t.assigneeUserId),
+        doneByName: nameOf(t.doneByUserId),
+        createdBy: by ? { name: nameOf(by), role: people.get(by)?.role ?? null, avatarUrl: pictureOf(by) } : null,
+        notes: notes.map((n) => ({ id: n.id, author: nameOf(n.authorUserId), authorAvatarUrl: pictureOf(n.authorUserId), at: n.at.toISOString(), body: n.body })),
       })),
     };
   }
@@ -115,7 +120,7 @@ export class TasksController {
   @ApiOperation({ summary: 'Who a request can be given to: everyone who works requests here, by name. Owners and managers.' })
   @ApiOkResponse({ schema: schemaOf(TaskAssignees) })
   async assignees(@Param('clinicId') clinicId: string, @CurrentStaff() staff: Staff): Promise<TaskAssignees> {
-    return { people: (await requestAssignees(this.db, clinicId)).map((p) => ({ ...p, you: p.userId === staff.userId })) };
+    return { people: (await requestAssignees(this.db, clinicId)).map(({ avatarAt, ...p }) => ({ ...p, you: p.userId === staff.userId, avatarUrl: avatarUrl(p.userId, avatarAt) })) };
   }
 
   @Post(':taskId/claim')

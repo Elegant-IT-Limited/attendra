@@ -2,7 +2,7 @@
 'use client';
 import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
-import { type ClinicConfig, localDateOf, localParts, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
+import { type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
@@ -200,7 +200,8 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
           : schedule.isPending ? <div className="space-y-3 p-5"><Skeleton className="h-24" /></div>
             : schedule.isError ? <Alert tone="danger" className="m-5">Today&apos;s schedule did not load. It tries again every 30 seconds.</Alert> : (
               <div className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
-                {clinic.providers.map((p) => {
+                {/* the stand-in a new clinic starts with steps aside once anyone else is listed, unless it has visits today */}
+                {shownProviders(clinic.providers, (schedule.data?.appointments ?? []).filter((a) => a.status === 'booked').map((a) => a.providerId)).map((p) => {
                   const windows = windowsOn(p.hours ?? clinic.hours, weekdayOf(today)).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
                   const mine = (schedule.data?.appointments ?? []).filter((a) => a.providerId === p.id && a.status === 'booked');
                   const span = mine.map((a) => ({ a, s: localParts(new Date(a.startsAt), tz).minutes, e: localParts(new Date(a.endsAt), tz).minutes }));

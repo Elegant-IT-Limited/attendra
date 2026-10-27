@@ -168,10 +168,31 @@ export function zoneLabel(timeZone: string) {
   return name ? `${name} (${timeZone.replaceAll('_', ' ')})` : timeZone;
 }
 
-export function phone(e164: string | null | undefined) {
-  if (!e164) return '';
-  const m = e164.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
-  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+/**
+ * A North American number as the full international one, from however it was typed: +1 and
+ * ten digits, or at a clinic in North America ten digits (or 1 and ten) with any spaces,
+ * dots, dashes or brackets. Null for anything else, which is shown as it was given.
+ */
+function nanp(n: string): string | null {
+  const plain = n.replace(/[\s().-]/g, '');
+  if (/^\+1\d{10}$/.test(plain)) return plain;
+  if (country.us && /^1?\d{10}$/.test(plain)) return `+1${plain.slice(-10)}`;
+  return null;
+}
+
+/** A role as the clinic says it. */
+export const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
+
+/** A phone number the way people write it: "(505) 555-0142". A number from elsewhere, or a partial one, as it was given. */
+export function phone(n: string | null | undefined) {
+  if (!n) return '';
+  const full = nanp(n);
+  return full ? `(${full.slice(2, 5)}) ${full.slice(5, 8)}-${full.slice(8)}` : n;
+}
+
+/** The tap-to-call link for a number: the full international number when it is known, the digits as given otherwise. */
+export function telHref(n: string) {
+  return `tel:${nanp(n) ?? n.replace(/[^\d+]/g, '')}`;
 }
 
 /** "4 March 1985" from YYYY-MM-DD. */

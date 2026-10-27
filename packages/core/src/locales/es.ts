@@ -61,6 +61,8 @@ export const es: LanguagePack = {
   },
   lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${w}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
   recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
+  phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
+  petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
@@ -100,5 +102,7 @@ export const es: LanguagePack = {
   hedge: new RegExp(`${words('no|espere|espera|mejor|tal vez|quizas?|a lo mejor|en realidad|otro|otra|cambiar|momento|pensandolo|pero|prefiero|aunque|repita').source}|[?¿]`, 'u'),
   markers: /\b(el|la|los|las|de|que|por|para|con|una?|quiero|necesito|cita|gracias|hola|senor|senora|manana|hoy|si|esta|usted|puedo)\b/g,
   saysNew: words('(?:es|son|soy|somos) (?:completamente )?nuev[oa]s?|(?:paciente|cliente|mascota)s? nuev[oa]s?|nuev[oa]s? (?:paciente|cliente|mascota|aqui|en (?:la|su) clinica)|no (?:esta|estan|estoy) (?:registrad[oa]s?|en (?:su|el) sistema)|nunca (?:ha|han|he) (?:venido|ido|estado)|primera (?:vez|visita|consulta) (?:aqui|con ustedes|en (?:la|su) clinica)|(?:su|una) primera (?:consulta|visita|revision)|(?:acabo|acabamos) de (?:adoptar|tener)|(?:quiero|quisiera|necesito) registrar|registrar a (?:mi|mis|nuestr[oa]s?)'),
+  describesPet: words('(?:tiene|de) (?:\\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|dieciocho) (?:anos?|mes(?:es)?|semanas?)|(?:anos?|meses) de edad|hembra|macho|esterilizad[oa]|castrad[oa]'),
+  pointsAtPet: /^(?=.*\b(el|la|los|las|mi|mis|nuestro|nuestra|su|este|esta|ese|esa|otro|otra|ambos|ambas)\b)(?:(?:el|la|los|las|mi|mis|nuestro|nuestra|su|este|esta|ese|esa|otro|otra|ambos|ambas|no|uno|una|de|dos|mayor|menor|pequeno|pequena|grande|perro|perra|gato|gata|mascota|cachorro|cachorra|conejo|coneja)(?:[\s,.!?]+|$))+$/,
   saysOnFile: words('no es nuev[oa]|ya (?:es|son) (?:paciente|cliente)s?|ya (?:esta|estan) (?:registrad[oa]s?|en (?:su|el) sistema)|ya (?:ha|han|hemos|he) (?:venido|ido|estado)|(?:puede|podria) (?:que )?(?:ya )?(?:este|estar) (?:registrad[oa]s?|en (?:su|el) sistema)'),
 };

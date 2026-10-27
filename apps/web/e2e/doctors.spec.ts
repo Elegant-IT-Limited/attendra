@@ -14,14 +14,32 @@ test('a manager adds a doctor with hours and days off, and the front desk sees t
   const panel = manager.getByRole('dialog', { name: 'Add doctor' });
   await panel.getByLabel('Name').fill('Dr. Lena Ortiz');
   await panel.getByLabel('Gender').selectOption({ label: 'Female' });
-  await panel.getByLabel('Specialty').fill('Dermatology');
-  // categories are chips now: type one, Enter, then the next
+  // a specialty is picked from the clinic's list, never typed: what is typed only narrows the list
+  const specialty = panel.getByRole('combobox', { name: 'Specialty' });
+  await specialty.click();
+  const choices = manager.getByRole('listbox', { name: 'Choices for specialty' });
+  await expect(choices.getByRole('option', { name: 'Pediatrics' })).toBeVisible();
+  await specialty.fill('Derma');
+  await expect(choices.getByRole('option', { name: 'Dermatology' })).toHaveCount(0);
+  // a manager adds one to the list without leaving the panel, and it is picked
+  await choices.getByRole('option', { name: 'Add a specialty…' }).click();
+  await panel.getByLabel('New specialty').fill('Dermatology');
+  await panel.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(specialty).toHaveValue('Dermatology');
+  await specialty.click();
+  await expect(choices.getByRole('option', { name: 'Dermatology' })).toHaveAttribute('aria-selected', 'true');
+  await specialty.press('Escape');
+  // categories are chips from the list too: typing narrows them, and nothing typed is kept on its own
   const categories = panel.getByRole('combobox', { name: 'Sees people for' });
   await categories.fill('Skin');
   await categories.press('Enter');
-  await categories.fill('Allergies');
-  await categories.press('Enter');
-  await expect(panel.getByRole('list', { name: 'Sees people for' })).toContainText('Allergies');
+  await expect(panel.getByRole('list', { name: 'Sees people for' })).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Add one to the list…' }).click();
+  await expect(panel.getByLabel('New value for sees people for')).toHaveValue('Skin');
+  await panel.getByLabel('New value for sees people for').press('Enter');
+  await expect(panel.getByRole('list', { name: 'Sees people for' })).toContainText('Skin');
+  await panel.getByRole('button', { name: '+ Children' }).click();
+  await expect(panel.getByRole('list', { name: 'Sees people for' })).toContainText('Children');
   await panel.getByLabel('Their own hours, not the clinic\'s').check();
   await panel.getByRole('button', { name: 'Days off' }).click();
   await panel.getByRole('button', { name: 'Save' }).click();
@@ -67,4 +85,27 @@ test('the schedule lists cancelled visits on their own, as a history', async ({ 
   await expect(page.getByRole('heading', { name: 'Cancelled visits' })).toBeVisible();
   await page.getByLabel('Sort').selectOption({ label: 'Visit date, latest first' });
   await expect(page.getByTestId('cancelled')).toBeVisible();
+});
+
+test('a specialty a doctor already has that is not on the list is kept, marked, and can be added to it', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  const clinic = manager.url().split('/c/')[1]!;
+  // a list kept without a specialty Dr. Raman has, as one typed before lists were picked from
+  const status = await manager.evaluate(async (id) => {
+    const settings = await (await fetch(`/api/v1/clinics/${id}/settings`)).json();
+    const list = (settings.lists?.specialties ?? ['Family medicine']).filter((v: string) => v !== 'Pediatrics');
+    return (await fetch(`/api/v1/clinics/${id}/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...settings, lists: { ...settings.lists, specialties: list } }) })).status;
+  }, clinic);
+  expect(status).toBe(200);
+  await manager.getByRole('link', { name: 'Doctors' }).click();
+  // the filter still finds every specialty in use
+  await expect(manager.getByLabel('Specialty').locator('option', { hasText: 'Pediatrics' })).toHaveCount(1);
+  await manager.getByTestId('doctor').filter({ hasText: 'Dr. Priya Raman' }).getByRole('button', { name: 'Edit hours and details' }).click();
+  const panel = manager.getByRole('dialog', { name: 'Edit Dr. Priya Raman' });
+  await expect(panel.getByRole('combobox', { name: 'Specialty' })).toHaveValue('Pediatrics');
+  await expect(panel.getByText('Not on your list')).toBeVisible();
+  await panel.getByRole('button', { name: 'Add to the list' }).click();
+  await expect(panel.getByText('Not on your list')).toBeHidden();
+  await panel.getByRole('combobox', { name: 'Specialty' }).click();
+  await expect(manager.getByRole('listbox', { name: 'Choices for specialty' }).getByRole('option', { name: 'Pediatrics' })).toHaveAttribute('aria-selected', 'true');
 });

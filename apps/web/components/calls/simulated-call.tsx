@@ -28,7 +28,7 @@ export function SimulatedCall({ clinicId }: { clinicId: string }) {
       <CardHeader><CardTitle>Watch a simulated call</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-text-muted">
-          A demo patient calls to book a visit, scripted, through the real assistant and this clinic&apos;s calendar. It stops at the read-back and waits, so you can
+          A caller asks for a visit, scripted, through the real assistant and this clinic&apos;s calendar. It stops before anything is booked and waits, so you can
           watch it live, send the assistant a note, or end it. No audio, and no OpenAI credit.
         </p>
         <Button variant="outline" loading={start.isPending} onClick={() => start.mutate()}><PlayCircle /> Play a simulated call</Button>

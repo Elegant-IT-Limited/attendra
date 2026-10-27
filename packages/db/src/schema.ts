@@ -149,6 +149,8 @@ export const tasks = pgTable('tasks', {
   doneByUserId: text('done_by_user_id'),
   outcome: text('outcome', { enum: ['called_back', 'left_message', 'refill_sent', 'refill_ready', 'refill_declined', 'not_needed', 'details_confirmed'] }),
   assignedByUserId: text('assigned_by_user_id'),
+  /** Who at the clinic wrote it down by hand (migration 0040); null for the assistant's own. */
+  createdByUserId: text('created_by_user_id'),
   urgent: boolean('urgent').notNull().default(false),
   dueOn: date('due_on', { mode: 'string' }),
   /** The clinic's own details on the request, encrypted JSON. */

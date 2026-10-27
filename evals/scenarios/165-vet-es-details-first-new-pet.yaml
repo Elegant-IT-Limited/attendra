@@ -1,0 +1,41 @@
+id: vet-es-details-first-new-pet
+title: "In Spanish: a caller who describes the pet first is asked whether it is new before any lookup; sí adds the pet and books"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550186"
+facts: "You are Nora Quinn and you speak only Spanish. You are calling from your own mobile, the number you are calling from. Clover is your female dog (perra), one year old, and she has never been to this clinic, but you do not say so until you are asked. Any vet and any time are fine. Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero una cita de chequeo para mi perra Clover. Tiene un año y es hembra. Me llamo Nora.
+    reply: "¿Es la primera vez que Clover viene con nosotros?"
+    delegate:
+      - verify_caller: { owner_name: Nora, pet_name: Clover }
+  - assistant: ¿Es la primera vez que Clover viene con nosotros?
+  - caller: Sí, es nueva.
+    reply: "Bienvenida, Clover. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Clover, owner_name: Nora, species: dog, sex: female, birthday_or_age: un año, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Clover tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [ask_if_new]
+  # one question about "new" per call: no caller ID match here, so never the pick question
+  never_returned: ["o para una mascota nueva?", "pets_on_number"]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  returned: ["¿Es la primera vez que Clover viene con nosotros?"]
+forbid_spoken:
+  - no encontré
+  - no la encontré
+  - qué tipo de animal
+  - hembra o macho

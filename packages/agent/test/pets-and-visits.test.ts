@@ -81,6 +81,50 @@ describe('an owner caller ID knows picks from their pets', () => {
   });
 });
 
+describe('one question about "new" per call: the pick question, or "Is it new to us?", never both', () => {
+  it('with caller ID matched and the owner confirmed, asks only which pet, even when the pet is then described as a new one would be', async () => {
+    const c = await w.call(LINH, { clinic });
+    c.caller('Yes, that\'s me, Linh.');
+    const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
+    expect(asked.results[0]!.data.pets_on_number).toEqual(['Biscuit', 'Mochi']);
+    c.assistant('Is this for Biscuit or Mochi, or a new pet?');
+    c.caller('It\'s for Mochi, she\'s a two-year-old female cat.');
+    const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Mochi', phone: null } }]);
+    expect(out.errors).toEqual([null]);
+    expect(out.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
+    expect(c.state.askedIfNew).toBe(false);
+  });
+
+  it('holds when the pick question has no "new" in it ("or another one?")', async () => {
+    const rowan = '+17205550187';
+    for (const name of ['Fern', 'Gus', 'Hopper', 'Iris']) {
+      await directory().create(clinic.id, { firstName: name, lastName: 'Pike', dob: '2021-01-01', phone: rowan, guardianName: 'Rowan Pike', gender: 'female', species: 'dog' });
+    }
+    const c = await w.call(rowan, { clinic });
+    const asked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Rowan', pet_name: null } }]);
+    expect(asked.results[0]!.data).toMatchObject({ pets_on_number: ['Fern', 'Gus', 'Hopper'], more: true });
+    c.assistant(PACKS.en.whichPet({ names: ['Fern', 'Gus', 'Hopper'], more: true }));
+    c.caller('Another one, Iris. She\'s a five-year-old female.');
+    const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Rowan', pet_name: 'Iris', phone: null } }]);
+    expect(out.errors).toEqual([null]);
+    expect(out.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Iris' });
+  });
+
+  it('otherwise asks "Is it new to us?", and after it never the pick question, even with caller ID matched', async () => {
+    const c = await w.call(LINH, { clinic });
+    c.caller('Hi, I\'m Linh. I\'d like a check-up for my cat Clover, she\'s a one-year-old female.');
+    const first = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Clover' } }]);
+    expect(first.errors).toEqual(['ask_if_new']);
+    expect(String(first.results[0]!.data.say)).toContain(PACKS.en.petNewQuestion({ pet: 'Clover' }));
+    c.assistant('Is Clover new to us?');
+    c.caller('Sorry, which pets do you have for me?');
+    const then = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
+    expect(then.errors).toEqual(['pet_name']);
+    expect(handed(then)).not.toMatch(/biscuit|mochi|pets_on_number/i);
+    expect(await audited('patient.pets_on_number.read', c.callId)).toBe(0);
+  });
+});
+
 describe('the answer to "Is this for Biscuit or Mochi, or a new pet?"', () => {
   const answer = (question: string, said: string) => {
     const s = new CallState();

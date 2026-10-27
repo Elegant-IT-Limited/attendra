@@ -88,3 +88,23 @@ export function newToClinic(callerText: string): 'new' | 'on_file' | null {
   if (LANGUAGES.some((l) => PACKS[l].saysNew.test(t))) return 'new';
   return null;
 }
+
+/**
+ * Whether the caller describes a pet the way someone bringing a new one does: its age ("a year old", "tiene dos años")
+ * or its sex ("a female", "es hembra"). With that and nothing said about being new, the assistant asks whether the pet is
+ * new before any lookup (a test call, 2026-10-26: the details came first and the lookup found nothing). In any language.
+ */
+export function describesPet(callerText: string): boolean {
+  const t = normalise(callerText);
+  return LANGUAGES.some((l) => PACKS[l].describesPet.test(t));
+}
+
+/**
+ * Whether a pet's "name" only points at one of the owner's pets ("the other one", "my cat", "la otra") with no name in
+ * it: the caller said which pet, not what it is called, so there is nothing to look up. A name with such words in it
+ * ("Little Bear", "Mi Amor") is still a name. In any language.
+ */
+export function pointsAtPet(petName: string): boolean {
+  const t = normalise(petName).trim();
+  return LANGUAGES.some((l) => PACKS[l].pointsAtPet.test(t));
+}

@@ -5,7 +5,7 @@ import {
   openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
-import { Body, Controller, Delete, Get, Headers, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, type CanActivate, Controller, Delete, type ExecutionContext, Get, HttpCode, HttpException, Inject, Injectable, NotFoundException, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
@@ -66,6 +66,24 @@ const digest = (s: string) => createHash('sha256').update(s).digest();
 const newId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
 
 /**
+ * The shared token, checked before anything else, the body included: a request without it
+ * is 401 whatever it carries (404 when the deployment has no token), never a 422 that would
+ * say what a valid body looks like.
+ */
+@Injectable()
+export class ProvisioningToken implements CanActivate {
+  constructor(@Inject(API_OPTIONS) private readonly options: ApiOptions) {}
+
+  canActivate(ctx: ExecutionContext): boolean {
+    const token = this.options.provisioningToken;
+    if (!token) throw new NotFoundException({ error: 'not_found' });
+    const authorization = ctx.switchToHttp().getRequest<{ headers: Record<string, string | string[] | undefined> }>().headers.authorization;
+    if (typeof authorization !== 'string' || !timingSafeEqual(digest(authorization), digest(`Bearer ${token}`))) throw new HttpException({ error: 'unauthorized' }, 401);
+    return true;
+  }
+}
+
+/**
  * What a hosting layer (sign-up, billing, numbers) does to accounts, with a bearer token
  * shared between the two services: open an account, confirm its email, set its test-call
  * time, point numbers at it, read its minutes and its weekly numbers. None of it reads
@@ -73,29 +91,22 @@ const newId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
  */
 @ApiExcludeController()
 @Public()
+@UseGuards(ProvisioningToken)
 @Controller('provisioning')
 export class ProvisioningController {
   constructor(
     @Inject(DB) private readonly db: Database,
     @Inject(AUTH) private readonly auth: Auth,
     @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
-    @Inject(API_OPTIONS) private readonly options: ApiOptions,
     @Inject(LOGGER) private readonly log: Logger,
     @Inject(CLOCK) private readonly now: () => Date,
     @Inject(CIPHER) private readonly cipher: PhiCipher,
   ) {}
 
-  private check(authorization: string | undefined) {
-    const token = this.options.provisioningToken;
-    if (!token) throw new NotFoundException({ error: 'not_found' });
-    if (typeof authorization !== 'string' || !timingSafeEqual(digest(authorization), digest(`Bearer ${token}`))) throw new HttpException({ error: 'unauthorized' }, 401);
-  }
-
   /** A new organization, its clinic with the pack's first settings, and its owner, who signs in once the email is confirmed. */
   @Post('accounts')
   @HttpCode(201)
-  async open(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(NewAccount)) body: z.infer<typeof NewAccount>) {
-    this.check(authorization);
+  async open(@Body(new ZodPipe(NewAccount)) body: z.infer<typeof NewAccount>) {
     // checked first: nothing is replaced for a request that cannot open an account
     let config: ClinicConfig;
     try {
@@ -134,8 +145,7 @@ export class ProvisioningController {
    */
   @Post('accounts/for-user')
   @HttpCode(201)
-  async openForOwner(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(ForUser)) body: z.infer<typeof ForUser>) {
-    this.check(authorization);
+  async openForOwner(@Body(new ZodPipe(ForUser)) body: z.infer<typeof ForUser>) {
     let config: ClinicConfig;
     try {
       config = starterClinic({ id: newId('clinic'), ...body.clinic });
@@ -155,8 +165,7 @@ export class ProvisioningController {
   /** Another location in an organization: its own clinic, with the first one's assistant settings. Everyone in the organization sees it. */
   @Post('organizations/:organizationId/clinics')
   @HttpCode(201)
-  async addLocation(@Headers('authorization') authorization: string | undefined, @Param('organizationId') organizationId: string, @Body(new ZodPipe(NewLocation)) body: z.infer<typeof NewLocation>) {
-    this.check(authorization);
+  async addLocation(@Param('organizationId') organizationId: string, @Body(new ZodPipe(NewLocation)) body: z.infer<typeof NewLocation>) {
     let config: ClinicConfig;
     try {
       config = starterClinic({ id: newId('clinic'), ...body.clinic });
@@ -176,8 +185,7 @@ export class ProvisioningController {
    */
   @Delete('accounts/unconfirmed')
   @HttpCode(204)
-  async removeUnconfirmed(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
-    this.check(authorization);
+  async removeUnconfirmed(@Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
     const result = await removeUnconfirmedAccount(this.db, body.email);
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result !== 'removed') throw new HttpException({ error: result }, 409);
@@ -186,8 +194,7 @@ export class ProvisioningController {
   /** Support, for someone who lost their phone and has nobody to reset two-step sign-in for them (a sole owner). Signs them out everywhere. */
   @Post('users/reset-two-factor')
   @HttpCode(204)
-  async resetTwoFactor(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
-    this.check(authorization);
+  async resetTwoFactor(@Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
     const user = await findAccount(this.auth, body.email);
     if (!user) throw new NotFoundException({ error: 'not_found' });
     await resetTwoFactor(this.db, user.id);
@@ -196,23 +203,20 @@ export class ProvisioningController {
 
   @Post('email-confirmations')
   @HttpCode(204)
-  async confirm(@Headers('authorization') authorization: string | undefined, @Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
-    this.check(authorization);
+  async confirm(@Body(new ZodPipe(Email)) body: z.infer<typeof Email>) {
     if (!(await confirmEmail(this.db, body.email))) throw new NotFoundException({ error: 'not_found' });
   }
 
   @Put('clinics/:clinicId/test-call-limit')
   @HttpCode(204)
-  async limit(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(Limit)) body: z.infer<typeof Limit>) {
-    this.check(authorization);
+  async limit(@Param('clinicId') clinicId: string, @Body(new ZodPipe(Limit)) body: z.infer<typeof Limit>) {
     if (!(await setTestCallLimit(this.db, clinicId, body.seconds))) throw new NotFoundException({ error: 'not_found' });
   }
 
   /** Texting during calls on or off: the hosting layer turns it on when the clinic's texting registration (A2P) is approved. */
   @Put('clinics/:clinicId/texting')
   @HttpCode(204)
-  async texting(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(TextingSwitch)) body: z.infer<typeof TextingSwitch>) {
-    this.check(authorization);
+  async texting(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TextingSwitch)) body: z.infer<typeof TextingSwitch>) {
     const done = await this.desk.updateSettings(clinicId, 'provisioning', 'clinic.texting.' + (body.enabled ? 'on' : 'off'), clinicId, (current) => {
       const c = ClinicConfig.parse(current);
       if ((c.texting?.enabled ?? false) === body.enabled) return { result: true };
@@ -227,8 +231,7 @@ export class ProvisioningController {
    */
   @Put('clinics/:clinicId/answering')
   @HttpCode(204)
-  async answering(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(AnsweringSwitch)) body: z.infer<typeof AnsweringSwitch>) {
-    this.check(authorization);
+  async answering(@Param('clinicId') clinicId: string, @Body(new ZodPipe(AnsweringSwitch)) body: z.infer<typeof AnsweringSwitch>) {
     const done = await this.desk.updateSettings(clinicId, 'provisioning', 'clinic.answering.' + (body.paused ? 'paused' : 'resumed'), clinicId, (current) => {
       const c = ClinicConfig.parse(current);
       if ((c.answeringPaused ?? false) === body.paused) return { result: true };
@@ -240,16 +243,14 @@ export class ProvisioningController {
   /** The clinic's plan as the dashboard shows it (minutes, trial days); null clears it. Set on every change to the plan. */
   @Put('clinics/:clinicId/plan')
   @HttpCode(204)
-  async plan(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(PlanBody)) body: z.infer<typeof PlanBody>) {
-    this.check(authorization);
+  async plan(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PlanBody)) body: z.infer<typeof PlanBody>) {
     if (!(await setHostingPlan(this.db, clinicId, body.plan))) throw new NotFoundException({ error: 'not_found' });
   }
 
   /** Closes a clinic (a location removed) or opens it again within 30 days. Nothing is deleted. */
   @Put('clinics/:clinicId/closed')
   @HttpCode(204)
-  async closed(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(Closed)) body: z.infer<typeof Closed>) {
-    this.check(authorization);
+  async closed(@Param('clinicId') clinicId: string, @Body(new ZodPipe(Closed)) body: z.infer<typeof Closed>) {
     if (!(await setClinicClosed(this.db, clinicId, body.closed, this.now()))) throw new NotFoundException({ error: 'not_found' });
     this.log.info({ clinic_id: clinicId, closed: body.closed }, 'provisioning: clinic closed or reopened');
   }
@@ -257,8 +258,7 @@ export class ProvisioningController {
   /** Deletes a clinic closed at least 30 days ago, with everything recorded for it. 409 for an open clinic or one closed more recently. */
   @Delete('clinics/:clinicId')
   @HttpCode(204)
-  async purge(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string) {
-    this.check(authorization);
+  async purge(@Param('clinicId') clinicId: string) {
     const result = await purgeClosedClinic(this.db, clinicId, this.now());
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result !== 'purged') throw new HttpException({ error: result === 'open' ? 'not_closed' : 'closed_recently' }, 409);
@@ -268,8 +268,7 @@ export class ProvisioningController {
   /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */
   @Put('clinics/:clinicId/voice-engine')
   @HttpCode(204)
-  async voiceEngine(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(EngineChoice)) body: z.infer<typeof EngineChoice>) {
-    this.check(authorization);
+  async voiceEngine(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EngineChoice)) body: z.infer<typeof EngineChoice>) {
     const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.voice_engine.${body.engine ?? 'default'}`, clinicId, (current) => {
       const c = ClinicConfig.parse(current);
       if ((c.voiceEngine ?? null) === body.engine) return { result: true };
@@ -280,23 +279,20 @@ export class ProvisioningController {
 
   @Put('clinics/:clinicId/numbers/:number')
   @HttpCode(204)
-  async addNumber(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Param('number') number: string) {
-    this.check(authorization);
+  async addNumber(@Param('clinicId') clinicId: string, @Param('number') number: string) {
     if (!/^\+[1-9]\d{7,14}$/.test(number)) throw new HttpException({ error: 'invalid_request', issues: [{ path: 'number', message: 'expected E.164' }] }, 422);
     if (!(await assignNumber(this.db, clinicId, number))) throw new NotFoundException({ error: 'not_found' });
   }
 
   @Delete('numbers/:number')
   @HttpCode(204)
-  async release(@Headers('authorization') authorization: string | undefined, @Param('number') number: string) {
-    this.check(authorization);
+  async release(@Param('number') number: string) {
     if (!(await releaseNumber(this.db, number))) throw new NotFoundException({ error: 'not_found' });
   }
 
   /** Phone calls in a period, start to end, for billing. */
   @Get('clinics/:clinicId/usage')
-  async usage(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Query(new ZodPipe(Period)) q: z.infer<typeof Period>) {
-    this.check(authorization);
+  async usage(@Param('clinicId') clinicId: string, @Query(new ZodPipe(Period)) q: z.infer<typeof Period>) {
     if (!(await this.desk.settings(clinicId))) throw new NotFoundException({ error: 'not_found' });
     return phoneUsage(this.db, clinicId, new Date(q.from), new Date(q.to));
   }
@@ -308,8 +304,7 @@ export class ProvisioningController {
    */
   @Post('clinics/:clinicId/calls-check')
   @HttpCode(200)
-  async callsCheck(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Body(new ZodPipe(CallsCheck)) body: z.infer<typeof CallsCheck>) {
-    this.check(authorization);
+  async callsCheck(@Param('clinicId') clinicId: string, @Body(new ZodPipe(CallsCheck)) body: z.infer<typeof CallsCheck>) {
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     const since = new Date(body.since);
@@ -320,8 +315,7 @@ export class ProvisioningController {
 
   /** The weekly report's numbers: the Quality page's weeks, the owners to send it to, and the visit value. */
   @Get('clinics/:clinicId/report')
-  async report(@Headers('authorization') authorization: string | undefined, @Param('clinicId') clinicId: string, @Query(new ZodPipe(ReportQuery)) q: z.infer<typeof ReportQuery>) {
-    this.check(authorization);
+  async report(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ReportQuery)) q: z.infer<typeof ReportQuery>) {
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     const clinic = ClinicConfig.parse(stored);

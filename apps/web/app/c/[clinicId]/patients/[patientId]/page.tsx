@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { age, clinicTime, dayTitle, dob, duration, phone, sexLabel, taskType, timeOf, zoneLabel } from '@/lib/format';
+import { age, clinicTime, dayTitle, dob, duration, phone, sexLabel, taskType, telHref, timeOf, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -85,7 +85,7 @@ export default function PatientPage() {
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
             <span>{p.gender ? `${sexLabel(p.gender, pet)}, age` : 'Age'} {age(p.dob, localDateOf(new Date(), tz))}, born {dob(p.dob)}</span>
             {!p.gender && <Badge tone="warn">{pet ? 'Sex' : 'Gender'} not recorded: add it under Details</Badge>}
-            {p.phone ? <a href={`tel:${p.phone}`} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
+            {p.phone ? <a href={telHref(p.phone)} className="inline-flex items-center gap-1 hover:text-text"><Phone className="size-3.5" /> {phone(p.phone)}</a> : <Badge tone="danger">No phone: add one so the assistant can verify them</Badge>}
             {p.textsOk && <Badge tone="ok">Texts OK{p.textsOkSource === 'call' ? ' (said yes on a call)' : p.textsOkSource === 'import' ? ' (from an import)' : ''}</Badge>}
             {p.species && <span className="capitalize">{p.species}</span>}
             {p.guardianName && <span>{p.species ? 'Owner' : 'Parent or guardian'} {p.guardianName}</span>}

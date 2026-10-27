@@ -8,7 +8,8 @@ export type MailRequest =
    * "Maple Street invited you to its team as Front desk": `url` opens the dashboard, where
    * the person accepts or declines. `setPasswordUrl` (a /reset-password link that works
    * until the invitation lapses) is there only for an account with no password yet: one
-   * made by this invitation.
+   * made by this invitation. `name` is empty when nobody gave one: the email then greets with "Hi,"
+   * only, never with the start of the address.
    */
   | { type: 'team_invitation'; email: string; name: string; clinicName: string; role: string; expiresAt: string; url: string; setPasswordUrl?: string };
 

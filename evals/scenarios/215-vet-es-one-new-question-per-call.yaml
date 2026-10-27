@@ -1,0 +1,40 @@
+id: vet-es-one-new-question-per-call
+title: "Spanish: one question about \"new\" per call; caller ID knows the owner, so she is asked only \"¿Es para Biscuit o Mochi, o para una mascota nueva?\" and describing Mochi never brings \"¿Es la primera vez…?\""
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, pets-on-number, new-pet, language, es]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado. Tus mascotas son Biscuit (perro) y Mochi (gata). Cuando te preguntan para cuál, dices Mochi y la describes: una gata de dos años, hembra. Quieres un chequeo general, con cualquier veterinario y a cualquier hora. Aceptas la primera hora ofrecida y dices que sí a la confirmación."
+turns:
+  - caller: Hola, buenos días. Quiero una cita de chequeo, por favor.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí, soy yo.
+    reply: "Gracias, Linh. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null }
+  - assistant: ¿Es para Biscuit o Mochi, o para una mascota nueva?
+  - caller: Es para Mochi, es una gata hembra, tiene dos años.
+    reply: "Para un chequeo general de Mochi tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Está bien?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, Mochi tiene cita el {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: []
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]
+  never_returned: ["primera vez"]
+forbid_spoken:
+  - primera vez
+  - Is this for

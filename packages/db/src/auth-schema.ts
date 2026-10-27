@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { boolean, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, customType, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { organizations } from './schema';
 
 // Better Auth's tables (migrations/0002_staff_access.sql). The property names are
@@ -94,6 +94,16 @@ export const invitations = pgTable('invitations', {
   clinicId: text('clinic_id'),
   approvesRefills: boolean('approves_refills').notNull().default(false),
   decidedAt: ts('decided_at'),
+});
+
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
+
+/** A person's picture (migration 0039): ours, not Better Auth's, and gone with the login. */
+export const userAvatars = pgTable('user_avatars', {
+  userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
+  bytes: bytea('bytes').notNull(),
+  contentType: text('content_type', { enum: ['image/webp', 'image/png', 'image/jpeg'] }).notNull(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
 });
 
 /** The map Better Auth's Drizzle adapter reads, keyed by the model names set in the API's auth config. */

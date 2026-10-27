@@ -57,7 +57,7 @@ export function SpecialDaysEditor({ days, holidays, onChange }: { days: SpecialD
                   {d.windows.length > 1 && <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove these ${d.date} hours`} onClick={() => upd(i, { windows: d.windows.filter((_, j) => j !== k) })}><Trash2 /></Button>}
                 </span>
               ))}
-              {d.windows.length === 1 && <Button type="button" size="sm" variant="ghost" onClick={() => upd(i, { windows: [...d.windows, { open: '13:00', close: '17:00' }] })}><Plus /> More hours</Button>}
+              {d.windows.length === 1 && <Button type="button" size="sm" variant="ghost" aria-label={`More hours, ${d.date}`} onClick={() => upd(i, { windows: [...d.windows, { open: '13:00', close: '17:00' }] })}><Plus /> More hours</Button>}
               <Input aria-label={`${d.date} note`} maxLength={60} className="min-w-40 flex-1" placeholder="Note, like Christmas Eve" value={d.note ?? ''} onChange={(e) => upd(i, { note: e.target.value || undefined })} />
               <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove ${d.date}`} onClick={() => onChange(days.filter((_, j) => j !== i))}><Trash2 /></Button>
             </li>

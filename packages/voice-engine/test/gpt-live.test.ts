@@ -119,7 +119,8 @@ describe('GptLiveEngine browser calls', () => {
     await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW);
     engine.attach('live_web');
     await engine.hangup('live_web');
-    expect(sockets.all[0]!.sent).toEqual([expect.objectContaining({ type: 'session.instructions.append' }), { type: 'session.close' }]);
+    // a browser session has its opening in its input from creation: nothing is appended when the sideband attaches
+    expect(sockets.all[0]!.sent).toEqual([{ type: 'session.close' }]);
 
     sockets.all[0]!.drop();
     await engine.hangup('live_web');
@@ -136,17 +137,20 @@ describe('GptLiveEngine browser calls', () => {
 
 /** Sideband sockets that record what was sent; each answers session.close with session.closed. */
 function fakeSockets() {
-  const all: { sent: unknown[]; closed: boolean; drop: () => void }[] = [];
+  type Rec = { sent: unknown[]; closed: boolean; drop: () => void; emit: (name: string, arg?: unknown) => void; opened: () => void };
+  const all: Rec[] = [];
   const open = (): SidebandSocket => {
-    const events: ((e: unknown) => void)[] = [];
-    const closes: ((c: number) => void)[] = [];
-    const rec = { sent: [] as unknown[], closed: false, drop: () => { socket.readyState = 3; closes.forEach((h) => h(1006)); } };
-    const socket = { readyState: 1, on: (_e: 'close', h: (c: number) => void) => closes.push(h) };
+    const handlers = new Map<string, ((e: unknown) => void)[]>();
+    const opens: (() => void)[] = [];
+    const emit = (name: string, arg?: unknown) => (handlers.get(name) ?? []).forEach((h) => h(arg));
+    // the SDK's close: for good, once any reconnecting is over
+    const rec: Rec = { sent: [], closed: false, drop: () => { socket.readyState = 3; emit('close', 1006); }, emit, opened: () => opens.forEach((h) => h()) };
+    const socket = { readyState: 1, on: (_e: 'open', h: () => void) => opens.push(h) };
     all.push(rec);
     return {
       socket,
-      send: (e: unknown) => { rec.sent.push(e); setTimeout(() => events.forEach((h) => h({ type: 'session.closed' })), 0); },
-      on: ((name: string, h: (e: unknown) => void) => { if (name === 'event') events.push(h); }) as never,
+      send: (e: unknown) => { rec.sent.push(e); setTimeout(() => emit('event', { type: 'session.closed' }), 0); },
+      on: ((name: string, h: (e: unknown) => void) => { handlers.set(name, [...(handlers.get(name) ?? []), h]); }) as never,
       close: () => { rec.closed = true; },
     } as unknown as SidebandSocket;
   };

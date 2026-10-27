@@ -32,6 +32,38 @@ describe('provisioning', () => {
     }
   });
 
+  it('checks the token before the request: a malformed one without it is 401 on every route, and 422 with it', async () => {
+    const c = DEMO_CLINIC.id;
+    // every route that reads a body, a query or a number from the address, each sent malformed
+    const malformed: ['GET' | 'POST' | 'PUT' | 'DELETE', string, object | undefined][] = [
+      ['POST', `${P}/accounts`, {}],
+      ['POST', `${P}/accounts/for-user`, {}],
+      ['POST', `${P}/organizations/org_demo/clinics`, {}],
+      ['DELETE', `${P}/accounts/unconfirmed`, {}],
+      ['POST', `${P}/users/reset-two-factor`, { email: 'not an email' }],
+      ['POST', `${P}/email-confirmations`, {}],
+      ['PUT', `${P}/clinics/${c}/test-call-limit`, { seconds: -1 }],
+      ['PUT', `${P}/clinics/${c}/texting`, {}],
+      ['PUT', `${P}/clinics/${c}/answering`, {}],
+      ['PUT', `${P}/clinics/${c}/plan`, {}],
+      ['PUT', `${P}/clinics/${c}/closed`, {}],
+      ['PUT', `${P}/clinics/${c}/voice-engine`, { engine: 'grok' }],
+      ['PUT', `${P}/clinics/${c}/numbers/12345`, undefined],
+      ['GET', `${P}/clinics/${c}/usage?from=yesterday`, undefined],
+      ['POST', `${P}/clinics/${c}/calls-check`, {}],
+      ['GET', `${P}/clinics/${c}/report?weeks=99`, undefined],
+    ];
+    for (const [method, path, body] of malformed) {
+      expect((await api.request(method, path, { body })).statusCode, `${method} ${path} without the token`).toBe(401);
+      expect((await api.request(method, path, { body, authorization: 'Bearer wrong' })).statusCode, `${method} ${path} with a wrong token`).toBe(401);
+      expect((await api.request(method, path, { body, authorization: auth })).statusCode, `${method} ${path} with the token`).toBe(422);
+    }
+    // and the routes with nothing to validate
+    for (const [method, path] of [['DELETE', `${P}/clinics/clinic_none`], ['DELETE', `${P}/numbers/+13035550199`]] as const) {
+      expect((await api.request(method, path)).statusCode, `${method} ${path}`).toBe(401);
+    }
+  });
+
   it('opens an account whose owner signs in only after the email is confirmed, and without two-step sign-in here', async () => {
     const res = await api.request('POST', `${P}/accounts`, { body: account, authorization: auth, origin: null });
     expect(res.statusCode).toBe(201);

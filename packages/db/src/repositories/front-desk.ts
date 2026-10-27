@@ -309,7 +309,7 @@ export class FrontDeskRepository {
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
       id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
-      assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
+      assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
       urgent: task.urgent, dueOn: task.dueOn,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
@@ -537,6 +537,16 @@ export class FrontDeskRepository {
     const count = async (tx: Tx) => {
       const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(appointments)
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${now}`)) as [{ n: number }];
+      return n;
+    };
+    return within ? count(within) : withClinic(this.db, clinicId, count);
+  }
+
+  /** Every visit with a provider, past or to come, in any state: a provider something still points at is kept in the settings. Inside `updateSettings`, pass its transaction. */
+  async visitsWithProvider(clinicId: string, providerId: string, within?: Tx): Promise<number> {
+    const count = async (tx: Tx) => {
+      const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(appointments)
+        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId))) as [{ n: number }];
       return n;
     };
     return within ? count(within) : withClinic(this.db, clinicId, count);

@@ -29,14 +29,18 @@ export interface OpenSlotQuery {
 /**
  * Open slots for the front desk. The same search the assistant runs in find_slots,
  * without its two-hour lead time: someone standing at the desk can take the 2:40.
+ * Only a time starting in the next few minutes is left out: by the time it is picked and
+ * confirmed it has begun, and booking it is refused as past.
  */
+export const DESK_LEAD_MINUTES = 5;
+
 export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery): Slot[] {
   const visitType = clinic.visitTypes.find((v) => v.id === q.visitTypeId);
   if (!visitType) return [];
   const patient = q.patient;
   const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId)
     : bookableProviders(clinic.providers).filter((p) => !patient || (seesAge(p, patient.age) && (!patient.isNew || p.acceptingNewPatients)));
-  return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: 0, limit: q.limit ?? 200 });
+  return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: DESK_LEAD_MINUTES, limit: q.limit ?? 200 });
 }
 
 /**

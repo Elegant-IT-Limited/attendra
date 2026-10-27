@@ -416,7 +416,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         canEnd: () => a.canEndByStaff(),
       });
       a.observer = (e) => live.publish(callId, e);
-      deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel }, 'call accepted');
+      // the engine and the voice the session was created with: set once, never changed in the call
+      const created = engine.sessionInfo?.(sessionId);
+      deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel, engine: created?.engine ?? engine.name, voice: created?.voice ?? null }, 'call accepted');
       const done = runner.start();
       // the clinic's assistant is paused: a short line, then the front desk or the end of the call
       if (opts.paused) await runner.act(a.paused(opts.paused.uri));

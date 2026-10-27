@@ -37,7 +37,10 @@ test('a manager invites several people at once; someone with a login accepts, ge
   await banner.getByRole('button', { name: 'Accept' }).click();
   await expect(robin.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   // the clinic switcher: the one open now first, then the vet clinic
-  await expect(robin.getByLabel('Location').first().locator('option')).toHaveText(['Maple Street Family Medicine', 'Riverbend Animal Hospital']);
+  const switcher = robin.getByRole('button', { name: 'Maple Street Family Medicine, Front desk: switch clinic' });
+  await switcher.click();
+  await expect(robin.getByRole('menuitemradio')).toHaveText([/Maple Street Family Medicine/, /Riverbend Animal Hospital/]);
+  await robin.keyboard.press('Escape');
   await expect(robin.getByTestId('invitation')).toHaveCount(0);
 
   // a second invitation, to Cedar Park's front desk, is declined
@@ -48,7 +51,7 @@ test('a manager invites several people at once; someone with a login accepts, ge
   const casey = await signInAgain(browser, 'Cedar Park front desk');
   await casey.getByTestId('invitation').getByRole('button', { name: 'Decline' }).click();
   await expect(casey.getByTestId('invitation')).toHaveCount(0);
-  await expect(casey.getByLabel('Location')).toHaveCount(0);
+  await expect(casey.getByRole('button', { name: /switch clinic/ })).toHaveCount(0);
 
   // Maple removes Robin: the vet clinic stays theirs
   await manager.reload();
@@ -58,7 +61,7 @@ test('a manager invites several people at once; someone with a login accepts, ge
   await robin.goto('/');
   await expect(robin).toHaveURL(/\/c\/[^/]+$/);
   await expect(robin.getByText('Riverbend Animal Hospital').first()).toBeVisible();
-  await expect(robin.getByLabel('Location')).toHaveCount(0);
+  await expect(robin.getByRole('button', { name: /switch clinic/ })).toHaveCount(0);
 
   // every step is in the audit log
   await manager.getByRole('link', { name: 'Audit log' }).click();

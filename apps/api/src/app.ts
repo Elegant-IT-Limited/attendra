@@ -28,6 +28,7 @@ import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
 import { MeController } from './me/me.controller';
+import { UsersController } from './me/users.controller';
 import { OverviewController } from './overview/overview.controller';
 import { PlanController } from './overview/plan.controller';
 import { PatientsController } from './patients/patients.controller';
@@ -92,7 +93,7 @@ class ApiModule {
   static with(deps: ApiDeps): DynamicModule {
     return {
       module: ApiModule,
-      controllers: [HealthController, MeController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
+      controllers: [HealthController, MeController, UsersController, ChangesController, OverviewController, PlanController, QualityController, CallsController, LiveController, KnowledgeController, WebhooksController, ApiKeysController, TestCallsController, TasksController, TextsController, AppointmentsController, PatientsController, DoctorsController, TeamController, TeamInvitationsController, MyInvitationsController, SettingsController, VoiceSamplesController, EmergencyReviewController, AuditController, ProvisioningController],
       providers: [
         { provide: DB, useValue: deps.db },
         { provide: CIPHER, useValue: deps.cipher },
@@ -141,6 +142,8 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   // Auth's included, refuses a large body whatever its content type says.
   fastify.removeContentTypeParser('text/plain');
   fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  // a person's picture (PUT /me/avatar), checked by its first bytes in the route, within the 512 KB limit
+  fastify.addContentTypeParser(['image/webp', 'image/png', 'image/jpeg'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   fastify.addHook('onRoute', (route) => {
     if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
     if (IMPORT_ROUTES.includes(route.url) && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 3 * 1024 * 1024;
@@ -177,9 +180,10 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
       void reply.status(status).send(typeof body === 'string' ? { error: body } : body);
     },
   });
-  // Nothing from the API is cached anywhere: responses can hold transcripts and names.
+  // Nothing from the API is cached anywhere: responses can hold transcripts and names. The one
+  // exception is a teammate's picture, kept privately in the browser for a few minutes (UsersController).
   fastify.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/')) reply.header('cache-control', 'no-store');
+    if (req.url.startsWith('/api/') && !String(reply.getHeader('cache-control') ?? '').startsWith('private,')) reply.header('cache-control', 'no-store');
   });
 
   fastify.route({

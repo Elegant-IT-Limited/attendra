@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, readCustomValues, readPatients, readPets, usualProviderOf } from '@attendra/core';
+import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, managedList, notOnListProblem, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
 import { type FrontDeskRepository, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -12,7 +12,8 @@ import { CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
-const toCard = (p: Card): PatientCard => ({ ...p, name: `${p.firstName} ${p.lastName}`, createdAt: p.createdAt.toISOString() });
+// a pet whose owner goes by one name has no family name: its name alone
+const toCard = (p: Card): PatientCard => ({ ...p, name: `${p.firstName} ${p.lastName}`.trim(), createdAt: p.createdAt.toISOString() });
 
 @ApiTags('patients')
 @ApiCookieAuth()
@@ -34,21 +35,27 @@ export class PatientsController {
 
   /**
    * A date of birth cannot be after today where the clinic is, whatever the server's own
-   * date, and a patient under 18 has a parent or guardian on file.
+   * date, and a patient under 18 has a parent or guardian on file. A pet's owner may go
+   * by one name: a call finds the pet by that name, the pet's name and the phone.
    */
   private async check(clinicId: string, body: z.infer<typeof PatientInput>) {
     const clinic = await this.clinic(clinicId);
     const today = localDateOf(this.now(), clinic.timezone);
+    const pet = industryPack(clinic.industry).identity === 'pet';
     if (body.dob > today) {
-      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'dob', message: 'a date of birth cannot be in the future' }] });
+      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'dob', message: pet ? 'A birthday can\'t be in the future.' : 'A date of birth can\'t be in the future.' }] });
     }
-    // a pet is found on a call by its owner's full name, so every pet has one; age does not matter
-    if (industryPack(clinic.industry).identity === 'pet') {
-      if ((body.guardianName?.trim().split(/\s+/).length ?? 0) < 2) {
-        throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'a pet needs its owner\'s first and last name' }] });
+    // a pet is found on a call by its owner's name, so every pet has an owner; age does not matter
+    if (pet) {
+      if (!body.guardianName?.trim()) {
+        throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'Add the owner\'s first name.' }] });
       }
+      // the kind of animal comes from the clinic's list; an edit that leaves it out keeps what the pet has
+      const species = body.species ? notOnListProblem(clinic, 'species', [body.species]) : null;
+      if (species) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'species', message: species }] });
       return;
     }
+    if (!body.lastName) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'lastName', message: 'Add the last name.' }] });
     if (ageOn(body.dob, today) < 18 && !body.guardianName?.trim()) {
       throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'guardianName', message: 'a patient under 18 needs a parent or guardian' }] });
     }
@@ -197,7 +204,7 @@ export class PatientsController {
     const clinic = await this.clinic(clinicId);
     // a vet clinic's file is one row per pet, with its owner
     const read = industryPack(clinic.industry).identity === 'pet' ? readPets : readPatients;
-    const rows = read(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'));
+    const rows = read(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'), managedList(clinic, 'species'));
     const report: ImportResult = { dryRun: body.dryRun, rows: [], counts: { add: 0, update: 0, skip: 0, error: 0 } };
     // one transaction: a dry run rolls it back, so it checks against the database exactly as the import would
     const dryRun = Symbol('dry run');
@@ -206,10 +213,19 @@ export class PatientsController {
         if (!r.ok) { report.rows.push({ line: r.line, name: r.name, status: 'error', message: r.message }); continue; }
         const saved = await this.records.insert(tx, clinicId, { ...r.value, phone: asE164(clinic, r.value.phone) }, `user:${staff.userId}`);
         if (saved.status === 'exists') report.rows.push({ line: r.line, name: r.name, status: 'skip', message: 'already on file with this name, date of birth and phone' });
-        else report.rows.push({ line: r.line, name: r.name, status: 'add', message: saved.status === 'saved' && saved.similar ? 'someone else has this name and date of birth, on another phone' : null });
+        else report.rows.push({ line: r.line, name: r.name, status: 'add', message: [r.note, saved.status === 'saved' && saved.similar ? 'someone else has this name and date of birth, on another phone' : null].filter(Boolean).join('; ') || null });
       }
       if (body.dryRun) throw dryRun;
     }).catch((err: unknown) => { if (err !== dryRun) throw err; });
+    // a kind of animal the file brings joins the clinic's list (the check before the import said so on its rows)
+    const species = rows.flatMap((r, i) => (r.ok && 'species' in r.value && report.rows[i]?.status === 'add' ? [r.value.species as string] : []));
+    if (!body.dryRun && species.length) {
+      await this.desk.updateSettings(clinicId, staff.userId, 'clinic.list.updated.species', clinicId, (stored) => {
+        const c = ClinicConfig.parse(stored);
+        const next = ClinicConfig.safeParse(withListValues(c, 'species', species));
+        return next.success && next.data.lists?.species?.length !== c.lists?.species?.length ? { save: next.data, result: null } : { result: null };
+      });
+    }
     for (const r of report.rows) report.counts[r.status]++;
     return report;
   }

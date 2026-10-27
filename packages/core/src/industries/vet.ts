@@ -4,7 +4,7 @@ import type { PetEmergencyKind } from '../emergency';
 import { B, E, PACKS } from '../locales';
 import type { EmergencyDestination, IndustryPack } from './types';
 
-const phone = z.string().min(7).max(30).nullable().default(null);
+const phone = z.string().min(3).max(30).nullable().default(null);
 
 /** Whole words, after the text is normalised (lower case, no accents), in any script. */
 const w = (alternatives: string) => new RegExp(`${B}(?:${alternatives})${E}`, 'u');

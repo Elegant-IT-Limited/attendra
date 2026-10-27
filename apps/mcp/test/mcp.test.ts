@@ -162,7 +162,7 @@ describe('the tools', () => {
   it('list_open_requests needs requests:read; mark_request_done needs requests:write and announces the change', async () => {
     const reader = await clientFor((await make(['requests:read'])).key);
     const list = await call(reader, 'list_open_requests');
-    expect(list.data.requests).toEqual([expect.objectContaining({ requestId: taskId, type: 'refill', urgent: false, dueOn: null, patient: 'James Whitaker', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
+    expect(list.data.requests).toEqual([expect.objectContaining({ requestId: taskId, type: 'refill', createdBy: null, urgent: false, dueOn: null, patient: 'James Whitaker', details: expect.objectContaining({ medication: 'lisinopril' }) })]);
     expect(await call(reader, 'mark_request_done', { requestId: taskId, outcome: 'refill_sent' })).toMatchObject({ error: true, text: expect.stringContaining('requests:write') });
     const writer = await clientFor((await make(['requests:write'])).key);
     // the key's maker is not marked as approving refills: an agent cannot approve one in their name
@@ -173,6 +173,17 @@ describe('the tools', () => {
     expect(done.at(-1)).toMatchObject({ requestId: taskId, type: 'refill', outcome: 'called_back' });
     expect((await call(writer, 'mark_request_done', { requestId: '00000000-0000-4000-8000-000000000000', outcome: 'not_needed' })).data.status).toBe('not_found');
     expect((await call(reader, 'list_open_requests')).data.requests).toEqual([]);
+  });
+
+  it('list_open_requests says who added a request by hand, by name and role, never by email; someone gone is "a former team member"', async () => {
+    const byHand = (actor: string, key: string) => new PostgresTaskQueue(t.db, cipher, actor).create(DEMO_CLINIC.id, { type: 'callback', callId: null, patientId: null, idempotencyKey: key, details: { reason: 'wants a call about the bill' } });
+    const { id: owen } = await byHand('user:u_owen', 'mcp-by-owen');
+    const { id: gone } = await byHand('user:u_gone', 'mcp-by-gone');
+    const reader = await clientFor((await make(['requests:read'])).key);
+    const list = await call(reader, 'list_open_requests');
+    const by = Object.fromEntries((list.data.requests as { requestId: string; createdBy: unknown }[]).map((r) => [r.requestId, r.createdBy]));
+    expect([by[owen], by[gone]]).toEqual([{ name: 'u_owen', role: 'Owner' }, { name: 'a former team member', role: null }]);
+    expect(list.text).not.toContain('@example.test');
   });
 
   it('audits a request list under the key, the schedule in the read\'s own transaction, and does not call closing a request idempotent', async () => {

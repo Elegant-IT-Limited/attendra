@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange } from '@attendra/api/contracts';
-import { type ClinicConfig, industryPack, localDateOf, zonedInstant } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf, shownProviders, zonedInstant } from '@attendra/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -61,7 +61,8 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
     setOverride({ on: false, providerId: '', date: today, time: '', reason: '' });
   }, [open, fixed?.id, today]);
 
-  const providers = clinic.providers.filter((p) => p.visitTypeIds.includes(visitTypeId));
+  // never the stand-in a new clinic starts with once anyone else is listed, as on a call
+  const providers = shownProviders(clinic.providers).filter((p) => p.visitTypeIds.includes(visitTypeId));
   // a squeezed-in visit goes to someone who does this visit type: the one the dropdown shows
   const overrideProvider = providers.some((p) => p.id === override.providerId) ? override.providerId : providers[0]?.id ?? '';
   useEffect(() => {

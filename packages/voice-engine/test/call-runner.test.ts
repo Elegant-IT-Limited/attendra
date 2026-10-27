@@ -3,12 +3,12 @@ import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, Texting, zonedInstant } 
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { CallRunner, conversationPrompt, type Sideband, type SidebandEvent, type VoiceEngine } from '../src';
+import { CallRunner, conversationPrompt, type Sideband, type SidebandConnection, type SidebandEvent, type VoiceEngine } from '../src';
 
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
-function harness(planner: Planner) {
+function harness(planner: Planner, logger = log) {
   const sent: unknown[] = [];
   const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
   const sideband: Sideband = { send: (e) => sent.push(e), onEvent: () => {}, onError: () => {}, onClose: () => {}, close: vi.fn() };
@@ -18,11 +18,11 @@ function harness(planner: Planner) {
     patients: { findByNameAndDob: vi.fn() }, scheduler: { busy: vi.fn(), book: vi.fn(), cancel: vi.fn(), upcoming: vi.fn() },
     tasks: { create: vi.fn() }, audit: { record: vi.fn(async () => {}) }, messenger: { sendTemplate: vi.fn() },
   };
-  const agent = new CallAgent(new CallState(), { clinic: DEMO_CLINIC, callId: 'call_1', callerNumber: null, now: () => NOW }, backend as never, planner, log);
+  const agent = new CallAgent(new CallState(), { clinic: DEMO_CLINIC, callId: 'call_1', callerNumber: null, now: () => NOW }, backend as never, planner, logger);
   const runner = new CallRunner('live_1', engine, sideband, agent, {
     appendSegment: async (s) => { segments.push({ speaker: s.speaker, text: s.text }); },
     close: async (c) => { closes.push(c); },
-  }, log);
+  }, logger);
   return { runner, sent, engine, segments, closes, sideband };
 }
 
@@ -41,13 +41,13 @@ describe('the GPT-Live call runner', () => {
     ]);
   });
 
-  it('tells a silent assistant to greet, once, when nobody has spoken 4 s into the call (2026-10-25)', async () => {
+  it('tells a silent assistant to greet, once, when nobody has spoken 2 s into the call (2026-10-25, 2026-10-26)', async () => {
     vi.useFakeTimers();
     const silent = harness(new ScriptedPlanner([]));
     void silent.runner.start();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(1900);
     expect(silent.sent).toEqual([]);
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(100);
     expect(silent.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('greet them now') }]);
     // a caller who spoke over a greeting is answered, never greeted from the top again
     expect((silent.sent[0] as { content: string }).content).toContain('If any part of the greeting was said, or the caller has spoken, never start it again');
@@ -62,13 +62,70 @@ describe('the GPT-Live call runner', () => {
     vi.useRealTimers();
   });
 
-  it('ignores a replayed event instead of running the delegation twice', async () => {
+  it('ignores a replayed event instead of running the delegation twice, whatever its event id', async () => {
     const plan = vi.fn(async () => ({ say: 'ok' }));
     const h = harness({ plan });
     const created: SidebandEvent = { type: 'session.delegation.created', event_id: 'e7', delegation: { id: 'item_1', target: 'client' } };
     await h.runner.handle(created);
     await h.runner.handle(created);
+    await h.runner.handle({ ...created, event_id: 'e8' });
     expect(plan).toHaveBeenCalledTimes(1);
+    expect(h.sent.filter((e) => (e as { type: string }).type === 'session.commentary.append')).toHaveLength(1);
+  });
+
+  it('answers again, after the sideband came back, a hand-off whose answer the drop lost (and only that one)', async () => {
+    vi.useFakeTimers();
+    const plan = vi.fn(async () => ({ say: 'We open at eight.' }));
+    const h = harness({ plan });
+    let connection!: (c: SidebandConnection) => void;
+    h.sideband.onConnection = (handler) => { connection = handler; };
+    void h.runner.start();
+    // a first answer, spoken; then a second one sent just as the socket drops
+    await h.runner.handle({ type: 'session.delegation.created', event_id: 'e1', delegation: { id: 'item_1', target: 'client' } });
+    await h.runner.handle(delta('out', 'o1', 'We open at eight.', 500));
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.runner.handle({ type: 'session.delegation.created', event_id: 'e2', delegation: { id: 'item_2', target: 'client' } });
+    connection({ state: 'reconnecting', attempt: 1, code: 1006 });
+    await vi.advanceTimersByTimeAsync(500);
+    connection({ state: 'reconnected' });
+    await vi.advanceTimersByTimeAsync(10);
+    const answers = () => h.sent.filter((e) => (e as { type: string }).type === 'session.commentary.append').map((e) => (e as { delegation_id: string }).delegation_id);
+    expect(answers()).toEqual(['item_1', 'item_2', 'item_2']);
+    // the voice asks again on the new socket: it is answered again, never planned again
+    await h.runner.handle({ type: 'session.delegation.created', event_id: 'e3', delegation: { id: 'item_2', target: 'client' } });
+    expect(answers()).toEqual(['item_1', 'item_2', 'item_2', 'item_2']);
+    // once spoken, a hand-off seen again is not answered again
+    await h.runner.handle(delta('out', 'o2', 'We open at eight.', 4000));
+    await h.runner.handle({ type: 'session.delegation.created', event_id: 'e4', delegation: { id: 'item_2', target: 'client' } });
+    expect(answers()).toHaveLength(4);
+    expect(plan).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('logs the call\'s moments at info, with ids and times and never the caller\'s words', async () => {
+    vi.useFakeTimers();
+    const lines: Record<string, unknown>[] = [];
+    const logged = createLogger({ name: 'test', destination: new Writable({ write: (c, _e, done) => { lines.push(JSON.parse(String(c))); done(); } }) });
+    const h = harness(new ScriptedPlanner([], () => 'We open at eight.'), logged);
+    let connection!: (c: SidebandConnection) => void;
+    h.sideband.onConnection = (handler) => { connection = handler; };
+    void h.runner.start();
+    connection({ state: 'open' });
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling Maple Street.', 100));
+    await vi.advanceTimersByTimeAsync(4000);
+    await h.runner.handle(delta('in', 'i1', 'My name is Dana Whitfield and my number is 303 555 0142', 900));
+    await h.runner.handle({ type: 'session.delegation.created', event_id: 'd1', delegation: { id: 'item_1', target: 'client' } });
+    await h.runner.handle(delta('out', 'o2', 'Thanks Dana.', 2000));
+    await vi.advanceTimersByTimeAsync(3000);
+    const messages = lines.map((l) => l.msg);
+    expect(messages).toEqual(expect.arrayContaining([
+      'sideband open', 'first words from the assistant', 'assistant stopped speaking', 'delegation created', 'planner request started', 'request answered', 'assistant started speaking',
+    ]));
+    expect(lines.find((l) => l.msg === 'delegation created')).toMatchObject({ level: 30, delegation_id: 'item_1', at: expect.any(String) });
+    expect(lines.find((l) => l.msg === 'request answered')).toMatchObject({ delegation_id: 'item_1', ms: expect.any(Number) });
+    const all = JSON.stringify(lines);
+    for (const said of ['Dana', 'Whitfield', '0142', 'eight', 'Maple']) expect(all).not.toContain(said);
+    vi.useRealTimers();
   });
 
   it('sends the emergency instruction with a null delegation id and transfers after the script', async () => {
@@ -268,16 +325,25 @@ describe('the conversation prompt', () => {
 });
 
 describe('a caller is never left in silence, and a goodbye ends the call', () => {
-  it('tells the assistant to answer when the caller finished and nothing came back, twice at most', async () => {
+  it('gives the assistant the caller\'s own words to answer when nothing came back in 5 s, twice at most, and never asks for a repeat (2026-10-26)', async () => {
     vi.useFakeTimers();
     const h = harness(new ScriptedPlanner([]));
-    await h.runner.handle(delta('in', 'e1', 'Hi, I would like to book a visit.', 100));
-    await vi.advanceTimersByTimeAsync(5000);
+    await h.runner.handle(delta('in', 'e1', 'Hi, I would like to book a visit', 100));
+    await h.runner.handle(delta('in', 'e2', 'for my dog Pepper.', 600));
+    await vi.advanceTimersByTimeAsync(4900);
     expect(h.sent).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(h.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('waiting for you. Answer them now') }]);
-    await vi.advanceTimersByTimeAsync(8000);
-    expect((h.sent[1] as { content: string }).content).toContain('Apologise briefly for the wait');
+    await vi.advanceTimersByTimeAsync(600);
+    expect(h.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('"Hi, I would like to book a visit for my dog Pepper."') }]);
+    const first = (h.sent[0] as { content: string }).content;
+    expect(first).toContain('Answer them now');
+    expect(first).toContain('delegate it now');
+    await vi.advanceTimersByTimeAsync(7000);
+    const second = (h.sent[1] as { content: string }).content;
+    expect(second).toContain('Say sorry for the wait');
+    expect(second).toContain('for my dog Pepper.');
+    // the caller is never asked to say it again because of our wait
+    for (const c of [first, second]) expect(c).not.toMatch(/ask them to (say it again|repeat)(?! it)|repeat what/i);
+    for (const c of [first, second]) expect(c).toMatch(/(Do not|Never) ask them to repeat it/);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(h.sent).toHaveLength(2);
     vi.useRealTimers();

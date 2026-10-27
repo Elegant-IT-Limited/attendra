@@ -59,13 +59,14 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; origin?: string | null; authorization?: string; headers?: Record<string, string> } = {}) => {
+  /** `raw` sends bytes as they are, with the content-type given in `headers` (a picture, a document). */
+  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; raw?: Buffer; origin?: string | null; authorization?: string; headers?: Record<string, string> } = {}) => {
     const headers: Record<string, string> = { ...o.headers };
     if (o.cookie) headers.cookie = o.cookie;
     if (o.authorization) headers.authorization = o.authorization;
     if (o.origin !== null) headers.origin = o.origin ?? ORIGIN;
     if (o.body !== undefined) headers['content-type'] = 'application/json';
-    return http.inject({ method, url, headers, payload: o.body === undefined ? undefined : JSON.stringify(o.body) });
+    return http.inject({ method, url, headers, payload: o.raw ?? (o.body === undefined ? undefined : JSON.stringify(o.body)) });
   };
 
   const cookieFrom = (setCookie: string | string[] | undefined) =>

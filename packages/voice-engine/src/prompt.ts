@@ -34,7 +34,7 @@ export function openingIfNotStarted(opening: string): string {
  */
 export function noCallerIdLine(clinic: ClinicConfig): string {
   const asks = clinic.languages.map((l) => `"${PACKS[l].phoneQuestion({ callerId: false })}"`).join(' or ');
-  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new.`;
+  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new. Take the number as they give it, even from abroad or without an area code, and never ask for it again.`;
 }
 
 /**

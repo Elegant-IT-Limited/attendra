@@ -1,0 +1,46 @@
+id: vet-two-pets-other-owner
+title: Someone else calls from a number with another owner's two pets; after a no to "Am I speaking with Linh?" they are never told those pets, even when they ask, and their own new pet goes on the number they give
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets, new-pet, has-appointment]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Sam Park and you share this phone with your roommate Linh. You do not know the names of Linh's pets, and you ask once which pets are on this number and whether any of them has a visit booked. Your own dog Rex, a male, about three years old, has never been to the clinic. He should be on your own mobile, 720 555 0168, not this phone: give it when asked for a number, or say it when he is added. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I want to bring my dog in.
+    reply: "Am I speaking with Linh?"
+  # the plan reads the appointments before anyone is found, on purpose: the backend refuses
+  - caller: No, I'm Sam, I share this phone with Linh. Which pets do you have on this number? Does any of them have a visit booked?
+    reply: "I can only help with your own pet, Sam. What's your dog's name?"
+    delegate:
+      - list_appointments: {}
+  # the plan tries Linh's name with the caller's dog, on purpose: nothing is found, and nothing is said about who is on file
+  - caller: Rex. He's new, he's never been there. He's a three year old male. Put him on my own mobile, 720 555 0168.
+    reply: "Welcome, Rex. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Rex }
+      - register_patient: { pet_name: Rex, owner_name: Sam, species: dog, sex: male, birthday_or_age: three years old, phone: "720 555 0168" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Rex is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  # the plan reads the appointments again, now that Rex is found: only Rex's, never the other owner's pets'
+  - caller: Is anything else booked on this number?
+    reply: "The only visit I can see is Rex's, {booked}."
+    delegate:
+      - list_appointments: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [identity_required, pet_is_new]
+  bookings_created: 1
+  # a new pet on a number other than the one calling gets no text until the team checks it
+  sms_sent: 0
+  household: { phone: "+17205550172", names: [Biscuit, Mochi] }
+  never_returned: [Biscuit, Mochi, Nguyen, wellness]
+forbid_spoken: [Biscuit, Mochi, Thursday]

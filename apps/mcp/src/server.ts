@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, zonedInstant } from '@attendra/core';
-import { apiKeyIsLive, approvesRefills, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, taskFacts, withClinic } from '@attendra/db';
+import { apiKeyIsLive, approvesRefills, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, staffPeople, taskFacts, withClinic } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -17,6 +17,8 @@ export interface McpDeps {
   onRequestDone?: (clinicId: string, facts: Record<string, string | null>) => Promise<void>;
 }
 
+/** A role as the clinic says it. */
+const ROLE_LABEL = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' } as const;
 /** Voice minutes at the list price: the same estimate as the dashboard. */
 const COST_PER_MINUTE = 0.05;
 const text = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }], structuredContent: data as Record<string, unknown> });
@@ -113,14 +115,21 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('list_open_requests', {
     title: 'Open requests',
-    description: 'Refill and callback requests waiting for staff, urgent ones first, then the newest, with the patient, the details and any due day. Needs requests:read, and each request shown is audited.',
+    description: 'Refill and callback requests waiting for staff, urgent ones first, then the newest, with the patient, the details, any due day, and who at the clinic added it by hand (createdBy: name and role; null when the assistant made it from a call). Needs requests:read, and each request shown is audited.',
     inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review', 'follow_up']).optional() },
     annotations: { readOnlyHint: true },
   }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' | 'follow_up' }) => {
     // every request shown writes its task.viewed row, under the key
     const tasks = await desk.listTasks(caller.clinicId, { status: 'open', type: a.type, limit: 50 }, { apiKeyId: caller.keyId });
+    // who wrote it down, by name and role, never an email; someone no longer on the team is not named
+    const people = await staffPeople(d.db, caller.clinicId, tasks.flatMap((t) => (t.createdByUserId ? [t.createdByUserId] : [])));
+    const createdBy = (id: string | null) => {
+      if (!id) return null;
+      const p = people.get(id);
+      return p ? { name: p.name, role: ROLE_LABEL[p.role] } : { name: 'a former team member', role: null };
+    };
     return {
-      result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), claimed: !!t.assigneeUserId, urgent: t.urgent, dueOn: t.dueOn, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
+      result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), createdBy: createdBy(t.createdByUserId), claimed: !!t.assigneeUserId, urgent: t.urgent, dueOn: t.dueOn, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
       counts: { requests: tasks.length },
     };
   }));

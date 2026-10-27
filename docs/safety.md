@@ -86,6 +86,8 @@ Each level allows what the one before it allows, plus more. It is enforced in `r
 
 A pet not on file is registered under the same number. Pets are grouped by the owner's phone.
 
+A call asks about "new" once, one way. With caller ID matched and the owner confirmed, the pick question above is the only one: it already offers "a new pet", so a caller who then describes their pet (its age, its sex) is not asked "Is it new to us?". Otherwise, a caller who describes the pet before saying whether it is new is asked "Is it new to us?" before any lookup, and after that the call never offers the pick question.
+
 ## Writes
 
 Every booking, reschedule and cancellation is two steps: propose (which produces the read-back) and commit (which runs only if the caller's own words since the read-back are a clear yes: "maybe", "actually" and questions do not count). Every write carries an idempotency key, and the database refuses two overlapping bookings for one provider whatever the application does.

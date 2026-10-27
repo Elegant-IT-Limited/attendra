@@ -190,7 +190,7 @@ describe('adding and editing', () => {
     // 8 pm on Monday 28 September in Denver is already Tuesday the 29th in UTC
     const tomorrowThere = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Early', dob: '2026-09-29', phone: '303-555-0140', gender: 'female', guardianName: 'Pat Early' } });
     expect(tomorrowThere.statusCode).toBe(422);
-    expect(tomorrowThere.json().issues[0]).toMatchObject({ path: 'dob', message: 'a date of birth cannot be in the future' });
+    expect(tomorrowThere.json().issues[0]).toMatchObject({ path: 'dob', message: 'A date of birth can\'t be in the future.' });
     expect((await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Baby', lastName: 'Today', dob: '2026-09-28', phone: '303-555-0141', gender: 'female', guardianName: 'Pat Today' } })).statusCode).toBe(201);
   });
 
@@ -315,9 +315,8 @@ describe('pets, at a vet clinic', () => {
   beforeAll(() => setIndustry('vet'));
   afterAll(() => setIndustry(industry));
 
-  it('adds a young pet with its owner and kind of animal, and needs the owner\'s full name whatever its age', async () => {
-    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, guardianName: null } })).json().issues[0].path).toBe('guardianName');
-    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, guardianName: 'Ngozi' } })).statusCode).toBe(422);
+  it('adds a young pet with its owner and kind of animal, and needs the owner\'s name whatever its age', async () => {
+    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, guardianName: null } })).json().issues).toEqual([{ path: 'guardianName', message: 'Add the owner\'s first name.' }]);
     const added = await api.request('POST', C, { cookie: as.staff, body: pet });
     expect(added.statusCode).toBe(201);
     const id = added.json().id;
@@ -327,11 +326,48 @@ describe('pets, at a vet clinic', () => {
     expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ firstName: 'Biscuits', species: 'dog' });
   });
 
+  it('adds a pet whose owner goes by one name, with no last name, and finds it by that name', async () => {
+    const added = await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Mango', lastName: undefined, guardianName: 'Sol', phone: '+13035550178' } });
+    expect(added.statusCode).toBe(201);
+    expect((await api.request('GET', `${C}/${added.json().id}`, { cookie: as.staff })).json()).toMatchObject({ name: 'Mango', lastName: '', guardianName: 'Sol' });
+    const directory = new PostgresPatientDirectory(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    expect((await directory.findPet(DEMO_CLINIC.id, 'Sol', 'Mango', '+13035550178')).status).toBe('found');
+  });
+
+  it('refuses a birthday after today where the clinic is, under the field', async () => {
+    const res = await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Comet', dob: '2026-09-29' } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().issues).toEqual([{ path: 'dob', message: 'A birthday can\'t be in the future.' }]);
+  });
+
+  it('takes the kind of animal only from the clinic\'s list; an edit that leaves it out keeps one that is not', async () => {
+    const typed = await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Nibbles', species: 'hamster' } });
+    expect(typed.statusCode).toBe(422);
+    expect(typed.json().issues).toEqual([{ path: 'species', message: '"hamster" is not on your list. Pick one from the list, or add it to the list first (Settings, Fields and lists).' }]);
+    expect((await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Nibbles', species: 'rabbit' } })).statusCode).toBe(201);
+  });
+
+  it('adds a kind of animal an imported file brings to the clinic\'s list, and says so before importing', async () => {
+    const csv = 'pet_name,species,sex,birthday,owner_name,owner_phone\nSpike,hedgehog,male,2023-03-01,Lina Haddad,(303) 555-0166\n';
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows[0]).toMatchObject({ status: 'add', message: 'adds "hedgehog" to your lists' });
+    expect((await api.request('GET', S, { cookie: as.owner })).json().lists?.species).toBeUndefined();
+    expect((await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json().counts).toMatchObject({ add: 1 });
+    expect((await api.request('GET', S, { cookie: as.owner })).json().lists.species).toContain('Hedgehog');
+  });
+
   it('imports pets from a pet spreadsheet', async () => {
     const csv = 'pet_name,species,sex,birthday,owner_name,owner_phone\nPepper,cat,female,2022-03-01,Lina Haddad,(303) 555-0166\n';
     const res = await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } });
     expect(res.json().counts).toMatchObject({ add: 1, error: 0 });
     const found = (await api.request('POST', `${C}/search`, { cookie: as.staff, body: { query: 'pepper' } })).json().patients;
     expect(found[0]).toMatchObject({ firstName: 'Pepper', lastName: 'Haddad', guardianName: 'Lina Haddad', species: 'cat' });
+  });
+
+  it('imports a pet whose owner goes by one name, from the two owner columns', async () => {
+    const csv = 'pet_name,species,sex,birthday,owner_first_name,owner_last_name,owner_phone\nPickle,dog,male,2021-03-01,Ravi,,(303) 555-0167\n';
+    expect((await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json().counts).toMatchObject({ add: 1, error: 0 });
+    const found = (await api.request('POST', `${C}/search`, { cookie: as.staff, body: { query: 'pickle' } })).json().patients;
+    expect(found[0]).toMatchObject({ name: 'Pickle', lastName: '', guardianName: 'Ravi' });
   });
 });

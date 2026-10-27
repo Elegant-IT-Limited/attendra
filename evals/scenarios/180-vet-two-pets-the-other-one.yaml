@@ -1,0 +1,50 @@
+id: vet-two-pets-the-other-one
+title: An owner with two pets on one number is asked "Am I speaking with Linh?", says "the other one", is asked the pet's name, books it, then adds a third pet that joins the same number
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen, calling from your own mobile, the number on file. You have two pets at this clinic: Biscuit, your dog, and Mochi, your cat. This call is for the cat, the other one, not the dog: if asked which pet, say the other one, not the dog; if asked her name, say Mochi. You want a wellness exam for Mochi; any vet and any time are fine. Say yes to the first time offered and to the read-back. Then say you also just got a new kitten, Pip, a female, about four months old, who has never been to the clinic, and you want her added. You do not want to book Pip today."
+turns:
+  - caller: Hi, I'd like to book a checkup for one of my pets.
+    reply: "Am I speaking with Linh?"
+  - caller: Yes, this is Linh.
+    reply: "Thanks, Linh. Which pet is the visit for?"
+  # the plan passes "the other one" as the pet's name, on purpose: the backend asks for the name, uses no try, and never says it could not find a pet
+  - caller: The other one, not the dog.
+    reply: "Of course. What's her name?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: the other one }
+  - caller: Mochi, my cat.
+    reply: "Thanks, I've found Mochi. For a wellness exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi, species: cat }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  # a third pet, new: added under the same number, the household's
+  - caller: Oh, and I just got a kitten, Pip. She's new, a female, about four months old. Can you add her too?
+    reply: "Welcome, Pip. She's added. Would you like to book her first visit too?"
+    delegate:
+      - register_patient: { pet_name: Pip, owner_name: Linh, species: cat, sex: female, birthday_or_age: about four months, phone: null }
+  - caller: Not today, thanks. Bye.
+    reply: "Goodbye, Linh."
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_name]
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Am I speaking with Linh"]
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Pip] }
+forbid_spoken:
+  - couldn't find
+  - is the other one new
+  - last name

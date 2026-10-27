@@ -8,6 +8,7 @@ import { useParams } from 'next/navigation';
 import { type FormEvent, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
+import { Avatar } from '@/components/ui/bits';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
@@ -108,8 +109,13 @@ export default function Team() {
                   return (
                     <TRow key={m.userId}>
                       <TD>
-                        <p className="font-medium">{m.name}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
-                        <p className="text-xs text-text-muted">{m.email}</p>
+                        <div className="flex items-center gap-3">
+                          <Avatar name={m.name} src={m.avatarUrl} />
+                          <div className="min-w-0">
+                            <p className="font-medium">{m.name}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
+                            <p className="text-xs text-text-muted">{m.email}</p>
+                          </div>
+                        </div>
                       </TD>
                       <TD>
                         {locked ? <Badge>{label(m.role)}</Badge> : (
