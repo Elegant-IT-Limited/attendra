@@ -50,7 +50,7 @@ describe('demo calls', () => {
     const booking = results.find((r) => r.id === 'booking-happy-path')!;
     const call = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, booking.callId, 'test');
     expect(call!.transcript[0]).toMatchObject({ speaker: 'agent', text: DEMO_CLINIC.greeting });
-    expect(call!.transcript.map((s) => s.text).join(' ')).toMatch(/Maria Delgado.*You're all set for \w+day, \w+ \d+ at/);
+    expect(call!.transcript.map((s) => s.text).join(' ')).toMatch(/Maria Delgado.*You're all set for (today|tomorrow|\w+day(, \w+ \d+)?) at/);
     expect(call!.actions.map((a) => a.tool)).toEqual(['verify_caller', 'find_slots', 'propose_booking', 'commit_pending']);
     const hedge = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, results.find((r) => r.id === 'hedge-is-not-yes')!.callId, 'test');
     expect(hedge!.transcript.map((s) => s.text).join(' ')).toContain('for an annual physical');
@@ -110,7 +110,10 @@ describe('demo calls', () => {
       }
       for (const a of call.appointments.filter((x) => x.change === 'booked')) {
         const start = new Date(a.startsAt);
-        if (!said.includes(speakSlot(start, tz, 'en')) && !said.includes(speakSlot(start, tz, 'es'))) problems.push(`${r.id}: booked ${start.toISOString()}, never read back`);
+        // read back as said on the call: "tomorrow at 9:00 AM" within the week, the weekday and date beyond it
+        const at = new Date(call.startedAt);
+        const forms = [speakSlot(start, tz, 'en', at), speakSlot(start, tz, 'es', at), speakSlot(start, tz, 'en'), speakSlot(start, tz, 'es')];
+        if (!forms.some((f) => said.includes(f))) problems.push(`${r.id}: booked ${start.toISOString()}, never read back`);
       }
     }
     expect(problems).toEqual([]);
