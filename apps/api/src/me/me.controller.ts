@@ -65,11 +65,13 @@ export class MeController {
   @ApiOkResponse({ schema: schemaOf(AvatarSaved) })
   async setAvatar(@Body() body: unknown, @CurrentStaff() staff: Staff): Promise<AvatarSaved> {
     if (!(body instanceof Uint8Array) || body.byteLength === 0) throw new HttpException({ error: 'not_an_image', message: 'Choose a JPEG, PNG or WebP picture.' }, 415);
-    if (body.byteLength > AVATAR_MAX_BYTES) throw new HttpException({ error: 'too_large', message: 'This picture is too large. Choose a smaller one.' }, 413);
-    const type = imageTypeOf(body);
+    // a copy of the bytes, never the request's own value, from here on (CodeQL: no string or array can reach imageTypeOf)
+    const bytes = Buffer.from(body);
+    if (bytes.byteLength > AVATAR_MAX_BYTES) throw new HttpException({ error: 'too_large', message: 'This picture is too large. Choose a smaller one.' }, 413);
+    const type = imageTypeOf(bytes);
     if (!type) throw new HttpException({ error: 'not_an_image', message: 'Choose a JPEG, PNG or WebP picture.' }, 415);
     const at = this.now();
-    await saveAvatar(this.db, staff.userId, Buffer.from(body), type, at);
+    await saveAvatar(this.db, staff.userId, bytes, type, at);
     return { avatarUrl: avatarUrl(staff.userId, at)! };
   }
 
