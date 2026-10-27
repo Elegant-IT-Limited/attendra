@@ -71,7 +71,8 @@ export class TeamController {
     const orgId = await this.org(clinicId);
     if (body.role === 'owner' && staff.role !== 'owner') throw REFUSED.owner_grant();
     const email = body.email.trim().toLowerCase();
-    const name = body.name || email.split('@')[0]!;
+    // only a name that was typed: a person added by email alone writes their own, from Your profile
+    const name = body.name ?? '';
     const existing = await findAccount(this.auth, email);
     if (existing && (await listMembers(this.db, orgId)).some((m) => m.userId === existing.id)) throw REFUSED.already_member();
     if (!this.mail) {

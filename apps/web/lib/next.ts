@@ -7,6 +7,7 @@
  */
 const KEY = 'attendra.next';
 const OUT = 'attendra.signedOut';
+const ASKED = 'attendra.askedName';
 
 // a browser drops tabs and line breaks from an address ("/\t/x" opens "//x", another site): none anywhere, and no backslash
 const plain = (value: string) => [...value].every((c) => c.charCodeAt(0) > 0x1f && c.charCodeAt(0) !== 0x7f && c !== '\\');
@@ -44,12 +45,27 @@ export function markSignedOut() {
   try {
     sessionStorage.setItem(OUT, '1');
     sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(ASKED);
   } catch { /* storage off: they see the session-ended note, which is still true */ }
 }
 
 export function signedOutOnPurpose(): boolean {
   try {
     return sessionStorage.getItem(OUT) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether to open Your profile now for someone who has not written their name yet: once
+ * per sign-in, in this tab. Skipping it is their choice; the next sign-in asks again.
+ */
+export function askForNameOnce(): boolean {
+  try {
+    if (sessionStorage.getItem(ASKED) === '1') return false;
+    sessionStorage.setItem(ASKED, '1');
+    return true;
   } catch {
     return false;
   }

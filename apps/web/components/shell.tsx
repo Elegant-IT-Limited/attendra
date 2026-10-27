@@ -22,7 +22,7 @@ import { Tooltip } from '@/components/ui/overlay';
 import { useToast } from '@/components/ui/toast';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { useClinicChanges } from '@/lib/changes';
-import { setClinicCountry } from '@/lib/format';
+import { personName, setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { rememberClinic } from '@/lib/last-clinic';
 import { markSignedOut } from '@/lib/next';
@@ -275,10 +275,10 @@ function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { nam
   const [alerts, setAlerts] = useEmergencyAlerts();
   return (
     <M.Root>
-      <M.Trigger aria-label={`${user.name}, ${user.role}: account and theme`}
+      <M.Trigger aria-label={`${personName(user.name)}, ${user.role}: account and theme`}
         className={cn('focus-ring flex w-full items-center gap-2.5 rounded-md p-1.5 text-left hover:bg-surface-sunken', compact ? 'size-11 justify-center p-0' : 'max-xl:justify-center')}>
         <Avatar name={user.name || '?'} src={user.avatarUrl} />
-        {!compact && <span className="min-w-0 flex-1 max-xl:hidden"><span className="block truncate text-base font-medium">{user.name}</span><span className="block text-xs text-text-muted">{user.role}</span></span>}
+        {!compact && <span className="min-w-0 flex-1 max-xl:hidden"><span className="block truncate text-base font-medium">{personName(user.name)}</span><span className="block text-xs text-text-muted">{user.role}</span></span>}
       </M.Trigger>
       <M.Portal>
         <M.Content side={compact ? 'bottom' : 'top'} align={compact ? 'end' : 'start'} sideOffset={6} className="z-50 min-w-56 rounded-md border border-border bg-surface-raised p-1 text-text shadow-lg animate-rise-in">

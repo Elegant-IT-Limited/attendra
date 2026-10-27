@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { age, ago, clinicTime, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd } from '../lib/format';
+import { age, ago, clinicTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -62,5 +62,13 @@ describe('phone numbers', () => {
     setClinicCountry(['+442079460123']);
     expect(phone('5055550142')).toBe('5055550142');
     expect(phone('+15055550142')).toBe('(505) 555-0142');
+  });
+});
+
+describe('a team member\'s name as it shows', () => {
+  it('reads "New team member" until they write one, and is otherwise theirs', () => {
+    expect(personName('')).toBe(NEW_MEMBER);
+    expect(personName('   ')).toBe('New team member');
+    expect(personName('Kit Rowan')).toBe('Kit Rowan');
   });
 });

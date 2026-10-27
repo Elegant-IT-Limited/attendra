@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { age, clinicTime, dayTitle, dob, duration, phone, sexLabel, taskType, telHref, timeOf, zoneLabel } from '@/lib/format';
+import { age, clinicTime, dayTitle, dob, duration, personName, phone, sexLabel, taskType, telHref, timeOf, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -134,7 +134,7 @@ export default function PatientPage() {
                         </p>
                         <p className="text-text-muted">{capital(visit(a.visitTypeId))} with {provider(a.providerId)}</p>
                       </div>
-                      <span className="inline-flex items-center gap-1 text-xs text-text-muted"><Icon className="size-3.5" aria-hidden />{a.bookedBy.kind === 'assistant' ? 'The assistant' : (a.bookedBy.name ?? 'Staff')}</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-text-muted"><Icon className="size-3.5" aria-hidden />{a.bookedBy.kind === 'assistant' ? 'The assistant' : (a.bookedBy.name === null ? 'Staff' : personName(a.bookedBy.name))}</span>
                       {a.status === 'cancelled' ? <Badge>Cancelled</Badge> : past ? <Badge>Past</Badge> : <Badge tone="ok">Upcoming</Badge>}
                       <Button size="sm" variant="outline" onClick={() => setOpen(a.id)}>{!past && a.status === 'booked' && can('schedule:write') ? 'Reschedule or cancel' : 'Open'}</Button>
                     </li>

@@ -183,6 +183,11 @@ function nanp(n: string): string | null {
 /** A role as the clinic says it. */
 export const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
+/** What a team member reads as until they write their name (someone added by email alone). */
+export const NEW_MEMBER = 'New team member';
+/** A team member's name as it shows anywhere: one who has not written theirs yet is "New team member". */
+export const personName = (name: string) => name.trim() || NEW_MEMBER;
+
 /** A phone number the way people write it: "(505) 555-0142". A number from elsewhere, or a partial one, as it was given. */
 export function phone(n: string | null | undefined) {
   if (!n) return '';
