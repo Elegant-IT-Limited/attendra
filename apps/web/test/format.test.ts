@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { age, ago, clinicTime, setClinicCountry, tenDigitPhones, timeOf, usd } from '../lib/format';
+import { age, ago, clinicTime, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -43,5 +43,24 @@ describe('how long ago', () => {
     expect(ago(7 * 60 * min)).toBe('7 hours ago');
     expect(ago(24 * 60 * min)).toBe('1 day ago');
     expect(ago(11 * 24 * 60 * min)).toBe('11 days ago');
+  });
+});
+
+describe('phone numbers', () => {
+  it('reads a number the way people write it, however it was typed, with a link that calls it', () => {
+    setClinicCountry(['+13035550100']);
+    for (const typed of ['+15055550142', '5055550142', '505-555-0142', '(505) 555 0142', '1 505 555 0142', '505.555.0142']) {
+      expect([phone(typed), telHref(typed)]).toEqual(['(505) 555-0142', 'tel:+15055550142']);
+    }
+    // a partial number, or one from abroad, as it was given
+    expect([phone('555 0142'), telHref('555 0142')]).toEqual(['555 0142', 'tel:5550142']);
+    expect([phone('+442079460123'), telHref('+44 20 7946 0123')]).toEqual(['+442079460123', 'tel:+442079460123']);
+    expect(phone(null)).toBe('');
+  });
+
+  it('leaves ten digits alone at a clinic outside North America', () => {
+    setClinicCountry(['+442079460123']);
+    expect(phone('5055550142')).toBe('5055550142');
+    expect(phone('+15055550142')).toBe('(505) 555-0142');
   });
 });

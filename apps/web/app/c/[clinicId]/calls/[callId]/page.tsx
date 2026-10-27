@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, clock, duration, phone, REFUSALS, shortWhen, taskType, TOOLS } from '@/lib/format';
+import { clinicTime, clock, duration, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -146,7 +146,7 @@ export default function CallPage() {
               {c.callerNumber && (
                 <p className="flex items-center justify-between gap-3">
                   <span className="text-text-muted">Called from</span>
-                  <a className="font-medium tabular-nums hover:underline" href={`tel:${c.callerNumber}`}>{phone(c.callerNumber)}</a>
+                  <a className="font-medium tabular-nums hover:underline" href={telHref(c.callerNumber)}>{phone(c.callerNumber)}</a>
                 </p>
               )}
               {c.patient ? (

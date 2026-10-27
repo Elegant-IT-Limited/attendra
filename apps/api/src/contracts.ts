@@ -326,6 +326,8 @@ export const NewTask = z.object({
   topic: z.string().trim().max(80).nullable().optional(),
   reason: z.string().trim().min(3, 'say what it is about').max(300),
   callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
+  /** Who it is about, as staff typed it, when no record is linked: the request's title. */
+  name: z.string().trim().max(80).nullable().optional(),
   urgent: z.boolean().optional(),
   dueOn: z.iso.date().nullable().optional(),
 });
@@ -352,6 +354,12 @@ export const Task = z.object({
   assigneeName: z.string().nullable(),
   /** Who closed a done request, by name; null while it is open, or for someone no longer on the team. */
   doneByName: z.string().nullable(),
+  /**
+   * Who at the clinic wrote it down by hand, with their role at this clinic and their picture;
+   * never their email. name and role are null for someone no longer on the team ("a former
+   * team member"). null for a request the assistant made from a call, or Attendra itself.
+   */
+  createdBy: z.object({ name: z.string().nullable(), role: Role.nullable(), avatarUrl: AvatarUrl }).nullable(),
   /** What the call's summary suggests staff do, for a request the assistant created. */
   followUp: z.string().nullable(),
   /** The clinic's own details on the request (Settings, Fields and lists). */

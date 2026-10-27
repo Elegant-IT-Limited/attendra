@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (a request says who made it)
+
+- **"Added by" with a name and a role.** A request someone wrote down with New request says "Added by Jordan (Front desk), Mon 26 Oct 6:03 PM" in its panel, with their picture, and "Added by Jordan" on its row, open or done. Requests from calls still say they came from the call, with its link. Who added it is kept on the request (`created_by_user_id`, migration 0040, filled in for requests already in the queue from their audit rows). The API's task views carry `createdBy` (name, role and `avatarUrl`; null for the assistant's), the MCP's `list_open_requests` carries `createdBy` (name and role), never an email; someone no longer on the team is "a former team member".
+- **A name, not "Caller not verified".** New request has an optional Name ("Who it is about, if you know"), which becomes the request's title when no record is linked. With none, it says "No patient linked" (or pet), and "Caller not verified" is kept for a call's caller.
+- **The urgency control says what it does.** "Mark urgent" and "Mark not urgent", next to the Urgent badge that says what it is now, instead of a button reading "Not urgent" beside a badge reading "Urgent".
+- **Phone numbers read as people write them.** A number typed as "5055550142", "505-555-0142" or "1 505 555 0142" at a clinic in North America reads "(505) 555-0142", in requests (the row and the panel), calls, patients and appointments, and its tap-to-call link dials the full number (`tel:+15055550142`). A number from elsewhere, or a partial one, shows as it was given.
+
 ### Added (your profile: picture, name and the email you sign in with)
 
 - **Your profile.** The account menu at the bottom of the sidebar opens "Your profile", above your password and two-step sign-in: your picture, your name (2 to 80 characters, "Saved." when done, a problem under the field), the email you are signed in with (read only: "To use a different email, write to us.") and your role at each clinic, one line each.

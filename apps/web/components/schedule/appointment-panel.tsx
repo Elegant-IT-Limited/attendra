@@ -15,7 +15,7 @@ import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
-import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, timeOf } from '@/lib/format';
+import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf } from '@/lib/format';
 
 type Mode = 'view' | 'reschedule' | 'cancel';
 
@@ -130,7 +130,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                   <div className="text-sm">
                     {patientHref ? <Link href={patientHref(a.patient.id)} className="font-medium hover:underline">{a.patient.name}</Link> : <p className="font-medium">{a.patient.name}</p>}
                     <p className="text-text-muted">Born {dob(a.patient.dob)}</p>
-                    {a.patient.phone && <a href={`tel:${a.patient.phone}`} className="inline-flex items-center gap-1 text-text-muted hover:text-text"><Phone className="size-3.5" /> {phone(a.patient.phone)}</a>}
+                    {a.patient.phone && <a href={telHref(a.patient.phone)} className="inline-flex items-center gap-1 text-text-muted hover:text-text"><Phone className="size-3.5" /> {phone(a.patient.phone)}</a>}
                   </div>
                 </section>
                 <section className="space-y-2">

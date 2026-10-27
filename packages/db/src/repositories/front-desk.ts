@@ -309,7 +309,7 @@ export class FrontDeskRepository {
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
       id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
-      assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
+      assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
       urgent: task.urgent, dueOn: task.dueOn,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`

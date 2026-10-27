@@ -14,11 +14,10 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { avatarFrom, PICTURE_TYPES, pictureProblem } from '@/lib/avatar';
+import { ROLE_LABEL } from '@/lib/format';
 import { signOutAndLeave } from '@/lib/next';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
-
-const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
 /**
  * Your profile: your picture and name as your team sees them, the email you sign in with and

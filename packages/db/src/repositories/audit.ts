@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
-import { authUsers, memberships } from '../auth-schema';
+import { authUsers, memberships, userAvatars } from '../auth-schema';
 import type { Database, Tx } from '../client';
 import { auditLogs, clinics } from '../schema';
 
@@ -52,4 +52,20 @@ export async function staffNames(db: Database, clinicId: string, userIds: string
     .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
     .where(and(eq(clinics.id, clinicId), inArray(authUsers.id, ids)));
   return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/**
+ * The same people with their role at the clinic and when their picture last changed, for
+ * "Added by Jordan (Front desk)" with their picture. Members of the clinic's organization only:
+ * anyone else, a former team member included, is left out.
+ */
+export async function staffPeople(db: Database, clinicId: string, userIds: string[]) {
+  const ids = [...new Set(userIds)];
+  if (!ids.length) return new Map<string, { name: string; role: (typeof memberships.$inferSelect)['role']; avatarAt: Date | null }>();
+  const rows = await db.select({ id: authUsers.id, name: authUsers.name, role: memberships.role, avatarAt: userAvatars.updatedAt }).from(authUsers)
+    .innerJoin(memberships, eq(memberships.userId, authUsers.id))
+    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+    .leftJoin(userAvatars, eq(userAvatars.userId, authUsers.id))
+    .where(and(eq(clinics.id, clinicId), inArray(authUsers.id, ids)));
+  return new Map(rows.map(({ id, ...p }) => [id, p]));
 }

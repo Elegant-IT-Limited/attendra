@@ -15,6 +15,8 @@ export class PostgresTaskQueue implements TaskQueue {
         clinicId, type: input.type, callId: input.callId, patientId: input.patientId,
         detailsEnc: this.cipher.encrypt(JSON.stringify(input.details), phiContext(clinicId, 'tasks.details')), idempotencyKey: input.idempotencyKey,
         ...(input.urgent ? { urgent: true } : {}),
+        // a request someone at the clinic wrote down: who, for "Added by"
+        ...(this.actor.startsWith('user:') ? { createdByUserId: this.actor.slice(5) } : {}),
       }).onConflictDoNothing().returning({ id: tasks.id });
       if (row) {
         await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: `task.created.${input.type}`, entity: 'task', entityId: row.id, ...(input.callId ? { callId: input.callId } : {}) });

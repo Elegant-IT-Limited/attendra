@@ -19,7 +19,7 @@ import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, phone, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -27,14 +27,14 @@ import { cn } from '@/lib/utils';
 
 const DETAIL_LABELS: Record<string, string> = {
   topic: 'Topic',
-  medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
+  name: 'Name', medication: 'Medication', pharmacy: 'Pharmacy', callback_number: 'Call back on', reason: 'What it is about',
   first_name: 'First name', last_name: 'Last name', date_of_birth: 'Date of birth', gender: 'Gender', phone: 'Phone', guardian_name: 'Parent or guardian', possible_duplicate: 'Worth a look',
   suggested: 'Suggested next step',
   pet_name: 'Pet', species: 'Kind of animal', sex: 'Sex', owner_name: 'Owner', date_of_birth_note: 'Birthday note',
 };
 /** A detail as people read it: numbers you can tap, dates in words, the kind and sex capitalised. */
 function shownDetail(k: string, v: string) {
-  if ((k === 'callback_number' || k === 'phone') && /^\+?\d[\d\s().-]{6,}$/.test(v)) return <a className="hover:underline" href={`tel:${v}`}>{phone(v)}</a>;
+  if ((k === 'callback_number' || k === 'phone') && /^\+?\d[\d\s().-]{6,}$/.test(v)) return <a className="text-primary hover:underline" href={telHref(v)}>{phone(v)}</a>;
   if (k === 'date_of_birth' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return dob(v);
   if (k === 'species' || k === 'sex' || k === 'gender') return v.charAt(0).toUpperCase() + v.slice(1);
   return v;
@@ -252,7 +252,7 @@ function Requests() {
         const siblings = t?.callId ? shown.filter((x) => x.callId === t.callId && x.id !== t.id) : [];
         return (
           <Panel open={!!t} onOpenChange={(o) => { if (!o) setOpenId(null); }} side="right" className="max-w-xl"
-            title={t ? `${nameOf(t)}: ${taskType(t.type, terms.patient)}` : 'Request'}>
+            title={t ? `${nameOf(t, terms.patient)}: ${taskType(t.type, terms.patient)}` : 'Request'}>
             {t && (
               <div className="space-y-4">
                 <RequestCard bare fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
@@ -268,7 +268,7 @@ function Requests() {
                           <li key={x.id}>
                             <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => setOpenId(x.id)}>
                               <Icon className="size-4 shrink-0 text-primary" aria-hidden />
-                              <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x).main}</span></span>
+                              <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x, terms.patient).main}</span></span>
                               <ChevronRight className="size-4 text-text-muted" aria-hidden />
                             </button>
                           </li>
@@ -286,16 +286,23 @@ function Requests() {
   );
 }
 
-/** Who a request is about, as the list and the panel name it. */
-const nameOf = (t: Task) => t.patientName ?? t.details.pet_name ?? ([t.details.first_name, t.details.last_name].filter(Boolean).join(' ') || 'Caller not verified');
+/**
+ * Who a request is about, as the list and the panel name it. One the team wrote down with no
+ * record linked is named as typed, or says so: "Caller not verified" is for a call's caller.
+ */
+const nameOf = (t: Task, patientWord: string) => t.patientName ?? t.details.pet_name ?? ([t.details.first_name, t.details.last_name].filter(Boolean).join(' ')
+  || t.details.name || (t.callId ? 'Caller not verified' : `No ${patientWord} linked`));
+
+/** Who wrote a request down: "Added by Ana Front"; one from a call says so. */
+const madeBy = (t: Task) => (t.callId ? 'From a call' : t.createdBy ? `Added by ${t.createdBy.name ?? 'a former team member'}` : 'Added by the team');
 
 /** What a request needs, in one line, and the detail that goes with it: the most important things, without opening it. */
-function needOf(t: Task): { main: string; sub: string } {
+function needOf(t: Task, patientWord: string): { main: string; sub: string } {
   const d = t.details;
   const callBack = d.callback_number ? `Call back on ${phone(d.callback_number)}` : null;
   const main = d.medication ?? d.topic ?? d.reason ?? (t.type === 'follow_up' ? d.suggested ?? t.followUp : null) ?? (t.type === 'review' ? 'Check the details the assistant took' : null) ?? taskType(t.type);
   const next = t.type === 'follow_up' ? d.suggested ?? t.followUp : null;
-  const sub = [d.pharmacy, d.owner_name && d.owner_name !== nameOf(t) ? `Owner ${d.owner_name}` : null, next ? `Suggested: ${next}` : null, callBack, d.possible_duplicate ? 'Worth a look: maybe already on file' : null]
+  const sub = [d.pharmacy, d.owner_name && d.owner_name !== nameOf(t, patientWord) ? `Owner ${d.owner_name}` : null, next ? `Suggested: ${next}` : null, callBack, d.possible_duplicate ? 'Worth a look: maybe already on file' : null]
     .filter((x): x is string => !!x && x !== main).join(' · ');
   return { main, sub };
 }
@@ -332,7 +339,7 @@ function RequestList({ tasks, status, patientWord, tz, today, meId, openId, onOp
 function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }: { task: Task; patientWord: string; tz: string; today: string; meId?: string; selected: boolean; onOpen: () => void }) {
   const Icon = ICONS[t.type] ?? Phone;
   const open = t.status === 'open';
-  const need = needOf(t);
+  const need = needOf(t, patientWord);
   const at = open ? t.createdAt : t.doneAt ?? t.createdAt;
   return (
     <button type="button" data-testid="task-row" onClick={onOpen} aria-current={selected || undefined}
@@ -341,7 +348,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
       {open && t.urgent && <span className="absolute inset-y-0 left-0 w-1 rounded-r bg-danger" aria-hidden />}
       <span className="flex size-9 items-center justify-center rounded-full bg-primary-soft text-primary md:order-1"><Icon className="size-4" aria-hidden /></span>
       <span className="min-w-0 md:order-2">
-        <span className="block truncate font-medium">{nameOf(t)}</span>
+        <span className="block truncate font-medium">{nameOf(t, patientWord)}</span>
         <span className="block truncate text-xs text-text-muted">{taskType(t.type, patientWord)}</span>
       </span>
       <span className="flex flex-wrap justify-end gap-1.5 md:order-5">
@@ -356,7 +363,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
       </span>
       <span className="hidden min-w-0 text-xs md:order-4 md:block">
         <time dateTime={at} title={clinicTime(at, tz, 'long')} className="block font-medium text-text">{open ? ago(Date.now() - Date.parse(at)) : clinicTime(at, tz)}</time>
-        <span className="block truncate text-text-muted">{t.callId ? 'From a call' : 'Added by the team'}</span>
+        <span className="block truncate text-text-muted">{madeBy(t)}</span>
       </span>
       <ChevronRight className="hidden size-4 text-text-muted md:order-6 md:block" aria-hidden />
     </button>
@@ -387,7 +394,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
           <div className="min-w-0">
             {t.patientName && t.patientId && canOpenPatient
               ? <Link href={`/c/${clinicId}/patients/${t.patientId}`} className="block truncate font-medium hover:underline">{t.patientName}</Link>
-              : <p className="truncate font-medium">{t.patientName ?? 'Caller not verified'}</p>}
+              : <p className="truncate font-medium">{nameOf(t, patientWord)}</p>}
             <p className="text-xs text-text-muted">{taskType(t.type, patientWord)}, {open ? <>came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} /></> : `closed ${clinicTime(t.doneAt ?? t.createdAt, tz)}${t.doneByName ? ` by ${t.doneByName}` : ''}`}</p>
           </div>
         </div>
@@ -413,7 +420,15 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
           <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{t.custom[f.id] ? shownValue(f, t.custom[f.id]) : <span className="text-text-muted">Not filled in</span>}</dd></div>
         ))}
         {t.callId && <><dt className="text-text-muted">From</dt><dd><Link href={`/c/${clinicId}/calls/${t.callId}`} className="text-primary hover:underline">The call, {clinicTime(t.createdAt, tz)}</Link></dd></>}
-        {!t.callId && <><dt className="text-text-muted">From</dt><dd>Added by the team, {clinicTime(t.createdAt, tz)}</dd></>}
+        {!t.callId && (
+          <>
+            <dt className="text-text-muted">From</dt>
+            <dd className="flex items-center gap-2">
+              {t.createdBy && <Avatar name={t.createdBy.name ?? '?'} src={t.createdBy.avatarUrl} size="sm" />}
+              <span data-testid="added-by">{madeBy(t)}{t.createdBy?.role ? ` (${ROLE_LABEL[t.createdBy.role] ?? t.createdBy.role})` : ''}, {clinicTime(t.createdAt, tz)}</span>
+            </dd>
+          </>
+        )}
       </dl>
       {fields.length > 0 && canWork && (
         <div className="border-t border-border px-5 py-3">
@@ -429,7 +444,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
               <Avatar name={n.author ?? '?'} src={n.authorAvatarUrl} size="sm" />
               <div className="min-w-0">
                 <p className="whitespace-pre-wrap">{n.body}</p>
-                <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former staff member'}, {clinicTime(n.at, tz)}</p>
+                <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former team member'}, {clinicTime(n.at, tz)}</p>
               </div>
             </div>
           ))}
@@ -474,7 +489,8 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
                   </Select>
                 </>
               )}
-              <Button size="sm" variant="ghost" disabled={busy} aria-pressed={t.urgent} onClick={() => onAct('plan', { urgent: !t.urgent })}>{t.urgent ? 'Not urgent' : 'Urgent'}</Button>
+              {/* an action, named for what it does; the badge above says what it is now */}
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onAct('plan', { urgent: !t.urgent })}>{t.urgent ? 'Mark not urgent' : 'Mark urgent'}</Button>
               <Label htmlFor={`due-${t.id}`} className="sr-only">Due</Label>
               <Input id={`due-${t.id}`} type="date" className="h-8 w-38" title="Due" value={t.dueOn ?? ''} disabled={busy} onChange={(e) => onAct('plan', { dueOn: e.target.value || null })} />
               {!t.assigneeUserId && <Button size="sm" variant="outline" disabled={busy} onClick={() => onAct('claim')}>Claim</Button>}
@@ -492,7 +508,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
 function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; topics: string[]; fields: CustomField[]; patientWord: string }) {
   const queries = useQueryClient();
   const toast = useToast();
-  const blank = { kind: 'callback', reason: '', callbackNumber: '', urgent: false, dueOn: '', medication: '', pharmacy: '' };
+  const blank = { kind: 'callback', name: '', reason: '', callbackNumber: '', urgent: false, dueOn: '', medication: '', pharmacy: '' };
   const [draft, setDraft] = useState(blank);
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -502,7 +518,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
       const topic = draft.kind.startsWith('topic:') ? draft.kind.slice(6) : null;
       const type = topic ? 'callback' : draft.kind;
       const r = await api<{ id: string }>(`/clinics/${clinicId}/tasks`, { method: 'POST', body: JSON.stringify({
-        type, topic, reason: draft.reason, callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
+        type, topic, name: draft.name.trim() || null, reason: draft.reason, callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
         ...(refill ? { medication: draft.medication.trim() || null, pharmacy: draft.pharmacy.trim() || null } : {}),
       }) });
       // the clinic's own fields go with it; a problem with them leaves the request in the queue and says so
@@ -560,6 +576,9 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
         </fieldset>
         <fieldset className="space-y-3">
           <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">2 · Who to reach</legend>
+          <Field label="Name" hint="Who it is about, if you know. Optional.">
+            {(p) => <Input {...p} autoComplete="off" maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}
+          </Field>
           <Field label="Call back on" hint="The number to reach them on, if there is one.">
             {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
           </Field>
