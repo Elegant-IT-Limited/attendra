@@ -112,12 +112,13 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(region).toHaveAttribute('tabindex', '0');
     await expect(region.locator('..').getByTestId('scroll-edge-right')).toHaveCSS('opacity', '1');
     await region.focus();
-    await page.keyboard.press('End');
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+    await expect.poll(() => region.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
     await expect(region.locator('..').getByTestId('scroll-edge-left')).toHaveCSS('opacity', '1');
     await axe('Audit log');
-    for (const [path, name, ready] of [['/team', 'Team', 'Add people'], ['/calls', 'Calls', 'What the assistant did']] as const) {
+    for (const [path, name] of [['/team', 'Team'], ['/calls', 'Calls']] as const) {
       await page.goto(`/c/${clinic}${path}`);
-      await expect(page.getByText(ready).first()).toBeVisible();
+      await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
       await expect(page.getByRole('region', { name })).toBeVisible();
       await axe(name);
     }
