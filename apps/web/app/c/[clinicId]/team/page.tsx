@@ -17,7 +17,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Label, Select, Textarea } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
-import { clinicTime } from '@/lib/format';
+import { clinicTime, personName } from '@/lib/format';
 
 const ROLES: { id: Member['role']; label: string; detail: string }[] = [
   { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
@@ -47,14 +47,14 @@ export default function Team() {
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
-    onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: `${m.name} is now ${label(role).toLowerCase()}. It applies to their next click.` }),
+    onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: `${personName(m.name)} is now ${label(role).toLowerCase()}. It applies to their next click.` }),
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
   const refills = useMutation({
     mutationFn: ({ m, on }: { m: Member; on: boolean }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ approvesRefills: on }) }),
     onSuccess: (_r, { m, on }) => {
-      setNotice({ tone: 'info', text: on ? `${m.name} can now approve and decline refills.` : `${m.name} no longer approves refills.` });
+      setNotice({ tone: 'info', text: on ? `${personName(m.name)} can now approve and decline refills.` : `${personName(m.name)} no longer approves refills.` });
       void queries.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
@@ -64,7 +64,7 @@ export default function Team() {
   const [resetting, setResetting] = useState<Member | null>(null);
   const reset = useMutation({
     mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
-    onSuccess: (r, m) => { setResetting(null); setIssued({ name: m.name, email: m.email, password: r.temporaryPassword }); },
+    onSuccess: (r, m) => { setResetting(null); setIssued({ name: personName(m.name), email: m.email, password: r.temporaryPassword }); },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
@@ -72,7 +72,7 @@ export default function Team() {
   const [unlocking, setUnlocking] = useState<Member | null>(null);
   const twoStep = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}/reset-two-factor`, { method: 'POST' }),
-    onSuccess: (_r, m) => { setUnlocking(null); setNotice({ tone: 'info', text: `${m.name} can sign in with their password now, and sets up two-step sign-in on their new phone.` }); },
+    onSuccess: (_r, m) => { setUnlocking(null); setNotice({ tone: 'info', text: `${personName(m.name)} can sign in with their password now, and sets up two-step sign-in on their new phone.` }); },
     onError: (e) => { setUnlocking(null); setNotice({ tone: 'warn', text: message(e) }); },
     onSettled: refresh,
   });
@@ -84,7 +84,7 @@ export default function Team() {
   });
   const remove = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'DELETE' }),
-    onSuccess: (_r, m) => { setNotice({ tone: 'info', text: `${m.name} is off the team and signed out.` }); setRemoving(null); },
+    onSuccess: (_r, m) => { setNotice({ tone: 'info', text: `${personName(m.name)} is off the team and signed out.` }); setRemoving(null); },
     onError: (e) => { setNotice({ tone: 'warn', text: message(e) }); setRemoving(null); },
     onSettled: refresh,
   });
@@ -101,7 +101,7 @@ export default function Team() {
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
-            <Table>
+            <Table label="Team">
               <THead><tr><TH>Name</TH><TH>Role</TH><TH><span title="A veterinarian or prescriber who may approve or decline refill requests">Approves refills</span></TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
               <tbody>
                 {members.data!.members.map((m) => {
@@ -110,9 +110,9 @@ export default function Team() {
                     <TRow key={m.userId}>
                       <TD>
                         <div className="flex items-center gap-3">
-                          <Avatar name={m.name} src={m.avatarUrl} />
+                          <Avatar name={m.name || '?'} src={m.avatarUrl} />
                           <div className="min-w-0">
-                            <p className="font-medium">{m.name}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
+                            <p className="font-medium">{personName(m.name)}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
                             <p className="text-xs text-text-muted">{m.email}</p>
                           </div>
                         </div>
@@ -120,7 +120,7 @@ export default function Team() {
                       <TD>
                         {locked ? <Badge>{label(m.role)}</Badge> : (
                           <>
-                            <Label htmlFor={`role-${m.userId}`} className="sr-only">Role for {m.name}</Label>
+                            <Label htmlFor={`role-${m.userId}`} className="sr-only">Role for {personName(m.name)}</Label>
                             <Select id={`role-${m.userId}`} className="h-8 w-44" value={m.role} disabled={change.isPending} onChange={(e) => change.mutate({ m, role: e.target.value })}>
                               {grantable.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
                             </Select>
@@ -135,7 +135,7 @@ export default function Team() {
                           </span>
                         ) : (
                           <input id={`refills-${m.userId}`} type="checkbox" className="focus-ring size-4 accent-primary disabled:opacity-50" checked={m.approvesRefills}
-                            disabled={refills.isPending} aria-label={`${m.name} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
+                            disabled={refills.isPending} aria-label={`${personName(m.name)} approves refills`} onChange={(e) => refills.mutate({ m, on: e.target.checked })} />
                         )}
                       </TD>
                       <TD className="hidden md:table-cell">
@@ -157,14 +157,14 @@ export default function Team() {
       </Card>
       {!!invitations.data?.invitations.length && (
         <Card className="mt-4" data-testid="invitations">
-          <Table>
+          <Table label="Invitations">
             <THead><tr><TH>Invited</TH><TH>Role</TH><TH className="hidden md:table-cell">Sent by</TH><TH className="hidden md:table-cell">Ends</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
             <tbody>
               {invitations.data.invitations.map((i) => (
                 <TRow key={i.id}>
                   <TD><p className="font-medium">{i.email}</p><p className="text-xs text-text-muted">Invite sent, waiting for an answer</p></TD>
                   <TD><Badge>{label(i.role)}</Badge></TD>
-                  <TD className="hidden md:table-cell">{i.invitedBy}</TD>
+                  <TD className="hidden md:table-cell">{personName(i.invitedBy)}</TD>
                   <TD className="hidden md:table-cell">{clinic ? clinicTime(i.expiresAt, clinic.timezone) : ''}</TD>
                   <TD className="text-right">
                     {(i.role !== 'owner' || myRole === 'owner') && <Button size="sm" variant="ghost" disabled={cancel.isPending} aria-label={`Cancel the invitation to ${i.email}`} onClick={() => cancel.mutate(i.id)}>Cancel</Button>}
@@ -178,7 +178,7 @@ export default function Team() {
       <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
 
       <AddPeople clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
-      <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${resetting?.name ?? ''}'s password?`}
+      <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${personName(resetting?.name ?? '')}'s password?`}
         description="They are signed out everywhere, their password stops working, and you get a temporary one to pass on in person."
         footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Keep it</Button><Button variant="danger" loading={reset.isPending} onClick={() => resetting && reset.mutate(resetting)}>Reset password</Button></>}>
         <p className="text-base">{resetting?.email}</p>

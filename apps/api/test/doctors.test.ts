@@ -144,12 +144,34 @@ describe('doctors', () => {
     expect(dry.rows[0].message).toBe('adds "Dermatology", "Skin", "Allergies" to your lists');
     expect((await stored()).providers.some((p) => p.name === 'Dr. Lee Park')).toBe(false);
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
-    expect(real.counts).toEqual({ add: 1, update: 1, skip: 0, error: 2 });
+    expect(real.counts).toEqual({ add: 1, update: 1, skip: 0, error: 2, notListed: 0 });
     const after = await stored();
     expect(after.providers.find((p) => p.name === 'Dr. Lee Park')).toMatchObject({ gender: 'female', specialty: 'Dermatology', timeOff: [{ from: '2026-11-27', to: '2026-11-27' }] });
     expect(after.providers.find((p) => p.id === 'prov_okafor')!.gender).toBe('male'); // an empty cell keeps what is on file
     expect(after.providers.find((p) => p.id === 'prov_okafor')!.categories).toEqual(['Adults', 'Diabetes']);
     expect((await api.request('POST', `${C}/import`, { cookie: as.staff, body: { csv, dryRun: true } })).statusCode).toBe(403);
+  });
+
+  it('imports a doctor whose specialty finds no room on a full list, and says so on the row and in the counts', async () => {
+    const lists = `/api/v1/clinics/${DEMO_CLINIC.id}/settings/lists/specialties`;
+    const sixty = Array.from({ length: 60 }, (_, i) => `Specialty ${i + 1}`);
+    expect((await api.request('PUT', lists, { cookie: as.owner, body: { values: sixty } })).statusCode).toBe(200);
+    const csv = [
+      'id,name,gender,specialty,categories',
+      ',Dr. Ines Vallejo,female,Specialty 7,',
+      ',Dr. Tomas Lindqvist,male,Oncology,Adults',
+    ].join('\n');
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows.map((r: { status: string; message: string | null }) => [r.status, r.message])).toEqual([
+      ['add', null],
+      ['add', '"Oncology" not added to your list: it already has 60 values; remove one in Settings, Fields and lists'],
+    ]);
+    expect(dry.counts).toEqual({ add: 2, update: 0, skip: 0, error: 0, notListed: 1 });
+    const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
+    expect(real.counts).toEqual({ add: 2, update: 0, skip: 0, error: 0, notListed: 1 });
+    const after = await stored();
+    expect(after.providers.find((p) => p.name === 'Dr. Tomas Lindqvist')).toMatchObject({ specialty: 'Oncology', categories: ['Adults'] });
+    expect(after.lists?.specialties).toEqual(sixty);
   });
 });
 

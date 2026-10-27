@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, asE164, ClinicConfig, industryPack, localDateOf, managedList, notOnListProblem, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
+import { ageOn, asE164, ClinicConfig, industryPack, leftOffList, listRowNote, localDateOf, managedList, notOnListProblem, onList, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
 import { type FrontDeskRepository, type PhiCipher, PostgresPatientDirectory, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -218,20 +218,31 @@ export class PatientsController {
     // a vet clinic's file is one row per pet, with its owner
     const read = industryPack(clinic.industry).identity === 'pet' ? readPets : readPatients;
     const rows = read(body.csv, localDateOf(this.now(), clinic.timezone), clinic.phoneNumbers[0]!.startsWith('+1'), managedList(clinic, 'species'));
-    const report: ImportResult = { dryRun: body.dryRun, rows: [], counts: { add: 0, update: 0, skip: 0, error: 0 } };
+    const report: ImportResult = { dryRun: body.dryRun, rows: [], counts: { add: 0, update: 0, skip: 0, error: 0, notListed: 0 } };
     // one transaction: a dry run rolls it back, so it checks against the database exactly as the import would
     const dryRun = Symbol('dry run');
+    const similar = new Set<number>();
     await withClinic(this.db, clinicId, async (tx) => {
       for (const r of rows) {
         if (!r.ok) { report.rows.push({ line: r.line, name: r.name, status: 'error', message: r.message }); continue; }
         const saved = await this.records.insert(tx, clinicId, { ...r.value, phone: asE164(clinic, r.value.phone) }, `user:${staff.userId}`);
         if (saved.status === 'exists') report.rows.push({ line: r.line, name: r.name, status: 'skip', message: 'already on file with this name, date of birth and phone' });
-        else report.rows.push({ line: r.line, name: r.name, status: 'add', message: [r.note, saved.status === 'saved' && saved.similar ? 'someone else has this name and date of birth, on another phone' : null].filter(Boolean).join('; ') || null });
+        else { if (saved.status === 'saved' && saved.similar) similar.add(r.line); report.rows.push({ line: r.line, name: r.name, status: 'add', message: null }); }
       }
       if (body.dryRun) throw dryRun;
     }).catch((err: unknown) => { if (err !== dryRun) throw err; });
-    // a kind of animal the file brings joins the clinic's list (the check before the import said so on its rows)
+    // a kind of animal the file brings joins the clinic's list (the check before the import said so on its rows) while the
+    // list has room; a row whose kind found none is imported all the same, and says so
     const species = rows.flatMap((r, i) => (r.ok && 'species' in r.value && report.rows[i]?.status === 'add' ? [r.value.species as string] : []));
+    const over = leftOffList(clinic, 'species', species);
+    rows.forEach((r, i) => {
+      const row = report.rows[i]!;
+      if (!r.ok || row.status !== 'add') return;
+      const kind = 'species' in r.value ? (r.value.species as string) : null;
+      const note = listRowNote(r.adds, kind && onList(over, kind) ? [kind] : []);
+      if (kind && onList(over, kind)) report.counts.notListed++;
+      row.message = [note, similar.has(r.line) ? 'someone else has this name and date of birth, on another phone' : null].filter(Boolean).join('; ') || null;
+    });
     if (!body.dryRun && species.length) {
       await this.desk.updateSettings(clinicId, staff.userId, 'clinic.list.updated.species', clinicId, (stored) => {
         const c = ClinicConfig.parse(stored);

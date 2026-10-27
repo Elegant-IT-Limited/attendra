@@ -74,6 +74,51 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   }
 });
 
+test('someone added by email alone reads "New team member" until they write their name, which the dashboard asks for once', async ({ browser }) => {
+  test.slow();
+  const page = await openAs(browser, 'manager');
+  await page.getByRole('link', { name: 'Team' }).click();
+  await page.getByRole('button', { name: 'Add people' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add people' });
+  await dialog.getByLabel('Emails').fill('kit@maple-demo.test');
+  await dialog.getByRole('button', { name: 'Add to the team' }).click();
+  const added = page.getByRole('dialog', { name: 'Invites sent' });
+  const password = (await added.getByTestId('temporary-password').textContent())!;
+  await added.getByRole('button', { name: 'Done' }).click();
+  // not named after the email: the row says they have no name yet
+  const row = page.getByRole('row', { name: /kit@maple-demo\.test/ });
+  await expect(row.getByText('New team member', { exact: true })).toBeVisible();
+  await expect(page.getByText('kit', { exact: true })).toHaveCount(0);
+
+  // Kit signs in: a password of their own first, then Your profile asks for the name
+  const kit = await (await newContext(browser)).newPage();
+  await kit.goto('/sign-in');
+  await kit.getByLabel('Email').fill('kit@maple-demo.test');
+  await kit.getByLabel('Password').fill(password);
+  await signInPatiently(kit, () => kit.getByRole('button', { name: 'Sign in', exact: true }).click());
+  await expect(kit).toHaveURL(/\/change-password$/, { timeout: 20_000 });
+  await kit.getByLabel('Temporary password').fill(password);
+  await kit.getByLabel('New password', { exact: true }).fill('kit picks a long one too');
+  await kit.getByLabel('New password again').fill('kit picks a long one too');
+  await kit.getByRole('button', { name: 'Save my password' }).click();
+  await expect(kit).toHaveURL(/\/profile$/, { timeout: 20_000 });
+  await expect(kit.getByText('Add your name so your team knows who did what.')).toBeVisible();
+  await expect(kit.getByLabel('Your name')).toHaveValue('');
+  // once: going back to the dashboard without a name does not ask again this session
+  await kit.goto('/');
+  await expect(kit.getByRole('heading', { name: 'Today', exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(kit.getByRole('button', { name: 'New team member, Front desk: account and theme' })).toBeVisible();
+  await kit.getByRole('button', { name: 'New team member, Front desk: account and theme' }).click();
+  await kit.getByRole('menuitem', { name: 'Your profile' }).click();
+  await kit.getByLabel('Your name').fill('Kit Rowan');
+  await kit.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(kit.getByText('Saved.')).toBeVisible();
+  await expect(kit.getByText('Add your name so your team knows who did what.')).toHaveCount(0);
+  // and the team sees the name
+  await page.reload();
+  await expect(page.getByRole('row', { name: /Kit Rowan/ })).toBeVisible();
+});
+
 test('too many sign-ins in a row are told to wait a few seconds', async ({ browser }) => {
   const page = await (await newContext(browser)).newPage();
   await page.route('**/api/auth/sign-in/**', (route) => route.fulfill({ status: 429, headers: { 'x-retry-after': '9' }, json: { message: 'Too many requests' } }));

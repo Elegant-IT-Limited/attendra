@@ -241,7 +241,7 @@ describe('a request written down by hand', () => {
 
 describe('the team', () => {
   const M = `${C}/members`;
-  const members = async (cookie = as.admin) => (await api.request('GET', M, { cookie })).json().members as { userId: string; email: string; role: string; you: boolean; twoFactorEnabled: boolean }[];
+  const members = async (cookie = as.admin) => (await api.request('GET', M, { cookie })).json().members as { userId: string; name: string; email: string; role: string; you: boolean; twoFactorEnabled: boolean }[];
 
   it('is for owners and managers only, and another clinic is 404', async () => {
     expect((await api.request('GET', M, { cookie: as.staff })).statusCode).toBe(403);
@@ -261,6 +261,17 @@ describe('the team', () => {
     expect((await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'nia@maple.example', password: temporaryPassword } })).statusCode).toBe(200);
     expect(await audit('member.added:staff')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: userId }]);
     expect((await api.request('POST', M, { cookie: as.admin, body: { name: 'Nia Again', email: 'nia@maple.example', role: 'staff' } })).json().error).toBe('already_member');
+  });
+
+  it('stores no name for someone added by email alone, and /me tells them so until they write one', async () => {
+    const res = await api.request('POST', M, { cookie: as.admin, body: { email: 'kit@maple.example', role: 'staff' } });
+    expect(res.statusCode).toBe(201);
+    const { userId, temporaryPassword } = res.json();
+    expect((await members()).find((m) => m.userId === userId)).toMatchObject({ email: 'kit@maple.example', name: '' });
+    const signedIn = await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'kit@maple.example', password: temporaryPassword } });
+    const cookie = ([] as string[]).concat((signedIn.headers['set-cookie'] as string[] | string | undefined) ?? []).map((c) => c.split(';')[0]).join('; ');
+    expect((await api.request('GET', '/api/v1/me', { cookie })).json().user).toMatchObject({ name: '', nameMissing: true });
+    expect((await api.request('GET', '/api/v1/me', { cookie: as.admin })).json().user).toMatchObject({ nameMissing: false });
   });
 
   it('removes the new account when adding the membership fails, so adding the person again works', async () => {

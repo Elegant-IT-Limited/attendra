@@ -34,7 +34,9 @@ export const Health = z.object({
 export const AvatarUrl = z.string().nullable();
 
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl,
+    /** They have not written their name yet (added by email alone): the dashboard asks for it once. */
+    nameMissing: z.boolean() }),
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
@@ -575,7 +577,11 @@ export const ImportResult = z.object({
     status: z.enum(['add', 'update', 'skip', 'error']),
     message: z.string().nullable(),
   })),
-  counts: z.object({ add: z.number().int(), update: z.number().int(), skip: z.number().int(), error: z.number().int() }),
+  counts: z.object({
+    add: z.number().int(), update: z.number().int(), skip: z.number().int(), error: z.number().int(),
+    /** imported, but a value of theirs found no room on the clinic's list (60 at most); its message says which */
+    notListed: z.number().int(),
+  }),
 });
 
 export const Member = z.object({

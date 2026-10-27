@@ -207,6 +207,7 @@ function AboutYou({ me }: { me: Me }) {
           : <p id="picture-hint" className="text-xs text-text-muted">A JPEG, PNG or WebP, up to 5 MB. It is cut to a square.</p>}
       </section>
       <form className="space-y-2" onSubmit={saveName} noValidate>
+        {me.user.nameMissing && <Alert tone="info">Add your name so your team knows who did what.</Alert>}
         <Field label="Your name" error={nameError} hint="As your team sees it, on requests and notes.">
           {(p) => <Input {...p} autoComplete="name" maxLength={80} value={name} onChange={(e) => { setName(e.target.value); setNameError(null); }} />}
         </Field>

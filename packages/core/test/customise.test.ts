@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyListChange, asE164, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { applyListChange, asE164, leftOffList, listRowNote, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -196,6 +196,20 @@ describe('fields and lists of the clinic\'s own', () => {
     expect(withListValues(derived, 'categories', ['Horses'])).toBe(derived);
     // species start from the usual kinds of animal, so the first new one keeps the list from then on
     expect(withListValues(derived, 'species', ['hamster']).lists?.species).toEqual([...managedList(derived, 'species'), 'Hamster']);
+  });
+
+  it('fills a list only to its 60 values, in file order, and says which values found no room', () => {
+    const full = ClinicConfig.parse({ ...RIVERBEND_CLINIC, lists: { specialties: Array.from({ length: 58 }, (_, i) => `Specialty ${i + 1}`) } });
+    const brought = ['Surgery', 'Oncology', 'surgery', 'Radiology', 'specialty 3'];
+    expect(withListValues(full, 'specialties', brought).lists?.specialties).toHaveLength(60);
+    expect(withListValues(full, 'specialties', brought).lists?.specialties?.slice(58)).toEqual(['Surgery', 'Oncology']);
+    expect(leftOffList(full, 'specialties', brought)).toEqual(['Radiology']);
+    // a list the records make takes nothing, so nothing is left off it either
+    expect(leftOffList(ClinicConfig.parse(RIVERBEND_CLINIC), 'categories', Array.from({ length: 70 }, (_, i) => `C${i}`))).toEqual([]);
+    // the row says both what it added and what it could not
+    expect(listRowNote(['Surgery', 'Radiology'], ['Radiology'])).toBe('adds "Surgery" to your lists; "Radiology" not added to your list: it already has 60 values; remove one in Settings, Fields and lists');
+    expect(listRowNote(['Radiology'], ['radiology'])).toBe('"Radiology" not added to your list: it already has 60 values; remove one in Settings, Fields and lists');
+    expect(listRowNote(undefined, ['Radiology'])).toBeNull();
   });
 });
 
