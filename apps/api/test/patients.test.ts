@@ -334,10 +334,27 @@ describe('pets, at a vet clinic', () => {
     expect((await directory.findPet(DEMO_CLINIC.id, 'Sol', 'Mango', '+13035550178')).status).toBe('found');
   });
 
-  it('refuses a birthday after today where the clinic is, under the field', async () => {
+  it('refuses a birthday after today where the clinic is, under the field, when a pet is added or edited', async () => {
     const res = await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Comet', dob: '2026-09-29' } });
     expect(res.statusCode).toBe(422);
     expect(res.json().issues).toEqual([{ path: 'dob', message: 'A birthday can\'t be in the future.' }]);
+    // the same refusal on an edit, and the pet keeps its birthday
+    const id = (await api.request('POST', C, { cookie: as.staff, body: { ...pet, firstName: 'Comet', phone: '+13035550179' } })).json().id;
+    const edited = await api.request('PATCH', `${C}/${id}`, { cookie: as.staff, body: { ...pet, firstName: 'Comet', phone: '+13035550179', dob: '2026-09-29' } });
+    expect(edited.statusCode).toBe(422);
+    expect(edited.json().issues).toEqual([{ path: 'dob', message: 'A birthday can\'t be in the future.' }]);
+    expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ firstName: 'Comet', dob: '2024-05-01' });
+    // today where the clinic is still saves
+    expect((await api.request('PATCH', `${C}/${id}`, { cookie: as.staff, body: { ...pet, firstName: 'Comet', phone: '+13035550179', dob: '2026-09-28' } })).statusCode).toBe(200);
+  });
+
+  it('a "Details checked" carries no details: a birthday sent with it changes nothing', async () => {
+    const directory = new PostgresPatientDirectory(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    const added = await directory.register(DEMO_CLINIC.id, { firstName: 'Pebble', lastName: 'Okafor', dob: '2024-05-01', gender: 'female', phone: '+13035550180', guardianName: 'Ngozi Okafor', species: 'dog', callId: api.callId });
+    if (added.status === 'limited') throw new Error('unexpected daily limit');
+    const id = added.patient.id;
+    expect((await api.request('POST', `${C}/${id}/confirm`, { cookie: as.staff, body: { dob: '2026-09-29' } })).statusCode).toBe(204);
+    expect((await api.request('GET', `${C}/${id}`, { cookie: as.staff })).json()).toMatchObject({ dob: '2024-05-01', status: 'active' });
   });
 
   it('takes the kind of animal only from the clinic\'s list; an edit that leaves it out keeps one that is not', async () => {

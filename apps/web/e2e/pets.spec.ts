@@ -33,6 +33,17 @@ test.describe.serial('pets at a vet clinic', () => {
     await expect(form.getByText('A birthday can\'t be in the future.')).toBeHidden();
     await form.getByRole('button', { name: 'Add pet' }).click();
     await expect(page.getByRole('heading', { name: 'Juniper', exact: true })).toBeVisible();
+    // an edit refuses it the same way, under the field, and the pet keeps its birthday
+    await page.getByRole('tab', { name: 'Details' }).click();
+    const details = page.locator('form').filter({ has: page.getByRole('button', { name: 'Save changes' }) });
+    await details.getByLabel('Birthday').fill('2099-01-01');
+    await details.getByRole('button', { name: 'Save changes' }).click();
+    await expect(details.getByText('A birthday can\'t be in the future.')).toBeVisible();
+    await expect(details.getByLabel('Birthday')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByRole('dialog', { name: 'Not saved' })).toHaveCount(0);
+    await page.reload();
+    await page.getByRole('tab', { name: 'Details' }).click();
+    await expect(page.getByLabel('Birthday')).toHaveValue('2024-05-01');
   });
 
   test('an owner with one name saves from a new booking\'s "New pet" step, and the pet is picked', async ({ browser }) => {

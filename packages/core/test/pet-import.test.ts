@@ -24,6 +24,13 @@ describe('importing pets', () => {
     expect(readPets('first_name,last_name\nA,B\n', '2026-10-18')[0]).toMatchObject({ ok: false, message: expect.stringContaining('pet_name') });
   });
 
+  it('refuses a birthday after today on its row, the same as the form does, and takes today itself', () => {
+    const csv = 'pet_name,species,birthday,owner_name,owner_phone\nRex,dog,2026-10-19,Ana Ruiz,3035550100\nMia,cat,2026-10-18,Ana Ruiz,3035550101\n';
+    expect(readPets(csv, '2026-10-18').map((r) => (r.ok ? r.value.dob : r.message))).toEqual([
+      'birthday "2026-10-19" is not a full date like 2021-05-14 or a date in the future', '2026-10-18',
+    ]);
+  });
+
   it('says on the row when a kind of animal is not on the clinic\'s list: importing adds it', () => {
     const csv = 'pet_name,species,birthday,owner_name,owner_phone\nRex,Dog,2020-01-01,Ana Ruiz,3035550100\nNibbles,hamster,2024-01-01,Ana Ruiz,3035550100\n';
     expect(readPets(csv, '2026-10-18', true, ['Dog', 'Cat']).map((r) => r.ok && (r.note ?? null))).toEqual([null, 'adds "hamster" to your lists']);
