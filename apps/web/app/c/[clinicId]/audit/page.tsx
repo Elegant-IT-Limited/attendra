@@ -166,7 +166,8 @@ function actor(a: string, meId: string | undefined, names: Map<string, string>) 
   if (a.startsWith('user:')) {
     const id = a.slice(5);
     if (id === meId) return <span>You</span>;
-    return names.has(id) ? <span>{names.get(id)}</span> : <span>A former team member <span className="font-mono text-xs text-text-muted">{id.slice(0, 8)}</span></span>;
+    // someone no longer on the team: their name is gone with them, and an id fragment would say nothing to anyone
+    return <span>{names.get(id) ?? 'A former team member'}</span>;
   }
   return <span className="text-text-muted">{a}</span>;
 }
