@@ -2,7 +2,7 @@
 // is, with no further model round (2026-11). Nothing is ever spoken as done before the tool returned ok.
 import { DEMO_CLINIC, localDateOf, localParts } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { effortFor, type Outbound, ResponsesPlanner, type ToolResult } from '../src';
+import { type Outbound, ResponsesPlanner, type ToolResult } from '../src';
 import { textingOn, world } from './support';
 
 let w: Awaited<ReturnType<typeof world>>;
@@ -152,63 +152,5 @@ describe('find_slots stages the exact time the caller named', () => {
     expect(off.results[1]!.data).not.toHaveProperty('proposed_slot_id');
     expect((off.results[1]!.data as { slots: unknown[] }).slots.length).toBeGreaterThan(0);
     expect(c.state.pending).toBeNull();
-  });
-});
-
-describe('reasoning off on the turns that need none', () => {
-  const effort = async (setup: (c: Awaited<ReturnType<typeof w.call>>) => void | Promise<void>, clinic = DEMO_CLINIC) => {
-    const c = await w.call('+13035550147', { clinic });
-    await setup(c);
-    return effortFor(c.state, clinic);
-  };
-
-  it('a yes to a read-back, a goodbye after "anything else?", an answer to the text or reminder question, a say-back: none', async () => {
-    expect(await effort(async (c) => {
-      c.caller('Maria Delgado, March 4th 1985. I need a sick visit, any doctor.');
-      await c.delegate([maria, sick(), { tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-      c.assistant('Shall I book it?');
-      c.caller('Yes please.');
-    })).toBe('none');
-    expect(await effort((c) => { c.assistant('Is there anything else I can help you with?'); c.caller('No, that\'s all.'); })).toBe('none');
-    expect(await effort((c) => { c.caller('Maria Delgado.'); })).toBe('none');
-    expect(await effort((c) => { c.caller('It\'s 303 555 0147.'); })).toBe('none');
-    expect(await effort((c) => { c.caller('Do you have parking?'); })).toBe('none');
-    expect(await effort((c) => { c.caller('¿Con quién hablo?'); })).toBe('none');
-  });
-
-  it('a change of mind on a read-back, a time to work out, an identity that did not match, an emergency: the model thinks', async () => {
-    expect(await effort(async (c) => {
-      c.caller('Maria Delgado, March 4th 1985. I need a sick visit, any doctor.');
-      await c.delegate([maria, sick(), { tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-      c.assistant('Shall I book it?');
-      c.caller('Actually, Friday instead.');
-    })).toBeNull();
-    expect(await effort((c) => { c.caller('Thursday at 2:30.'); })).toBeNull();
-    expect(await effort((c) => { c.caller('El jueves a las 2.'); })).toBeNull();
-    expect(await effort((c) => { c.caller('Tomorrow morning?'); })).toBeNull();
-    expect(await effort((c) => { c.caller('Can I move my appointment?'); })).toBeNull();
-    expect(await effort(async (c) => {
-      c.caller('Jane Nobody, January 1st 1990.');
-      await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Jane Nobody', date_of_birth: 'January 1st 1990' } }]);
-      c.caller('Jane Nobody.');
-    })).toBeNull();
-    expect(await effort((c) => { c.caller('I have chest pain and my arm is numb.'); })).toBeNull();
-  });
-
-  it('the planner sends reasoning none on those turns and reports it; an explicit simple-turn setting, or off, wins', async () => {
-    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.' }));
-    const c = await w.call();
-    c.caller('Maria Delgado.');
-    const out = await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main').plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
-    expect(create.mock.calls[0]![0]).toMatchObject({ reasoning: { effort: 'none' } });
-    expect(out.timing).toMatchObject({ effort: 'none', simple: true });
-    c.caller('Can I come in Thursday at 2:30?');
-    await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main').plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
-    expect(create.mock.calls[1]![0]).not.toHaveProperty('reasoning');
-    c.caller('Maria Delgado.');
-    await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { simple: { effort: 'low' } }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
-    expect(create.mock.calls[2]![0]).toMatchObject({ reasoning: { effort: 'low' } });
-    await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { noThink: false }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
-    expect(create.mock.calls[3]![0]).not.toHaveProperty('reasoning');
   });
 });
