@@ -17,7 +17,7 @@ const say = (out: { results: { data: Record<string, unknown> }[] }) => out.resul
 describe('a caller who says the pet is new (2026-11)', () => {
   it('reads "new" and "on file after all" in English and Spanish, and a yes to "is it new?"', () => {
     for (const [said, verdict] of [
-      ["No, I told you she's not in your system, she's a new client", 'new'], ['I want to register my pet', 'new'], ['Orbit is new', 'new'],
+      ["No, I told you she's not in your system, she's a new client", 'new'], ['I want to register my pet', 'new'], ['Hazel is new', 'new'],
       ["He's not registered", 'new'], ['she has never been to your clinic', 'new'],
       ['Es nueva, nunca ha venido', 'new'], ['No está registrado', 'new'], ['Quiero registrar a mi perro', 'new'],
       ["She's not new, she came last year", 'on_file'], ['maybe she is already in your system', 'on_file'],
@@ -28,11 +28,11 @@ describe('a caller who says the pet is new (2026-11)', () => {
       ["I'll take the first appointment available", null], ['Quiero la primera cita disponible', null],
     ] as const) expect(newToClinic(said), said).toBe(verdict);
     const s = new CallState();
-    s.addTranscript('agent', 'I couldn\'t find Orbit. Is Orbit new to the clinic?', 0, 900);
+    s.addTranscript('agent', 'I couldn\'t find Hazel. Is Hazel new to the clinic?', 0, 900);
     s.addTranscript('caller', 'Yes.', 1000, 1500);
     expect(s.saidNew()).toBe('new');
     const es = new CallState();
-    es.addTranscript('agent', '¿Orbit es nueva en la clínica?', 0, 900);
+    es.addTranscript('agent', '¿Hazel es nueva en la clínica?', 0, 900);
     es.addTranscript('caller', 'Sí.', 1000, 1500);
     expect(es.saidNew()).toBe('new');
     es.addTranscript('agent', 'Muy bien.', 1600, 1900);

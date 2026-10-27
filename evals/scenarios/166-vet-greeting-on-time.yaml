@@ -1,0 +1,27 @@
+id: vet-greeting-on-time
+title: "A voice that says nothing when the call connects is told to greet within 2 s, once; the call then goes on as usual"
+clinic: riverbend
+local_time: "10:00"
+silent_start: true
+facts: "You are Linh Nguyen, calling from the number on Biscuit's file, the number you are calling from. Biscuit is your dog; you want a wellness exam, any vet, any time. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, it's Linh. I'd like a wellness exam for Biscuit.
+    reply: "Hi Linh, I found Biscuit. For a wellness exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken:
+  - thanks for calling

@@ -88,3 +88,13 @@ export function newToClinic(callerText: string): 'new' | 'on_file' | null {
   if (LANGUAGES.some((l) => PACKS[l].saysNew.test(t))) return 'new';
   return null;
 }
+
+/**
+ * Whether the caller describes a pet the way someone bringing a new one does: its age ("a year old", "tiene dos años")
+ * or its sex ("a female", "es hembra"). With that and nothing said about being new, the assistant asks whether the pet is
+ * new before any lookup (a test call, 2026-10-26: the details came first and the lookup found nothing). In any language.
+ */
+export function describesPet(callerText: string): boolean {
+  const t = normalise(callerText);
+  return LANGUAGES.some((l) => PACKS[l].describesPet.test(t));
+}

@@ -19,8 +19,8 @@ const DETAILS: Record<string, string> = {
   owner_name: 'owner\'s name', pet_name: 'pet\'s name', species: 'kind of animal', sex: 'pet\'s sex', birthday_or_age: 'pet\'s age or birthday',
   full_name: 'name', first_name: 'first name', last_name: 'last name', date_of_birth: 'date of birth', gender: 'gender', guardian_name: 'parent or guardian', phone: 'phone',
 };
-/** The assistant asked whether the pet (or the caller) is new: "Is Orbit new to the clinic?", "¿Orbit es nuevo?". */
-const ASKED_IF_NEW = /\b(new|nuev[oa]s?)\b[^.!]*\?/;
+/** The assistant asked whether the pet (or the caller) is new: "Is Biscuit new to us?", "¿Es la primera vez que Biscuit viene?". */
+const ASKED_IF_NEW = /\b(new|nuev[oa]s?|primera vez)\b[^.!]*\?/;
 
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
@@ -51,6 +51,10 @@ export class CallState {
   readonly known = new Map<string, string>();
   /** The turn from which the caller's words about being new count: after a pet or patient is found or added, it is about the next one. */
   newFromTurn = 0;
+  /** The caller was asked whether the pet is new before any lookup, because they described it (its age, its sex): asked once. */
+  askedIfNew = false;
+  /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
+  phoneAsGiven: string | null = null;
   /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
   chosen: Slot | null = null;
   /** The number they are calling from can't get texts (abroad, premium, toll-free): no text is offered again. */
@@ -125,7 +129,7 @@ export class CallState {
 
   /**
    * Whether the caller has said the pet (or they) are new to the clinic, by their own words since the last pet or patient
-   * was found or added: 'new' ("she's new", or yes to "Is Orbit new?"), 'on_file' when they said it may be on file after
+   * was found or added: 'new' ("she's new", or yes to "Is Hazel new?"), 'on_file' when they said it may be on file after
    * all, the latest of those, or null.
    */
   saidNew(): 'new' | 'on_file' | null {
@@ -138,6 +142,16 @@ export class CallState {
       if (asked && ASKED_IF_NEW.test(normalise(asked.text)) && isClearYes(turn.text, LANGUAGES)) return 'new';
     }
     return null;
+  }
+
+  /** Whether the assistant has asked if the pet (or they) are new since the last one was found or added. */
+  askedWhetherNew(): boolean {
+    return this.turns.slice(this.newFromTurn).some((t) => t.speaker === 'agent' && ASKED_IF_NEW.test(normalise(t.text)));
+  }
+
+  /** What the caller has said since the last pet or patient was found or added. */
+  callerWordsSinceFound(): string {
+    return this.turns.slice(this.newFromTurn).filter((t) => t.speaker === 'caller').map((t) => t.text).join(' ');
   }
 
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */

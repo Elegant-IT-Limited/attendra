@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, callUsNumber, declinesText, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, ownerMatches, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -114,6 +114,25 @@ function dobAgain(said: string, now: Date, monthFirst: boolean): string {
 }
 
 const northAmerica = (clinic: ClinicConfig) => clinic.phoneNumbers[0]!.startsWith('+1');
+/** A whole phone number for the clinic's country: ten digits in North America, at least seven elsewhere. */
+const wholeNumber = (clinic: ClinicConfig, phone: string) => phone.replace(/\D/g, '').length >= (northAmerica(clinic) ? 10 : 7);
+/** A number for the team as the caller gave it, marked when it may not be enough to call. */
+const asGiven = (clinic: ClinicConfig, phone: string) => (wholeNumber(clinic, phone) ? phone : `${phone} (as given, may be incomplete)`);
+/**
+ * A number given for an identity check or a new record that is not a whole number for the clinic's country (a number
+ * abroad, one without its area code) is read back once, as given, and kept: the call goes on with it. A caller abroad
+ * was asked for "the full number with the area code" again and again (a test call, 2026-10-26).
+ */
+function withPhoneAsGiven(result: ToolResult, rawArgs: unknown, state: CallState, ctx: CallContext): ToolResult {
+  const given = (rawArgs as { phone?: unknown } | null)?.phone;
+  const phone = typeof given === 'string' && given.trim() ? given.trim() : null;
+  if (!phone || wholeNumber(ctx.clinic, phone) || result.data.error === 'invalid_arguments') return result;
+  const digits = phone.replace(/\D/g, '');
+  if (state.phoneAsGiven === digits) return result;
+  state.phoneAsGiven = digits;
+  const line = `The number they gave is not a whole number here, so it is kept as they gave it. Read it back once, in these words: "${PACKS[state.language].phoneAsGiven({ digits: phone })}" Then carry on; never ask for the number again or for its area code.`;
+  return { ...result, data: { ...result.data, say: [line, typeof result.data.say === 'string' ? result.data.say : ''].filter(Boolean).join(' ') } };
+}
 const sameFirstWord = (spoken: string, firstName: string) => fold(spoken).toLowerCase().split(/\s+/)[0] === fold(firstName).toLowerCase().split(/\s+/)[0];
 const key = (...parts: (string | number)[]) => createHash('sha256').update(parts.join('|')).digest('base64url').slice(0, 32);
 
@@ -172,10 +191,16 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
 export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
+  const result = await toolCall(name, rawArgs, state, ctx, backend, revision);
+  return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, rawArgs, state, ctx) : result;
+}
+
+async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision: number): Promise<ToolResult> {
   // the arguments the clinic's industry takes: a veterinary clinic finds a pet by its owner's name and its own
   const trade = industryPack(ctx.clinic.industry);
   const parsed = toolArgsFor(ctx.clinic.industry)[name].safeParse(rawArgs);
-  if (!parsed.success) return refuse('invalid_arguments', 'Ask the caller to repeat that detail.');
+  // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
+  if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
     return refuse('emergency_in_progress', trade.identity === 'pet'
       ? 'Do not continue the task. Repeat where to take the animal now, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic) + '.'
@@ -271,7 +296,7 @@ export async function runTool(
       if (trade.identity === 'pet') return verifyPet(args, state, ctx, backend, lang);
       // the number on their file, as they said it, or else the number they are calling from
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
-      if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
+      if (!phone) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
       // numeric dates are month first only in North America
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
@@ -305,7 +330,7 @@ export async function runTool(
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
       const phone = (args.phone as string | null) ?? ctx.callerNumber;
-      if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the best phone number to reach them again, with the area code.' : askPhone(lang));
+      if (!phone) return refuse('phone_required', askPhone(lang));
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       const today = localDateOf(ctx.now(), clinic.timezone);
@@ -329,7 +354,7 @@ export async function runTool(
         idempotencyKey: key(ctx.callId, 'review', result.patient.id),
         details: {
           reason: 'New patient added by the assistant. Check their details and confirm them.',
-          first_name: first, last_name: last, date_of_birth: dob, gender: genderWord(gender), phone,
+          first_name: first, last_name: last, date_of_birth: dob, gender: genderWord(gender), phone: asGiven(clinic, phone),
           ...(guardian ? { guardian_name: guardian } : {}),
           ...(result.similar ? { possible_duplicate: 'Another patient has the same name and date of birth with a different phone number.' } : {}),
         },
@@ -641,7 +666,7 @@ export async function runTool(
       const task = await backend.tasks.create(clinic.id, {
         type: 'refill', callId: ctx.callId, patientId: state.verifiedPatient!.id,
         idempotencyKey: key(ctx.callId, 'refill', String(args.medication).toLowerCase()),
-        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: callback, ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) },
+        details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: asGiven(clinic, callback), ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) },
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
@@ -659,7 +684,7 @@ export async function runTool(
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once
         idempotencyKey: key(ctx.callId, 'callback', topic?.id ?? (/^privacy request/i.test(String(args.reason)) ? 'privacy' : 'general')),
-        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: callback },
+        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: asGiven(clinic, callback) },
       });
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
@@ -807,8 +832,13 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const { clinic } = ctx;
   // "new" means added, never looked up: the registration checks the pet is not on file already
   if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age), one at a time; it checks the pet is not on file already.');
+  // the pet described as a new client does (its age, its sex) and nothing said about being new: asked first, once, never looked up blind
+  if (!state.askedIfNew && state.saidNew() === null && !state.askedWhetherNew() && describesPet(state.callerWordsSinceFound())) {
+    state.askedIfNew = true;
+    return refuse('ask_if_new', `Before looking anything up, ask once, in these words: "${PACKS[lang].petNewQuestion({ pet: String(args.pet_name).trim() })}" If they say yes, add it with register_patient; if no, call verify_caller again with the same details. Keep everything they already gave.`);
+  }
   const phone = (args.phone as string | null) ?? ctx.callerNumber;
-  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the phone number on the pet\'s file again, with the area code.' : askPhone(lang));
+  if (!phone) return refuse('phone_required', askPhone(lang));
   const owner = String(args.owner_name);
   const pet = String(args.pet_name);
   if (!owner.trim()) return refuse('owner_name', 'Ask for the owner\'s first name. Keep the pet\'s name and the phone they already gave.');
@@ -854,7 +884,7 @@ async function registerPet(
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = (args.phone as string | null) ?? ctx.callerNumber;
-  if (!phone || phone.replace(/\D/g, '').length < (northAmerica(clinic) ? 10 : 7)) return refuse('phone_required', phone ? 'Ask for the best phone number to reach the owner again, with the area code.' : askPhone(lang));
+  if (!phone) return refuse('phone_required', askPhone(lang));
   const owner = String(args.owner_name).trim();
   const ownerParts = owner.split(/\s+/);
   if (!owner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
@@ -887,7 +917,7 @@ async function registerPet(
     idempotencyKey: key(ctx.callId, 'review', result.patient.id),
     details: {
       reason: 'New pet added by the assistant. Check the details and confirm them.',
-      pet_name: petName, species, sex: args.sex === 'unknown' ? 'unknown' : String(args.sex), owner_name: owner, phone,
+      pet_name: petName, species, sex: args.sex === 'unknown' ? 'unknown' : String(args.sex), owner_name: owner, phone: asGiven(clinic, phone),
       date_of_birth: birth.dob, ...(birth.estimated ? { date_of_birth_note: `Estimated from the age the owner gave: ${String(args.birthday_or_age)}` } : {}),
     },
   });

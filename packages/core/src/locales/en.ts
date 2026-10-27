@@ -55,6 +55,8 @@ export const en: LanguagePack = {
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
   phoneQuestion: ({ callerId }) => (callerId ? "Is the number you're calling from the best one for you?" : "What's the best number to reach you?"),
+  phoneAsGiven: ({ digits }) => `I have ${digits}. I'll keep it just as you gave it.`,
+  petNewQuestion: ({ pet }) => `Is ${pet} new to us?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
   shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -92,5 +94,6 @@ export const en: LanguagePack = {
   hedge: /\b(no|nope|not|don'?t|wait|actually|hold on|hmm|maybe|instead|rather|change|different|other|but|although|though)\b|\?/,
   markers: /\b(the|and|you|my|is|appointment|please|thank|what|when|book|need|want|have|can|this|that|to|for|with)\b/g,
   saysNew: /(?<!\bwhat)\b(is|are|am|'s|'re|'m) (brand |completely |totally )?new\b(?! (phone|number|cell|mobile|address|email))|\b((a |an )?new (patient|client|pet)|new (here|to (you|the clinic|your clinic|this clinic|the practice))|not (registered|on file|in (your|the) (system|records))|(never|not|hasn'?t|haven'?t|isn'?t|wasn'?t) (been )?(registered|been (there|here|in|to (you|the clinic|your clinic|this clinic)))|first (time|visit) (here|with you|at (the|your) clinic)|(his|her|their|its|a) first (check-?up|visit|exam)|just (adopted|got (a|him|her|them|my|our))|(want|like|need) to register|register (my|our|a|him|her|them))\b/,
+  describesPet: /\b((\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen)[ -](years?|months?|weeks?)[ -]old|(female|male|spayed|neutered))\b/,
   saysOnFile: /\b((not|isn'?t|aren'?t) new|already (a |an )?(patient|client|registered|on file|in (your|the) (system|records))|(has|have|'s|'ve) been (there|here|in|to (you|the clinic|your clinic|this clinic)) before|(might|may|could|should) (already )?be (on file|registered|in (your|the) (system|records)))\b/,
 };

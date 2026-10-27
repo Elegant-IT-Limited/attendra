@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, leakIn,
-  newToClinic, parsePetBirth, saidGoodbye, withoutTextRefusal,
+  describesPet, newToClinic, parsePetBirth, saidGoodbye, withoutTextRefusal,
 } from '../src';
 
 /**
@@ -39,6 +39,11 @@ const ROWS: Row[] = [
   ['newToClinic: just adopted', newToClinic, 'We just adopted a kitten', 'Acabamos de adoptar una gata', 'new'],
   ['newToClinic: on file after all', newToClinic, 'Maybe she is already in your system', 'Puede que ya esté registrada', 'on_file'],
   ['newToClinic: the first time free is not new', newToClinic, "I'll take the first appointment available", 'Quiero la primera cita disponible', null],
+  // the pet described the way a new client does, before anything is looked up
+  ['describesPet: its age', describesPet, "She's a one-year-old dog called Pepper", 'Es una perra de un año, se llama Pepper', true],
+  ['describesPet: its sex', describesPet, "It's a female cat", 'Es una gata hembra', true],
+  ['describesPet: a date in two weeks is not an age', describesPet, 'Can I bring Biscuit in two weeks?', '¿Puedo llevar a Biscuit en dos semanas?', false],
+  ['describesPet: a name and a visit is not a description', describesPet, "It's for my dog Biscuit, he needs a check-up", 'Es para mi perro Biscuit, necesita una revisión', false],
   // a yes that turns down the confirmation text
   ['declinesText: yes, but no text', declinesText, 'Yes, but no text please', 'Sí, pero sin mensaje, por favor', true],
   ['declinesText: do not text me', declinesText, "Don't text me", 'No me mande mensajes', true],

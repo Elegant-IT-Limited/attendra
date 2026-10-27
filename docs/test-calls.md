@@ -41,7 +41,7 @@ Keep port 8080 private. The internal route only answers with the token, but noth
 
 The browser's data channel is limited to what a page needs: it may send `session.close` and receive the session start, the close and the live captions. It cannot add instructions or context, so a modified page cannot change what the assistant does.
 
-The call ends when you press End, when the page is closed (the page asks the API to end it if it cannot say so itself), at the time limit, or when the voice service loses its sideband: a browser would otherwise keep talking to a model with no tools behind it.
+The call ends when you press End, when the page is closed (the page asks the API to end it if it cannot say so itself), at the time limit, or when the voice service loses its sideband for good (it reconnects a few times first): a browser would otherwise keep talking to a model with no tools behind it.
 
 ## Limiting test-call time
 

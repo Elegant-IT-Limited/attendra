@@ -23,7 +23,12 @@ export interface VoiceEngine {
   hangup(sessionId: string): Promise<void>;
   /** Forgets a finished session. Engines that keep no per-session state can leave it out. */
   release?(sessionId: string): void;
+  /** Which engine took a session and the voice it was created with: set once, at creation, never changed in the call. */
+  sessionInfo?(sessionId: string): { engine: string; voice: string } | null;
 }
+
+/** The sideband's own connection: open, dropped and coming back (the attempt, and the close code that started it), back. */
+export type SidebandConnection = { state: 'open' } | { state: 'reconnecting'; attempt: number; code: number } | { state: 'reconnected' };
 
 /** The sideband control socket: our backend's view of a live conversation. */
 export interface Sideband {
@@ -32,6 +37,8 @@ export interface Sideband {
   /** Server error events and socket errors. Without a listener the SDK reports them as unhandled. */
   onError(handler: (err: Error) => void): void;
   onClose(handler: (code: number) => void): void;
+  /** The connection opening, dropping and coming back, for the logs and for answers a drop may have lost. */
+  onConnection?(handler: (e: SidebandConnection) => void): void;
   close(): void;
 }
 

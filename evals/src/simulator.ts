@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
+import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
 import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, type PhiCipher, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { eq } from 'drizzle-orm';
@@ -7,6 +7,7 @@ import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
 import { HybridKnowledgeBase, LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { BuiltinScheduler } from '@attendra/scheduling';
+import { CallRunner, OPENING_NUDGE_MS, type SidebandEvent, type VoiceEngine } from '@attendra/voice-engine';
 import { Writable } from 'node:stream';
 import type { Scenario } from './scenario';
 
@@ -39,6 +40,8 @@ export interface ScenarioResult {
   tools: string[];
   /** Each tool call with its arguments and result, for the report. */
   calls: ToolCall[];
+  /** Live only: each planner request's own model time and setting, to compare speed settings. */
+  timings: PlannerTiming[];
   callId: string;
   ms: number;
 }
@@ -56,9 +59,10 @@ class Observed implements Planner {
   readonly refusals: string[] = [];
   readonly sources: string[] = [];
   readonly cited: string[] = [];
+  readonly timings: PlannerTiming[] = [];
   constructor(private readonly inner: Planner) {}
-  plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
-    return this.inner.plan(input, async (name, args) => {
+  async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
+    const out = await this.inner.plan(input, async (name, args) => {
       const r = await execute(name, args);
       this.calls.push({ tool: name, args, data: r.data });
       this.tools.push(name);
@@ -67,6 +71,8 @@ class Observed implements Planner {
       if (Array.isArray(r.data.passages)) this.cited.push(...(r.data.passages as { title: string }[]).map((p) => p.title));
       return r;
     });
+    if (out.timing) this.timings.push(out.timing);
+    return out;
   }
 }
 
@@ -222,9 +228,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   let clock = 0;
   let delegations = 0;
   let lastReadback: string | null = null;
+  // what the voice was told after each turn it let go
+  const dropNudges: string[] = [];
   // a caller who speaks over the greeting has heard only its first words, and the call has them too
   const opening = scenario.greeting_interrupted ? `${clinic.greeting.split(' ').slice(0, 6).join(' ')}…` : clinic.greeting;
   if (scenario.greeting_interrupted) agent.onAgentTranscript(opening, clock, clock + 800);
+  // a silent start: the real call runner, over a voice that says nothing until told to greet; it must be told in time
+  const greetedAfter = scenario.silent_start ? await silentStart(agent, opening, log) : null;
   const transcript: ScenarioResult['transcript'] = [{ speaker: 'assistant', text: opening }];
   await segment('agent', opening, clock);
   // live, a scenario with facts keeps only its opening line: a model playing the caller answers
@@ -247,6 +257,12 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     outbound.push(...heard);
     if (heard.some((o) => o.type === 'hangup')) endedByRule = true;
     transcript.push({ speaker: 'caller', text: turn.caller });
+    // the voice let this turn go: after 5 s the watchdog gives it the caller's own words to answer, and it hands them on
+    if (turn.dropped) {
+      const nudge = agent.onSilence(1);
+      outbound.push(...nudge);
+      for (const o of nudge) if (o.type === 'instructions') { transcript.push({ speaker: 'instruction', text: o.content }); dropNudges.push(o.content); }
+    }
     for (const o of heard) if (o.type === 'instructions') {
       transcript.push({ speaker: 'instruction', text: o.content });
       // live, the voice model says the script it was handed (the quoted lines), as it does on a call
@@ -314,6 +330,17 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const failures: string[] = [];
   const check = (ok: boolean, msg: string) => { if (!ok) failures.push(msg); };
 
+  // a turn the voice let go comes back to it with the caller's own words, and never as a request to say it again
+  for (const [i, turn] of scenario.turns.entries()) {
+    if (!('caller' in turn) || !turn.dropped) continue;
+    const nudge = dropNudges.shift() ?? '';
+    check(nudge.includes(turn.caller.replace(/["“”]/g, '\'')), `turn ${i + 1} was let go, and the voice was not given the caller's words back`);
+    check(!/ask (them|the caller) to (say it again|repeat)(?! it)|repeat what|say that again/i.test(nudge), `turn ${i + 1} was let go, and the voice was told to ask the caller to repeat it`);
+  }
+  if (scenario.silent_start) {
+    check(greetedAfter !== null, 'a silent start was never told to greet');
+    if (greetedAfter !== null) check(greetedAfter <= OPENING_NUDGE_MS + 600, `a silent start was told to greet after ${greetedAfter} ms, more than ${OPENING_NUDGE_MS + 600}`);
+  }
   // live, a call cut short by the test itself, or one where the backend failed, says so first
   if (livePlanner) {
     check(!callerSilent, 'the model playing the caller gave no line, so the call stopped early (the test, not the assistant)');
@@ -387,7 +414,44 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       }
     }
   }
-  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, calls: observed.calls, callId, ms: Math.round(performance.now() - started) };
+  return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, calls: observed.calls, timings: observed.timings, callId, ms: Math.round(performance.now() - started) };
+}
+
+/**
+ * The first seconds of a call whose voice says nothing until it is told to greet, run through the real call runner on
+ * real timers: how long until the greeting was asked for (null: never, within 4 s). The voice then greets, once, and the
+ * runner is stopped so the scripted turns run on their own.
+ */
+async function silentStart(agent: CallAgent, greeting: string, log: ReturnType<typeof createLogger>): Promise<number | null> {
+  let deliver: (e: SidebandEvent) => void = () => {};
+  let closed: (code: number) => void = () => {};
+  let started = 0;
+  let greeted: number | null = null;
+  let told = 0;
+  const done = new Promise<void>((resolve) => {
+    const engine = { name: 'eval', accept: async () => {}, startBrowserCall: async () => ({ sessionId: '', sdpAnswer: '' }), reject: async () => {}, attach: () => { throw new Error('unused'); }, transfer: async () => {}, hangup: async () => {} } satisfies VoiceEngine;
+    const runner = new CallRunner('eval_silent_start', engine, {
+      send: (e) => {
+        const c = e as { type: string; content?: string };
+        if (c.type !== 'session.instructions.append' || !/greet them now/i.test(c.content ?? '')) return;
+        told++;
+        if (greeted !== null) return;
+        greeted = Math.round(performance.now() - started);
+        deliver({ type: 'session.output_transcript.delta', event_id: 'eval_greeting', delta: greeting, start_ms: 0, end_ms: 800 });
+        // a moment later, to see that it is asked for once only
+        setTimeout(() => { closed(1000); resolve(); }, 1500);
+      },
+      onEvent: (h) => { deliver = h; },
+      onError: () => {},
+      onClose: (h) => { closed = h; },
+      close: () => {},
+    }, agent, { appendSegment: async () => {}, close: async () => {} }, log);
+    started = performance.now();
+    void runner.start();
+    setTimeout(() => { if (greeted === null) { closed(1000); resolve(); } }, 4000);
+  });
+  await done;
+  return told > 1 ? Number.POSITIVE_INFINITY : greeted;
 }
 
 /** A log line at error level or above, as "message: the error's message". */

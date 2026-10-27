@@ -50,6 +50,8 @@ const voiceFor = (voice: string) => ((PREVIEW_VOICES as readonly string[]).inclu
 export class RealtimeEngine implements VoiceEngine {
   readonly name = 'gpt-realtime';
   private readonly browser = new Set<string>();
+  /** The voice each call was created with: set once, never changed in the call. */
+  private readonly voices = new Map<string, string>();
 
   constructor(
     private readonly client: OpenAI,
@@ -73,6 +75,12 @@ export class RealtimeEngine implements VoiceEngine {
 
   async accept(callId: string, clinic: ClinicConfig, now: Date) {
     await this.client.realtime.calls.accept(callId, this.session(clinic, now));
+    this.voices.set(callId, voiceFor(clinic.voice));
+  }
+
+  sessionInfo(callId: string) {
+    const voice = this.voices.get(callId);
+    return voice ? { engine: this.name, voice } : null;
   }
 
   async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
@@ -83,6 +91,7 @@ export class RealtimeEngine implements VoiceEngine {
     const callId = res.headers.get('location')?.split('/').filter(Boolean).at(-1);
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
+    this.voices.set(callId, voiceFor(clinic.voice));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
 
@@ -101,6 +110,7 @@ export class RealtimeEngine implements VoiceEngine {
 
   release(callId: string) {
     this.browser.delete(callId);
+    this.voices.delete(callId);
   }
 
   attach(callId: string): Sideband {
@@ -231,6 +241,7 @@ export class RealtimeEngine implements VoiceEngine {
       send,
       onEvent: (handler) => { handlers.push(handler); },
       onError: (handler) => { ws.on('error', handler); },
+      onConnection: (handler) => { if (open) handler({ state: 'open' }); else ws.socket.on('open', () => handler({ state: 'open' })); },
       // a Realtime call has no closing event: a clean close of the call's socket is the end
       // of the call; any other close is a dropped connection, and the runner records it so
       onClose: (handler) => {

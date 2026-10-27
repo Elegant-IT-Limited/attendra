@@ -37,6 +37,14 @@ describe('language parity: the lines the agent says word for word', () => {
     expect(PACKS.es.couldNotFinish).not.toBe(PACKS.en.couldNotFinish);
   });
 
+  it('every pack asks whether a pet is new, and reads back a number as given, in its own words (2026-11-08)', () => {
+    expect(PACKS.en.petNewQuestion({ pet: 'Hazel' })).toBe('Is Hazel new to us?');
+    expect(PACKS.es.petNewQuestion({ pet: 'Hazel' })).toBe('¿Es la primera vez que Hazel viene con nosotros?');
+    expect(PACKS.en.phoneAsGiven({ digits: '995 72 124' })).toContain('995 72 124');
+    expect(PACKS.es.phoneAsGiven({ digits: '995 72 124' })).toContain('995 72 124');
+    expect(PACKS.es.phoneAsGiven({ digits: '1' })).not.toBe(PACKS.en.phoneAsGiven({ digits: '1' }));
+  });
+
   it('a take-over in a Spanish call is said in Spanish', async () => {
     const c = await w.call();
     c.caller('Hola, buenas noches. Quiero una cita para mi hija, por favor.');
