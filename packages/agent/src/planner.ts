@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -61,7 +61,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   register_patient: 'Add a new patient. Only after verify_caller found no match and the caller says they are new to the clinic. Needs first and last name, date of birth, gender (female, male, other, or undisclosed when they prefer not to say; ask, never guess) and phone; for anyone under 18 also the parent or guardian\'s name. They are then verified and can book.',
   get_clinic_info: 'Hours for today and the next 7 days, the doctors (specialty, what they see people for, ages, visit types, weekly hours, time off, whether they take new patients, and the clinic\'s own details on each, such as qualifications, under details), the visit types, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
   search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
-  find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
+  find_slots: `Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null. ${PROPOSE_IF_EXACT}`,
   list_appointments: 'List the verified caller\'s upcoming appointments, each with its visit type: to move one, look for times for that same visit type.',
   visit_summary: 'Only once the patient is verified, and only when they ask about their visits: the next visits, the last visit booked or recorded here, and the usual provider. Nothing medical.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
@@ -250,6 +250,7 @@ export class ResponsesPlanner implements Planner {
       for (const item of res.output) {
         if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
       }
+      const results: ToolResult[] = [];
       for (const call of calls) {
         const name = call.name as ToolName;
         const toolAsked = performance.now();
@@ -257,8 +258,13 @@ export class ResponsesPlanner implements Planner {
           ? await execute(name, safeJson(call.arguments))
           : { ok: false, data: { error: 'unknown_tool' } };
         timing.toolMs += performance.now() - toolAsked;
+        results.push(result);
         conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
       }
+      // one tool that did the whole thing and wrote the words for it (a read-back, "booked", the goodbye): those are
+      // said as they are, with no further round. A refusal, an error or a lookup goes back to the model as before.
+      const spoken = results.length === 1 && results[0]!.ok && typeof results[0]!.data.spoken === 'string' ? results[0]!.data.spoken : null;
+      if (spoken) return done({ say: spoken });
     }
     // out of rounds: a callback that is promised is one that exists, taken through the same
     // tool the model would use, so its rules and the request for staff apply

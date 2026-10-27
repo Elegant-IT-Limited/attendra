@@ -532,10 +532,20 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       for (const s of slots) state.offered.set(s.id, s);
       // why the day or the provider the caller asked for gave nothing, so the assistant can say so before the times
       const why = whyNot(clinic, { date: args.from_date as string | null, provider: named || providers.length === 1 ? providers[0] : undefined, noticeHours: visitType.noticeHours, now, today });
+      const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
+      // the caller named one exact day and time and is already found: when it is free it is staged here and read back,
+      // the one round where there were two (find, then propose). Anything else comes back as the times to offer.
+      if (args.propose_if_exact === true && fromTime && args.from_date && patient) {
+        const exact = slots.find((s) => localDateOf(s.start, clinic.timezone) === requested && localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime));
+        if (exact) {
+          const proposed = await runTool('propose_booking', { slot_id: exact.id, replaces_appointment_id: null }, state, ctx, backend, revision);
+          if (proposed.ok) return { ok: true, data: { slots: found, proposed_slot_id: exact.id, ...proposed.data } };
+        }
+      }
       return {
         ok: true,
         data: {
-          slots: slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null })),
+          slots: found,
           note,
           ...(why ? { why_not_as_asked: why } : {}),
         },
@@ -602,7 +612,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
-      return { ok: true, data: { say: target ? `Read this back, say "${pack.confirmTextNote({ target })}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.` } };
+      const textNote = target ? pack.confirmTextNote({ target }) : null;
+      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote }) } };
     }
 
     case 'propose_cancellation': {
@@ -616,7 +627,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       const target = confirmationTarget('cancel_confirmed');
-      return { ok: true, data: { say: target ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${pack.confirmTextNote({ target })}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.` } };
+      const textNote = target ? pack.confirmTextNote({ target }) : null;
+      return { ok: true, data: { say: textNote ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${textNote}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.`, spoken: pack.spoken.cancelReadback({ readback, textNote }) } };
     }
 
     case 'commit_pending': {
@@ -639,7 +651,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           await emit({ type: 'appointment.cancelled', key: pending.appointmentId, data: { appointmentId: pending.appointmentId, patientId: patient.id, by: 'assistant', callId: ctx.callId, reason: 'patient_asked' } });
         }
         const smsSent = await confirmByText('cancel_confirmed', pending.start, pending.appointmentId, {}, noText);
-        return { ok: true, data: { cancelled: true, sms_sent: smsSent } };
+        return { ok: true, data: { cancelled: true, sms_sent: smsSent, spoken: pack.spoken.done({ kind: 'cancelled', textSent: smsSent, then: pack.spoken.anythingElse }) } };
       }
 
       const result = await backend.scheduler.book(clinic.id, {
@@ -688,6 +700,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           done: `This visit is booked. Say so once${smsSent ? ', and that a confirmation text is on its way to the number on file (asked for one, say it has been sent)' : ''}; do not look for times again or check it, and never say it was not completed. If the caller says goodbye, call end_call.`,
           ...(oldStillActive ? { old_appointment_still_active: true, say: 'The new time is booked, but the old appointment could not be cancelled; offer a callback to sort it out.' } : {}),
           ...(askReminder && !oldStillActive ? { say: `Say it is booked, then ask once: "${pack.reminderOffer}" and call set_reminder_consent with their answer.` } : {}),
+          // the whole answer, in the backend's words: the model is not asked again unless something is left to explain
+          ...(result.status === 'booked' && !oldStillActive ? { spoken: pack.spoken.done({ kind: state.outcome === 'rescheduled' ? 'rescheduled' : 'booked', textSent: smsSent, then: askReminder ? pack.reminderOffer : pack.spoken.anythingElse }) } : {}),
         },
       };
     }
@@ -707,7 +721,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       });
       state.outcome = 'task_created';
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
-      return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.` } };
+      return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.`, spoken: pack.spoken.refillTaken } };
     }
 
     case 'create_callback': {
@@ -726,7 +740,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
       await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
-      return { ok: true, data: { task_id: task.id } };
+      // in an emergency the script around the callback is the model's; otherwise the request taken is the whole answer
+      return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: callback === ctx.callerNumber }) }) } };
     }
 
     case 'set_reminder_consent': {
@@ -736,11 +751,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       state.reminderOffer = null; // asked once, answered once
       // a yes is the caller's own clear words after the question, never the model's reading of them
       if (!args.agreed || !isClearYes(state.latestCallerWordsAfter(offer.askedAtMs), clinic.languages)) {
-        return { ok: true, data: { reminders: false, say: 'No reminder texts. Carry on with the call.' } };
+        return { ok: true, data: { reminders: false, say: 'No reminder texts. Carry on with the call.', spoken: pack.spoken.reminders({ agreed: false }) } };
       }
       await backend.patients.setTextConsent!(clinic.id, offer.patientId, ctx.callId);
       state.verifiedPatient!.textsOk = true;
-      return { ok: true, data: { reminders: true, say: 'Say they will get a reminder text before the visit.' } };
+      return { ok: true, data: { reminders: true, say: 'Say they will get a reminder text before the visit.', spoken: pack.spoken.reminders({ agreed: true }) } };
     }
 
     case 'send_text': {
@@ -809,7 +824,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the text has gone: a failed audit row is logged, never turned into "I couldn't do that"
       await backend.audit.record(clinic.id, { actor: 'voice-agent', action: 'sms.consent.asked', entity: 'call', entityId: ctx.callId, callId: ctx.callId })
         .catch((err: unknown) => ctx.log?.error({ call_id: ctx.callId, err }, 'text consent not audited'));
-      return { ok: true, data: { texted: true, template: content.template, consent_at_ms: consentAtMs, say: `Say: "${pack.textSent}"` } };
+      return { ok: true, data: { texted: true, template: content.template, consent_at_ms: consentAtMs, say: `Say: "${pack.textSent}"`, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.textSent }) } };
     }
 
     case 'transfer_call': {
@@ -834,7 +849,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!saidGoodbye(state.lastTurn('caller'), state.lastTurn('agent', 2))) {
         return refuse('caller_not_finished', 'Do not end the call yet. If their request is not finished, say what you can still do or offer a callback. Otherwise ask: "Is there anything else I can help you with?" End the call only after they say no or goodbye.');
       }
-      return { ok: true, data: { ending: true, say: 'Say goodbye warmly.' }, action: { type: 'hangup' } };
+      return { ok: true, data: { ending: true, say: 'Say goodbye warmly.', spoken: pack.spoken.goodbye }, action: { type: 'hangup' } };
   }
 }
 

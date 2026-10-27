@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import type { PetEmergencyKind } from '../emergency';
 import { B, E, PACKS } from '../locales';
+import { PROPOSE_IF_EXACT } from '../tool-notes';
 import type { EmergencyDestination, IndustryPack } from './types';
 
 const phone = z.string().min(3).max(30).nullable().default(null);
@@ -105,7 +106,7 @@ export const vet: IndustryPack = {
       visit_summary: 'Only after the pet is found, and only when the owner asks about its visits: the pet\'s next visits (when, vet, kind of visit), its last visit that is booked or recorded here, and its usual vet. Nothing medical, ever.',
       register_patient: 'Add a new pet, when the caller says the pet is new to the clinic (no lookup first: this checks the pet is not on file already) or verify_caller found nothing and they say it is new. Needs the pet\'s name, the owner\'s first name (and last name if they gave it), the kind of animal (dog, cat, rabbit...), its sex (female, male, or unknown), its birthday or age as the owner says it, and the phone (null: the number they are calling from). The pet is then found and can book.',
       get_clinic_info: 'Hours for today and the next 7 days, the veterinarians (what animals and services they see, weekly hours, time off, whether they take new patients, and the clinic\'s own details on each, such as qualifications, under details), the visit types, the emergency hospitals, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
-      find_slots: 'Find up to 3 open appointment slots, optionally with one veterinarian (provider_id), or with the vets who see a kind of animal or service from get_clinic_info (specialty). No identity needed: use it to answer "who is free Monday" before asking who they are. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
+      find_slots: 'Find up to 3 open appointment slots, optionally with one veterinarian (provider_id), or with the vets who see a kind of animal or service from get_clinic_info (specialty). No identity needed: use it to answer "who is free Monday" before asking who they are. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null. ' + PROPOSE_IF_EXACT,
       create_refill_request: 'Log a refill request for the pet\'s medication, for a vet to approve. Pharmacy may be "pick up at the clinic". Never approve or promise a refill. callback_number: the number they give, or null when the number they are calling from is fine.',
     },
   },

@@ -107,6 +107,30 @@ export interface LanguagePack {
   abuseGoodbye: string;
   /** Said word for word when a person takes the call over, before the transfer. */
   takeOver: string;
+  /**
+   * The backend's own words for the caller, spoken as they are when a tool's result is the whole answer, so the model is
+   * not asked again (2026-11). Each ends with the next question when one follows (the reminder offer, anything else?).
+   */
+  spoken: {
+    /** A booking or a move read back as a question, with the confirmation-text note when a text will follow. */
+    readback: (v: { readback: string; textNote: string | null }) => string;
+    /** A cancellation read back as a question. */
+    cancelReadback: (v: { readback: string; textNote: string | null }) => string;
+    /** The change is made; `then` is the question that follows (the reminder offer, or anything else?). */
+    done: (v: { kind: 'booked' | 'rescheduled' | 'cancelled'; textSent: boolean; then: string }) => string;
+    /** The closing question, in the words saidGoodbye listens for. */
+    anythingElse: string;
+    /** The goodbye once the caller said no or goodbye: never the greeting's words again. */
+    goodbye: string;
+    /** A callback request taken: the team will call, at the number they are calling from or the one they gave. */
+    callbackTaken: (v: { sameNumber: boolean }) => string;
+    /** A refill request logged: with the team, never approved or timed. */
+    refillTaken: string;
+    /** A text just sent. */
+    textSent: string;
+    /** The caller's answer to the reminder offer, acknowledged. */
+    reminders: (v: { agreed: boolean }) => string;
+  };
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;
   couldNotFinish: string;

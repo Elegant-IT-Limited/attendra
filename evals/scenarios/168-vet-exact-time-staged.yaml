@@ -1,0 +1,24 @@
+id: vet-exact-time-staged
+title: An owner who is already found asks for Friday at 10:30 exactly; find_slots stages that free time itself and the backend's read-back is spoken, one round instead of two
+clinic: riverbend
+local_time: "10:00"
+tags: [fast]
+facts: "You are calling from the number on file. Any vet is fine. You want Friday at 10:30 for Mochi's vaccines; if 10:30 is taken, the nearest time after it is fine. Say yes to the read-back."
+turns:
+  - caller: Hi, it's Linh Nguyen. Can I get Mochi in for her vaccines on Friday at 10:30?
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: "2026-10-02", part_of_day: any, from_time: "10:30", propose_if_exact: true }
+  - caller: Yes please.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-02"
+  offered_from_time: "10:30"
+  spoken_contains: ["Shall I book it?", "All set, that's booked."]

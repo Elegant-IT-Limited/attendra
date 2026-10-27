@@ -124,7 +124,8 @@ function questionsIn(line: string): string[] {
 function sameQuestion(a: string, b: string): boolean {
   const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter(Boolean).join(' ');
   // the closing and confirming questions, and "how can I help?" once at the greeting and once after finding the caller, are no repeat
-  if (/anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar/i.test(a) && /anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar/i.test(b)) return false;
+  const closing = /anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar|algo m[aá]s|le reservo la cita|es correcto/i;
+  if (closing.test(a) && closing.test(b)) return false;
   const [x, y] = [norm(a), norm(b)];
   return x.length >= 12 && x === y;
 }
@@ -341,7 +342,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const created = createdRows.length;
   // live, the voice speaks the planner's words, which paraphrase the backend's: a line the
   // backend gave in a tool result (the read-back, the no-medical-advice line) counts as given
-  const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
+  const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback', 'spoken'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
   const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : [])), ...replies, ...given];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;

@@ -20,6 +20,7 @@ export * from './routing';
 export * from './slots';
 export * from './starter';
 export * from './time';
+export * from './tool-notes';
 export * from './tools';
 export * from './voices';
 export * from './security';

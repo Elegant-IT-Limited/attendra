@@ -8,6 +8,8 @@ const when = (start: Date, timeZone: string) => {
 };
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+/** A note written to follow a comma, said as a sentence of its own. */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * A text to one person: "Hi Sam, Scout's check-up with Dr. Ruiz…" when the call gave the names,
@@ -69,6 +71,17 @@ export const en: LanguagePack = {
   takeOver: 'I\'m connecting you with a member of our team now.',
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
   couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
+  spoken: {
+    readback: ({ readback, textNote }) => `I have ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}Shall I book it?`,
+    cancelReadback: ({ readback, textNote }) => `So I'd ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}Is that right?`,
+    done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'All set, that\'s booked.' : kind === 'rescheduled' ? 'All set, it\'s moved.' : 'Done, that appointment is cancelled.'}${textSent ? ' I\'ve sent you a confirmation text.' : ''} ${then}`,
+    anythingElse: 'Is there anything else I can help you with?',
+    goodbye: 'Take care, goodbye!',
+    callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
+    refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
+    textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
+    reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
+  },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +
     `"If this is a medical emergency, please hang up and call ${n} right away." ` +
