@@ -115,7 +115,12 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
   // the number's digits are what changes the lookup
   }, [digits, pet, patientId, clinicId, form.phone]);
   useEffect(() => {
-    if (household?.owner) { setOwner(ownerParts(household.owner, '')); setErrors((x) => ({ ...x, guardianName: undefined, lastName: undefined })); }
+    if (household?.owner) {
+      // the number's owner as written on its first record: the first word is the first name, the rest the last
+      const [first = '', ...rest] = household.owner.trim().split(/\s+/);
+      setOwner({ first, last: rest.join(' ') });
+      setErrors((x) => ({ ...x, guardianName: undefined, lastName: undefined }));
+    }
   }, [household]);
   const ownerFromNumber = !!household?.owner;
   const submit = (e: FormEvent) => {
