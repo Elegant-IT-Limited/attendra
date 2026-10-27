@@ -24,6 +24,11 @@ expect:
   bookings_created: 1
   sms_sent: 1
   language: es
+# a greeting said again, not a goodbye: "thanks for calling" is also how a call ends
 forbid_spoken:
-  - gracias por llamar
-  - thanks for calling
+  - how can i help you and your pet today
+  - i'm juniper
+  - the clinic's ai assistant
+  - le habla juniper
+  - soy juniper
+  - asistente de ia de la clínica
