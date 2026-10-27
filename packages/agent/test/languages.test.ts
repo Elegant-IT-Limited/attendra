@@ -20,10 +20,10 @@ describe('a Spanish call at Maple Street', () => {
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: '4 de marzo de 1985' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
-    expect(said(found)).toContain('martes, 29 de septiembre a las 8:00');
+    expect(said(found)).toContain('mañana a las 8:00');
     c.caller('La primera, por favor.');
     const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
-    expect(c.state.pending?.readback).toBe('martes, 29 de septiembre a las 8:00 a.m. con Dr. Nkem Okafor, para consulta por enfermedad');
+    expect(c.state.pending?.readback).toBe('mañana a las 8:00 a.m. con Dr. Nkem Okafor, para consulta por enfermedad');
     expect(said(proposed)).toContain('consulta por enfermedad');
     c.assistant('Para confirmar: martes a las 8 con la doctora Okafor. ¿Está bien?');
     c.caller('Sí, está bien.');

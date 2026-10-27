@@ -114,9 +114,9 @@ function intersect(a: { open: string; close: string }[], b: { open: string; clos
   return out;
 }
 
-/** "Thursday, October 1 at 10:00 AM", in the clinic's zone and the caller's language, for read-back to the caller. */
-export function speakSlot(start: Date, timeZone: string, language: Language = 'en'): string {
-  return PACKS[language].speakWhen(start, timeZone);
+/** "Thursday at 10:00 AM" (with `now`: today, tomorrow, the weekday within the week), else "Thursday, October 1 at 10:00 AM", in the clinic's zone and the caller's language. */
+export function speakSlot(start: Date, timeZone: string, language: Language = 'en', now?: Date): string {
+  return PACKS[language].speakWhen(start, timeZone, now);
 }
 
 export function localDateOf(at: Date, timeZone: string) {

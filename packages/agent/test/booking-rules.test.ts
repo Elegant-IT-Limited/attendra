@@ -59,7 +59,7 @@ describe('a time of day the caller names', () => {
     const after = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '15:00' } }]);
     const slots = after.results[0]!.data.slots as { when: string }[];
     expect(slots.length).toBe(3);
-    expect(slots.every((s) => /Thursday, October 1 at (3|4|5):\d\d PM/.test(s.when))).toBe(true);
+    expect(slots.every((s) => /Thursday at (3|4|5):\d\d PM/.test(s.when))).toBe(true);
     expect(String(after.results[0]!.data.note)).not.toContain('exactly');
     // 10:35 is not on the 30-minute grid, so the nearest after it is offered and the result says so
     const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35' } }]);
@@ -123,7 +123,7 @@ describe('the patient\'s own visits', () => {
       expect(out.errors).toEqual([null, null]);
       return data(out.results[1]!).slots;
     };
-    expect((await look()).some((s) => /October 1 at 3:00 PM/.test(s.when))).toBe(true);
+    expect((await look()).some((s) => /Thursday at 3:00 PM/.test(s.when))).toBe(true);
     // Maria already has a visit 3:00 to 4:30 PM that Thursday, with one doctor
     const tz = DEMO_CLINIC.timezone;
     await withClinic(w.t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({

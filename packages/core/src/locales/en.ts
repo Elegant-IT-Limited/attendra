@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { LanguagePack } from './types';
+import { daysAhead, type LanguagePack } from './types';
 
-const when = (start: Date, timeZone: string) => {
-  const day = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(start);
+const when = (start: Date, timeZone: string, now?: Date) => {
   const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start);
+  const soon = now ? daysAhead(start, timeZone, now) : null;
+  // the same day is "today", the next "tomorrow", the rest of the week its day; after that the date too
+  if (soon === 0) return `today at ${time}`;
+  if (soon === 1) return `tomorrow at ${time}`;
+  const day = new Intl.DateTimeFormat('en-US', soon !== null && soon > 1 && soon < 7 ? { timeZone, weekday: 'long' } : { timeZone, weekday: 'long', month: 'long', day: 'numeric' }).format(start);
   return `${day} at ${time}`;
 };
 

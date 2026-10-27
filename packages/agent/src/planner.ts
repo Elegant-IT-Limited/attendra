@@ -282,7 +282,7 @@ export class ResponsesPlanner implements Planner {
       ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
       : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
-    const known = stateLine(state, input.clinic);
+    const known = stateLine(state, input.clinic, input.now);
     // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
     // fixed notes (its records, its number), then the transcript, which only grows; the state line and the clock come last,
     // since they change every turn (the time was in the first line of the rules, which rewrote the whole prefix each minute)
@@ -399,7 +399,7 @@ export function emptyPromise(say: string, state: CallState, doneBefore = state.d
   return !state.pending && state.done.length === doneBefore && PROMISE.test(t) && !WAITS_FOR.test(t);
 }
 
-export function stateLine(state: CallState, clinic?: ClinicConfig): string {
+export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): string {
   const pets = clinic?.industry === 'vet';
   const saidNew = !state.verifiedPatient && pets && state.saidNew() === 'new';
   const chosen = state.chosen && clinic ? state.chosen : null;
@@ -413,7 +413,7 @@ export function stateLine(state: CallState, clinic?: ClinicConfig): string {
       : 'patient not verified',
     // what the caller already said is never asked again; the latest value is the one that counts
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
-    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
+    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

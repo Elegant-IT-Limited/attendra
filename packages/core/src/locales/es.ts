@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type LanguagePack, words } from './types';
+import { daysAhead, type LanguagePack, words } from './types';
 
 // Spanish as spoken in the United States: usted, clear and short. Accents are
 // removed before matching (normalise), so "sí" and "si", "está" and "esta" meet.
-const when = (start: Date, timeZone: string) => {
-  const day = new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(start);
+const when = (start: Date, timeZone: string, now?: Date) => {
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h12' }).format(start).replace(/\D/g, ''));
-  const time = new Intl.DateTimeFormat('es-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start);
-  return `${day} a ${hour === 1 ? 'la' : 'las'} ${time}`;
+  const time = `a ${hour === 1 ? 'la' : 'las'} ${new Intl.DateTimeFormat('es-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start)}`;
+  const soon = now ? daysAhead(start, timeZone, now) : null;
+  // the same day is "hoy", the next "mañana", the rest of the week its day; after that the date too
+  if (soon === 0) return `hoy ${time}`;
+  if (soon === 1) return `mañana ${time}`;
+  if (soon !== null && soon > 1 && soon < 7) return `el ${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long' }).format(start)} ${time}`;
+  return `${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(start)} ${time}`;
 };
 
 const DIGITS = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];

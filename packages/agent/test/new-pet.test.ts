@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { CallState, type Outbound } from '../src';
 import { emptyPromise, stateLine } from '../src/planner';
-import { world } from './support';
+import { NOW, world } from './support';
 
 // Riverbend's pets, with the clinic taking bookings at any hour so a found or added pet can book on the test's clock
 let w: Awaited<ReturnType<typeof world>>;
@@ -121,7 +121,7 @@ describe('a time chosen before the pet is found (2026-11)', () => {
     expect(say(early)).toContain('never that it is done or taken care of');
     expect(c.state.chosen?.id).toBe(second.id);
     expect(c.state.pending).toBeNull();
-    expect(stateLine(c.state, clinic)).toContain(`the caller chose ${slots[1]!.when} with ${slots[1]!.provider} before being found`);
+    expect(stateLine(c.state, clinic, NOW)).toContain(`the caller chose ${slots[1]!.when} with ${slots[1]!.provider} before being found`);
     // nothing is staged yet: "I'll take care of it" is a promise nobody keeps
     expect(emptyPromise("Okay, I'll take care of it.", c.state)).toBe(true);
     expect(emptyPromise('Vale, yo me encargo.', c.state)).toBe(true);

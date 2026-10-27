@@ -94,20 +94,20 @@ const seesAnimals = (p: { categories: string[]; categoryNames?: Record<string, s
 /** No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked once. */
 const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${PACKS[lang].phoneQuestion({ callerId: false })}" Keep everything else they already gave; do not ask for it again.`;
 /** A time the caller chose, as the planner hears it: when, and with whom. */
-const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language']) => {
+const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language'], now?: Date) => {
   const provider = clinic.providers.find((p) => p.id === slot.providerId);
-  return `${speakSlot(slot.start, clinic.timezone, lang)}${provider ? ` with ${localName(provider, lang)}` : ''}`;
+  return `${speakSlot(slot.start, clinic.timezone, lang, now)}${provider ? ` with ${localName(provider, lang)}` : ''}`;
 };
 /**
  * Once the pet or patient is found or added: the time they chose before, looked for again (it may have gone meanwhile, and
  * the visit may now be a new patient's) and read back as a question, never dropped and never said to be done.
  */
-const chosenNote = (state: CallState, clinic: ClinicConfig, lang: CallState['language']): { say?: string } => {
+const chosenNote = (state: CallState, clinic: ClinicConfig, lang: CallState['language'], now?: Date): { say?: string } => {
   const slot = state.chosen;
   if (!slot) return {};
   const local = localParts(slot.start, clinic.timezone);
   const time = `${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`;
-  return { say: ` Before this, the caller chose ${choiceOf(slot, clinic, lang)}. Look for it again now with find_slots (from_date ${local.date}, from_time ${time}, provider_id ${slot.providerId}); if it is still free, propose_booking it, so it is read back as a question for their yes. If it was taken meanwhile, say so and offer the times find_slots returns.` };
+  return { say: ` Before this, the caller chose ${choiceOf(slot, clinic, lang, now)}. Look for it again now with find_slots (from_date ${local.date}, from_time ${time}, provider_id ${slot.providerId}); if it is still free, propose_booking it, so it is read back as a question for their yes. If it was taken meanwhile, say so and offer the times find_slots returns.` };
 };
 
 /** What to ask when a date of birth is refused: the one part that is wrong, keeping everything else the caller said. */
@@ -222,7 +222,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     // a time the caller chose before the pet or patient is found is kept, and read back once they are
     const chosen = name === 'propose_booking' ? state.offered.get(String((parsed.data as { slot_id?: unknown }).slot_id)) : undefined;
     if (chosen) state.chosen = chosen;
-    const keep = chosen ? `The caller chose ${choiceOf(chosen, ctx.clinic, state.language)}: that choice is kept, and the backend says how to book it once ${trade.identity === 'pet' ? 'the pet is found or added' : 'they are found or added'}. Say you will book it right after that, never that it is done or taken care of. ` : '';
+    const keep = chosen ? `The caller chose ${choiceOf(chosen, ctx.clinic, state.language, ctx.now())}: that choice is kept, and the backend says how to book it once ${trade.identity === 'pet' ? 'the pet is found or added' : 'they are found or added'}. Say you will book it right after that, never that it is done or taken care of. ` : '';
     return refuse('identity_required', keep + (trade.identity === 'pet'
       ? 'Before that, find the pet with verify_caller, or add it with register_patient when the caller said it is new, asking only for what the caller has not said yet (the owner\'s first name, the pet\'s name).'
       : 'Before that, ask for the caller\'s full name and date of birth.'));
@@ -242,7 +242,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // everything said back to the caller is in the language they are speaking
   const lang = state.language;
   const pack = PACKS[lang];
-  const when = (start: Date) => speakSlot(start, clinic.timezone, lang);
+  // said on the call as people say it ("today at 2:30", "Thursday at 9"); a text is read later, so it keeps the date
+  const when = (start: Date) => speakSlot(start, clinic.timezone, lang, ctx.now());
+  const whenDated = (start: Date) => speakSlot(start, clinic.timezone, lang);
   const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
   /**
    * Where a confirmation text for this change would go, or null when none would: texting must be
@@ -289,7 +291,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
-        vars: { clinic: clinic.name, when: when(start), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
+        vars: { clinic: clinic.name, when: whenDated(start), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
         kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
       });
       if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
@@ -322,7 +324,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (current?.id !== found.patient.id) { state.pending = null; state.offered.clear(); }
         state.verifiedPatient = found.patient;
         state.newFromTurn = state.turns.length;
-        return { ok: true, data: { verified: true, first_name: found.patient.firstName, age: ageOn(found.patient.dob, localDateOf(ctx.now(), clinic.timezone)), ...chosenNote(state, clinic, lang) } };
+        return { ok: true, data: { verified: true, first_name: found.patient.firstName, age: ageOn(found.patient.dob, localDateOf(ctx.now(), clinic.timezone)), ...chosenNote(state, clinic, lang, ctx.now()) } };
       }
       state.verifyAttempts++;
       if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm their record, and offer a callback.');
@@ -355,7 +357,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       state.verifiedPatient = result.patient;
       state.newFromTurn = state.turns.length;
       // the same details as someone on file: as good as a verification, and counted like one, so it is no way round the limit
-      if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: `They are already a patient here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } }; }
+      if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, first_name: result.patient.firstName, age, already_a_patient: true, say: `They are already a patient here: carry on as for any patient.${chosenNote(state, clinic, lang, ctx.now()).say ?? ''}` } }; }
       state.registrations++;
       // the front desk checks every patient the assistant adds
       const task = await backend.tasks.create(clinic.id, {
@@ -370,7 +372,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       });
       if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
       const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time they chose.${chosenNote(state, clinic, lang).say}` : `look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.`}` } };
+      return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time they chose.${chosenNote(state, clinic, lang, ctx.now()).say}` : `look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.`}` } };
     }
 
     case 'get_clinic_info': {
@@ -926,7 +928,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const tried = identityKey(pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
-  if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang) } };
+  if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang, ctx.now()) } };
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   // the same answer whichever detail was wrong: never confirm what is on the number
   return refuse('not_verified', `Say you could not find a pet by that name on this number. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
@@ -997,7 +999,7 @@ async function registerPet(
   const tried = identityKey(petName, phone.replace(/\D/g, '').slice(-10));
   if (!state.identitiesTried.has(tried)) {
     const found = await findPetOnce(petName, phone, tried, state, ctx, backend);
-    if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } };
+    if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang, ctx.now()).say ?? ''}` } };
     if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   }
   // under a number that has an owner, the pet joins that owner: the directory keeps the name on file
@@ -1009,7 +1011,7 @@ async function registerPet(
   state.verifiedPatient = result.patient;
   state.verifiedOwner = result.patient.guardianName ?? owner ?? state.verifiedOwner;
   state.newFromTurn = state.turns.length;
-  if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang).say ?? ''}` } }; }
+  if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang, ctx.now()).say ?? ''}` } }; }
   state.registrations++;
   const task = await backend.tasks.create(clinic.id, {
     type: 'review', callId: ctx.callId, patientId: result.patient.id,
@@ -1022,7 +1024,7 @@ async function registerPet(
   });
   if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
   const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
-  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time the owner chose.${chosenNote(state, clinic, lang).say}` : `look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.`}` } };
+  return { ok: true, data: { registered: true, pet_name: petName, say: `${petName} is now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time the owner chose.${chosenNote(state, clinic, lang, ctx.now()).say}` : `look for its times now, with any vet, unless the owner asked for something else (${newVisits.join(', ')}). Do not ask which vet.`}` } };
 }
 
 /**

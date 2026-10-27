@@ -26,7 +26,11 @@ export interface LanguagePack {
   disclosure: RegExp;
 
   /** "Tuesday, October 6 at 3:00 PM" in this language, in the clinic's zone. */
-  speakWhen: (start: Date, timeZone: string) => string;
+  /**
+   * A time as people say it on the phone. With `now`, a day within the week is "today", "tomorrow" or its weekday
+   * ("Thursday at 2:30 PM"); further out, or without `now` (a text read later), the weekday and date.
+   */
+  speakWhen: (start: Date, timeZone: string, now?: Date) => string;
   /** A phone number read out digit by digit. */
   speakPhone: (e164: string) => string;
   /** The read-back before a booking or a move. */
@@ -189,4 +193,11 @@ export const words = (alternatives: string, flags = 'u') => new RegExp(`${B}(?:$
 /** Lower case, curly quotes straightened, Latin accents removed, spaces collapsed. What every pattern is matched against. */
 export function normalise(text: string) {
   return fold(text).toLowerCase().replace(/[’]/g, "'").replace(/\s+/g, ' ');
+}
+
+/** How many clinic-local days `start` is after `now`: 0 the same day, 1 tomorrow; negative in the past. */
+export function daysAhead(start: Date, timeZone: string, now: Date): number {
+  const local = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const [a, b] = [local(start), local(now)];
+  return Math.round((Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10)) - Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10))) / 86_400_000);
 }
