@@ -123,6 +123,12 @@ function provisioning(request: APIRequestContext) {
       expect((await request.post('/api/v1/provisioning/email-confirmations', { headers, data: { email: owner.email } })).status()).toBe(204);
       return opened;
     },
+    /** Another location of the same business: the switcher groups it under the business. */
+    async addLocation(organizationId: string, clinic: string, phone: string) {
+      const res = await request.post(`/api/v1/provisioning/organizations/${organizationId}/clinics`, { headers, data: { clinic: { name: clinic, timezone: ZONE, industry: 'vet', phone } } });
+      expect(res.status(), await res.text()).toBe(201);
+      return await res.json() as { clinicId: string };
+    },
     async openForOwner(userId: string, clinic: string, phone: string) {
       const res = await request.post('/api/v1/provisioning/accounts/for-user', { headers, data: {
         userId, organization: { name: clinic }, clinic: { name: clinic, timezone: ZONE, industry: 'vet', phone },
@@ -576,10 +582,19 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: /Juniper Hill Pet Care, Owner: switch clinic/ })).toBeVisible();
 
-    // switch to the first, then back to the second, with the switcher
+    // a second location of Willow Bend: the menu groups the business's locations under its name; Juniper Hill, a business
+    // of one clinic, stays one row; the button says "Business · Location" only for a location
+    const downtown = await hosting.addLocation(first.organizationId, 'Downtown', '+17205550165');
+    await hosting.plan(downtown.clinicId);
+    await page.goto(`/c/${downtown.clinicId}`);
+    await expect(page.getByRole('button', { name: /Willow Bend Animal Clinic · Downtown, Owner: switch clinic/ })).toBeVisible();
     await page.getByRole('button', { name: /switch clinic/ }).click();
-    await expect(page.getByRole('menuitemradio')).toHaveCount(2);
-    await page.getByRole('menuitemradio', { name: /Willow Bend Animal Clinic/ }).click();
+    await expect(page.getByRole('menuitemradio')).toHaveCount(3);
+    await expect(page.getByTestId('business')).toHaveCount(1);
+    await expect(page.getByTestId('business')).toHaveText('Willow Bend Animal Clinic');
+    await watch.axe(page, 'the clinic switcher, grouped');
+    // switch to the first, then to the second business, with the switcher
+    await page.getByRole('menuitemradio', { name: /^Willow Bend Animal Clinic/ }).click();
     await expect(page.getByText('Now in Willow Bend Animal Clinic.')).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`${home}$`));
     await page.getByRole('button', { name: /switch clinic/ }).click();

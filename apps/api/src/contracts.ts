@@ -45,6 +45,8 @@ export const Me = z.object({
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()),
+    /** The business the clinic belongs to: its locations are grouped under it in the clinic switcher. */
+    organizationId: z.string(), organizationName: z.string(),
     /** May approve or decline refills: marked on the Team page. */
     approvesRefills: z.boolean(),
     /** Links the deployment adds to the menu (billing, setup), for owners only. */
@@ -640,6 +642,11 @@ export const Overview = z.object({
 /** A link the hosting layer gives: a path on this site or an https address, nothing a browser would run. */
 const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.startsWith('//')) || v.startsWith('https://'), 'expected a path or an https address');
 /** The hosting layer's plan for a clinic, as it sets it: what the dashboard shows of the month's minutes and the trial. */
+/** A clinic's name as the hosting layer renames a location: the dashboard and the assistant follow. */
+export const ClinicName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(60, 'at most 60 characters') });
+/** A location at a glance for the hosting layer's Locations page: counts only, no call or patient details. */
+export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
+export type ClinicOverview = z.infer<typeof ClinicOverview>;
 export const HostingPlan = z.object({
   status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
   /** Call minutes a month included at this clinic. */

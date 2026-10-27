@@ -2,8 +2,9 @@
 import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, setClinicClosed, setHostingPlan, setTestCallLimit,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit,
 } from '@attendra/db';
+import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
 import { Body, type CanActivate, Controller, Delete, type ExecutionContext, Get, HttpCode, HttpException, Inject, Injectable, NotFoundException, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
@@ -13,13 +14,23 @@ import type { Auth } from '../auth';
 import { Public } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
-import { HostingPlan } from '../contracts';
+import { ClinicName, ClinicOverview, HostingPlan } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
 
 /** How long an unconfirmed sign-up is kept before a new one may replace it: the hosting layer's link lifetime. */
 const UNCONFIRMED_KEPT_MS = 48 * 3_600_000;
+
+/** The city in a clinic's address, as the hosting layer shows it on a location's card: the last part that is not a postcode or a country of two letters. */
+export function cityOf(address: string | undefined): string | null {
+  const parts = (address ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+  for (const part of parts.reverse()) {
+    const words = part.replace(/\b[A-Z]{2}\b\s*\d{3,}.*$|\b\d{4,}.*$/g, '').trim();
+    if (words && !/^[A-Z]{2}$/.test(words) && !/^\d/.test(words)) return words;
+  }
+  return null;
+}
 
 const NewAccount = z.object({
   organization: z.object({ name: z.string().trim().min(2).max(100) }),
@@ -288,6 +299,30 @@ export class ProvisioningController {
   @HttpCode(204)
   async release(@Param('number') number: string) {
     if (!(await releaseNumber(this.db, number))) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /** A location at a glance for the hosting layer's Locations page: its number, city, today's calls and open requests. Counts only. */
+  @Get('clinics/:clinicId/overview')
+  async overview(@Param('clinicId') clinicId: string): Promise<ClinicOverview> {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const clinic = ClinicConfig.parse(stored);
+    const now = this.now();
+    const dayStart = zonedInstant(localDateOf(now, clinic.timezone), '00:00', clinic.timezone);
+    const [today, open] = await Promise.all([phoneCallsSince(this.db, this.cipher, clinicId, dayStart), this.desk.openTaskCount(clinicId)]);
+    return { name: clinic.name, phoneNumber: clinic.phoneNumbers[0] ?? null, city: cityOf(clinic.address), callsToday: today.calls, openRequests: open };
+  }
+
+  /** Renames a location: the clinic's name on every screen and in the assistant's greeting line. Audited as clinic.renamed. */
+  @Put('clinics/:clinicId/name')
+  @HttpCode(204)
+  async rename(@Param('clinicId') clinicId: string, @Body(new ZodPipe(ClinicName)) body: z.infer<typeof ClinicName>) {
+    const done = await this.desk.updateSettings<true>(clinicId, 'provisioning', 'clinic.renamed', clinicId, async (stored, tx) => {
+      const next = ClinicConfig.parse({ ...(stored as object), name: body.name });
+      await tx.update(schema.clinics).set({ name: body.name }).where(eq(schema.clinics.id, clinicId));
+      return { save: next, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
   }
 
   /** Phone calls in a period, start to end, for billing. */

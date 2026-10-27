@@ -130,7 +130,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     { href: plan.data.plan.newClinicUrl, label: 'Create a new clinic', hint: 'A separate business with its own plan' },
   ].filter((l): l is GrowLink => !!l.href);
   // the person's clinics, each with their role there; another one opens the same page there, without a record id that belongs to this one
-  const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: ROLE_LABEL[c.role] ?? c.role }));
+  const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: ROLE_LABEL[c.role] ?? c.role, organizationId: c.organizationId, organizationName: c.organizationName }));
   const here = clinics.find((c) => c.id === clinicId) ?? { id: clinic.id, name: clinic.name, role: user.role };
   const toClinic = (id: string) => {
     router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
