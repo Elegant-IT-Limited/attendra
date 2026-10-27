@@ -1,0 +1,34 @@
+id: vet-pets-on-number-books
+title: "Caller ID knows the owner: after a yes to \"Am I speaking with Linh?\" she picks Mochi from her two pets, and Mochi is booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, pets-on-number]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen, calling from the number on file. Your pets are Biscuit (dog) and Mochi (cat). You want a wellness exam for Mochi, any vet, any time. Take the first time offered and say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up, please.
+    reply: "Am I speaking with Linh?"
+  - caller: Yes, that's me.
+    reply: "Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null }
+  - caller: It's for Mochi.
+    reply: "For a wellness exam for Mochi I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Mochi is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Is this for Biscuit or Mochi, or a new pet?"]
+  spoken_contains: ["Is this for Biscuit or Mochi"]

@@ -1,0 +1,35 @@
+id: vet-es-pets-on-number-new-pet
+title: "Spanish: caller ID knows the owner; asked which of her pets, she says it's a new one, and the puppy is added under the same number and booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, pets-on-number, new-pet, language, es]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado. Tu cachorro nuevo es Pip, un perro macho de unos cuatro meses, nuevo en la clínica. Cualquier veterinario y cualquier hora te sirven; aceptas la primera hora y dices que sí a la confirmación."
+turns:
+  - caller: Hola, necesito hacer una cita, por favor.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí.
+    reply: "Gracias, Linh. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null }
+  - caller: Es nuevo. Acabamos de adoptar un cachorro, Pip. Es macho y tiene unos cuatro meses.
+    reply: "Ya registré a Pip. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Pip, owner_name: Linh Nguyen, species: perro, sex: male, birthday_or_age: unos cuatro meses, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Está bien?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, Pip tiene cita el {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?", "Pip is now registered"]
+forbid_spoken: ["Cuál es el mejor número", "El número desde el que llama"]

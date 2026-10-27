@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (calls: a known owner picks from their pets; a verified owner hears the last and next visit and the usual vet)
+
+- **Pets to pick from, and visit facts, by how much the assistant knows.** With real caller ID and the owner's name confirmed, `verify_caller` (veterinary pack, `pet_name` null) returns `pets_on_number`, the first names of that owner's pets on the number (at most three, `more` for the rest), and the assistant asks "Is this for Biscuit or Max, or a new pet?". Never without caller ID, never for a number the caller only says, and never another owner's pets on a family number; a name that matches no owner on the number uses one of the three tries. Once the pet is found, the new `visit_summary` tool gives its next visits, its last visit (booked or recorded here, not cancelled) and its usual vet, said as "the last visit I can see"; it is refused (`not_verified`) before that and carries nothing medical. Medical questions and "send me the records" get an offer of a records request for the team. Reads are audited as `patient.pets_on_number.read` and `patient.visits.read.call`. A "yes" to "Is this for Juniper, or a new pet?" now picks Juniper instead of counting as "new". English and Spanish lines, 14 scripted evals, and the trust levels in `docs/safety.md`.
+
 ### Added (an owner opens a second, separate clinic with the same login)
 
 - **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.

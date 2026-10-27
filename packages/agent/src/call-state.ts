@@ -21,6 +21,8 @@ const DETAILS: Record<string, string> = {
 };
 /** The assistant asked whether the pet (or the caller) is new: "Is Orbit new to the clinic?", "¿Orbit es nuevo?". */
 const ASKED_IF_NEW = /\b(new|nuev[oa]s?)\b[^.!]*\?/;
+/** "Is this for Juniper, or a new pet?" ("¿Es para Juniper, o para una mascota nueva?"): new is one of the choices, so a yes is not it. */
+const NEW_AS_CHOICE = /,\s*(?:or|o|u)\s+(?:a\s+|para\s+una?\s+)?(?:mascota\s+)?(?:new|nuev[oa])\b[^.!]*\?/;
 
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
@@ -125,7 +127,7 @@ export class CallState {
 
   /**
    * Whether the caller has said the pet (or they) are new to the clinic, by their own words since the last pet or patient
-   * was found or added: 'new' ("she's new", or yes to "Is Orbit new?"), 'on_file' when they said it may be on file after
+   * was found or added: 'new' ("she's new", yes to "Is Orbit new?", or "a new one" when asked which pet), 'on_file' when they said it may be on file after
    * all, the latest of those, or null.
    */
   saidNew(): 'new' | 'on_file' | null {
@@ -134,8 +136,10 @@ export class CallState {
       if (turn.speaker !== 'caller') continue;
       const said = newToClinic(turn.text);
       if (said) return said;
-      const asked = this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent');
-      if (asked && ASKED_IF_NEW.test(normalise(asked.text)) && isClearYes(turn.text, LANGUAGES)) return 'new';
+      const asked = normalise(this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent')?.text ?? '');
+      // asked which pet, "or a new pet": a yes picks the pet named, and "a new one" ("una nueva") is new
+      if (NEW_AS_CHOICE.test(asked)) { if (/\b(new|nuev[oa])\b/.test(normalise(turn.text))) return 'new'; continue; }
+      if (ASKED_IF_NEW.test(asked) && isClearYes(turn.text, LANGUAGES)) return 'new';
     }
     return null;
   }

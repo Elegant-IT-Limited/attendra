@@ -25,7 +25,8 @@ export async function recordDemoCalls(db: Database, cipher: PhiCipher, patientId
 
   // each clinic's own scenarios, as the clinic is set up (not the ones that change its settings)
   // the hardcore scenarios (abuse, prying, platform questions) test the rules; they are not calls the demo clinic shows
-  const evals = loadScenarios().filter((s) => !s.settings && !s.tags.includes('hardcore') && clinicOf(s).id === clinic.id);
+  // and no-demo ones set up records a demo replay would share (a second owner on a number, a pet's past visits)
+  const evals = loadScenarios().filter((s) => !s.settings && !s.tags.includes('hardcore') && !s.tags.includes('no-demo') && clinicOf(s).id === clinic.id);
   // and a working week of ordinary calls, played the same way, for the clinic's current week
   const week = loadScenarios(DEMO_CALL_DIR).filter((s) => clinicOf(s).id === clinic.id);
   if (week.length) await ensurePatients(db, cipher, clinic);

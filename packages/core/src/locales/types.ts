@@ -74,6 +74,18 @@ export interface LanguagePack {
    * whether that number is the best one; with none (a browser test call, a hidden number), the best number.
    */
   phoneQuestion: (v: { callerId: boolean }) => string;
+  /**
+   * Asked once caller ID matched and the owner said who they are: which of their pets the call is for, by
+   * first name (at most three; `more` when they have others), or a new one.
+   */
+  whichPet: (v: { names: string[]; more: boolean }) => string;
+  /**
+   * A pet's last visit, said as the last one Attendra can see: it knows only the visits booked or recorded in
+   * it, so it never says "the last visit" as if it were the whole history. `when` is speakWhen's.
+   */
+  lastVisitSeen: (v: { pet: string; when: string; provider: string | null; visit: string | null }) => string;
+  /** Offered instead of any medical detail or a copy of the records: the team sends records in writing. */
+  recordsOffer: string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */
   confirmTextNote: (v: { target: 'calling' | 'file' }) => string;
   /** The answer to a reply of C to a reminder. */

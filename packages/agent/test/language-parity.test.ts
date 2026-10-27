@@ -26,6 +26,29 @@ describe('language parity: the callback-promise check', () => {
   });
 });
 
+/** The lines about an owner's pets and a pet's visits (2026-11), word for word in both languages: the same facts, and a question stays a question. */
+const SEPT_14 = new Date('2026-09-14T15:00:00Z');
+const PET_LINES: [behaviour: string, line: (l: 'en' | 'es') => string, english: string, spanish: string][] = [
+  ['which pet: two names', (l) => PACKS[l].whichPet({ names: ['Biscuit', 'Max'], more: false }), 'Is this for Biscuit or Max, or a new pet?', '¿Es para Biscuit o Max, o para una mascota nueva?'],
+  ['which pet: one name', (l) => PACKS[l].whichPet({ names: ['Biscuit'], more: false }), 'Is this for Biscuit, or a new pet?', '¿Es para Biscuit, o para una mascota nueva?'],
+  ['which pet: three, and others', (l) => PACKS[l].whichPet({ names: ['Ash', 'Bean', 'Oreo'], more: true }), 'Is this for Ash, Bean or Oreo, or another one?', '¿Es para Ash, Bean u Oreo, o para otra mascota?'],
+  ['the last visit I can see', (l) => PACKS[l].lastVisitSeen({ pet: 'Biscuit', when: PACKS[l].speakWhen(SEPT_14, 'America/Denver'), provider: 'Dr. Elena Ruiz', visit: 'Wellness exam' }),
+    'The last visit I can see for Biscuit was on Monday, September 14 at 9:00 AM with Dr. Elena Ruiz, for a wellness exam.',
+    `La última visita que veo de Biscuit fue el ${PACKS.es.speakWhen(SEPT_14, 'America/Denver')} con Dr. Elena Ruiz, para wellness exam.`],
+  ['the last visit I can see: no vet or kind known', (l) => PACKS[l].lastVisitSeen({ pet: 'Biscuit', when: 'Monday', provider: null, visit: null }), 'The last visit I can see for Biscuit was on Monday.', 'La última visita que veo de Biscuit fue el Monday.'],
+  ['records in writing, never medical details', (l) => PACKS[l].recordsOffer,
+    "I can't go into medical details on the phone, but I can ask the team to send you the records in writing. Would you like that?",
+    'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?'],
+];
+
+describe('language parity: what the assistant says about pets and visits', () => {
+  it.each(PET_LINES)('%s', (_behaviour, line, english, spanish) => {
+    expect(line('en')).toBe(english);
+    expect(line('es')).toBe(spanish);
+    expect(english.endsWith('?')).toBe(spanish.endsWith('?'));
+  });
+});
+
 let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(); });
 afterAll(() => w.t.close());

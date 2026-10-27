@@ -53,6 +53,14 @@ export const es: LanguagePack = {
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   phoneQuestion: ({ callerId }) => (callerId ? '¿El número desde el que llama es el mejor para comunicarnos con usted?' : '¿Cuál es el mejor número para comunicarnos con usted?'),
+  // "o" becomes "u" before a name that starts with an o sound: "Max u Oreo"
+  whichPet: ({ names, more }) => {
+    const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} ${or(names.at(-1)!)} ${names.at(-1)}` : names[0]!;
+    return `¿Es para ${list}, ${more ? 'o para otra mascota' : 'o para una mascota nueva'}?`;
+  },
+  lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${w}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
+  recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],

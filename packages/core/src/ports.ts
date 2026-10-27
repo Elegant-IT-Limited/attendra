@@ -70,6 +70,12 @@ export interface PatientDirectory {
   findPet(clinicId: string, ownerName: string, petName: string, phone: string): Promise<PatientLookup>;
   /** Records that they said yes to reminder texts on a call. */
   setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
+  /**
+   * The first names of one owner's pets on a number, for "Is this for Biscuit or Max?": at most
+   * three, `more` when there are others. Only the pets whose owner on file matches `ownerName`,
+   * so a second family on the same number is never named. Nothing found gives no names.
+   */
+  petsOnNumber?(clinicId: string, phone: string, ownerName: string, callId: string): Promise<{ names: string[]; more: boolean }>;
 }
 
 export interface AppointmentSummary {
@@ -93,7 +99,7 @@ export interface SchedulerAdapter {
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
   /** Past visits, for the patient's usual provider. Without it, nobody counts as usual. */
-  history?(clinicId: string, patientId: string, now: Date): Promise<{ providerId: string; start: Date }[]>;
+  history?(clinicId: string, patientId: string, now: Date): Promise<{ providerId: string; start: Date; visitTypeId?: string }[]>;
 }
 
 /** follow_up: a call that ended with the caller's request unfinished, opened after the call for staff to pick up. */

@@ -1,0 +1,29 @@
+id: vet-es-no-caller-id-asks-which-pet
+title: "Spanish: no caller ID (a browser test call); the owner gives her name, the assistant asks which pet and never names one from the records"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, pets-on-number, language, es]
+caller_number: null
+channel: web
+facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Linh Nguyen y hablas español. Tu perro Biscuit necesita un chequeo. El teléfono de su ficha es 720 555 0172."
+turns:
+  - caller: Hola, soy Linh Nguyen. Quiero reservar un chequeo, por favor.
+    reply: "Gracias, Linh. ¿Para qué mascota es el chequeo?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
+  - caller: Para Biscuit.
+    reply: "¿Cuál es el teléfono de la ficha de Biscuit?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: null }
+  - caller: Es el 720 555 0172.
+    reply: "Gracias, encontré a Biscuit. Para un chequeo general tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit, phone: "720 555 0172" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [pet_name, phone_required]
+  never_returned: ["Mochi", "pets_on_number"]
+forbid_spoken: ["Mochi", "Biscuit o", "Es para"]
