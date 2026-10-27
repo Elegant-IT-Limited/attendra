@@ -31,6 +31,8 @@ const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_B
 // live, a model answers the planner's follow-up questions for a scenario that lists its facts
 const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
 
+// `--timings` also prints the planner model time of every live request, to compare speed settings request by request
+const perRequest = process.argv.includes('--timings');
 // `--tag=hardcore` keeps the scenarios with that tag; `--transcripts` puts every call's transcript in the report, not only the failed ones
 const tag = process.argv.find((a) => a.startsWith('--tag='))?.slice(6);
 const transcripts = process.argv.includes('--transcripts');
@@ -41,12 +43,12 @@ const [green, red, dim, bold] = [c(32), c(31), c(2), c(1)];
 
 console.log(bold(`attendra evals`) + dim(`  ${scenarios.length} scenarios · planner: ${live ? `live (${process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna'})` : 'scripted'} · Postgres in-process\n`));
 let failed = 0;
-const timings: PlannerTiming[] = [];
+const timings: (PlannerTiming & { scenario: string })[] = [];
 const runs: { scenario: Scenario; result: ScenarioResult; verdict: Verdict | null; error?: string }[] = [];
 for (const s of scenarios) {
   const r = await runScenario(s, planner, followUp);
   if (!r.passed) failed++;
-  timings.push(...r.timings);
+  timings.push(...r.timings.map((t) => ({ ...t, scenario: s.id })));
   if (judge) {
     // a judge that fails is a gap in the report, never a failed eval
     try { runs.push({ scenario: s, result: r, verdict: await judge.score(s, r) }); }
@@ -59,6 +61,10 @@ for (const s of scenarios) {
 console.log(`\n${failed ? red(`${failed} failed`) : green('all passed')}${dim(`, ${scenarios.length - failed}/${scenarios.length}`)}`);
 // live: the planner model's own time per request (tools apart), simple turns and the rest, to compare speed settings
 if (timings.length) {
+  if (perRequest) {
+    for (const t of timings) console.log(dim(`  ${t.scenario.padEnd(34)} ${(t.simple ? 'simple' : 'other').padEnd(6)} ${`${t.model}${t.effort ? `/${t.effort}` : ''}`.padEnd(18)} ${t.rounds} round${t.rounds === 1 ? ' ' : 's'} ${String(t.modelMs).padStart(6)} ms`));
+    console.log('');
+  }
   const line = (label: string, list: PlannerTiming[]) => {
     if (!list.length) return;
     const ms = list.map((t) => t.modelMs).sort((a, b) => a - b);
