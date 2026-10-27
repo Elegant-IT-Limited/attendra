@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
-import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
+import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
 import { z } from 'zod';
 import type { CallState } from './call-state';
@@ -23,8 +23,21 @@ export interface PlannerOutput { say: string | null; quiet?: string; timing?: Pl
 /**
  * How long the model itself took for one request (all its rounds, tools apart), with which model and effort, and whether
  * the turn was a simple one (counted whether or not a faster setting is configured, so runs can be compared).
+ * `requests` has each round on its own: its time, when its first visible token came (streamed requests only), its
+ * tokens (cached ones are the part of the input OpenAI's prompt cache already held) and the tools it called. `toolMs`
+ * is the tools' own time, and `prompt` the size in characters of each part of what was sent, to see what the model reads.
  */
-export interface PlannerTiming { model: string; effort: ReasoningEffort | null; simple: boolean; rounds: number; modelMs: number }
+export interface PlannerTiming {
+  model: string; effort: ReasoningEffort | null; simple: boolean; rounds: number; modelMs: number;
+  requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
+}
+export interface RoundTiming {
+  ms: number; firstTokenMs: number | null;
+  inputTokens: number | null; cachedTokens: number | null; outputTokens: number | null; reasoningTokens: number | null;
+  calls: string[];
+}
+/** Characters per part of the request: the fixed parts (rules, tools) and the ones that change each turn. */
+export interface PromptSizes { instructions: number; tools: number; transcript: number; state: number; history: number; notes: number }
 
 /**
  * How hard the model thinks: `effort` for every request (unset, the model's own default), and an optional faster setting
@@ -131,7 +144,39 @@ export class ResponsesPlanner implements Planner {
     private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 8, // two pets in one call take six or seven tool calls
     private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
     private readonly speed: PlannerSpeed = {},
+    /**
+     * `firstToken` streams each round to measure when its first visible token arrives (the evals' --timings). The SDK's
+     * timeout only covers the wait for the headers, so a streamed round is capped with its own signal instead.
+     */
+    private readonly measure: { firstToken?: boolean } = {},
   ) {}
+
+  /** One round of the model, with or without streaming; the final response either way, and when the first visible token came. */
+  private async round(body: Omit<ResponseCreateParams, 'stream'>, asked: number): Promise<{ res: Response; firstTokenMs: number | null }> {
+    if (!this.measure.firstToken) {
+      return { res: await this.openai.responses.create(body, { timeout: this.limits.timeoutMs, maxRetries: 1 }), firstTokenMs: null };
+    }
+    const abort = new AbortController();
+    const cap = setTimeout(() => abort.abort(), this.limits.timeoutMs);
+    try {
+      const stream = await this.openai.responses.create({ ...body, stream: true }, { timeout: this.limits.timeoutMs, maxRetries: 1, signal: abort.signal });
+      let firstTokenMs: number | null = null;
+      let res: Response | null = null;
+      for await (const event of stream) {
+        // the first thing the voice could use: words or a tool call, not the reasoning before them
+        if (firstTokenMs === null && (event.type === 'response.output_text.delta' || event.type === 'response.function_call_arguments.delta'
+          || (event.type === 'response.output_item.added' && event.item.type !== 'reasoning'))) firstTokenMs = Math.round(performance.now() - asked);
+        if (event.type === 'response.completed' || event.type === 'response.incomplete') res = event.response;
+        if (event.type === 'response.failed') throw new Error(`response failed: ${event.response.error?.message ?? 'unknown'}`);
+      }
+      if (!res) throw new Error('the stream ended without a response');
+      // the SDK adds output_text to a response it parsed whole; a streamed one is assembled here from its message items
+      const text = res.output.flatMap((o) => (o.type === 'message' ? o.content : [])).flatMap((c) => (c.type === 'output_text' ? [c.text] : [])).join('');
+      return { res: { ...res, output_text: text }, firstTokenMs };
+    } finally {
+      clearTimeout(cap);
+    }
+  }
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
     // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
@@ -158,7 +203,10 @@ export class ResponsesPlanner implements Planner {
     const phone = input.callerNumber
       ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
       : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state, input.clinic)}${earlier}${noTexts}${phone}` }];
+    const transcript = transcriptFor(state);
+    const known = stateLine(state, input.clinic);
+    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcript}\n\nKnown state: ${known}${earlier}${noTexts}${phone}` }];
+    const instructions = systemPrompt(input.clinic, input.nowLine);
     let corrected = false;
     const doneBefore = state.done.length;
     const requestBefore = state.requestMade;
@@ -167,21 +215,30 @@ export class ResponsesPlanner implements Planner {
     const faster = simple ? this.speed.simple : undefined;
     const model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
-    const timing: PlannerTiming = { model, effort, simple, rounds: 0, modelMs: 0 };
-    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs) } });
+    const timing: PlannerTiming = {
+      model, effort, simple, rounds: 0, modelMs: 0, requests: [], toolMs: 0,
+      prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
+    };
+    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs) } });
 
     for (let round = 0; round < this.maxRounds; round++) {
       const asked = performance.now();
-      const res = await this.openai.responses.create({
-        model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
+      const { res, firstTokenMs } = await this.round({
+        model, instructions, input: conversation, tools, store: false,
         max_output_tokens: this.limits.maxOutputTokens,
         ...(effort ? { reasoning: { effort } } : {}),
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
-      }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
+      }, asked);
       timing.rounds++;
       timing.modelMs += performance.now() - asked;
       const calls = res.output.filter((o) => o.type === 'function_call');
+      timing.requests.push({
+        ms: Math.round(performance.now() - asked), firstTokenMs,
+        inputTokens: res.usage?.input_tokens ?? null, cachedTokens: res.usage?.input_tokens_details?.cached_tokens ?? null,
+        outputTokens: res.usage?.output_tokens ?? null, reasoningTokens: res.usage?.output_tokens_details?.reasoning_tokens ?? null,
+        calls: calls.map((c) => c.name),
+      });
       const say = res.output_text?.trim() || null;
       // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
       if (!calls.length && !corrected && round < this.maxRounds - 1 && say && emptyPromise(say, state, doneBefore) && state.requestMade === requestBefore) {
@@ -195,9 +252,11 @@ export class ResponsesPlanner implements Planner {
       }
       for (const call of calls) {
         const name = call.name as ToolName;
+        const toolAsked = performance.now();
         const result = TOOL_NAMES.includes(name)
           ? await execute(name, safeJson(call.arguments))
           : { ok: false, data: { error: 'unknown_tool' } };
+        timing.toolMs += performance.now() - toolAsked;
         conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
       }
     }

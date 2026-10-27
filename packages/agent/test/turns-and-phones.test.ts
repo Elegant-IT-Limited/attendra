@@ -141,13 +141,21 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
   });
 
   it('sends the configured model and effort for a simple turn only, and reports the model\'s own time', async () => {
-    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.' }));
+    const usage = { input_tokens: 6000, input_tokens_details: { cached_tokens: 5120 }, output_tokens: 90, output_tokens_details: { reasoning_tokens: 64 } };
+    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.', usage }));
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { effort: 'medium', simple: { model: 'gpt-fast', effort: 'low' } });
     const c = await w.call('+17205550172', { clinic });
     c.caller('Biscuit.');
     const short = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
     expect(create.mock.calls[0]![0]).toMatchObject({ model: 'gpt-fast', reasoning: { effort: 'low' } });
-    expect(short.timing).toEqual({ model: 'gpt-fast', effort: 'low', simple: true, rounds: 1, modelMs: expect.any(Number) });
+    // with the round's tokens (cached: what the prompt cache held), no first-token time without streaming, no tool time, and each prompt part's size
+    expect(short.timing).toEqual({
+      model: 'gpt-fast', effort: 'low', simple: true, rounds: 1, modelMs: expect.any(Number), toolMs: 0,
+      requests: [{ ms: expect.any(Number), firstTokenMs: null, inputTokens: 6000, cachedTokens: 5120, outputTokens: 90, reasoningTokens: 64, calls: [] }],
+      prompt: { instructions: expect.any(Number), tools: expect.any(Number), transcript: 'Caller: Biscuit.'.length, state: expect.any(Number), history: 0, notes: expect.any(Number) },
+    });
+    expect(short.timing!.prompt.instructions).toBeGreaterThan(5000);
+    expect(short.timing!.prompt.tools).toBeGreaterThan(5000);
     c.caller('and I also want to ask about his diet, his weight, his nails and whether he needs a rabies shot this year or next');
     const long = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
     expect(create.mock.calls[1]![0]).toMatchObject({ model: 'gpt-main', reasoning: { effort: 'medium' } });
@@ -163,5 +171,31 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(create.mock.calls[0]![0]).not.toHaveProperty('reasoning');
     // still counted as a simple turn, so a run without the faster setting can be compared with one with it
     expect(out.timing).toMatchObject({ model: 'gpt-main', effort: null, simple: true, rounds: 1 });
+  });
+
+  it('measuring the first token, streams each round under its own time cap and times the tools apart (2026-11)', async () => {
+    // a streamed response comes off the wire without the SDK's output_text: the words are in its message items
+    const final = { output: [{ type: 'function_call', name: 'get_clinic_info', call_id: 'c1', arguments: '{"question":"hours"}' }], usage: { input_tokens: 100, output_tokens: 10 } };
+    const answer = { output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'We open ' }, { type: 'output_text', text: 'at nine.' }] }], usage: { input_tokens: 120, output_tokens: 8 } };
+    let round = 0;
+    async function* events(res: typeof final | typeof answer) {
+      yield { type: 'response.created', response: res };
+      yield { type: 'response.output_item.added', item: { type: 'reasoning' } }; // thinking is not a token the voice can use
+      await new Promise((r) => setTimeout(r, 5));
+      yield round++ === 0 ? { type: 'response.function_call_arguments.delta', delta: '{' } : { type: 'response.output_text.delta', delta: 'We' };
+      yield { type: 'response.completed', response: res };
+    }
+    const create = vi.fn(async (body: { stream?: boolean }) => (body.stream ? events(round === 0 ? final : answer) : final));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, {}, { firstToken: true });
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('What time do you open?');
+    const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => { await new Promise((r) => setTimeout(r, 20)); return { ok: true, data: { hours: '9 to 5' } }; });
+    expect(out.say).toBe('We open at nine.');
+    const [body, options] = create.mock.calls[0]! as unknown as [Record<string, unknown>, Record<string, unknown>];
+    expect(body).toMatchObject({ model: 'gpt-main', stream: true, store: false });
+    expect(options).toMatchObject({ timeout: 15_000, maxRetries: 1, signal: expect.any(AbortSignal) });
+    expect(out.timing).toMatchObject({ rounds: 2, requests: [{ calls: ['get_clinic_info'], inputTokens: 100 }, { calls: [], inputTokens: 120 }] });
+    for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(5); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
+    expect(out.timing!.toolMs).toBeGreaterThanOrEqual(20);
   });
 });

@@ -567,10 +567,19 @@ export class CallAgent {
     } finally {
       for (const h of holds) clearTimeout(h);
       const ms = Date.now() - startedAt;
-      // the model's own time, apart from the tools': what a faster setting for simple turns would change
+      // the model's own time, apart from the tools': what a faster setting for simple turns would change. With it, where
+      // the time went: each round's time and tokens (cached = what the prompt cache held), the tools' time, and the size
+      // of each part of the prompt, so a slow answer can be read without a transcript
       this.log.info({
         call_id: this.ctx.callId, delegation_id: delegationId, ms, tools: toolCalls,
-        ...(timing ? { model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, simple: timing.simple } : {}),
+        ...(timing ? {
+          model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, simple: timing.simple,
+          tool_ms: timing.toolMs, prompt_chars: timing.prompt,
+          requests: timing.requests.map((r) => ({
+            ms: r.ms, first_token_ms: r.firstTokenMs, input_tokens: r.inputTokens, cached_tokens: r.cachedTokens,
+            output_tokens: r.outputTokens, reasoning_tokens: r.reasoningTokens, calls: r.calls,
+          })),
+        } : {}),
       }, 'request answered');
       if (ms >= SLOW_MS) this.ctx.onSlow?.(ms);
       this.doing = this.state.pending ? 'waiting for a yes' : null;
