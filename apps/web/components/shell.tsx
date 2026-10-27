@@ -102,7 +102,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);
   const nav = NAV.map((g) => ({ ...g, items: g.items.map((n) => (n.term ? { ...n, label: terms.title(n.term) } : n)) }));
-  const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls));
+  // Test call is in the menu wherever its page has a call to offer: a browser call, or a simulated one (a demo with no key)
+  const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls || me?.simulatedCalls));
   const hrefOf = (n: NavItem) => (n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`);
   useShortcuts({
     palette: () => setPalette(true),
