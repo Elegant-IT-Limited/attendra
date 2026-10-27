@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (your profile: picture, name and the email you sign in with)
+
+- **Your profile.** The account menu at the bottom of the sidebar opens "Your profile", above your password and two-step sign-in: your picture, your name (2 to 80 characters, "Saved." when done, a problem under the field), the email you are signed in with (read only: "To use a different email, write to us.") and your role at each clinic, one line each.
+- **A picture.** Upload a JPEG, PNG or WebP up to 5 MB, or remove it. The browser cuts it to a centred square and makes a 256 px WebP on a canvas before it is sent, so about 30 KB is kept. `PUT /me/avatar` checks the first bytes really are a WebP, PNG or JPEG (415 otherwise) and refuses over 200 KB (413); `DELETE /me/avatar` removes it. It is kept in a new `user_avatars` table (migration 0039), not as a link, and goes with the login.
+- **Seen only by your team.** `GET /users/:userId/avatar` answers someone who shares an organization with you, and 404 to anyone else, the same as for no picture. It is kept privately in the browser for 5 minutes (`cache-control: private, max-age=300`, with an ETag). `/me`, Team, Assign to and the notes on requests carry `avatarUrl` (null when there is none), versioned with `?v=`, so a new picture shows at once. One `Avatar` shows the picture, or the initials as before, in the account button, on Team, next to Assign to and on each note.
+- **Your name.** `PATCH /me {name}` changes your own name only, audited as `user.name.changed` in each of your clinics with neither the old nor the new name in the row. The sidebar, Team and the requests show it at once.
+- **The invitation email greets you properly.** With no name typed in Add people, it says "Hi," instead of the start of the address in lower case ("Hi sam,"); with one, it uses it as typed.
+
 ### Added (an owner opens a second, separate clinic with the same login)
 
 - **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.

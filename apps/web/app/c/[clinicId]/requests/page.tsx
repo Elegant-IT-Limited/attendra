@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { ago, clinicTime, dayTitle, dob, phone, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
-import { RelativeTime } from '@/components/ui/bits';
+import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 
@@ -118,7 +118,7 @@ function Requests() {
         if (action === 'release') return { ...t, assigneeUserId: null, assigneeName: null };
         if (action === 'assign') return { ...t, assigneeUserId: body!.userId!, assigneeName: team.data?.people.find((m) => m.userId === body!.userId)?.name ?? null };
         if (action === 'plan') return { ...t, ...(body!.urgent !== undefined ? { urgent: body!.urgent } : {}), ...(body!.dueOn !== undefined ? { dueOn: body!.dueOn } : {}) };
-        if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, at: new Date().toISOString(), body: body!.body! }] };
+        if (action === 'notes') return { ...t, notes: [...t.notes, { id: -Date.now(), author: me?.user.name ?? null, authorAvatarUrl: me?.user.avatarUrl ?? null, at: new Date().toISOString(), body: body!.body! }] };
         return null; // done: it leaves the open list
       };
       if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
@@ -425,9 +425,12 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
       {(t.notes.length > 0 || (open && canWork)) && (
         <div className="space-y-2 border-t border-border px-5 py-3">
           {t.notes.map((n) => (
-            <div key={n.id} className="rounded-md bg-surface-sunken px-3 py-2 text-sm">
-              <p className="whitespace-pre-wrap">{n.body}</p>
-              <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former staff member'}, {clinicTime(n.at, tz)}</p>
+            <div key={n.id} className="flex gap-2.5 rounded-md bg-surface-sunken px-3 py-2 text-sm">
+              <Avatar name={n.author ?? '?'} src={n.authorAvatarUrl} size="sm" />
+              <div className="min-w-0">
+                <p className="whitespace-pre-wrap">{n.body}</p>
+                <p className="mt-1 text-xs text-text-muted">{n.author ?? 'A former staff member'}, {clinicTime(n.at, tz)}</p>
+              </div>
             </div>
           ))}
           {open && canWork && (
@@ -460,6 +463,8 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
                 <>
                   {/* who has it now, chosen; any other name gives it to them, Unassigned puts it back in the queue */}
                   <Label htmlFor={`assign-${t.id}`} className="sr-only">Assign to</Label>
+                  {/* who has it, by face as well as by name */}
+                  {t.assigneeUserId && <Avatar name={t.assigneeName ?? '?'} src={teammates.find((m) => m.userId === t.assigneeUserId)?.avatarUrl} size="sm" />}
                   <Select id={`assign-${t.id}`} className="mr-auto h-8 w-44" title="Assign to" value={t.assigneeUserId ?? ''} disabled={busy}
                     onChange={(e) => { const to = e.target.value; if (to === (t.assigneeUserId ?? '')) return; if (to) onAct('assign', { userId: to }); else onAct('release'); }}>
                     <option value="">Unassigned</option>

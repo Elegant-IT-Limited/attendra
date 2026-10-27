@@ -58,7 +58,7 @@ export default function ChangePassword() {
       subtitle={temporary ? 'You signed in with a temporary password. Replace it before you do anything else.' : 'Every other place you are signed in is signed out when you save.'}
       footer={temporary
         ? <button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>
-        : <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your account</a>}>
+        : <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your profile</a>}>
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="current">{temporary ? 'Temporary password' : 'Current password'}</Label>

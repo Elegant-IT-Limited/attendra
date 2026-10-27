@@ -30,8 +30,11 @@ export const Health = z.object({
   resendUrl: z.string().optional(),
 });
 
+/** A person's picture on this API, with its version (?v=), so a new one shows at once; null when they have none. */
+export const AvatarUrl = z.string().nullable();
+
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean() }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl }),
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
@@ -310,7 +313,7 @@ export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent',
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 /** Who a request can be given to: everyone who works requests here, the person asking included, by name, and whether they approve refills. */
-export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean() })) });
+export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean(), avatarUrl: AvatarUrl })) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
 /** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
 export const NewTask = z.object({
@@ -353,7 +356,7 @@ export const Task = z.object({
   followUp: z.string().nullable(),
   /** The clinic's own details on the request (Settings, Fields and lists). */
   custom: z.record(z.string(), z.string()),
-  notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
+  notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
 export const TaskCount = z.object({ open: z.number() });
@@ -567,10 +570,14 @@ export const Member = z.object({
   addedAt: z.iso.datetime(), you: z.boolean(),
   /** May approve or decline refills. */
   approvesRefills: z.boolean(),
+  avatarUrl: AvatarUrl,
 });
 export const MemberList = z.object({ members: z.array(Member) });
 /** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
 export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
+/** Your own name, as it shows to your team. */
+export const ProfileName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(80, 'at most 80 characters') });
+export const AvatarSaved = z.object({ avatarUrl: z.string() });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
 /**
@@ -693,6 +700,7 @@ export const ApiError = z.object({ error: z.string(), message: z.string().option
 
 export type Health = z.infer<typeof Health>;
 export type Me = z.infer<typeof Me>;
+export type AvatarSaved = z.infer<typeof AvatarSaved>;
 export type HostingPlan = z.infer<typeof HostingPlan>;
 export type ClinicPlan = z.infer<typeof ClinicPlan>;
 export type AssistantChoices = z.infer<typeof AssistantChoices>;

@@ -14,7 +14,7 @@ function totp(secret: string, at = Date.now()) {
   return String((hash.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-test('a new team member picks a password, changes it from Your account, turns on two-step, and is let back in after losing the phone', async ({ browser }) => {
+test('a new team member picks a password, changes it from Your profile, turns on two-step, and is let back in after losing the phone', async ({ browser }) => {
   // two people and a dozen pages, each compiled on first use by next dev
   test.slow();
   const manager = await openAs(browser, 'manager');
@@ -41,10 +41,10 @@ test('a new team member picks a password, changes it from Your account, turns on
   await sam.getByRole('button', { name: 'Save my password' }).click();
   await expect(sam.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
 
-  // Your account, from the menu: a new password of their own choosing
+  // Your profile, from the menu: a new password of their own choosing
   await sam.getByRole('button', { name: 'Sam Reed, Front desk: account and theme' }).click();
-  await sam.getByRole('menuitem', { name: /Your account/ }).click();
-  await expect(sam.getByRole('heading', { name: 'Your account' })).toBeVisible({ timeout: 20_000 });
+  await sam.getByRole('menuitem', { name: 'Your profile' }).click();
+  await expect(sam.getByRole('heading', { name: 'Your profile' })).toBeVisible({ timeout: 20_000 });
   await sam.getByRole('link', { name: 'Change your password' }).click();
   await expect(sam.getByRole('heading', { name: 'Change your password' })).toBeVisible();
   await sam.getByLabel('Current password').fill('sam picks a long one');
@@ -53,7 +53,7 @@ test('a new team member picks a password, changes it from Your account, turns on
   await sam.getByRole('button', { name: 'Save my password' }).click();
   await expect(sam.getByText('Your password is changed.', { exact: false })).toBeVisible();
 
-  // two-step sign-in, turned on from Your account with a code from the "app"
+  // two-step sign-in, turned on from Your profile with a code from the "app"
   await sam.getByRole('link', { name: 'Turn it on' }).click();
   await sam.getByLabel('Confirm your password').fill('sam picks another one');
   await sam.getByRole('button', { name: 'Continue' }).click();

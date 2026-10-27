@@ -6,12 +6,21 @@ import { Tooltip } from '@/components/ui/overlay';
 import { ago } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-/** A person as initials in a circle. The colour comes from the name, so it stays the same everywhere. */
-export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
+/**
+ * A person: their picture when they have one, otherwise their initials in a circle. The colour
+ * comes from the name, so it stays the same everywhere. A picture that fails to load falls back
+ * to the initials. Decorative: the name is always written next to it.
+ */
+export function Avatar({ name, src, size = 'md' }: { name: string; src?: string | null; size?: 'sm' | 'md' | 'lg' }) {
+  const [failed, setFailed] = useState<string | null>(null);
   const initials = name.replace(/\(.*?\)/g, '').trim().split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
   const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+  const box = size === 'sm' ? 'size-6 text-xs' : size === 'lg' ? 'size-16 text-lg' : 'size-8 text-sm';
+  if (src && failed !== src) {
+    return <img src={src} alt="" aria-hidden data-avatar="picture" onError={() => setFailed(src)} className={cn('inline-block shrink-0 rounded-full bg-surface-sunken object-cover', box)} />;
+  }
   return (
-    <span aria-hidden className={cn('inline-flex shrink-0 items-center justify-center rounded-full font-medium text-text', size === 'sm' ? 'size-6 text-xs' : 'size-8 text-sm')}
+    <span aria-hidden data-avatar="initials" className={cn('inline-flex shrink-0 items-center justify-center rounded-full font-medium text-text', box)}
       style={{ background: `oklch(0.9 0.04 ${hue} / 0.9)` }}>
       <span className="text-[oklch(0.3_0.04_255)]">{initials}</span>
     </span>

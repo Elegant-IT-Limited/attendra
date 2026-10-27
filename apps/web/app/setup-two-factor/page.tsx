@@ -39,7 +39,7 @@ export default function SetupTwoFactor() {
   // turned on by choice, from Your account: a way back; when it is required, only signing out
   const optional = me.data?.twoFactorRequired === false;
   const footer = optional
-    ? <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your account</a>
+    ? <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your profile</a>
     : <button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>;
 
   async function start(e: FormEvent) {

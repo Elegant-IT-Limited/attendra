@@ -65,6 +65,7 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into auth_accounts (id, user_id, account_id, provider_id) values ($1, $2, $2, 'credential')`, [`acc_${owner}`, owner]);
   await q(`insert into auth_sessions (id, user_id, token, expires_at, active_organization_id) values ($1, $2, $1, now() + interval '1 day', $3)`, [`ses_${owner}`, owner, orgId]);
   await q(`insert into auth_two_factors (id, user_id, secret, backup_codes) values ($1, $2, 'x', 'x')`, [`tf_${owner}`, owner]);
+  await q(`insert into user_avatars (user_id, bytes, content_type) values ($1, '\\x52494646', 'image/webp')`, [owner]);
   await q(`insert into memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')`, [`mem_${owner}`, orgId, owner]);
   await q(`insert into invitations (id, organization_id, email, role, inviter_id, expires_at, clinic_id) values ($1, $2, 'new.hire@example.com', 'staff', $3, now() + interval '7 days', $4)`, [`inv_${owner}`, orgId, owner, clinicId]);
   await q(`select set_config('app.clinic_id', $1, false)`, [clinicId]);

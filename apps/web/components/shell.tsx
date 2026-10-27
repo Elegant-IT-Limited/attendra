@@ -116,7 +116,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const accountLinks: NavItem[] = clinic.accountLinks.map((l) => ({ href: l.href, label: l.label, icon: ExternalLink, permission: '' }));
   // the clinic's own links, from Settings, for everyone on the team
   const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
-  const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
+  const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role, avatarUrl: me?.user.avatarUrl ?? null };
   // a hosted plan's links, for owners only: another location of this business, or a separate business on this login
   const grow: GrowLink[] = clinic.role !== 'owner' || !plan.data?.plan ? [] : [
     { href: plan.data.plan.addLocationUrl, label: 'Add a location', hint: 'Same business, one bill' },
@@ -259,14 +259,14 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
 /** An owner's way to grow, on the hosting layer's pages: a full page load, like the other account links. */
 interface GrowLink { href: string; label: string; hint: string }
 
-function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { name: string; role: string }; grow: GrowLink[]; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
+function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { name: string; role: string; avatarUrl: string | null }; grow: GrowLink[]; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
   const theme = useTheme();
   const [alerts, setAlerts] = useEmergencyAlerts();
   return (
     <M.Root>
       <M.Trigger aria-label={`${user.name}, ${user.role}: account and theme`}
         className={cn('focus-ring flex w-full items-center gap-2.5 rounded-md p-1.5 text-left hover:bg-surface-sunken', compact ? 'size-11 justify-center p-0' : 'max-xl:justify-center')}>
-        <Avatar name={user.name || '?'} />
+        <Avatar name={user.name || '?'} src={user.avatarUrl} />
         {!compact && <span className="min-w-0 flex-1 max-xl:hidden"><span className="block truncate text-base font-medium">{user.name}</span><span className="block text-xs text-text-muted">{user.role}</span></span>}
       </M.Trigger>
       <M.Portal>
@@ -294,7 +294,7 @@ function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { nam
           {grow.length > 0 && <M.Separator className="my-1 h-px bg-border" />}
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
           <M.Item asChild className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
-            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your account: password and two-step</a>
+            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your profile</a>
           </M.Item>
           <M.Item onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11"><LogOut className="size-4 text-text-muted" aria-hidden />Sign out</M.Item>
         </M.Content>

@@ -91,9 +91,9 @@ describe('requests', () => {
     expect(res.statusCode).toBe(200);
     // the owner always appears; the viewer and the other practice's people never do
     expect(res.json().people).toEqual([
-      { userId: api.users.staff, name: 'Ana Front', you: false, approvesRefills: false },
-      { userId: api.users.admin, name: 'Olga Admin', you: true, approvesRefills: false },
-      { userId: api.users.owner, name: 'Omar Owner', you: false, approvesRefills: expect.any(Boolean) },
+      { userId: api.users.staff, name: 'Ana Front', you: false, approvesRefills: false, avatarUrl: null },
+      { userId: api.users.admin, name: 'Olga Admin', you: true, approvesRefills: false, avatarUrl: null },
+      { userId: api.users.owner, name: 'Omar Owner', you: false, approvesRefills: expect.any(Boolean), avatarUrl: null },
     ]);
     expect(res.body).not.toContain('@');
     expect((await api.request('GET', `${C}/tasks/assignees`, { cookie: as.staff })).statusCode).toBe(403);
