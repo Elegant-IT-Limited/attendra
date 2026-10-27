@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, type Provider, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -23,6 +23,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
+import { useAddToList } from '@/lib/lists';
 import { providerTerms, useTerms } from '@/lib/terms';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -30,9 +31,11 @@ const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thur
 type Hours = NonNullable<Provider['hours']>;
 type Draft = Omit<DoctorInput, 'gender'> & { gender: Gender | ''; ownHours: boolean };
 
+// a new vet can be booked for every visit type, as the stand-in a clinic starts with could: with only the first,
+// a sick visit had nobody to book it with once the stand-in stepped aside, at the desk and on calls
 const blank = (visitTypes: VisitType[]): Draft => ({
   name: '', kind: 'person', gender: '', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
-  visitTypeIds: visitTypes.slice(0, 1).map((v) => v.id), ownHours: false,
+  visitTypeIds: visitTypes.map((v) => v.id), ownHours: false,
 });
 const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', specialty: p.specialty ?? '', ownHours: !!p.hours });
 
@@ -63,7 +66,8 @@ export default function DoctorsPage() {
 
   const shown = useMemo(() => {
     const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-    const found = (doctors.data?.providers ?? []).filter((p) => {
+    // the stand-in a new clinic starts with is gone from the list once anyone else is listed
+    const found = shownProviders(doctors.data?.providers ?? []).filter((p) => {
       const hay = [p.name, p.specialty ?? '', ...p.categories].join(' ').toLowerCase();
       return words.every((w) => hay.includes(w)) && (!specialty || p.specialty === specialty) && (!category || p.categories.includes(category));
     });
@@ -71,9 +75,18 @@ export default function DoctorsPage() {
     if (sort === 'specialty') return [...found].sort((a, b) => (a.specialty || '\uffff').localeCompare(b.specialty || '\uffff') || a.name.localeCompare(b.name));
     return found;
   }, [doctors.data, text, specialty, category, sort]);
-  // the clinic's own order when it keeps the lists (Settings, Fields and lists), else what the records say
-  const specialties = useMemo(() => (config.data ? managedList({ ...config.data, providers: doctors.data?.providers ?? config.data.providers }, 'specialties') : []), [config.data, doctors.data]);
-  const categories = useMemo(() => (config.data ? managedList({ ...config.data, providers: doctors.data?.providers ?? config.data.providers }, 'categories') : []), [config.data, doctors.data]);
+  // the clinic's own order when it keeps the lists (Settings, Fields and lists), else what the records say;
+  // then any value a doctor has that is not on the list, so the filter finds every value in use
+  const [specialties, categories] = useMemo(() => {
+    if (!config.data) return [[], []];
+    const providers = doctors.data?.providers ?? config.data.providers;
+    const inUse = (name: 'specialties' | 'categories') => {
+      const list = managedList({ ...config.data!, providers }, name);
+      const used = providers.flatMap((p) => (name === 'specialties' ? (p.specialty ? [p.specialty] : []) : p.categories));
+      return [...list, ...[...new Set(used)].filter((v) => !onList(list, v))];
+    };
+    return [inUse('specialties'), inUse('categories')];
+  }, [config.data, doctors.data]);
   const providerFields = config.data?.providerFields ?? [];
   const filtered = !!(text || specialty || category);
 
@@ -177,6 +190,10 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const lists = config.data ? { specialties: managedList(config.data, 'specialties'), categories: managedList(config.data, 'categories') } : { specialties: [], categories: [] };
   const providerFields = config.data?.providerFields ?? [];
   const [credentials, setCredentials] = useState((editing.draft.credentials ?? []).join(', '));
+  // owners and managers add to the lists from here; a value not on them is refused under its field
+  const addSpecialty = useAddToList(clinicId, 'specialties');
+  const addCategory = useAddToList(clinicId, 'categories');
+  const [fieldErrors, setFieldErrors] = useState<{ specialty?: string; categories?: string }>({});
   // what did not work opens in a dialog, wherever the page is scrolled
   const showProblem = useProblem();
   const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not saved', message }); };
@@ -184,9 +201,17 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const toast = useToast();
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const hours: Hours = d.hours ?? {};
-  const failed = (e: unknown) => setProblem(e instanceof ApiFailure
-    ? (e.body.issues?.map((i) => i.message).join('. ') || e.body.message || 'That did not save.')
-    : 'That did not save. Check your connection and try again.');
+  const failed = (e: unknown) => {
+    // a problem with the specialty or the categories goes under that field; anything else in the dialog
+    const issues = e instanceof ApiFailure ? e.body.issues ?? [] : [];
+    const own = (path: string) => issues.find((i) => i.path === path)?.message;
+    setFieldErrors({ specialty: own('specialty'), categories: own('categories') });
+    const rest = issues.filter((i) => i.path !== 'specialty' && i.path !== 'categories');
+    if (issues.length && !rest.length) return;
+    setProblem(e instanceof ApiFailure
+      ? (rest.map((i) => i.message).join('. ') || e.body.message || 'That did not save.')
+      : 'That did not save. Check your connection and try again.');
+  };
 
   const save = useMutation({
     mutationFn: (body: DoctorInput) => api<DoctorList>(`/clinics/${clinicId}/doctors${editing.id ? `/${editing.id}` : ''}`, { method: editing.id ? 'PUT' : 'POST', body: JSON.stringify(body) }),
@@ -252,13 +277,14 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-specialty">Specialty</Label>
-          <Combobox id="doc-specialty" label="Specialty" value={d.specialty ?? ''} options={lists.specialties} onChange={(specialty) => set({ specialty })} placeholder={pets ? 'Pick one, or type: General practice, Surgery' : 'Pick one, or type: Family medicine'} />
+          <Combobox id="doc-specialty" label="Specialty" value={d.specialty ?? ''} options={lists.specialties} onChange={(specialty) => { set({ specialty }); setFieldErrors((f) => ({ ...f, specialty: undefined })); }}
+            placeholder="Pick from your list" onAdd={addSpecialty} addLabel="Add a specialty" error={fieldErrors.specialty} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-categories">{providerTerms(pets).sees}</Label>
-          <ChipsPicker id="doc-categories" label={providerTerms(pets).sees} values={categories} suggestions={lists.categories} onChange={setCategories}
-            placeholder={pets ? 'Type, or pick below: Dogs, Exotics…' : 'Type, or pick below: Children…'} />
-          <p className="text-xs text-text-muted">The assistant tells callers, so they pick the right {terms.provider}. Rename or order the list under Settings, Fields and lists.</p>
+          <ChipsPicker id="doc-categories" label={providerTerms(pets).sees} values={categories} suggestions={lists.categories} onChange={(v) => { setCategories(v); setFieldErrors((f) => ({ ...f, categories: undefined })); }}
+            placeholder="Type to find one on your list" onAdd={addCategory} addLabel="Add one to the list" error={fieldErrors.categories} />
+          <p className="text-xs text-text-muted">Picked from your list. The assistant tells callers, so they pick the right {terms.provider}. Rename or order the list under Settings, Fields and lists.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-credentials">Qualifications and certifications</Label>

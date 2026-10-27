@@ -10,6 +10,7 @@ import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, MAIL } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import type { Mailer } from '../mail-hook';
+import { avatarUrl } from '../me/avatar';
 import { createAccount, createInvitedAccount, deleteNewAccount, findAccount, hashPassword, hasPassword, ROLE_LABEL, setPasswordLink, temporaryPassword } from '../members';
 
 // neither "with another practice" nor anything else about the account: it is not ours to tell
@@ -56,7 +57,7 @@ export class TeamController {
   @ApiOkResponse({ schema: schemaOf(MemberList) })
   async list(@Param('clinicId') clinicId: string, @CurrentStaff() staff: Staff): Promise<MemberList> {
     const members = await listMembers(this.db, await this.org(clinicId));
-    return { members: members.map((m) => ({ ...m, you: m.userId === staff.userId, addedAt: m.addedAt.toISOString() })) };
+    return { members: members.map(({ avatarAt, ...m }) => ({ ...m, you: m.userId === staff.userId, addedAt: m.addedAt.toISOString(), avatarUrl: avatarUrl(m.userId, avatarAt) })) };
   }
 
   @Post()
@@ -85,7 +86,7 @@ export class TeamController {
         if (result !== 'account_exists' && result !== 'other_organizations') this.check(result);
       }
     }
-    return this.invite(orgId, clinicId, staff, { ...body, email, name }, existing);
+    return this.invite(orgId, clinicId, staff, { ...body, email, name }, existing, body.name);
   }
 
   /**
@@ -93,7 +94,7 @@ export class TeamController {
    * address is invited too, on an account with no password, and its email carries the link
    * to set one: the same work and the same answer for every address.
    */
-  private async invite(orgId: string, clinicId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean }, existing: { id: string; name: string } | null): Promise<AddResult> {
+  private async invite(orgId: string, clinicId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean }, existing: { id: string; name: string } | null, typedName?: string): Promise<AddResult> {
     const userId = existing?.id ?? await createInvitedAccount(this.auth, body);
     let sent: Awaited<ReturnType<typeof inviteToTeam>>;
     try {
@@ -109,7 +110,9 @@ export class TeamController {
     if (this.mail) {
       const setPasswordUrl = (await hasPassword(this.auth, userId)) ? undefined : await setPasswordLink(this.auth, this.options.publicUrl, userId, sent.expiresAt);
       // not awaited: an answer that waited for the email would take longer for some addresses than others
-      void this.mail({ type: 'team_invitation', email: body.email, name: existing?.name ?? body.name, clinicName: sent.clinicName, role: ROLE_LABEL[body.role], expiresAt: sent.expiresAt.toISOString(), url: `${this.options.publicUrl}/`, ...(setPasswordUrl ? { setPasswordUrl } : {}) });
+      // greeted by their own name, or by the name typed in Add people as it was typed; with neither, the
+      // email says "Hi," and not the start of their address
+      void this.mail({ type: 'team_invitation', email: body.email, name: existing?.name ?? typedName ?? '', clinicName: sent.clinicName, role: ROLE_LABEL[body.role], expiresAt: sent.expiresAt.toISOString(), url: `${this.options.publicUrl}/`, ...(setPasswordUrl ? { setPasswordUrl } : {}) });
     }
     return { status: 'invite_sent', email: body.email };
   }

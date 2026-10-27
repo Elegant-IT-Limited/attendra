@@ -3,7 +3,7 @@ import type { CallAgent, Outbound } from '@attendra/agent';
 import { askedToHangUp, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
-import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
+import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
@@ -13,7 +13,9 @@ export interface CallRecorder {
 /**
  * Drives one call: reads sideband events, feeds the agent, and carries out what it
  * returns. It is the single owner of every side effect for its session, so events
- * seen twice (sideband replay after a reconnect) are dropped by event id.
+ * seen twice (sideband replay after a reconnect) are dropped by event id, except a
+ * hand-off: each delegation id is requested once whatever its event id, and one
+ * answered just before the sideband dropped is answered again once it is back.
  */
 /** How long the assistant must be quiet before a hang-up goes through, and the most it waits for that. */
 const QUIET_MS = 1500;
@@ -24,14 +26,22 @@ const HANGUP_MAX_WAIT_MS = 20_000;
  * long, and is waited for up to the overall limit.
  */
 const SPEECH_WAIT_MS = { hangup: 4000, transfer: HANGUP_MAX_WAIT_MS } as const;
-/** The caller finished and nothing came back: a word to the assistant after this long, and again after the second. */
-export const SILENCE_NUDGE_MS = [6000, 14_000] as const;
+/**
+ * The caller finished and nothing came back (no reply, no hand-off to the backend): their words go back to the
+ * assistant to answer after this long, and again after the second. 6 s left callers asking "are you with me?" (2026-10-26).
+ */
+export const SILENCE_NUDGE_MS = [5000, 12_000] as const;
+/** How often the runner checks the line: often enough that a nudge comes within half a second of its time. */
+const CHECK_MS = 500;
 /**
  * The call is up and the assistant has said nothing, nor has the caller: after this long it
  * is told once to greet now. GPT-Live sometimes held its greeting until the caller spoke,
- * 15 seconds into a call (2026-10-25).
+ * 15 seconds into a call (2026-10-25); 4 s still left a silent start on both test calls of
+ * 2026-10-26. On its own timer, so it is not up to a second late.
  */
-export const OPENING_NUDGE_MS = 4000;
+export const OPENING_NUDGE_MS = 2000;
+/** An answer sent this long before the sideband dropped may never have reached the voice. */
+const LOST_BEFORE_DROP_MS = 3000;
 const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Only if you have not started speaking and the caller has said nothing: greet them now, exactly as you were told to at the start of the call, then listen. If any part of the greeting was said, or the caller has spoken, never start it again: answer them.';
 /** After the assistant's goodbye, how long the line may stay quiet before the call is ended for it. */
 export const GOODBYE_HANGUP_MS = 6000;
@@ -66,6 +76,13 @@ export class CallRunner {
   /** When the runner started, and whether the silent-start nudge went out. */
   private startedAt = 0;
   private openingNudged = false;
+  /** Every hand-off by its id: requested once, and its answer kept in case a sideband drop lost it. */
+  private readonly delegations = new Map<string, { answer: Outbound[]; sentAt: number | null }>();
+  /** When the sideband last dropped, and how often it came back. */
+  private droppedAt = 0;
+  private reconnects = 0;
+  /** Whether the assistant is speaking now, as far as its words show, for the logs. */
+  private speaking = false;
 
   constructor(
     private readonly sessionId: string,
@@ -80,10 +97,14 @@ export class CallRunner {
     this.startedAt = Date.now();
     // checks from the first second, not from the first event: a silent start has no events
     this.watch();
+    const opening = setTimeout(() => { this.timers.delete(opening); void this.openingCheck().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, OPENING_NUDGE_MS);
+    this.timers.add(opening);
     return new Promise((resolve) => {
       this.sideband.onEvent((event) => { void this.handle(event).catch((err) => this.log.error({ session_id: this.sessionId, err }, 'event handling failed')); });
       this.sideband.onError((err) => this.log.warn({ session_id: this.sessionId, err }, 'sideband error'));
+      this.sideband.onConnection?.((c) => this.connection(c));
       this.sideband.onClose((code) => {
+        this.log.info({ session_id: this.sessionId, code, ms: Date.now() - this.startedAt }, 'sideband closed');
         // a socket that drops before session.closed leaves the call without final usage
         // resolve even when the final write fails, or the call never counts as over
         if (!this.closed) {
@@ -97,8 +118,11 @@ export class CallRunner {
   }
 
   async handle(event: SidebandEvent): Promise<void> {
-    if (this.seen.has(event.event_id)) return;
-    this.seen.add(event.event_id);
+    // a hand-off is known by its delegation id, not its event id: see below
+    if (event.type !== 'session.delegation.created') {
+      if (this.seen.has(event.event_id)) return;
+      this.seen.add(event.event_id);
+    }
     this.watch();
 
     switch (event.type) {
@@ -112,21 +136,49 @@ export class CallRunner {
       case 'session.output_transcript.delta': {
         const e = event as Extract<SidebandEvent, { delta: string }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
-        this.agentSpokeAt = Date.now();
+        const now = Date.now();
+        // the start of a reply, for the logs (no words): the first one is the greeting, timed from the start of the call
+        if (!this.speaking) {
+          this.speaking = true;
+          if (!this.agentSpokeAt) this.log.info({ session_id: this.sessionId, ms: now - this.startedAt, opening_nudged: this.openingNudged }, 'first words from the assistant');
+          else this.log.info({ session_id: this.sessionId, after_caller_ms: this.callerSaidAt > this.agentSpokeAt ? now - this.callerSaidAt : null }, 'assistant started speaking');
+        }
+        this.agentSpokeAt = now;
         this.speakingUntil = Math.max(this.speakingUntil, this.agentSpokeAt) + e.delta.length * SPOKEN_MS_PER_CHAR;
         return this.flushFinishedTurns();
       }
       case 'session.delegation.created': {
         const e = event as Extract<SidebandEvent, { delegation: unknown }>;
         if (e.delegation.target !== 'client') return;
+        const id = e.delegation.id;
+        const known = this.delegations.get(id);
+        if (known) {
+          // the same hand-off again (a sideband that reconnected sends what it still has): answered before a drop and
+          // never spoken, it is answered again; still being worked on, its answer is on its way
+          if (known.sentAt !== null && this.reconnects && this.agentSpokeAt < known.sentAt) {
+            this.log.info({ session_id: this.sessionId, delegation_id: id }, 'delegation seen again after a reconnect: answering it again');
+            return this.resend(id);
+          }
+          this.log.info({ session_id: this.sessionId, delegation_id: id, answered: known.sentAt !== null }, 'delegation seen again: already handled');
+          return;
+        }
+        this.log.info({ session_id: this.sessionId, delegation_id: id, at: new Date().toISOString(), ms: Date.now() - this.startedAt }, 'delegation created');
+        const entry: { answer: Outbound[]; sentAt: number | null } = { answer: [], sentAt: null };
+        this.delegations.set(id, entry);
         // the progress note goes out immediately; the result follows when the tools finish
         this.pending++;
         try {
-          return await this.dispatch(await this.agent.onDelegation(e.delegation.id, (o) => void this.dispatch([o])));
+          const out = await this.agent.onDelegation(id, (o) => void this.dispatch([o]));
+          entry.answer = out.filter((o) => o.type === 'commentary');
+          entry.sentAt = Date.now();
+          return await this.dispatch(out);
         } finally {
           this.pending--;
         }
       }
+      case 'session.started':
+        this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'session started');
+        return;
       case 'session.instructions.appended': {
         // a staff note reached the voice model
         const e = event as SidebandEvent & { client_event_id?: string };
@@ -145,6 +197,30 @@ export class CallRunner {
       default:
         return;
     }
+  }
+
+  /**
+   * The sideband's connection, logged. When it comes back after a drop, an answer sent just before the drop (or while
+   * it was down) that the assistant has not spoken since is sent again: the caller would otherwise wait for it forever.
+   */
+  private connection(c: SidebandConnection) {
+    this.log.info({ session_id: this.sessionId, ...c, ms: Date.now() - this.startedAt }, `sideband ${c.state}`);
+    if (c.state === 'reconnecting' && !this.droppedAt) this.droppedAt = Date.now();
+    if (c.state !== 'reconnected') return;
+    this.reconnects++;
+    const since = this.droppedAt - LOST_BEFORE_DROP_MS;
+    this.droppedAt = 0;
+    for (const [id, d] of this.delegations) {
+      if (d.sentAt !== null && d.sentAt >= since && this.agentSpokeAt < d.sentAt) void this.resend(id).catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'answer not sent again'));
+    }
+  }
+
+  private resend(id: string) {
+    const d = this.delegations.get(id);
+    if (!d?.answer.length || this.closed) return Promise.resolve();
+    d.sentAt = Date.now();
+    this.log.info({ session_id: this.sessionId, delegation_id: id }, 'answer sent again after the sideband came back');
+    return this.dispatch(d.answer);
   }
 
   /** Carries out what staff asked for on a live call (a note, a take-over, a goodbye) the same way as the agent's own outbound. */
@@ -191,26 +267,33 @@ export class CallRunner {
   }
 
   /**
-   * Once a second, two checks no model can be trusted to make on its own:
+   * Twice a second, checks no model can be trusted to make on its own:
    * - the caller finished speaking and nothing came back (no answer, no tool at work):
-   *   the assistant is told to answer now, at 6 s and again at 14 s;
+   *   their words go back to the assistant to answer now, at 5 s and again at 12 s;
    * - the assistant said goodbye and the line has been quiet since: the call is ended.
    * Neither runs while a transfer or a hang-up is on its way, or after the call ends.
    */
   private watch() {
     if (this.watchdog || this.closed) return;
-    this.watchdog = setInterval(() => { void this.check().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, 1000);
+    this.watchdog = setInterval(() => { void this.check().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, CHECK_MS);
     this.watchdog.unref?.();
+  }
+
+  /** Nobody has said a word since the call was answered: the greeting is overdue. */
+  private async openingCheck() {
+    if (this.closed || this.ending || this.agent.state.endedByStaff || this.openingNudged || this.agentSpokeAt || this.callerSaidAt) return;
+    this.openingNudged = true;
+    this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'the assistant has not greeted the caller: nudging it');
+    return this.dispatch([{ type: 'instructions', delegationId: null, content: OPENING_NUDGE }]);
   }
 
   private async check() {
     if (this.closed || this.ending || this.agent.state.endedByStaff) return;
     const now = Date.now();
-    // nobody has said a word since the call was answered: the greeting is overdue
-    if (!this.openingNudged && this.startedAt && !this.agentSpokeAt && !this.callerSaidAt && now - this.startedAt >= OPENING_NUDGE_MS) {
-      this.openingNudged = true;
-      this.log.info({ session_id: this.sessionId }, 'the assistant has not greeted the caller: nudging it');
-      return this.dispatch([{ type: 'instructions', delegationId: null, content: OPENING_NUDGE }]);
+    // the end of a reply, for the logs: its words have stopped and their audio should have played
+    if (this.speaking && now - this.agentSpokeAt >= QUIET_MS && now >= this.speakingUntil) {
+      this.speaking = false;
+      this.log.info({ session_id: this.sessionId }, 'assistant stopped speaking');
     }
     const turns = this.agent.state.turns;
     const last = turns.at(-1);
@@ -245,7 +328,7 @@ export class CallRunner {
     const leaving = last?.speaker === 'caller' && saidGoodbye(last.text, agentLast?.text ?? '');
     if (this.callerSaidAt > this.speakingUntil && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
-      this.log.info({ session_id: this.sessionId, nudge: this.nudged }, 'the caller is waiting in silence: nudging the assistant');
+      this.log.info({ session_id: this.sessionId, nudge: this.nudged, waited_ms: now - this.callerSaidAt }, 'the caller is waiting in silence: giving the assistant their words to answer');
       return this.dispatch(this.agent.onSilence(this.nudged));
     }
   }

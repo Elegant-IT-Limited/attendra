@@ -7,16 +7,18 @@ import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { ApiFailure, useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
+import { clinicToOpen } from '@/lib/last-clinic';
 import { signOutAndLeave, takeNext } from '@/lib/next';
 
 /**
  * Where a signed-in person goes: a temporary password first, then two-step sign-in where
- * it is required, then the page they were on their way to, else their first clinic.
+ * it is required, then the page they were on their way to, else the clinic they were last in
+ * (while they still belong to it), else their first.
  */
 export default function Home() {
   const me = useMe();
   const router = useRouter();
-  const first = me.data?.clinics[0];
+  const first = me.data ? clinicToOpen(me.data.clinics) : undefined;
   // a temporary password comes first, then two-step sign-in, then the clinic
   const mustChange = me.data?.user.mustChangePassword;
   const needsTwoStep = !!me.data && me.data.twoFactorRequired && !me.data.user.twoFactorEnabled;

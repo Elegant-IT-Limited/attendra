@@ -1,0 +1,34 @@
+id: vet-es-greeting-on-time
+title: "In Spanish: a voice that says nothing when the call connects is told to greet within 2 s, once; the caller is then answered in Spanish"
+clinic: riverbend
+local_time: "10:00"
+silent_start: true
+facts: "You are Linh Nguyen and you speak only Spanish. You are calling from the number on Biscuit's file, the number you are calling from. Biscuit is your dog; you want a wellness exam (un chequeo), any vet, any time. Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, soy Linh. Quiero un chequeo para mi perro Biscuit.
+    reply: "Hola, Linh. Encontré a Biscuit. Para un chequeo tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Biscuit tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+# a greeting said again, not a goodbye: "thanks for calling" is also how a call ends
+forbid_spoken:
+  - how can i help you and your pet today
+  - i'm juniper
+  - the clinic's ai assistant
+  - le habla juniper
+  - soy juniper
+  - asistente de ia de la clínica

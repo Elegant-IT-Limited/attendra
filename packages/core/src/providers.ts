@@ -153,6 +153,17 @@ export function bookableProviders<P extends Pick<Provider, 'placeholder'>>(provi
   return real.length ? real : providers;
 }
 
+/**
+ * The providers the dashboard lists (Doctors, Today, the Schedule, a new booking): the same as a
+ * caller is offered, so the stand-in is gone once anyone else is listed. A stand-in that still has
+ * visits on screen (`withVisits`, provider ids) stays, so no visit disappears from the calendar.
+ */
+export function shownProviders<P extends Pick<Provider, 'id' | 'placeholder'>>(providers: P[], withVisits: Iterable<string> = []): P[] {
+  const bookable = new Set(bookableProviders(providers).map((p) => p.id));
+  for (const id of withVisits) bookable.add(id);
+  return providers.filter((p) => bookable.has(p.id));
+}
+
 /** Each specialty and the doctors in it, as a caller may hear them. */
 export function specialtyFacts(clinic: Pick<ClinicConfig, 'providers'>, language: Language) {
   const groups = new Map<string, string[]>();

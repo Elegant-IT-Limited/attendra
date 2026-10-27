@@ -148,9 +148,14 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
 
   test('a saved time zone shows everywhere at once, without a reload', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
+    // the schedule says whose times it shows; the sidebar shows the person's role, not the zone
+    const zoneOnSchedule = async (zone: string) => {
+      await page.getByRole('link', { name: 'Schedule', exact: true }).click();
+      await expect(page.getByText(`(${zone}).`, { exact: false })).toBeVisible();
+      await page.getByRole('link', { name: 'Settings' }).click();
+    };
     await page.getByRole('link', { name: 'Settings' }).click();
-    const sidebar = page.getByRole('complementary');
-    await expect(sidebar.getByText('America/Denver', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('time-zone-value')).toContainText(/^America\/Denver/);
     const pick = async (search: string, zone: RegExp) => {
       await page.getByRole('combobox', { name: 'Time zone' }).click();
       await page.getByPlaceholder('Search, like Madrid or New York').fill(search);
@@ -159,9 +164,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
       await expect(page.locator('[aria-live=polite]').getByText('Saved. The next call uses these settings.')).toBeVisible();
     };
     await pick('madrid', /Europe\/Madrid/);
-    await expect(sidebar.getByText('Europe/Madrid', { exact: true })).toBeVisible();
+    await zoneOnSchedule('Europe/Madrid');
     await pick('denver', /America\/Denver/); // and back, for the specs after this one
-    await expect(sidebar.getByText('America/Denver', { exact: true })).toBeVisible();
+    await zoneOnSchedule('America/Denver');
   });
 
     test('a greeting that hides the AI is refused; a holiday saves and is audited', async ({ browser }) => {

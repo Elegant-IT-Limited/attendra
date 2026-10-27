@@ -30,8 +30,11 @@ export const Health = z.object({
   resendUrl: z.string().optional(),
 });
 
+/** A person's picture on this API, with its version (?v=), so a new one shows at once; null when they have none. */
+export const AvatarUrl = z.string().nullable();
+
 export const Me = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean() }),
+  user: z.object({ id: z.string(), name: z.string(), email: z.string(), twoFactorEnabled: z.boolean(), mustChangePassword: z.boolean(), avatarUrl: AvatarUrl }),
   demoMode: z.boolean(),
   /** Whether this deployment requires two-step sign-in before anything else. */
   twoFactorRequired: z.boolean(),
@@ -310,7 +313,7 @@ export const TaskOutcome = z.enum(['called_back', 'left_message', 'refill_sent',
 export const TaskDone = z.object({ outcome: TaskOutcome.optional() }).default({});
 export const TaskAssign = z.object({ userId: z.string().min(1).max(100) });
 /** Who a request can be given to: everyone who works requests here, the person asking included, by name, and whether they approve refills. */
-export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean() })) });
+export const TaskAssignees = z.object({ people: z.array(z.object({ userId: z.string(), name: z.string(), you: z.boolean(), approvesRefills: z.boolean(), avatarUrl: AvatarUrl })) });
 /** Urgent or not, and the clinic's day it is due (null clears it). What is left out stays as it was. */
 /** A request a person at the clinic writes down: a voicemail they listened to, a walk-in's question, a call taken by hand. */
 export const NewTask = z.object({
@@ -323,6 +326,8 @@ export const NewTask = z.object({
   topic: z.string().trim().max(80).nullable().optional(),
   reason: z.string().trim().min(3, 'say what it is about').max(300),
   callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
+  /** Who it is about, as staff typed it, when no record is linked: the request's title. */
+  name: z.string().trim().max(80).nullable().optional(),
   urgent: z.boolean().optional(),
   dueOn: z.iso.date().nullable().optional(),
 });
@@ -349,11 +354,17 @@ export const Task = z.object({
   assigneeName: z.string().nullable(),
   /** Who closed a done request, by name; null while it is open, or for someone no longer on the team. */
   doneByName: z.string().nullable(),
+  /**
+   * Who at the clinic wrote it down by hand, with their role at this clinic and their picture;
+   * never their email. name and role are null for someone no longer on the team ("a former
+   * team member"). null for a request the assistant made from a call, or Attendra itself.
+   */
+  createdBy: z.object({ name: z.string().nullable(), role: Role.nullable(), avatarUrl: AvatarUrl }).nullable(),
   /** What the call's summary suggests staff do, for a request the assistant created. */
   followUp: z.string().nullable(),
   /** The clinic's own details on the request (Settings, Fields and lists). */
   custom: z.record(z.string(), z.string()),
-  notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), at: z.iso.datetime(), body: z.string() })),
+  notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
 export const TaskCount = z.object({ open: z.number() });
@@ -491,7 +502,8 @@ export const PatientList = z.object({
 });
 export const PatientInput = z.object({
   firstName: personName,
-  lastName: personName,
+  // required for a person, checked by the route; a pet's family name is its owner's last name, empty for an owner with one name
+  lastName: z.string().trim().max(80).default(''),
   // "not in the future" is checked against the clinic's own date by the route, not the server's
   dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber,
@@ -567,10 +579,14 @@ export const Member = z.object({
   addedAt: z.iso.datetime(), you: z.boolean(),
   /** May approve or decline refills. */
   approvesRefills: z.boolean(),
+  avatarUrl: AvatarUrl,
 });
 export const MemberList = z.object({ members: z.array(Member) });
 /** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
 export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
+/** Your own name, as it shows to your team. */
+export const ProfileName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(80, 'at most 80 characters') });
+export const AvatarSaved = z.object({ avatarUrl: z.string() });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
 /**
@@ -693,6 +709,7 @@ export const ApiError = z.object({ error: z.string(), message: z.string().option
 
 export type Health = z.infer<typeof Health>;
 export type Me = z.infer<typeof Me>;
+export type AvatarSaved = z.infer<typeof AvatarSaved>;
 export type HostingPlan = z.infer<typeof HostingPlan>;
 export type ClinicPlan = z.infer<typeof ClinicPlan>;
 export type AssistantChoices = z.infer<typeof AssistantChoices>;

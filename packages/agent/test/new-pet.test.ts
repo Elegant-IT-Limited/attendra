@@ -17,7 +17,7 @@ const say = (out: { results: { data: Record<string, unknown> }[] }) => out.resul
 describe('a caller who says the pet is new (2026-11)', () => {
   it('reads "new" and "on file after all" in English and Spanish, and a yes to "is it new?"', () => {
     for (const [said, verdict] of [
-      ["No, I told you she's not in your system, she's a new client", 'new'], ['I want to register my pet', 'new'], ['Orbit is new', 'new'],
+      ["No, I told you she's not in your system, she's a new client", 'new'], ['I want to register my pet', 'new'], ['Hazel is new', 'new'],
       ["He's not registered", 'new'], ['she has never been to your clinic', 'new'],
       ['Es nueva, nunca ha venido', 'new'], ['No está registrado', 'new'], ['Quiero registrar a mi perro', 'new'],
       ["She's not new, she came last year", 'on_file'], ['maybe she is already in your system', 'on_file'],
@@ -28,11 +28,11 @@ describe('a caller who says the pet is new (2026-11)', () => {
       ["I'll take the first appointment available", null], ['Quiero la primera cita disponible', null],
     ] as const) expect(newToClinic(said), said).toBe(verdict);
     const s = new CallState();
-    s.addTranscript('agent', 'I couldn\'t find Orbit. Is Orbit new to the clinic?', 0, 900);
+    s.addTranscript('agent', 'I couldn\'t find Hazel. Is Hazel new to the clinic?', 0, 900);
     s.addTranscript('caller', 'Yes.', 1000, 1500);
     expect(s.saidNew()).toBe('new');
     const es = new CallState();
-    es.addTranscript('agent', '¿Orbit es nueva en la clínica?', 0, 900);
+    es.addTranscript('agent', '¿Hazel es nueva en la clínica?', 0, 900);
     es.addTranscript('caller', 'Sí.', 1000, 1500);
     expect(es.saidNew()).toBe('new');
     es.addTranscript('agent', 'Muy bien.', 1600, 1900);
@@ -158,6 +158,24 @@ describe('"still checking" once per wait (2026-11)', () => {
       expect(out.flatMap((o) => (o.type === 'commentary' ? [o.content] : []))).toEqual(['Dr. Ruiz is free Tuesday at 9.']);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('asks for the name when the caller only points at a pet ("the other one", "la otra"), with no lookup and no try used (2026-11)', async () => {
+    for (const [said, pet] of [['The other one, not the dog.', 'the other one'], ['Para la otra, no el perro.', 'la otra'], ['My cat.', 'my cat']] as const) {
+      const c = await w.call('+17205550172', { clinic });
+      c.caller(said);
+      const before = await pets();
+      const looked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: pet, phone: null } }]);
+      expect(looked.errors, said).toEqual(['pet_name']);
+      const added = await c.delegate([{ tool: 'register_patient', args: { pet_name: pet, owner_name: 'Linh', species: 'cat', sex: 'female', birthday_or_age: 'two years', phone: null } }]);
+      expect(added.errors, said).toEqual(['pet_name']);
+      expect(c.state.verifyAttempts).toBe(0);
+      expect(c.state.notFound).toBe(false); // never "could not find the pet" for pointing at one
+      expect(await pets()).toBe(before);
+      // the name, once said, finds the pet
+      const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Mochi', phone: null } }]);
+      expect(found.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
     }
   });
 });

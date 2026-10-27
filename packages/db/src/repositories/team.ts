@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, gt, ne, sql } from 'drizzle-orm';
-import { authAccounts, authSessions, authTwoFactors, authUsers, authVerifications, memberships } from '../auth-schema';
+import { authAccounts, authSessions, authTwoFactors, authUsers, authVerifications, memberships, userAvatars } from '../auth-schema';
 import type { Database, Tx } from '../client';
 import { auditLogs, clinics, tasks } from '../schema';
 import type { StaffRole } from './front-desk';
@@ -17,8 +17,8 @@ export const TEMPORARY_PASSWORD_HOURS = 72;
 export async function listMembers(db: Database, orgId: string) {
   return db.select({
     userId: authUsers.id, name: authUsers.name, email: authUsers.email, role: memberships.role, twoFactorEnabled: authUsers.twoFactorEnabled,
-    mustChangePassword: authUsers.mustChangePassword, addedAt: memberships.createdAt, approvesRefills: memberships.approvesRefills,
-  }).from(memberships).innerJoin(authUsers, eq(authUsers.id, memberships.userId))
+    mustChangePassword: authUsers.mustChangePassword, addedAt: memberships.createdAt, approvesRefills: memberships.approvesRefills, avatarAt: userAvatars.updatedAt,
+  }).from(memberships).innerJoin(authUsers, eq(authUsers.id, memberships.userId)).leftJoin(userAvatars, eq(userAvatars.userId, memberships.userId))
     .where(eq(memberships.organizationId, orgId)).orderBy(authUsers.name);
 }
 
@@ -28,8 +28,8 @@ export async function listMembers(db: Database, orgId: string) {
  * refills. Owner connection, like listMembers; no email, nothing about their sign-in.
  */
 export async function requestAssignees(db: Database, clinicId: string) {
-  return db.select({ userId: authUsers.id, name: authUsers.name, approvesRefills: memberships.approvesRefills }).from(memberships)
-    .innerJoin(authUsers, eq(authUsers.id, memberships.userId))
+  return db.select({ userId: authUsers.id, name: authUsers.name, approvesRefills: memberships.approvesRefills, avatarAt: userAvatars.updatedAt }).from(memberships)
+    .innerJoin(authUsers, eq(authUsers.id, memberships.userId)).leftJoin(userAvatars, eq(userAvatars.userId, memberships.userId))
     .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
     .where(and(eq(clinics.id, clinicId), ne(memberships.role, 'viewer'))).orderBy(authUsers.name);
 }

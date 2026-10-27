@@ -83,6 +83,14 @@ describe('the booking rules, shared with the assistant', () => {
     expect(slots[0]!.start).toEqual(at('2026-09-29', '08:20'));
     for (const s of slots) expect(slotProblem(DEMO_CLINIC, [], { providerId: s.providerId, visitTypeId: s.visitTypeId, start: s.start }, morning)).toBeNull();
   });
+
+  it('never offers a time that starts in the next few minutes: it would have begun by the time it is booked', () => {
+    const first = (now: Date) => openSlots(DEMO_CLINIC, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now })[0]!.start;
+    expect(first(at('2026-09-29', '08:15'))).toEqual(at('2026-09-29', '08:20'));
+    // at 8:19:59.86, the 8:20 is no longer offered (a booking sent 0.3 s later was refused as past)
+    expect(first(new Date(at('2026-09-29', '08:20').getTime() - 140))).toEqual(at('2026-09-29', '08:40'));
+    expect(first(at('2026-09-29', '08:16'))).toEqual(at('2026-09-29', '08:40'));
+  });
 });
 
 describe('staff bookings', () => {

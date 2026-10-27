@@ -33,13 +33,15 @@ export function normalizeName(name: string): string {
 /** First and last name must both match; middle names and initials are ignored. */
 /**
  * The owner of a pet, as a caller gives it: a first name is enough, because the pet's
- * name and the phone on file are checked too. A full name given must match in full.
+ * name and the phone on file are checked too. A full name given must match in full,
+ * unless the owner is on file with one name (many people go by one, or the desk knew
+ * only that): then the first name is what there is to match.
  */
 export function ownerMatches(spoken: string, onFile: string): boolean {
   const a = normalizeName(spoken).split(' ').filter(Boolean);
   const b = normalizeName(onFile).split(' ').filter(Boolean);
   if (!a.length || !b.length) return false;
-  return a.length >= 2 ? a[0] === b[0] && a.at(-1) === b.at(-1) : a[0] === b[0];
+  return a.length >= 2 && b.length >= 2 ? a[0] === b[0] && a.at(-1) === b.at(-1) : a[0] === b[0];
 }
 
 export function namesMatch(spoken: string, onFile: string): boolean {

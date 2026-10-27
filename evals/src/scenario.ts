@@ -18,7 +18,9 @@ const Turn = z.union([
   // Only the demo recording and the forbid_spoken check read it; the agent logic runs
   // on the tool results, exactly as in a live call. {offered.N}, {readback} and
   // {booked} are filled in from the call as it happened.
-  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional() }),
+  // dropped: the voice let this turn go, with no reply and no hand-off (a test call, 2026-10-26); the call's watchdog
+  // gives the voice the caller's words back after 5 s, and the hand-off follows. Never answered with "say that again".
+  z.object({ caller: z.string(), reply: z.string().optional(), delegate: z.array(Step).optional(), dropped: z.boolean().optional() }),
   z.object({ assistant: z.string() }),
 ]);
 
@@ -34,6 +36,8 @@ export const Scenario = z.object({
   channel: z.enum(['phone', 'web']).default('phone'),
   // the caller speaks over the greeting ("Hello?"): the call has only its first words, and must never start it again
   greeting_interrupted: z.boolean().default(false),
+  // the voice says nothing when the call connects: the real call runner must have it greet within 2 s, once
+  silent_start: z.boolean().default(false),
   // the clinic's local time of the call on its day (Monday 28 September 2026); 20:00, after hours, unless set
   local_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   // settings the clinic changed, as Settings saves them (top-level keys of its config, whole values): the call
@@ -67,7 +71,10 @@ export const Scenario = z.object({
     not_offered_on: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).default([]), // the clinic's local dates no offered time may fall on
     offered_from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), // every offered time is at or after this local time of day
     booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
-    hung_up: z.boolean().optional(), // the assistant ended the call itself (an abusive caller after the warning, or a finished call)
+    hung_up: z.boolean().optional(),
+    // the first names on file for this number when the call ends, in any order, read the way the pet page reads a
+    // household (everyone on the same phone): a pet added on the call joins its owner's number, and nobody else's
+    household: z.object({ phone: z.string(), names: z.array(z.string()).min(1) }).optional(), // the assistant ended the call itself (an abusive caller after the warning, or a finished call)
     // live only: a line the planner wrote asks what the caller already answered, or asks two things at once
     no_repeated_questions: z.boolean().default(true),
     one_question_per_reply: z.boolean().default(true),

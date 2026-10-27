@@ -1,0 +1,39 @@
+id: vet-es-one-name-said-new-books
+title: "In Spanish: an owner who goes by one name says at once that the pet is new; the pet is added with that one name and booked, and a last name is never asked for"
+clinic: riverbend
+local_time: "11:00"
+tags: [new-pet]
+caller_number: "+17205550176"
+facts: "You are Sol and you speak only Spanish. You are calling from your own mobile, the number you are calling from. You go by one name only, Sol, and have no last name to give: if you are asked for one (apellido), say you only go by Sol (solo Sol), a little annoyed. Bolt is your male dog (perro), about two years old (como dos años), and he has never been to this clinic. You already said he is new and a dog. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero traer a mi perro por primera vez. Soy Sol, solo Sol, y se llama Bolt. Es nuevo, nunca ha venido a su clínica.
+    reply: "Bienvenido, Sol. Puedo registrar a Bolt. ¿Qué edad tiene?"
+    delegate:
+      - verify_caller: { owner_name: Sol, pet_name: Bolt }
+  - caller: Tiene como dos años.
+    reply: "Gracias. Bolt ya está registrado. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Bolt, owner_name: Sol, species: perro, sex: male, birthday_or_age: como dos años, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí, por favor.
+    reply: "Listo. Bolt tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+forbid_spoken:
+  - apellido
+  - nombre completo
+  - no encontré
+  - es nuevo
+  - qué tipo de animal
+  - hembra o macho

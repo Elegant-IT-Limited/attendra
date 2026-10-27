@@ -488,6 +488,9 @@ importers:
       '@attendra/scheduling':
         specifier: workspace:*
         version: link:../packages/scheduling
+      '@attendra/voice-engine':
+        specifier: workspace:*
+        version: link:../packages/voice-engine
       '@electric-sql/pglite':
         specifier: 0.5.10
         version: 0.5.10

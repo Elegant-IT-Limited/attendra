@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment, Schedule } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, industryPack, localDateOf, weekdayOf, windowsOn } from '@attendra/core';
+import { addDays, type ClinicConfig, industryPack, localDateOf, shownProviders, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -97,7 +97,9 @@ function ScheduleScreen() {
     return <><PageHeader title="Schedule" /><Card><Empty title="The schedule is for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
   }
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
-  const providers = clinic.providers.filter((p) => !providerId || p.id === providerId);
+  // the stand-in a new clinic starts with is shown only while it is the only one, or has visits on screen
+  const listed = shownProviders(clinic.providers, (schedule.data?.appointments ?? []).map((a) => a.providerId));
+  const providers = listed.filter((p) => !providerId || p.id === providerId);
   const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i))
     : view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
   const step = view === 'week' ? 7 : 1;
@@ -133,7 +135,7 @@ function ScheduleScreen() {
           <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
           <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
             <option value="">{industryPack(clinic.industry).identity === 'pet' ? 'All veterinarians' : 'All providers'}</option>
-            {clinic.providers.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${p.name}, ${p.specialty}` : p.name}</option>)}
+            {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${p.name}, ${p.specialty}` : p.name}</option>)}
           </Select>
         </div>
         <div className="space-y-1">

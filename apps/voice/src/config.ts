@@ -4,6 +4,7 @@ import { z } from 'zod';
 // an empty line in .env (TWILIO_AUTH_TOKEN=) means not set
 const blank = (v: unknown) => (v === '' ? undefined : v);
 const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blank, schema.optional());
+const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high'] as const;
 
 /** Validated once at boot, so a missing secret stops the process instead of the first call. */
 const Env = z.object({
@@ -18,6 +19,10 @@ const Env = z.object({
   ATTENDRA_REALTIME_MODEL: z.preprocess(blank, z.string().default('gpt-realtime-2.1')),
   ATTENDRA_VOICE_ENGINE: z.preprocess(blank, z.enum(['gpt-live', 'gpt-realtime']).default('gpt-live')),
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
+  // how hard the backend model thinks, for every request and for simple turns only; unset, the model's own defaults
+  ATTENDRA_BACKEND_EFFORT: optional(z.enum(EFFORTS)),
+  ATTENDRA_BACKEND_SIMPLE_MODEL: optional(z.string().min(1)),
+  ATTENDRA_BACKEND_SIMPLE_EFFORT: optional(z.enum(EFFORTS)),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),

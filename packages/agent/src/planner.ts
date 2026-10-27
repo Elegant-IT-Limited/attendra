@@ -2,6 +2,7 @@
 import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
+import type { ReasoningEffort } from 'openai/resources/shared';
 import { z } from 'zod';
 import type { CallState } from './call-state';
 import type { ToolResult } from './tools';
@@ -18,7 +19,29 @@ export interface Planner {
 
 /** `callerNumber` is the number the call came from, when there is one. */
 export interface PlannerInput { clinic: ClinicConfig; state: CallState; nowLine: string; callerNumber?: string | null; history?: string | null }
-export interface PlannerOutput { say: string | null; quiet?: string }
+export interface PlannerOutput { say: string | null; quiet?: string; timing?: PlannerTiming }
+/**
+ * How long the model itself took for one request (all its rounds, tools apart), with which model and effort, and whether
+ * the turn was a simple one (counted whether or not a faster setting is configured, so runs can be compared).
+ */
+export interface PlannerTiming { model: string; effort: ReasoningEffort | null; simple: boolean; rounds: number; modelMs: number }
+
+/**
+ * How hard the model thinks: `effort` for every request (unset, the model's own default), and an optional faster setting
+ * (another model, or less reasoning) for simple turns only (see simpleTurn). Both unset is today's behaviour.
+ */
+export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort } }
+
+/**
+ * A turn that needs little thought: the caller's last words are short (a name, a number, one question), nothing waits
+ * for their yes, no text or reminder question is open, and no emergency holds the call. A yes to a read-back is never one:
+ * it books.
+ */
+export function simpleTurn(state: CallState): boolean {
+  if (state.pending || state.textOffer || (state.reminderOffer && !state.remindersAsked) || state.emergencyLocked) return false;
+  const said = state.lastTurn('caller').trim();
+  return !!said && said.split(/\s+/).length <= 12 && (said.match(/[?¿]/g)?.length ?? 0) <= 1;
+}
 
 const DESCRIPTIONS: Record<ToolName, string> = {
   verify_caller: 'Verify the patient by full name, date of birth and the phone number on their file (null: the number they are calling from) before booking, changing or reading anything of theirs. For a child, use the child\'s name and date of birth and the family phone. Call it again to switch to another family member.',
@@ -106,6 +129,7 @@ export class ResponsesPlanner implements Planner {
   constructor(
     private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 8, // two pets in one call take six or seven tool calls
     private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
+    private readonly speed: PlannerSpeed = {},
   ) {}
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
@@ -131,19 +155,30 @@ export class ResponsesPlanner implements Planner {
     const pack = PACKS[state.language];
     const phone = input.callerNumber
       ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
-      : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new.`;
+      : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state, input.clinic)}${earlier}${noTexts}${phone}` }];
     let corrected = false;
     const doneBefore = state.done.length;
     const requestBefore = state.requestMade;
+    // a simple turn may go to the faster setting, when one is configured; the model's own time is measured either way
+    const simple = simpleTurn(state);
+    const faster = simple ? this.speed.simple : undefined;
+    const model = faster?.model ?? this.model;
+    const effort = faster?.effort ?? this.speed.effort ?? null;
+    const timing: PlannerTiming = { model, effort, simple, rounds: 0, modelMs: 0 };
+    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs) } });
 
     for (let round = 0; round < this.maxRounds; round++) {
+      const asked = performance.now();
       const res = await this.openai.responses.create({
-        model: this.model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
+        model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
         max_output_tokens: this.limits.maxOutputTokens,
+        ...(effort ? { reasoning: { effort } } : {}),
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
       }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
+      timing.rounds++;
+      timing.modelMs += performance.now() - asked;
       const calls = res.output.filter((o) => o.type === 'function_call');
       const say = res.output_text?.trim() || null;
       // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
@@ -152,7 +187,7 @@ export class ResponsesPlanner implements Planner {
         conversation.push({ role: 'assistant', content: say }, { role: 'user', content: EMPTY_PROMISE_NOTE });
         continue;
       }
-      if (!calls.length) return { say };
+      if (!calls.length) return done({ say });
       for (const item of res.output) {
         if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
       }
@@ -168,9 +203,9 @@ export class ResponsesPlanner implements Planner {
     // tool the model would use, so its rules and the request for staff apply
     if (input.callerNumber) {
       const taken = await execute('create_callback', { reason: 'The assistant could not finish the caller\'s request', callback_number: input.callerNumber });
-      if (taken.ok) return { say: 'I wasn\'t able to finish that, so I\'ve asked someone from the clinic to call you back at the number you\'re calling from.' };
+      if (taken.ok) return done({ say: 'I wasn\'t able to finish that, so I\'ve asked someone from the clinic to call you back at the number you\'re calling from.' });
     }
-    return { say: 'I wasn\'t able to finish that. Would you like someone from the clinic to call you back? If so, tell me the best number to reach you.' };
+    return done({ say: 'I wasn\'t able to finish that. Would you like someone from the clinic to call you back? If so, tell me the best number to reach you.' });
   }
 }
 
@@ -178,7 +213,7 @@ export class ResponsesPlanner implements Planner {
 const PROMISE = /\b(i'?ll|i will|let me|i'?m going to) (take care of (it|that|this|everything)|get (it|that|this|you) (booked|done|sorted|set up|in)|book (it|that|this|you|him|her|them)|handle (it|that|this)|sort (it|that|this) out)\b|\b(yo )?me (encargo|ocupo)\b|\b(se )?lo (reservo|agendo|programo)\b|\bya (lo|la) (reservo|agendo)\b/;
 const EMPTY_PROMISE_NOTE = 'You said you would take care of it, but nothing is waiting for the caller\'s yes and nothing was done. Do the next step now with the tools (find the pet or patient, add them, or propose the time they chose so it is read back), or say plainly what you still need from the caller, as one question. Never promise a step that has not happened.';
 
-/** Said with a condition ("as soon as I've found Orbit", "en cuanto la encuentre"), a promise says what it waits for. */
+/** Said with a condition ("as soon as I've found Hazel", "en cuanto la encuentre"), a promise says what it waits for. */
 const WAITS_FOR = /\b(as soon as|once|after|when|en cuanto|cuando|despues de|luego de|apenas)\b/;
 
 /** A reply that promises to do something, with nothing staged for a yes, nothing done on this request, and nothing it waits for. */

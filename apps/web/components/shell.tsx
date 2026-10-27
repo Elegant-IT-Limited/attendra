@@ -11,6 +11,7 @@ import { BrandMark } from '@/components/brand-mark';
 import { CallBar } from '@/components/calls/call-bar';
 import { EmergencyAlerts } from '@/components/calls/live-now';
 import { useTestCall } from '@/components/calls/test-call';
+import { ClinicSwitcher } from '@/components/clinic-switcher';
 import { CommandPalette } from '@/components/command-palette';
 import { InvitationsBanner } from '@/components/invitations-banner';
 import { PlanBanner, usePlan } from '@/components/plan';
@@ -18,10 +19,12 @@ import { Avatar, Kbd } from '@/components/ui/bits';
 import { Panel } from '@/components/ui/dialog';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
+import { useToast } from '@/components/ui/toast';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { useClinicChanges } from '@/lib/changes';
 import { setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
+import { rememberClinic } from '@/lib/last-clinic';
 import { markSignedOut } from '@/lib/next';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
@@ -50,7 +53,10 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   if (config.data) setClinicCountry(config.data.phoneNumbers);
   // every screen updates as the clinic changes, without a refresh
   useClinicChanges(clinicId, !!clinic);
+  // home opens this clinic next time, from an account page or after signing in again
+  useEffect(() => { if (clinic) rememberClinic(clinic.id); }, [clinic]);
   const plan = usePlan(clinicId);
+  const toast = useToast();
   const [palette, setPalette] = useState(false);
   const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
@@ -96,7 +102,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);
   const nav = NAV.map((g) => ({ ...g, items: g.items.map((n) => (n.term ? { ...n, label: terms.title(n.term) } : n)) }));
-  const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls));
+  // Test call is in the menu wherever its page has a call to offer: a browser call, or a simulated one (a demo with no key)
+  const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls || me?.simulatedCalls));
   const hrefOf = (n: NavItem) => (n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`);
   useShortcuts({
     palette: () => setPalette(true),
@@ -116,15 +123,20 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const accountLinks: NavItem[] = clinic.accountLinks.map((l) => ({ href: l.href, label: l.label, icon: ExternalLink, permission: '' }));
   // the clinic's own links, from Settings, for everyone on the team
   const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
-  const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role };
+  const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role, avatarUrl: me?.user.avatarUrl ?? null };
   // a hosted plan's links, for owners only: another location of this business, or a separate business on this login
   const grow: GrowLink[] = clinic.role !== 'owner' || !plan.data?.plan ? [] : [
     { href: plan.data.plan.addLocationUrl, label: 'Add a location', hint: 'Same business, one bill' },
     { href: plan.data.plan.newClinicUrl, label: 'Create a new clinic', hint: 'A separate business with its own plan' },
   ].filter((l): l is GrowLink => !!l.href);
-  // other locations: the same page there, without a record id that belongs to this one
-  const others = (me?.clinics ?? []).filter((c) => c.id !== clinicId);
-  const toClinic = (id: string) => router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
+  // the person's clinics, each with their role there; another one opens the same page there, without a record id that belongs to this one
+  const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: ROLE_LABEL[c.role] ?? c.role }));
+  const here = clinics.find((c) => c.id === clinicId) ?? { id: clinic.id, name: clinic.name, role: user.role };
+  const toClinic = (id: string) => {
+    router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
+    const to = clinics.find((c) => c.id === id);
+    if (to) toast({ tone: 'success', message: `Now in ${to.name}.` });
+  };
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[64px_1fr] xl:grid-cols-[240px_1fr]">
@@ -136,9 +148,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
           <BrandMark className="size-7" />
           <span className="font-semibold tracking-tight max-xl:sr-only">Attendra</span>
         </div>
-        <div className="px-5 pb-3 max-xl:hidden">
-          {others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} grow={grow} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}
-          <p className="text-xs text-text-muted">{clinic.timezone.replaceAll('_', ' ')}</p>
+        <div className="px-3.5 pb-2 max-xl:hidden">
+          <ClinicSwitcher current={here} clinics={clinics} onPick={toClinic} grow={grow} />
         </div>
         <div className="px-3 pb-3 max-xl:px-2">
           <button type="button" onClick={() => setPalette(true)} aria-label="Search and jump"
@@ -176,7 +187,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       {/* phone: a top bar */}
       <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-surface px-4 py-2 md:hidden">
         <BrandMark className="size-7 shrink-0" />
-        <div className="min-w-0 flex-1">{others.length ? <ClinicSwitcher current={clinic} others={others} onPick={toClinic} grow={grow} /> : <p className="truncate text-base font-medium">{clinic.name}</p>}</div>
+        <div className="min-w-0 flex-1"><ClinicSwitcher sheet current={here} clinics={clinics} onPick={toClinic} grow={grow} /></div>
         <button type="button" aria-label="Search and jump" onClick={() => setPalette(true)} className="focus-ring flex size-11 items-center justify-center rounded-md text-text-muted hover:bg-surface-sunken"><Search className="size-5" /></button>
         <UserMenu compact user={user} grow={grow} onSignOut={() => void signOut()} onShortcuts={() => setHelp(true)} />
       </header>
@@ -217,7 +228,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       </Panel>
 
       <EmergencyAlerts clinicId={clinicId} />
-      <CommandPalette clinicId={clinicId} open={palette} onOpenChange={setPalette} pages={pages}
+      <CommandPalette clinicId={clinicId} open={palette} onOpenChange={setPalette} pages={pages} clinics={clinics.filter((c) => c.id !== clinicId)} onClinic={toClinic}
         canSearchPatients={can('patients:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
         <ul className="space-y-2">
@@ -259,14 +270,14 @@ const THEMES: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
 /** An owner's way to grow, on the hosting layer's pages: a full page load, like the other account links. */
 interface GrowLink { href: string; label: string; hint: string }
 
-function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { name: string; role: string }; grow: GrowLink[]; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
+function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { name: string; role: string; avatarUrl: string | null }; grow: GrowLink[]; onSignOut: () => void; onShortcuts: () => void; compact?: boolean }) {
   const theme = useTheme();
   const [alerts, setAlerts] = useEmergencyAlerts();
   return (
     <M.Root>
       <M.Trigger aria-label={`${user.name}, ${user.role}: account and theme`}
         className={cn('focus-ring flex w-full items-center gap-2.5 rounded-md p-1.5 text-left hover:bg-surface-sunken', compact ? 'size-11 justify-center p-0' : 'max-xl:justify-center')}>
-        <Avatar name={user.name || '?'} />
+        <Avatar name={user.name || '?'} src={user.avatarUrl} />
         {!compact && <span className="min-w-0 flex-1 max-xl:hidden"><span className="block truncate text-base font-medium">{user.name}</span><span className="block text-xs text-text-muted">{user.role}</span></span>}
       </M.Trigger>
       <M.Portal>
@@ -294,7 +305,7 @@ function UserMenu({ user, grow, onSignOut, onShortcuts, compact }: { user: { nam
           {grow.length > 0 && <M.Separator className="my-1 h-px bg-border" />}
           <M.Item onSelect={onShortcuts} className="flex cursor-pointer items-center rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">Keyboard shortcuts<span className="ml-auto"><Kbd>?</Kbd></span></M.Item>
           <M.Item asChild className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11">
-            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your account: password and two-step</a>
+            <a href="/profile"><UserRound className="size-4 text-text-muted" aria-hidden />Your profile</a>
           </M.Item>
           <M.Item onSelect={onSignOut} className="flex cursor-pointer items-center gap-2 rounded-sm px-2.5 py-1.5 text-base outline-none data-[highlighted]:bg-surface-sunken max-md:min-h-11"><LogOut className="size-4 text-text-muted" aria-hidden />Sign out</M.Item>
         </M.Content>
@@ -314,28 +325,5 @@ export function PageHeader({ title, description, actions }: { title: string; des
       {/* every page puts its buttons in the same place: one row under the title, from the left; on a phone they wrap */}
       {actions && <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="page-actions">{actions}</div>}
     </div>
-  );
-}
-
-/**
- * The clinic this screen is for, and the others the person works at: picking one opens the same page there.
- * An owner on a hosted plan also finds adding a location and opening a new clinic at the end.
- */
-function ClinicSwitcher({ current, others, onPick, grow }: { current: { id: string; name: string }; others: { id: string; name: string }[]; onPick: (id: string) => void; grow: GrowLink[] }) {
-  return (
-    <select aria-label="Location" value={current.id} onChange={(e) => {
-      // an owner's link is looked up by its place in the list: the address comes from the plan, never from the page
-      const link = /^grow:\d$/.test(e.target.value) ? grow[Number(e.target.value.slice(5))] : undefined;
-      if (link) window.location.assign(link.href);
-      else onPick(e.target.value);
-    }}
-      className="focus-ring -ml-1 w-full truncate rounded-md border-none bg-transparent py-0.5 pl-1 pr-6 text-base font-medium hover:bg-surface-sunken">
-      {[current, ...others].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-      {grow.length > 0 && (
-        <optgroup label="For owners">
-          {grow.map((l, i) => <option key={l.href} value={`grow:${i}`}>+ {l.label} ({l.hint.toLowerCase()})</option>)}
-        </optgroup>
-      )}
-    </select>
   );
 }

@@ -1,0 +1,39 @@
+id: vet-details-first-new-pet
+title: "A caller who describes the pet first (age, sex) is asked \"Is Clover new to us?\" before any lookup; yes adds the pet and books"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet]
+caller_number: "+17205550186"
+facts: "You are Nora Quinn, calling from your own mobile, the number you are calling from. Clover is your female dog, one year old, and she has never been to this clinic, but you do not say so until you are asked. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  # the plan looks her up straight away, on purpose: the backend asks first whether she is new
+  - caller: Hi, I'd like to book a check-up for my dog Clover. She's a one-year-old female, and I'm Nora.
+    reply: "Is Clover new to us?"
+    delegate:
+      - verify_caller: { owner_name: Nora, pet_name: Clover }
+  - assistant: Is Clover new to us?
+  - caller: Yes, she's new to you.
+    reply: "Welcome, Clover. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Clover, owner_name: Nora, species: dog, sex: female, birthday_or_age: one year old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Clover is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [ask_if_new]
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Is Clover new to us?"]
+forbid_spoken:
+  - couldn't find
+  - details did not match
+  - what kind of animal
+  - female or male

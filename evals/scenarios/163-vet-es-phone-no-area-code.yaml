@@ -1,0 +1,39 @@
+id: vet-es-phone-no-area-code
+title: "In Spanish: a number without its area code is read back once in Spanish, kept as given, and never asked for again"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet, phone]
+caller_number: null
+channel: web
+facts: "This is a test call from the browser, so there is no caller ID. You are Ines Moreau and you speak only Spanish. Juniper is your female cat (gata), two years old, new to the clinic. Your number is 555 0193: give it just like that, with no area code, once when asked. If you are asked for the area code or the number again, say that is the number you have, a little annoyed. Any vet and any time are fine. Say sí to the first time offered and to the read-back."
+turns:
+  - caller: Hola, quiero traer a mi gata Juniper. Es nueva, tiene dos años y es hembra. Me llamo Ines.
+    reply: "Bienvenida, Ines. ¿Cuál es el mejor número para comunicarnos con usted?"
+    delegate:
+      - register_patient: { pet_name: Juniper, owner_name: Ines, species: cat, sex: female, birthday_or_age: dos años, phone: null }
+  - caller: Es el 555 0193.
+    reply: "Tengo 555 0193. Lo anoto tal como me lo dio. Ya registré a Juniper. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Juniper, owner_name: Ines, species: cat, sex: female, birthday_or_age: dos años, phone: "555 0193" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo. Juniper tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required]
+  bookings_created: 1
+  sms_sent: 0
+  language: es
+  returned: ["Lo anoto tal como me lo dio"]
+forbid_spoken:
+  - código de área
+  - codigo de area
+  - número completo
+  - area code

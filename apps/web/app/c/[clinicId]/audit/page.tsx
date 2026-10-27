@@ -55,6 +55,7 @@ const ACTIONS: Record<string, string> = {
   'member.invite.declined': 'Declined an invitation to the team',
   'member.invite.expired': 'An invitation to the team lapsed after 7 days',
   'member.password.reset': 'Issued a new temporary password',
+  'user.name.changed': 'Changed their own name',
   'patient.search.result': 'Saw a patient in search results',
   'call.live.watched': 'Watched a live call',
   'calls.live.listed': 'Looked at live calls with names',

@@ -1,0 +1,40 @@
+id: vet-two-pets-pet-not-on-file
+title: An owner with two pets on one number names a third pet that is not on file; the assistant asks once whether it is new, adds it under the same number and books it
+clinic: riverbend
+local_time: "10:00"
+tags: [two-pets, new-pet]
+caller_number: "+17205550172"
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "You are Linh Nguyen, calling from your own mobile, the number on file. You have two pets at this clinic already, and this call is for a third one, Nala, a female dog about one year old that you just adopted: she has never been to the clinic. If asked whether she is new, say yes. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I need to book an appointment.
+    reply: "Am I speaking with Linh?"
+  - caller: Yes. It's for Nala.
+    reply: "Thanks, Linh. I couldn't find Nala with us. Is Nala new to us?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Nala }
+  - caller: Yes, we just adopted her. She's a one year old female dog.
+    reply: "Welcome, Nala. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Nala, owner_name: Linh, species: dog, sex: female, birthday_or_age: one year old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Nala is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [not_verified]
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Am I speaking with Linh"]
+  household: { phone: "+17205550172", names: [Biscuit, Mochi, Nala] }
+forbid_spoken:
+  - what kind of animal
+  - female or male
+  - how old is she

@@ -23,7 +23,7 @@ export function PatientPicker({ clinicId, onPick, canAdd }: { clinicId: string; 
       <div className="space-y-3">
         <p className="text-sm font-medium">{pets ? 'New pet' : 'New patient'}</p>
         <PatientForm clinicId={clinicId} submitLabel="Add and continue" onCancel={() => setAdding(false)}
-          onSaved={(id, input) => pick({ id, name: `${input.firstName} ${input.lastName}` })} />
+          onSaved={(id, input) => pick({ id, name: `${input.firstName} ${input.lastName}`.trim() })} />
       </div>
     );
   }

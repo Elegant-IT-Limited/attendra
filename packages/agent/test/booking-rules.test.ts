@@ -109,3 +109,29 @@ describe('why a day or a provider is not possible as asked', () => {
     expect(whyNot(clinic, { date: '2026-10-02', noticeHours: 48, now, today })).toBeNull();
   });
 });
+
+describe('the patient\'s own visits', () => {
+  it('are never offered again: a time overlapping one, with any doctor, is left out before the caller says yes', async () => {
+    const earliest = ClinicConfig.parse({ ...DEMO_CLINIC, booking: { noPreference: 'earliest' } });
+    const look = async () => {
+      const c = await w.call('+13035550147', { clinic: earliest });
+      c.caller('Maria Delgado, March 4th 1985. I need a sick visit, any doctor, Thursday after 3.');
+      const out = await c.delegate([
+        { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4th 1985' } },
+        { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '15:00' } },
+      ]);
+      expect(out.errors).toEqual([null, null]);
+      return data(out.results[1]!).slots;
+    };
+    expect((await look()).some((s) => /October 1 at 3:00 PM/.test(s.when))).toBe(true);
+    // Maria already has a visit 3:00 to 4:30 PM that Thursday, with one doctor
+    const tz = DEMO_CLINIC.timezone;
+    await withClinic(w.t.db, DEMO_CLINIC.id, (tx) => tx.insert(schema.appointments).values({
+      clinicId: DEMO_CLINIC.id, patientId: w.patientIds.maria!, providerId: 'prov_lindqvist', visitTypeId: 'vt_sick',
+      startsAt: zonedInstant('2026-10-01', '15:00', tz), endsAt: zonedInstant('2026-10-01', '16:30', tz), idempotencyKey: 'own-visit-overlap', createdByUserId: 'u_ana',
+    }));
+    const slots = await look();
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.some((s) => /October 1 at (3:\d\d|4:[0-2]\d) PM/.test(s.when))).toBe(false);
+  });
+});

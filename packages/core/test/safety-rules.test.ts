@@ -143,4 +143,11 @@ describe('a pet owner on the phone', () => {
     expect(ownerMatches('Maria', 'Linh Nguyen')).toBe(false);
     expect(ownerMatches('', 'Linh Nguyen')).toBe(false);
   });
+
+  it('is matched on the one name an owner is on file with, whatever else they say', async () => {
+    const { ownerMatches } = await import('../src');
+    expect(ownerMatches('Sol', 'Sol')).toBe(true);
+    expect(ownerMatches('Sol Rivera', 'Sol')).toBe(true);
+    expect(ownerMatches('Ravi', 'Sol')).toBe(false);
+  });
 });

@@ -1,0 +1,37 @@
+id: vet-phone-no-area-code
+title: "A browser test call: a number without its area code is read back once, kept as given and noted for the team; it is never asked for again"
+clinic: riverbend
+local_time: "10:00"
+tags: [new-pet, phone]
+caller_number: null
+channel: web
+facts: "This is a test call from the browser, so there is no caller ID. You are Ines Moreau. Juniper is your female cat, two years old, new to the clinic. Your number is 555 0193: give it just like that, with no area code, once when asked. If you are asked for the area code or the number again, say that is the number you have, a little annoyed. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  - caller: Hi, I'd like to bring in my cat Juniper. She's new to you, a two year old female. I'm Ines.
+    reply: "Welcome, Ines. What's the best number to reach you?"
+    delegate:
+      - register_patient: { pet_name: Juniper, owner_name: Ines, species: cat, sex: female, birthday_or_age: two years old, phone: null }
+  - caller: It's 555 0193.
+    reply: "I have 555 0193. I'll keep it just as you gave it. Juniper is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Juniper, owner_name: Ines, species: cat, sex: female, birthday_or_age: two years old, phone: "555 0193" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Juniper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required]
+  bookings_created: 1
+  sms_sent: 0
+  returned: ["I'll keep it just as you gave it"]
+forbid_spoken:
+  - area code
+  - full number
+  - number on juniper's file

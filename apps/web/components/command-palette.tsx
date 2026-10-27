@@ -7,6 +7,7 @@ import { CalendarPlus, Keyboard, Mic, Monitor, Moon, Search, Sun, User } from 'l
 import { Dialog as D } from 'radix-ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { ClinicTile } from '@/components/clinic-switcher';
 import { Kbd } from '@/components/ui/bits';
 import { api } from '@/lib/api';
 import { usePets } from '@/lib/terms';
@@ -18,12 +19,14 @@ const item = 'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-b
 const group = '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-text-muted';
 
 /**
- * Cmd+K or Ctrl+K: jump anywhere, find a patient, start a booking or a test call,
+ * Cmd+K or Ctrl+K: jump anywhere or to another clinic, find a patient, start a booking or a test call,
  * switch the theme. Patient search is the same POST the Patients page makes, so it
  * is audited the same way and what is typed stays out of the address bar.
  */
-export function CommandPalette({ clinicId, open, onOpenChange, pages, canSearchPatients, canBook, canTestCall, onShortcuts }: {
+export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = [], onClinic, canSearchPatients, canBook, canTestCall, onShortcuts }: {
   clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; pages: NavItem[];
+  /** The person's other clinics: one opens the same page there. */
+  clinics?: { id: string; name: string; role: string }[]; onClinic?: (id: string) => void;
   canSearchPatients: boolean; canBook: boolean; canTestCall: boolean; onShortcuts: () => void;
 }) {
   const pets = usePets(clinicId);
@@ -86,6 +89,15 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, canSearchP
                   {pages.filter((p) => matches(p.label)).map((p) => (
                     <Command.Item key={p.href || 'today'} value={`page-${p.href}`} onSelect={() => go(p.href ? `/c/${clinicId}/${p.href}` : `/c/${clinicId}`)} className={item}>
                       <p.icon aria-hidden /><span className="flex-1">{p.label}</span>{p.shortcut && <span className="flex gap-1"><Kbd>G</Kbd><Kbd>{p.shortcut.toUpperCase()}</Kbd></span>}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+              {onClinic && clinics.some((c) => matches(c.name)) && (
+                <Command.Group heading="Clinics" className={group}>
+                  {clinics.filter((c) => matches(c.name)).map((c) => (
+                    <Command.Item key={c.id} value={`clinic-${c.id}`} onSelect={() => { onOpenChange(false); onClinic(c.id); }} className={item}>
+                      <ClinicTile clinic={c} className="size-6" /><span className="flex-1">{c.name}</span><span className="text-sm text-text-muted">{c.role}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

@@ -38,22 +38,26 @@ test('a card is dragged anywhere in its list, by the card itself, and the arrow 
   // nothing was saved: leaving the page drops the change
 });
 
-test('a dropdown that takes typing keeps the exact choice typed when Enter is pressed', async ({ browser }) => {
+test('a dropdown that takes typing picks the exact choice typed when Enter is pressed, and offers to add one not on the list', async ({ browser }) => {
   const manager = await openAs(browser, 'manager');
   await manager.getByRole('link', { name: 'Doctors' }).click();
   await manager.getByRole('button', { name: 'Add doctor' }).click();
   const panel = manager.getByRole('dialog', { name: 'Add doctor' });
-  const specialty = panel.getByLabel('Specialty');
+  const specialty = panel.getByRole('combobox', { name: 'Specialty' });
   // "Pediatrics" is one of the list's choices, not the first: Enter keeps it
   await specialty.fill('Pediatrics');
   await specialty.press('Enter');
   await expect(specialty).toHaveValue('Pediatrics');
-  // a specialty that is not in the list yet: Enter keeps it and leaves the form open, half filled in as it is
-  // (with a name in, so the form could have been sent)
+  // a specialty that is not on the list yet is never kept as typed: Enter offers to add it to the list, with what
+  // was typed, and leaves the form open as it is (with a name in, so the form could have been sent)
   await panel.getByLabel('Name', { exact: true }).fill('Dr. Enter Test');
   await specialty.fill('Behavioural medicine');
   await specialty.press('Enter');
-  await expect(specialty).toHaveValue('Behavioural medicine');
+  await expect(panel.getByLabel('New specialty')).toHaveValue('Behavioural medicine');
+  await expect(specialty).toHaveValue('Pediatrics');
   await expect(panel).toBeVisible();
+  // Escape leaves the adding, not the form
+  await panel.getByLabel('New specialty').press('Escape');
+  await expect(panel.getByLabel('New specialty')).toHaveCount(0);
   await panel.getByRole('button', { name: 'Cancel' }).click();
 });
