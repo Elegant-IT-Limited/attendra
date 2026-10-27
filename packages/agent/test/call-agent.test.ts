@@ -482,7 +482,7 @@ describe('call control', () => {
     expect((await second).some((o) => o.type === 'commentary' && o.content.includes('214 Maple Street'))).toBe(true);
   });
 
-  it('says it is still checking once per wait, at 7 s, then only thanks the caller at 30 and 45 s: never the same line twice in a row', async () => {
+  it('says it is still checking once per wait, at 5 s (the turn budget), then only thanks the caller at 30 and 45 s: never the same line twice in a row', async () => {
     const c = await w.call();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
@@ -490,13 +490,13 @@ describe('call control', () => {
       const slow = { plan: () => new Promise<{ say: string }>((r) => { release = () => r({ say: 'Dr. Raman is free Monday at 9.' }); }) };
       const early: string[] = [];
       const pending = c.delegate([], slow, (o) => { if (o.type === 'thinking') early.push(o.content); });
-      await vi.advanceTimersByTimeAsync(6000);
+      await vi.advanceTimersByTimeAsync(4000);
       expect(early).toEqual([PROGRESS_NOTE]);
       expect(early[0]).toMatch(/^Looking it up. Do not tell the caller/); // a note for the voice, not words to say
       await vi.advanceTimersByTimeAsync(2000);
-      expect(early).toHaveLength(2);
+      expect(early).toHaveLength(2); // at 6 s: the 5 s budget passed
       expect(early[1]).toContain('still checking');
-      await vi.advanceTimersByTimeAsync(14_000);
+      await vi.advanceTimersByTimeAsync(16_000);
       expect(early).toHaveLength(2); // nothing at 15 s: "still checking" twice in a row sounded stuck
       await vi.advanceTimersByTimeAsync(8000);
       expect(early).toHaveLength(3); // at 30 s, a thank-you

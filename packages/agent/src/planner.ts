@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
-import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
+import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
 import { z } from 'zod';
 import type { CallState } from './call-state';
@@ -23,14 +23,37 @@ export interface PlannerOutput { say: string | null; quiet?: string; timing?: Pl
 /**
  * How long the model itself took for one request (all its rounds, tools apart), with which model and effort, and whether
  * the turn was a simple one (counted whether or not a faster setting is configured, so runs can be compared).
+ * `requests` has each round on its own: its time, when its first visible token came (streamed requests only), its
+ * tokens (cached ones are the part of the input OpenAI's prompt cache already held) and the tools it called. `toolMs`
+ * is the tools' own time, and `prompt` the size in characters of each part of what was sent, to see what the model reads.
  */
-export interface PlannerTiming { model: string; effort: ReasoningEffort | null; simple: boolean; rounds: number; modelMs: number }
+export interface PlannerTiming {
+  model: string; effort: ReasoningEffort | null; tier: ServiceTier | null; simple: boolean; rounds: number; modelMs: number;
+  /** A round failed on the main model and the request went on with the fallback model (`model` is then the fallback). */
+  fallback: boolean;
+  requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
+}
+/** `served` is the processing tier OpenAI reports for the round, when a tier was asked for. */
+export interface RoundTiming {
+  ms: number; firstTokenMs: number | null; served: string | null;
+  inputTokens: number | null; cachedTokens: number | null; outputTokens: number | null; reasoningTokens: number | null;
+  calls: string[];
+}
+/** Characters per part of the request: the fixed parts (rules, tools) and the ones that change each turn. */
+export interface PromptSizes { instructions: number; tools: number; transcript: number; state: number; history: number; notes: number }
 
 /**
  * How hard the model thinks: `effort` for every request (unset, the model's own default), and an optional faster setting
  * (another model, or less reasoning) for simple turns only (see simpleTurn). Both unset is today's behaviour.
  */
-export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort } }
+export interface PlannerSpeed {
+  effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort };
+  /** OpenAI's processing tier for every request ('fast' is priority processing, at twice the price); unset, the default. */
+  tier?: ServiceTier;
+  /** A round that times out or errors is tried once more on this model, and the request's later rounds stay on it; unset, no retry. */
+  fallbackModel?: string;
+}
+export type ServiceTier = 'default' | 'fast' | 'priority' | 'flex';
 
 /**
  * A turn that needs little thought: the caller's last words are short (a name, a number, one question), nothing waits
@@ -40,7 +63,8 @@ export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: str
 export function simpleTurn(state: CallState): boolean {
   if (state.pending || state.textOffer || (state.reminderOffer && !state.remindersAsked) || state.emergencyLocked) return false;
   const said = state.lastTurn('caller').trim();
-  return !!said && said.split(/\s+/).length <= 12 && (said.match(/[?¿]/g)?.length ?? 0) <= 1;
+  // one question: closing marks only, since a Spanish question opens with ¿ as well
+  return !!said && said.split(/\s+/).length <= 12 && (said.match(/\?/g)?.length ?? 0) <= 1;
 }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
@@ -48,7 +72,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   register_patient: 'Add a new patient. Only after verify_caller found no match and the caller says they are new to the clinic. Needs first and last name, date of birth, gender (female, male, other, or undisclosed when they prefer not to say; ask, never guess) and phone; for anyone under 18 also the parent or guardian\'s name. They are then verified and can book.',
   get_clinic_info: 'Hours for today and the next 7 days, the doctors (specialty, what they see people for, ages, visit types, weekly hours, time off, whether they take new patients, and the clinic\'s own details on each, such as qualifications, under details), the visit types, and the clinic FAQ. Also returns passages from the clinic\'s documents when the FAQ has no answer. No identity needed.',
   search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
-  find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
+  find_slots: `Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null. ${PROPOSE_IF_EXACT}`,
   list_appointments: 'List the verified caller\'s upcoming appointments, each with its visit type: to move one, look for times for that same visit type.',
   visit_summary: 'Only once the patient is verified, and only when they ask about their visits: the next visits, the last visit booked or recorded here, and the usual provider. Nothing medical.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
@@ -114,6 +138,12 @@ function languageLine(clinic: ClinicConfig): string {
   return `Write what the assistant says ${write}.${usted} Pass questions to get_clinic_info and search_knowledge in ${primary}, in a few words.`;
 }
 
+/** The date and today's hours stay in the rules for the call; the clock time goes to the end of the request, where it changes nothing cached. */
+export function splitNow(nowLine: string): { date: string; time: string | null } {
+  const m = /,\s*(\d{1,2}:\d{2}) clinic time\./.exec(nowLine);
+  return m ? { date: nowLine.replace(m[0], '.'), time: m[1]! } : { date: nowLine, time: null };
+}
+
 function transcriptFor(state: CallState): string {
   return state.turns.slice(-24).map((t) => `${t.speaker === 'caller' ? 'Caller' : 'Assistant'}: ${t.text}`).join('\n');
 }
@@ -131,7 +161,39 @@ export class ResponsesPlanner implements Planner {
     private readonly openai: Pick<OpenAI, 'responses'>, private readonly model: string, private readonly maxRounds = 8, // two pets in one call take six or seven tool calls
     private readonly limits = { timeoutMs: 15_000, maxOutputTokens: 1_000 },
     private readonly speed: PlannerSpeed = {},
+    /**
+     * `firstToken` streams each round to measure when its first visible token arrives (the evals' --timings). The SDK's
+     * timeout only covers the wait for the headers, so a streamed round is capped with its own signal instead.
+     */
+    private readonly measure: { firstToken?: boolean } = {},
   ) {}
+
+  /** One round of the model, with or without streaming; the final response either way, and when the first visible token came. */
+  private async round(body: Omit<ResponseCreateParams, 'stream'>, asked: number): Promise<{ res: Response; firstTokenMs: number | null }> {
+    if (!this.measure.firstToken) {
+      return { res: await this.openai.responses.create(body, { timeout: this.limits.timeoutMs, maxRetries: 1 }), firstTokenMs: null };
+    }
+    const abort = new AbortController();
+    const cap = setTimeout(() => abort.abort(), this.limits.timeoutMs);
+    try {
+      const stream = await this.openai.responses.create({ ...body, stream: true }, { timeout: this.limits.timeoutMs, maxRetries: 1, signal: abort.signal });
+      let firstTokenMs: number | null = null;
+      let res: Response | null = null;
+      for await (const event of stream) {
+        // the first thing the voice could use: words or a tool call, not the reasoning before them
+        if (firstTokenMs === null && (event.type === 'response.output_text.delta' || event.type === 'response.function_call_arguments.delta'
+          || (event.type === 'response.output_item.added' && event.item.type !== 'reasoning'))) firstTokenMs = Math.round(performance.now() - asked);
+        if (event.type === 'response.completed' || event.type === 'response.incomplete') res = event.response;
+        if (event.type === 'response.failed') throw new Error(`response failed: ${event.response.error?.message ?? 'unknown'}`);
+      }
+      if (!res) throw new Error('the stream ended without a response');
+      // the SDK adds output_text to a response it parsed whole; a streamed one is assembled here from its message items
+      const text = res.output.flatMap((o) => (o.type === 'message' ? o.content : [])).flatMap((c) => (c.type === 'output_text' ? [c.text] : [])).join('');
+      return { res: { ...res, output_text: text }, firstTokenMs };
+    } finally {
+      clearTimeout(cap);
+    }
+  }
 
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>): Promise<PlannerOutput> {
     // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
@@ -158,30 +220,64 @@ export class ResponsesPlanner implements Planner {
     const phone = input.callerNumber
       ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
       : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcriptFor(state)}\n\nKnown state: ${stateLine(state, input.clinic)}${earlier}${noTexts}${phone}` }];
+    const transcript = transcriptFor(state);
+    const known = stateLine(state, input.clinic);
+    // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
+    // fixed notes (its records, its number), then the transcript, which only grows; the state line and the clock come last,
+    // since they change every turn (the time was in the first line of the rules, which rewrote the whole prefix each minute)
+    const { date, time } = splitNow(input.nowLine);
+    const fixed = `${earlier}${noTexts}${phone}`.trim();
+    const conversation: ResponseInput = [{ role: 'user', content: `${fixed ? `${fixed}\n\n` : ''}Conversation so far:\n${transcript}\n\nKnown state: ${known}${time ? `\n\nThe time now: ${time} clinic time.` : ''}` }];
+    const instructions = systemPrompt(input.clinic, date);
     let corrected = false;
     const doneBefore = state.done.length;
     const requestBefore = state.requestMade;
     // a simple turn may go to the faster setting, when one is configured; the model's own time is measured either way
     const simple = simpleTurn(state);
     const faster = simple ? this.speed.simple : undefined;
-    const model = faster?.model ?? this.model;
+    let model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
-    const timing: PlannerTiming = { model, effort, simple, rounds: 0, modelMs: 0 };
-    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs) } });
+    const timing: PlannerTiming = {
+      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, fallback: false, requests: [], toolMs: 0,
+      prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
+    };
+    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs) } });
 
     for (let round = 0; round < this.maxRounds; round++) {
       const asked = performance.now();
-      const res = await this.openai.responses.create({
-        model, instructions: systemPrompt(input.clinic, input.nowLine), input: conversation, tools, store: false,
+      const body = (): Omit<ResponseCreateParams, 'stream'> => ({
+        model, instructions, input: conversation, tools, store: false,
         max_output_tokens: this.limits.maxOutputTokens,
         ...(effort ? { reasoning: { effort } } : {}),
+        ...(this.speed.tier ? { service_tier: this.speed.tier } : {}),
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
-      }, { timeout: this.limits.timeoutMs, maxRetries: 1 });
+        // one cache per clinic: its calls share the fixed prefix (rules, tools, its own facts)
+        prompt_cache_key: input.clinic.id,
+      });
+      let answer: Awaited<ReturnType<ResponsesPlanner['round']>>;
+      try {
+        answer = await this.round(body(), asked);
+      } catch (err) {
+        // a round that timed out or errored is tried once more on the fallback model, and the request stays on it;
+        // a second failure is the request's (the caller hears the apology and the callback offer, as before)
+        const fallback = this.speed.fallbackModel;
+        if (!fallback || model === fallback) throw err;
+        model = fallback;
+        timing.model = fallback;
+        timing.fallback = true;
+        answer = await this.round(body(), asked);
+      }
+      const { res, firstTokenMs } = answer;
       timing.rounds++;
       timing.modelMs += performance.now() - asked;
       const calls = res.output.filter((o) => o.type === 'function_call');
+      timing.requests.push({
+        ms: Math.round(performance.now() - asked), firstTokenMs, served: res.service_tier ?? null,
+        inputTokens: res.usage?.input_tokens ?? null, cachedTokens: res.usage?.input_tokens_details?.cached_tokens ?? null,
+        outputTokens: res.usage?.output_tokens ?? null, reasoningTokens: res.usage?.output_tokens_details?.reasoning_tokens ?? null,
+        calls: calls.map((c) => c.name),
+      });
       const say = res.output_text?.trim() || null;
       // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
       if (!calls.length && !corrected && round < this.maxRounds - 1 && say && emptyPromise(say, state, doneBefore) && state.requestMade === requestBefore) {
@@ -193,13 +289,21 @@ export class ResponsesPlanner implements Planner {
       for (const item of res.output) {
         if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
       }
+      const results: ToolResult[] = [];
       for (const call of calls) {
         const name = call.name as ToolName;
+        const toolAsked = performance.now();
         const result = TOOL_NAMES.includes(name)
           ? await execute(name, safeJson(call.arguments))
           : { ok: false, data: { error: 'unknown_tool' } };
+        timing.toolMs += performance.now() - toolAsked;
+        results.push(result);
         conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
       }
+      // one tool that did the whole thing and wrote the words for it (a read-back, "booked", the goodbye): those are
+      // said as they are, with no further round. A refusal, an error or a lookup goes back to the model as before.
+      const spoken = results.length === 1 && results[0]!.ok && typeof results[0]!.data.spoken === 'string' ? results[0]!.data.spoken : null;
+      if (spoken) return done({ say: spoken });
     }
     // out of rounds: a callback that is promised is one that exists, taken through the same
     // tool the model would use, so its rules and the request for staff apply

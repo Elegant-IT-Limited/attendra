@@ -37,8 +37,8 @@ const AFTER_SPEECH_MS = 3500;
 const VIP_AFTER_MS = 6000;
 /** A paused clinic's message (call back, the emergency hospital) is longer than a hello: the hang-up waits for it. */
 const PAUSED_HANGUP_AFTER_MS = 10_000;
-/** How long a request may run before the caller hears that it is still being worked on. */
-const HOLD_AFTER_MS = 7000;
+/** The turn budget: a request that runs past it has the caller hear, once, that it is still being worked on (7 s until 2026-11). */
+const HOLD_AFTER_MS = 5000;
 /**
  * A wait that goes on hears a thank-you, never "still checking" again: that is said once per wait, and two of them in a
  * row (at 7 and 15 s) sounded like a machine stuck on a line (2026-11). A new pet's registration and first times can
@@ -567,10 +567,19 @@ export class CallAgent {
     } finally {
       for (const h of holds) clearTimeout(h);
       const ms = Date.now() - startedAt;
-      // the model's own time, apart from the tools': what a faster setting for simple turns would change
+      // the model's own time, apart from the tools': what a faster setting for simple turns would change. With it, where
+      // the time went: each round's time and tokens (cached = what the prompt cache held), the tools' time, and the size
+      // of each part of the prompt, so a slow answer can be read without a transcript
       this.log.info({
         call_id: this.ctx.callId, delegation_id: delegationId, ms, tools: toolCalls,
-        ...(timing ? { model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, simple: timing.simple } : {}),
+        ...(timing ? {
+          model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, tier: timing.tier, fallback: timing.fallback, simple: timing.simple,
+          tool_ms: timing.toolMs, prompt_chars: timing.prompt,
+          requests: timing.requests.map((r) => ({
+            ms: r.ms, first_token_ms: r.firstTokenMs, input_tokens: r.inputTokens, cached_tokens: r.cachedTokens,
+            output_tokens: r.outputTokens, reasoning_tokens: r.reasoningTokens, calls: r.calls,
+          })),
+        } : {}),
       }, 'request answered');
       if (ms >= SLOW_MS) this.ctx.onSlow?.(ms);
       this.doing = this.state.pending ? 'waiting for a yes' : null;

@@ -31,6 +31,8 @@ export const ToolArgs = {
     part_of_day: z.enum(['morning', 'afternoon', 'any']),
     // the earliest time of day the caller wants, 24-hour local: "after 3" or "at 3:30" is 15:00 or 15:30; null when they said none
     from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
+    // the caller asked for one exact day and time and is already found: a free exact time is staged at once and read back
+    propose_if_exact: z.boolean().nullable().default(null),
   }),
   list_appointments: z.object({}),
   // the verified pet's next visits, its last one and its usual vet: dates, vets and kinds of visit, nothing medical

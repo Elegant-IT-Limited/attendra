@@ -1,0 +1,25 @@
+id: vet-es-exact-time-staged
+title: "In Spanish: an owner who is already found asks for Friday at 11:00 exactly; find_slots stages that free time itself and the backend's Spanish read-back is spoken, one round instead of two"
+clinic: riverbend
+local_time: "10:00"
+tags: [fast, language, es]
+facts: "You are Linh Nguyen and you speak only Spanish. You are calling from the number on file. Any vet is fine. You want Friday at 11:00 (el viernes a las 11) for Mochi's vaccines (vacunas); if 11:00 is taken, the nearest time after it is fine. Say sí to the read-back."
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Puedo traer a Mochi para sus vacunas el viernes a las 11?
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_vaccines, provider_id: null, from_date: "2026-10-02", part_of_day: any, from_time: "11:00", propose_if_exact: true }
+  - caller: Sí, por favor.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-02"
+  offered_from_time: "11:00"
+  language: es
+  spoken_contains: ["¿Le reservo la cita?", "Listo, la cita queda reservada."]
