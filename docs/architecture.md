@@ -31,7 +31,7 @@ Attendra splits a phone call between two systems on purpose. GPT-Live holds the 
 1. GPT-Live sends `session.delegation.created` with a delegation id. It carries no task text; we rebuild the request from our own transcript and `CallState`.
 2. `CallAgent.onDelegation` bumps the task revision and sends a `session.thinking.append` ("Working on it") so the model can keep the caller company.
 3. The planner calls tools. `runTool` checks identity, offered slots, confirmations and idempotency before anything is read or written.
-4. If a newer delegation started meanwhile, this result is dropped. Otherwise the result goes back as `session.commentary.append` for the model to say, capped well below the 500-token limit per append.
+4. If a newer delegation started meanwhile, this result is dropped. Otherwise the result goes back as `session.commentary.append` for the model to say, capped well below the 500-token limit per append. A tool that did the whole thing (a booking read back, a goodbye) returns the sentence itself, so most requests take one model round; [fast-backend.md](fast-backend.md) has the rounds, the prompt cache, the budgets and how to measure.
 
 The emergency guardrail is not a delegation. It runs on every `session.input_transcript.delta`, over a rolling window of the caller's recent words, and appends a fixed `session.instructions.append` with `delegation_id: null` the moment it matches.
 
