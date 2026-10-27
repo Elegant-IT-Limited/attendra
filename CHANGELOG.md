@@ -48,6 +48,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Logs that explain a call.** At info, with ids and times and never the caller's words: delegation created, planner request started and answered, sideband open, reconnecting, reconnected and closed, the assistant's first words (time from the start) and each reply's start and end.
 - **Evals.** Eight new scenarios, English and Spanish twins (160 to 167): a turn the voice let go (`dropped:`), a number without an area code, the pet's details first then "is it new?", and the greeting on time (`silent_start:`, through the real call runner). Tests: one-voice.test.ts, turns-and-phones.test.ts, call-runner (watchdog, replay after a reconnect, logs), language parity.
 
+### Fixed (provisioning checks the token first)
+
+- **No token, no answer about the body.** The provisioning routes read the request body before the token, so a malformed request without the token got 422, and what a valid body looks like, instead of 401. The token is now checked before anything else on every provisioning route (404 when the deployment has none, 401 when it is missing or wrong).
+
 ### Changed (the clinic switcher, polished)
 
 - **One switcher, like the account menu.** The clinic at the top of the sidebar and in the phone's header is now a menu, not the browser's own drop-down: a tile with the clinic's initials, its name, and your role there under it ("Owner", "Front desk") instead of the time zone id. "Your clinics" lists each one with your role and a check on the one open, with a search box past six. Picking one opens the same page there, closes the menu, is remembered for next time, and says "Now in {clinic}." Arrows, Enter, Escape and type-ahead work; on a phone it opens as a sheet from the bottom; Cmd+K also jumps to another clinic.
