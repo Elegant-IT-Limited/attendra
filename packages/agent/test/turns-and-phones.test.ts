@@ -162,15 +162,18 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     expect(long.timing).toMatchObject({ model: 'gpt-main', effort: 'medium', simple: false });
   });
 
-  it('unset, every request goes as before: the one model, no reasoning setting', async () => {
+  it('unset, every request goes to the one model; a say-back runs with reasoning off (effortFor), a question with a time keeps the default', async () => {
     const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.' }));
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
     const c = await w.call('+17205550172', { clinic });
     c.caller('Biscuit.');
     const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
-    expect(create.mock.calls[0]![0]).not.toHaveProperty('reasoning');
+    expect(create.mock.calls[0]![0]).toMatchObject({ model: 'gpt-main', reasoning: { effort: 'none' } });
     // still counted as a simple turn, so a run without the faster setting can be compared with one with it
-    expect(out.timing).toMatchObject({ model: 'gpt-main', effort: null, simple: true, rounds: 1 });
+    expect(out.timing).toMatchObject({ model: 'gpt-main', effort: 'none', simple: true, rounds: 1 });
+    c.caller('Is anyone free tomorrow morning?');
+    await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    expect(create.mock.calls[1]![0]).not.toHaveProperty('reasoning');
   });
 
   it('measuring the first token, streams each round under its own time cap and times the tools apart (2026-11)', async () => {

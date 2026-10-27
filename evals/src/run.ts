@@ -26,6 +26,7 @@ const speed: PlannerSpeed = {
   effort: effort('ATTENDRA_BACKEND_EFFORT'),
   simple: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || process.env.ATTENDRA_BACKEND_SIMPLE_EFFORT
     ? { model: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || undefined, effort: effort('ATTENDRA_BACKEND_SIMPLE_EFFORT') } : undefined,
+  noThink: process.env.ATTENDRA_BACKEND_NO_THINK !== 'off',
 };
 // `--timings` also prints the planner model time of every live request, to compare speed settings request by request,
 // with each round's tokens and first-token time (rounds are streamed for that), and writes them all to

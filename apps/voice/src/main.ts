@@ -30,6 +30,7 @@ const app = createVoiceApp({
   backendSpeed: {
     effort: env.ATTENDRA_BACKEND_EFFORT,
     simple: env.ATTENDRA_BACKEND_SIMPLE_MODEL || env.ATTENDRA_BACKEND_SIMPLE_EFFORT ? { model: env.ATTENDRA_BACKEND_SIMPLE_MODEL, effort: env.ATTENDRA_BACKEND_SIMPLE_EFFORT } : undefined,
+    noThink: env.ATTENDRA_BACKEND_NO_THINK !== 'off',
   },
   twilio: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? { accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN } : undefined,
   publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL,
