@@ -1,0 +1,19 @@
+id: vet-es-verified-last-visit
+title: "Spanish: a found pet; \"¿Cuándo vino Biscuit por última vez y quién lo atendió?\" is answered with the date and the vet, as the last visit the assistant can see"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visits, visit-history, language, es]
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado por tu perro Biscuit. Solo quieres saber cuándo vino por última vez y quién lo atendió; luego das las gracias y te despides."
+turns:
+  - caller: Hola, soy Linh. ¿Cuándo vino Biscuit por última vez y quién lo atendió?
+    reply: "La última visita que veo de Biscuit fue el lunes 14 de septiembre con la Dra. Elena Ruiz, para un chequeo general."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - visit_summary: {}
+expect:
+  outcome: info
+  verified: true
+  language: es
+  returned: ["La última visita que veo de Biscuit fue el lunes, 14 de septiembre a las 9:00 a.m. con Dr. Elena Ruiz"]
+  spoken_contains: ["La última visita que veo"]
+forbid_spoken: ["visitas este año", "veces este año", "dos visitas"]

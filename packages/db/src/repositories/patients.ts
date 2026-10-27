@@ -105,6 +105,30 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /**
+   * The first names of one owner's pets on this number, so an owner caller ID knows can pick one
+   * ("Is this for Biscuit or Max?"). Only the pets whose owner on file matches the name given: on a
+   * family number, another owner's pets are never named. At most three, with `more` for the rest;
+   * a first name only, never a record. Reading them is audited; finding none is not.
+   */
+  async petsOnNumber(clinicId: string, phone: string, ownerName: string, callId: string): Promise<{ names: string[]; more: boolean }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select({ first: patients.firstNameEnc, guardian: patients.guardianNameEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(20);
+      const names = new Map<string, string>();
+      for (const r of rows) {
+        if (!r.guardian || !ownerMatches(ownerName, this.cipher.decrypt(r.guardian, ctx('guardian_name')))) continue;
+        const n = this.cipher.decrypt(r.first, ctx('first_name')).trim().split(/\s+/)[0] ?? '';
+        if (n && !names.has(n.toLowerCase())) names.set(n.toLowerCase(), n);
+      }
+      if (!names.size) return { names: [], more: false };
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.pets_on_number.read', entity: 'call', entityId: callId, callId });
+      const all = [...names.values()];
+      return { names: all.slice(0, 3), more: all.length > 3 };
+    });
+  }
+
+  /**
    * A new patient, added on a call. The same person already on file (same name, date
    * of birth and phone) is not added again: the caller gave exactly what verification
    * asks for, so they are that patient. Someone else with the same name and birthday

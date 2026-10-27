@@ -1,0 +1,18 @@
+id: vet-verified-last-visit
+title: "A found pet: \"When was Biscuit last in, and who saw him?\" is answered with the date and the vet, as the last visit the assistant can see"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, visits, visit-history]
+facts: "You are Linh Nguyen, calling from the number on file about your dog Biscuit. You only want to know when he was last in and who saw him; then you say thanks and goodbye."
+turns:
+  - caller: Hi, it's Linh. When was Biscuit last in, and who saw him?
+    reply: "The last visit I can see for Biscuit was on Monday, September 14 with Dr. Elena Ruiz, for a wellness exam."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit }
+      - visit_summary: {}
+expect:
+  outcome: info
+  verified: true
+  returned: ["The last visit I can see for Biscuit was on Monday, September 14 at 9:00 AM with Dr. Elena Ruiz", "\"usual_vet\":\"dr. elena ruiz\""]
+  spoken_contains: ["The last visit I can see"]
+forbid_spoken: ["visits this year", "times this year", "2 visits", "two visits"]

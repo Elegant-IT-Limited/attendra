@@ -21,6 +21,8 @@ const DETAILS: Record<string, string> = {
 };
 /** The assistant asked whether the pet (or the caller) is new: "Is Biscuit new to us?", "¿Es la primera vez que Biscuit viene?". */
 const ASKED_IF_NEW = /\b(new|nuev[oa]s?|primera vez)\b[^.!]*\?/;
+/** "Is this for Juniper, or a new pet?" ("¿Es para Juniper, o para una mascota nueva?"): new is one of the choices, so a yes is not it. */
+const NEW_AS_CHOICE = /,\s*(?:or|o|u)\s+(?:a\s+|para\s+una?\s+)?(?:mascota\s+)?(?:new|nuev[oa])\b[^.!]*\?/;
 
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
@@ -53,6 +55,8 @@ export class CallState {
   newFromTurn = 0;
   /** The caller was asked whether the pet is new before any lookup, because they described it (its age, its sex): asked once. */
   askedIfNew = false;
+  /** The owner was asked which of their pets on the number the call is for, "or a new pet": "Is it new to us?" is then never asked. */
+  askedWhichPet = false;
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
   phoneAsGiven: string | null = null;
   /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
@@ -129,7 +133,7 @@ export class CallState {
 
   /**
    * Whether the caller has said the pet (or they) are new to the clinic, by their own words since the last pet or patient
-   * was found or added: 'new' ("she's new", or yes to "Is Hazel new?"), 'on_file' when they said it may be on file after
+   * was found or added: 'new' ("she's new", yes to "Is Hazel new?", or "a new one" when asked which pet), 'on_file' when they said it may be on file after
    * all, the latest of those, or null.
    */
   saidNew(): 'new' | 'on_file' | null {
@@ -138,8 +142,10 @@ export class CallState {
       if (turn.speaker !== 'caller') continue;
       const said = newToClinic(turn.text);
       if (said) return said;
-      const asked = this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent');
-      if (asked && ASKED_IF_NEW.test(normalise(asked.text)) && isClearYes(turn.text, LANGUAGES)) return 'new';
+      const asked = normalise(this.turns.slice(0, i).reverse().find((t) => t.speaker === 'agent')?.text ?? '');
+      // asked which pet, "or a new pet": a yes picks the pet named, and "a new one" ("una nueva") is new
+      if (NEW_AS_CHOICE.test(asked)) { if (/\b(new|nuev[oa])\b/.test(normalise(turn.text))) return 'new'; continue; }
+      if (ASKED_IF_NEW.test(asked) && isClearYes(turn.text, LANGUAGES)) return 'new';
     }
     return null;
   }

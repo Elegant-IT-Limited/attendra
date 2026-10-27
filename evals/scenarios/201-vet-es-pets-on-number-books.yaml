@@ -1,0 +1,36 @@
+id: vet-es-pets-on-number-books
+title: "Spanish: caller ID knows the owner; after a sí to \"¿Hablo con Linh?\" she picks Mochi from her two pets, and Mochi is booked"
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, pets-on-number, language, es]
+history: "Name on file for this number: Linh.\nCalls from this number in the last 30 days: 1."
+facts: "Eres Linh Nguyen y hablas español; llamas desde el número registrado. Tus mascotas son Biscuit (perro) y Mochi (gata). Quieres un chequeo general para Mochi, con cualquier veterinario y a cualquier hora. Aceptas la primera hora ofrecida y dices que sí a la confirmación."
+turns:
+  - caller: Hola, buenos días. Quiero una cita de chequeo, por favor.
+    reply: "¿Hablo con Linh?"
+  - caller: Sí, soy yo.
+    reply: "Gracias, Linh. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: null }
+  - caller: Es para Mochi.
+    reply: "Para un chequeo general de Mochi tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Mochi }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Está bien?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí."
+    reply: "Listo, Mochi tiene cita el {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]
+  spoken_contains: ["Es para Biscuit o Mochi"]
+forbid_spoken: ["Is this for"]

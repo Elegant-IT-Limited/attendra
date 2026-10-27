@@ -29,6 +29,8 @@ expect:
   outcome: booked
   verified: true
   refusals: [ask_if_new]
+  # one question about "new" per call: no caller ID match here, so never the pick question
+  never_returned: ["or a new pet?", "pets_on_number"]
   bookings_created: 1
   sms_sent: 1
   returned: ["Is Clover new to us?"]

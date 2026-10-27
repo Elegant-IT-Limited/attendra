@@ -33,6 +33,8 @@ export const ToolArgs = {
     from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
   }),
   list_appointments: z.object({}),
+  // the verified pet's next visits, its last one and its usual vet: dates, vets and kinds of visit, nothing medical
+  visit_summary: z.object({}),
   // Writes happen in two steps. propose_* stores the change and returns the read-back
   // sentence; commit_pending performs it only if the caller has said yes since.
   propose_booking: z.object({ slot_id: z.string(), replaces_appointment_id: z.string().nullable() }),

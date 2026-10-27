@@ -75,6 +75,18 @@ export interface LanguagePack {
    */
   phoneQuestion: (v: { callerId: boolean }) => string;
   /**
+   * Asked once caller ID matched and the owner said who they are: which of their pets the call is for, by
+   * first name (at most three; `more` when they have others), or a new one.
+   */
+  whichPet: (v: { names: string[]; more: boolean }) => string;
+  /**
+   * A pet's last visit, said as the last one Attendra can see: it knows only the visits booked or recorded in
+   * it, so it never says "the last visit" as if it were the whole history. `when` is speakWhen's.
+   */
+  lastVisitSeen: (v: { pet: string; when: string; provider: string | null; visit: string | null }) => string;
+  /** Offered instead of any medical detail or a copy of the records: the team sends records in writing. */
+  recordsOffer: string;
+  /**
    * Said once when the number a caller gives is not a whole number for the clinic's country (a number abroad, no area
    * code): it is read back as given and kept, never asked for again. `digits`: the number as the caller said it.
    */

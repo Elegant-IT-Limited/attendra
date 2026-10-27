@@ -72,6 +72,22 @@ Patient-specific actions need a match on full name and date of birth. The callin
 
 At a veterinary clinic, a pet is found by its owner's full name, its own name and the phone on file, with the same three tries, the same answer whichever detail was wrong, and two pets with the same name on one number going to staff.
 
+### What the assistant may say about an owner's pets, by how much it knows
+
+Each level allows what the one before it allows, plus more. It is enforced in `runTool` (`verify_caller` and `visit_summary` in `packages/agent/src/tools.ts`), not only in the prompt, and every read is audited.
+
+| What the assistant knows | What it may say |
+|---|---|
+| Nothing yet (unknown or hidden number) | Nothing from the records. It asks the owner's name and which pet. |
+| The calling number only (caller ID matched a number on file) | "Am I speaking with <owner first name>?" (only when one owner is on file for the number); how many times and when this number called; whether a request from those calls is still open. Never what a call was about, never a pet. |
+| Caller ID matched, and the caller said yes to the owner's name | The first names of that owner's pets on this number, to pick from: "Is this for Biscuit or Max, or a new pet?" (at most three, then "or another one"). Only with real caller ID: a number the caller only says (a browser test call, a hidden number) never unlocks it. On a family number, only the confirmed owner's pets. Audited as `patient.pets_on_number.read`. |
+| Fully verified (owner's name, pet's name and phone matched) | Visit facts only, for that pet: its next visits (date, time, vet, kind of visit), its last visit (date, vet, kind of visit) and its usual vet, always said as "the last visit I can see", because Attendra knows only the visits booked or recorded in it. Never a list read out unasked, never a count of visits. Audited as `patient.visits.read.call`. |
+| Never, at any level | Medical details: diagnoses, test results, medicines and doses, weights, vet notes, invoices, the full history or copies of records. Records go to the team as a records request (`create_callback`, "Records request: ..."), and staff send them in writing. Medical questions get the usual refusal and an offer of the team. |
+
+A pet not on file is registered under the same number. Pets are grouped by the owner's phone.
+
+A call asks about "new" once, one way. With caller ID matched and the owner confirmed, the pick question above is the only one: it already offers "a new pet", so a caller who then describes their pet (its age, its sex) is not asked "Is it new to us?". Otherwise, a caller who describes the pet before saying whether it is new is asked "Is it new to us?" before any lookup, and after that the call never offers the pick question.
+
 ## Writes
 
 Every booking, reschedule and cancellation is two steps: propose (which produces the read-back) and commit (which runs only if the caller's own words since the read-back are a clear yes: "maybe", "actually" and questions do not count). Every write carries an idempotency key, and the database refuses two overlapping bookings for one provider whatever the application does.

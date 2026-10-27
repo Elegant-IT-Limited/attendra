@@ -207,6 +207,21 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     await scheduler.book(clinic.id, { patientId, callId: setupCall, idempotencyKey: `setup-${scenario.id}`,
       slot: { id: 'setup', providerId, visitTypeId, start: existing, end: new Date(existing.getTime() + minutes * 60_000) } });
   }
+  // Biscuit's past visits at the vet (Dr. Ruiz twice, the last on 14 September), for the visit questions
+  if (scenario.tags.includes('visit-history') && scenario.clinic === 'riverbend') {
+    const setupCall = await calls.open(clinic.id, `history_${scenario.id}`, null);
+    for (const [date, key] of [['2026-08-10', 'a'], ['2026-09-14', 'b']] as const) {
+      const start = zonedInstant(date, '09:00', clinic.timezone);
+      await scheduler.book(clinic.id, { patientId: patientIds.biscuit!, callId: setupCall, idempotencyKey: `history-${scenario.id}-${key}`,
+        slot: { id: `history-${key}`, providerId: 'prov_ruiz', visitTypeId: 'vt_wellness', start, end: new Date(start.getTime() + 30 * 60_000) } });
+    }
+  }
+  // a second owner on Linh's number, as a family shares a phone: Grace Hale's cat Juniper
+  // (once: the demo plays every scenario into one database)
+  const seeded = new PostgresPatientDirectory(db, cipher, 'seed');
+  if (scenario.tags.includes('family-number') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Grace Hale', 'Juniper', RIVERBEND_PETS[0].phone)).status === 'not_found') {
+    await seeded.create(clinic.id, { firstName: 'Juniper', lastName: 'Hale', dob: '2022-04-01', phone: RIVERBEND_PETS[0].phone, guardianName: 'Grace Hale', gender: 'female', species: 'cat' });
+  }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   // a name on file in the scenario's history is the one the records give for the number when the call starts, as the voice service reads it
   const historyName = /^Name on file for this number: (.+)\.$/m.exec(scenario.history ?? '')?.[1] ?? null;

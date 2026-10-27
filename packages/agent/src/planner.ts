@@ -50,6 +50,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   search_knowledge: 'Search the clinic\'s own documents (parking, directions, insurance, visit preparation, policies, providers). Pass a short topic, never a name, date of birth or other personal detail. Answer only from what it returns.',
   find_slots: 'Find up to 3 open appointment slots, optionally with one doctor (provider_id), with doctors of one specialty or category from get_clinic_info (specialty), or with a female or male doctor when the caller asks (provider_gender). No identity needed: use it to answer "who is free Monday" or "when can I come in" before asking who they are. Once a patient is verified it only offers doctors who see their age. Returns slot ids to offer. Set from_date to the first day the caller asked for ("next week" is the coming Monday); null means today. from_time is the earliest time of day they want ("after 3" is 15:00, "at 10:30" is 10:30), else null.',
   list_appointments: 'List the verified caller\'s upcoming appointments, each with its visit type: to move one, look for times for that same visit type.',
+  visit_summary: 'Only once the patient is verified, and only when they ask about their visits: the next visits, the last visit booked or recorded here, and the usual provider. Nothing medical.',
   propose_booking: 'Stage a booking (or reschedule) of an offered slot and get the read-back sentence.',
   propose_cancellation: 'Stage cancelling one of the caller\'s appointments and get the read-back sentence.',
   commit_pending: 'Perform the staged change. Only after the caller clearly said yes to the read-back.',
@@ -136,16 +137,17 @@ export class ResponsesPlanner implements Planner {
     // the tools as the clinic's industry takes them: a veterinary clinic finds a pet by its owner and its name
     const trade = industryPack(input.clinic.industry);
     const args = toolArgsFor(input.clinic.industry);
-    // send_text is offered only to a clinic that texts, and the reminder question only to one that sends reminders
+    // send_text is offered only to a clinic that texts, the reminder question only to one that sends reminders, and a pet's visits only at a vet
     const reminders = textingOf(input.clinic).reminders;
     const tools = TOOL_NAMES.filter((name) => (name !== 'send_text' || textingOf(input.clinic).enabled)
-      && (name !== 'set_reminder_consent' || (reminders.enabled && reminders.askOnBooking))).map((name) => ({
+      && (name !== 'set_reminder_consent' || (reminders.enabled && reminders.askOnBooking))
+      && (name !== 'visit_summary' || trade.identity === 'pet')).map((name) => ({
       type: 'function' as const, name, description: trade.planner.descriptions?.[name] ?? DESCRIPTIONS[name], strict: true,
       parameters: z.toJSONSchema(args[name]) as Record<string, unknown>,
     }));
     const state = input.state;
     const earlier = input.history
-      ? `\n\nOur records for the number this caller is calling from (earlier calls newest first):\n${input.history}\nWhen a name on file is listed and nobody is verified yet, the first identity question is "Am I speaking with <that name>?" (in Spanish, "¿Hablo con <that name>?"), the way a front desk greets a client it sees on caller ID: say only that first name, nothing else from the records. On a yes, call verify_caller with that name and ask only for what is still missing; on a no, ask who they are as usual and never say that name again. Use the earlier calls to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
+      ? `\n\nOur records for the number this caller is calling from (earlier calls newest first):\n${input.history}\nWhen a name on file is listed and nobody is verified yet, the first identity question is "Am I speaking with <that name>?" (in Spanish, "¿Hablo con <that name>?"), the way a front desk greets a client it sees on caller ID: say only that first name, nothing else from the records. On a yes, call verify_caller with that name and ask only for what is still missing${input.clinic.industry === 'vet' ? ' (pet_name null when no pet is named yet: it may return pets_on_number, the owner\'s pets to ask about; a pet\'s name comes only from there, never from these records)' : ''}; on a no, ask who they are as usual and never say that name again. Use the earlier calls to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
       : '';
     // a caller on a number abroad (or premium, toll-free) is never offered a text, so never told one failed
     const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))

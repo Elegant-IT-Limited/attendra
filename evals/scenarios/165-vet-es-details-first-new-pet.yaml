@@ -28,6 +28,8 @@ expect:
   outcome: booked
   verified: true
   refusals: [ask_if_new]
+  # one question about "new" per call: no caller ID match here, so never the pick question
+  never_returned: ["o para una mascota nueva?", "pets_on_number"]
   bookings_created: 1
   sms_sent: 1
   language: es
