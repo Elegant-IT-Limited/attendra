@@ -43,6 +43,10 @@ The browser's data channel is limited to what a page needs: it may send `session
 
 The call ends when you press End, when the page is closed (the page asks the API to end it if it cannot say so itself), at the time limit, or when the voice service loses its sideband for good (it reconnects a few times first): a browser would otherwise keep talking to a model with no tools behind it.
 
+## Recording a test call
+
+Tick **Record this test call** on the Test call page to hear afterwards how the call sounded (a voice that seemed to change, a long pause), which the transcript cannot show. The browser records the assistant and your microphone, mixed, with `MediaRecorder`, and shows "Recording on this computer" while it does. When the call ends, **Save the recording** saves it as a file (WebM, or M4A in Safari) on your computer. Nothing is uploaded: the recording never leaves the browser, and Attendra keeps no audio of any call.
+
 ## Limiting test-call time
 
 A clinic can be given a total allowance of test-call time, which a hosted trial uses (10 minutes). Without one, as every clinic starts, there is no limit beyond the time limit per call.

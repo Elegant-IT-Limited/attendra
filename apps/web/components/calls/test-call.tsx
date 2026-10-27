@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
+import { type SavedRecording, startCallRecording } from '@/lib/call-recording';
 import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
 
 export type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
@@ -36,6 +37,8 @@ interface Attempt {
   started?: boolean;
   ending?: boolean;
   mic?: MediaStream;
+  /** The assistant's audio, as the browser plays it. */
+  remote?: MediaStream;
   peer?: RTCPeerConnection;
   events?: RTCDataChannel;
   callId?: string;
@@ -65,6 +68,13 @@ interface TestCallState {
   endSimulated: () => void;
   /** Ends whatever is going on at once, before signing out. */
   hangUpNow: () => void;
+  /** "Record this test call": ticked, the call is recorded on this computer while it is live. */
+  record: boolean;
+  setRecord: (on: boolean) => void;
+  /** Recording now, on this computer only. */
+  recording: boolean;
+  /** The last call's recording, held in this tab, to save as a file. Never uploaded. */
+  saved: SavedRecording | null;
 }
 
 const TestCallContext = createContext<TestCallState | null>(null);
@@ -99,6 +109,12 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const simulatedId = useRef<string | null>(null);
   const attempt = useRef<Attempt | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
+  // a recording of the call, made and kept in this browser only
+  const [record, setRecord] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [saved, setSaved] = useState<SavedRecording | null>(null);
+  const [remoteUp, setRemoteUp] = useState(false);
+  const recorder = useRef<ReturnType<typeof startCallRecording> | null>(null);
 
   /** Ends a started session through the API; keepalive lets the request outlive a closed tab. */
   const endRemote = useCallback((id: string) => {
@@ -161,6 +177,8 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     const a: Attempt = { cancelled: false };
     attempt.current = a;
     setFailure(null); setMicNote(null); setMicStopped(false); setMuted(false); setCaptions([]); setCallId(null); setSeconds(0); setPhase('connecting');
+    setRemoteUp(false);
+    setSaved((old) => { if (old) URL.revokeObjectURL(old.url); return null; });
     const fail = (key: string) => { setFailure(FAILURES[key] ?? FAILURES.voice_unavailable!); finish(a, 'idle'); };
 
     try {
@@ -185,7 +203,11 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     const peer = new RTCPeerConnection();
     a.peer = peer;
     for (const track of a.mic.getAudioTracks()) peer.addTrack(track, a.mic);
-    peer.ontrack = (e) => { if (audio.current) audio.current.srcObject = e.streams[0] ?? null; };
+    peer.ontrack = (e) => {
+      if (audio.current) audio.current.srcObject = e.streams[0] ?? null;
+      a.remote = e.streams[0];
+      setRemoteUp(!!a.remote);
+    };
     // A remote close does not always arrive as session.closed or as 'failed'; any of these ends the page's side.
     let dropped: ReturnType<typeof setTimeout> | undefined;
     peer.onconnectionstatechange = () => {
@@ -229,6 +251,25 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
       fail(err instanceof ApiFailure ? err.body.error : 'voice_unavailable');
     }
   }
+
+  // "Record this test call": from when the call is live until it has ended (its goodbye included), or the box is unticked
+  useEffect(() => {
+    const a = attempt.current;
+    const on = record && (phase === 'live' || phase === 'ending');
+    if (on && remoteUp && a?.remote && !recorder.current) {
+      try {
+        recorder.current = startCallRecording(a.remote, a.mic ?? null);
+        setRecording(true);
+      } catch {
+        problem({ title: 'The recording did not start', message: 'This browser could not record the call. The call goes on without a recording.' });
+      }
+    } else if (!on && recorder.current) {
+      const r = recorder.current;
+      recorder.current = null;
+      setRecording(false);
+      void r.stop().then(setSaved);
+    }
+  }, [record, phase, remoteUp, problem]);
 
   const toggleMute = useCallback(() => {
     const a = attempt.current;
@@ -291,6 +332,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   // clinic it was started in (these callbacks change only with the clinic)
   useEffect(() => () => {
     if (attempt.current) release(attempt.current);
+    if (recorder.current) { void recorder.current.stop(); recorder.current = null; }
     endSimulated(true);
     setPhase('idle'); setCallId(null); setCaptions([]); setSeconds(0); setMicStopped(false); setMicNote(null); setMuted(false);
   }, [release, endSimulated]);
@@ -298,6 +340,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const value: TestCallState = {
     clinicId, phase, captions, callId, seconds, maxSeconds, micNote, micStopped, muted, simulated,
     start, end, toggleMute, dismiss: () => setMicStopped(false), startSimulated, endSimulated: () => endSimulated(), hangUpNow,
+    record, setRecord, recording, saved,
   };
 
   return (

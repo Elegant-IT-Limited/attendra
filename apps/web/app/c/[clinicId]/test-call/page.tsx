@@ -2,16 +2,19 @@
 'use client';
 import type { TestCallAllowance } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Mic, PhoneOff, User } from 'lucide-react';
+import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { SimulatedCall } from '@/components/calls/simulated-call';
 import { FAILURES, useTestCall } from '@/components/calls/test-call';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/controls';
 import { Alert, Empty } from '@/components/ui/feedback';
 import { api, useClinic } from '@/lib/api';
+import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -21,8 +24,11 @@ export default function TestCallPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { data: me, clinic, can } = useClinic(clinicId);
   // the call itself lives in the clinic's frame (TestCallProvider), so it keeps going on other pages; this page starts it and shows it
-  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end } = useTestCall();
+  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved } = useTestCall();
   const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
+  // only in the browser, after the first render: the server cannot know, and the two must render the same
+  const [recordable, setRecordable] = useState(false);
+  useEffect(() => setRecordable(canRecord()), []);
   const left = allowance.data?.limitSeconds == null ? null : Math.max(0, allowance.data.limitSeconds - allowance.data.usedSeconds);
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
@@ -54,6 +60,20 @@ export default function TestCallPage() {
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>
               : <Button onClick={() => void start()} disabled={left !== null && left < 15}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
+            {recordable && (
+              <div className="w-full text-left">
+                <Checkbox id="record-test-call" checked={record} onCheckedChange={setRecord} label="Record this test call"
+                  hint="Saved as a file on this computer only. Nothing is uploaded." />
+              </div>
+            )}
+            {recording && (
+              <p role="status" className="flex items-center gap-2 text-sm font-medium text-danger" data-testid="recording-on">
+                <span className="relative flex size-2.5" aria-hidden><span className="absolute inline-flex size-full rounded-full bg-danger animate-live" /><span className="relative inline-flex size-2.5 rounded-full bg-danger" /></span> Recording on this computer
+              </p>
+            )}
+            {saved && !recording && (
+              <a href={saved.url} download={saved.name} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"><Download className="size-4" /> Save the recording</a>
+            )}
             {left !== null && (
               <p className="text-sm text-text-muted" data-testid="test-minutes-left">{left < 15 ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
             )}
