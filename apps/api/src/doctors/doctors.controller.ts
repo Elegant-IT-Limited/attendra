@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, configProblems, newProviderId, notOnListProblem, type Provider, readCustomValues, readDoctors, withListValues } from '@attendra/core';
+import { ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, notOnListProblem, onList, type Provider, readCustomValues, readDoctors, withListValues } from '@attendra/core';
 import type { FrontDeskRepository, Tx } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -138,17 +138,22 @@ export class DoctorsController {
     const out = await this.desk.updateSettings<{ report: ImportResult } | { issues: Issues }>(clinicId, staff.userId, 'clinic.doctors.imported', clinicId, async (stored, tx) => {
       const c = ClinicConfig.parse(stored);
       const rows = readDoctors(body.csv, c);
+      const good = rows.flatMap((r) => (r.ok ? [r] : []));
+      // a specialty or category the file brings joins the clinic's lists (the check before the import said so) while
+      // they have room; a doctor whose value found none is imported all the same, and the row says so
+      const specialties = good.flatMap((r) => (r.value.specialty ? [r.value.specialty] : []));
+      const categories = good.flatMap((r) => r.value.categories);
+      const over = { specialties: leftOffList(c, 'specialties', specialties), categories: leftOffList(c, 'categories', categories) };
+      const overOf = (p: Provider) => [...(p.specialty && onList(over.specialties, p.specialty) ? [p.specialty] : []), ...p.categories.filter((v) => onList(over.categories, v))];
       const report: ImportResult = {
         dryRun: body.dryRun,
-        rows: rows.map((r) => ({ line: r.line, name: r.name, status: r.ok ? (r.existingId ? 'update' : 'add') : 'error', message: r.ok ? r.note ?? null : r.message })),
-        counts: { add: 0, update: 0, skip: 0, error: 0 },
+        rows: rows.map((r) => ({ line: r.line, name: r.name, status: r.ok ? (r.existingId ? 'update' : 'add') : 'error', message: r.ok ? listRowNote(r.adds, overOf(r.value)) : r.message })),
+        counts: { add: 0, update: 0, skip: 0, error: 0, notListed: good.filter((r) => overOf(r.value).length).length },
       };
       for (const r of report.rows) report.counts[r.status]++;
-      const good = rows.flatMap((r) => (r.ok ? [r] : []));
       if (body.dryRun || !good.length) return { result: { report } };
       const providers = await withoutStandIn(this.desk, clinicId, c.providers.map((p) => good.find((r) => r.existingId === p.id)?.value ?? p).concat(good.filter((r) => !r.existingId).map((r) => r.value)), tx);
-      // a specialty or category the file brings joins the clinic's lists (the check before the import said so)
-      const listed = withListValues(withListValues({ ...c, providers }, 'specialties', good.flatMap((r) => (r.value.specialty ? [r.value.specialty] : []))), 'categories', good.flatMap((r) => r.value.categories));
+      const listed = withListValues(withListValues({ ...c, providers }, 'specialties', specialties), 'categories', categories);
       const parsed = ClinicConfig.safeParse(listed);
       if (!parsed.success) return { result: { issues: issuesOf(parsed.error) } };
       if (configProblems(parsed.data).length) return { result: { issues: configProblems(parsed.data) } };

@@ -247,10 +247,10 @@ describe('importing patients from a spreadsheet', () => {
     expect(dry.rows[4].message).toMatch(/twice/);
     expect((await names('ibanez'))).toEqual([]); // a dry run changes nothing
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
-    expect(real.counts).toEqual({ add: 2, update: 0, skip: 1, error: 2 });
+    expect(real.counts).toEqual({ add: 2, update: 0, skip: 1, error: 2, notListed: 0 });
     expect(await names('ibanez')).toEqual(['Rosa Ibanez', 'Tom Ibanez']);
     const again = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
-    expect(again.counts).toEqual({ add: 0, update: 0, skip: 3, error: 2 });
+    expect(again.counts).toEqual({ add: 0, update: 0, skip: 3, error: 2, notListed: 0 });
   });
 });
 
@@ -371,6 +371,26 @@ describe('pets, at a vet clinic', () => {
     expect((await api.request('GET', S, { cookie: as.owner })).json().lists?.species).toBeUndefined();
     expect((await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json().counts).toMatchObject({ add: 1 });
     expect((await api.request('GET', S, { cookie: as.owner })).json().lists.species).toContain('Hedgehog');
+  });
+
+  it('imports a pet whose kind finds no room on a full list, and says so on the row and in the counts', async () => {
+    const lists = `/api/v1/clinics/${DEMO_CLINIC.id}/settings/lists/species`;
+    const sixty = Array.from({ length: 60 }, (_, i) => `Kind ${i + 1}`);
+    expect((await api.request('PUT', lists, { cookie: as.owner, body: { values: sixty } })).statusCode).toBe(200);
+    const csv = 'pet_name,species,sex,birthday,owner_name,owner_phone\nFig,kind 2,male,2023-03-01,Lina Haddad,(303) 555-0166\nOlive,ferret,female,2023-03-01,Lina Haddad,(303) 555-0166\n';
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows.map((r: { status: string; message: string | null }) => [r.status, r.message])).toEqual([
+      ['add', null],
+      ['add', '"ferret" not added to your list: it already has 60 values; remove one in Settings, Fields and lists'],
+    ]);
+    expect(dry.counts).toEqual({ add: 2, update: 0, skip: 0, error: 0, notListed: 1 });
+    const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
+    expect(real.counts).toEqual({ add: 2, update: 0, skip: 0, error: 0, notListed: 1 });
+    expect((await api.request('GET', S, { cookie: as.owner })).json().lists.species).toEqual(sixty);
+    const found = (await api.request('POST', `${C}/search`, { cookie: as.staff, body: { query: 'olive' } })).json().patients;
+    expect(found[0]).toMatchObject({ firstName: 'Olive', species: 'ferret' });
+    // and back, for the tests after this one
+    expect((await api.request('PUT', lists, { cookie: as.owner, body: { values: ['Dog', 'Cat', 'Rabbit', 'Hedgehog'] } })).statusCode).toBe(200);
   });
 
   it('imports pets from a pet spreadsheet', async () => {
