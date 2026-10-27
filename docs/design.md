@@ -75,7 +75,7 @@ The same everywhere:
 
 | Keys | Does |
 |---|---|
-| Cmd+K or Ctrl+K | Search and jump: pages, patients, New booking, a test call, the theme |
+| Cmd+K or Ctrl+K | Search and jump: pages, patients, another clinic, New booking, a test call, the theme |
 | G then T, S, P, R or C | Today, Schedule, Patients, Requests, Calls |
 | N | New booking |
 | ? | This list |

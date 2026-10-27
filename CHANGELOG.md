@@ -48,6 +48,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Logs that explain a call.** At info, with ids and times and never the caller's words: delegation created, planner request started and answered, sideband open, reconnecting, reconnected and closed, the assistant's first words (time from the start) and each reply's start and end.
 - **Evals.** Eight new scenarios, English and Spanish twins (160 to 167): a turn the voice let go (`dropped:`), a number without an area code, the pet's details first then "is it new?", and the greeting on time (`silent_start:`, through the real call runner). Tests: one-voice.test.ts, turns-and-phones.test.ts, call-runner (watchdog, replay after a reconnect, logs), language parity.
 
+### Changed (the clinic switcher, polished)
+
+- **One switcher, like the account menu.** The clinic at the top of the sidebar and in the phone's header is now a menu, not the browser's own drop-down: a tile with the clinic's initials, its name, and your role there under it ("Owner", "Front desk") instead of the time zone id. "Your clinics" lists each one with your role and a check on the one open, with a search box past six. Picking one opens the same page there, closes the menu, is remembered for next time, and says "Now in {clinic}." Arrows, Enter, Escape and type-ahead work; on a phone it opens as a sheet from the bottom; Cmd+K also jumps to another clinic.
+- **Always there for owners.** On a hosted plan an owner finds "Add a location" (Same business, one bill) and "Create a new clinic" (A separate business with its own plan) under "For owners", even with one clinic. Staff see only the list, and staff with one clinic see just its name.
+
 ### Fixed (the dashboard opens the clinic you were in)
 
 - **Home opens the last clinic.** The dashboard keeps the clinic last opened in this browser (`attendra.lastClinic`), and `/` opens it: after an account page, after signing in again, and after "Create a new clinic", whose page links to the new clinic. It is used only while the person still belongs to it; otherwise home opens the first clinic, as before. Before, coming back from an account page opened the first clinic in the list, not the one you were in.
@@ -55,7 +60,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ### Added (an owner opens a second, separate clinic with the same login)
 
 - **A second business on the same login.** `POST /provisioning/accounts/for-user` opens a new organization and clinic for a confirmed login that owns at least one organization, as its owner. It starts empty: nothing is copied from the owner's other clinics. Staff are refused (403 `not_an_owner`, checked on the server): a work email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.
-- **In the dashboard.** On a hosted plan, owners find "Add a location" (same business, one bill) and "Create a new clinic" (a separate business with its own plan) in the account menu, and in the clinic switcher when they work at more than one clinic. The links come from the hosting layer's plan (`addLocationUrl`, `newClinicUrl`), so a self-hosted install shows neither, and staff never see them.
+- **In the dashboard.** On a hosted plan, owners find "Add a location" (same business, one bill) and "Create a new clinic" (a separate business with its own plan) in the account menu, and in the clinic switcher. The links come from the hosting layer's plan (`addLocationUrl`, `newClinicUrl`), so a self-hosted install shows neither, and staff never see them.
 
 ### Fixed (the dashboard handles a busy API, and open tabs ask less of it)
 
