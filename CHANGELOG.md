@@ -18,6 +18,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Tabs that point at nothing.** Settings, Fields and lists and a pet's or patient's page have tabs whose view is the page below them; each tab named a panel that did not exist (`aria-controls`), which screen readers follow and axe reports. Tabs with no panels no longer name one.
 - **A simulated call at any clinic.** "Play a simulated call" on Test call worked only at the demo's own clinic; anywhere else (a new clinic, the demo's vet clinic) it said "The simulated call did not start". Any other clinic now gets a new caller asking when they could come in for the first visit a new caller may book: the assistant looks up open times through the real tools and offers them, then the call waits, booking nothing. In the clinic's first language (English or Spanish).
 - **Test call in the menu for a simulated call.** Without browser test calls (a demo with no OpenAI key), the menu hid Test call, though its page offers the simulated call and the demo tells you to open it. It is in the menu whenever either is on, and the page keeps its "Test call" title when browser calls are off.
+- **A move begun keeps its buttons.** Rescheduling or cancelling a visit that starts within minutes, the panel's buttons vanished the moment its start passed, leaving the times and nothing to press. They stay, and if the server refuses because the visit has started, the dialog says why.
 
 ### Added (a request says who made it)
 

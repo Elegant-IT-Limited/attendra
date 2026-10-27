@@ -16,6 +16,7 @@ import { Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
 import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf } from '@/lib/format';
+import { offersChanges } from '@/lib/visit';
 
 type Mode = 'view' | 'reschedule' | 'cancel';
 
@@ -72,7 +73,8 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   const provider = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? id;
   const pets = industryPack(clinic.industry).identity === 'pet';
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id);
-  const upcoming = a && a.status === 'booked' && new Date(a.startsAt) > new Date();
+  // a move or cancel begun keeps its buttons if the visit's start passes meanwhile: the server then says why
+  const upcoming = a && offersChanges(a, new Date(), mode !== 'view');
 
   let footer: ReactNode = a && patientHref ? <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>{pets ? 'Open pet' : 'Open patient'}</Link> : null;
   if (a && canWrite && upcoming) {
