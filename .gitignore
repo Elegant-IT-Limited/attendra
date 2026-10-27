@@ -15,3 +15,8 @@ test-results/
 *.tsbuildinfo
 apps/web/e2e/.auth/
 evals/reports/
+
+# written by next dev, never source
+AGENTS.md
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
