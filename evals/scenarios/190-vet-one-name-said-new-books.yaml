@@ -1,0 +1,39 @@
+id: vet-one-name-said-new-books
+title: An owner who goes by one name says at once that the pet is new; the pet is added with that one name and booked, and a last name is never asked for
+clinic: riverbend
+local_time: "11:00"
+tags: [new-pet]
+caller_number: "+17205550175"
+facts: "You are Sol, calling from your own mobile, the number you are calling from. You go by one name only, Sol, and have no last name to give: if you are asked for one, say you only go by Sol, a little annoyed. Bolt is your male dog, about two years old, and he has never been to this clinic. You already said he is new and a dog. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
+turns:
+  # the plan looks the pet up anyway, on purpose: the backend refuses, since the caller said he is new
+  - caller: Hi, I want to bring my dog in for the first time. I'm Sol, just Sol, and his name is Bolt. He's new, he's never been to you.
+    reply: "Welcome, Sol. I can add Bolt. How old is he?"
+    delegate:
+      - verify_caller: { owner_name: Sol, pet_name: Bolt }
+  - caller: He's about two.
+    reply: "Thanks. Bolt is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Bolt, owner_name: Sol, species: dog, sex: male, birthday_or_age: about two, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes please.
+    reply: "Bolt is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [pet_is_new]
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken:
+  - last name
+  - full name
+  - couldn't find
+  - is he new
+  - what kind of animal
+  - female or male

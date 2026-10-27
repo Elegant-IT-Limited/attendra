@@ -12,6 +12,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **Your name.** `PATCH /me {name}` changes your own name only, audited as `user.name.changed` in each of your clinics with neither the old nor the new name in the row. The sidebar, Team and the requests show it at once.
 - **The invitation email greets you properly.** With no name typed in Add people, it says "Hi," instead of the start of the address in lower case ("Hi sam,"); with one, it uses it as typed.
 
+### Fixed (one pet form; an owner with one name; no birthday in the future)
+
+- **An owner with one name.** The pet form asks for "Owner's first name" (required) and "Owner's last name" (optional, "Leave empty if they go by one name"), instead of one "Owner's full name" box that refused a single name only after saving. The API, the pets import and calls accept an owner with one name: the record keeps the name as given, and the pet has no family name (it is listed by its own name, with its owner). On a call, an owner on file with one name is found by that name, the pet's name and the phone, even when the caller adds a last name.
+- **One form everywhere.** Pets (Add and Edit) and a new booking's "New pet" step use the same form, so they cannot drift apart again; there is no other place a pet or owner is created by hand.
+- **The pets import** takes `owner_first_name` and `owner_last_name` (the last may be empty); a file with the older `owner_name` column still works.
+- **No birthday in the future.** "A birthday can't be in the future." under the field, in the form and from the API, judged by the clinic's date ("A date of birth…" for people).
+- **Errors under the field.** A problem with one field (the birthday, the owner's name, the sex, the kind of animal, the phone) is said under it; the "Not saved" dialog is only for the rest.
+
 ### Fixed (values from the clinic's lists are picked, not typed)
 
 - **Picked from the list.** A vet's specialty, what a vet sees ("Animals and services") and a pet's kind of animal are picked from the clinic's lists (Settings, Fields and lists). Typing only narrows the list; before, a value typed in was saved on the record and never reached the list, so the Veterinarians filter did not offer it.

@@ -8,7 +8,7 @@ Each account picks one in its settings (`industry`, default `clinic`). Two accou
 - `prompt.identify`: how to find out who a booking is for, and what to ask to look them up or add them.
 - `prompt.preferences`: preferences a caller may have about who they see.
 - `prompt.limits`: what the assistant must never do in this trade.
-- `identity`: how a caller's record is found. `person`: full name, date of birth and phone. `pet`: the owner's full name, the pet's name and the phone; the record is the pet's, with the owner as its guardian, and the kind of animal is stored with it.
+- `identity`: how a caller's record is found. `person`: full name, date of birth and phone. `pet`: the owner's first name (or the full name, when the caller gives it; many owners go by one name), the pet's name and the phone; the record is the pet's, with the owner as its guardian, and the kind of animal is stored with it.
 - `planner`: the backend planner's rules, limits and tool descriptions for the trade, and `toolArgs` where a tool takes different arguments (a pet's tools take `owner_name` and `pet_name`).
 - `emergency`: the trade's own emergencies, per language, and the script that answers them (see [safety](safety.md)). The engine's list for the person on the phone always applies too.
 
