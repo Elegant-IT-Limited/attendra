@@ -192,3 +192,27 @@ describe('a request the prompt cache can reuse', () => {
     expect(out.timing).toMatchObject({ tier: 'fast', requests: [{ served: 'priority' }] });
   });
 });
+
+describe('a round that fails is tried once more on the fallback model', () => {
+  it('the request goes on with the fallback, says so in its timing, and a second failure is the request\'s', async () => {
+    const seen: string[] = [];
+    const create = vi.fn(async (body: { model: string }) => {
+      seen.push(body.model);
+      if (body.model === 'gpt-main') throw new Error('Request timed out.');
+      return { output: [], output_text: 'Sure.' };
+    });
+    const c = await w.call();
+    c.caller('Maria Delgado.');
+    const out = await new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    expect(seen).toEqual(['gpt-main', 'gpt-spare']);
+    expect(out.say).toBe('Sure.');
+    expect(out.timing).toMatchObject({ model: 'gpt-spare', fallback: true, rounds: 1 });
+    // no fallback set: the error is the request's, as before
+    const none = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
+    await expect(none.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }))).rejects.toThrow('Request timed out.');
+    // the fallback fails too: the error is the request's
+    const both = vi.fn(async () => { throw new Error('down'); });
+    await expect(new ResponsesPlanner({ responses: { create: both } } as never, 'gpt-main', 8, undefined, { fallbackModel: 'gpt-spare' }).plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }))).rejects.toThrow('down');
+    expect(both).toHaveBeenCalledTimes(2);
+  });
+});

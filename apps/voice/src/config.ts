@@ -25,6 +25,8 @@ const Env = z.object({
   ATTENDRA_BACKEND_SIMPLE_EFFORT: optional(z.enum(EFFORTS)),
   // OpenAI's processing tier for the backend ('fast' is priority processing, at twice the price); unset, the default
   ATTENDRA_BACKEND_SERVICE_TIER: optional(z.enum(['default', 'fast', 'priority', 'flex'])),
+  // the model a round that timed out or errored is retried on, once; 'none' for no retry
+  ATTENDRA_BACKEND_FALLBACK_MODEL: z.preprocess(blank, z.string().default('gpt-6.1-terra')),
   ATTENDRA_EMBEDDING_MODEL: z.preprocess(blank, z.string().default('text-embedding-3-small')),
   TWILIO_ACCOUNT_SID: optional(z.string().startsWith('AC').min(10)),
   TWILIO_AUTH_TOKEN: optional(z.string().min(1)),
