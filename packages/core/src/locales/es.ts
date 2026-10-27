@@ -85,6 +85,12 @@ export const es: LanguagePack = {
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
+    lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
+      : kind === 'times' ? 'Un momento, reviso los horarios.'
+      : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`
+      : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
+      : 'Déjeme consultarlo.',
+    dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +

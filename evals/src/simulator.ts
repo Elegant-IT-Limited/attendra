@@ -107,6 +107,11 @@ function scriptLines(instruction: string): string {
   return /^The caller /.test(instruction) ? '' : instruction;
 }
 
+/** The line a lookup note tells the voice to say now, or null for any other note. */
+function announcedLine(note: string): string | null {
+  return /^Say now, in these words: "(.+)"$/.exec(note)?.[1] ?? null;
+}
+
 /** Live, the voice speaks the planner's own words: a line says a phrase when it has most of the phrase's words. */
 function saysMostOf(line: string, phrase: string): boolean {
   const words = (t: string) => t.toLowerCase().replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter((w) => w.length >= 4);
@@ -311,6 +316,14 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     }
     const out = await agent.onDelegation(`item_${++delegations}`);
     outbound.push(...out);
+    // the lookup line the voice says while the backend works ("Let me check Thursday for you."): spoken, before the answer
+    for (const o of out) if (o.type === 'thinking') {
+      const line = announcedLine(o.content);
+      if (!line) continue;
+      clock += 500;
+      agent.onAgentTranscript(line, clock, clock + 500);
+      if (livePlanner) transcript.push({ speaker: 'assistant', text: line });
+    }
     for (const o of out) if (o.type === 'commentary') {
       clock += 1500;
       agent.onAgentTranscript(o.content, clock, clock + 1000);
@@ -343,7 +356,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // live, the voice speaks the planner's words, which paraphrase the backend's: a line the
   // backend gave in a tool result (the read-back, the no-medical-advice line) counts as given
   const given = livePlanner ? observed.calls.flatMap((c) => ['say', 'readback', 'spoken'].flatMap((k) => (typeof c.data[k] === 'string' ? [c.data[k] as string] : []))) : [];
-  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : [])), ...replies, ...given];
+  const spoken = [...outbound.flatMap((o) => (o.type === 'commentary' ? [o.content] : o.type === 'instructions' && scriptLines(o.content) ? [scriptLines(o.content)] : o.type === 'thinking' && announcedLine(o.content) ? [announcedLine(o.content)!] : [])), ...replies, ...given];
   const transfer = outbound.find((o) => o.type === 'transfer');
   const e = scenario.expect;
   const failures: string[] = [];

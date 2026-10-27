@@ -82,6 +82,12 @@ export const en: LanguagePack = {
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
+    lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day} for you.`
+      : kind === 'times' ? 'One moment, I\'ll look at the times.'
+      : kind === 'pet' && pet ? `Let me find ${pet}.`
+      : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
+      : 'Let me look that up.',
+    dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'today' : daysFromToday === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]!),
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +

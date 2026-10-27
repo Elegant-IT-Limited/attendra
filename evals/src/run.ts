@@ -93,6 +93,14 @@ if (timings.length) {
     const output = known(rounds.map((r) => r.outputTokens)); const reasoning = known(rounds.map((r) => r.reasoningTokens));
     const hits = rounds.filter((r) => (r.cachedTokens ?? 0) > 0).length;
     console.log(dim(`  tokens per round: input median ${median(input) ?? '-'} (cached median ${median(cached) ?? '-'}, ${hits}/${rounds.length} rounds hit the cache, ${(cached.reduce((a, b) => a + b, 0) / Math.max(1, input.reduce((a, b) => a + b, 0)) * 100).toFixed(0)}% of input tokens cached), output median ${median(output) ?? '-'} of which reasoning median ${median(reasoning) ?? '-'} (${(reasoning.reduce((a, b) => a + b, 0) / Math.max(1, output.reduce((a, b) => a + b, 0)) * 100).toFixed(0)}% of output)`));
+    // a lookup turn: the first round called a tool. What the caller waited in silence (until the lookup line, else the
+    // answer), and the whole answer's time
+    const lookups = list.filter((t) => (t.requests[0]?.calls.length ?? 0) > 0);
+    if (lookups.length) {
+      const silence = lookups.map((t) => t.firstWordsMs);
+      const full = lookups.map((t) => t.modelMs + t.toolMs);
+      console.log(dim(`  lookups (${lookups.length}, ${lookups.filter((t) => t.announced).length} announced): silence before first words median ${median(silence)} ms, p90 ${quantile(silence, 0.9)} ms; full answer median ${median(full)} ms, p90 ${quantile(full, 0.9)} ms`));
+    }
     const parts = ['instructions', 'tools', 'transcript', 'state', 'history', 'notes'] as const;
     console.log(dim(`  prompt chars (median): ${parts.map((p) => `${p} ${median(list.map((t) => t.prompt[p]))}`).join(', ')}`));
   };

@@ -547,9 +547,18 @@ export class CallAgent {
       }
       let deadline: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise<'late'>((resolve) => { deadline = setTimeout(() => resolve('late'), ANSWER_DEADLINE_MS); });
+      // the first lookup's line goes to the voice the moment the planner starts it: the caller hears what is happening
+      // instead of silence, and the answer follows. A note for the voice, said in these words; never a result.
+      const onLookup = (line: string) => {
+        if (revision !== this.state.revision) return;
+        this.log.info({ call_id: this.ctx.callId, delegation_id: delegationId, ms: Date.now() - startedAt }, 'lookup announced');
+        const note: Outbound = { type: 'thinking', delegationId, content: `Say now, in these words: "${line}"` };
+        if (emit) emit(note); else out.push(note);
+      };
       const plan = await Promise.race([this.planner.plan({
         clinic: this.ctx.clinic, state: this.state, callerNumber: this.ctx.callerNumber, history: this.ctx.history ?? null,
         nowLine: `${todayLine(this.ctx.clinic, this.ctx.now())} ${todaysHoursLine(this.ctx.clinic, this.ctx.now())}`,
+        now: this.ctx.now(), onLookup,
       }, execute), late]).finally(() => clearTimeout(deadline));
       if (plan !== 'late') timing = plan.timing;
       if (plan === 'late') {
@@ -581,6 +590,7 @@ export class CallAgent {
         call_id: this.ctx.callId, delegation_id: delegationId, ms, tools: toolCalls,
         ...(timing ? {
           model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, tier: timing.tier, fallback: timing.fallback, simple: timing.simple,
+          first_words_ms: timing.firstWordsMs, announced: timing.announced,
           tool_ms: timing.toolMs, prompt_chars: timing.prompt,
           requests: timing.requests.map((r) => ({
             ms: r.ms, first_token_ms: r.firstTokenMs, input_tokens: r.inputTokens, cached_tokens: r.cachedTokens,

@@ -132,6 +132,13 @@ export interface LanguagePack {
     reminders: (v: { agreed: boolean }) => string;
     /** No vet here sees this kind of animal: the one vet's limit when there is one, then the request offered. */
     noVetForAnimal: (v: { vet: string | null; animals: string | null; pet: string }) => string;
+    /**
+     * Said the moment the backend starts a lookup, so the caller never waits in silence: what it is doing, in a few
+     * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
+     */
+    lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits'; day?: string | null; pet?: string | null }) => string;
+    /** A day as people say it when a time is read back or looked up: today, tomorrow, or the weekday. `weekday` is 0 for Sunday. */
+    dayWord: (v: { daysFromToday: number; weekday: number }) => string;
   };
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;

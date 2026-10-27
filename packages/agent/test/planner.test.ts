@@ -20,7 +20,8 @@ describe('the production planner', () => {
     await c.delegate([], planner);
     const [body, options] = create.mock.calls[0]! as [Record<string, unknown>, Record<string, unknown>];
     expect(body).toMatchObject({ model: 'gpt-test', store: false, max_output_tokens: 1000 });
-    expect(options).toEqual({ timeout: 15_000, maxRetries: 1 });
+    // the first round is streamed (the lookup line goes out as it starts), under its own abort signal: the SDK's timeout covers the headers only
+    expect(options).toEqual({ timeout: 15_000, maxRetries: 1, signal: expect.any(AbortSignal) });
   });
 
   it('is told the one name on file to ask "Am I speaking with ...?", and never to offer a text to a number abroad', async () => {
