@@ -26,6 +26,7 @@ const speed: PlannerSpeed = {
   effort: effort('ATTENDRA_BACKEND_EFFORT'),
   simple: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || process.env.ATTENDRA_BACKEND_SIMPLE_EFFORT
     ? { model: process.env.ATTENDRA_BACKEND_SIMPLE_MODEL || undefined, effort: effort('ATTENDRA_BACKEND_SIMPLE_EFFORT') } : undefined,
+  tier: (process.env.ATTENDRA_BACKEND_SERVICE_TIER || undefined) as PlannerSpeed['tier'],
 };
 // `--timings` also prints the planner model time of every live request, to compare speed settings request by request,
 // with each round's tokens and first-token time (rounds are streamed for that), and writes them all to
@@ -69,14 +70,14 @@ if (timings.length) {
     for (const t of timings) {
       const rounds = t.requests.map((r) => `${r.ms}${r.firstTokenMs !== null ? `(${r.firstTokenMs})` : ''}${r.calls.length ? ` ${r.calls.join('+')}` : ''}`).join(' · ');
       const tokens = t.requests.length ? `in ${t.requests.map((r) => `${r.inputTokens ?? '?'}/${r.cachedTokens ?? '?'}c`).join(',')} out ${t.requests.map((r) => `${r.outputTokens ?? '?'}/${r.reasoningTokens ?? '?'}r`).join(',')}` : '';
-      console.log(dim(`  ${t.scenario.padEnd(34)} ${(t.simple ? 'simple' : 'other').padEnd(6)} ${`${t.model}${t.effort ? `/${t.effort}` : ''}`.padEnd(18)} ${t.rounds} round${t.rounds === 1 ? ' ' : 's'} ${String(t.modelMs).padStart(6)} ms  tools ${String(t.toolMs).padStart(5)} ms  [${rounds}]  ${tokens}`));
+      console.log(dim(`  ${t.scenario.padEnd(34)} ${(t.simple ? 'simple' : 'other').padEnd(6)} ${`${t.model}${t.effort ? `/${t.effort}` : ''}${t.tier ? `/${t.tier}` : ''}`.padEnd(18)} ${t.rounds} round${t.rounds === 1 ? ' ' : 's'} ${String(t.modelMs).padStart(6)} ms  tools ${String(t.toolMs).padStart(5)} ms  [${rounds}]  ${tokens}`));
     }
     console.log('');
   }
   const line = (label: string, list: PlannerTiming[]) => {
     if (!list.length) return;
     const ms = list.map((t) => t.modelMs);
-    console.log(dim(`planner model time, ${label}: ${list.length} requests, median ${median(ms)} ms, p90 ${quantile(ms, 0.9)} ms, max ${Math.max(...ms)} ms (${[...new Set(list.map((t) => `${t.model}${t.effort ? `/${t.effort}` : ''}`))].join(', ')})`));
+    console.log(dim(`planner model time, ${label}: ${list.length} requests, median ${median(ms)} ms, p90 ${quantile(ms, 0.9)} ms, max ${Math.max(...ms)} ms (${[...new Set(list.map((t) => `${t.model}${t.effort ? `/${t.effort}` : ''}${t.tier ? `/${t.tier}` : ''}`))].join(', ')})`));
     if (!perRequest) return;
     // where the time goes: rounds per request, each round's time and first token, the tokens, and the prompt cache
     const rounds = list.flatMap((t) => t.requests);
@@ -85,6 +86,8 @@ if (timings.length) {
     const share = (part: number[]) => (part.reduce((a, b) => a + b, 0) / Math.max(1, ms.reduce((a, b) => a + b, 0)) * 100).toFixed(0);
     console.log(dim(`  rounds per request: median ${median(list.map((t) => t.rounds))}, ${list.filter((t) => t.rounds > 1).length}/${list.length} requests took more than one; first rounds ${share(firstOf.map((r) => r.ms))}% of model time, later rounds ${share(later.map((r) => r.ms))}%; tools median ${median(list.map((t) => t.toolMs))} ms`));
     console.log(dim(`  per round: median ${median(rounds.map((r) => r.ms))} ms, first token median ${median(known(rounds.map((r) => r.firstTokenMs))) ?? '-'} ms (p90 ${quantile(known(rounds.map((r) => r.firstTokenMs)), 0.9) ?? '-'}); first rounds median ${median(firstOf.map((r) => r.ms))} ms, later rounds median ${median(later.map((r) => r.ms)) ?? '-'} ms`));
+    const served = [...new Set(rounds.map((r) => r.served).filter(Boolean))];
+    if (served.length) console.log(dim(`  processing tier served: ${served.join(', ')}`));
     const input = known(rounds.map((r) => r.inputTokens)); const cached = known(rounds.map((r) => r.cachedTokens));
     const output = known(rounds.map((r) => r.outputTokens)); const reasoning = known(rounds.map((r) => r.reasoningTokens));
     const hits = rounds.filter((r) => (r.cachedTokens ?? 0) > 0).length;
