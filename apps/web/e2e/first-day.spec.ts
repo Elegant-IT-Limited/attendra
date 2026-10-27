@@ -404,12 +404,15 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await page.getByRole('button', { name: 'Reschedule or cancel' }).click();
     let panel = page.getByRole('dialog', { name: 'Biscuit' });
     await watch.axe(page, 'a visit\'s panel');
+    const before = (await panel.getByText(/^\w+day \d+ \w+, \d/).textContent())!;
     await panel.getByRole('button', { name: 'Reschedule' }).click();
     await panel.getByRole('button', { name: 'Later week' }).click();
     await panel.getByRole('button', { name: 'Later week' }).click();
     await panel.getByRole('radio').first().click();
     await panel.getByRole('button', { name: 'Move appointment' }).click();
     await expect(page.locator('[aria-live=polite]').getByText('Moved. The schedule shows the new time.')).toBeVisible();
+    // the panel shows the new time once the visit is refetched; until then its date is still the old one
+    await expect(panel.getByText(/^\w+day \d+ \w+, \d/)).not.toHaveText(before);
     const moved = (await panel.getByText(/^\w+day \d+ \w+, \d/).textContent())!;
     await page.keyboard.press('Escape');
 
@@ -592,6 +595,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByRole('button', { name: /Juniper Hill Pet Care, Owner: switch clinic/ })).toBeVisible();
   });
 
+  let callId = '';
   await watch.step('9. Test call: the simulated call, moving between pages with the call bar, hung up from the bar', {}, async () => {
     await page.goto(home);
     await open(page, 'Test call');
@@ -599,7 +603,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await watch.axe(page, 'Test call');
     await page.getByRole('button', { name: 'Play a simulated call' }).click();
     await expect(page).toHaveURL(/\/calls\/[^/]+\/live$/, { timeout: 20_000 });
-    const callId = new URL(page.url()).pathname.split('/')[4]!;
+    callId = new URL(page.url()).pathname.split('/')[4]!;
     const bar = page.getByRole('region', { name: 'Test call in progress' });
     await expect(bar).toContainText('Simulated call');
     await watch.axe(page, 'a live call');
@@ -617,5 +621,80 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await bar.getByRole('button', { name: 'Hang up' }).click();
     await expect(bar).toHaveCount(0);
     await expect.poll(live, { timeout: 30_000 }).not.toContain(callId);
+  });
+
+  /**
+   * Every other screen a clinic owner or the front desk uses, at a desktop and a phone width: each one loads with
+   * no console error, no unexpected 4xx or 5xx, no problem dialog, passes axe, and is photographed for the review
+   * (REVIEW_SHOTS=<folder>). The journey's data is on them: the pets, the visits, the request, the team, the call.
+   */
+  const shots = process.env.REVIEW_SHOTS;
+  const look = async (name: string, go: () => Promise<void>, ready: () => Promise<void>) => {
+    for (const [width, height] of [[1440, 900], [390, 844]] as const) {
+      await page.setViewportSize({ width, height });
+      await go();
+      await ready();
+      await expect(page.getByText('Loading', { exact: false })).toHaveCount(0, { timeout: 20_000 });
+      await watch.axe(page, `${name} at ${width}`);
+      if (shots) await page.screenshot({ path: `${shots}/${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${width}.png`, fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+  };
+  const heading = (name: string | RegExp) => async () => { await expect(page.getByRole('heading', { name }).first()).toBeVisible({ timeout: 20_000 }); };
+  const url = (path: string) => () => page.goto(`${home}${path}`);
+
+  await watch.step('10. Every other screen, at 1440 and 390 wide: Calls and a call record, Quality, Audit log, every Settings section and tab, Texting, Team, Requests filters, Schedule month and week, Pets search and import, Test call', {}, async () => {
+    await look('Calls', url('/calls'), heading('Calls'));
+    for (const tab of ['Bookings and changes', 'Needs review', 'Emergencies']) {
+      const t = page.getByRole('tab', { name: tab });
+      if (await t.count()) { await t.click(); await watch.axe(page, `Calls, ${tab}`); }
+    }
+    await look('a call record', url(`/calls/${callId}`), async () => { await expect(page.getByRole('heading').first()).toBeVisible({ timeout: 20_000 }); });
+    await look('Quality', url('/quality'), heading('Quality'));
+    await look('Audit log', url('/audit'), heading('Audit log'));
+    // Settings: every section of the one page, by its side navigation, then the pages of their own
+    await look('Settings', url('/settings'), heading('Settings'));
+    for (const section of ['Opening hours', 'Holidays and special days', 'Emergency hospitals', 'Visit types', 'Booking rules', 'Transfers', 'VIP callers', 'Common questions', 'Offers', 'Fields and lists', 'Menu links', 'Call records', 'Phone numbers']) {
+      const link = page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: section, exact: true });
+      if (!(await link.count())) continue;
+      await link.click();
+      await expect(page.getByRole('heading', { name: section }).first()).toBeVisible();
+      await watch.axe(page, `Settings, ${section}`);
+    }
+    await look('Fields and lists', url('/settings/fields'), heading('Settings'));
+    for (const tab of await page.getByRole('tab').allTextContents()) {
+      await page.getByRole('tab', { name: tab, exact: true }).click();
+      await watch.axe(page, `Fields and lists, ${tab}`);
+      if (shots) await page.screenshot({ path: `${shots}/fields-${tab.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-1440.png`, fullPage: true });
+    }
+    await look('Texting', url('/settings/texting'), heading('Settings'));
+    await look('Integrations', url('/settings/integrations'), heading('Settings'));
+    await look('Knowledge', url('/settings/knowledge'), heading('Settings'));
+    await look('API keys', url('/settings/api-keys'), heading('Settings'));
+    await look('Team', url('/team'), heading('Team'));
+    await look('Requests', url('/requests'), heading('Requests'));
+    for (const filter of ['Done', 'Open', 'Mine', 'Unclaimed']) {
+      const b = page.getByRole('button', { name: filter, exact: true });
+      if (await b.count()) { await b.click(); await watch.axe(page, `Requests, ${filter}`); }
+    }
+    await look('Schedule week', url(`/schedule?view=week&date=${today}`), async () => { await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 }); });
+    await look('Schedule month', url(`/schedule?view=month&date=${today}`), async () => { await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 }); });
+    await look('Pets', url('/patients'), heading('Pets'));
+    const search = page.locator('main').getByRole('searchbox').or(page.locator('main input[type=search]')).first();
+    if (await search.count()) { await search.fill('Biscuit'); await expect(page.getByRole('link', { name: /^Biscuit\b/ }).first()).toBeVisible(); await watch.axe(page, 'Pets, a search'); }
+    const importButton = page.getByRole('button', { name: /Import/ }).first();
+    if (await importButton.count()) {
+      await importButton.click();
+      const dialog = page.getByRole('dialog').first();
+      await expect(dialog).toBeVisible();
+      await watch.axe(page, 'Pets, import');
+      if (shots) await page.screenshot({ path: `${shots}/pets-import-1440.png` });
+      await page.keyboard.press('Escape');
+    }
+    await look('a pet', async () => { await page.goto(`${home}/patients`); await page.getByRole('link', { name: /^Biscuit\b/ }).first().click(); }, heading('Biscuit'));
+    await look('Veterinarians', url('/doctors'), heading('Veterinarians'));
+    await look('Test call', url('/test-call'), heading('Test call'));
+    await look('Your profile', () => page.goto('/profile'), heading('Your profile'));
+    await look('Today', url(''), heading('Today'));
   });
 });
