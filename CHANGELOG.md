@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (the front desk is never offered a time that has just begun)
+
+- **No "That time has already passed" after picking a time the dashboard offered.** New booking and Reschedule offered the front desk every slot from this very minute, so a time starting right then could be picked and was refused as past a moment later. Times starting in the next 5 minutes are left out; anything later, like the 2:40 at 2:34, is still offered, and the override still squeezes one in. Found by the first-day journey in CI.
+
 ### Fixed (calls never offer a time that overlaps the patient's own visit)
 
 - **No dead-end yes.** The times the assistant offered left out only the vets' busy time, so a pet that already had a visit could be offered a time overlapping it, and the booking was refused (`patient_busy`) only after the caller said yes. `find_slots` now leaves out the patient's own upcoming visits too, with any vet. Found by the demo replay of the new two-pets calls, where an English and a Spanish call for the same pet landed on one day.
