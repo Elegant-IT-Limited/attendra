@@ -28,11 +28,12 @@ export interface PlannerOutput { say: string | null; quiet?: string; timing?: Pl
  * is the tools' own time, and `prompt` the size in characters of each part of what was sent, to see what the model reads.
  */
 export interface PlannerTiming {
-  model: string; effort: ReasoningEffort | null; simple: boolean; rounds: number; modelMs: number;
+  model: string; effort: ReasoningEffort | null; tier: ServiceTier | null; simple: boolean; rounds: number; modelMs: number;
   requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
 }
+/** `served` is the processing tier OpenAI reports for the round, when a tier was asked for. */
 export interface RoundTiming {
-  ms: number; firstTokenMs: number | null;
+  ms: number; firstTokenMs: number | null; served: string | null;
   inputTokens: number | null; cachedTokens: number | null; outputTokens: number | null; reasoningTokens: number | null;
   calls: string[];
 }
@@ -43,7 +44,12 @@ export interface PromptSizes { instructions: number; tools: number; transcript: 
  * How hard the model thinks: `effort` for every request (unset, the model's own default), and an optional faster setting
  * (another model, or less reasoning) for simple turns only (see simpleTurn). Both unset is today's behaviour.
  */
-export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort } }
+export interface PlannerSpeed {
+  effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort };
+  /** OpenAI's processing tier for every request ('fast' is priority processing, at twice the price); unset, the default. */
+  tier?: ServiceTier;
+}
+export type ServiceTier = 'default' | 'fast' | 'priority' | 'flex';
 
 /**
  * A turn that needs little thought: the caller's last words are short (a name, a number, one question), nothing waits
@@ -53,7 +59,8 @@ export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: str
 export function simpleTurn(state: CallState): boolean {
   if (state.pending || state.textOffer || (state.reminderOffer && !state.remindersAsked) || state.emergencyLocked) return false;
   const said = state.lastTurn('caller').trim();
-  return !!said && said.split(/\s+/).length <= 12 && (said.match(/[?¿]/g)?.length ?? 0) <= 1;
+  // one question: closing marks only, since a Spanish question opens with ¿ as well
+  return !!said && said.split(/\s+/).length <= 12 && (said.match(/\?/g)?.length ?? 0) <= 1;
 }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
@@ -125,6 +132,12 @@ function languageLine(clinic: ClinicConfig): string {
   const write = all.length > 1 ? `in the caller's language when it is ${all.join(' or ')}, otherwise in ${primary}` : `in ${primary}, even when the caller speaks another language`;
   const usted = clinic.languages.includes('es') ? ' In Spanish, address the caller as usted throughout, never tú.' : '';
   return `Write what the assistant says ${write}.${usted} Pass questions to get_clinic_info and search_knowledge in ${primary}, in a few words.`;
+}
+
+/** The date and today's hours stay in the rules for the call; the clock time goes to the end of the request, where it changes nothing cached. */
+export function splitNow(nowLine: string): { date: string; time: string | null } {
+  const m = /,\s*(\d{1,2}:\d{2}) clinic time\./.exec(nowLine);
+  return m ? { date: nowLine.replace(m[0], '.'), time: m[1]! } : { date: nowLine, time: null };
 }
 
 function transcriptFor(state: CallState): string {
@@ -205,8 +218,13 @@ export class ResponsesPlanner implements Planner {
       : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
     const known = stateLine(state, input.clinic);
-    const conversation: ResponseInput = [{ role: 'user', content: `Conversation so far:\n${transcript}\n\nKnown state: ${known}${earlier}${noTexts}${phone}` }];
-    const instructions = systemPrompt(input.clinic, input.nowLine);
+    // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
+    // fixed notes (its records, its number), then the transcript, which only grows; the state line and the clock come last,
+    // since they change every turn (the time was in the first line of the rules, which rewrote the whole prefix each minute)
+    const { date, time } = splitNow(input.nowLine);
+    const fixed = `${earlier}${noTexts}${phone}`.trim();
+    const conversation: ResponseInput = [{ role: 'user', content: `${fixed ? `${fixed}\n\n` : ''}Conversation so far:\n${transcript}\n\nKnown state: ${known}${time ? `\n\nThe time now: ${time} clinic time.` : ''}` }];
+    const instructions = systemPrompt(input.clinic, date);
     let corrected = false;
     const doneBefore = state.done.length;
     const requestBefore = state.requestMade;
@@ -216,7 +234,7 @@ export class ResponsesPlanner implements Planner {
     const model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
     const timing: PlannerTiming = {
-      model, effort, simple, rounds: 0, modelMs: 0, requests: [], toolMs: 0,
+      model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, requests: [], toolMs: 0,
       prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
     };
     const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs) } });
@@ -227,14 +245,17 @@ export class ResponsesPlanner implements Planner {
         model, instructions, input: conversation, tools, store: false,
         max_output_tokens: this.limits.maxOutputTokens,
         ...(effort ? { reasoning: { effort } } : {}),
+        ...(this.speed.tier ? { service_tier: this.speed.tier } : {}),
         // with store: false the model's reasoning must travel with the request, encrypted
         include: ['reasoning.encrypted_content'],
+        // one cache per clinic: its calls share the fixed prefix (rules, tools, its own facts)
+        prompt_cache_key: input.clinic.id,
       }, asked);
       timing.rounds++;
       timing.modelMs += performance.now() - asked;
       const calls = res.output.filter((o) => o.type === 'function_call');
       timing.requests.push({
-        ms: Math.round(performance.now() - asked), firstTokenMs,
+        ms: Math.round(performance.now() - asked), firstTokenMs, served: res.service_tier ?? null,
         inputTokens: res.usage?.input_tokens ?? null, cachedTokens: res.usage?.input_tokens_details?.cached_tokens ?? null,
         outputTokens: res.usage?.output_tokens ?? null, reasoningTokens: res.usage?.output_tokens_details?.reasoning_tokens ?? null,
         calls: calls.map((c) => c.name),

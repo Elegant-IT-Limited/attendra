@@ -154,3 +154,41 @@ describe('find_slots stages the exact time the caller named', () => {
     expect(c.state.pending).toBeNull();
   });
 });
+
+describe('a request the prompt cache can reuse', () => {
+  const body = (create: ReturnType<typeof vi.fn>, i: number) => create.mock.calls[i]![0] as { instructions: string; tools: unknown; input: { content: string }[]; prompt_cache_key: string; service_tier?: string };
+
+  it('the rules and tools are byte-identical across turns and minutes; the clock and the state come last; fixed notes come before the transcript', async () => {
+    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.' }));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main');
+    const c = await w.call('+13035550147', { history: 'Name on file for this number: Maria.' });
+    c.caller('Hi, it\'s Maria.');
+    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: 'Today is Monday, 2026-09-28, 20:14 clinic time. The clinic is closed today.', callerNumber: '+13035550147', history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
+    c.assistant('Hi Maria, how can I help?');
+    c.caller('I need a sick visit.');
+    await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: 'Today is Monday, 2026-09-28, 20:15 clinic time. The clinic is closed today.', callerNumber: '+13035550147', history: 'Name on file for this number: Maria.' }, async () => ({ ok: true, data: {} }));
+    const [a, b] = [body(create, 0), body(create, 1)];
+    expect(a.instructions).toBe(b.instructions);
+    expect(JSON.stringify(a.tools)).toBe(JSON.stringify(b.tools));
+    expect(a.instructions).toContain('Today is Monday, 2026-09-28. The clinic is closed today.');
+    expect(a.instructions).not.toContain('20:14');
+    expect(a.input[0]!.content).toMatch(/The time now: 20:14 clinic time\.$/);
+    expect(b.input[0]!.content).toMatch(/The time now: 20:15 clinic time\.$/);
+    // the fixed notes open the message, and the second request's message starts with the first's
+    expect(a.input[0]!.content.startsWith('Our records for the number this caller is calling from')).toBe(true);
+    const upTo = (s: string) => s.slice(0, s.indexOf('Caller: Hi, it\'s Maria.') + 'Caller: Hi, it\'s Maria.'.length);
+    expect(upTo(b.input[0]!.content)).toBe(upTo(a.input[0]!.content));
+    expect(a.prompt_cache_key).toBe(DEMO_CLINIC.id);
+    expect(a).not.toHaveProperty('service_tier');
+  });
+
+  it('a processing tier, when set, goes on every round and the one served is recorded', async () => {
+    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Sure.', service_tier: 'priority' }));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, { tier: 'fast' });
+    const c = await w.call();
+    c.caller('Maria Delgado.');
+    const out = await planner.plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '' }, async () => ({ ok: true, data: {} }));
+    expect(body(create, 0).service_tier).toBe('fast');
+    expect(out.timing).toMatchObject({ tier: 'fast', requests: [{ served: 'priority' }] });
+  });
+});
