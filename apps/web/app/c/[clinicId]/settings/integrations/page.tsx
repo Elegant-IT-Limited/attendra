@@ -63,7 +63,7 @@ function DeliveryLog({ clinicId, endpoint, tz }: { clinicId: string; endpoint: W
   if (log.isPending) return <Skeleton className="m-5 h-16" />;
   if (!log.data?.attempts.length) return <p className="px-5 py-4 text-sm text-text-muted">Nothing sent yet. Send a test event to try it.</p>;
   return (
-    <Table density="compact" aria-label={`Deliveries to ${endpoint.url}`}>
+    <Table density="compact" label={`Deliveries to ${endpoint.url}`}>
       <THead><tr><TH>When</TH><TH>Event</TH><TH>Result</TH><TH className="hidden md:table-cell">Try</TH><TH><span className="sr-only">Redeliver</span></TH></tr></THead>
       <tbody>
         {log.data.attempts.map((a) => (

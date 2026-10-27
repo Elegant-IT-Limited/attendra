@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { openAs } from './session';
 
@@ -86,6 +87,47 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const who = await rows.locator('td:nth-child(2)').allTextContents();
     expect(what.filter((w) => /^[a-z_]+(\.[a-z_:]+)+$/.test(w))).toEqual([]);
     expect(who.filter((w) => /^(worker|system|seed|api_key:)/.test(w))).toEqual([]);
+  });
+
+  test('on a phone the account menu is the header\'s alone, and a wide table scrolls with the keyboard and shows an edge', async ({ browser }) => {
+    test.slow();
+    const page = await openAs(browser, 'manager');
+    const clinic = new URL(page.url()).pathname.split('/')[2];
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/c/${clinic}/audit`);
+    await expect(page.getByRole('heading', { name: 'Audit log' })).toBeVisible();
+    // the sidebar and its account button are gone below the tablet width: nothing sits over the bottom bar's Today tab
+    const account = 'button[aria-label$="account and theme"]';
+    await expect(page.locator('aside').locator(account)).toBeHidden();
+    const header = page.locator('header').locator(account);
+    await expect(header).toBeVisible();
+    expect((await header.boundingBox())!.y).toBeLessThan(80);
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Today' })).toBeVisible();
+    // the audit log's table is wider than the screen: a named region the keyboard reaches, with an edge that says there is more
+    const axe = async (where: string) => {
+      const result = await new AxeBuilder({ page }).withRules(['scrollable-region-focusable', 'document-title']).exclude('nextjs-portal').analyze();
+      expect(result.violations.map((v) => v.id), where).toEqual([]);
+    };
+    const region = page.getByRole('region', { name: 'Audit log' });
+    await expect(region).toHaveAttribute('tabindex', '0');
+    await expect(region.locator('..').getByTestId('scroll-edge-right')).toHaveCSS('opacity', '1');
+    await region.focus();
+    await page.keyboard.press('End');
+    await expect(region.locator('..').getByTestId('scroll-edge-left')).toHaveCSS('opacity', '1');
+    await axe('Audit log');
+    for (const [path, name, ready] of [['/team', 'Team', 'Add people'], ['/calls', 'Calls', 'What the assistant did']] as const) {
+      await page.goto(`/c/${clinic}${path}`);
+      await expect(page.getByText(ready).first()).toBeVisible();
+      await expect(page.getByRole('region', { name })).toBeVisible();
+      await axe(name);
+    }
+    // Fields and lists has the page title like every page, and its tab strip scrolls the same way
+    await page.goto(`/c/${clinic}/settings/fields`);
+    await expect(page.getByRole('navigation', { name: 'Settings' })).toBeVisible();
+    await expect(page).toHaveTitle(/Attendra/);
+    await expect(page.getByRole('region', { name: 'Settings pages' })).toHaveAttribute('tabindex', '0');
+    await axe('Fields and lists');
+    await page.close();
   });
 
   test('every tab list has a name, and its panel is named by the selected tab', async ({ browser }) => {

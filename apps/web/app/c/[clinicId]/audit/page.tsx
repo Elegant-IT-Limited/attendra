@@ -232,7 +232,7 @@ export default function Audit() {
           : entries.isError ? <Alert tone="danger" className="m-4">The audit log did not load. Refresh the page to try again.</Alert>
           : rows.length === 0 ? <Empty title="Nothing recorded yet">Views of patient data and every change appear here as they happen.</Empty>
             : (
-              <Table>
+              <Table label="Audit log">
                 <THead><tr><TH>When</TH><TH>Who</TH><TH>What</TH><TH className="hidden md:table-cell">Record</TH></tr></THead>
                 <tbody>
                   {rows.map((e) => (

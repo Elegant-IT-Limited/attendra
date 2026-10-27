@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react';
+import { ScrollRegion } from '@/components/ui/scroll-region';
 import { cn } from '@/lib/utils';
 
-/** A data table. The header stays put while the rows scroll; `density` trades air for rows. */
-export function Table({ className, density = 'comfortable', ...props }: HTMLAttributes<HTMLTableElement> & { density?: 'compact' | 'comfortable' }) {
+/**
+ * A data table. The header stays put while the rows scroll; `density` trades air for rows. On a
+ * phone it scrolls sideways, as a region named `label` that the keyboard can reach.
+ */
+export function Table({ className, density = 'comfortable', label, ...props }: HTMLAttributes<HTMLTableElement> & { density?: 'compact' | 'comfortable'; label: string }) {
   return (
-    <div className="overflow-x-auto" data-density={density}>
+    <ScrollRegion label={label} data-density={density}>
       <table className={cn('group/table w-full text-base', className)} {...props} />
-    </div>
+    </ScrollRegion>
   );
 }
 export function THead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {

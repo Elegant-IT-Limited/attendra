@@ -46,6 +46,21 @@ test.describe.serial('pets at a vet clinic', () => {
     await expect(page.getByLabel('Birthday')).toHaveValue('2024-05-01');
   });
 
+  test('on a phone the "kind of animal" filter is as wide as its longest choice', async ({ browser }) => {
+    const page = await signInAgain(browser, 'Vet clinic manager');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${new URL(page.url()).pathname.split('/').slice(0, 3).join('/')}/patients`);
+    const filter = page.getByRole('combobox', { name: 'Kind of animal' });
+    await expect(filter).toHaveValue('');
+    // the box is wider than "Any kind of animal" set in its own font, with room for the padding and the arrow
+    const [box, text] = await filter.evaluate((el: HTMLSelectElement) => {
+      const c = document.createElement('canvas').getContext('2d')!;
+      c.font = getComputedStyle(el).font;
+      return [el.clientWidth, c.measureText('Any kind of animal').width];
+    });
+    expect(box).toBeGreaterThan(text + 40);
+  });
+
   test('an owner with one name saves from a new booking\'s "New pet" step, and the pet is picked', async ({ browser }) => {
     const page = await signInAgain(browser, 'Vet clinic manager');
     await page.getByRole('link', { name: 'Schedule', exact: true }).first().click();

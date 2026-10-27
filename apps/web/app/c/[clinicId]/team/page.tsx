@@ -101,7 +101,7 @@ export default function Team() {
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
           : members.isError ? <Alert tone="danger" className="m-4">The team did not load. Refresh to try again.</Alert> : (
-            <Table>
+            <Table label="Team">
               <THead><tr><TH>Name</TH><TH>Role</TH><TH><span title="A veterinarian or prescriber who may approve or decline refill requests">Approves refills</span></TH><TH className="hidden md:table-cell">Sign-in</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
               <tbody>
                 {members.data!.members.map((m) => {
@@ -157,7 +157,7 @@ export default function Team() {
       </Card>
       {!!invitations.data?.invitations.length && (
         <Card className="mt-4" data-testid="invitations">
-          <Table>
+          <Table label="Invitations">
             <THead><tr><TH>Invited</TH><TH>Role</TH><TH className="hidden md:table-cell">Sent by</TH><TH className="hidden md:table-cell">Ends</TH><TH className="text-right"><span className="sr-only">Actions</span></TH></tr></THead>
             <tbody>
               {invitations.data.invitations.map((i) => (
