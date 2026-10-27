@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
+import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, isClearYes, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, saidGoodbye, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -43,7 +43,31 @@ export interface PromptSizes { instructions: number; tools: number; transcript: 
  * How hard the model thinks: `effort` for every request (unset, the model's own default), and an optional faster setting
  * (another model, or less reasoning) for simple turns only (see simpleTurn). Both unset is today's behaviour.
  */
-export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort } }
+export interface PlannerSpeed {
+  effort?: ReasoningEffort; simple?: { model?: string; effort?: ReasoningEffort };
+  /** The turns that need no thought run with reasoning off (see effortFor); on unless set false. An explicit `simple` setting wins. */
+  noThink?: boolean;
+}
+
+/** Words that make a turn about dates, times or a change: those keep the model's own reasoning. */
+const NEEDS_THOUGHT = /\b(today|tonight|tomorrow|morning|afternoon|evening|week|weekend|month|mon|monday|tue|tuesday|wed|wednesday|thu|thursday|fri|friday|sat|saturday|sun|sunday|next|first|earliest|soonest|later|available|availability|open|opening|free|time|times|slot|appointment|book|booking|schedule|reschedule|move|change|cancel|instead|hoy|ma[nñ]ana|tarde|noche|semana|mes|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|pr[oó]xim[ao]|primer[ao]?|disponib\w*|cita|hora|horas|turno|reservar|agendar|cambiar|cancelar|mover|mejor)\b|\d{1,2}(:\d{2})?\s*(am|pm|a\.m|p\.m|h)\b|\b(at|a las|a la)\s+\d/i;
+
+/**
+ * Which turns run with reasoning off: a yes to a read-back (the backend checks the yes itself before committing), a goodbye
+ * after "anything else?", an answer to the text or reminder question, and a short say-back or question with no date, time
+ * or change in it. Anything with a time to work out, an identity that did not match, a change of mind or an emergency keeps
+ * the model's own reasoning. Decided from the call state, once per request, so a request's rounds share one setting.
+ */
+export function effortFor(state: CallState, clinic: ClinicConfig): 'none' | null {
+  if (state.emergencyLocked) return null;
+  const said = state.lastTurn('caller');
+  if (state.pending) return isClearYes(state.answerToReadback() || said, clinic.languages) ? 'none' : null;
+  if (saidGoodbye(said, state.lastTurn('agent', 2))) return 'none';
+  if (state.textOffer?.askedAtMs !== null && state.textOffer !== null) return 'none';
+  if (state.reminderOffer && state.reminderOffer.askedAtMs !== null) return 'none';
+  if (state.notFound) return null;
+  return simpleTurn(state) && !NEEDS_THOUGHT.test(said) ? 'none' : null;
+}
 
 /**
  * A turn that needs little thought: the caller's last words are short (a name, a number, one question), nothing waits
@@ -53,7 +77,8 @@ export interface PlannerSpeed { effort?: ReasoningEffort; simple?: { model?: str
 export function simpleTurn(state: CallState): boolean {
   if (state.pending || state.textOffer || (state.reminderOffer && !state.remindersAsked) || state.emergencyLocked) return false;
   const said = state.lastTurn('caller').trim();
-  return !!said && said.split(/\s+/).length <= 12 && (said.match(/[?¿]/g)?.length ?? 0) <= 1;
+  // one question: closing marks only, since a Spanish question opens with ¿ as well
+  return !!said && said.split(/\s+/).length <= 12 && (said.match(/\?/g)?.length ?? 0) <= 1;
 }
 
 const DESCRIPTIONS: Record<ToolName, string> = {
@@ -214,7 +239,9 @@ export class ResponsesPlanner implements Planner {
     const simple = simpleTurn(state);
     const faster = simple ? this.speed.simple : undefined;
     const model = faster?.model ?? this.model;
-    const effort = faster?.effort ?? this.speed.effort ?? null;
+    // reasoning off on the turns that need none, unless a setting says otherwise; the same effort for every round of the request
+    const routed = this.speed.noThink !== false && !this.speed.simple ? effortFor(state, input.clinic) : null;
+    const effort = faster?.effort ?? routed ?? this.speed.effort ?? null;
     const timing: PlannerTiming = {
       model, effort, simple, rounds: 0, modelMs: 0, requests: [], toolMs: 0,
       prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
