@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Fixed (calls never offer a time that overlaps the patient's own visit)
+
+- **No dead-end yes.** The times the assistant offered left out only the vets' busy time, so a pet that already had a visit could be offered a time overlapping it, and the booking was refused (`patient_busy`) only after the caller said yes. `find_slots` now leaves out the patient's own upcoming visits too, with any vet. Found by the demo replay of the new two-pets calls, where an English and a Spanish call for the same pet landed on one day.
+
 ### Added (calls: two pets on one number)
 
 - **"The other one" asks for the name.** A pet's "name" that only points at one of the owner's pets ("the other one", "my cat", "la otra", "no el perro") is not looked up: the assistant asks what the pet is called, uses none of the caller's three tries, and never says a pet was not found. A real name with such words in it ("Little Bear", "Mi Amor") is still a name. English and Spanish.

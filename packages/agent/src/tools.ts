@@ -495,6 +495,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const leadMinutes = Math.max(120, (visitType.noticeHours ?? 0) * 60);
       // busy time must cover the whole search window, however far out it starts
       const busy = await backend.scheduler.busy(clinic.id, providers.map((p) => p.id), now, zonedInstant(addDays(from, days + 1), '00:00', clinic.timezone));
+      // and the patient's own visits: a time that overlaps one would only be refused as patient_busy after their yes
+      if (patient) {
+        for (const a of await backend.scheduler.upcoming(clinic.id, patient.id, now)) {
+          for (const p of providers) busy.push({ providerId: p.id, start: a.start, end: a.end });
+        }
+      }
       const fromTime = (args.from_time as string | null) ?? undefined;
       const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
       // with anyone: three different times, each with the vet the clinic's rule picks for it
