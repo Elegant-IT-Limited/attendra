@@ -107,7 +107,7 @@ export class PatientsController {
   @Post('search')
   @HttpCode(200)
   @Requires('patients:read')
-  @ApiOperation({ summary: 'Find patients as you type: the start of a name, any digits of a phone number, or a date of birth. At most 25. Audited with the number of matches, not the query.' })
+  @ApiOperation({ summary: 'Find patients as you type: the start of a name (the record\'s own or the owner\'s, any order, or as it sounds), a phone number in any form or its last digits, a date of birth, or a request number ("R-1042"). At most 25, each saying what it matched on. Audited with the number of matches, not the query.' })
   @ApiBody({ schema: schemaOf(PatientSearch) })
   @ApiOkResponse({ schema: schemaOf(PatientList) })
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientSearch)) body: z.infer<typeof PatientSearch>, @CurrentStaff() staff: Staff): Promise<PatientList> {

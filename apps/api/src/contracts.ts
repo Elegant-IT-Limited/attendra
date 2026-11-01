@@ -117,6 +117,7 @@ const CallFilters = z.object({
 /** The call list's filters, in clinic-time days (`to` is inclusive). */
 export const CallQuery = Page.extend(CallFilters.shape);
 /** A name search is a POST: a name is PHI and stays out of URLs. */
+/** What is typed in the Calls search: a verified caller's name (a pet's or its owner's), a phone number in any form or its last digits, or a request number ("R-1042"). */
 export const CallSearch = z.object({
   query: z.string().trim().min(2, 'type at least two characters').max(100),
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
@@ -357,6 +358,8 @@ export const Task = z.object({
   patientId: z.string().nullable(),
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
+  /** The request's number at the clinic, shown as "R-1042" (migration 0041); null for one from before numbering. */
+  number: z.number().int().nullable(),
   /** Set by staff: urgent requests come first in the open queue. */
   urgent: z.boolean(),
   /** The clinic's day it is due, set by staff. */
@@ -508,6 +511,8 @@ export const PatientCard = z.object({
   /** They agreed to reminder texts, and where: on a call, at the desk, in an import. */
   textsOk: z.boolean(),
   textsOkSource: z.enum(['call', 'staff', 'import']).nullable(),
+  /** From a search only: what the record matched on, so the screen can group it (an owner's pets) and highlight it. */
+  matchedOn: z.enum(['request', 'name', 'owner', 'phone', 'dob']).optional(),
 });
 export const PatientList = z.object({
   patients: z.array(PatientCard),

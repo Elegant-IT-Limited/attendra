@@ -18,6 +18,39 @@ export const phoneKey = (clinicId: string, phone: string) => `${clinicId}|${phon
 export const identityKey = (clinicId: string, first: string, last: string, dob: string, phone: string) =>
   `${clinicId}|${firstName(first)}|${lastName(last)}|${dob}|${phoneDigits(phone)}`;
 
+/** The search lookups of migration 0042: one word of a name, or the last four digits of a phone, keyed per clinic like the others. */
+export const ownerWordKey = (clinicId: string, word: string) => `${clinicId}|word|${word}`;
+export const PHONE_SUFFIX_DIGITS = 4;
+export const phoneSuffixKey = (clinicId: string, phone: string) => `${clinicId}|suffix|${phone.replace(/\D/g, '').slice(-PHONE_SUFFIX_DIGITS)}`;
+
+/** The words a record can be searched by: the owner's (guardian's) name and the patient's own, folded and lower-cased, each once. */
+export const searchWords = (p: { firstName: string; lastName: string; guardianName?: string | null }) =>
+  [...new Set([p.guardianName ?? '', p.firstName, p.lastName].flatMap((s) => normalizeName(s).split(' ')).filter(Boolean))];
+
+/**
+ * Where typed digits sit in a phone number: 0 when the number starts with them (as
+ * written with or without its country code, or with a leading 0 the way many
+ * countries dial at home), 1 when they are somewhere inside it, null when not at all.
+ * Shared by the Pets and the Calls search.
+ */
+export function phoneMatch(typed: string, phone: string | null): 0 | 1 | null {
+  if (!phone) return null;
+  const all = phone.replace(/\D/g, '');
+  const national = all.slice(-10);
+  const forms = [all, national, `0${national}`];
+  if (forms.some((f) => f.startsWith(typed))) return 0;
+  return forms.some((f) => f.includes(typed)) ? 1 : null;
+}
+
+/** The hashed form of those words, in a fixed order so two computations of the same record compare equal. */
+export function searchLookups(cipher: PhiCipher, clinicId: string, p: { firstName: string; lastName: string; guardianName?: string | null; phone: string | null }) {
+  const digits = p.phone?.replace(/\D/g, '') ?? '';
+  return {
+    ownerWordsHash: searchWords(p).map((w) => cipher.hash(ownerWordKey(clinicId, w))).sort(),
+    phoneSuffixHash: digits.length >= PHONE_SUFFIX_DIGITS ? cipher.hash(phoneSuffixKey(clinicId, digits)) : null,
+  };
+}
+
 /** Whether an insert failed only because the same person is already stored: another request added them a moment ago. */
 export const isSameIdentity = (err: unknown) => {
   const e = err as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
@@ -256,6 +289,8 @@ export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName:
     phoneEnc: cipher.encrypt(phone, ctx('phone')),
     phoneHash: cipher.hash(phoneKey(clinicId, phone)),
     guardianNameEnc: guardian ? cipher.encrypt(guardian, ctx('guardian_name')) : null,
+    // so a search finds the record by its owner's name or the phone's last digits past the rows it can decrypt
+    ...searchLookups(cipher, clinicId, { firstName: p.firstName, lastName: p.lastName, guardianName: guardian, phone }),
     // left as it is when not given, so an edit that does not touch it keeps it
     ...(p.gender !== undefined ? { genderEnc: p.gender ? cipher.encrypt(p.gender, ctx('gender')) : null } : {}),
     ...(p.species !== undefined ? { speciesEnc: p.species?.trim() ? cipher.encrypt(p.species.trim().toLowerCase(), ctx('species')) : null } : {}),
@@ -270,18 +305,22 @@ export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName:
  * audit row per clinic that records how many changed. Patients with no phone number
  * (added before v0.5 made it required) are counted, so the front desk can add theirs.
  */
-export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Promise<{ checked: number; changed: number; withoutPhone: number; duplicates: number }> {
+export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Promise<{ checked: number; changed: number; withoutPhone: number; duplicates: number; searchable: number }> {
   let checked = 0;
   let changed = 0;
   let withoutPhone = 0;
   let duplicates = 0;
+  let searchable = 0;
+  const sameWords = (a: string[] | null, b: string[]) => !!a && a.length === b.length && a.every((w, i) => w === b[i]);
   const clinicIds = (await db.execute(sql`select id from clinics order by id`)).rows as { id: string }[];
   for (const { id: clinicId } of clinicIds) {
     await withClinic(db, clinicId, async (tx) => {
       const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
       let n = 0;
-      const rows = await tx.select({ id: patients.id, lookupHash: patients.lookupHash, identityHash: patients.identityHash, phoneHash: patients.phoneHash, first: patients.firstNameEnc, last: patients.lastNameEnc, dob: patients.dobEnc, phone: patients.phoneEnc })
-        .from(patients).where(eq(patients.clinicId, clinicId)).orderBy(patients.createdAt, patients.id);
+      const rows = await tx.select({
+        id: patients.id, lookupHash: patients.lookupHash, identityHash: patients.identityHash, phoneHash: patients.phoneHash, first: patients.firstNameEnc, last: patients.lastNameEnc, dob: patients.dobEnc, phone: patients.phoneEnc,
+        guardian: patients.guardianNameEnc, ownerWordsHash: patients.ownerWordsHash, phoneSuffixHash: patients.phoneSuffixHash,
+      }).from(patients).where(eq(patients.clinicId, clinicId)).orderBy(patients.createdAt, patients.id);
       // identities already stored, by whom: a patient added since the upgrade may already hold the one an older row would get
       const holder = new Map(rows.filter((r) => r.identityHash).map((r) => [r.identityHash!, r.id]));
       for (const r of rows) {
@@ -292,22 +331,27 @@ export async function rehashPatientLookups(db: Database, cipher: PhiCipher): Pro
         const last = cipher.decrypt(r.last, ctx('last_name'));
         const dob = cipher.decrypt(r.dob, ctx('dob'));
         const phone = cipher.decrypt(r.phone, ctx('phone'));
+        const guardianName = r.guardian ? cipher.decrypt(r.guardian, ctx('guardian_name')) : null;
         const lookupHash = cipher.hash(patientLookupKey(clinicId, `${first} ${last}`, dob));
         const phoneHash = cipher.hash(phoneKey(clinicId, phone));
         let identityHash: string | null = cipher.hash(identityKey(clinicId, first, last, dob, phone));
         // the same person twice, from before identities were unique: the later row keeps no identity until staff merge them
         const owner = holder.get(identityHash);
         if (owner && owner !== r.id) { duplicates++; identityHash = null; } else holder.set(identityHash, r.id);
-        if (lookupHash === r.lookupHash && phoneHash === r.phoneHash && identityHash === r.identityHash) continue;
+        // the search lookups of migration 0042, empty on every row from before it
+        const search = searchLookups(cipher, clinicId, { firstName: first, lastName: last, guardianName, phone });
+        const searchChanged = !sameWords(r.ownerWordsHash, search.ownerWordsHash) || search.phoneSuffixHash !== r.phoneSuffixHash;
+        if (lookupHash === r.lookupHash && phoneHash === r.phoneHash && identityHash === r.identityHash && !searchChanged) continue;
         if (r.identityHash && r.identityHash !== identityHash && holder.get(r.identityHash) === r.id) holder.delete(r.identityHash);
-        await tx.update(patients).set({ lookupHash, phoneHash, identityHash }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
+        await tx.update(patients).set({ lookupHash, phoneHash, identityHash, ...search }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, r.id)));
         n++;
+        if (searchChanged) searchable++;
       }
       changed += n;
       if (n) await tx.insert(auditLogs).values({ clinicId, actor: 'system', action: 'patient.lookups.rehashed', entity: 'clinic', entityId: clinicId, counts: { patients: n } });
     });
   }
-  return { checked, changed, withoutPhone, duplicates };
+  return { checked, changed, withoutPhone, duplicates, searchable };
 }
 
 /**
