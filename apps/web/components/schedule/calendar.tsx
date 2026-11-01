@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment } from '@attendra/api/contracts';
-import { type ClinicConfig, localParts, specialDayOf, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
+import { type ClinicConfig, localParts, toMinutes } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
 import { Empty } from '@/components/ui/feedback';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
+import { closedDay, hoursFor, initials } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
 const PX = 1.3; // pixels per minute: a 20-minute visit is 26 pixels tall
+/** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
+const LANE_MIN_REM = 7;
 type Provider = ClinicConfig['providers'][number];
 
-// a special day's own hours stand in for the week's
-const hoursFor = (clinic: ClinicConfig, p: Provider, date: string) => specialDayOf(clinic, date)?.windows ?? windowsOn(p.hours ?? clinic.hours, weekdayOf(date));
-/** Closed all day: a holiday, or a special day with no hours. What the calendar says instead of hours. */
-const closedDay = (clinic: ClinicConfig, date: string) => {
-  const special = specialDayOf(clinic, date);
-  if (special) return special.windows.length ? null : special.note || 'Closed';
-  return clinic.holidays.includes(date) ? 'Holiday' : null;
-};
 const minutesOf = (iso: string, tz: string) => localParts(new Date(iso), tz).minutes;
 /** "Okafor" for "Dr. Nkem Okafor": what fits a week column. The full name is on hover. */
 const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(/\s+/).at(-1) ?? name;
@@ -47,13 +42,16 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
   const byDate = (date: string) => appointments.filter((a) => localParts(new Date(a.startsAt), tz).date === date);
   const nowMin = localParts(now, tz).minutes;
   const visitIndex = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
+  // a week's columns share the width as before; a day's lanes each keep a readable minimum and the grid scrolls sideways
+  const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? 0 : `${LANE_MIN_REM}rem`}, 1fr))`;
+  const minWidth = week ? '640px' : `max(640px, calc(3.5rem + ${providers.length * LANE_MIN_REM}rem))`;
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[640px]">
-        {/* column headings */}
-        <div className="sticky top-0 z-20 grid border-b border-border bg-surface" style={{ gridTemplateColumns: `3.5rem repeat(${week ? dates.length : providers.length}, minmax(0, 1fr))` }}>
-          <div />
+      <div style={{ minWidth }}>
+        {/* column headings; the hour column stays put while the grid scrolls sideways */}
+        <div className="sticky top-0 z-20 grid border-b border-border bg-surface" style={{ gridTemplateColumns: columns }}>
+          <div className="sticky left-0 z-10 bg-surface" />
           {week ? dates.map((d) => {
             const holiday = closedDay(clinic, d);
             return (
@@ -65,12 +63,19 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
               </div>
             );
           }) : providers.map((p) => (
-            <div key={p.id} className="border-l border-border px-3 py-2.5 text-sm font-medium">{p.name}</div>
+            // the whole name while the lane has room for it; initials and the surname when it is narrow. The full name is on hover either way
+            <div key={p.id} data-testid="lane-head" title={p.name} className="@container min-w-0 border-l border-border px-3 py-2.5 text-sm font-medium">
+              <span className="block truncate @max-[9rem]:hidden">{p.name}</span>
+              <span className="hidden items-center gap-1.5 @max-[9rem]:flex">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-xs tabular-nums" aria-hidden>{initials(p.name)}</span>
+                <span className="truncate">{shortName(p.name)}</span>
+              </span>
+            </div>
           ))}
         </div>
-        <div className="relative grid" style={{ gridTemplateColumns: `3.5rem repeat(${week ? dates.length : providers.length}, minmax(0, 1fr))`, height }}>
+        <div className="relative grid" style={{ gridTemplateColumns: columns, height }}>
           {/* hour labels and lines */}
-          <div className="relative">
+          <div className="sticky left-0 z-10 bg-surface">
             {hours.map((h) => (
               <span key={h} className="absolute right-2 -translate-y-1/2 whitespace-nowrap text-xs tabular-nums text-text-muted" style={{ top: (h - start) * PX }}>
                 {h === start ? '' : `${((Math.floor(h / 60) + 11) % 12) + 1} ${h < 12 * 60 ? 'AM' : 'PM'}`}
