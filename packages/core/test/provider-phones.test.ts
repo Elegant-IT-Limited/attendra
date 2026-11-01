@@ -4,10 +4,10 @@ import { doctorGuide, doctorTemplate, needsPhone, providerPhoneIssues, readDocto
 const vets = starterClinic({ id: 'clinic_v', name: 'Oak Hill Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550100' });
 const withVet = {
   ...vets,
-  providers: [...vets.providers, { id: 'prov_marsh', name: 'Dr. Elena Marsh', gender: 'female' as const, kind: 'person' as const, categories: ['Dogs'], timeOff: [], acceptingNewPatients: true, visitTypeIds: ['vt_sick'], phone: '+17205550171', otherPhones: ['+17205550173'] }],
+  providers: [...vets.providers, { id: 'prov_marsh', name: 'Dr. Elena Marsh', gender: 'female' as const, kind: 'person' as const, categories: ['Dogs'], timeOff: [], acceptingNewPatients: true, visitTypeIds: ['vt_sick'], phone: '+17205550181', otherPhones: ['+17205550183'] }],
 };
 
-// the number is the vet (Tamal's rule, 2026-11-01): one per clinic, the same one at another clinic is fine
+// the number is the vet (the clinic's rule, 2026-11-01): one per clinic, the same one at another clinic is fine
 describe('a veterinarian is told apart by their phone number', () => {
   it('needs a number for a new person at a vet clinic, never for a room, the stand-in or a doctor at a clinic for people', () => {
     expect(providerPhoneIssues(vets, { kind: 'person' }).issues).toEqual([{ path: 'phone', message: 'A phone number is needed: it is what tells one veterinarian from another.' }]);
@@ -18,24 +18,24 @@ describe('a veterinarian is told apart by their phone number', () => {
     expect(providerPhoneIssues(withVet, { kind: 'person' }, 'prov_marsh').issues).toEqual([]);
     expect(needsPhone(vets, { kind: 'person', phone: undefined })).toBe(true);
     expect(needsPhone(vets, { kind: 'person', phone: undefined, placeholder: true })).toBe(false);
-    expect(needsPhone(vets, { kind: 'person', phone: '+17205550171' })).toBe(false);
+    expect(needsPhone(vets, { kind: 'person', phone: '+17205550181' })).toBe(false);
   });
 
   it('keeps the number as the clinic dials it, refuses one that is not a number, and one listed twice', () => {
-    expect(providerPhoneIssues(vets, { phone: '(720) 555-0172', otherPhones: ['720 555 0174'] })).toEqual({ phone: '+17205550172', otherPhones: ['+17205550174'], issues: [] });
+    expect(providerPhoneIssues(vets, { phone: '(720) 555-0182', otherPhones: ['720 555 0184'] })).toEqual({ phone: '+17205550182', otherPhones: ['+17205550184'], issues: [] });
     expect(providerPhoneIssues(vets, { phone: '55' }).issues[0]).toMatchObject({ path: 'phone', message: expect.stringContaining('Check the phone number') });
-    expect(providerPhoneIssues(vets, { phone: '(720) 555-0172', otherPhones: ['7205550172'] }).issues).toEqual([{ path: 'otherPhones', message: 'The same number is listed twice.' }]);
+    expect(providerPhoneIssues(vets, { phone: '(720) 555-0182', otherPhones: ['7205550182'] }).issues).toEqual([{ path: 'otherPhones', message: 'The same number is listed twice.' }]);
   });
 
   it('refuses a number another vet at the clinic has, under the field it was typed in, and says whose it is', () => {
-    expect(providerPhoneIssues(withVet, { phone: '720-555-0171' }).issues).toEqual([{ path: 'phone', message: 'Dr. Elena Marsh already has this number.' }]);
+    expect(providerPhoneIssues(withVet, { phone: '720-555-0181' }).issues).toEqual([{ path: 'phone', message: 'Dr. Elena Marsh already has this number.' }]);
     // one of her other numbers, given as the new vet's own: still hers
-    expect(providerPhoneIssues(withVet, { phone: '+17205550173' }).issues).toEqual([{ path: 'phone', message: 'Dr. Elena Marsh already has this number.' }]);
-    expect(providerPhoneIssues(withVet, { phone: '+17205550179', otherPhones: ['+17205550171'] }).issues).toEqual([{ path: 'otherPhones', message: 'Dr. Elena Marsh already has this number.' }]);
+    expect(providerPhoneIssues(withVet, { phone: '+17205550183' }).issues).toEqual([{ path: 'phone', message: 'Dr. Elena Marsh already has this number.' }]);
+    expect(providerPhoneIssues(withVet, { phone: '+17205550189', otherPhones: ['+17205550181'] }).issues).toEqual([{ path: 'otherPhones', message: 'Dr. Elena Marsh already has this number.' }]);
     // her own number on her own record is not a clash
-    expect(providerPhoneIssues(withVet, { phone: '+17205550171' }, 'prov_marsh').issues).toEqual([]);
+    expect(providerPhoneIssues(withVet, { phone: '+17205550181' }, 'prov_marsh').issues).toEqual([]);
     // the same number at another clinic is fine
-    expect(providerPhoneIssues(vets, { phone: '+17205550171' }).issues).toEqual([]);
+    expect(providerPhoneIssues(vets, { phone: '+17205550181' }).issues).toEqual([]);
   });
 
   it('counts the numbers shared between providers, and nothing else, for the provisioning report', () => {
@@ -52,13 +52,13 @@ describe('the doctor import with phone numbers and the clinic\'s own fields', ()
   it('finds the vet on file by their number before their name, needs a number for a new vet, and refuses a number another vet has', () => {
     const rows = readDoctors([
       'name,phone,other_phones,specialty,categories,licence_number,fear_free',
-      'Dr. E. Marsh (renamed),(720) 555-0171,,,Cats,CO-0161,yes',
-      'Dr. New Vet,(720) 555-0175,(720) 555-0176; (720) 555-0177,,Dogs,,',
+      'Dr. E. Marsh (renamed),(720) 555-0181,,,Cats,CO-0161,yes',
+      'Dr. New Vet,(720) 555-0185,(720) 555-0186; (720) 555-0187,,Dogs,,',
       'Dr. No Number,,,,Dogs,,',
-      'Dr. Taken,720 555 0173,,,Dogs,,',
+      'Dr. Taken,720 555 0183,,,Dogs,,',
       'Dr. Marsh Again,,,,Cats,,',
-      'Dr. Twice,720 555 0175,,,Dogs,,',
-      'Dr. Bad Field,720 555 0178,,,Dogs,,maybe',
+      'Dr. Twice,720 555 0185,,,Dogs,,',
+      'Dr. Bad Field,720 555 0188,,,Dogs,,maybe',
     ].join('\n'), clinic);
     expect(rows.map((r) => (r.ok ? `ok:${r.existingId ?? 'new'}` : `error:${r.message}`))).toEqual([
       'ok:prov_marsh',
@@ -71,9 +71,9 @@ describe('the doctor import with phone numbers and the clinic\'s own fields', ()
       'error:Fear Free: yes or no',
     ]);
     const marsh = rows[0]!.ok ? rows[0]!.value : null;
-    expect(marsh).toMatchObject({ id: 'prov_marsh', name: 'Dr. E. Marsh (renamed)', phone: '+17205550171', otherPhones: ['+17205550173'], categories: ['Cats'], custom: { cf_licence: 'CO-0161', cf_fear_free: 'yes' } });
+    expect(marsh).toMatchObject({ id: 'prov_marsh', name: 'Dr. E. Marsh (renamed)', phone: '+17205550181', otherPhones: ['+17205550183'], categories: ['Cats'], custom: { cf_licence: 'CO-0161', cf_fear_free: 'yes' } });
     const fresh = rows[1]!.ok ? rows[1]!.value : null;
-    expect(fresh).toMatchObject({ phone: '+17205550175', otherPhones: ['+17205550176', '+17205550177'] });
+    expect(fresh).toMatchObject({ phone: '+17205550185', otherPhones: ['+17205550186', '+17205550187'] });
   });
 
   it('a clinic for people keeps importing doctors without a number', () => {

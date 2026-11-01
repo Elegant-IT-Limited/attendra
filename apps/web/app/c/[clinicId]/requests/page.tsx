@@ -6,7 +6,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { TextStatus } from '@/components/calls/text-status';
 import { CustomFieldInputs, CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
@@ -63,8 +63,12 @@ function Requests() {
   // the request open in the side panel: closed when it is marked done and when the list switches
   // between Open and Done, so a request never reopens by itself over the list it moved to
   const [openId, setOpenId] = useState<string | null>(null);
+  // the open request as last seen: an assignment or a claim can move it out of the filtered list (Unassigned, Assigned to
+  // me), and the panel closed without a word when its row went (2026-11-01). It stays open, and the row stays, until closed
+  const [held, setHeld] = useState<Task | null>(null);
+  const closeTask = () => { setOpenId(null); setHeld(null); };
   const setStatus = (s: 'open' | 'done') => {
-    setOpenId(null);
+    closeTask();
     const q = new URLSearchParams(search.toString());
     if (s === 'done') q.set('status', 'done'); else q.delete('status');
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
@@ -98,6 +102,10 @@ function Requests() {
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
+  const openTask = (id: string) => { setHeld(tasks.data?.tasks.find((x) => x.id === id) ?? null); setOpenId(id); };
+  // what the list has for the open request is the truth while it is there; `held` keeps the last of it after
+  const current = openId ? tasks.data?.tasks.find((x) => x.id === openId) : undefined;
+  useEffect(() => { if (current) setHeld(current); }, [current]);
   // the people a manager can hand a request to: everyone who works requests, the manager included
   const team = useQuery({ queryKey: ['assignees', clinicId], queryFn: () => api<TaskAssignees>(`/clinics/${clinicId}/tasks/assignees`), enabled: can('tasks:reassign') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
@@ -111,6 +119,7 @@ function Requests() {
     onMutate: async ({ task, action, body }: Act) => {
       await queries.cancelQueries({ queryKey: key });
       const before = queries.getQueryData<TaskList>(key);
+      const heldBefore = held;
       const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
       const change = (t: Task): Task | null => {
         if (t.id !== task.id) return t;
@@ -122,17 +131,20 @@ function Requests() {
         return null; // done: it leaves the open list
       };
       if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
-      return { before };
+      // the request held open outside the list changes the same way
+      if (held?.id === task.id) setHeld(change(held));
+      return { before, heldBefore };
     },
     onError: (e, _v, ctx) => {
       if (ctx?.before) queries.setQueryData(key, ctx.before);
+      if (ctx?.heldBefore) setHeld(ctx.heldBefore);
       const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
       // said once, in the toast, which stays until it is read
       toast({ tone: 'error', message: text });
     },
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
-      else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
+      else if (action === 'done') { if (openId === task.id) closeTask(); toast({ tone: 'success', message: 'Marked done.' }); }
       else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${personName(team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate')}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
@@ -151,6 +163,10 @@ function Requests() {
   const shown = (tasks.data?.tasks ?? []).filter((t) => (!filterField || !fieldFilter.value
     || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value))
     && (!topic || t.details.topic === topic));
+  // the open request: from the list while it is there, else as last seen, with its row kept at the end of the list
+  const inList = shown.find((x) => x.id === openId);
+  const open = inList ?? (openId ? held : null);
+  const listed = open && !inList ? [...shown, open] : shown;
 
   return (
     <>
@@ -243,15 +259,15 @@ function Requests() {
           {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
-        <RequestList tasks={shown} status={status} patientWord={terms.patient} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} openId={openId} onOpen={setOpenId} />
+        <RequestList tasks={listed} status={status} patientWord={terms.patient} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} openId={openId} onOpen={openTask} />
       )}
       </div>
       {/* one request at a time, on the right: its details, notes and actions, and what else came from the same call */}
       {(() => {
-        const t = shown.find((x) => x.id === openId);
+        const t = open;
         const siblings = t?.callId ? shown.filter((x) => x.callId === t.callId && x.id !== t.id) : [];
         return (
-          <Panel open={!!t} onOpenChange={(o) => { if (!o) setOpenId(null); }} side="right" className="max-w-xl"
+          <Panel open={!!t} onOpenChange={(o) => { if (!o) closeTask(); }} side="right" className="max-w-xl"
             title={t ? `${nameOf(t, terms.patient)}: ${taskType(t.type, terms.patient)}` : 'Request'}>
             {t && (
               <div className="space-y-4">
@@ -266,7 +282,7 @@ function Requests() {
                         const Icon = ICONS[x.type] ?? Phone;
                         return (
                           <li key={x.id}>
-                            <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => setOpenId(x.id)}>
+                            <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => openTask(x.id)}>
                               <Icon className="size-4 shrink-0 text-primary" aria-hidden />
                               <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x, terms.patient).main}</span></span>
                               <ChevronRight className="size-4 text-text-muted" aria-hidden />

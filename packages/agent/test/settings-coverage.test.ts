@@ -65,6 +65,8 @@ const AUDIT: Record<string, Way> = {
   'providers[].visitTypeIds': 'clinic_info',
   'providers[].placeholder': 'code', // the stand-in steps aside once anyone else is listed
   'providers[].credentials': 'clinic_info',
+  'providers[].phone': 'staff_only', // the vet's own number tells one vet from another; never said to a caller
+  'providers[].otherPhones': 'staff_only',
   'providers[].custom': 'clinic_info', // under the field's label, unless the field is kept for the team
   'visitTypes[].id': 'code',
   'visitTypes[].name': 'clinic_info',
@@ -153,6 +155,7 @@ const AUDIT: Record<string, Way> = {
   'moreEmergencyHospitals[].hours.open': 'clinic_info',
   'moreEmergencyHospitals[].hours.close': 'clinic_info',
   afterHours: 'code',
+  averageVisitValue: 'staff_only', // gone (2026-11-01): kept in the schema only so a saved configuration still loads
   'emergencyReview.reviewerName': 'staff_only',
   'emergencyReview.reviewerRole': 'staff_only',
   'emergencyReview.reviewedAt': 'staff_only',
