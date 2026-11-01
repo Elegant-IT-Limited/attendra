@@ -60,7 +60,7 @@ function issueLabel(path: string) {
     requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencyHospital: 'Emergency hospitals', moreEmergencyHospitals: 'Emergency hospitals',
     hours: 'Opening hours', holidays: 'Holidays', specialDays: 'Special days', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
-    averageVisitValue: 'Average visit value', booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
+    booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Emergency hospitals', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
     emergencyReview: 'Emergency list review',
   };
   return names[top] ?? (top || 'Settings');
@@ -307,17 +307,12 @@ export default function Settings() {
             ))}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
+            {/* with the hours, where it belongs: what a caller gets while the clinic is closed */}
             <Field label="While you are closed" htmlFor="after-hours" hint="Book: a caller at night books the next open times, like at the desk. Take requests: nothing is booked while you are closed; the team calls back in the morning.">
               <Select id="after-hours" value={c.afterHours} onChange={(e) => set({ afterHours: e.target.value as ClinicConfig['afterHours'] })}>
                 <option value="book">Book visits for your open hours, at any time of day</option>
                 <option value="requests">Take requests; the team books in the morning</option>
               </Select>
-            </Field>
-            <Field label="Average visit value" htmlFor="visit-value" hint={c.afterHours === 'requests' ? 'The weekly report counts each request taken while you were closed as a visit kept, at this value.' : 'The weekly report counts visits booked after hours at this value, as money saved.'}>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-text-muted" aria-hidden>{countryCopy(c).currency}</span>
-                <Input id="visit-value" type="number" min={0} max={100000} className={countryCopy(c).currency.length > 1 ? 'pl-11' : 'pl-7'} value={c.averageVisitValue} onChange={(e) => set({ averageVisitValue: Number(e.target.value) })} />
-              </div>
             </Field>
           </div>
         </Section>

@@ -267,11 +267,16 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await panel.getByLabel('Name').fill('Dr. Elena Marsh');
     await panel.getByLabel('Gender').selectOption({ label: 'Female' });
     await pick(panel, 'Specialty', 'Surgery');
+    // the animals come from the clinic's own list, which a new clinic has from the start (2026-11-01: "Dog is not on your list")
+    const animals = panel.getByRole('combobox', { name: 'Animals and services' });
+    for (const a of ['Dogs', 'Cats']) { await animals.fill(a); await animals.press('Enter'); }
     await panel.getByLabel('Licence number').fill('CO-VET-0161');
     await watch.axe(page, 'Add veterinarian');
     await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Surgery');
+    await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Dogs');
+    await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Cats');
     // the stand-in steps aside once a real vet is listed
     await expect(page.getByTestId('doctor')).toHaveCount(1);
 

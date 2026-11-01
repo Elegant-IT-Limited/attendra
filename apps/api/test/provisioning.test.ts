@@ -208,7 +208,8 @@ describe('provisioning', () => {
     expect((await api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/calls-check`, { body: { since } })).statusCode).toBe(401);
 
     const report = (await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/report`, { authorization: auth })).json();
-    expect(report.clinic).toMatchObject({ id: DEMO_CLINIC.id, averageVisitValue: 150 });
+    expect(report.clinic).toMatchObject({ id: DEMO_CLINIC.id, afterHours: 'book' });
+    expect(report.clinic).not.toHaveProperty('averageVisitValue');
     expect(report.weeks).toHaveLength(1);
     expect(report.owners).toEqual([{ name: 'Omar Owner', email: 'omar@maple.example' }]);
     expect(JSON.stringify(report)).not.toMatch(/Maria|Delgado|lisinopril/);

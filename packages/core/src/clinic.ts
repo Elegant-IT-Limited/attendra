@@ -163,6 +163,12 @@ export const ManagedList = z.array(z.string().trim().min(1).max(40)).max(MANAGED
 export const LIST_NAMES = ['specialties', 'categories', 'species'] as const;
 /** The kinds of animal a vet clinic starts with, until it keeps its own list. */
 export const DEFAULT_SPECIES = ['Dog', 'Cat', 'Rabbit', 'Bird', 'Guinea pig', 'Ferret', 'Reptile', 'Horse'] as const;
+/**
+ * What a new vet clinic's veterinarians can be said to see (its `categories` list), kept from sign-up. A clinic with no
+ * vets yet has nothing to derive the list from, so a setup page offering "Dogs" was refused as not on the list (2026-11-01):
+ * every picker reads the clinic's list, and the list exists before the first vet does.
+ */
+export const DEFAULT_ANIMALS = ['Dogs', 'Cats', 'Rabbits', 'Birds', 'Reptiles', 'Small mammals', 'Exotic pets'] as const;
 export type ListName = (typeof LIST_NAMES)[number];
 
 /**
@@ -345,7 +351,8 @@ const ClinicConfigShape = z.object({
   // while the clinic is closed: book as usual, or take requests for the team to book in the morning
   afterHours: z.enum(['book', 'requests']).default('book'),
   // what a visit is worth on average, in the clinic's currency: the weekly report multiplies the bookings made after hours by it
-  averageVisitValue: z.number().int().min(0).max(100_000).default(150),
+  // the "average visit value" the weekly report once multiplied: dropped (2026-11-01), kept here only so a saved configuration still loads
+  averageVisitValue: z.number().int().min(0).max(100_000).optional(),
   // the clinic's own review of the emergency lists: who reviewed them, when, and which version of the lists
   emergencyReview: z.object({
     reviewerName: z.string().trim().min(2).max(100),

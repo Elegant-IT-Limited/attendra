@@ -153,7 +153,6 @@ const AUDIT: Record<string, Way> = {
   'moreEmergencyHospitals[].hours.open': 'clinic_info',
   'moreEmergencyHospitals[].hours.close': 'clinic_info',
   afterHours: 'code',
-  averageVisitValue: 'staff_only', // the weekly report
   'emergencyReview.reviewerName': 'staff_only',
   'emergencyReview.reviewerRole': 'staff_only',
   'emergencyReview.reviewedAt': 'staff_only',

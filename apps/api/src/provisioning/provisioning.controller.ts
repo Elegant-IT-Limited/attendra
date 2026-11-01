@@ -348,7 +348,7 @@ export class ProvisioningController {
     return { ...calls, openMinutes: since < now ? openMinutes(ClinicConfig.parse(stored), since, now) : 0 };
   }
 
-  /** The weekly report's numbers: the Quality page's weeks, the owners to send it to, and the visit value. */
+  /** The weekly report's numbers: the Quality page's weeks and the owners to send it to. */
   @Get('clinics/:clinicId/report')
   async report(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ReportQuery)) q: z.infer<typeof ReportQuery>) {
     const stored = await this.desk.settings(clinicId);
@@ -360,7 +360,7 @@ export class ProvisioningController {
     // the weeks that have ended, newest first: a report on Monday is about last week
     const weeks = qualityWeeks(rows, clinic, now, q.weeks + 1, COST_PER_MINUTE).slice(1);
     return {
-      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, averageVisitValue: clinic.averageVisitValue, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
+      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
       owners: (await clinicOwners(this.db, clinicId)).filter((o) => o.emailVerified).map(({ name, email }) => ({ name, email })),
       weeks,
     };

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig } from './clinic';
+import { ClinicConfig, DEFAULT_ANIMALS } from './clinic';
 import type { Industry } from './industries/types';
 import { PACKS } from './locales';
 
@@ -50,5 +50,7 @@ export function starterClinic(input: StarterInput): ClinicConfig {
     visitTypes,
     // a vet clinic books in the morning what came in overnight, after a person has looked at it
     afterHours: vet ? 'requests' : 'book',
+    // the animals its vets see, as a list from the start: a picker in setup offers only what is on the list
+    ...(vet ? { lists: { categories: [...DEFAULT_ANIMALS] } } : {}),
   });
 }
