@@ -12,7 +12,3 @@ alter table patients add column if not exists owner_words_hash text[];
 alter table patients add column if not exists phone_suffix_hash text;
 create index if not exists patients_owner_words_hash on patients using gin (owner_words_hash);
 create index if not exists patients_phone_suffix_hash on patients (clinic_id, phone_suffix_hash);
-
--- The request number (tasks.number) comes from 0041. Guarded here so this file also stands on
--- its own in a database that has no 0041 yet (the search reads tasks.number on every digit query).
-alter table tasks add column if not exists number integer;

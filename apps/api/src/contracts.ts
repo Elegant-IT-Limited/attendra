@@ -358,8 +358,6 @@ export const Task = z.object({
   patientId: z.string().nullable(),
   details: z.record(z.string(), z.string()),
   outcome: TaskOutcome.nullable(),
-  /** The request's number at the clinic, shown as "R-1042" (migration 0041); null for one from before numbering. */
-  number: z.number().int().nullable(),
   /** Set by staff: urgent requests come first in the open queue. */
   urgent: z.boolean(),
   /** The clinic's day it is due, set by staff. */

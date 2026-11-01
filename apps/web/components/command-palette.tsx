@@ -148,7 +148,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
                     <Command.Item key={t.id} value={`request-${t.id}`} onSelect={() => go(`/c/${clinicId}/requests?open=${t.id}${t.status === 'done' ? '&status=done' : ''}`)} className={item}>
                       <ListChecks aria-hidden />
                       <span className="flex-1 truncate">
-                        <Highlight text={t.number === null ? 'Request' : `R-${t.number}`} query={query} /> · {taskType(t.type, patientWord)} · <Highlight text={requestWho(t, patientWord)} query={query} />
+                        <Highlight text={`R-${t.number}`} query={query} /> · {taskType(t.type, patientWord)} · <Highlight text={requestWho(t, patientWord)} query={query} />
                       </span>
                       {t.status === 'done' && <span className={muted}>Done</span>}
                     </Command.Item>

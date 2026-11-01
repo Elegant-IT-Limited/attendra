@@ -164,8 +164,6 @@ export const tasks = pgTable('tasks', {
   assignedByUserId: text('assigned_by_user_id'),
   /** Who at the clinic wrote it down by hand (migration 0040); null for the assistant's own. */
   createdByUserId: text('created_by_user_id'),
-  /** The request's number at the clinic, "R-1042" on screen (migration 0041). */
-  number: integer('number'),
   urgent: boolean('urgent').notNull().default(false),
   dueOn: date('due_on', { mode: 'string' }),
   /** The clinic's own details on the request, encrypted JSON. */

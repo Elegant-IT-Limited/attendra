@@ -361,8 +361,6 @@ export class FrontDeskRepository {
       id: task.id, number: task.number, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
       urgent: task.urgent, dueOn: task.dueOn,
-      // the request's number (migration 0041), "R-1042" on screen
-      number: task.number,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
         : null,
