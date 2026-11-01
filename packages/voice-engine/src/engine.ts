@@ -25,6 +25,12 @@ export interface VoiceEngine {
   release?(sessionId: string): void;
   /** Which engine took a session and the voice it was created with: set once, at creation, never changed in the call. */
   sessionInfo?(sessionId: string): { engine: string; voice: string } | null;
+  /**
+   * What the assistant is to say first on this session, given once: the runner sends it the moment the
+   * session starts. Null when the engine greets by itself (the Realtime engine), when the session has its
+   * opening already (a browser call) or once it has been taken.
+   */
+  opening?(sessionId: string): string | null;
 }
 
 /** The sideband's own connection: open, dropped and coming back (the attempt, and the close code that started it), back. */
@@ -49,6 +55,9 @@ export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | Inst
 export type SidebandEvent =
   | { type: 'session.input_transcript.delta' | 'session.output_transcript.delta'; event_id: string; delta: string; start_ms: number; end_ms: number }
   | { type: 'session.delegation.created'; event_id: string; delegation: { id: string; target: string } }
+  // the sideband hears the session start, and a copy of the assistant's audio as it is made: the surest sign it is speaking
+  | { type: 'session.started'; event_id: string }
+  | { type: 'session.output_audio.delta'; event_id: string; delta: string }
   | { type: 'session.closed'; event_id: string; reason: string; usage?: { seconds?: number } }
   | { type: 'error'; event_id: string; error?: { code?: string; message?: string } }
   | { type: string; event_id: string };

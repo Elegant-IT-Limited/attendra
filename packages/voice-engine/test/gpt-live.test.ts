@@ -33,7 +33,7 @@ describe('GptLiveEngine browser calls', () => {
     expect(BROWSER_DATA_CHANNEL.allowed_client_events).toEqual(['session.close']);
   });
 
-  it('tells GPT-Live to greet first on a phone call: a developer message at the start, and the same once the sideband attaches', async () => {
+  it('tells GPT-Live to greet first on a phone call: a developer message at the start, and the same opening handed to the runner once, to send when the session starts', async () => {
     const { client, sessions } = fakeClient();
     const sockets = fakeSockets();
     const engine = new GptLiveEngine(client, 'gpt-live-1', sockets.open);
@@ -43,16 +43,15 @@ describe('GptLiveEngine browser calls', () => {
     expect(session.input[0]!.role).toBe('developer');
     expect(session.input[0]!.content[0]!.text).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
     expect(session.input[0]!.content[0]!.text).toContain('before they say anything');
+    // attaching sends nothing by itself: an instructions append starts no turn (10 of 12 phone calls stayed silent, 2026-10-29)
     engine.attach('live_sip');
-    engine.attach('live_sip'); // a second sideband never greets again
-    const appends = sockets.all.flatMap((s) => s.sent).filter((e) => (e as { type: string }).type === 'session.instructions.append');
-    expect(appends).toHaveLength(1);
-    expect((appends[0] as { content: string; delegation_id: null }).delegation_id).toBeNull();
-    // by the time the sideband attaches the greeting may be under way, or the caller may have spoken over it: never again from the top
-    const again = (appends[0] as { content: string }).content;
-    expect(again).toMatch(/^Only if you have not started speaking yet and the caller has not said anything: /);
-    expect(again).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
-    expect(again).toContain('do not greet again and do not start over: answer what the caller said');
+    expect(sockets.all.flatMap((s) => s.sent)).toEqual([]);
+    // the runner takes the opening once and sends it as a commentary on session.started; a second sideband never greets again
+    expect(engine.opening('live_sip')).toContain(`Say exactly: "${DEMO_CLINIC.greeting}"`);
+    expect(engine.opening('live_sip')).toBeNull();
+    // a browser session has its opening in its input from creation: nothing to send again
+    await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW);
+    expect(engine.opening('live_web')).toBeNull();
   });
 
   it('greets a VIP by name and says they are being put through, with no question first', async () => {

@@ -155,6 +155,30 @@ describe('the OpenAI webhook', () => {
     expect(engine.attach).toHaveBeenCalledWith('live_abc');
   });
 
+  it('greets the moment the session starts, before the caller\'s history has been read, and the history still reaches the agent', async () => {
+    let finishHistory!: (h: string | null) => void;
+    const historyFor = vi.fn(() => new Promise<string | null>((resolve) => { finishHistory = resolve; }));
+    const { sideband, emit, drop } = openSideband();
+    const { d, engine } = deps({ historyFor });
+    engine.attach.mockImplementation(() => sideband);
+    (engine as { opening?: (id: string) => string | null }).opening = vi.fn(() => 'Greet the caller now.');
+    const app = buildServer(d);
+    await post(app, incoming('wh_fast', '+13035550100'));
+    await new Promise((r) => setTimeout(r, 10));
+    // the sideband is attached and the opening goes out on session.started while the records are still being read
+    expect(engine.attach).toHaveBeenCalledWith('live_abc');
+    emit({ type: 'session.started', event_id: 's1' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sideband.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'session.commentary.append', delegation_id: null, content: expect.stringContaining('Greet the caller now.') }));
+    expect(historyFor).toHaveBeenCalledWith(DEMO_CLINIC.id, '+13035550147', 'call_1');
+    // then the history arrives, and what caller ID would show goes to the voice as before
+    finishHistory('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 2.');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sideband.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'session.instructions.append', content: expect.stringContaining('Am I speaking with Sam?') }));
+    drop(1000);
+    await app.close();
+  });
+
   it('finds the dialled number outside the To header when To holds the project address, and never uses the caller\'s number', async () => {
     const { d, engine } = deps();
     const app = buildServer(d);

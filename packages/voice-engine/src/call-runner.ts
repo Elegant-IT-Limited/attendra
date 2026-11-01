@@ -4,6 +4,8 @@ import { askedToHangUp, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
+import { CallMarks } from './marks';
+import { openingIfNotStarted } from './prompt';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
@@ -35,11 +37,12 @@ export const SILENCE_NUDGE_MS = [5000, 12_000] as const;
 const CHECK_MS = 500;
 /**
  * The call is up and the assistant has said nothing, nor has the caller: after this long it
- * is told once to greet now. GPT-Live sometimes held its greeting until the caller spoke,
- * 15 seconds into a call (2026-10-25); 4 s still left a silent start on both test calls of
- * 2026-10-26. On its own timer, so it is not up to a second late.
+ * is told once more to greet now. The opening itself goes out the moment the session starts
+ * (about 0.3 s in), as OpenAI's "greet the caller" sequence has it; this is the backstop for
+ * a model that stayed silent all the same (2026-10-25, 2026-10-26, and 5 of 12 phone calls
+ * on 2026-10-29). On its own timer, so it is not up to a second late.
  */
-export const OPENING_NUDGE_MS = 2000;
+export const OPENING_NUDGE_MS = 2500;
 /** An answer sent this long before the sideband dropped may never have reached the voice. */
 const LOST_BEFORE_DROP_MS = 3000;
 const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Only if you have not started speaking and the caller has said nothing: greet them now, exactly as you were told to at the start of the call, then listen. If any part of the greeting was said, or the caller has spoken, never start it again: answer them.';
@@ -76,6 +79,15 @@ export class CallRunner {
   /** When the runner started, and whether the silent-start nudge went out. */
   private startedAt = 0;
   private openingNudged = false;
+  /**
+   * When the assistant's audio first reached the line, from the copy the sideband gets of it: the surest sign a
+   * greeting is under way. Its transcript comes later, and a nudge sent in between restarted the greeting ("Thanks
+   * Thanks for calling", 2026-10-29).
+   */
+  private audioStartedAt = 0;
+  /** The call's setup moments, for the one timing line; the server passes the ones it knows. */
+  private readonly marks: CallMarks;
+  private timed = false;
   /** Every hand-off by its id: requested once, and its answer kept in case a sideband drop lost it. */
   private readonly delegations = new Map<string, { answer: Outbound[]; sentAt: number | null }>();
   /** When the sideband last dropped, and how often it came back. */
@@ -91,10 +103,14 @@ export class CallRunner {
     private readonly agent: CallAgent,
     private readonly recorder: CallRecorder,
     private readonly log: Logger,
-  ) {}
+    marks?: CallMarks,
+  ) {
+    this.marks = marks ?? new CallMarks();
+  }
 
   start(): Promise<void> {
     this.startedAt = Date.now();
+    this.marks.mark('runner_started', this.startedAt);
     // checks from the first second, not from the first event: a silent start has no events
     this.watch();
     const opening = setTimeout(() => { this.timers.delete(opening); void this.openingCheck().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, OPENING_NUDGE_MS);
@@ -118,6 +134,15 @@ export class CallRunner {
   }
 
   async handle(event: SidebandEvent): Promise<void> {
+    // the assistant's audio, many events a second: only the first matters (it is speaking), and none is remembered
+    if (event.type === 'session.output_audio.delta') {
+      if (!this.audioStartedAt) {
+        this.audioStartedAt = Date.now();
+        this.marks.mark('first_audio', this.audioStartedAt);
+        this.log.info({ session_id: this.sessionId, ms: this.audioStartedAt - this.startedAt, opening_nudged: this.openingNudged }, 'first audio from the assistant');
+      }
+      return;
+    }
     // a hand-off is known by its delegation id, not its event id: see below
     if (event.type !== 'session.delegation.created') {
       if (this.seen.has(event.event_id)) return;
@@ -127,20 +152,24 @@ export class CallRunner {
 
     switch (event.type) {
       case 'session.input_transcript.delta': {
-        const e = event as Extract<SidebandEvent, { delta: string }>;
+        const e = event as Extract<SidebandEvent, { start_ms: number }>;
         this.callerSaidAt = Date.now();
         this.nudged = 0;
         await this.dispatch(this.agent.onCallerTranscript(e.delta, e.start_ms, e.end_ms));
         return this.flushFinishedTurns();
       }
       case 'session.output_transcript.delta': {
-        const e = event as Extract<SidebandEvent, { delta: string }>;
+        const e = event as Extract<SidebandEvent, { start_ms: number }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
         const now = Date.now();
         // the start of a reply, for the logs (no words): the first one is the greeting, timed from the start of the call
         if (!this.speaking) {
           this.speaking = true;
-          if (!this.agentSpokeAt) this.log.info({ session_id: this.sessionId, ms: now - this.startedAt, opening_nudged: this.openingNudged }, 'first words from the assistant');
+          if (!this.agentSpokeAt) {
+            this.marks.mark('first_words', now);
+            this.log.info({ session_id: this.sessionId, ms: now - this.startedAt, opening_nudged: this.openingNudged }, 'first words from the assistant');
+            this.timing();
+          }
           else this.log.info({ session_id: this.sessionId, after_caller_ms: this.callerSaidAt > this.agentSpokeAt ? now - this.callerSaidAt : null }, 'assistant started speaking');
         }
         this.agentSpokeAt = now;
@@ -176,9 +205,20 @@ export class CallRunner {
           this.pending--;
         }
       }
-      case 'session.started':
+      case 'session.started': {
+        this.marks.mark('session_started');
         this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'session started');
+        // OpenAI's "greet the caller" sequence: the greeting once more, as a commentary (something to say now), right
+        // after session.started with the caller's audio running. The developer message at the start alone does not
+        // make the model speak. By now a greeting may be under way, or the caller may have spoken: never from the top
+        const opening = this.marks.has('opening_sent') ? null : this.engine.opening?.(this.sessionId);
+        if (opening && !this.closed) {
+          this.marks.mark('opening_sent');
+          this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'opening sent');
+          this.sideband.send({ type: 'session.commentary.append', event_id: `opening_${this.sessionId}`, delegation_id: null, content: openingIfNotStarted(opening) });
+        }
         return;
+      }
       case 'session.instructions.appended': {
         // a staff note reached the voice model
         const e = event as SidebandEvent & { client_event_id?: string };
@@ -204,6 +244,7 @@ export class CallRunner {
    * it was down) that the assistant has not spoken since is sent again: the caller would otherwise wait for it forever.
    */
   private connection(c: SidebandConnection) {
+    if (c.state === 'open') this.marks.mark('sideband_open');
     this.log.info({ session_id: this.sessionId, ...c, ms: Date.now() - this.startedAt }, `sideband ${c.state}`);
     if (c.state === 'reconnecting' && !this.droppedAt) this.droppedAt = Date.now();
     if (c.state !== 'reconnected') return;
@@ -279,12 +320,24 @@ export class CallRunner {
     this.watchdog.unref?.();
   }
 
-  /** Nobody has said a word since the call was answered: the greeting is overdue. */
+  /**
+   * Nobody has said a word since the call was answered, and no audio of the assistant's has reached the line: the
+   * greeting is overdue, and is asked for once more, as a commentary (an instruction starts no turn). Never once any
+   * audio has started: its transcript lags it, and a nudge in that gap restarted the greeting (2026-10-29).
+   */
   private async openingCheck() {
-    if (this.closed || this.ending || this.agent.state.endedByStaff || this.openingNudged || this.agentSpokeAt || this.callerSaidAt) return;
+    if (this.closed || this.ending || this.agent.state.endedByStaff || this.openingNudged || this.audioStartedAt || this.agentSpokeAt || this.callerSaidAt) return;
     this.openingNudged = true;
+    this.marks.mark('nudged');
     this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'the assistant has not greeted the caller: nudging it');
-    return this.dispatch([{ type: 'instructions', delegationId: null, content: OPENING_NUDGE }]);
+    this.sideband.send({ type: 'session.commentary.append', event_id: `opening_nudge_${this.sessionId}`, delegation_id: null, content: OPENING_NUDGE });
+  }
+
+  /** The one timing line per call: at the first words, or at the end of a call that never had any. */
+  private timing() {
+    if (this.timed) return;
+    this.timed = true;
+    this.log.info({ session_id: this.sessionId, ...this.marks.line(), nudged: this.openingNudged }, 'call setup timing');
   }
 
   private async check() {
@@ -369,6 +422,7 @@ export class CallRunner {
     for (const t of this.timers) clearTimeout(t);
     if (this.watchdog) clearInterval(this.watchdog);
     await this.flushFinishedTurns(true);
+    this.timing();
     const state = this.agent.state;
     // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
     if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';

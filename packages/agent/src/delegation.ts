@@ -135,6 +135,14 @@ export class CallAgent {
   }
 
   /**
+   * This number's earlier calls, read while the call was being answered: the greeting never waits on the database.
+   * Used from the first request on; a caller cannot ask for anything before they have been greeted.
+   */
+  setHistory(history: string | null) {
+    this.ctx.history = history;
+  }
+
+  /**
    * Every caller fragment passes the emergency guardrail before anything else, and
    * the guardrail acts on its own: it does not wait for a delegation, and no clinic
    * setting turns it off. It keeps listening after the first match, so a second,
