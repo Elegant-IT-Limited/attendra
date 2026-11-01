@@ -848,9 +848,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const target = args.target as 'front_desk' | 'billing' | 'on_call';
       const resolved = resolveTransfer(clinic, target, ctx.now());
       if (!resolved.ok) {
-        return refuse(resolved.reason, resolved.reason === 'no_rule'
+        // said as it is, in the caller's language: the offer of a callback at once, never a question about a pet first (2026-10)
+        const refused = refuse(resolved.reason, resolved.reason === 'no_rule'
           ? 'The clinic has no phone line set up for transfers. Do not say nobody is there. Offer to take a callback request for the team, with the reason and the best number.'
           : 'That line only takes calls at other times. Offer to take a callback request for the team, with the reason and the best number.');
+        return state.emergencyLocked ? refused : { ...refused, data: { ...refused.data, spoken: pack.spoken.noTransfer } };
       }
       // a browser test call cannot be transferred: say what would happen on a real call
       if (ctx.channel === 'web') {

@@ -1,0 +1,25 @@
+id: vet-es-real-person-no-transfer
+title: "Spanish: asked for a real person with no transfer line, the assistant says so once and offers the callback at once"
+clinic: riverbend
+local_time: "10:00"
+tags: [vet, transfer, language, es]
+caller_number: "+17205550191"
+settings:
+  routing: []
+facts: "Eres Lucía Ortega y hablas español. Quieres hablar con una persona de verdad sobre una factura que le enviaron. Dirás su nombre y que es por la factura. El número desde el que llamas sirve para que te devuelvan la llamada."
+turns:
+  - caller: ¿Puedo hablar con una persona de verdad, por favor?
+    reply: "Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?"
+    delegate:
+      - transfer_call: { target: front_desk }
+  - caller: Soy Lucía, es por una factura que me enviaron.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número. ¿Hay algo más en lo que le pueda ayudar?"
+    delegate:
+      - create_callback: { reason: "Lucía, a question about an invoice", callback_number: null }
+expect:
+  outcome: task_created
+  refusals: [no_rule]
+  transfer_to: null
+  language: es
+  spoken_contains: ["Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame"]
+forbid_spoken: ["nombre de su mascota", "qué tipo de mascota", "tipo de animal", "Le comunico", "le paso con", "sigo revisando"]

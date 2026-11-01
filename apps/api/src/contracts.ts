@@ -90,6 +90,8 @@ export const CallSummary = z.object({
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
   verified: z.boolean(),
+  /** The number's first call to this clinic (false on a browser test call); on the list only, not on one call's page. */
+  firstCall: z.boolean().optional(),
   /** From the call's summary, once the worker has written it: codes only. */
   intent: z.enum(['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other']).nullable(),
   sentiment: z.enum(['calm', 'frustrated', 'distressed']).nullable(),

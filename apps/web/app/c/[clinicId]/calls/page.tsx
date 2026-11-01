@@ -18,6 +18,7 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
 import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
+import { SPOOFED_SIGN, SPOOFING_DOC, shortFirstCalls } from '@/lib/spoofing';
 import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,12 @@ function Calls() {
     <>
       <PageHeader title="Calls" description={<>Every call the assistant answered. Open one to read the transcript and see what it did. Times are {zoneLabel(tz)}.</>} />
       <LiveNow clinicId={clinicId} canWatch={openable} />
+      {!filtered && !searching && shortFirstCalls(all) >= SPOOFED_SIGN && (
+        <Alert tone="warn" className="mb-4" data-testid="spoofing-notice">
+          Many short calls from numbers new to you. Your number may be spoofed by others: people call back a missed call that never came from here. The assistant tells them so and takes a message.{' '}
+          <a href={SPOOFING_DOC} target="_blank" rel="noopener noreferrer" className="underline">What to do</a>.
+        </Alert>
+      )}
       <Card className="mb-4 space-y-3 p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
           {can('calls:read') && (

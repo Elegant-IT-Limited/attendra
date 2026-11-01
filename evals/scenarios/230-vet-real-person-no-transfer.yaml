@@ -1,0 +1,24 @@
+id: vet-real-person-no-transfer
+title: Asked for a real person at a clinic with no transfer line, the assistant says so once and offers a callback in the same breath, never a pet question
+clinic: riverbend
+local_time: "10:00"
+tags: [vet, transfer]
+caller_number: "+17205550190"
+settings:
+  routing: []
+facts: "You are Priya Shah. You want to talk to a real person about an invoice you were sent. You will say your name and that it is about the invoice. The number you are calling from is fine for a callback."
+turns:
+  - caller: Can I talk to a real person, please?
+    reply: "I can't put you through right now, but I'll have the team call you back. What's it about?"
+    delegate:
+      - transfer_call: { target: front_desk }
+  - caller: It's Priya, about an invoice I was sent.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number. Is there anything else I can help you with?"
+    delegate:
+      - create_callback: { reason: "Priya, a question about an invoice", callback_number: null }
+expect:
+  outcome: task_created
+  refusals: [no_rule]
+  transfer_to: null
+  spoken_contains: ["I can't put you through right now, but I'll have the team call you back"]
+forbid_spoken: ["pet's name", "what kind of pet", "kind of animal", "add a pet", "still checking", "I'm checking", "connecting you"]

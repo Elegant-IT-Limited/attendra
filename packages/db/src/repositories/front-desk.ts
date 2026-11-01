@@ -142,6 +142,8 @@ export class FrontDeskRepository {
           from call_actions a where a.clinic_id = ${calls.clinicId} and a.call_id = ${calls.id}
             and a.result->>'error' is distinct from 'nothing_pending' group by 1) s), '{}')`,
         verified: sql<boolean>`coalesce(bool_or((${callActions.result}->>'verified')::boolean), false)`,
+        // the number's first call to the clinic: many short first calls in a row say the number is being spoofed elsewhere
+        firstCall: sql<boolean>`${calls.fromHash} is not null and not exists (select 1 from calls e where e.clinic_id = ${calls.clinicId} and e.from_hash = ${calls.fromHash} and e.started_at < ${calls.startedAt})`,
         // the summary's codes only; its text is PHI and stays on the call page
         intent: callSummaries.intent, sentiment: callSummaries.sentiment,
         needsReview: sql<boolean>`coalesce(${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null, false)`,

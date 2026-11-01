@@ -76,6 +76,7 @@ export const es: LanguagePack = {
   abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
   abuseGoodbye: 'Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós.',
   takeOver: 'Le comunico con una persona de nuestro equipo ahora mismo.',
+  returnedCallLine: ({ clinic }) => `Le habla el asistente telefónico de ${clinic}. La clínica no suele llamar desde esta línea, así que la llamada que recibió puede no haber sido nuestra. ¿Es usted cliente de ${clinic}, o quiere dejar un mensaje para el equipo?`,
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   spoken: {
@@ -89,6 +90,7 @@ export const es: LanguagePack = {
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
+    noTransfer: 'Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`

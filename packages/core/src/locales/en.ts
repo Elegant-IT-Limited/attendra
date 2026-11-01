@@ -73,6 +73,7 @@ export const en: LanguagePack = {
   abuseWarning: 'I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back.',
   abuseGoodbye: 'I\'m going to end the call now. You\'re welcome to call back any time. Goodbye.',
   takeOver: 'I\'m connecting you with a member of our team now.',
+  returnedCallLine: ({ clinic }) => `This is ${clinic}'s phone assistant. The clinic doesn't usually call out from this line, so the call you got may not have come from us. Are you a client of ${clinic}, or can I take a message for the team?`,
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
   couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
   spoken: {
@@ -86,6 +87,7 @@ export const en: LanguagePack = {
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
+    noTransfer: 'I can\'t put you through right now, but I\'ll have the team call you back. What\'s it about?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day} for you.`
       : kind === 'times' ? 'One moment, I\'ll look at the times.'
       : kind === 'pet' && pet ? `Let me find ${pet}.`

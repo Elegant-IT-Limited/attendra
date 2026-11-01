@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, leakIn,
+  askedToHangUp, claimsAuthority, declinesText, detectEmergencies, industryPack, isAbusive, isClearYes, isInjectionAttempt, isMedicalQuestion, isReturningCall, leakIn,
   describesPet, newToClinic, parsePetBirth, pointsAtPet, saidGoodbye, withoutTextRefusal,
 } from '../src';
 
@@ -26,6 +26,10 @@ const birth = (s: string) => parsePetBirth(s, TODAY)?.dob ?? null;
 type Row = [behaviour: string, check: (text: string) => unknown, english: string, spanish: string, expected: unknown];
 
 const ROWS: Row[] = [
+  // returning a call the clinic never made (the number spoofed elsewhere)
+  ['isReturningCall: a missed call', isReturningCall, 'I got a missed call from this number', 'Tengo una llamada perdida de este número', true],
+  ['isReturningCall: someone called', isReturningCall, 'Someone called me from this number', 'Alguien me llamó de este número', true],
+  ['isReturningCall: a booking is not one', isReturningCall, 'I would like to book a visit', 'Quiero reservar una cita', false],
   // the clear yes, and what is not one
   ['isClearYes: a yes', yes, 'Yes, please book it', 'Sí, por favor, resérvela', true],
   ['isClearYes: a short yes', yes, 'Okay', 'Vale', true],

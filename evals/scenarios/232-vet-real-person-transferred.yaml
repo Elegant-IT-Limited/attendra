@@ -1,0 +1,16 @@
+id: vet-real-person-transferred
+title: Asked for a real person while the front desk takes calls, the assistant puts the caller through at once, with no pet question first
+clinic: riverbend
+local_time: "10:00"
+tags: [vet, transfer]
+caller_number: "+17205550192"
+facts: "You are Sam Okoro. You want to speak to a real person at the front desk, about anything. You give no details until you are asked."
+turns:
+  - caller: I'd rather speak to a real person, can you put me through?
+    reply: "Of course, I'm connecting you with the front desk now."
+    delegate:
+      - transfer_call: { target: front_desk }
+expect:
+  outcome: transferred
+  transfer_to: "tel:+17205550171"
+forbid_spoken: ["pet's name", "what kind of pet", "kind of animal", "add a pet", "still checking"]

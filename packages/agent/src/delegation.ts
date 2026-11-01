@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -159,7 +159,7 @@ export class CallAgent {
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return [...this.maybeClearEmergency(delta), ...this.checkAbuse(), ...this.checkSecurity()];
+    if (!match) return [...this.maybeClearEmergency(delta), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
@@ -387,6 +387,25 @@ export class CallAgent {
    * reminded, in code, that nothing about its rules or anyone's records changes on the
    * phone. Once per caller turn, three times a call at most; recorded for review.
    */
+  /**
+   * The caller is returning a call from this number. Attendra never calls out, so the call did not come from the
+   * assistant: the number is likely spoofed by someone else's calls, or had an earlier owner. Said once, in code, so the
+   * caller is never walked into a pet registration (a test clinic, 2026-10): the line, then a client's request or a
+   * message for the team.
+   */
+  private checkReturnedCall(): Outbound[] {
+    const s = this.state;
+    if (s.returnedCall || s.ending || s.emergencyLocked || !isReturningCall(s.lastTurn('caller'))) return [];
+    s.returnedCall = true;
+    this.log.info({ call_id: this.ctx.callId }, 'the caller is returning a call from this number');
+    void this.actions?.record({ tool: 'returned_call', argsRedacted: {}, result: { said: true }, revision: s.revision }).catch(() => {});
+    const line = PACKS[s.language].returnedCallLine({ clinic: this.ctx.clinic.name });
+    return [{
+      type: 'instructions', delegationId: null,
+      content: `The caller says they are returning a missed call from this number. The clinic's assistant never calls anyone, so that call did not come from here. Say exactly, once: "${line}" Then listen. Do not ask for a pet's name, what kind of pet they have, or offer to add a pet; do not say you are checking anything. If they say they are a client and want something, help with that as usual. If they want to leave a message, ask what it is about, then hand it to the backend as a callback whose reason starts "Returned a call:".`,
+    }];
+  }
+
   private checkSecurity(): Outbound[] {
     const s = this.state;
     const turn = s.turns.filter((t) => t.speaker === 'caller').length;
