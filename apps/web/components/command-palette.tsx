@@ -1,42 +1,56 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { PatientList } from '@attendra/api/contracts';
+import type { CallList, PatientList, TaskList } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { Command } from 'cmdk';
-import { CalendarPlus, Keyboard, Mic, Monitor, Moon, Search, Sun, User } from 'lucide-react';
+import { CalendarPlus, Keyboard, ListChecks, Mic, Monitor, Moon, PawPrint, Phone, Search, Sun, User, Users } from 'lucide-react';
 import { Dialog as D } from 'radix-ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ClinicTile } from '@/components/clinic-switcher';
 import { Kbd } from '@/components/ui/bits';
-import { api } from '@/lib/api';
+import { Highlight } from '@/components/ui/highlight';
+import { api, useClinic } from '@/lib/api';
 import { usePets } from '@/lib/terms';
-import { dob } from '@/lib/format';
+import { clinicTime, dob, OUTCOMES, phone, taskType } from '@/lib/format';
 import type { NavItem } from '@/lib/nav';
 import { useTheme } from '@/lib/theme';
 
 const item = 'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-base text-text aria-selected:bg-surface-sunken data-[disabled=true]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-text-muted max-md:min-h-11';
 const group = '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-text-muted';
+const muted = 'truncate text-sm text-text-muted';
+/** How many of each kind the palette shows: enough to pick from, few enough to scan. */
+const SHOWN = 6;
+
+/** Who a request is about, as the Requests page names it. */
+const requestWho = (t: TaskList['tasks'][number], patientWord: string) => t.patientName ?? t.details.pet_name
+  ?? ([t.details.first_name, t.details.last_name].filter(Boolean).join(' ') || t.details.name || (t.callId ? 'Caller not verified' : `No ${patientWord} linked`));
 
 /**
- * Cmd+K or Ctrl+K: jump anywhere or to another clinic, find a patient, start a booking or a test call,
- * switch the theme. Patient search is the same POST the Patients page makes, so it
- * is audited the same way and what is typed stays out of the address bar.
+ * Cmd+K or Ctrl+K: jump anywhere or to another clinic, find a pet or patient (by its name,
+ * its owner's name, a phone number, a birthday or a request number), a request or a call,
+ * start a booking or a test call, switch the theme. Each search is the same POST its page
+ * makes, so it is audited the same way and what is typed stays out of the address bar; only
+ * what the person may read is searched.
  */
-export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = [], onClinic, canSearchPatients, canBook, canTestCall, onShortcuts }: {
+export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = [], onClinic, canSearchPatients, canSearchCalls = false, canSearchRequests = false, canBook, canTestCall, onShortcuts }: {
   clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; pages: NavItem[];
   /** The person's other clinics: one opens the same page there. */
   clinics?: { id: string; name: string; role: string }[]; onClinic?: (id: string) => void;
-  canSearchPatients: boolean; canBook: boolean; canTestCall: boolean; onShortcuts: () => void;
+  canSearchPatients: boolean; canSearchCalls?: boolean; canSearchRequests?: boolean; canBook: boolean; canTestCall: boolean; onShortcuts: () => void;
 }) {
   const pets = usePets(clinicId);
+  const patientWord = pets ? 'pet' : 'patient';
+  const { clinic } = useClinic(clinicId);
+  const tz = clinic?.timezone ?? 'UTC';
   const router = useRouter();
   const theme = useTheme();
   const [text, setText] = useState('');
   const [query, setQuery] = useState('');
   useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 250); return () => clearTimeout(t); }, [text]);
   useEffect(() => { if (!open) { setText(''); setQuery(''); } }, [open]);
-  const searching = canSearchPatients && query.length >= 2;
+  const typed = query.length >= 2;
+  const searching = canSearchPatients && typed;
   const patients = useQuery({
     queryKey: ['patient-search', clinicId, query],
     queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/search`, { method: 'POST', body: JSON.stringify({ query }) }),
@@ -44,6 +58,36 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
     retry: false,
     staleTime: 30_000,
   });
+  // open requests and done ones alike: a number is most often looked up for one already closed
+  const requests = useQuery({
+    queryKey: ['request-search', clinicId, query],
+    queryFn: async () => {
+      const find = (status: 'open' | 'done') => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify({ q: query, status }) });
+      const [opened, done] = await Promise.all([find('open'), find('done')]);
+      return [...opened.tasks, ...done.tasks];
+    },
+    enabled: open && canSearchRequests && typed,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const calls = useQuery({
+    queryKey: ['call-search', clinicId, query],
+    queryFn: () => api<CallList>(`/clinics/${clinicId}/calls/search`, { method: 'POST', body: JSON.stringify({ query }) }),
+    enabled: open && canSearchCalls && typed,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const found = patients.data?.patients ?? [];
+  // a record found by its owner's name sits under Owners, next to the owner's other pets; everything else under Pets
+  const byOwner = found.filter((p) => p.matchedOn === 'owner').sort((a, b) => (a.guardianName ?? '').localeCompare(b.guardianName ?? '') || a.name.localeCompare(b.name));
+  const byRecord = found.filter((p) => p.matchedOn !== 'owner');
+  const fetching = (searching && patients.isFetching) || (canSearchRequests && typed && requests.isFetching) || (canSearchCalls && typed && calls.isFetching);
+  const canSearch = canSearchPatients || canSearchCalls || canSearchRequests;
+  const searchable = [
+    canSearchPatients && (pets ? 'a pet\'s or owner\'s name, a phone number or its last four digits, a birthday' : 'a patient\'s or parent\'s name, a phone number or its last four digits, a date of birth'),
+    (canSearchPatients || canSearchRequests || canSearchCalls) && 'a request number like R-1042',
+    canSearchCalls && 'a caller',
+  ].filter(Boolean).join(', ');
 
   const go = (href: string) => { onOpenChange(false); router.push(href); };
   const matches = (label: string) => !text.trim() || label.toLowerCase().includes(text.trim().toLowerCase());
@@ -57,6 +101,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
     { key: 'light', label: 'Theme: light', icon: Sun },
     { key: 'dark', label: 'Theme: dark', icon: Moon },
   ] as const;
+  const PetIcon = pets ? PawPrint : User;
 
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
@@ -67,19 +112,59 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
           <Command shouldFilter={false} label="Search and jump" loop>
             <div className="flex items-center gap-2 border-b border-border px-3">
               <Search className="size-4 text-text-muted" aria-hidden />
-              <Command.Input value={text} onValueChange={setText} autoFocus placeholder={canSearchPatients ? `Go to a page, find a ${pets ? 'pet' : 'patient'}, or do something` : 'Go to a page, or do something'}
+              <Command.Input value={text} onValueChange={setText} autoFocus placeholder={canSearchPatients ? `Go to a page, find a ${patientWord}, a request or a call, or do something` : canSearch ? 'Go to a page, find a request or a call, or do something' : 'Go to a page, or do something'}
                 className="h-12 flex-1 bg-transparent text-md text-text outline-none placeholder:text-text-muted" />
               <Kbd>Esc</Kbd>
             </div>
             <Command.List className="max-h-[60vh] overflow-y-auto p-2">
               <Command.Empty className="px-3 py-6 text-center text-sm text-text-muted">
-                {searching && patients.isFetching ? 'Searching…' : 'Nothing matches. Try a name, a date of birth or a page.'}
+                {fetching ? 'Searching…' : canSearch ? `Nothing matches. Search by ${searchable}, or type a page.` : 'Nothing matches. Type a page or an action.'}
               </Command.Empty>
-              {searching && (patients.data?.patients.length ?? 0) > 0 && (
+              {searching && byRecord.length > 0 && (
                 <Command.Group heading={pages.find((p) => p.href === 'patients')?.label ?? 'Patients'} className={group}>
-                  {patients.data!.patients.slice(0, 8).map((p) => (
+                  {byRecord.slice(0, SHOWN).map((p) => (
                     <Command.Item key={p.id} value={`patient-${p.id}`} onSelect={() => go(`/c/${clinicId}/patients/${p.id}`)} className={item}>
-                      <User aria-hidden /><span className="flex-1">{p.name}</span><span className="text-sm text-text-muted">Born {dob(p.dob)}</span>
+                      <PetIcon aria-hidden />
+                      <span className="flex-1 truncate"><Highlight text={p.name} query={p.matchedOn === 'name' ? query : ''} /></span>
+                      <span className={muted}>{p.matchedOn === 'phone' && p.phone ? <Highlight text={phone(p.phone)} query={query} /> : p.matchedOn === 'request' ? 'On that request' : `Born ${dob(p.dob)}`}</span>
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+              {searching && byOwner.length > 0 && (
+                <Command.Group heading={pets ? 'Owners' : 'Parents and guardians'} className={group}>
+                  {byOwner.slice(0, SHOWN).map((p) => (
+                    <Command.Item key={p.id} value={`owner-${p.id}`} onSelect={() => go(`/c/${clinicId}/patients/${p.id}`)} className={item}>
+                      <Users aria-hidden />
+                      <span className="flex-1 truncate"><Highlight text={p.guardianName} query={query} /></span>
+                      <span className={muted}>{p.name}{p.species ? `, ${p.species}` : ''}</span>
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+              {canSearchRequests && typed && (requests.data?.length ?? 0) > 0 && (
+                <Command.Group heading="Requests" className={group}>
+                  {requests.data!.slice(0, SHOWN).map((t) => (
+                    <Command.Item key={t.id} value={`request-${t.id}`} onSelect={() => go(`/c/${clinicId}/requests?open=${t.id}${t.status === 'done' ? '&status=done' : ''}`)} className={item}>
+                      <ListChecks aria-hidden />
+                      <span className="flex-1 truncate">
+                        <Highlight text={`R-${t.number}`} query={query} /> · {taskType(t.type, patientWord)} · <Highlight text={requestWho(t, patientWord)} query={query} />
+                      </span>
+                      {t.status === 'done' && <span className={muted}>Done</span>}
+                    </Command.Item>
+                  ))}
+                </Command.Group>
+              )}
+              {canSearchCalls && typed && (calls.data?.calls.length ?? 0) > 0 && (
+                <Command.Group heading="Calls" className={group}>
+                  {calls.data!.calls.slice(0, SHOWN).map((c) => (
+                    <Command.Item key={c.id} value={`call-${c.id}`} onSelect={() => go(`/c/${clinicId}/calls/${c.id}`)} className={item}>
+                      <Phone aria-hidden />
+                      <span className="flex-1 truncate">
+                        {c.patientName ? <Highlight text={c.patientName} query={query} /> : c.callerNumber ? <Highlight text={phone(c.callerNumber)} query={query} /> : 'Unknown caller'}
+                        {' · '}{clinicTime(c.startedAt, tz)}
+                      </span>
+                      <span className={muted}>{c.emergency ? 'Emergency' : OUTCOMES[c.outcome ?? '']?.label ?? 'Call'}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

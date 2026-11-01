@@ -90,6 +90,8 @@ export class CallState {
   requestMade = false;
   /** How often the assistant was told to make the callback it had promised. */
   promiseNudges = 0;
+  /** The caller said they are returning a call from this number: told once that it may not have come from the clinic. */
+  returnedCall = false;
   /** The caller turn last checked for a push on the rules, and how many reminders the call has had. */
   securityTurn = -1;
   securityNotes = 0;

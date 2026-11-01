@@ -472,7 +472,8 @@ async function silentStart(agent: CallAgent, greeting: string, log: ReturnType<t
     const runner = new CallRunner('eval_silent_start', engine, {
       send: (e) => {
         const c = e as { type: string; content?: string };
-        if (c.type !== 'session.instructions.append' || !/greet them now/i.test(c.content ?? '')) return;
+        // the greeting is asked for as a commentary (the opening on session.started, then the nudge): either counts
+        if (!['session.commentary.append', 'session.instructions.append'].includes(c.type) || !/greet them now/i.test(c.content ?? '')) return;
         told++;
         if (greeted !== null) return;
         greeted = Math.round(performance.now() - started);

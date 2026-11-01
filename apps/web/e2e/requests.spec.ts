@@ -113,3 +113,57 @@ test('a manager gives a request to the front desk, takes it, gives it back, and 
   await expect(card.getByText('Unclaimed')).toBeVisible();
   await expect(assign).toHaveValue('');
 });
+
+// An assignment or a claim can move the open request out of the filtered list (Unassigned, Assigned to me): the list
+// refetched after the change no longer had it, and the panel closed without a word when its row went (2026-11-01). The
+// request stays open, and its row stays at the end of the list, highlighted, until the panel is closed.
+test('the request panel stays open through Assign to, Claim, Release and Mark urgent, and keeps the row while it is open', async ({ browser }) => {
+  test.setTimeout(120_000); // six round trips, each waited for, on a dev server that compiles as it goes
+  const page = await openAs(browser, 'manager');
+  await page.getByRole('link', { name: /^Requests/ }).click();
+  await expect(page.getByRole('heading', { name: 'Requests' })).toBeVisible();
+  // the list of requests nobody holds: an assignment takes the open one out of it
+  await page.getByLabel('Assigned to').selectOption({ label: 'Unassigned' });
+  await expect(page.getByTestId('task-row').filter({ hasNotText: 'Unclaimed' })).toHaveCount(0);
+  // one that is not urgent yet, so Mark urgent is the button to press
+  await page.getByTestId('task-row').filter({ hasNotText: 'Urgent' }).first().click();
+  const panel = page.getByRole('dialog');
+  const card = page.getByTestId('task');
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  const assign = card.getByLabel('Assign to');
+  // the change, then the list fetched again without this request: the panel and the row stay
+  const listed = page.waitForResponse((r) => r.request().method() === 'POST' && /\/tasks\/search$/.test(r.url()));
+  await assign.selectOption({ label: 'Jordan (front desk)' });
+  await expect(page.getByText('Given to Jordan (front desk).')).toBeVisible();
+  expect((await listed).ok()).toBe(true);
+  await expect(panel).toBeVisible();
+  await expect(card.getByText('Jordan (front desk) has it')).toBeVisible();
+  const kept = page.getByTestId('task-row').filter({ hasText: 'Jordan (front desk) has it' });
+  await expect(kept).toHaveCount(1);
+  await expect(kept).toHaveAttribute('aria-current', 'true');
+
+  // urgent, released, claimed: the panel stays through each, and the card follows the change
+  await card.getByRole('button', { name: 'Mark urgent' }).click();
+  await expect(page.getByText('Marked urgent. It leads the queue.')).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(card.getByText('Urgent', { exact: true })).toBeVisible();
+  await card.getByRole('button', { name: 'Mark not urgent' }).click();
+  await expect(page.getByText('No longer urgent.')).toBeVisible();
+  await card.getByRole('button', { name: 'Release' }).click();
+  await expect(page.getByText('Released. It is back in the queue.')).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(card.getByText('Unclaimed')).toBeVisible();
+  await card.getByRole('button', { name: 'Claim' }).click();
+  await expect(page.getByText('Claimed. It is yours now.')).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(card.getByText('You have it')).toBeVisible();
+  // closed, the row that no longer matches the filter goes; released again from the whole list, for the next test
+  await panel.getByRole('button', { name: 'Close' }).click();
+  await expect(panel).toBeHidden();
+  await expect(page.getByTestId('task-row').filter({ hasText: 'You have it' })).toHaveCount(0);
+  await page.getByLabel('Assigned to').selectOption({ label: 'Anyone' });
+  await page.getByTestId('task-row').filter({ hasText: 'You have it' }).first().click();
+  await page.getByTestId('task').getByRole('button', { name: 'Release' }).click();
+  await expect(page.getByText('Released. It is back in the queue.').last()).toBeVisible();
+  await expect(page.getByTestId('task').getByText('Unclaimed')).toBeVisible();
+});

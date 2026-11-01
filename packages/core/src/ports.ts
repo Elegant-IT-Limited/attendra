@@ -110,7 +110,7 @@ export interface TaskQueue {
   create(clinicId: string, input: {
     type: TaskType; callId: string; patientId: string | null; idempotencyKey: string;
     details: Record<string, string>; // stored encrypted; shown to staff, never logged
-  }): Promise<{ id: string; created: boolean }>;
+  }): Promise<{ id: string; /** The request's own number at the clinic, shown as R-1042. */ number: number; created: boolean }>;
 }
 
 export interface AuditLog {

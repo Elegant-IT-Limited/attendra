@@ -254,7 +254,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByPlaceholder('e.g. Qualifications')).toHaveValue('Licence number');
   });
 
-  await watch.step('3. Vets: two added, one specialty picked and one added from the panel, one edited; the filter and the stand-in', {}, async () => {
+  // the second vet is first saved with the first vet's number, which the API refuses under the field: that 422 is the point
+  await watch.step('3. Vets: two added, one specialty picked and one added from the panel, one edited; the filter and the stand-in', { responses: [{ who: 'owner', path: /\/doctors$/, status: 422 }] }, async () => {
     await open(page, 'Veterinarians');
     await expect(page.getByRole('heading', { name: 'Veterinarians' })).toBeVisible();
     // a new clinic starts with the stand-in, until a real vet is listed
@@ -266,12 +267,19 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     let panel = page.getByRole('dialog', { name: 'Add veterinarian' });
     await panel.getByLabel('Name').fill('Dr. Elena Marsh');
     await panel.getByLabel('Gender').selectOption({ label: 'Female' });
+    // a vet's own number tells one vet from another: asked for on every new vet (2026-11-01)
+    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0171');
     await pick(panel, 'Specialty', 'Surgery');
+    // the animals come from the clinic's own list, which a new clinic has from the start (2026-11-01: "Dog is not on your list")
+    const animals = panel.getByRole('combobox', { name: 'Animals and services' });
+    for (const a of ['Dogs', 'Cats']) { await animals.fill(a); await animals.press('Enter'); }
     await panel.getByLabel('Licence number').fill('CO-VET-0161');
     await watch.axe(page, 'Add veterinarian');
     await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Surgery');
+    await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Dogs');
+    await expect(page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' })).toContainText('Cats');
     // the stand-in steps aside once a real vet is listed
     await expect(page.getByTestId('doctor')).toHaveCount(1);
 
@@ -279,6 +287,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     panel = page.getByRole('dialog', { name: 'Add veterinarian' });
     await panel.getByLabel('Name').fill('Dr. Owen Castillo');
     await panel.getByLabel('Gender').selectOption({ label: 'Male' });
+    // the same number as Dr. Marsh is refused under the field, then a number of his own goes through
+    await panel.getByLabel('Phone', { exact: true }).fill('720 555 0171');
     const specialty = panel.getByRole('combobox', { name: 'Specialty' });
     await specialty.click();
     await specialty.fill('Exotic');
@@ -287,8 +297,12 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await panel.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(specialty).toHaveValue('Exotic animals');
     await panel.getByRole('button', { name: 'Save' }).click();
+    await expect(panel.getByText('Dr. Elena Marsh already has this number.')).toBeVisible();
+    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0172');
+    await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId('doctor')).toHaveCount(2);
+    await expect(page.getByText('Add a phone number')).toHaveCount(0);
 
     // edit one: Dr. Marsh does dentistry now
     await page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' }).getByRole('button', { name: 'Edit hours and details' }).click();
@@ -486,10 +500,13 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByText('Request added. It is in the queue for the team.')).toBeVisible();
 
     const row = page.getByTestId('task-row').filter({ hasText: 'Marisol' });
+    // the clinic's first request is R-1: its number is on the row and leads the panel's title (2026-11-01)
+    await expect(row.getByTestId('request-number')).toHaveText('R-1');
     await expect(row).toContainText('Added by Avery Lindqvist-Hale');
     await expect(row).toContainText('Call back on (720) 555-0162');
     await row.click();
     const card = page.getByTestId('task');
+    await expect(page.getByRole('dialog', { name: 'R-1 · Callback' })).toBeVisible();
     await expect(card.getByTestId('added-by')).toHaveText(/^Added by Avery Lindqvist-Hale \(Owner\), /);
     await watch.axe(page, 'a request');
 

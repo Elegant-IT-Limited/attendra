@@ -90,6 +90,8 @@ export const CallSummary = z.object({
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
   verified: z.boolean(),
+  /** The number's first call to this clinic (false on a browser test call); on the list only, not on one call's page. */
+  firstCall: z.boolean().optional(),
   /** From the call's summary, once the worker has written it: codes only. */
   intent: z.enum(['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other']).nullable(),
   sentiment: z.enum(['calm', 'frustrated', 'distressed']).nullable(),
@@ -115,6 +117,7 @@ const CallFilters = z.object({
 /** The call list's filters, in clinic-time days (`to` is inclusive). */
 export const CallQuery = Page.extend(CallFilters.shape);
 /** A name search is a POST: a name is PHI and stays out of URLs. */
+/** What is typed in the Calls search: a verified caller's name (a pet's or its owner's), a phone number in any form or its last digits, or a request number ("R-1042"). */
 export const CallSearch = z.object({
   query: z.string().trim().min(2, 'type at least two characters').max(100),
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
@@ -151,7 +154,7 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
-  tasks: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.string(), status: z.string() })),
   summary: CallSummaryCard.nullable(),
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
@@ -288,7 +291,7 @@ export const TaskQuery = z.object({
 });
 /** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
 export const TaskSearch = TaskQuery.extend({
-  /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
+  /** Words or digits to find: the request's number (R-1042 or 1042), the pet's or owner's name, a phone number, its details, its notes or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(100).default(''),
 });
 /** Texts about one thing: exactly one of a call, a request, a pet or patient, or a visit. */
@@ -332,6 +335,8 @@ export const NewTask = z.object({
   callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
   /** Who it is about, as staff typed it, when no record is linked: the request's title. */
   name: z.string().trim().max(80).nullable().optional(),
+  /** The pet or patient it is about, picked from the records: the request then belongs to their household. */
+  patientId: z.uuid().nullable().optional(),
   urgent: z.boolean().optional(),
   dueOn: z.iso.date().nullable().optional(),
 });
@@ -339,6 +344,8 @@ export const TaskPlan = z.object({ urgent: z.boolean().optional(), dueOn: z.iso.
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({
   id: z.string(),
+  /** The request's own number at this clinic, shown as R-1042: in the order they came in, never reused. */
+  number: z.number().int(),
   type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']),
   status: z.enum(['open', 'done']),
   callId: z.string().nullable(),
@@ -502,6 +509,8 @@ export const PatientCard = z.object({
   /** They agreed to reminder texts, and where: on a call, at the desk, in an import. */
   textsOk: z.boolean(),
   textsOkSource: z.enum(['call', 'staff', 'import']).nullable(),
+  /** From a search only: what the record matched on, so the screen can group it (an owner's pets) and highlight it. */
+  matchedOn: z.enum(['request', 'name', 'owner', 'phone', 'dob']).optional(),
 });
 export const PatientList = z.object({
   patients: z.array(PatientCard),
@@ -555,7 +564,7 @@ export const PatientProfile = PatientCard.extend({
   calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable(), forThisRecord: z.boolean() })),
   /** The requests of anyone on the same phone, and of the calls from it. patientId says whose it is, when anyone's. */
   requests: z.array(z.object({
-    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(), patientId: z.string().nullable(),
+    id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(), patientId: z.string().nullable(),
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
 });
@@ -565,6 +574,9 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
   id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
   name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
   gender: Gender,
+  // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
+  phone: z.string().trim().max(30).optional(),
+  otherPhones: z.array(z.string().trim().max(30)).max(3).optional(),
 });
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
@@ -652,6 +664,9 @@ const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.star
 export const ClinicName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(60, 'at most 60 characters') });
 /** A location at a glance for the hosting layer's Locations page: counts only, no call or patient details. */
 export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
+/** Counts only: how the clinic's providers stand on the one-number rule, for the hosting layer's check after a deploy. */
+export const ProviderPhoneReport = z.object({ providers: z.number().int(), withPhone: z.number().int(), withoutPhone: z.number().int(), sharedNumbers: z.number().int(), providersSharing: z.number().int() });
+export type ProviderPhoneReport = z.infer<typeof ProviderPhoneReport>;
 export type ClinicOverview = z.infer<typeof ClinicOverview>;
 export const HostingPlan = z.object({
   status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
@@ -706,7 +721,7 @@ export const AssistantChoices = z.object({
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
 
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

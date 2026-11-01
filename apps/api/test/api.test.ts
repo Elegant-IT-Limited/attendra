@@ -129,7 +129,7 @@ describe('roles', () => {
 describe('calls', () => {
   it('lists calls with no patient data in them', async () => {
     const res = await api.request('GET', `${C}/calls?limit=10`, { cookie: staff });
-    expect(res.json()).toMatchObject({ calls: [{ id: api.callId, outcome: 'task_created', voiceSeconds: 48 }], next: null });
+    expect(res.json()).toMatchObject({ calls: [{ id: api.callId, outcome: 'task_created', voiceSeconds: 48, firstCall: true }], next: null });
     expect(res.body).not.toContain('Maria');
   });
 

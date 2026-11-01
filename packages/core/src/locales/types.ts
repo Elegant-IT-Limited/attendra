@@ -112,6 +112,11 @@ export interface LanguagePack {
   /** Said word for word when a person takes the call over, before the transfer. */
   takeOver: string;
   /**
+   * Said once, word for word, to a caller returning a call from this number: the assistant never calls out, so the
+   * call they got may not have come from the clinic. Then the choice: a client with a request, or a message.
+   */
+  returnedCallLine: (v: { clinic: string }) => string;
+  /**
    * The backend's own words for the caller, spoken as they are when a tool's result is the whole answer, so the model is
    * not asked again (2026-11). Each ends with the next question when one follows (the reminder offer, anything else?).
    */
@@ -136,6 +141,8 @@ export interface LanguagePack {
     reminders: (v: { agreed: boolean }) => string;
     /** No vet here sees this kind of animal: the one vet's limit when there is one, then the request offered. */
     noVetForAnimal: (v: { vet: string | null; animals: string | null; pet: string }) => string;
+    /** A person was asked for and no line takes transfers now: said so once, and the message offered at once. */
+    noTransfer: string;
     /**
      * Said the moment the backend starts a lookup, so the caller never waits in silence: what it is doing, in a few
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.

@@ -2,7 +2,7 @@
 // What a hosting layer needs to open and run accounts: a new organization with its
 // clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
 // none of it reads patient data.
-import { ClinicConfig, PACKS } from '@attendra/core';
+import { ClinicConfig, DEFAULT_ANIMALS, managedList, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, invitations, memberships } from '../auth-schema';
 import type { Database } from '../client';
@@ -159,6 +159,7 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from webhook_endpoints where clinic_id = ${clinicId}`,
       sql`delete from task_notes where clinic_id = ${clinicId}`,
       sql`delete from tasks where clinic_id = ${clinicId}`,
+      sql`delete from clinic_counters where clinic_id = ${clinicId}`,
       sql`delete from appointments where clinic_id = ${clinicId}`,
       sql`delete from call_summaries where clinic_id = ${clinicId}`,
       sql`delete from call_actions where clinic_id = ${clinicId}`,
@@ -292,4 +293,31 @@ export async function removeUnconfirmedAccount(db: Database, email: string, opts
     await tx.delete(authUsers).where(eq(authUsers.id, user.id));
     return 'removed';
   });
+}
+
+/**
+ * The animals list every vet clinic has from sign-up since 2026-11, given once to the clinics opened before
+ * that whose list is empty (no list kept, and no vet with animals to derive one from). Counts only. With
+ * `apply` false nothing is written. Safe to run more than once: a clinic with a list is left alone.
+ */
+export async function seedAnimalLists(db: Database, opts: { apply: boolean }): Promise<{ clinics: number; vet: number; empty: number; filled: number }> {
+  const rows = await db.select({ id: clinics.id, config: clinics.config }).from(clinics);
+  let vet = 0;
+  let empty = 0;
+  let filled = 0;
+  for (const row of rows) {
+    const parsed = ClinicConfig.safeParse(row.config);
+    if (!parsed.success || parsed.data.industry !== 'vet') continue;
+    vet++;
+    if (managedList(parsed.data, 'categories').length) continue;
+    empty++;
+    if (!opts.apply) continue;
+    const config = { ...parsed.data, lists: { ...parsed.data.lists, categories: [...DEFAULT_ANIMALS] } };
+    await db.transaction(async (tx) => {
+      await tx.update(clinics).set({ config, configVersion: sql`${clinics.configVersion} + 1`, configUpdatedAt: new Date(), configUpdatedBy: 'provisioning' }).where(eq(clinics.id, row.id));
+      await tx.insert(auditLogs).values({ clinicId: row.id, actor: 'provisioning', action: 'clinic.list.updated.categories', entity: 'clinic', entityId: row.id });
+    });
+    filled++;
+  }
+  return { clinics: rows.length, vet, empty, filled };
 }

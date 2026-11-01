@@ -1,4 +1,4 @@
-import { RIVERBEND_CLINIC } from '@attendra/core';
+import { RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CallRepository, createPhiCipher, PostgresPatientDirectory, seedRiverbend, withClinic, schema } from '../src';
@@ -96,5 +96,21 @@ describe('one number, one owner: unifying records made before the rule', () => {
     expect(await unifyHouseholds(t.db, cipher, { apply: true })).toMatchObject({ numbers: 0, pets: 0 });
     const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.owner.unified'`)).rows;
     expect(audit).toEqual([{ n: 1 }]);
+  });
+});
+
+describe('the animals list for vet clinics opened before it came with sign-up', () => {
+  it('counts the vet clinics with no list on a dry run, fills them once on apply, and leaves clinics with a list alone', async () => {
+    const { createOrganizationWithClinic, seedAnimalLists } = await import('../src/repositories/provisioning');
+    // a clinic opened before 2026-11: no list kept, no vet with animals to derive one from
+    const old = { ...starterClinic({ id: 'clinic_old_vets', name: 'Old Oak Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550101' }), lists: undefined };
+    await createOrganizationWithClinic(t.db, { id: 'org_old_vets', name: 'Old Oak Vets', plan: 'trial' }, old as never);
+    const dry = await seedAnimalLists(t.db, { apply: false });
+    expect(dry).toMatchObject({ empty: 1, filled: 0 });
+    expect(dry.vet).toBeGreaterThanOrEqual(2); // Riverbend, with its own vets' animals, is a vet clinic with a list already
+    expect(await seedAnimalLists(t.db, { apply: true })).toMatchObject({ empty: 1, filled: 1 });
+    const [row] = (await t.db.execute(sql`select config -> 'lists' -> 'categories' as list, config_version as v from clinics where id = 'clinic_old_vets'`)).rows as { list: string[]; v: number }[];
+    expect(row).toEqual({ list: ['Dogs', 'Cats', 'Rabbits', 'Birds', 'Reptiles', 'Small mammals', 'Exotic pets'], v: 2 });
+    expect(await seedAnimalLists(t.db, { apply: true })).toMatchObject({ empty: 0, filled: 0 });
   });
 });

@@ -83,6 +83,24 @@ describe('doctors', () => {
     await api.t.db.execute(sql`update clinics set config = ${JSON.stringify({ ...before, providers: (await stored()).providers.map((p) => (p.id === id ? { ...p, specialty: 'Pediatrics' } : p)) })}::jsonb where id = ${DEMO_CLINIC.id}`);
   });
 
+  it('refuses a number another doctor at the clinic has, under the field, and keeps the numbers as the clinic dials them', async () => {
+    const first = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Numbered One', phone: '(303) 555-0181', otherPhones: ['303 555 0182'] } });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().providers.find((p: { name: string }) => p.name === 'Dr. Numbered One')).toMatchObject({ phone: '+13035550181', otherPhones: ['+13035550182'] });
+    const same = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Numbered Two', phone: '+13035550182' } });
+    expect(same.statusCode).toBe(422);
+    expect(same.json().issues).toEqual([{ path: 'phone', message: 'Dr. Numbered One already has this number.' }]);
+    const other = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Numbered Two', phone: '+13035550183', otherPhones: ['3035550181'] } });
+    expect(other.json().issues).toEqual([{ path: 'otherPhones', message: 'Dr. Numbered One already has this number.' }]);
+    // a doctor at a clinic for people needs no number; the import finds a doctor by their number before their name
+    expect((await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. No Number' } })).statusCode).toBe(201);
+    const csv = 'name,phone,specialty\nDr. Numbered One (renamed),(303) 555-0181,Pediatrics\nDr. Numbered Three,(303) 555-0182,Pediatrics';
+    const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
+    expect(dry.rows.map((r: { status: string; message: string | null }) => [r.status, r.message])).toEqual([['update', null], ['error', 'Dr. Numbered One is already on another row of the file (the same number or name)']]);
+    const taken = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv: 'name,phone,specialty\nDr. Numbered Three,(303) 555-0182,Pediatrics', dryRun: true } })).json();
+    expect(taken.rows[0]).toMatchObject({ status: 'update', name: 'Dr. Numbered Three' }); // the number is the doctor: their row, renamed
+  });
+
   it('lets the stand-in a new clinic starts with go once a real doctor is added, unless a visit points at it', async () => {
     const before = await stored();
     const standIn = { id: 'prov_1', name: 'our doctor', visitTypeIds: ['vt_sick'], placeholder: true, categories: [], acceptingNewPatients: true, timeOff: [] };

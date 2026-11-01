@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
+import { requestNumber, clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 
@@ -131,7 +131,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
     ...requests.map((t) => ({
-      key: t.id, icon: <RequestIcon type={t.type} />, title: taskType(t.type, terms.patient), detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+      key: t.id, icon: <RequestIcon type={t.type} />, title: `${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
       action: canWork
         ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
         : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,

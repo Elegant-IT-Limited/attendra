@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment, Schedule } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, industryPack, localDateOf, shownProviders, weekdayOf, windowsOn } from '@attendra/core';
+import { addDays, bookableProviders, type ClinicConfig, industryPack, localDateOf, shownProviders, weekdayOf, windowsOn } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Agenda } from '@/components/schedule/agenda';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { Calendar, MonthGrid, ScheduleList } from '@/components/schedule/calendar';
 import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
+import { VetsPicker } from '@/components/schedule/vets-picker';
 import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -19,7 +21,11 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
+import { AGENDA_FIRST, laneProviders, MANY_PROVIDERS, readChosen, writeChosen } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
+
+type View = 'day' | 'week' | 'month' | 'agenda';
+const VIEWS: { value: View; label: string }[] = [{ value: 'day', label: 'Day' }, { value: 'week', label: 'Week' }, { value: 'month', label: 'Month' }, { value: 'agenda', label: 'Agenda' }];
 
 export default function SchedulePage() {
   return <Suspense fallback={<Skeleton className="h-96" />}><ScheduleScreen /></Suspense>;
@@ -56,14 +62,25 @@ function ScheduleScreen() {
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
   const today = localDateOf(new Date(), tz);
-  const view: 'day' | 'week' | 'month' = params.get('view') === 'week' ? 'week' : params.get('view') === 'month' ? 'month' : 'day';
+  // how many can be booked: past MANY_PROVIDERS the day grid draws only the lanes in use, past AGENDA_FIRST the page opens on the Agenda
+  const bookable = clinic ? bookableProviders(clinic.providers).length : 0;
+  const manyProviders = bookable > MANY_PROVIDERS;
+  const asked = params.get('view');
+  const view: View = asked === 'week' || asked === 'month' || asked === 'agenda' ? asked : asked === 'day' ? 'day' : bookable > AGENDA_FIRST ? 'agenda' : 'day';
+  // the Agenda lists a day, or the week with ?days=7
+  const agendaWeek = view === 'agenda' && params.get('days') === '7';
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.get('date') ?? '') ? params.get('date')! : today;
   const open = params.get('appointment');
   const [providerId, setProviderId] = useState('');
+  // the lanes this person pinned on a big clinic's grid, kept in this browser
+  const [chosen, setChosen] = useState<string[]>([]);
+  const providerList = clinic?.providers;
+  useEffect(() => { if (providerList) setChosen(readChosen(clinicId, providerList)); }, [clinicId, providerList]);
+  const choose = (ids: string[]) => { setChosen(ids); writeChosen(clinicId, ids); };
   // booked only, booked and cancelled, or cancelled only (a history list). In a week the columns are narrow
   // and a cancelled block sits on top of the booking that replaced it, so a week starts with booked only
   const shown = params.get('show');
-  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'day' ? 'all' : 'booked';
+  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'day' || view === 'agenda' ? 'all' : 'booked';
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
@@ -78,8 +95,9 @@ function ScheduleScreen() {
   };
 
   // a month is six whole weeks, from the Monday before the 1st
-  const from = view === 'month' ? mondayOf(monthOf(date)) : view === 'week' ? mondayOf(date) : date;
-  const days = view === 'month' ? 42 : view === 'week' ? 7 : 1;
+  const weekly = view === 'week' || agendaWeek;
+  const from = view === 'month' ? mondayOf(monthOf(date)) : weekly ? mondayOf(date) : date;
+  const days = view === 'month' ? 42 : weekly ? 7 : 1;
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
@@ -99,14 +117,16 @@ function ScheduleScreen() {
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   // the stand-in a new clinic starts with is shown only while it is the only one, or has visits on screen
   const listed = shownProviders(clinic.providers, (schedule.data?.appointments ?? []).map((a) => a.providerId));
-  const providers = listed.filter((p) => !providerId || p.id === providerId);
   const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i))
-    : view === 'week' ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
-  const step = view === 'week' ? 7 : 1;
+    : weekly ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
+  // one provider picked in the dropdown is the grid; otherwise every lane, or on a big clinic the lanes in use (lib/schedule-lanes.ts)
+  const providers = providerId ? listed.filter((p) => p.id === providerId) : laneProviders(clinic, listed, dates, appointments.map((a) => a.providerId), chosen);
+  const step = weekly ? 7 : 1;
   const go = (by: 1 | -1) => set({ date: view === 'month' ? shiftMonth(date, by) : addDays(date, by * step) });
-  const unit = view === 'month' ? 'month' : view === 'week' ? 'week' : 'day';
+  const unit = view === 'month' ? 'month' : weekly ? 'week' : 'day';
   const booked = appointments.filter((a) => a.status === 'booked').length;
   const writable = can('schedule:write');
+  const pets = industryPack(clinic.industry).identity === 'pet';
 
   return (
     <>
@@ -116,7 +136,7 @@ function ScheduleScreen() {
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
-          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'day' ? date === today : view === 'month' ? monthOf(today) === monthOf(date) : mondayOf(today) === from}>Today</Button>
+          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
           <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
         </div>
         <div className="space-y-1">
@@ -124,20 +144,33 @@ function ScheduleScreen() {
           <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
         </div>
         <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
-          {(['day', 'week', 'month'] as const).map((v) => (
-            <button key={v} id={`schedule-tab-${v}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v} onClick={() => set({ view: v })}
-              className={cn('rounded px-3 py-1 text-sm focus-ring', view === v ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
-              {v === 'day' ? 'Day' : v === 'week' ? 'Week' : 'Month'}
+          {VIEWS.map((v) => (
+            <button key={v.value} id={`schedule-tab-${v.value}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v.value} onClick={() => set({ view: v.value })}
+              className={cn('rounded px-3 py-1 text-sm focus-ring', view === v.value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
+              {v.label}
             </button>
           ))}
         </div>
+        {view === 'agenda' && (
+          <div className="flex rounded-md border border-border-strong p-0.5" role="group" aria-label="Agenda range">
+            {([['1', 'This day'], ['7', 'This week']] as const).map(([d, label]) => (
+              <button key={d} type="button" aria-pressed={agendaWeek === (d === '7')} onClick={() => set({ days: d === '7' ? '7' : null })}
+                className={cn('rounded px-3 py-1 text-sm focus-ring', agendaWeek === (d === '7') ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="space-y-1">
           <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
           <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-            <option value="">{industryPack(clinic.industry).identity === 'pet' ? 'All veterinarians' : 'All providers'}</option>
+            <option value="">{pets ? 'All veterinarians' : 'All providers'}</option>
             {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${p.name}, ${p.specialty}` : p.name}</option>)}
           </Select>
         </div>
+        {manyProviders && (view === 'day' || view === 'week') && (
+          <VetsPicker clinic={clinic} providers={listed} date={date} chosen={chosen} onChange={choose} word={pets ? 'veterinarians' : 'providers'} />
+        )}
         <div className="space-y-1">
           <Label htmlFor="schedule-show" className="sr-only">Show</Label>
           <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
@@ -161,9 +194,9 @@ function ScheduleScreen() {
       <Card className="overflow-hidden" data-testid="schedule" role="tabpanel" id="schedule-panel" aria-labelledby={`schedule-tab-${view}`} aria-busy={schedule.isPending || schedule.isPlaceholderData}>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
-            <h2 className="font-semibold">{view === 'month' ? monthTitle(date) : view === 'week' ? `Week of ${dayTitle(from)}` : dayTitle(date)}{view === 'day' && date === today ? ', today' : ''}</h2>
+            <h2 className="font-semibold">{view === 'month' ? monthTitle(date) : weekly ? `Week of ${dayTitle(from)}` : dayTitle(date)}{!weekly && view !== 'month' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
-              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${view === 'day' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
+              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${!weekly && view !== 'month' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
             </p>
           </div>
           <Legend clinic={clinic} />
@@ -174,15 +207,17 @@ function ScheduleScreen() {
             <div className="hidden md:block">
               {view === 'month'
                 ? <MonthGrid clinic={clinic} month={date.slice(0, 7)} dates={dates} appointments={appointments} today={today} onOpen={(id) => set({ appointment: id })} onDay={(d) => set({ view: 'day', date: d })} />
-                : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => set({ appointment: id })} />}
+                : view === 'agenda'
+                  ? <Agenda clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} word={pets ? 'veterinarian' : 'provider'} />
+                  : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => set({ appointment: id })} />}
             </div>
             <div className="md:hidden">
               <ScheduleList clinic={clinic} dates={view === 'month' ? dates.filter((d) => d.startsWith(date.slice(0, 7))) : dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
             </div>
-            {appointments.length === 0 && view !== 'month' && (hidden > 0 ? (
+            {appointments.length === 0 && view !== 'month' && view !== 'agenda' && (hidden > 0 ? (
               <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Choose Booked and cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
             ) : (
-              <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.</Empty></div>
+              <div className="hidden md:block"><Empty title="Nothing booked here yet">Bookings the assistant takes on the phone, and ones you make with New booking, appear on this grid.{manyProviders && !providerId ? ` Pick ${pets ? 'veterinarians' : 'providers'} with ${pets ? 'Vets' : 'Providers'} to see their lanes meanwhile.` : ''}</Empty></div>
             ))}
           </>
         )}

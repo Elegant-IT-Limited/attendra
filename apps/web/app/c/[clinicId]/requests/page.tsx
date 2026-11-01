@@ -6,10 +6,11 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { AlertTriangle, ChevronDown, ChevronRight, Flag, Hand, Info, Phone, PhoneCall, Pill, Plus, Search, SlidersHorizontal, UserCheck, Voicemail, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { PageHeader } from '@/components/shell';
 import { TextStatus } from '@/components/calls/text-status';
 import { CustomFieldInputs, CustomFieldsForm, shownValue } from '@/components/patients/custom-fields';
+import { PatientPicker } from '@/components/patients/patient-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,7 +20,7 @@ import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { ago, clinicTime, dayTitle, dob, personName, phone, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
+import { ago, clinicTime, dayTitle, dob, personName, phone, requestNumber, ROLE_LABEL, TASK_KIND_ORDER, TASK_OUTCOMES, TASK_TYPES, taskExplained, taskType, telHref, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
@@ -62,9 +63,14 @@ function Requests() {
   const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
   // the request open in the side panel: closed when it is marked done and when the list switches
   // between Open and Done, so a request never reopens by itself over the list it moved to
-  const [openId, setOpenId] = useState<string | null>(null);
+  // a link can open one request (?open=<id>): the command palette's Requests results land here
+  const [openId, setOpenId] = useState<string | null>(() => search.get('open'));
+  // the open request as last seen: an assignment or a claim can move it out of the filtered list (Unassigned, Assigned to
+  // me), and the panel closed without a word when its row went (2026-11-01). It stays open, and the row stays, until closed
+  const [held, setHeld] = useState<Task | null>(null);
+  const closeTask = () => { setOpenId(null); setHeld(null); };
   const setStatus = (s: 'open' | 'done') => {
-    setOpenId(null);
+    closeTask();
     const q = new URLSearchParams(search.toString());
     if (s === 'done') q.set('status', 'done'); else q.delete('status');
     router.replace(q.size ? `${pathname}?${q}` : pathname, { scroll: false });
@@ -98,6 +104,10 @@ function Requests() {
     refetchInterval: 30_000,
     placeholderData: keepPreviousData,
   });
+  const openTask = (id: string) => { setHeld(tasks.data?.tasks.find((x) => x.id === id) ?? null); setOpenId(id); };
+  // what the list has for the open request is the truth while it is there; `held` keeps the last of it after
+  const current = openId ? tasks.data?.tasks.find((x) => x.id === openId) : undefined;
+  useEffect(() => { if (current) setHeld(current); }, [current]);
   // the people a manager can hand a request to: everyone who works requests, the manager included
   const team = useQuery({ queryKey: ['assignees', clinicId], queryFn: () => api<TaskAssignees>(`/clinics/${clinicId}/tasks/assignees`), enabled: can('tasks:reassign') });
   const key = ['tasks', clinicId, status, type, who, q, from, to];
@@ -111,6 +121,7 @@ function Requests() {
     onMutate: async ({ task, action, body }: Act) => {
       await queries.cancelQueries({ queryKey: key });
       const before = queries.getQueryData<TaskList>(key);
+      const heldBefore = held;
       const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
       const change = (t: Task): Task | null => {
         if (t.id !== task.id) return t;
@@ -122,17 +133,20 @@ function Requests() {
         return null; // done: it leaves the open list
       };
       if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
-      return { before };
+      // the request held open outside the list changes the same way
+      if (held?.id === task.id) setHeld(change(held));
+      return { before, heldBefore };
     },
     onError: (e, _v, ctx) => {
       if (ctx?.before) queries.setQueryData(key, ctx.before);
+      if (ctx?.heldBefore) setHeld(ctx.heldBefore);
       const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
       // said once, in the toast, which stays until it is read
       toast({ tone: 'error', message: text });
     },
     onSuccess: (_r, { task, action, body }) => {
       if (action === 'claim') toast({ tone: 'success', message: 'Claimed. It is yours now.', action: { label: 'Undo', onClick: () => act.mutate({ task, action: 'release' }) } });
-      else if (action === 'done') { setOpenId((id) => (id === task.id ? null : id)); toast({ tone: 'success', message: 'Marked done.' }); }
+      else if (action === 'done') { if (openId === task.id) closeTask(); toast({ tone: 'success', message: 'Marked done.' }); }
       else if (action === 'assign') toast({ tone: 'success', message: body?.userId === me?.user.id ? 'It is yours now.' : `Given to ${personName(team.data?.people.find((m) => m.userId === body?.userId)?.name ?? 'your teammate')}.` });
       else if (action === 'notes') toast({ tone: 'success', message: 'Note added.' });
       else if (action === 'plan') toast({ tone: 'success', message: body?.urgent === true ? 'Marked urgent. It leads the queue.' : body?.urgent === false ? 'No longer urgent.' : body?.dueOn ? 'Due day set.' : 'Due day cleared.' });
@@ -151,6 +165,10 @@ function Requests() {
   const shown = (tasks.data?.tasks ?? []).filter((t) => (!filterField || !fieldFilter.value
     || (filterField.kind === 'multi' ? multiValues(t.custom[filterField.id]).includes(fieldFilter.value) : t.custom[filterField.id] === fieldFilter.value))
     && (!topic || t.details.topic === topic));
+  // the open request: from the list while it is there, else as last seen, with its row kept at the end of the list
+  const inList = shown.find((x) => x.id === openId);
+  const open = inList ?? (openId ? held : null);
+  const listed = open && !inList ? [...shown, open] : shown;
 
   return (
     <>
@@ -202,7 +220,7 @@ function Requests() {
           <Label htmlFor="request-search" className="sr-only">Search requests</Label>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
           <Input id="request-search" type="search" className="h-8 pl-8" autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
-            placeholder="Name, medication, phone digits…" />
+            placeholder="R-1042, a pet, an owner, a phone, a note…" />
         </div>
         <div className="flex items-center gap-1.5 text-sm" role="group" aria-label="Came in between">
           <Label htmlFor="request-from" className="text-text-muted">From</Label>
@@ -240,19 +258,19 @@ function Requests() {
       )}
       {tasks.isPending ? <Card className="space-y-2 p-4"><Skeleton className="h-12" /><Skeleton className="h-12" /><Skeleton className="h-12" /></Card> : !shown.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>
-          {filtered ? 'Nothing matches these filters.' : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
+          {filtered ? `Nothing matches. Search by the request's number (R-1042), the ${terms.patient}'s or owner's name, a phone number, the kind of request or a note.` : status === 'open' ? `New refill and callback requests, and new ${terms.patients} to check, appear here as calls come in.` : 'Requests you mark done appear here, with what came of them.'}
         </Empty></Card>
       ) : (
-        <RequestList tasks={shown} status={status} patientWord={terms.patient} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} openId={openId} onOpen={setOpenId} />
+        <RequestList tasks={listed} status={status} patientWord={terms.patient} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} openId={openId} onOpen={openTask} />
       )}
       </div>
       {/* one request at a time, on the right: its details, notes and actions, and what else came from the same call */}
       {(() => {
-        const t = shown.find((x) => x.id === openId);
+        const t = open;
         const siblings = t?.callId ? shown.filter((x) => x.callId === t.callId && x.id !== t.id) : [];
         return (
-          <Panel open={!!t} onOpenChange={(o) => { if (!o) setOpenId(null); }} side="right" className="max-w-xl"
-            title={t ? `${nameOf(t, terms.patient)}: ${taskType(t.type, terms.patient)}` : 'Request'}>
+          <Panel open={!!t} onOpenChange={(o) => { if (!o) closeTask(); }} side="right" className="max-w-xl"
+            title={t ? `${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}` : 'Request'} description={t ? nameOf(t, terms.patient) : undefined}>
             {t && (
               <div className="space-y-4">
                 <RequestCard bare fields={requestFields} task={t} patientWord={terms.patient} clinicId={clinicId} tz={tz} today={localDateOf(new Date(), tz)} meId={me?.user.id} busy={act.isPending} teammates={teammates}
@@ -266,7 +284,7 @@ function Requests() {
                         const Icon = ICONS[x.type] ?? Phone;
                         return (
                           <li key={x.id}>
-                            <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => setOpenId(x.id)}>
+                            <button type="button" className="focus-ring flex w-full items-center gap-3 rounded-md border border-dashed border-border-strong px-3 py-2 text-left text-sm hover:bg-surface-sunken" onClick={() => openTask(x.id)}>
                               <Icon className="size-4 shrink-0 text-primary" aria-hidden />
                               <span className="min-w-0 flex-1"><span className="font-medium">{taskType(x.type, terms.patient)}</span> <span className="text-text-muted">{needOf(x, terms.patient).main}</span></span>
                               <ChevronRight className="size-4 text-text-muted" aria-hidden />
@@ -349,7 +367,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
       <span className="flex size-9 items-center justify-center rounded-full bg-primary-soft text-primary md:order-1"><Icon className="size-4" aria-hidden /></span>
       <span className="min-w-0 md:order-2">
         <span className="block truncate font-medium">{nameOf(t, patientWord)}</span>
-        <span className="block truncate text-xs text-text-muted">{taskType(t.type, patientWord)}</span>
+        <span className="block truncate text-xs text-text-muted"><span className="font-medium tabular-nums text-text" data-testid="request-number">{requestNumber(t.number)}</span> · {taskType(t.type, patientWord)}</span>
       </span>
       <span className="flex flex-wrap justify-end gap-1.5 md:order-5">
         {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
@@ -509,6 +527,9 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
   const queries = useQueryClient();
   const toast = useToast();
   const blank = { kind: 'callback', name: '', reason: '', callbackNumber: '', urgent: false, dueOn: '', medication: '', pharmacy: '' };
+  // the record the request is about, picked from the records, or none yet (a caller nobody has on file)
+  const [picked, setPicked] = useState<{ id: string; name: string } | null>(null);
+  const [picking, setPicking] = useState(false);
   const [draft, setDraft] = useState(blank);
   const [custom, setCustom] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -518,7 +539,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
       const topic = draft.kind.startsWith('topic:') ? draft.kind.slice(6) : null;
       const type = topic ? 'callback' : draft.kind;
       const r = await api<{ id: string }>(`/clinics/${clinicId}/tasks`, { method: 'POST', body: JSON.stringify({
-        type, topic, name: draft.name.trim() || null, reason: draft.reason, callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
+        type, topic, name: draft.name.trim() || null, patientId: picked?.id ?? null, reason: draft.reason, callbackNumber: draft.callbackNumber.trim() || null, urgent: draft.urgent, dueOn: draft.dueOn || null,
         ...(refill ? { medication: draft.medication.trim() || null, pharmacy: draft.pharmacy.trim() || null } : {}),
       }) });
       // the clinic's own fields go with it; a problem with them leaves the request in the queue and says so
@@ -533,7 +554,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
       toast(r.fieldsFailed
         ? { tone: 'error', message: 'The request is added, but not its details. Open it and use Edit details.' }
         : { tone: 'success', message: 'Request added. It is in the queue for the team.' });
-      setDraft(blank); setCustom({}); setError(null); onOpenChange(false);
+      setDraft(blank); setCustom({}); setPicked(null); setPicking(false); setError(null); onOpenChange(false);
       void queries.invalidateQueries({ queryKey: ['tasks', clinicId] });
     },
     onError: (e) => setError(e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.'),
@@ -575,10 +596,29 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
           </div>
         </fieldset>
         <fieldset className="space-y-3">
-          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">2 · Who to reach</legend>
-          <Field label="Name" hint="Who it is about, if you know. Optional.">
-            {(p) => <Input {...p} autoComplete="off" maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}
-          </Field>
+          <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">2 · Who it is about</legend>
+          {/* a record from the files, so the request belongs to that household; or nobody yet, named as typed */}
+          {picked ? (
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-sunken px-3 py-2 text-sm" data-testid="picked-record">
+              <span className="min-w-0 flex-1 truncate font-medium">{picked.name}</span>
+              <Button size="sm" variant="ghost" onClick={() => { setPicked(null); setPicking(false); }}>Change</Button>
+            </div>
+          ) : picking ? (
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <PatientPicker clinicId={clinicId} canAdd={false} onPick={(p) => { setPicked({ id: p.id, name: p.name }); setPicking(false); setDraft((d) => ({ ...d, name: '' })); }} />
+              <Button size="sm" variant="ghost" onClick={() => setPicking(false)}>No {patientWord} yet</Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPicking(true)}><Search /> Find the {patientWord} or owner</Button>
+              <span className="text-xs text-text-muted">By name or phone. Or write who it is about below.</span>
+            </div>
+          )}
+          {!picked && (
+            <Field label="Name" hint={`Who it is about, when they are not on file yet. Optional.`}>
+              {(p) => <Input {...p} autoComplete="off" maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />}
+            </Field>
+          )}
           <Field label="Call back on" hint="The number to reach them on, if there is one.">
             {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
           </Field>

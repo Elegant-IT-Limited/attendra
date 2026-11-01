@@ -357,6 +357,25 @@ describe('safety', () => {
     expect(recorded).toEqual(['security_probe', 'security_probe']);
   });
 
+  it('tells a caller returning a missed call, once and in code, that it may not have come from here, and never asks for a pet (2026-11-01)', async () => {
+    const recorded: string[] = [];
+    const c = await w.call(null, { clinic: RIVERBEND_CLINIC, actions: { record: async (a) => { recorded.push(a.tool); } } });
+    const out = c.caller('Hi, I had a missed call from this number, who is this?');
+    expect(out).toEqual([expect.objectContaining({ type: 'instructions', delegationId: null })]);
+    const said = (out[0] as { content: string }).content;
+    expect(said).toContain('Say exactly, once: "This is Riverbend Animal Hospital\'s phone assistant.');
+    expect(said).toContain('may not have come from us');
+    expect(said).toContain('Do not ask for a pet\'s name');
+    expect(said).toContain('"Returned a call:"');
+    // once per call: the same caller saying it again is not told again
+    expect(c.caller('I said someone called me from this number')).toEqual([]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(recorded).toEqual(['returned_call']);
+    // in Spanish, the Spanish line
+    const es = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    expect((es.caller('Hola, tengo una llamada perdida de este número')[0] as { content: string }).content).toContain('puede no haber sido nuestra');
+  });
+
   it('never keeps a card number a caller reads out, and corrects the assistant once if it names its tools or the company behind it', async () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
     c.caller('My card is 4111 1111');

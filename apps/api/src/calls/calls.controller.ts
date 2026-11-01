@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, zonedInstant } from '@attendra/core';
-import { CallSummaryRepository, type Database, type FrontDeskRepository, type PatientRecords, type PhiCipher, staffNames, workerJobs } from '@attendra/db';
+import { CallSummaryRepository, type Database, type FrontDeskRepository, type PatientRecords, type PhiCipher, readQuery, readRequestNumber, staffNames, workerJobs } from '@attendra/db';
 import { Body, Controller, Get, HttpCode, Inject, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
@@ -38,13 +38,19 @@ export class CallsController {
   @Post('search')
   @HttpCode(200)
   @Requires('calls:read')
-  @ApiOperation({ summary: 'Calls with a verified patient whose name matches, with the same filters. Audited with the number of matches, never the name typed.' })
+  @ApiOperation({ summary: 'Calls by the verified caller\'s name (a pet\'s or its owner\'s), the number called from in any form or its last digits, or a request number, with the same filters. Audited with the number of matches, never what was typed.' })
   @ApiBody({ schema: schemaOf(CallSearch) })
   @ApiOkResponse({ schema: schemaOf(CallList) })
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(CallSearch)) body: z.infer<typeof CallSearch>, @CurrentStaff() staff: Staff): Promise<CallList> {
-    const patientIds = await this.patients.idsMatching(clinicId, body.query);
+    // the same reading of the box as the Pets search: a name finds verified patients, digits find the number called
+    // from, and a number alone or written as one ("R-1042") finds the calls that left that request
+    const q = readQuery(body.query);
+    const patientIds = q?.kind === 'name' ? await this.patients.idsMatching(clinicId, body.query) : [];
+    const callIds = q?.kind === 'phone' ? await this.desk.callIdsByNumber(clinicId, q.digits) : [];
+    const number = readRequestNumber(body.query);
+    if (number !== null) callIds.push(...await this.desk.callIdsByRequestNumber(clinicId, number));
     const calls = await this.desk.listCalls(clinicId, {
-      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, needsReview: body.review === 'needed' || undefined, refusal: body.refusal, patientIds, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
+      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, needsReview: body.review === 'needed' || undefined, refusal: body.refusal, match: { patientIds, callIds }, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
     });
     return { ...this.page(calls, Number.POSITIVE_INFINITY), truncated: calls.length >= 100 };
   }
@@ -67,7 +73,7 @@ export class CallsController {
     return {
       calls: calls.map((c) => ({
         id: c.id, channel: c.channel, outcome: c.outcome, emergency: c.emergency, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
-        intent: c.intent, sentiment: c.sentiment, needsReview: c.needsReview,
+        firstCall: c.firstCall, intent: c.intent, sentiment: c.sentiment, needsReview: c.needsReview,
         patientName: c.patientName, callerNumber: c.callerNumber, startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString() ?? null,
       })),
       next: calls.length === limit && last ? callCursor.encode(last) : null,

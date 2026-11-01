@@ -3,6 +3,8 @@ import { toMinutes } from './time';
 import { type ClinicConfig, genderWord, localName, type Provider, type VisitType } from './clinic';
 import { sharedCustomFacts } from './custom-fields';
 import { windowsOn } from './hours';
+import { phoneDigits } from './identity';
+import { asE164 } from './routing';
 import type { Language } from './locales';
 import { addDays } from './time';
 
@@ -145,6 +147,54 @@ export function matchesSpecialty(p: Pick<Provider, 'specialty' | 'categories'>, 
   const want = wordsOf(asked).map(one);
   const have = wordsOf([p.specialty ?? '', ...p.categories].join(' ')).map(one);
   return want.length > 0 && want.every((w) => [w, ...(KINDS[w] ?? [])].map(one).some((alt) => have.some((h) => near(alt, h))));
+}
+
+/** Every number a provider has: their own first, then the others. */
+export const providerPhones = (p: Pick<Provider, 'phone' | 'otherPhones'>): string[] => [p.phone, ...(p.otherPhones ?? [])].filter((x): x is string => !!x);
+
+/** A person at a vet clinic with no number yet: the page asks for one until it is there. The stand-in never needs one. */
+export const needsPhone = (clinic: Pick<ClinicConfig, 'industry'>, p: Pick<Provider, 'kind' | 'phone' | 'placeholder'>) =>
+  clinic.industry === 'vet' && p.kind === 'person' && !p.placeholder && !p.phone;
+
+const E164 = /^\+[1-9]\d{7,14}$/;
+
+/**
+ * A provider's numbers, checked: each written as the clinic's country dials it (kept in E.164), none the same twice,
+ * none already another provider's at this clinic (the last digits compared, the way callers' numbers are), and at a vet
+ * clinic a new person needs one, because the number is what tells one vet from another (2026-11-01). The same number at
+ * another clinic is fine. Problems come back under their field, for the form and the import alike.
+ */
+export function providerPhoneIssues(clinic: Pick<ClinicConfig, 'industry' | 'phoneNumbers' | 'providers'>,
+  candidate: { kind?: string; placeholder?: boolean; phone?: string | null; otherPhones?: string[] | null }, currentId?: string,
+): { phone?: string; otherPhones?: string[]; issues: { path: 'phone' | 'otherPhones'; message: string }[] } {
+  const issues: { path: 'phone' | 'otherPhones'; message: string }[] = [];
+  const typed = candidate.phone?.trim() ?? '';
+  const phone = typed ? asE164(clinic, typed) : undefined;
+  if (phone && !E164.test(phone)) issues.push({ path: 'phone', message: 'Check the phone number: write it as you would dial it, or with its country code.' });
+  const others = (candidate.otherPhones ?? []).map((x) => x.trim()).filter(Boolean).map((x) => asE164(clinic, x));
+  if (others.some((x) => !E164.test(x))) issues.push({ path: 'otherPhones', message: 'Check the other numbers: write each as you would dial it, or with its country code.' });
+  if (!currentId && !phone && needsPhone(clinic, { kind: (candidate.kind ?? 'person') as Provider['kind'], placeholder: candidate.placeholder, phone: undefined })) {
+    issues.push({ path: 'phone', message: 'A phone number is needed: it is what tells one veterinarian from another.' });
+  }
+  const mine = [phone, ...others].filter((x): x is string => !!x).map(phoneDigits);
+  if (new Set(mine).size !== mine.length) issues.push({ path: 'otherPhones', message: 'The same number is listed twice.' });
+  for (const other of clinic.providers) {
+    if (other.id === currentId) continue;
+    const theirs = providerPhones(other).map(phoneDigits);
+    const clash = mine.find((d) => theirs.includes(d));
+    if (clash === undefined) continue;
+    issues.push({ path: phone && phoneDigits(phone) === clash ? 'phone' : 'otherPhones', message: `${other.name} already has this number.` });
+    break;
+  }
+  return { phone, otherPhones: others.length ? others : undefined, issues };
+}
+
+/** The providers at a clinic that share a number, counted: how many numbers are on more than one, and how many providers that is. */
+export function sharedProviderPhones(providers: Pick<Provider, 'id' | 'phone' | 'otherPhones'>[]): { numbers: number; providers: number } {
+  const byDigits = new Map<string, Set<string>>();
+  for (const p of providers) for (const d of new Set(providerPhones(p).map(phoneDigits))) byDigits.set(d, new Set([...(byDigits.get(d) ?? []), p.id]));
+  const shared = [...byDigits.values()].filter((ids) => ids.size > 1);
+  return { numbers: shared.length, providers: new Set(shared.flatMap((ids) => [...ids])).size };
 }
 
 /** The providers a caller can be offered: the stand-in a new clinic starts with steps aside once anyone else is listed. */

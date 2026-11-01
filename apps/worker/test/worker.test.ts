@@ -339,7 +339,8 @@ describe('a refill ready to pick up', () => {
     await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.tasks).set({ status: 'done', outcome: 'refill_ready' }).where(eq(schema.tasks.id, id)));
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent');
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: id })).toBe('sent'); // a retry is not a second text
-    expect(sent).toEqual([{ from: DEMO_CLINIC.phoneNumbers[0], to: '+13035550163', body: expect.stringContaining('Your request is ready to pick up') }]);
+    // the request's number is in the text, so the caller and the team talk about the same one
+    expect(sent).toEqual([{ from: DEMO_CLINIC.phoneNumbers[0], to: '+13035550163', body: expect.stringMatching(/Your request \(R-\d+\) is ready to pick up/) }]);
     expect(sent[0]!.body).not.toMatch(/lisinopril/i);
     expect(await audits(DEMO_CLINIC.id, 'sms.sent.request_ready')).toHaveLength(1);
   });
@@ -366,9 +367,9 @@ describe('a refill ready to pick up', () => {
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-no-1', 'refill_declined', 'CVS on Main St') })).toBe('sent');
     // collected at the clinic: "sent to your pharmacy" would be wrong, so nothing goes out for it
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-sent-2', 'refill_sent', 'pick up at the clinic') })).toBe('skipped');
-    expect(sent[0]).toContain('Your request was sent to CVS on Main St.');
+    expect(sent[0]).toMatch(/Your request \(R-\d+\) was sent to CVS on Main St\./);
     expect(sent[0]).toContain('Bring your ID when you collect it. Reply STOP to opt out.');
-    expect(sent[1]).toContain('About your recent request, please call us on');
+    expect(sent[1]).toMatch(/About your recent request \(R-\d+\), please call us on/);
     expect(sent.join(' ')).not.toMatch(/carprofen/i);
     await t.db.execute(sql`update clinics set config = ${JSON.stringify(before)}::jsonb where id = ${DEMO_CLINIC.id}`);
   });

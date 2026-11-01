@@ -3,7 +3,7 @@ import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner }
 import { ClinicConfig, resolveTransfer, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
-import { callerContext, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
+import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -130,6 +130,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   };
   app.register(async (webhooks) => {
     webhooks.post('/webhooks/openai', async (req, reply) => {
+      const receivedAt = Date.now();
       let event: IncomingCall;
       try {
         event = await deps.verifyWebhook(req.body as string, req.headers);
@@ -145,7 +146,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return reply.code(200).send({ duplicate: true });
       }
 
-      track(handleIncoming(event));
+      track(handleIncoming(event, receivedAt));
       return reply.code(200).send({ accepted: true });
     });
 
@@ -233,9 +234,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         if ((openPerClinic.get(clinic.id) ?? 0) >= perClinic) return reply.code(429).send({ error: 'test_call_limit' });
 
         hold(clinic.id, 1); // before any await, so two requests at once cannot both pass the limit
+        const marks = new CallMarks();
         let started: { sessionId: string; sdpAnswer: string };
         try {
+          marks.mark('accept_sent');
           started = await deps.engine.startBrowserCall(clinic, body.sdp, now());
+          marks.mark('accepted');
         } catch (err) {
           hold(clinic.id, -1);
           deps.log.error({ clinic_id: clinic.id, err }, 'browser call could not start');
@@ -252,10 +256,11 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
           hold(clinic.id, -1);
           return reply.code(500).send({ error: 'setup_failed' });
         }
+        marks.mark('call_opened');
         webCalls.set(callId, { clinicId: clinic.id, sessionId });
         // the API may ask for less than the usual limit: the clinic's test time left
         const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
-        track(runCall(clinic, sessionId, callId, null, 'web', { maxSeconds: limit }).finally(() => {
+        track(runCall(clinic, sessionId, callId, null, 'web', { maxSeconds: limit, marks }).finally(() => {
           webCalls.delete(callId);
           hold(clinic.id, -1);
         }));
@@ -362,9 +367,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
 
   /** Runs an accepted conversation to the end, whichever way it came in. */
   async function runCall(clinic: ClinicConfig, sessionId: string, callId: string, from: string | null, channel: 'phone' | 'web',
-    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null } } = {}) {
+    opts: { engine?: VoiceEngine; planner?: Planner; onReady?: () => void; maxSeconds?: number; vipUri?: string; paused?: { uri: string | null }; marks?: CallMarks } = {}) {
     const web = channel === 'web';
     const engine = opts.engine ?? deps.engine;
+    const marks = opts.marks ?? new CallMarks();
     const timers: NodeJS.Timeout[] = [];
     let closed = false;
     let hungUp = false;
@@ -377,15 +383,17 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));
         return parsed.success ? parsed.data : null;
       };
-      // a caller ringing back is helped from where they left off; a failed read never holds up the call
-      const history = from && !web && deps.historyFor ? await deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
+      // a caller ringing back is helped from where they left off; a failed read never holds up the call, and neither
+      // does a slow one: the sideband attaches and the greeting goes out while the records are read
+      const historyRead: Promise<string | null> = from && !web && deps.historyFor ? deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
         deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'could not read the caller\'s earlier calls');
         return null;
-      }) : null;
-      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history, now, log: deps.log, channel, onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      }) : Promise.resolve(null);
+      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history: null, now, log: deps.log, channel, onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
+      marks.mark('attached');
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
-      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log);
+      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks);
       if (web) {
         const limit = opts.maxSeconds ?? maxSeconds;
         // a minute before the end the caller hears so, and at the end the assistant says why it
@@ -420,6 +428,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const created = engine.sessionInfo?.(sessionId);
       deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel, engine: created?.engine ?? engine.name, voice: created?.voice ?? null }, 'call accepted');
       const done = runner.start();
+      const history = await historyRead;
+      marks.mark('history');
+      a.setHistory(history);
       // the clinic's assistant is paused: a short line, then the front desk or the end of the call
       if (opts.paused) await runner.act(a.paused(opts.paused.uri));
       // a VIP caller hears their hello, then goes straight to the front desk
@@ -450,7 +461,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
    * Never leaves a caller in dead air: a failure before accepting rejects the call
    * with SIP 503 (the carrier plays its own message), a failure after accepting hangs up.
    */
-  async function handleIncoming(event: IncomingCall) {
+  async function handleIncoming(event: IncomingCall, receivedAt = Date.now()) {
+    const marks = new CallMarks(receivedAt);
     const sessionId = sessionOf(event);
     const headers = event.data.sip_headers ?? [];
     // OpenAI decides which kind of call it is (a GPT-Live or a Realtime one): it is answered with that engine
@@ -493,13 +505,16 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const vip = paused ? null : vipRoute(clinic, from, now());
       const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
       const vipArgs = opening ? [opening] as const : [] as const;
+      marks.mark('accept_sent');
       if (router) await router.acceptWith(via, sessionId, clinic, now(), ...vipArgs);
       else await deps.engine.accept(sessionId, clinic, now(), ...vipArgs);
       accepted = true;
+      marks.mark('accepted');
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
+      marks.mark('call_opened');
       if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
       else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
-      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused });
+      await runCall(clinic, sessionId, callId, from, 'phone', { vipUri: vip?.uri, paused, marks });
     } catch (err) {
       deps.log.error({ session_id: sessionId, err }, 'call setup failed');
       deps.alerts?.alert('call_failed', `A call could not be set up${accepted ? ' after it was answered' : ' and was turned away'}: ${(err as Error)?.message?.slice(0, 120) ?? 'unknown error'}.`);

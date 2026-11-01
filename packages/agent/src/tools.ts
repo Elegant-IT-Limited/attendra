@@ -370,7 +370,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           ...(result.similar ? { possible_duplicate: 'Another patient has the same name and date of birth with a different phone number.' } : {}),
         },
       });
-      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'review', patientId: result.patient.id, callId: ctx.callId } });
       const newVisits = clinic.visitTypes.filter((v) => v.audience !== 'existing').map((v) => localName(v, lang));
       return { ok: true, data: { registered: true, first_name: first, age, say: `They are now registered as a new patient. A first visit is usually ${newVisits.find((v) => /new/i.test(v)) ?? newVisits[0]}: ${state.chosen ? `use it for the time they chose.${chosenNote(state, clinic, lang, ctx.now()).say}` : `look for its times now, with any provider, unless they asked for something else (${newVisits.join(', ')}). Do not ask which provider.`}` } };
     }
@@ -737,7 +737,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         details: { medication: String(args.medication), pharmacy: String(args.pharmacy), callback_number: asGiven(clinic, callback), ...(textUpdates !== null ? { texts: textUpdates ? 'yes' : 'no' } : {}) },
       });
       state.outcome = 'task_created';
-      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
+      if (task.created) await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'refill', patientId: state.verifiedPatient!.id, callId: ctx.callId } });
       return { ok: true, data: { task_id: task.id, say: `Tell them the request is with the ${trade.identity === 'pet' ? 'team' : 'care team'}, who will review it and get back to them. Say nothing about approval or how long it takes.`, spoken: pack.spoken.refillTaken } };
     }
 
@@ -756,7 +756,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       });
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
-      await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
+      await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       // in an emergency the script around the callback is the model's; otherwise the request taken is the whole answer
       return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: callback === ctx.callerNumber }) }) } };
     }
@@ -848,9 +848,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const target = args.target as 'front_desk' | 'billing' | 'on_call';
       const resolved = resolveTransfer(clinic, target, ctx.now());
       if (!resolved.ok) {
-        return refuse(resolved.reason, resolved.reason === 'no_rule'
+        // said as it is, in the caller's language: the offer of a callback at once, never a question about a pet first (2026-10)
+        const refused = refuse(resolved.reason, resolved.reason === 'no_rule'
           ? 'The clinic has no phone line set up for transfers. Do not say nobody is there. Offer to take a callback request for the team, with the reason and the best number.'
           : 'That line only takes calls at other times. Offer to take a callback request for the team, with the reason and the best number.');
+        return state.emergencyLocked ? refused : { ...refused, data: { ...refused.data, spoken: pack.spoken.noTransfer } };
       }
       // a browser test call cannot be transferred: say what would happen on a real call
       if (ctx.channel === 'web') {

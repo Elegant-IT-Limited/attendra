@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, starterClinic, textingOf, zonedInstant } from '@attendra/core';
+import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit,
@@ -14,7 +14,7 @@ import type { Auth } from '../auth';
 import { Public } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
-import { ClinicName, ClinicOverview, HostingPlan } from '../contracts';
+import { ClinicName, ClinicOverview, HostingPlan, type ProviderPhoneReport } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
@@ -313,6 +313,17 @@ export class ProvisioningController {
     return { name: clinic.name, phoneNumber: clinic.phoneNumbers[0] ?? null, city: cityOf(clinic.address), callsToday: today.calls, openRequests: open };
   }
 
+  /** How the clinic's providers stand on the one-number rule (2026-11-01), counts only: nothing is merged by anyone but the clinic. */
+  @Get('clinics/:clinicId/provider-phones')
+  async providerPhones(@Param('clinicId') clinicId: string): Promise<ProviderPhoneReport> {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const providers = bookableProviders(ClinicConfig.parse(stored).providers).filter((p) => p.kind === 'person');
+    const shared = sharedProviderPhones(providers);
+    const withPhone = providers.filter((p) => p.phone).length;
+    return { providers: providers.length, withPhone, withoutPhone: providers.length - withPhone, sharedNumbers: shared.numbers, providersSharing: shared.providers };
+  }
+
   /** Renames a location: the clinic's name on every screen and in the assistant's greeting line. Audited as clinic.renamed. */
   @Put('clinics/:clinicId/name')
   @HttpCode(204)
@@ -348,7 +359,7 @@ export class ProvisioningController {
     return { ...calls, openMinutes: since < now ? openMinutes(ClinicConfig.parse(stored), since, now) : 0 };
   }
 
-  /** The weekly report's numbers: the Quality page's weeks, the owners to send it to, and the visit value. */
+  /** The weekly report's numbers: the Quality page's weeks and the owners to send it to. */
   @Get('clinics/:clinicId/report')
   async report(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ReportQuery)) q: z.infer<typeof ReportQuery>) {
     const stored = await this.desk.settings(clinicId);
@@ -360,7 +371,7 @@ export class ProvisioningController {
     // the weeks that have ended, newest first: a report on Monday is about last week
     const weeks = qualityWeeks(rows, clinic, now, q.weeks + 1, COST_PER_MINUTE).slice(1);
     return {
-      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, averageVisitValue: clinic.averageVisitValue, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
+      clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
       owners: (await clinicOwners(this.db, clinicId)).filter((o) => o.emailVerified).map(({ name, email }) => ({ name, email })),
       weeks,
     };

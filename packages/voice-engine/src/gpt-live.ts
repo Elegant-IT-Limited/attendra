@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import type { DataChannelConfig } from 'openai/resources/live/live';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt, noCallerIdLine, openingIfNotStarted, openingInstruction } from './prompt';
+import { conversationPrompt, noCallerIdLine, openingInstruction } from './prompt';
 
 /**
  * What a browser tab may see and do on its own data channel. It is untrusted, so
@@ -45,9 +45,12 @@ export class GptLiveEngine implements VoiceEngine {
   private readonly browser = new Set<string>();
   private readonly sockets = new Map<string, SidebandSocket>();
   /**
-   * Phone sessions that still have to be told to greet, with what to say: sent once, when the sideband attaches. A browser
-   * session has the same opening in its input from creation, and its audio is up only after the browser has the answer:
-   * an opening sent on attach reached it before then, a second time (2026-10-26: neither test call greeted within 4 s).
+   * Phone sessions that still have to be told to greet, with what to say. The developer message in the session's input
+   * "can improve greeting behavior, but does not guarantee that the model will speak" (OpenAI); what makes it speak is the
+   * same greeting sent once as a commentary after `session.started`, which the call runner does (`opening()`). An
+   * instructions append on attach, the old way, started no turn: on 10 of 12 real phone calls (2026-10-29) the assistant
+   * said nothing until nudged or spoken to, and on 5 of them nothing at all. A browser session has the opening in its
+   * input from creation and its audio is up only after the browser has the answer: it is never sent again.
    */
   private readonly openings = new Map<string, string>();
 
@@ -102,15 +105,15 @@ export class GptLiveEngine implements VoiceEngine {
     await this.client.live.sessions.reject(sessionId, { status_code: sipStatus });
   }
 
+  /** The opening a phone session still owes, once: the runner sends it when the session starts. */
+  opening(sessionId: string): string | null {
+    const opening = this.openings.get(sessionId) ?? null;
+    this.openings.delete(sessionId);
+    return opening;
+  }
+
   attach(sessionId: string): Sideband {
     const ws = this.openSideband(sessionId);
-    // the same opening again, once, now that we can reach the session; the SDK holds it until the socket opens. By then
-    // the greeting may be under way or the caller may have spoken over it: it never starts the greeting over
-    const opening = this.openings.get(sessionId);
-    if (opening) {
-      this.openings.delete(sessionId);
-      ws.send({ type: 'session.instructions.append', event_id: `opening_${sessionId}`, delegation_id: null, content: openingIfNotStarted(opening) } as never);
-    }
     if (this.browser.has(sessionId)) {
       this.sockets.set(sessionId, ws);
       ws.on('close', () => { if (this.sockets.get(sessionId) === ws) this.sockets.delete(sessionId); });

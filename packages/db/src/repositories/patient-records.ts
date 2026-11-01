@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Gender, namesMatch, normalizeName, parseDob } from '@attendra/core';
-import { and, asc, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
+import { type Gender, namesMatch, normalizeName, parseDob, soundsLike } from '@attendra/core';
+import { and, asc, desc, eq, inArray, isNotNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
 import { patientSetKey, recordView } from './audit';
 import { callerKey } from './calls';
 import { auditResults } from './front-desk';
-import { findSameIdentity, isSameIdentity, patientLookupKey, phoneKey, readGenderColumn, sealPatient } from './patients';
+import { findSameIdentity, isSameIdentity, ownerWordKey, patientLookupKey, PHONE_SUFFIX_DIGITS, phoneKey, phoneMatch, phoneSuffixKey, readGenderColumn, sealPatient } from './patients';
 
 /** The most patients one search will read. Decision 7 says why, and what replaces it. */
 export const PATIENT_SCAN_LIMIT = 20_000;
@@ -48,17 +48,27 @@ const words = (s: string) => normalizeName(s).split(' ').filter(Boolean);
 const digitsOf = (s: string) => s.replace(/\D/g, '');
 
 /**
- * How a search box's text is read, from the first character typed: a whole date of
- * birth, some digits of a phone number, or the start of a name.
+ * How a search box's text is read, from the first character typed: a request number
+ * written as one ("R-1042", "#1042"), a whole date of birth, some digits of a phone
+ * number, or the start of a name. Bare digits are a phone, and are tried as a request
+ * number too (readRequestNumber).
  */
-export function readQuery(query: string, today = new Date()): { kind: 'dob'; dob: string } | { kind: 'phone'; digits: string } | { kind: 'name'; words: string[] } | null {
+export function readQuery(query: string, today = new Date()): { kind: 'request'; number: number } | { kind: 'dob'; dob: string } | { kind: 'phone'; digits: string } | { kind: 'name'; words: string[] } | null {
   const q = query.trim();
   if (!q) return null;
+  const written = q.match(/^(?:r[-\s]?|#)(\d{1,9})$/i);
+  if (written) return { kind: 'request', number: Number(written[1]) };
   const dob = parseDob(q, today);
   if (dob) return { kind: 'dob', dob };
   if (/^[\d\s()+.-]+$/.test(q) && digitsOf(q)) return { kind: 'phone', digits: digitsOf(q) };
   const w = words(q);
   return w.length ? { kind: 'name', words: w } : null;
+}
+
+/** The request number a search box's text could mean: "R-1042", "#1042" or "1042" alone. Null for anything else, and for ten digits or more, which are a phone. */
+export function readRequestNumber(query: string): number | null {
+  const m = query.trim().match(/^(?:r[-\s]?|#)?(\d{1,9})$/i);
+  return m ? Number(m[1]) : null;
 }
 
 /** Every word typed starts a word of the name: "del mar" finds Maria Delgado, "m" finds every Maria and Martin. */
@@ -68,18 +78,22 @@ export function nameMatches(typed: string[], p: { firstName: string; lastName: s
 }
 
 /**
- * Where typed digits sit in a phone number: 0 when the number starts with them (as
- * written with or without its country code, or with a leading 0 the way many
- * countries dial at home), 1 when they are somewhere inside it, null when not at all.
+ * A name the way a person types it: first, last or both in any order, each word started
+ * or, once it is a whole word, said the way the name sounds ("Danial" finds Daniel, as
+ * the assistant hears names on a call).
  */
-export function phoneMatch(typed: string, phone: string | null): 0 | 1 | null {
-  if (!phone) return null;
-  const all = digitsOf(phone);
-  const national = all.slice(-10);
-  const forms = [all, national, `0${national}`];
-  if (forms.some((f) => f.startsWith(typed))) return 0;
-  return forms.some((f) => f.includes(typed)) ? 1 : null;
+const spokenMatches = (typed: string[], have: string[]) => have.length > 0 && typed.every((t) => have.some((h) => h.startsWith(t) || soundsLike(t, h)));
+
+/** The owner's (guardian's) name, matched the same way. */
+export function ownerNameMatches(typed: string[], guardianName: string | null) {
+  return !!guardianName && spokenMatches(typed, words(guardianName));
 }
+
+/** What a search matched a record on, so the screen can group and highlight it. */
+export type MatchedOn = 'request' | 'name' | 'owner' | 'phone' | 'dob';
+export type SearchHit = PatientCard & { matchedOn: MatchedOn };
+/** Exact things first (a request number), then the record's own name, then the owner's; a phone that starts with the digits before one that contains them. */
+const RANK: Record<MatchedOn, number> = { request: 0, name: 1, owner: 2, dob: 1, phone: 3 };
 
 const byName = (a: PatientCard, b: PatientCard) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName) || a.dob.localeCompare(b.dob);
 
@@ -92,35 +106,74 @@ export class PatientRecords {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly scanLimit = PATIENT_SCAN_LIMIT) {}
 
   /**
-   * At most 25 matches, as the person types. Every patient shown gets a
+   * At most 25 matches, as the person types: by the record's own name, the owner's
+   * name (any order, or as it sounds), a phone in any form (whole, or its last digits),
+   * a date of birth, or a request number. Every patient shown gets a
    * patient.search.result row, and the search one row with how many matched; what was
    * typed is never written. The scan reads in a fixed order and says when it stopped
    * at the cap, so the same search always sees the same patients and the screen can say so.
    */
-  async search(clinicId: string, query: string, userId: string, today = new Date(), opts: { status?: PatientStatus } = {}): Promise<{ patients: PatientCard[]; truncated: boolean } | null> {
+  async search(clinicId: string, query: string, userId: string, today = new Date(), opts: { status?: PatientStatus } = {}): Promise<{ patients: SearchHit[]; truncated: boolean } | null> {
     const q = readQuery(query, today);
     if (!q) return null;
     return withClinic(this.db, clinicId, async (tx) => {
-      // a whole number is looked up by its keyed hash, beyond the scan cap; a few digits are matched in the scan
-      const whole = q.kind === 'phone' && q.digits.length >= 10;
-      const rows = await tx.select().from(patients)
-        .where(and(eq(patients.clinicId, clinicId), opts.status ? eq(patients.status, opts.status) : undefined,
-          whole ? eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, q.digits))) : undefined))
-        .orderBy(asc(patients.id)).limit(this.scanLimit);
-      const cards = rows.map((r) => this.card(clinicId, r));
-      let matched: PatientCard[];
-      if (q.kind === 'phone') {
-        // numbers that start with what was typed first, then numbers that contain it
-        const ranked = cards.flatMap((c) => { const m = phoneMatch(q.digits, c.phone); return m === null ? [] : [{ c, m }]; });
-        matched = ranked.sort((a, b) => a.m - b.m || byName(a.c, b.c)).map((x) => x.c);
-      } else {
-        matched = cards.filter((c) => (q.kind === 'dob' ? c.dob === q.dob : nameMatches(q.words, c))).sort(byName);
-      }
+      const { hits, truncated } = await this.hits(tx, clinicId, q, readRequestNumber(query), opts.status);
+      const matched = hits.sort((a, b) => a.rank - b.rank || byName(a.hit, b.hit)).map((x) => x.hit);
       const shown = matched.slice(0, SEARCH_RESULTS);
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.searched', entity: 'patient', entityId: `matches:${matched.length}` });
       await auditResults(tx, clinicId, userId, shown.map((p) => p.id));
-      return { patients: shown, truncated: !whole && rows.length >= this.scanLimit };
+      return { patients: shown, truncated };
     });
+  }
+
+  /**
+   * The records a search matches, each with what it matched on. Candidates are the
+   * keyed-hash matches (a whole phone, its last four digits, a word of the owner's or
+   * the record's own name, the patients of a request with the number typed), which
+   * reach past the scan cap, together with the scan window; both are then decrypted
+   * and matched here, where a word can be the start of a name or sound like it.
+   */
+  private async hits(tx: Tx, clinicId: string, q: NonNullable<ReturnType<typeof readQuery>>, requestNumber: number | null, status?: PatientStatus) {
+    const base = and(eq(patients.clinicId, clinicId), status ? eq(patients.status, status) : undefined);
+    // the patients of the request with this number, when the clinic numbers its requests (migration 0041)
+    const ofRequest = new Set(requestNumber === null ? [] : (await tx.select({ id: tasks.patientId }).from(tasks)
+      .where(and(eq(tasks.clinicId, clinicId), eq(tasks.number, requestNumber), isNotNull(tasks.patientId)))).map((t) => t.id!));
+    const whole = q.kind === 'phone' && q.digits.length >= 10;
+    const keyed: SQL[] = [];
+    if (q.kind === 'phone' && whole) keyed.push(eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, q.digits))));
+    else if (q.kind === 'phone' && q.digits.length >= PHONE_SUFFIX_DIGITS) keyed.push(eq(patients.phoneSuffixHash, this.cipher.hash(phoneSuffixKey(clinicId, q.digits))));
+    else if (q.kind === 'name') {
+      const hashes = q.words.map((w) => this.cipher.hash(ownerWordKey(clinicId, w)));
+      keyed.push(sql`${patients.ownerWordsHash} && array[${sql.join(hashes.map((h) => sql`${h}`), sql`, `)}]::text[]`);
+    }
+    if (ofRequest.size) keyed.push(inArray(patients.id, [...ofRequest]));
+    // the keyed matches are exact, so they are read up to the full cap whatever window this search scans
+    const byKey = keyed.length ? await tx.select().from(patients).where(and(base, or(...keyed))).orderBy(asc(patients.id)).limit(PATIENT_SCAN_LIMIT) : [];
+    // a whole number is found by its hash alone, as it always was, and a request number by its patients; anything else also reads the scan window, in a fixed order
+    const scanned = whole || q.kind === 'request' ? [] : await tx.select().from(patients).where(base).orderBy(asc(patients.id)).limit(this.scanLimit);
+    const rows = new Map([...byKey, ...scanned].map((r) => [r.id, r]));
+    const hits: { hit: SearchHit; rank: number }[] = [];
+    for (const r of rows.values()) {
+      const c = this.card(clinicId, r);
+      const m = this.matchOf(q, c, ofRequest);
+      if (m) hits.push({ hit: { ...c, matchedOn: m.on }, rank: m.rank });
+    }
+    return { hits, truncated: scanned.length >= this.scanLimit };
+  }
+
+  private matchOf(q: NonNullable<ReturnType<typeof readQuery>>, c: PatientCard, ofRequest: Set<string>): { on: MatchedOn; rank: number } | null {
+    if (ofRequest.has(c.id)) return { on: 'request', rank: RANK.request };
+    if (q.kind === 'dob') return c.dob === q.dob ? { on: 'dob', rank: RANK.dob } : null;
+    if (q.kind === 'phone') {
+      // numbers that start with what was typed first, then numbers that contain it
+      const m = phoneMatch(q.digits, c.phone);
+      return m === null ? null : { on: 'phone', rank: RANK.phone + m };
+    }
+    if (q.kind === 'name') {
+      if (nameMatches(q.words, c) || spokenMatches(q.words, [...words(c.firstName), ...words(c.lastName)])) return { on: 'name', rank: RANK.name };
+      if (ownerNameMatches(q.words, c.guardianName)) return { on: 'owner', rank: RANK.owner };
+    }
+    return null;
   }
 
   /** The newest patients first, for the list before anything is typed. `status: 'new'` lists those waiting to be checked. */
@@ -197,7 +250,7 @@ export class PatientRecords {
         appointments: visits,
         calls: theirCalls.map(({ patientId: about, ...c }) => ({ ...c, voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds), forThisRecord: about === patientId })),
         requests: requests.map((t) => ({
-          id: t.id, type: t.type, patientId: t.patientId, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
+          id: t.id, number: t.number, type: t.type, patientId: t.patientId, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
           details: JSON.parse(this.cipher.decrypt(t.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>,
         })),
       };
@@ -300,7 +353,7 @@ export class PatientRecords {
     return new Map(rows.map((r) => { const c = this.card(clinicId, r); return [r.id, `${c.firstName} ${c.lastName}`]; }));
   }
 
-  /** Every patient whose name matches the words, for searches that go through another table (a patient's calls). Not audited here: the search that uses it is. */
+  /** Every patient whose own or owner's name matches the words, for searches that go through another table (a patient's calls). Not audited here: the search that uses it is. */
   async idsMatching(clinicId: string, query: string): Promise<string[]> {
     return withClinic(this.db, clinicId, (tx) => this.idsByName(tx, clinicId, query));
   }
@@ -308,8 +361,7 @@ export class PatientRecords {
   async idsByName(tx: Tx, clinicId: string, query: string): Promise<string[]> {
     const w = words(query);
     if (!w.length) return [];
-    const rows = await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(asc(patients.id)).limit(PATIENT_SCAN_LIMIT);
-    return rows.map((r) => this.card(clinicId, r)).filter((c) => nameMatches(w, c)).map((c) => c.id);
+    return (await this.hits(tx, clinicId, { kind: 'name', words: w }, null)).hits.map((h) => h.hit.id);
   }
 
   /** Someone else on file with this name and date of birth, on another phone. */

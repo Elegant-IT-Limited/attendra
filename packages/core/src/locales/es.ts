@@ -22,6 +22,8 @@ const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const hola = (v: Record<string, string>, rest: string) => (v.name ? `Hola ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
 const citaDe = (v: Record<string, string>) => `${v.pet ? `la cita de ${v.pet}` : 'su cita'}${v.provider ? ` con ${v.provider}` : ''}`;
 const pedidoDe = (v: Record<string, string>) => (v.pet ? `el pedido de ${v.pet}` : 'su pedido');
+/** El número del pedido, para que quien llama y el equipo hablen del mismo: " (R-1042)". */
+const ref = (v: Record<string, string>) => (v.ref ? ` (${v.ref})` : '');
 
 export const es: LanguagePack = {
   code: 'es',
@@ -40,9 +42,9 @@ export const es: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
+    request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}${ref(v)}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
     change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió al ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${v.when} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
@@ -76,6 +78,7 @@ export const es: LanguagePack = {
   abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
   abuseGoodbye: 'Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós.',
   takeOver: 'Le comunico con una persona de nuestro equipo ahora mismo.',
+  returnedCallLine: ({ clinic }) => `Le habla el asistente telefónico de ${clinic}. La clínica no suele llamar desde esta línea, así que la llamada que recibió puede no haber sido nuestra. ¿Es usted cliente de ${clinic}, o quiere dejar un mensaje para el equipo?`,
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   spoken: {
@@ -89,6 +92,7 @@ export const es: LanguagePack = {
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
+    noTransfer: 'Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`

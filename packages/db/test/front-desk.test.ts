@@ -54,7 +54,7 @@ describe('calls', () => {
   it('shows a transcript and audits the view', async () => {
     const call = await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');
     expect(call?.transcript[0]?.text).toContain('lisinopril');
-    expect(call?.tasks).toEqual([{ id: refillId, type: 'refill', status: 'open' }]);
+    expect(call?.tasks).toEqual([{ id: refillId, number: 1, type: 'refill', status: 'open' }]);
     expect(await audit('call.transcript.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: callId }]);
     // the page refreshing is the same view: one row per person and call per five minutes
     await desk.getCall(DEMO_CLINIC.id, callId, 'u_ana');

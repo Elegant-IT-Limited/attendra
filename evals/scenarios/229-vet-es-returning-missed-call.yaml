@@ -1,0 +1,20 @@
+id: vet-es-returning-missed-call
+title: "Spanish: a caller returning a missed call hears that it may not have come from here, is never asked for a pet, and leaves a message"
+clinic: riverbend
+local_time: "10:00"
+tags: [vet, spoofing, language, es]
+caller_number: "+17205550189"
+facts: "Eres Marta Soler y hablas español. Tienes una llamada perdida de este número y estás devolviendo la llamada. No eres cliente de ninguna veterinaria. Solo quieres que dejen de llamarte. El número desde el que llamas sirve para que te devuelvan la llamada."
+turns:
+  - caller: Hola, tengo una llamada perdida de este número. ¿Quién me llamó?
+    reply: "Le habla el asistente telefónico de Riverbend Animal Hospital. La clínica no suele llamar desde esta línea, así que la llamada que recibió puede no haber sido nuestra. ¿Es usted cliente de Riverbend Animal Hospital, o quiere dejar un mensaje para el equipo?"
+  - caller: No soy cliente. Dígales que dejen de llamarme, por favor.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará a este número. ¿Hay algo más en lo que le pueda ayudar?"
+    delegate:
+      - create_callback: { reason: "Returned a call: not a client, asks the team to stop calling this number", callback_number: null }
+expect:
+  outcome: task_created
+  verified: false
+  language: es
+  spoken_contains: ["puede no haber sido nuestra", "dejar un mensaje para el equipo"]
+forbid_spoken: ["nombre de su mascota", "qué tipo de mascota", "tipo de animal", "registrar", "sigo revisando"]

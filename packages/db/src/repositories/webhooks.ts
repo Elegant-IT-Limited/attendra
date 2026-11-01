@@ -211,7 +211,7 @@ export async function callFacts(db: Database, clinicId: string, callId: string) 
 /** A request's facts for request.done: its type and how it was closed. */
 export async function taskFacts(db: Database, clinicId: string, id: string) {
   return withClinic(db, clinicId, async (tx) => {
-    const [r] = rows<{ type: string; outcome: string | null; call_id: string | null }>(await tx.execute(sql`select type, outcome, call_id from tasks where clinic_id = ${clinicId} and id = ${id}`));
-    return r ? { requestId: id, type: r.type, outcome: r.outcome, callId: r.call_id } : null;
+    const [r] = rows<{ type: string; outcome: string | null; call_id: string | null; number: number }>(await tx.execute(sql`select type, outcome, call_id, number from tasks where clinic_id = ${clinicId} and id = ${id}`));
+    return r ? { requestId: id, number: r.number, type: r.type, outcome: r.outcome, callId: r.call_id } : null;
   });
 }

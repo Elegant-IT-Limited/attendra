@@ -23,6 +23,8 @@ const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  */
 const hi = (v: Record<string, string>, rest: string) => (v.name ? `Hi ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
 const whose = (v: Record<string, string>) => (v.pet ? `${v.pet}'s` : 'your');
+/** The request's number, so a caller and the team talk about the same one: " (R-1042)". */
+const ref = (v: Record<string, string>) => (v.ref ? ` (${v.ref})` : '');
 const visitOf = (v: Record<string, string>) => `${whose(v)} ${v.visit || 'visit'}${v.provider ? ` with ${v.provider}` : ''}`;
 
 export const en: LanguagePack = {
@@ -42,9 +44,9 @@ export const en: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} is booked for ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
-    request_ready: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request is ready to pick up.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_sent: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request was sent to ${v.pharmacy}.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
+    request_ready: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request${ref(v)} is ready to pick up.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_sent: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request${ref(v)} was sent to ${v.pharmacy}.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request${ref(v)}, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
     change_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} has moved to ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} on ${v.when} is cancelled.`)} To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,
@@ -73,6 +75,7 @@ export const en: LanguagePack = {
   abuseWarning: 'I want to help you, but if this language continues I will need to end the call. I can also have someone from the clinic call you back.',
   abuseGoodbye: 'I\'m going to end the call now. You\'re welcome to call back any time. Goodbye.',
   takeOver: 'I\'m connecting you with a member of our team now.',
+  returnedCallLine: ({ clinic }) => `This is ${clinic}'s phone assistant. The clinic doesn't usually call out from this line, so the call you got may not have come from us. Are you a client of ${clinic}, or can I take a message for the team?`,
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
   couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
   spoken: {
@@ -86,6 +89,7 @@ export const en: LanguagePack = {
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
+    noTransfer: 'I can\'t put you through right now, but I\'ll have the team call you back. What\'s it about?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day} for you.`
       : kind === 'times' ? 'One moment, I\'ll look at the times.'
       : kind === 'pet' && pet ? `Let me find ${pet}.`

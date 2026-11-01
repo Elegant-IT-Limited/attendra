@@ -3,12 +3,12 @@ import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, Texting, zonedInstant } 
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { CallRunner, conversationPrompt, type Sideband, type SidebandConnection, type SidebandEvent, type VoiceEngine } from '../src';
+import { CallMarks, CallRunner, conversationPrompt, type Sideband, type SidebandConnection, type SidebandEvent, type VoiceEngine } from '../src';
 
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
-function harness(planner: Planner, logger = log) {
+function harness(planner: Planner, logger = log, marks?: CallMarks) {
   const sent: unknown[] = [];
   const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
   const sideband: Sideband = { send: (e) => sent.push(e), onEvent: () => {}, onError: () => {}, onClose: () => {}, close: vi.fn() };
@@ -22,7 +22,7 @@ function harness(planner: Planner, logger = log) {
   const runner = new CallRunner('live_1', engine, sideband, agent, {
     appendSegment: async (s) => { segments.push({ speaker: s.speaker, text: s.text }); },
     close: async (c) => { closes.push(c); },
-  }, logger);
+  }, logger, marks);
   return { runner, sent, engine, segments, closes, sideband };
 }
 
@@ -41,24 +41,71 @@ describe('the GPT-Live call runner', () => {
     ]);
   });
 
-  it('tells a silent assistant to greet, once, when nobody has spoken 2 s into the call (2026-10-25, 2026-10-26)', async () => {
+  it('sends the opening as a commentary the moment the session starts, and never greets again once audio has started', async () => {
+    vi.useFakeTimers();
+    const h = harness(new ScriptedPlanner([]));
+    (h.engine as { opening?: () => string | null }).opening = vi.fn(() => 'Greet the caller now. Say exactly: "Thanks for calling."');
+    void h.runner.start();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(h.sent).toEqual([]);
+    await h.runner.handle({ type: 'session.started', event_id: 's1' });
+    // OpenAI's "greet the caller" sequence: the greeting once, as a commentary with no delegation, right after session.started
+    expect(h.sent).toEqual([{ type: 'session.commentary.append', event_id: 'opening_live_1', delegation_id: null, content: expect.stringContaining('Say exactly: "Thanks for calling."') }]);
+    expect((h.sent[0] as { content: string }).content).toMatch(/^Only if you have not started speaking yet and the caller has not said anything: /);
+    // the audio comes first, its transcript later: the nudge timer finds the audio and stays quiet
+    await h.runner.handle({ type: 'session.output_audio.delta', event_id: 'a1', delta: 'AAAA' });
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(h.sent).toHaveLength(1);
+    // the same session.started after a reconnect sends no second opening
+    await h.runner.handle({ type: 'session.started', event_id: 's2' });
+    expect(h.sent).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('tells a silent assistant to greet, once, as a commentary, when nothing has been heard 2.5 s into the call (2026-10-25, 2026-10-26, 2026-10-29)', async () => {
     vi.useFakeTimers();
     const silent = harness(new ScriptedPlanner([]));
     void silent.runner.start();
-    await vi.advanceTimersByTimeAsync(1900);
+    await vi.advanceTimersByTimeAsync(2400);
     expect(silent.sent).toEqual([]);
     await vi.advanceTimersByTimeAsync(100);
-    expect(silent.sent).toEqual([{ type: 'session.instructions.append', event_id: expect.any(String), delegation_id: null, content: expect.stringContaining('greet them now') }]);
+    expect(silent.sent).toEqual([{ type: 'session.commentary.append', event_id: 'opening_nudge_live_1', delegation_id: null, content: expect.stringContaining('greet them now') }]);
     // a caller who spoke over a greeting is answered, never greeted from the top again
     expect((silent.sent[0] as { content: string }).content).toContain('If any part of the greeting was said, or the caller has spoken, never start it again');
     await vi.advanceTimersByTimeAsync(10_000);
     expect(silent.sent).toHaveLength(1);
-    // a greeting on time is never nudged
+    // a greeting on time is never nudged, whether its audio or its words came first
     const greeted = harness(new ScriptedPlanner([]));
     void greeted.runner.start();
     await greeted.runner.handle(delta('out', 'g1', 'Thanks for calling Maple Street.', 100));
     await vi.advanceTimersByTimeAsync(6000);
     expect(greeted.sent).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('logs one timing line per call, from the webhook to the first words, and never the caller\'s words', async () => {
+    vi.useFakeTimers();
+    const lines: Record<string, unknown>[] = [];
+    const logged = createLogger({ name: 'test', destination: new Writable({ write: (c, _e, done) => { lines.push(JSON.parse(String(c))); done(); } }) });
+    const marks = new CallMarks(Date.now());
+    await vi.advanceTimersByTimeAsync(250);
+    marks.mark('accepted');
+    const h = harness(new ScriptedPlanner([]), logged, marks);
+    (h.engine as { opening?: () => string | null }).opening = () => 'Greet now.';
+    let connection!: (c: SidebandConnection) => void;
+    h.sideband.onConnection = (handler) => { connection = handler; };
+    void h.runner.start();
+    await vi.advanceTimersByTimeAsync(300);
+    connection({ state: 'open' });
+    await h.runner.handle({ type: 'session.started', event_id: 's1' });
+    await vi.advanceTimersByTimeAsync(600);
+    await h.runner.handle({ type: 'session.output_audio.delta', event_id: 'a1', delta: 'AAAA' });
+    await vi.advanceTimersByTimeAsync(400);
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling Maple Street.', 100));
+    const timing = lines.find((l) => l.msg === 'call setup timing')!;
+    expect(timing).toMatchObject({ webhook_ms: 0, accepted_ms: 250, runner_started_ms: 250, sideband_open_ms: 550, session_started_ms: 550, opening_sent_ms: 550, first_audio_ms: 1150, first_words_ms: 1550, connected_to_first_audio_ms: 900, connected_to_first_words_ms: 1300, nudged: false, nudged_ms: null });
+    expect(lines.filter((l) => l.msg === 'call setup timing')).toHaveLength(1);
+    expect(JSON.stringify(lines)).not.toContain('Maple');
     vi.useRealTimers();
   });
 

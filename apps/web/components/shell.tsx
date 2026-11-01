@@ -229,7 +229,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
 
       <EmergencyAlerts clinicId={clinicId} />
       <CommandPalette clinicId={clinicId} open={palette} onOpenChange={setPalette} pages={pages} clinics={clinics.filter((c) => c.id !== clinicId)} onClinic={toClinic}
-        canSearchPatients={can('patients:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
+        canSearchPatients={can('patients:read')} canSearchCalls={can('calls:read')} canSearchRequests={can('tasks:read')} canBook={can('schedule:write')} canTestCall={can('calls:test') && !!me?.testCalls} onShortcuts={() => setHelp(true)} />
       <Panel open={help} onOpenChange={setHelp} title="Keyboard shortcuts" description="Letters work when you are not typing in a field.">
         <ul className="space-y-2">
           {SHORTCUTS.filter((s) => (!s.page || pages.some((p) => p.shortcut === s.page)) && (!s.permission || can(s.permission))).map((s) => (

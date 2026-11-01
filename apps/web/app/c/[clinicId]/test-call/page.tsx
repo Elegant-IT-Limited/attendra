@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SimulatedCall } from '@/components/calls/simulated-call';
 import { FAILURES, useTestCall } from '@/components/calls/test-call';
 import { PageHeader } from '@/components/shell';
@@ -29,6 +29,9 @@ export default function TestCallPage() {
   // only in the browser, after the first render: the server cannot know, and the two must render the same
   const [recordable, setRecordable] = useState(false);
   useEffect(() => setRecordable(canRecord()), []);
+  // the captions keep the newest line in view, in their own scroll area: a long call never grows the page
+  const log = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = log.current; if (el) el.scrollTop = el.scrollHeight; }, [captions]);
   const left = allowance.data?.limitSeconds == null ? null : Math.max(0, allowance.data.limitSeconds - allowance.data.usedSeconds);
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
@@ -42,7 +45,7 @@ export default function TestCallPage() {
         title="Test call"
         description="Talk to the receptionist through your microphone, with this clinic's live settings. It is recorded like a phone call and marked as a browser test."
       />
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
             <div className={cn('flex size-20 items-center justify-center rounded-full', phase === 'live' ? 'bg-primary text-on-primary' : 'bg-primary-soft text-primary')}>
@@ -89,7 +92,8 @@ export default function TestCallPage() {
         </Card>
         <Card>
           <CardHeader><CardTitle>Live captions</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          {/* scrollable, so it takes the keyboard's focus for the arrow keys (axe: scrollable-region-focusable), as the live page's captions do */}
+          <div ref={log} tabIndex={0} className="focus-ring max-h-[32rem] min-h-48 space-y-4 overflow-y-auto px-5 py-4 max-md:max-h-[22rem]" role="log" aria-label="Live captions" aria-live="off">
             {micStopped && <Alert tone="warn">Your microphone stopped. Hang up and call again.</Alert>}
             {micNote && <Alert tone="warn">{micNote}</Alert>}
             {captions.length === 0 && <p className="text-sm text-text-muted">What you and the assistant say appears here.</p>}
@@ -104,7 +108,7 @@ export default function TestCallPage() {
                 </div>
               );
             })}
-          </CardContent>
+          </div>
         </Card>
       </div>
       {me?.simulatedCalls && <SimulatedCall clinicId={clinicId} />}

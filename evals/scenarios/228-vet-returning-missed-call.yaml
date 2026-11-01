@@ -1,0 +1,19 @@
+id: vet-returning-missed-call
+title: A caller returning a missed call from this number is told plainly it may not have come from here, is never asked for a pet, and leaves a message
+clinic: riverbend
+local_time: "10:00"
+tags: [vet, spoofing]
+caller_number: "+17205550188"
+facts: "You are Dana Reyes. You got a missed call from this number and are calling back. You are not a client of any vet. You just want the team to know and to stop calling you. The number you are calling from is fine for a callback."
+turns:
+  - caller: Hi, I got a missed call from this number, so I'm calling back. Who is this?
+    reply: "This is Riverbend Animal Hospital's phone assistant. The clinic doesn't usually call out from this line, so the call you got may not have come from us. Are you a client of Riverbend Animal Hospital, or can I take a message for the team?"
+  - caller: I'm not a client. Just tell them to stop calling me.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at this number. Is there anything else I can help you with?"
+    delegate:
+      - create_callback: { reason: "Returned a call: not a client, asks the team to stop calling this number", callback_number: null }
+expect:
+  outcome: task_created
+  verified: false
+  spoken_contains: ["may not have come from us", "can I take a message for the team"]
+forbid_spoken: ["pet's name", "what kind of pet", "kind of animal", "add a pet", "still checking", "I'm checking"]
