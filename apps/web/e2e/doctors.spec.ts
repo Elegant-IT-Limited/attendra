@@ -63,9 +63,9 @@ test('patients show as you type: one letter, or a few digits of a phone number',
   const search = page.getByLabel('Find a patient');
   const results = page.getByRole('list', { name: 'Matching patients' });
   await search.fill('m');
-  await expect(results.getByRole('link', { name: /Maria Delgado/ })).toBeVisible();
+  await expect(results.getByRole('link', { name: /^Maria Delgado/ })).toBeVisible();
   await search.fill('555-0147');
-  await expect(results.getByRole('link', { name: /Maria Delgado/ })).toBeVisible();
+  await expect(results.getByRole('link', { name: /^Maria Delgado/ })).toBeVisible(); // her children name her as their guardian, so the start of the name
   await expect(results.getByRole('link', { name: /Lucas Delgado/ })).toBeVisible(); // her son, on her phone
 });
 
@@ -73,7 +73,7 @@ test('requests can be searched and narrowed to days', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   await page.getByRole('link', { name: /^Requests/ }).click();
   await page.getByLabel('Search requests').fill('zzzz-nothing');
-  await expect(page.getByText('Nothing matches these filters.')).toBeVisible();
+  await expect(page.getByText(/^Nothing matches\. Search by/)).toBeVisible();
   await page.getByRole('button', { name: 'Clear' }).click();
   await expect(page.getByTestId('task-row').first()).toBeVisible();
 });

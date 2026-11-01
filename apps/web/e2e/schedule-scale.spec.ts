@@ -102,8 +102,9 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     // the roster, as a clinic imports it: six specialties in turn, Monday to Friday 8 to 5, the last vet away all week
     const hours = Array(5).fill('08:00-17:00');
     const csv = [
-      ['id', 'name', 'gender', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'time_off'],
-      ...Array.from({ length: VETS }, (_, i) => ['', vetName(i), i % 2 ? 'male' : 'female', SPECIALTIES[i % SPECIALTIES.length]!, '', '', '', 'yes', TYPES.map(([, name]) => name).join('; '), ...hours, '', '', i === VETS - 1 ? `${DATES[0]} to ${DATES[6]}` : '']),
+      ['id', 'name', 'gender', 'phone', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'time_off'],
+      // every vet needs a number of their own at a vet clinic (2026-11-01): two hundred made-up ones, in two area codes
+      ...Array.from({ length: VETS }, (_, i) => ['', vetName(i), i % 2 ? 'male' : 'female', `(${i < 100 ? '720' : '303'}) 555-01${String(i % 100).padStart(2, '0')}`, SPECIALTIES[i % SPECIALTIES.length]!, '', '', '', 'yes', TYPES.map(([, name]) => name).join('; '), ...hours, '', '', i === VETS - 1 ? `${DATES[0]} to ${DATES[6]}` : '']),
     ].map((row) => row.map(csvCell).join(',')).join('\n');
     const imported = await api.post(`/api/v1/clinics/${clinicId}/doctors/import`, { headers: origin, data: { csv, dryRun: false } });
     expect(imported.status(), await imported.text()).toBe(200);

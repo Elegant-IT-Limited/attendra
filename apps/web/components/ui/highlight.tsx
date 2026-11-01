@@ -15,7 +15,8 @@ export function Highlight({ text, query }: { text: string | null | undefined; qu
   if (!text) return null;
   const q = query.trim();
   if (!q) return <>{text}</>;
-  const ranges = /^[\d\s()+.-]+$/.test(q) ? digitRanges(text, q.replace(/\D/g, '')) : wordRanges(text, q);
+  // a whole word or number is marked, never part of one: a mark inside a word splits it for a screen reader ("Delg ado")
+  const ranges = wholeTokens(text, /^[\d\s()+.-]+$/.test(q) ? digitRanges(text, q.replace(/\D/g, '')) : wordRanges(text, q));
   if (!ranges.length) return <>{text}</>;
   const parts: { s: string; hit: boolean }[] = [];
   let at = 0;
@@ -51,6 +52,17 @@ function digitRanges(text: string, digits: string): [number, number][] {
   const found: [number, number][] = [];
   for (let from = all.indexOf(digits); from >= 0; from = all.indexOf(digits, from + 1)) found.push([positions[from]!, positions[from + digits.length - 1]! + 1]);
   return merge(found);
+}
+
+/** Each range widened to the whitespace around it, so what is marked is whole words and whole numbers. */
+function wholeTokens(text: string, ranges: [number, number][]): [number, number][] {
+  return merge(ranges.map(([s, e]) => {
+    let start = s;
+    let end = e;
+    while (start > 0 && !/\s/.test(text[start - 1]!)) start--;
+    while (end < text.length && !/\s/.test(text[end]!)) end++;
+    return [start, end] as [number, number];
+  }));
 }
 
 function merge(ranges: [number, number][]): [number, number][] {

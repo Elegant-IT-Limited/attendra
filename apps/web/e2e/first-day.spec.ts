@@ -254,7 +254,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByPlaceholder('e.g. Qualifications')).toHaveValue('Licence number');
   });
 
-  await watch.step('3. Vets: two added, one specialty picked and one added from the panel, one edited; the filter and the stand-in', {}, async () => {
+  // the second vet is first saved with the first vet's number, which the API refuses under the field: that 422 is the point
+  await watch.step('3. Vets: two added, one specialty picked and one added from the panel, one edited; the filter and the stand-in', { responses: [{ who: 'owner', path: /\/doctors$/, status: 422 }] }, async () => {
     await open(page, 'Veterinarians');
     await expect(page.getByRole('heading', { name: 'Veterinarians' })).toBeVisible();
     // a new clinic starts with the stand-in, until a real vet is listed

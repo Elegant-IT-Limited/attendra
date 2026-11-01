@@ -10,7 +10,8 @@ test('the command palette finds Maria Delgado and opens her record', async ({ br
   const palette = page.getByRole('dialog', { name: 'Search and jump' });
   await expect(palette).toBeVisible();
   await palette.getByRole('combobox').fill('delg');
-  await palette.getByRole('option', { name: /Maria Delgado/ }).click();
+  // her own record, under Patients: her calls are listed under Calls as well
+  await palette.getByRole('group', { name: 'Patients' }).getByRole('option', { name: /Maria Delgado/ }).click();
   await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
   await expect(page).not.toHaveURL(/delg/); // what was typed stays out of the address bar
 });
