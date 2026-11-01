@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, DEFAULT_SPECIES, type Gender, type ListName, MANAGED_LIST_MAX, managedList, onList, Provider } from './clinic';
+import { type ClinicConfig, type CustomField, DEFAULT_SPECIES, type Gender, type ListName, MANAGED_LIST_MAX, managedList, onList, Provider } from './clinic';
+import { readCustomValues } from './custom-fields';
 import { parseDob, phoneDigits } from './identity';
-import { ageOn } from './providers';
+import { ageOn, providerPhoneIssues, providerPhones } from './providers';
 
 /**
  * Bulk lists the managers keep in a spreadsheet: doctors and patients, as CSV (Excel,
@@ -56,20 +57,39 @@ export function readGender(v: string): Gender | null {
   return null;
 }
 
-export const DOCTOR_COLUMNS = ['id', 'name', 'gender', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', ...DAY_COLUMNS, 'time_off'] as const;
+export const DOCTOR_COLUMNS = ['id', 'name', 'gender', 'phone', 'other_phones', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', ...DAY_COLUMNS, 'time_off'] as const;
+/** A clinic's own field as a column: its label, lower case, spaces as underscores ("Licence number" is licence_number). */
+export const customColumn = (f: Pick<CustomField, 'label'>) => f.label.trim().toLowerCase().replace(/\s+/g, '_');
+/** What a doctor template and its guide are made for: the visit types, and what the clinic has set up since. */
+export type DoctorTemplateClinic = Pick<ClinicConfig, 'visitTypes'> & Partial<Pick<ClinicConfig, 'providerFields' | 'industry' | 'lists' | 'providers'>>;
 export const PATIENT_COLUMNS = ['first_name', 'last_name', 'date_of_birth', 'gender', 'phone', 'guardian_name'] as const;
 
-/** The guide a template carries, in the order a manager fills it in. Shown next to the download, never written into the file. */
-export const DOCTOR_GUIDE = [
-  'One row per doctor. name is required; every other column may be left empty.',
-  'id: leave empty to add a doctor. To change one already on file, use the same name (or their id): fill only what changes, and empty cells keep what is on file.',
-  'gender: female, male, other or prefer not to say. Callers can ask for a female or a male doctor.',
-  'categories and visit_types: several values separated by semicolons, like Children; Vaccinations. Visit types are the names in Settings.',
-  'ages_min and ages_max: whole years. Leave ages_max empty for no upper limit; leave both empty for every age.',
-  'accepting_new_patients: yes or no. Empty means yes.',
-  'mon to sun: working hours like 08:00-12:00; 13:00-17:00. Leave a day empty when they do not work it. Leave all seven empty to use the clinic hours.',
-  'time_off: days away like 2026-12-24 to 2026-12-31; 2027-01-15. Both ends are included.',
-];
+/**
+ * The guide a template carries, in the order a manager fills it in, with the clinic's own lists and fields as they are
+ * today. Shown next to the download, never written into the file.
+ */
+export function doctorGuide(clinic: DoctorTemplateClinic): string[] {
+  const vet = clinic.industry === 'vet';
+  const who = vet ? 'veterinarian' : 'doctor';
+  const listed = (name: ListName) => (clinic.lists || clinic.providers ? managedList({ providers: clinic.providers ?? [], lists: clinic.lists }, name) : []);
+  const specialties = listed('specialties');
+  const categories = listed('categories');
+  const fields = clinic.providerFields ?? [];
+  return [
+    `One row per ${who}. name is required${vet ? ', and so is phone for a new veterinarian' : ''}; every other column may be left empty.`,
+    `id: leave empty to add a ${who}. To change one already on file, use the same phone number or name (or their id): fill only what changes, and empty cells keep what is on file.`,
+    `phone: the ${who}'s own number, with the area code. ${vet ? 'It is what tells one veterinarian from another: ' : ''}a number already on another ${who} at this clinic is refused. other_phones: more of their numbers, separated by semicolons.`,
+    `gender: female, male, other or prefer not to say. Callers can ask for a female or a male ${who}.`,
+    `specialty: one from your list${specialties.length ? ` (${specialties.join(', ')})` : ''}. A new one joins the list when you import.`,
+    `categories: ${vet ? 'the animals and services they see' : 'what they see people for'}, several separated by semicolons${categories.length ? `, from your list (${categories.join(', ')})` : ', like Children; Vaccinations'}. A new one joins the list when you import.`,
+    'visit_types: several separated by semicolons, the names in Settings. Empty means every visit type.',
+    ...(vet ? [] : ['ages_min and ages_max: whole years. Leave ages_max empty for no upper limit; leave both empty for every age.']),
+    `accepting_new_patients: yes or no${vet ? ' (takes new pets)' : ''}. Empty means yes.`,
+    'mon to sun: working hours like 08:00-12:00; 13:00-17:00. Leave a day empty when they do not work it. Leave all seven empty to use the clinic hours.',
+    'time_off: days away like 2026-12-24 to 2026-12-31; 2027-01-15. Both ends are included.',
+    ...fields.map((f) => `${customColumn(f)}: your own field "${f.label}"${f.kind === 'yesno' ? ', yes or no' : f.kind === 'date' ? ', a date as YYYY-MM-DD' : f.kind === 'number' ? ', a number' : f.kind === 'choice' || f.kind === 'multi' ? `, ${f.kind === 'multi' ? 'one or more of' : 'one of'} ${(f.options ?? []).join(', ')}${f.kind === 'multi' ? ', separated by |' : ''}` : ''}${f.required ? '. Required' : ''}.`),
+  ];
+}
 export const PATIENT_GUIDE = [
   'One row per patient. first_name, last_name, date_of_birth, gender and phone are required.',
   'date_of_birth: YYYY-MM-DD, like 1985-03-04, or month/day/year, like 03/04/1985.',
@@ -80,12 +100,19 @@ export const PATIENT_GUIDE = [
   'A patient already on file with the same name, date of birth and phone is skipped, so the same file can be uploaded twice safely.',
 ];
 
-export function doctorTemplate(clinic: Pick<ClinicConfig, 'visitTypes'>): string {
+export function doctorTemplate(clinic: DoctorTemplateClinic): string {
   const visits = clinic.visitTypes.map((v) => v.name);
+  const vet = clinic.industry === 'vet';
+  const fields = clinic.providerFields ?? [];
+  const listed = (name: ListName, fallback: string[]) => { const l = clinic.lists || clinic.providers ? managedList({ providers: clinic.providers ?? [], lists: clinic.lists }, name) : []; return l.length ? l : fallback; };
+  const specialties = listed('specialties', vet ? ['Surgery', 'Dentistry'] : ['Family medicine', 'Pediatrics']);
+  const categories = listed('categories', vet ? ['Dogs', 'Cats'] : ['Adults', 'Children']);
+  // an example value for each of the clinic's own fields, of the field's kind
+  const example = (f: CustomField) => (f.kind === 'yesno' ? 'yes' : f.kind === 'date' ? '2026-01-15' : f.kind === 'number' ? '12' : f.kind === 'choice' || f.kind === 'multi' ? f.options?.[0] ?? '' : `e.g. ${f.label.toLowerCase()}`);
   return toCsv([
-    [...DOCTOR_COLUMNS],
-    ['', 'Dr. Jane Example', 'female', 'Family medicine', 'Adults; Chronic conditions', '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31'],
-    ['', 'Dr. Sam Example', 'male', 'Pediatrics', 'Children; Newborns; Vaccinations', '0', '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', ''],
+    [...DOCTOR_COLUMNS, ...fields.map(customColumn)],
+    ['', 'Dr. Jane Example', 'female', '(303) 555-0100', '', specialties[0]!, categories.slice(0, 2).join('; '), vet ? '' : '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31', ...fields.map(example)],
+    ['', 'Dr. Sam Example', 'male', '(303) 555-0101', '(303) 555-0102', specialties[1] ?? specialties[0]!, categories.slice(0, 3).join('; '), vet ? '' : '0', vet ? '' : '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', '', ...fields.map(example)],
   ]);
 }
 
@@ -125,11 +152,15 @@ function hoursOf(v: string): { open: string; close: string }[] | string {
  * same schema as one doctor added on the page, so the import cannot save anything the
  * page would refuse.
  */
-export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'lists'>): RowResult<Provider>[] {
+export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers' | 'visitTypes' | 'lists' | 'industry' | 'phoneNumbers'> & Partial<Pick<ClinicConfig, 'providerFields'>>): RowResult<Provider>[] {
   const rows = records(text);
   if (rows.length > MAX_IMPORT_ROWS) return [{ line: 1, name: '', ok: false, message: `at most ${MAX_IMPORT_ROWS} rows per file` }];
   if (rows.length && !rows[0]!.headers.includes('name')) return [{ line: 1, name: '', ok: false, message: 'the first row must be the column names, with a name column; download the template' }];
   const seen = new Set<string>();
+  const seenPhones = new Set<string>();
+  const seenIds = new Set<string>();
+  const fields = clinic.providerFields ?? [];
+  const columnOf = new Map(fields.map((f) => [customColumn(f), f.id]));
   return rows.map((r): RowResult<Provider> => {
     const name = r.get('name');
     const fail = (message: string) => ({ line: r.line, name, ok: false as const, message });
@@ -137,8 +168,25 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     const key = name.toLowerCase().replace(/[^a-z0-9]/g, '');
     if (seen.has(key)) return fail('this doctor is in the file twice');
     seen.add(key);
-    const existing = (r.get('id') && clinic.providers.find((p) => p.id === r.get('id'))) || clinic.providers.find((p) => sameName(p.name, name));
+    // the row's numbers find the doctor on file before the name does: a number is one doctor's (2026-11-01)
+    const rowPhones = [r.get('phone'), ...split(r.get('other_phones'))].filter(Boolean).map(phoneDigits);
+    const twice = rowPhones.find((d) => seenPhones.has(d));
+    if (twice) return fail('phone: another row in the file has this number');
+    for (const d of rowPhones) seenPhones.add(d);
+    const byPhone = rowPhones.length ? clinic.providers.find((p) => providerPhones(p).some((x) => rowPhones.includes(phoneDigits(x)))) : undefined;
+    const existing = (r.get('id') && clinic.providers.find((p) => p.id === r.get('id'))) || byPhone || clinic.providers.find((p) => sameName(p.name, name));
     if (r.get('id') && !existing) return fail(`no doctor on file has the id ${r.get('id')}; leave id empty to add them`);
+    if (existing && seenIds.has(existing.id)) return fail(`${existing.name} is already on another row of the file (the same number or name)`);
+    if (existing) seenIds.add(existing.id);
+    // the row's own number replaces one the doctor had among their others, so a number is never listed twice
+    const rowPhone = r.get('phone') || (existing ? existing.phone : undefined);
+    const others = r.get('other_phones') ? split(r.get('other_phones')) : (existing?.otherPhones ?? []).filter((x) => !rowPhone || phoneDigits(x) !== phoneDigits(rowPhone));
+    const phones = providerPhoneIssues(clinic, { kind: existing?.kind ?? 'person', phone: rowPhone, otherPhones: others }, existing?.id);
+    if (phones.issues.length) return fail(`${phones.issues[0]!.path === 'phone' ? 'phone' : 'other_phones'}: ${phones.issues[0]!.message}`);
+    // the clinic's own fields, from the columns named after them; an empty cell keeps what is on file
+    const sent = Object.fromEntries([...columnOf].filter(([col]) => r.headers.includes(col) && r.get(col) !== '').map(([col, id]) => [id, r.get(col)]));
+    const custom = readCustomValues(fields, sent);
+    if (!custom.ok) return fail(`${fields.find((f) => f.id === custom.field)?.label ?? custom.field}: ${custom.message}`);
     const visitTypeIds: string[] = [];
     for (const v of split(r.get('visit_types'))) {
       const match = clinic.visitTypes.find((t) => t.id === v || sameName(t.name, v));
@@ -183,6 +231,9 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       visitTypeIds: visitTypeIds.length ? visitTypeIds : existing?.visitTypeIds ?? clinic.visitTypes.map((v) => v.id),
       hours: existing && allDaysEmpty ? existing.hours : Object.keys(hours).length ? hours : undefined,
       timeOff: keep(r.get('time_off'), timeOff, existing?.timeOff) ?? [],
+      phone: phones.phone,
+      otherPhones: phones.otherPhones,
+      custom: Object.keys(custom.values).length || existing?.custom ? { ...existing?.custom, ...custom.values } : undefined,
     });
     if (!parsed.success) return fail(parsed.error.issues.map((i) => `${i.path.join('.') || 'row'}: ${i.message}`).join('; '));
     return { line: r.line, name, ok: true, value: parsed.data, ...(existing ? { existingId: existing.id } : {}), ...(adds.length ? { note: listNote(adds), adds } : {}) };

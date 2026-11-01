@@ -266,6 +266,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     let panel = page.getByRole('dialog', { name: 'Add veterinarian' });
     await panel.getByLabel('Name').fill('Dr. Elena Marsh');
     await panel.getByLabel('Gender').selectOption({ label: 'Female' });
+    // a vet's own number tells one vet from another: asked for on every new vet (2026-11-01)
+    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0171');
     await pick(panel, 'Specialty', 'Surgery');
     // the animals come from the clinic's own list, which a new clinic has from the start (2026-11-01: "Dog is not on your list")
     const animals = panel.getByRole('combobox', { name: 'Animals and services' });
@@ -284,6 +286,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     panel = page.getByRole('dialog', { name: 'Add veterinarian' });
     await panel.getByLabel('Name').fill('Dr. Owen Castillo');
     await panel.getByLabel('Gender').selectOption({ label: 'Male' });
+    // the same number as Dr. Marsh is refused under the field, then a number of his own goes through
+    await panel.getByLabel('Phone', { exact: true }).fill('720 555 0171');
     const specialty = panel.getByRole('combobox', { name: 'Specialty' });
     await specialty.click();
     await specialty.fill('Exotic');
@@ -292,8 +296,12 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await panel.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(specialty).toHaveValue('Exotic animals');
     await panel.getByRole('button', { name: 'Save' }).click();
+    await expect(panel.getByText('Dr. Elena Marsh already has this number.')).toBeVisible();
+    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0172');
+    await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId('doctor')).toHaveCount(2);
+    await expect(page.getByText('Add a phone number')).toHaveCount(0);
 
     // edit one: Dr. Marsh does dentistry now
     await page.getByTestId('doctor').filter({ hasText: 'Dr. Elena Marsh' }).getByRole('button', { name: 'Edit hours and details' }).click();

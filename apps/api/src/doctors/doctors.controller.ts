@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, notOnListProblem, onList, type Provider, readCustomValues, readDoctors, withListValues } from '@attendra/core';
+import { ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, withListValues } from '@attendra/core';
 import type { FrontDeskRepository, Tx } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -39,6 +39,13 @@ function listIssues(c: ClinicConfig, body: { specialty?: string; categories: str
   const specialty = notOnListProblem(c, 'specialties', body.specialty ? [body.specialty] : [], current?.specialty ? [current.specialty] : []);
   const categories = notOnListProblem(c, 'categories', body.categories, current?.categories ?? []);
   return [...(specialty ? [{ path: 'specialty', message: specialty }] : []), ...(categories ? [{ path: 'categories', message: categories }] : [])];
+}
+
+/** The lists and the numbers checked together, so the form shows every problem at once, each under its field. */
+function fieldIssues(c: ClinicConfig, body: z.infer<typeof DoctorInput>, current?: Provider): { issues: Issues } | { phone?: string; otherPhones?: string[] } {
+  const phones = providerPhoneIssues(c, body, current?.id);
+  const issues = [...listIssues(c, body, current), ...phones.issues];
+  return issues.length ? { issues } : { phone: phones.phone, otherPhones: phones.otherPhones };
 }
 
 /**
@@ -81,11 +88,11 @@ export class DoctorsController {
     const id = body.id ?? newProviderId(body.name);
     return this.change(clinicId, staff, 'clinic.doctor.added', id, (c) => {
       if (c.providers.some((p) => p.id === id)) return { error: `a doctor with the id ${id} is already on file`, status: 409 };
-      const issues = listIssues(c, body);
-      if (issues.length) return { issues };
+      const checked = fieldIssues(c, body);
+      if ('issues' in checked) return checked;
       const custom = customOf(c, body.custom, undefined);
       if ('error' in custom) return custom;
-      return { config: { ...c, providers: [...c.providers, { ...body, id, custom: custom.values } as Provider] } };
+      return { config: { ...c, providers: [...c.providers, { ...body, ...checked, id, custom: custom.values } as Provider] } };
     });
   }
 
@@ -98,11 +105,11 @@ export class DoctorsController {
     return this.change(clinicId, staff, 'clinic.doctor.updated', providerId, (c) => {
       const current = c.providers.find((p) => p.id === providerId);
       if (!current) return { error: 'not_found', status: 404 };
-      const issues = listIssues(c, body, current);
-      if (issues.length) return { issues };
+      const checked = fieldIssues(c, body, current);
+      if ('issues' in checked) return checked;
       const custom = customOf(c, body.custom, current.custom);
       if ('error' in custom) return custom;
-      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, id: providerId, custom: custom.values } as Provider : p)) } };
+      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, ...checked, id: providerId, custom: custom.values } as Provider : p)) } };
     });
   }
 

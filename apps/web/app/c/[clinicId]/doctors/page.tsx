@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, DOCTOR_GUIDE, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, doctorGuide, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -29,15 +29,15 @@ import { providerTerms, useTerms } from '@/lib/terms';
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
 type Hours = NonNullable<Provider['hours']>;
-type Draft = Omit<DoctorInput, 'gender'> & { gender: Gender | ''; ownHours: boolean };
+type Draft = Omit<DoctorInput, 'gender' | 'otherPhones'> & { gender: Gender | ''; ownHours: boolean; /** As typed, separated by commas. */ otherPhones: string };
 
 // a new vet can be booked for every visit type, as the stand-in a clinic starts with could: with only the first,
 // a sick visit had nobody to book it with once the stand-in stepped aside, at the desk and on calls
 const blank = (visitTypes: VisitType[]): Draft => ({
-  name: '', kind: 'person', gender: '', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
+  name: '', kind: 'person', gender: '', phone: '', otherPhones: '', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
   visitTypeIds: visitTypes.map((v) => v.id), ownHours: false,
 });
-const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', specialty: p.specialty ?? '', ownHours: !!p.hours });
+const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', phone: p.phone ?? '', otherPhones: (p.otherPhones ?? []).join(', '), specialty: p.specialty ?? '', ownHours: !!p.hours });
 
 /**
  * The clinic's doctors, and rooms booked like one. Everyone on the team can look;
@@ -143,12 +143,14 @@ export default function DoctorsPage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.name}</p>
                     {p.placeholder && <p className="mt-1"><Badge tone="warn">A stand-in: offered only until you add your own</Badge></p>}
+                    {config.data && needsPhone(config.data, p) && <p className="mt-1"><Badge tone="warn">Add a phone number</Badge></p>}
                     <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
                   </div>
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
+                  {p.phone && <><dt className="text-text-muted">Phone</dt><dd>{[p.phone, ...(p.otherPhones ?? [])].join(', ')}</dd></>}
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">{providerTerms(terms.patient === 'pet').sees}</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
@@ -172,7 +174,7 @@ export default function DoctorsPage() {
           onClose={() => setEditing(null)} onSaved={refresh} />
       )}
       <ImportPanel open={importing} onOpenChange={setImporting} title="Import doctors" what="doctors" endpoint={`/clinics/${clinicId}/doctors/import`}
-        template={{ name: 'attendra-doctors-template.csv', csv: doctorTemplate({ visitTypes }) }} guide={DOCTOR_GUIDE} onImported={refresh} />
+        template={{ name: 'attendra-doctors-template.csv', csv: doctorTemplate(config.data ?? { visitTypes }) }} guide={doctorGuide(config.data ?? { visitTypes })} onImported={refresh} />
     </>
   );
 }
@@ -193,7 +195,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   // owners and managers add to the lists from here; a value not on them is refused under its field
   const addSpecialty = useAddToList(clinicId, 'specialties');
   const addCategory = useAddToList(clinicId, 'categories');
-  const [fieldErrors, setFieldErrors] = useState<{ specialty?: string; categories?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ specialty?: string; categories?: string; phone?: string; otherPhones?: string }>({});
+  const FIELDS = ['specialty', 'categories', 'phone', 'otherPhones'] as const;
   // what did not work opens in a dialog, wherever the page is scrolled
   const showProblem = useProblem();
   const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not saved', message }); };
@@ -205,8 +208,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
     // a problem with the specialty or the categories goes under that field; anything else in the dialog
     const issues = e instanceof ApiFailure ? e.body.issues ?? [] : [];
     const own = (path: string) => issues.find((i) => i.path === path)?.message;
-    setFieldErrors({ specialty: own('specialty'), categories: own('categories') });
-    const rest = issues.filter((i) => i.path !== 'specialty' && i.path !== 'categories');
+    setFieldErrors(Object.fromEntries(FIELDS.map((f) => [f, own(f)])));
+    const rest = issues.filter((i) => !(FIELDS as readonly string[]).includes(i.path));
     if (issues.length && !rest.length) return;
     setProblem(e instanceof ApiFailure
       ? (rest.map((i) => i.message).join('. ') || e.body.message || 'That did not save.')
@@ -226,12 +229,14 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    const { ownHours, gender, ...rest } = d;
+    const { ownHours, gender, otherPhones, ...rest } = d;
     if (!gender) { setProblem(`Choose their gender, so callers who ask for a female or a male ${terms.provider} are offered the right one.`); return; }
     save.mutate({
       ...rest,
       gender,
       name: d.name.trim(),
+      phone: d.phone?.trim() || undefined,
+      otherPhones: otherPhones.split(/[,;]/).map((x) => x.trim()).filter(Boolean),
       specialty: d.specialty?.trim() || undefined,
       categories,
       // the clinic's own fields, all of them, so a required one left empty is caught
@@ -275,6 +280,23 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           </Select>
           <p className="text-xs text-text-muted">A caller can ask for a female or a male {terms.provider}.</p>
         </div>
+        {d.kind === 'person' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="doc-phone">Phone</Label>
+              <Input id="doc-phone" type="tel" autoComplete="off" value={d.phone ?? ''} placeholder="(303) 555-0100" aria-invalid={!!fieldErrors.phone || undefined} aria-describedby={fieldErrors.phone ? 'doc-phone-error' : 'doc-phone-hint'}
+                onChange={(e) => { set({ phone: e.target.value }); setFieldErrors((f) => ({ ...f, phone: undefined })); }} />
+              {fieldErrors.phone ? <p id="doc-phone-error" className="text-xs text-danger">{fieldErrors.phone}</p>
+                : <p id="doc-phone-hint" className="text-xs text-text-muted">{pets ? 'Their own number: it is what tells one veterinarian from another.' : 'Their own number, one per doctor.'}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="doc-other-phones">Other numbers</Label>
+              <Input id="doc-other-phones" type="text" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
+                onChange={(e) => { set({ otherPhones: e.target.value }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
+              {fieldErrors.otherPhones && <p id="doc-other-phones-error" className="text-xs text-danger">{fieldErrors.otherPhones}</p>}
+            </div>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="doc-specialty">Specialty</Label>
           <Combobox id="doc-specialty" label="Specialty" value={d.specialty ?? ''} options={lists.specialties} onChange={(specialty) => { set({ specialty }); setFieldErrors((f) => ({ ...f, specialty: undefined })); }}

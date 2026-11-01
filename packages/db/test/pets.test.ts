@@ -103,7 +103,7 @@ describe('the animals list for vet clinics opened before it came with sign-up', 
   it('counts the vet clinics with no list on a dry run, fills them once on apply, and leaves clinics with a list alone', async () => {
     const { createOrganizationWithClinic, seedAnimalLists } = await import('../src/repositories/provisioning');
     // a clinic opened before 2026-11: no list kept, no vet with animals to derive one from
-    const { lists: _lists, ...old } = starterClinic({ id: 'clinic_old_vets', name: 'Old Oak Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550101' });
+    const old = { ...starterClinic({ id: 'clinic_old_vets', name: 'Old Oak Vets', timezone: 'America/Chicago', industry: 'vet', phone: '+13125550101' }), lists: undefined };
     await createOrganizationWithClinic(t.db, { id: 'org_old_vets', name: 'Old Oak Vets', plan: 'trial' }, old as never);
     const dry = await seedAnimalLists(t.db, { apply: false });
     expect(dry).toMatchObject({ empty: 1, filled: 0 });

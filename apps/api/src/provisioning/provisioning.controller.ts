@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, starterClinic, textingOf, zonedInstant } from '@attendra/core';
+import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit,
@@ -14,7 +14,7 @@ import type { Auth } from '../auth';
 import { Public } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
-import { ClinicName, ClinicOverview, HostingPlan } from '../contracts';
+import { ClinicName, ClinicOverview, HostingPlan, type ProviderPhoneReport } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
@@ -311,6 +311,17 @@ export class ProvisioningController {
     const dayStart = zonedInstant(localDateOf(now, clinic.timezone), '00:00', clinic.timezone);
     const [today, open] = await Promise.all([phoneCallsSince(this.db, this.cipher, clinicId, dayStart), this.desk.openTaskCount(clinicId)]);
     return { name: clinic.name, phoneNumber: clinic.phoneNumbers[0] ?? null, city: cityOf(clinic.address), callsToday: today.calls, openRequests: open };
+  }
+
+  /** How the clinic's providers stand on the one-number rule (2026-11-01), counts only: nothing is merged by anyone but the clinic. */
+  @Get('clinics/:clinicId/provider-phones')
+  async providerPhones(@Param('clinicId') clinicId: string): Promise<ProviderPhoneReport> {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const providers = bookableProviders(ClinicConfig.parse(stored).providers).filter((p) => p.kind === 'person');
+    const shared = sharedProviderPhones(providers);
+    const withPhone = providers.filter((p) => p.phone).length;
+    return { providers: providers.length, withPhone, withoutPhone: providers.length - withPhone, sharedNumbers: shared.numbers, providersSharing: shared.providers };
   }
 
   /** Renames a location: the clinic's name on every screen and in the assistant's greeting line. Audited as clinic.renamed. */

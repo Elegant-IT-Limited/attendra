@@ -75,6 +75,10 @@ export const Provider = z.object({
   credentials: z.array(z.string().trim().min(2).max(60)).max(8).optional(),
   // the clinic's own details on this doctor (Settings, Fields and lists)
   custom: z.record(z.string(), z.string().max(400)).optional(),
+  // their own number, which tells one veterinarian from another: one per clinic (2026-11-01); absent on configurations saved before
+  phone: e164.optional(),
+  // other numbers of theirs, so a second line never becomes a second vet
+  otherPhones: z.array(e164).max(3).optional(),
 });
 
 export const VisitType = z.object({

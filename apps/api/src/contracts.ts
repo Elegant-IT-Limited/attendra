@@ -565,6 +565,9 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
   id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
   name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
   gender: Gender,
+  // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
+  phone: z.string().trim().max(30).optional(),
+  otherPhones: z.array(z.string().trim().max(30)).max(3).optional(),
 });
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
@@ -652,6 +655,9 @@ const SafeLink = z.string().max(300).refine((v) => (v.startsWith('/') && !v.star
 export const ClinicName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(60, 'at most 60 characters') });
 /** A location at a glance for the hosting layer's Locations page: counts only, no call or patient details. */
 export const ClinicOverview = z.object({ name: z.string(), phoneNumber: z.string().nullable(), city: z.string().nullable(), callsToday: z.number().int(), openRequests: z.number().int() });
+/** Counts only: how the clinic's providers stand on the one-number rule, for the hosting layer's check after a deploy. */
+export const ProviderPhoneReport = z.object({ providers: z.number().int(), withPhone: z.number().int(), withoutPhone: z.number().int(), sharedNumbers: z.number().int(), providersSharing: z.number().int() });
+export type ProviderPhoneReport = z.infer<typeof ProviderPhoneReport>;
 export type ClinicOverview = z.infer<typeof ClinicOverview>;
 export const HostingPlan = z.object({
   status: z.enum(['trial', 'active', 'past_due', 'suspended', 'canceled']),
