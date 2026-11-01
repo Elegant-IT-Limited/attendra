@@ -57,11 +57,15 @@ describe('who can see patients', () => {
 });
 
 describe('search', () => {
-  it('finds by name in any order and case, by a word\'s start', async () => {
-    expect(await names('maria delgado')).toEqual(['Maria Delgado']);
-    expect(await names('DEL mar')).toEqual(['Maria Delgado']);
+  it('finds by name in any order and case, by a word\'s start; a parent\'s name finds their children after the parent', async () => {
+    expect(await names('maria delgado')).toEqual(['Maria Delgado', 'Lucas Delgado', 'Sofia Delgado']);
+    expect(await names('DEL mar')).toEqual(['Maria Delgado', 'Lucas Delgado', 'Sofia Delgado']);
+    expect((await search('maria delgado')).json().patients.map((p: { matchedOn: string }) => p.matchedOn)).toEqual(['name', 'owner', 'owner']);
     expect(await names('rivera')).toEqual(['Sam Rivera', 'Sam Rivera']);
-    expect(await names('delgato')).toEqual([]);
+    // one letter off, said the same way: found, the way the assistant hears a name on a call
+    expect(await names('delgato')).toEqual(['Lucas Delgado', 'Maria Delgado', 'Sofia Delgado']);
+    expect(await names('rivero')).toEqual(['Sam Rivera', 'Sam Rivera']);
+    expect(await names('wharton')).toEqual([]);
   });
 
   it('finds by date of birth written any common way', async () => {

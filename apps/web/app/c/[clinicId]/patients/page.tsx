@@ -69,7 +69,7 @@ export default function Patients() {
 
   return (
     <>
-      <PageHeader title={terms.title('patients')} description={pet ? 'Find a pet by its name, its owner\'s name, a phone number or a birthday as you type, and see its visits, calls and requests. The newest are at the top.' : 'Find a patient by name, phone or date of birth as you type, and see their visits, calls and requests. The newest are at the top.'}
+      <PageHeader title={terms.title('patients')} description={pet ? 'Find a pet by its name, its owner\'s name, a phone number, a birthday or a request number as you type, and see its visits, calls and requests. The newest are at the top.' : 'Find a patient by name, phone, date of birth or request number as you type, and see their visits, calls and requests. The newest are at the top.'}
         actions={(
           <>
             {can('settings:write') && <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'ghost' })}><SlidersHorizontal /> Manage fields</Link>}
@@ -130,7 +130,7 @@ export default function Patients() {
                   )
             ) : (
             <PatientSearch clinicId={clinicId} autoFocus status={onlyNew ? 'new' : undefined}
-              renderResult={(p) => <Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} /></Link>}
+              renderResult={(p, query) => <Link href={`/c/${clinicId}/patients/${p.id}`} className={row}><PatientLine p={p} query={query} /></Link>}
               empty={newest.isPending ? <Skeleton className="h-40" /> : newest.isError ? <Alert tone="warn">This list did not load. Refresh to try again.</Alert>
                 : !newest.data?.patients.length ? <Empty title={onlyNew ? 'Nothing to check' : `No ${terms.patients} yet`}>{onlyNew ? `${terms.title('patients')} the assistant adds on a call appear here until someone checks their details.` : `Add a ${terms.patient}, or import a list from a spreadsheet.`}</Empty>
                   : (

@@ -62,7 +62,8 @@ function Requests() {
   const status: 'open' | 'done' = search.get('status') === 'done' ? 'done' : 'open';
   // the request open in the side panel: closed when it is marked done and when the list switches
   // between Open and Done, so a request never reopens by itself over the list it moved to
-  const [openId, setOpenId] = useState<string | null>(null);
+  // a link can open one request (?open=<id>): the command palette's Requests results land here
+  const [openId, setOpenId] = useState<string | null>(() => search.get('open'));
   // the open request as last seen: an assignment or a claim can move it out of the filtered list (Unassigned, Assigned to
   // me), and the panel closed without a word when its row went (2026-11-01). It stays open, and the row stays, until closed
   const [held, setHeld] = useState<Task | null>(null);

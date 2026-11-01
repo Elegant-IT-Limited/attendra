@@ -103,10 +103,10 @@ function Calls() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))]">
           {can('calls:read') && (
             <div className="space-y-1 sm:col-span-2 lg:col-span-1">
-              <Label htmlFor="call-search" className="text-xs text-text-muted">Caller</Label>
+              <Label htmlFor="call-search" className="text-xs text-text-muted">Find a call</Label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-                <Input id="call-search" type="search" autoComplete="off" className="pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Name of a verified pet or owner' : 'Name of a verified caller'} />
+                <Input id="call-search" type="search" autoComplete="off" className="pl-8" value={text} onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet or owner name, phone number, or R-1042' : 'Caller name, phone number, or R-1042'} />
               </div>
             </div>
           )}
@@ -148,7 +148,7 @@ function Calls() {
         {pending ? (
           <div className="space-y-3 p-5">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8" />)}</div>
         ) : shown.length === 0 ? (
-          <Empty title="No calls here">{searching ? 'No verified caller by that name. Calls where nobody was verified cannot be found by name.' : filter === 'all' && !filtered ? 'Calls appear as soon as the assistant answers one.' : 'Nothing matches these filters.'}</Empty>
+          <Empty title="No calls here">{searching ? `No call matches. Search by ${pets ? 'the name of a verified pet or its owner' : 'the name of a verified caller'}, the phone number called from in any form or its last four digits, or a request number like R-1042. A call where nobody was verified is found by its number, not by name.` : filter === 'all' && !filtered ? 'Calls appear as soon as the assistant answers one.' : 'Nothing matches these filters.'}</Empty>
         ) : (
           <Table label="Calls">
             <THead><tr><TH>When</TH><TH>Outcome</TH><TH>Caller</TH><TH className="hidden md:table-cell">What the assistant did</TH><TH className="text-right">Length</TH></tr></THead>
@@ -180,7 +180,7 @@ function Calls() {
           </Table>
         )}
       </Card>
-      {searching && found.data?.truncated && <p className="mt-3 text-xs text-text-muted">Showing the first matches; type more of the name.</p>}
+      {searching && found.data?.truncated && <p className="mt-3 text-xs text-text-muted">Showing the first matches; type more of the name or number.</p>}
       {!searching && calls.hasNextPage && (
         <div className="mt-4 flex justify-center">
           <Button variant="outline" onClick={() => calls.fetchNextPage()} disabled={calls.isFetchingNextPage}>{calls.isFetchingNextPage ? 'Loading…' : 'Older calls'}</Button>

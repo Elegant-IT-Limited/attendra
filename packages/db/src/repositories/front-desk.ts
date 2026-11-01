@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
+import { callerKey } from './calls';
+import { phoneMatch } from './patients';
 import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, organizations, patients, smsMessages, taskNotes, tasks } from '../schema';
 import { decryptSummary } from './summaries';
 
@@ -50,6 +52,8 @@ export type SettingsChange<T> = { save: { name: string; timezone: string }; resu
 
 /** The most requests one search of the queue reads before it filters. */
 export const TASK_SEARCH_SCAN = 2000;
+/** The newest calls whose numbers a search by a few digits decrypts and compares. */
+export const CALL_NUMBER_SCAN = 5000;
 const TASK_LABELS: Record<string, string> = { refill: 'refill prescription', callback: 'callback call back', voicemail: 'voicemail message', review: 'review new patient check' };
 const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -116,13 +120,15 @@ export class FrontDeskRepository {
    */
   async listCalls(clinicId: string, opts: {
     before?: { startedAt: string; id: string }; limit: number;
-    from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; patientIds?: string[]; needsReview?: boolean;
+    from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; needsReview?: boolean;
+    /** A search: calls with one of these verified patients, or one of these ids (found by number or request). None of either is no match. */
+    match?: { patientIds: string[]; callIds: string[] };
     /** Calls where a tool was refused with this code, for the quality page's links. */
     refusal?: string;
     names?: { userId: string; audit: 'list' | 'search'; matches?: number };
   }) {
     return withClinic(this.db, clinicId, async (tx) => {
-      if (opts.patientIds && !opts.patientIds.length) {
+      if (opts.match && !opts.match.patientIds.length && !opts.match.callIds.length) {
         if (opts.names?.audit === 'search') await tx.insert(auditLogs).values({ clinicId, actor: actorOf(opts.names.userId), action: 'calls.searched', entity: 'call', entityId: 'matches:0' });
         return [];
       }
@@ -156,7 +162,7 @@ export class FrontDeskRepository {
           opts.outcome ? eq(calls.outcome, opts.outcome) : undefined,
           opts.channel ? eq(calls.channel, opts.channel) : undefined,
           opts.emergency !== undefined ? eq(calls.emergencyFlag, opts.emergency) : undefined,
-          opts.patientIds ? inArray(calls.patientId, opts.patientIds) : undefined,
+          opts.match ? or(opts.match.patientIds.length ? inArray(calls.patientId, opts.match.patientIds) : undefined, opts.match.callIds.length ? inArray(calls.id, opts.match.callIds) : undefined) : undefined,
           opts.needsReview ? sql`${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null` : undefined,
           opts.refusal ? sql`exists (select 1 from call_actions r where r.call_id = ${calls.id} and r.result->>'error' = ${opts.refusal})` : undefined))
         .groupBy(calls.id, patients.id, callSummaries.callId).orderBy(desc(calls.startedAt), desc(calls.id)).limit(opts.limit);
@@ -181,6 +187,31 @@ export class FrontDeskRepository {
           ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : null,
       }));
     });
+  }
+
+  /**
+   * The calls from a phone number, for the Calls search. A whole number (ten digits or more)
+   * is found by its keyed hash, like the number of a call coming in. Fewer digits (the last
+   * four, say) have no hash: the numbers of the newest CALL_NUMBER_SCAN calls are decrypted
+   * here and compared, the same way the Pets search reads its window. Ids only; the search
+   * that shows them writes the audit rows.
+   */
+  async callIdsByNumber(clinicId: string, digits: string): Promise<string[]> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      if (digits.length >= 10) {
+        return (await tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.fromHash, this.cipher.hash(callerKey(clinicId, digits)))))).map((c) => c.id);
+      }
+      const rows = await tx.select({ id: calls.id, fromEnc: calls.fromEnc }).from(calls)
+        .where(and(eq(calls.clinicId, clinicId), isNotNull(calls.fromEnc))).orderBy(desc(calls.startedAt), desc(calls.id)).limit(CALL_NUMBER_SCAN);
+      const ctx = phiContext(clinicId, 'calls.from');
+      return rows.filter((r) => phoneMatch(digits, this.cipher.decrypt(r.fromEnc!, ctx)) !== null).map((r) => r.id);
+    });
+  }
+
+  /** The calls whose requests carry this number (tasks.number, migration 0041). */
+  async callIdsByRequestNumber(clinicId: string, number: number): Promise<string[]> {
+    return withClinic(this.db, clinicId, async (tx) =>
+      (await tx.select({ id: tasks.callId }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.number, number), isNotNull(tasks.callId)))).map((t) => t.id!));
   }
 
   /**
@@ -313,6 +344,8 @@ export class FrontDeskRepository {
       id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
       urgent: task.urgent, dueOn: task.dueOn,
+      // the request's number (migration 0041), "R-1042" on screen
+      number: task.number,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
         : null,

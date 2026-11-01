@@ -57,6 +57,9 @@ export const patients = pgTable('patients', {
   genderEnc: text('gender_enc'),
   speciesEnc: text('species_enc'),
   customEnc: text('custom_enc'),
+  /** Keyed hashes of each word of the owner's and the patient's names, and of the phone's last four digits, for search (migration 0042). */
+  ownerWordsHash: text('owner_words_hash').array(),
+  phoneSuffixHash: text('phone_suffix_hash'),
   /** They agreed to reminder texts: when, and how (on a call, at the desk, in an import). */
   smsConsentAt: timestamp('sms_consent_at', { withTimezone: true }),
   smsConsentSource: text('sms_consent_source', { enum: ['call', 'staff', 'import'] }),
@@ -151,6 +154,8 @@ export const tasks = pgTable('tasks', {
   assignedByUserId: text('assigned_by_user_id'),
   /** Who at the clinic wrote it down by hand (migration 0040); null for the assistant's own. */
   createdByUserId: text('created_by_user_id'),
+  /** The request's number at the clinic, "R-1042" on screen (migration 0041). */
+  number: integer('number'),
   urgent: boolean('urgent').notNull().default(false),
   dueOn: date('due_on', { mode: 'string' }),
   /** The clinic's own details on the request, encrypted JSON. */

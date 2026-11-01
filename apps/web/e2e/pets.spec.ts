@@ -46,6 +46,30 @@ test.describe.serial('pets at a vet clinic', () => {
     await expect(page.getByLabel('Birthday')).toHaveValue('2024-05-01');
   });
 
+  test('search finds a pet by its owner\'s name and by the last four digits of the phone, and the palette finds one by its owner', async ({ browser }) => {
+    const page = await signInAgain(browser, 'Vet clinic manager');
+    await page.getByRole('link', { name: 'Pets', exact: true }).first().click();
+    const search = page.getByLabel('Find a pet');
+    const results = page.getByRole('list', { name: 'Matching pets' });
+    // the owner's last name: both of the Nguyens' pets, the owner's name lit up
+    await search.fill('Nguyen');
+    await expect(results.getByRole('link', { name: /^Biscuit/ })).toBeVisible();
+    await expect(results.getByRole('link', { name: /^Mochi/ })).toBeVisible();
+    await expect(results.locator('mark').first()).toHaveText('Nguyen');
+    // the last four digits of a phone
+    await search.fill('0173');
+    await expect(results.getByRole('link', { name: /^Pepper/ })).toBeVisible();
+    await expect(results.getByRole('link')).toHaveCount(1);
+    await expect(page).not.toHaveURL(/nguyen|0173/i); // what was typed never reaches the address bar
+    // the palette, by the owner's first name, under Owners
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
+    const palette = page.getByRole('dialog', { name: 'Search and jump' });
+    await palette.getByRole('combobox').fill('Carmen');
+    await expect(palette.getByText('Owners', { exact: true })).toBeVisible();
+    await palette.getByRole('option', { name: /Carmen Ortiz.*Luna/ }).click();
+    await expect(page.getByRole('heading', { name: 'Luna Ortiz', exact: true })).toBeVisible();
+  });
+
   test('on a phone the "kind of animal" filter is as wide as its longest choice', async ({ browser }) => {
     const page = await signInAgain(browser, 'Vet clinic manager');
     await page.setViewportSize({ width: 390, height: 844 });
