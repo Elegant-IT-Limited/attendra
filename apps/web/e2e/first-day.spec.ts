@@ -499,10 +499,13 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByText('Request added. It is in the queue for the team.')).toBeVisible();
 
     const row = page.getByTestId('task-row').filter({ hasText: 'Marisol' });
+    // the clinic's first request is R-1: its number is on the row and leads the panel's title (2026-11-01)
+    await expect(row.getByTestId('request-number')).toHaveText('R-1');
     await expect(row).toContainText('Added by Avery Lindqvist-Hale');
     await expect(row).toContainText('Call back on (720) 555-0162');
     await row.click();
     const card = page.getByTestId('task');
+    await expect(page.getByRole('dialog', { name: 'R-1 · Callback' })).toBeVisible();
     await expect(card.getByTestId('added-by')).toHaveText(/^Added by Avery Lindqvist-Hale \(Owner\), /);
     await watch.axe(page, 'a request');
 

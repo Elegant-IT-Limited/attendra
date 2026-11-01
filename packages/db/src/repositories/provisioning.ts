@@ -159,6 +159,7 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from webhook_endpoints where clinic_id = ${clinicId}`,
       sql`delete from task_notes where clinic_id = ${clinicId}`,
       sql`delete from tasks where clinic_id = ${clinicId}`,
+      sql`delete from clinic_counters where clinic_id = ${clinicId}`,
       sql`delete from appointments where clinic_id = ${clinicId}`,
       sql`delete from call_summaries where clinic_id = ${clinicId}`,
       sql`delete from call_actions where clinic_id = ${clinicId}`,

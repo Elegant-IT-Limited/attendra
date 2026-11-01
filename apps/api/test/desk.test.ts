@@ -218,7 +218,12 @@ describe('a request written down by hand', () => {
   it('joins the queue with its number and reason, audited under the person; a viewer cannot, and a kind must be the clinic\'s own', async () => {
     const res = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'Left a voicemail about a dental cleaning', callbackNumber: '(303) 555-0142', urgent: true } });
     expect(res.statusCode).toBe(201);
-    const { id } = res.json() as { id: string };
+    const { id, number } = res.json() as { id: string; number: number };
+    // its own number, the one the team uses, and found by it
+    expect(number).toBeGreaterThan(0);
+    const byNumber = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: `R-${number}` } })).json().tasks as { id: string; number: number }[];
+    expect(byNumber.map((t) => t.id)).toEqual([id]);
+    expect(byNumber[0]!.number).toBe(number);
     const found = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'dental cleaning' } })).json().tasks as { id: string; callId: string | null; urgent: boolean; details: Record<string, string> }[];
     expect(found.find((t) => t.id === id)).toMatchObject({ callId: null, urgent: true, details: { reason: 'Left a voicemail about a dental cleaning', callback_number: '(303) 555-0142' } });
     expect((await audit('task.created.callback')).find((a) => a.entity_id === id)?.actor).toMatch(/^user:/);
@@ -231,6 +236,14 @@ describe('a request written down by hand', () => {
     expect(refills.find((t) => t.id === refill.json().id)).toMatchObject({ type: 'refill', details: { medication: 'Apoquel 16 mg', pharmacy: 'Pick up' } });
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'voicemail', reason: 'Left a message about boarding' } })).statusCode).toBe(201);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'review', reason: 'nope' } })).statusCode).toBe(422);
+    // about a record picked from the files: the request belongs to that household; a record from nowhere is refused under the field
+    const linked = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'Wants the next check-up booked', patientId: api.patientIds.maria } });
+    expect(linked.statusCode).toBe(201);
+    const mine = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'next check-up' } })).json().tasks as { id: string; patientId: string | null; patientName: string | null }[];
+    expect(mine.find((t) => t.id === linked.json().id)).toMatchObject({ patientId: api.patientIds.maria, patientName: expect.stringContaining('Maria') });
+    const nobody = await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'For nobody here', patientId: '00000000-0000-4000-8000-000000000000' } });
+    expect(nobody.statusCode).toBe(422);
+    expect(nobody.json().issues).toEqual([{ path: 'patientId', message: 'no such record at this clinic' }]);
   });
 
   it('the settings say which numbers are the assistant\'s own', async () => {

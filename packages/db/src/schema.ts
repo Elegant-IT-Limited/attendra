@@ -134,9 +134,19 @@ export const callActions = pgTable('call_actions', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** The next request number per clinic: advanced in the insert's own transaction, so numbers are consecutive and never reused. */
+export const clinicCounters = pgTable('clinic_counters', {
+  clinicId: text('clinic_id').primaryKey(),
+  nextRequest: integer('next_request').notNull().default(1),
+});
+
 export const tasks = pgTable('tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   clinicId: text('clinic_id').notNull(),
+  /** The request's own number at this clinic, shown as R-1042: in the order they came in, never reused (migration 0041). */
+  number: integer('number').notNull(),
+  /** The household it belongs to: the owner's phone as the keyed hash patients carry, when the number is on file. */
+  householdHash: text('household_hash'),
   type: text('type', { enum: ['callback', 'refill', 'voicemail', 'review', 'follow_up'] }).notNull(),
   status: text('status', { enum: ['open', 'done'] }).notNull().default('open'),
   callId: uuid('call_id'),

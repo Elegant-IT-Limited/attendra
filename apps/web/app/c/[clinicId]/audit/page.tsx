@@ -189,6 +189,8 @@ function record(e: { action: string; entity: string; entityId: string | null; co
   const what = LISTS[e.action] ?? ENTITIES[e.entity] ?? e.entity;
   const id = e.entityId ?? '';
   if (id.startsWith('matches:')) return `${what}, ${id.slice(8)} found`;
+  // a request is known by its number, the one the team uses
+  if (e.entity === 'task' && e.counts?.number !== undefined) return `${what} R-${e.counts.number}`;
   if (e.entity === 'schedule') {
     const [range = '', provider = ''] = id.split(';');
     const [from = '', days = '1'] = range.split('+');

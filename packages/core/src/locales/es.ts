@@ -22,6 +22,8 @@ const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const hola = (v: Record<string, string>, rest: string) => (v.name ? `Hola ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
 const citaDe = (v: Record<string, string>) => `${v.pet ? `la cita de ${v.pet}` : 'su cita'}${v.provider ? ` con ${v.provider}` : ''}`;
 const pedidoDe = (v: Record<string, string>) => (v.pet ? `el pedido de ${v.pet}` : 'su pedido');
+/** El número del pedido, para que quien llama y el equipo hablen del mismo: " (R-1042)". */
+const ref = (v: Record<string, string>) => (v.ref ? ` (${v.ref})` : '');
 
 export const es: LanguagePack = {
   code: 'es',
@@ -40,9 +42,9 @@ export const es: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
+    request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}${ref(v)}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
     change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió al ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${v.when} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,

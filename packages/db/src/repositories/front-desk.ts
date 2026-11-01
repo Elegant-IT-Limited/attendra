@@ -53,11 +53,20 @@ export const TASK_SEARCH_SCAN = 2000;
 const TASK_LABELS: Record<string, string> = { refill: 'refill prescription', callback: 'callback call back', voicemail: 'voicemail message', review: 'review new patient check' };
 const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-/** A request matches when every word typed is found in its patient's name, its details or its type; digits match inside phone numbers. */
-export function taskMatches(q: string, t: { type: string; patientName: string; details: string[] }): boolean {
-  const hay = fold([t.patientName, TASK_LABELS[t.type] ?? t.type, ...t.details].join(' '));
-  const digits = hay.replace(/\D/g, '');
-  return fold(q).split(/\s+/).filter(Boolean).every((w) => (/^[\d()+.-]+$/.test(w) && w.replace(/\D/g, '') ? digits.includes(w.replace(/\D/g, '')) : hay.includes(w)));
+/**
+ * A request matches when every word typed is found in its number ("R-1042" or "1042"), its patient's or owner's name,
+ * its phone numbers, its details, its notes or its type; digits match inside phone numbers.
+ */
+export function taskMatches(q: string, t: { number?: number; type: string; patientName: string; details: string[]; owner?: string | null; phone?: string | null; notes?: string[] }): boolean {
+  const hay = fold([t.patientName, t.owner ?? '', TASK_LABELS[t.type] ?? t.type, ...t.details, ...(t.notes ?? [])].join(' '));
+  const digits = [hay, t.phone ?? ''].join(' ').replace(/\D/g, '');
+  return fold(q).split(/\s+/).filter(Boolean).every((w) => {
+    const asNumber = /^r-?(\d+)$/.exec(w);
+    if (asNumber) return t.number === Number(asNumber[1]);
+    const typed = w.replace(/\D/g, '');
+    if (/^[\d()+.-]+$/.test(w) && typed) return t.number === Number(typed) || digits.includes(typed);
+    return hay.includes(w);
+  });
 }
 
 /** One row per patient a search showed, in the search's transaction. The query itself is never written. */
@@ -235,7 +244,7 @@ export class FrontDeskRepository {
       if (!call) return null;
       const segments = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
       const actions = await tx.select().from(callActions).where(eq(callActions.callId, callId)).orderBy(callActions.id);
-      const callTasks = await tx.select({ id: tasks.id, type: tasks.type, status: tasks.status }).from(tasks).where(eq(tasks.callId, callId));
+      const callTasks = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, status: tasks.status }).from(tasks).where(eq(tasks.callId, callId));
       const [summary] = await tx.select().from(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), eq(callSummaries.callId, callId)));
       // what the call booked or cancelled, so the call page can link to it on the schedule
       const changed = await tx.select({ id: appointments.id, startsAt: appointments.startsAt, providerId: appointments.providerId, visitTypeId: appointments.visitTypeId,
@@ -280,7 +289,7 @@ export class FrontDeskRepository {
   /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
   async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned'; q?: string; from?: Date; to?: Date }, viewer: string | { apiKeyId: string }) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, summary: callSummaries })
+      const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, guardianNameEnc: patients.guardianNameEnc, phoneEnc: patients.phoneEnc, summary: callSummaries })
         .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
           opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
@@ -291,17 +300,25 @@ export class FrontDeskRepository {
         // a search reads more, decrypts them and keeps the matches: names and details are encrypted (decision 7)
         .limit(opts.q ? Math.max(opts.limit, TASK_SEARCH_SCAN) : opts.limit);
       const ctxOf = (col: string) => phiContext(clinicId, col);
+      // a search also reads the notes of the rows scanned: what the team wrote on a request is something they search by
+      const scannedNotes = opts.q && rows.length
+        ? await tx.select({ taskId: taskNotes.taskId, bodyEnc: taskNotes.bodyEnc }).from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id))))
+        : [];
       const matching = opts.q ? rows.filter((r) => taskMatches(opts.q!, {
+        number: r.task.number,
         type: r.task.type,
         patientName: r.firstNameEnc && r.lastNameEnc ? `${this.cipher.decrypt(r.firstNameEnc, ctxOf('patients.first_name'))} ${this.cipher.decrypt(r.lastNameEnc, ctxOf('patients.last_name'))}` : '',
+        owner: r.guardianNameEnc ? this.cipher.decrypt(r.guardianNameEnc, ctxOf('patients.guardian_name')) : null,
+        phone: r.phoneEnc ? this.cipher.decrypt(r.phoneEnc, ctxOf('patients.phone')) : null,
         details: Object.values(JSON.parse(this.cipher.decrypt(r.task.detailsEnc, ctxOf('tasks.details'))) as Record<string, string>),
+        notes: scannedNotes.filter((n) => n.taskId === r.task.id).map((n) => this.cipher.decrypt(n.bodyEnc, ctxOf('task_notes.body'))),
       })).slice(0, opts.limit) : rows;
       return this.taskViews(tx, clinicId, matching, viewer);
     });
   }
 
   /** Requests as staff see them: details and notes decrypted, one audit row per request shown. */
-  private async taskViews(tx: Tx, clinicId: string, rows: { task: typeof tasks.$inferSelect; firstNameEnc: string | null; lastNameEnc: string | null; summary: typeof callSummaries.$inferSelect | null }[], viewer: string | { apiKeyId: string }) {
+  private async taskViews(tx: Tx, clinicId: string, rows: { task: typeof tasks.$inferSelect; firstNameEnc: string | null; lastNameEnc: string | null; guardianNameEnc?: string | null; phoneEnc?: string | null; summary: typeof callSummaries.$inferSelect | null }[], viewer: string | { apiKeyId: string }) {
     const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
     const notes = rows.length
       ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
@@ -310,7 +327,7 @@ export class FrontDeskRepository {
     for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
-      id: task.id, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
+      id: task.id, number: task.number, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
       urgent: task.urgent, dueOn: task.dueOn,
       patientName: firstNameEnc && lastNameEnc
@@ -366,9 +383,9 @@ export class FrontDeskRepository {
   async assignTask(clinicId: string, taskId: string, assigneeId: string, byUserId: string): Promise<'assigned' | 'taken' | 'not_found'> {
     return withClinic(this.db, clinicId, async (tx) => {
       const updated = await tx.update(tasks).set({ assigneeUserId: assigneeId, assignedByUserId: byUserId, claimedAt: new Date() })
-        .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'))).returning({ id: tasks.id });
+        .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'))).returning({ id: tasks.id, number: tasks.number });
       if (updated.length) {
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(byUserId), action: 'task.assigned', entity: 'task', entityId: taskId });
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(byUserId), action: 'task.assigned', entity: 'task', entityId: taskId, counts: { number: updated[0]!.number } });
         return 'assigned';
       }
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
@@ -393,9 +410,9 @@ export class FrontDeskRepository {
       const updated = await tx.update(tasks).set({ assigneeUserId: null, claimedAt: null })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'),
           override ? sql`${tasks.assigneeUserId} is not null` : eq(tasks.assigneeUserId, userId)))
-        .returning({ id: tasks.id });
+        .returning({ id: tasks.id, number: tasks.number });
       if (updated.length) {
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: override ? 'task.released.override' : 'task.released', entity: 'task', entityId: taskId });
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: override ? 'task.released.override' : 'task.released', entity: 'task', entityId: taskId, counts: { number: updated[0]!.number } });
         return 'released';
       }
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
@@ -409,9 +426,9 @@ export class FrontDeskRepository {
       const updated = await tx.update(tasks).set({ assigneeUserId: userId, claimedAt: new Date() })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'),
           or(isNull(tasks.assigneeUserId), eq(tasks.assigneeUserId, userId))))
-        .returning({ id: tasks.id });
+        .returning({ id: tasks.id, number: tasks.number });
       if (updated.length) {
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.claimed', entity: 'task', entityId: taskId });
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.claimed', entity: 'task', entityId: taskId, counts: { number: updated[0]!.number } });
         return 'claimed';
       }
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
@@ -425,11 +442,11 @@ export class FrontDeskRepository {
       const updated = await tx.update(tasks).set({ status: 'done', doneAt: new Date(), doneByUserId: userId, outcome })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'open'),
           or(isNull(tasks.assigneeUserId), eq(tasks.assigneeUserId, userId))))
-        .returning({ id: tasks.id, type: tasks.type, patientId: tasks.patientId, callId: tasks.callId });
+        .returning({ id: tasks.id, number: tasks.number, type: tasks.type, patientId: tasks.patientId, callId: tasks.callId });
       if (updated.length) {
         // an approval or a refusal of a refill is named in the log, with who made it
         const decision = updated[0]!.type === 'refill' && (outcome === 'refill_sent' || outcome === 'refill_ready' || outcome === 'refill_declined') ? `.${outcome}` : '';
-        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: `task.done${decision}`, entity: 'task', entityId: taskId });
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: `task.done${decision}`, entity: 'task', entityId: taskId, counts: { number: updated[0]!.number } });
         // checking a patient the assistant added makes them an ordinary patient
         const { type, patientId, callId } = updated[0]!;
         // getting back to the caller is the review the call was flagged for
@@ -472,12 +489,17 @@ export class FrontDeskRepository {
   async waitingTasks(clinicId: string, limit = 20) {
     return withClinic(this.db, clinicId, async (tx) => {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
-      const rows = await tx.select({ id: tasks.id, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
+      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
         .where(waiting).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(limit);
       const counts = await tx.select({ type: tasks.type, n: sql<number>`count(*)::int` }).from(tasks).where(waiting).groupBy(tasks.type);
       const byType = Object.fromEntries(counts.map((c) => [c.type, Number(c.n)]));
       return { tasks: rows, total: counts.reduce((n, c) => n + Number(c.n), 0), byType };
     });
+  }
+
+  /** Whether a record is this clinic's: an id only, no patient data, so no audit row. */
+  async patientExists(clinicId: string, patientId: string): Promise<boolean> {
+    return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)))).length);
   }
 
   /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */

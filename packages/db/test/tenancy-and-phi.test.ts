@@ -124,7 +124,7 @@ describe('idempotency', () => {
     const first = await q.create(DEMO_CLINIC.id, input);
     const again = await q.create(DEMO_CLINIC.id, input);
     expect(first.created).toBe(true);
-    expect(again).toEqual({ id: first.id, created: false });
+    expect(again).toEqual({ id: first.id, number: first.number, created: false });
   });
 
   it('a webhook delivery id is handled once', async () => {

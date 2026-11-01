@@ -153,7 +153,7 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   })),
   transcript: z.array(z.object({ speaker: z.enum(['caller', 'agent']), text: z.string(), startMs: z.number(), endMs: z.number() })),
   actions: z.array(z.object({ tool: z.string(), argumentNames: z.array(z.string()), result: z.record(z.string(), z.unknown()), revision: z.number(), at: z.iso.datetime() })),
-  tasks: z.array(z.object({ id: z.string(), type: z.string(), status: z.string() })),
+  tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.string(), status: z.string() })),
   summary: CallSummaryCard.nullable(),
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
@@ -290,7 +290,7 @@ export const TaskQuery = z.object({
 });
 /** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
 export const TaskSearch = TaskQuery.extend({
-  /** Words or digits to find in the patient's name, the request's details or its type. Matched as typed, from the first character. */
+  /** Words or digits to find: the request's number (R-1042 or 1042), the pet's or owner's name, a phone number, its details, its notes or its type. Matched as typed, from the first character. */
   q: z.string().trim().max(100).default(''),
 });
 /** Texts about one thing: exactly one of a call, a request, a pet or patient, or a visit. */
@@ -334,6 +334,8 @@ export const NewTask = z.object({
   callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
   /** Who it is about, as staff typed it, when no record is linked: the request's title. */
   name: z.string().trim().max(80).nullable().optional(),
+  /** The pet or patient it is about, picked from the records: the request then belongs to their household. */
+  patientId: z.uuid().nullable().optional(),
   urgent: z.boolean().optional(),
   dueOn: z.iso.date().nullable().optional(),
 });
@@ -341,6 +343,8 @@ export const TaskPlan = z.object({ urgent: z.boolean().optional(), dueOn: z.iso.
 export const TaskNoteInput = z.object({ body: z.string().trim().min(1, 'write something first').max(1000) });
 export const Task = z.object({
   id: z.string(),
+  /** The request's own number at this clinic, shown as R-1042: in the order they came in, never reused. */
+  number: z.number().int(),
   type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']),
   status: z.enum(['open', 'done']),
   callId: z.string().nullable(),
@@ -557,7 +561,7 @@ export const PatientProfile = PatientCard.extend({
   calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable(), forThisRecord: z.boolean() })),
   /** The requests of anyone on the same phone, and of the calls from it. patientId says whose it is, when anyone's. */
   requests: z.array(z.object({
-    id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(), patientId: z.string().nullable(),
+    id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), status: z.enum(['open', 'done']), callId: z.string().nullable(), patientId: z.string().nullable(),
     createdAt: z.iso.datetime(), doneAt: z.iso.datetime().nullable(), details: z.record(z.string(), z.string()),
   })),
 });
@@ -714,7 +718,7 @@ export const AssistantChoices = z.object({
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
 
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

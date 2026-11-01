@@ -197,7 +197,7 @@ export class PatientRecords {
         appointments: visits,
         calls: theirCalls.map(({ patientId: about, ...c }) => ({ ...c, voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds), forThisRecord: about === patientId })),
         requests: requests.map((t) => ({
-          id: t.id, type: t.type, patientId: t.patientId, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
+          id: t.id, number: t.number, type: t.type, patientId: t.patientId, status: t.status, callId: t.callId, createdAt: t.createdAt, doneAt: t.doneAt,
           details: JSON.parse(this.cipher.decrypt(t.detailsEnc, phiContext(clinicId, 'tasks.details'))) as Record<string, string>,
         })),
       };

@@ -14,7 +14,7 @@ export interface McpDeps {
   log: Logger;
   now?: () => Date;
   /** Tells the clinic's webhooks when a request is closed here, as the dashboard does. */
-  onRequestDone?: (clinicId: string, facts: Record<string, string | null>) => Promise<void>;
+  onRequestDone?: (clinicId: string, facts: Record<string, string | number | null>) => Promise<void>;
 }
 
 /** A role as the clinic says it. */
@@ -115,7 +115,7 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
 
   server.registerTool('list_open_requests', {
     title: 'Open requests',
-    description: 'Refill and callback requests waiting for staff, urgent ones first, then the newest, with the patient, the details, any due day, and who at the clinic added it by hand (createdBy: name and role; null when the assistant made it from a call). Needs requests:read, and each request shown is audited.',
+    description: 'Refill and callback requests waiting for staff, urgent ones first, then the newest, each with its number (reference, like R-1042, the one the team uses), the patient, the details, any due day, and who at the clinic added it by hand (createdBy: name and role; null when the assistant made it from a call). Needs requests:read, and each request shown is audited.',
     inputSchema: { type: z.enum(['refill', 'callback', 'voicemail', 'review', 'follow_up']).optional() },
     annotations: { readOnlyHint: true },
   }, tool('list_open_requests', 'requests:read', async (a: { type?: 'refill' | 'callback' | 'voicemail' | 'review' | 'follow_up' }) => {
@@ -129,7 +129,7 @@ export function createMcpServer(caller: ApiCaller, d: McpDeps): McpServer {
       return p ? { name: p.name, role: ROLE_LABEL[p.role] } : { name: 'a former team member', role: null };
     };
     return {
-      result: { requests: tasks.map((t) => ({ requestId: t.id, type: t.type, createdAt: t.createdAt.toISOString(), createdBy: createdBy(t.createdByUserId), claimed: !!t.assigneeUserId, urgent: t.urgent, dueOn: t.dueOn, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
+      result: { requests: tasks.map((t) => ({ requestId: t.id, number: t.number, reference: `R-${t.number}`, type: t.type, createdAt: t.createdAt.toISOString(), createdBy: createdBy(t.createdByUserId), claimed: !!t.assigneeUserId, urgent: t.urgent, dueOn: t.dueOn, patient: t.patientName, details: t.details, suggestedFollowUp: t.followUp })) },
       counts: { requests: tasks.length },
     };
   }));

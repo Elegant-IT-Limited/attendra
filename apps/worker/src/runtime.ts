@@ -112,7 +112,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             ...(call.fromNumber ? { callback_number: call.fromNumber } : {}),
           },
         });
-        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: 'follow_up', patientId: call.patientId, callId } });
+        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'follow_up', patientId: call.patientId, callId } });
       }
       // an emergency is a check on the caller, not a callback: always in the team's queue, urgent, even when they said no to a callback
       if (saved === 'saved' && call.emergency) {
@@ -124,7 +124,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
             ...(call.fromNumber ? { callback_number: call.fromNumber } : {}),
           },
         });
-        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: 'follow_up', patientId: call.patientId, callId } });
+        if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'follow_up', patientId: call.patientId, callId } });
       }
       return saved;
     },
@@ -315,7 +315,7 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const result = await messenger.sendTemplate(clinicId, {
         to: details.callback_number ?? '', template,
         // the pet by name when the request has it ("Scout's request is ready"); never the medicine
-        vars: { clinic: config.name, clinicPhone: callUsNumber(config), ...(details.pet_name ? { pet: details.pet_name } : {}), ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
+        vars: { clinic: config.name, clinicPhone: callUsNumber(config), ref: `R-${found.task.number}`, ...(details.pet_name ? { pet: details.pet_name } : {}), ...(template === 'refill_sent' ? { pharmacy: pharmacy! } : {}) },
         idempotencyKey: template === 'request_ready' ? `request-ready:${taskId}` : `${template}:${taskId}`, language, kind: 'auto',
         about: { callId: found.task.callId, patientId: found.task.patientId, taskId },
       });

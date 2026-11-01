@@ -61,7 +61,7 @@ describe('the quality page', () => {
     const emergency = await call(zonedInstant('2026-09-15', '10:00', tz), 'emergency', { seconds: 40 });
     await api.t.db.execute(sql`update calls set emergency_flag = true where id = ${emergency}`);
     const refill = await call(zonedInstant('2026-09-16', '10:00', tz), 'task_created', { seconds: 50 });
-    await api.t.db.execute(sql`insert into tasks (clinic_id, type, call_id, details_enc, idempotency_key) values (${DEMO_CLINIC.id}, 'refill', ${refill}, 'x', ${`q_${refill}`})`);
+    await api.t.db.execute(sql`insert into tasks (clinic_id, number, type, call_id, details_enc, idempotency_key) values (${DEMO_CLINIC.id}, (select coalesce(max(number), 0) + 1 from tasks where clinic_id = ${DEMO_CLINIC.id}), 'refill', ${refill}, 'x', ${`q_${refill}`})`);
     const weeks = (await api.request('GET', `${C}/quality?weeks=3`, { cookie: as.admin })).json().weeks;
     expect(weeks[2]).toMatchObject({ start: '2026-09-14', calls: 3, afterHours: 1, afterHoursBookings: 1, emergencies: 1, refillRequests: 1 });
     expect(weeks[0]).toMatchObject({ afterHoursBookings: 0, emergencies: 0, refillRequests: 0 });

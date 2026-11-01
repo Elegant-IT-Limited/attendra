@@ -23,6 +23,8 @@ const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  */
 const hi = (v: Record<string, string>, rest: string) => (v.name ? `Hi ${v.name}, ${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
 const whose = (v: Record<string, string>) => (v.pet ? `${v.pet}'s` : 'your');
+/** The request's number, so a caller and the team talk about the same one: " (R-1042)". */
+const ref = (v: Record<string, string>) => (v.ref ? ` (${v.ref})` : '');
 const visitOf = (v: Record<string, string>) => `${whose(v)} ${v.visit || 'visit'}${v.provider ? ` with ${v.provider}` : ''}`;
 
 export const en: LanguagePack = {
@@ -42,9 +44,9 @@ export const en: LanguagePack = {
   readbackCancel: ({ when: w }) => `cancel the appointment on ${w}`,
   sms: {
     booking_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} is booked for ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
-    request_ready: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request is ready to pick up.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_sent: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request was sent to ${v.pharmacy}.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
-    refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
+    request_ready: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request${ref(v)} is ready to pick up.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_sent: (v) => `${v.clinic}: ${hi(v, `${whose(v)} request${ref(v)} was sent to ${v.pharmacy}.`)} Questions? Call ${v.clinicPhone}. Reply STOP to opt out.`,
+    refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request${ref(v)}, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
     change_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} has moved to ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} on ${v.when} is cancelled.`)} To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,

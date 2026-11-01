@@ -245,3 +245,6 @@ export function ago(ms: number) {
 
 /** Whole days left until a moment, counting part of a day as a day: 0 once it has passed. */
 export const daysLeft = (iso: string, now: number) => Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 86_400_000));
+
+/** A request's number as the team says it: R-1042. */
+export const requestNumber = (n: number) => `R-${n}`;

@@ -35,7 +35,7 @@ export class TasksController {
   @Requires('tasks:work')
   @ApiOperation({ summary: 'Write down a request by hand: a callback, a refill, a voicemail or a follow-up, with the number to call back on. Audited.' })
   @ApiBody({ schema: schemaOf(NewTask) })
-  async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(NewTask)) body: z.infer<typeof NewTask>, @CurrentStaff() staff: Staff): Promise<{ id: string }> {
+  async create(@Param('clinicId') clinicId: string, @Body(new ZodPipe(NewTask)) body: z.infer<typeof NewTask>, @CurrentStaff() staff: Staff): Promise<{ id: string; number: number }> {
     const config = ClinicConfig.parse(await this.desk.settings(clinicId));
     const topic = body.topic ? config.requestTopics?.find((t) => t.name === body.topic)?.name : undefined;
     if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
@@ -44,10 +44,13 @@ export class TasksController {
       reason: body.reason, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}),
       ...(refill && body.medication ? { medication: body.medication } : {}), ...(refill && body.pharmacy ? { pharmacy: body.pharmacy } : {}),
     };
-    const task = await new PostgresTaskQueue(this.db, this.cipher, `user:${staff.userId}`).create(clinicId, { type: body.type, callId: null, patientId: null, idempotencyKey: `manual:${randomUUID()}`, details });
+    // the record it is about, when one was picked: the request then belongs to that household
+    const patientId = body.patientId ?? null;
+    if (patientId && !(await this.desk.patientExists(clinicId, patientId))) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'patientId', message: 'no such record at this clinic' }] });
+    const task = await new PostgresTaskQueue(this.db, this.cipher, `user:${staff.userId}`).create(clinicId, { type: body.type, callId: null, patientId, idempotencyKey: `manual:${randomUUID()}`, details });
     if (body.urgent !== undefined || body.dueOn !== undefined) await this.desk.planTask(clinicId, task.id, { urgent: body.urgent, dueOn: body.dueOn }, staff.userId);
-    await this.events.emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, type: body.type, patientId: null, callId: null } });
-    return { id: task.id };
+    await this.events.emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: body.type, patientId, callId: null } });
+    return { id: task.id, number: task.number };
   }
 
   @Get()

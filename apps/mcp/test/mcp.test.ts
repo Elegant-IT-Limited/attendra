@@ -23,7 +23,7 @@ let deps: McpDeps;
 let keys: ApiKeyRepository;
 let taskId: string;
 let setupCallId: string;
-const done: Record<string, string | null>[] = [];
+const done: Record<string, string | number | null>[] = [];
 
 const make = (scopes: ('schedule:read' | 'requests:read' | 'requests:write' | 'quality:read')[], clinicId = DEMO_CLINIC.id, days = 30) =>
   keys.create(clinicId, { name: `test ${scopes.join(' ')}`, scopes, expiresAt: new Date(Date.now() + days * 86_400_000), userId: 'u_olga' });
