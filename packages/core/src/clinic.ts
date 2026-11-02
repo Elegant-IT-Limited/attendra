@@ -599,3 +599,27 @@ export function listUsage(c: Pick<ClinicConfig, 'providers'>, name: ListName): R
   }
   return out;
 }
+
+/** A name has at least one letter or digit (pets and clinics may have digits): never only spaces or symbols. */
+export const HAS_NAME = /[\p{L}\p{N}]/u;
+
+/**
+ * The field standard for Settings, checked when a change is saved (not in the schema, so a configuration saved before a
+ * limit still loads and calls keep running): names that are names, the lengths Settings' fields allow, and what a caller
+ * hears said as a full sentence. Each problem is under its field's path, in words that say what to type.
+ */
+export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencyHospital' | 'moreEmergencyHospitals' | 'vipCallers'>): { path: string; message: string }[] {
+  const out: { path: string; message: string }[] = [];
+  const name = (path: string, v: string | undefined, max: number, what: string) => {
+    const t = (v ?? '').trim();
+    if (!t || !HAS_NAME.test(t)) out.push({ path, message: `${what}: type a name, not only spaces or symbols` });
+    else if (t.length > max) out.push({ path, message: `${what}: at most ${max} characters` });
+  };
+  name('name', c.name, 100, 'Clinic name');
+  c.visitTypes.forEach((v, i) => name(`visitTypes.${i}.name`, v.name, 60, 'Visit type name'));
+  (c.faqs ?? []).forEach((f, i) => { if (!f.question.trim()) out.push({ path: `faqs.${i}.question`, message: 'Question: type the question callers ask' }); else if (f.question.length > 200) out.push({ path: `faqs.${i}.question`, message: 'Question: at most 200 characters' }); });
+  if (c.recording.notice && c.recording.notice.length > 300) out.push({ path: 'recording.notice', message: 'Recording notice: at most 300 characters' });
+  [c.emergencyHospital, ...(c.moreEmergencyHospitals ?? [])].forEach((h, i) => { if (h && h.address.length > 200) out.push({ path: i ? `moreEmergencyHospitals.${i - 1}.address` : 'emergencyHospital.address', message: 'Address: at most 200 characters' }); });
+  (c.vipCallers ?? []).forEach((v, i) => { if (!HAS_NAME.test(v.name)) out.push({ path: `vipCallers.${i}.name`, message: 'Name: type a name, not only spaces or symbols' }); });
+  return out;
+}

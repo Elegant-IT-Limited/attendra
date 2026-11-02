@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { Trash2 } from 'lucide-react';
-import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode, useEffect, useId } from 'react';
+import { Children, cloneElement, createContext, isValidElement, type ReactElement, type ReactNode, useContext, useEffect, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
+/** What the last save refused, by the section it belongs in: shown in the card itself, next to what needs fixing. */
+export const SaveIssues = createContext<(sectionId: string) => string[]>(() => []);
+
 /** One settings card. With an `id` it is a place the page's own menu can jump to. */
 export function Section({ id, title, description, children, action }: { id?: string; title: string; description?: string; children: ReactNode; action?: ReactNode }) {
+  const issues = useContext(SaveIssues)(id ?? '');
   // a link to this card (settings#visits) lands on it, though the page drew it after loading
   useEffect(() => {
     if (id && window.location.hash === `#${id}`) document.getElementById(id)?.scrollIntoView({ block: 'start' });
@@ -18,7 +22,15 @@ export function Section({ id, title, description, children, action }: { id?: str
         <div className="min-w-0 space-y-1"><CardTitle>{title}</CardTitle>{description && <CardDescription className="max-w-2xl">{description}</CardDescription>}</div>
         {action && <div className="shrink-0">{action}</div>}
       </CardHeader>
-      <CardContent className="space-y-5">{children}</CardContent>
+      <CardContent className="space-y-5">
+        {issues.length > 0 && (
+          <div role="alert" className="rounded-md border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger" data-testid="section-issues">
+            <p className="font-medium">Not saved. Fix this first:</p>
+            <ul className="mt-1 list-disc pl-5">{issues.map((m) => <li key={m}>{m}</li>)}</ul>
+          </div>
+        )}
+        {children}
+      </CardContent>
     </Card>
   );
 }

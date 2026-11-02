@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, Gender, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -476,7 +476,8 @@ export const RescheduleAppointment = z.object({
 export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
 
-const personName = z.string().trim().min(1, 'required').max(80);
+// a name: letters of any language, spaces, - ' . (digits allowed for pets), never only spaces or symbols
+const personName = z.string().trim().min(1, 'required').max(80).regex(HAS_NAME, 'type a name, not only spaces or symbols');
 // required: with name and date of birth it is how a patient is told apart from anyone else
 // numbers only (no letters, + only first), then at least ten digits; the one normaliser makes it E.164
 const phoneNumber = z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, phoneTypingIssues, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel, withPhonesAsE164 } from '@attendra/core';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
@@ -163,6 +163,9 @@ export class SettingsController {
       if (!next.phoneNumbers.length) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'phoneNumbers', message: 'keep at least one number' }] });
     }
     // checked here, not in the schema: a number saved before the rule must not stop calls, and the voice service falls back to the country's
+    // the field standard, checked on a change (a configuration saved before a limit still loads)
+    const fields = settingsFieldProblems(next);
+    if (fields.length) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: fields });
     const emergency = emergencyNumberProblem(next);
     if (emergency) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'emergencyNumber', message: emergency }] });
     // A demo deployment can take real calls, so nobody signed in to it may send them somewhere new.

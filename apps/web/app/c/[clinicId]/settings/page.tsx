@@ -11,7 +11,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { VisitMoreOptions } from '@/components/settings/visit-options';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
-import { EmptyNote, Field, Item, Section, TeamOnly } from '@/components/settings/section';
+import { EmptyNote, Field, Item, SaveIssues, Section, TeamOnly } from '@/components/settings/section';
 import { SettingsNav } from '@/components/settings/settings-nav';
 import { SpecialDaysEditor } from '@/components/settings/special-days';
 import { moved, Sortable } from '@/components/ui/sortable';
@@ -68,6 +68,15 @@ function issueLabel(path: string) {
   };
   return names[top] ?? (top || 'Settings');
 }
+/** The settings card a save problem belongs in, by the setting's top key. */
+const SECTION_OF: Record<string, string> = {
+  greeting: 'greeting-voice', greetings: 'greeting-voice', name: 'greeting-voice', address: 'greeting-voice', website: 'greeting-voice', voice: 'greeting-voice', talk: 'greeting-voice',
+  recording: 'records', retentionDays: 'records', routing: 'transfers', visitTypes: 'visits', faqs: 'answers', offers: 'offers', requestTopics: 'fields', customFields: 'fields',
+  vipCallers: 'vip', menuLinks: 'links', emergencyHospital: 'emergency', moreEmergencyHospitals: 'emergency', emergencyTransferEnabled: 'emergency', hours: 'hours',
+  holidays: 'holidays', specialDays: 'holidays', assistantName: 'assistant', emergencyNumber: 'assistant', country: 'assistant', languages: 'assistant', primaryLanguage: 'assistant',
+  booking: 'booking', texting: 'your-texts', phoneNumbers: 'numbers',
+};
+
 /** The clinic's talk settings with defaults, so one change keeps the other two. */
 const talkOf = (c: ClinicConfig): TalkStyle => ({ pace: c.talk?.pace ?? 'normal', style: c.talk?.style ?? defaultTalkStyle(c.industry), acknowledgements: c.talk?.acknowledgements ?? true });
 
@@ -114,6 +123,9 @@ export default function Settings() {
   const queries = useQueryClient();
   const toast = useToast();
   const problem = useProblem();
+  // what the last save refused, shown in its own card too; cleared by the next save
+  const [issues, setIssues] = useState<{ path: string; message: string }[]>([]);
+  const issuesFor = (sectionId: string) => issues.filter((i) => SECTION_OF[i.path.split('.')[0] ?? ''] === sectionId).map((i) => i.message);
   // its own copy with the version it was read at, read fresh each time the page opens and
   // never swapped under a draft: a save is refused if someone else saved since
   const loaded = useQuery({ queryKey: ['settings-versioned', clinicId], queryFn: () => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`), gcTime: 0, refetchOnWindowFocus: false, refetchOnReconnect: false });
@@ -161,6 +173,7 @@ export default function Settings() {
       // the clinic's name and time zone also come with who you are, for every other page
       void queries.invalidateQueries({ queryKey: ['me'] });
       setDraft(config);
+      setIssues([]);
       toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
     },
     onError: (e) => {
@@ -171,6 +184,7 @@ export default function Settings() {
         return;
       }
       const issues = e.body.issues ?? [{ path: '', message: e.message }];
+      setIssues(issues);
       problem({ title: 'Not saved. Fix these first', items: issues.map((i) => (i.path ? `${issueLabel(i.path)}: ${i.message}` : i.message)) });
     },
   });
@@ -198,7 +212,7 @@ export default function Settings() {
   const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
 
   return (
-    <>
+    <SaveIssues.Provider value={issuesFor}>
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
       <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
@@ -222,7 +236,7 @@ export default function Settings() {
         </nav>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="greeting-voice" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
-          <Field label="Clinic name" htmlFor="name"><Input id="name" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+          <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="organization" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
             <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
@@ -365,10 +379,10 @@ export default function Settings() {
                       {i > 0 && <Button type="button" size="sm" variant="ghost" onClick={() => setHospitals([h, ...hospitals.filter((_, j) => j !== i)])}>Make first choice</Button>}
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Hospital name"><Input value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
+                      <Field label="Hospital name"><Input maxLength={80} value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
                       <Field label="Phone" hint="As you would dial it."><PhoneInput value={h.phone} autoComplete="off" placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onValue={(phone) => upd({ phone })} onBlur={(e) => upd({ phone: asE164(c, e.target.value) })} /></Field>
                     </div>
-                    <Field label="Address" hint="Read to callers as written."><Input value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
+                    <Field label="Address" hint="Read to callers as written."><Input maxLength={200} value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
                     <Switch id={`hospital-24h-${i}`} label="Open 24 hours" checked={!h.hours} onCheckedChange={(on) => upd({ hours: on ? undefined : { open: '18:00', close: '08:00' } })} disabled={!writable || save.isPending}
                       hint="Turn off for a hospital that only takes emergencies part of the day, like evenings and nights." />
                     {h.hours && (
@@ -470,7 +484,7 @@ export default function Settings() {
           {(f, i, handle) => (
             <Item handle={handle} id={`item-${f.id}`} removeLabel="Remove question" onRemove={() => remove('faqs', i)}>
               <div className="space-y-4">
-                <Field label="Question"><Input value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
+                <Field label="Question"><Input maxLength={200} value={f.question} placeholder="e.g. Where do I park?" onChange={(e) => upd('faqs', i, { question: e.target.value })} /></Field>
                 <Field label="Answer" hint={`${f.answer.length}/600`}><Textarea maxLength={600} value={f.answer} placeholder="e.g. Free parking behind the building, entrance on 5th Street." onChange={(e) => upd('faqs', i, { answer: e.target.value })} /></Field>
               </div>
             </Item>
@@ -573,6 +587,6 @@ export default function Settings() {
           </div>
         </div>
       )}
-    </>
+    </SaveIssues.Provider>
   );
 }
