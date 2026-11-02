@@ -17,6 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { useSettled } from '@/components/patients/patient-search';
 import { Field, Input, Label, Select, Textarea } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { Panel } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
@@ -620,7 +621,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
             </Field>
           )}
           <Field label="Call back on" hint="The number to reach them on, if there is one.">
-            {(p) => <Input {...p} type="tel" autoComplete="off" value={draft.callbackNumber} onChange={(e) => setDraft({ ...draft, callbackNumber: e.target.value })} placeholder="(303) 555-0100" />}
+            {(p) => <PhoneInput {...p} autoComplete="off" value={draft.callbackNumber} onValue={(callbackNumber) => setDraft({ ...draft, callbackNumber })} placeholder="(555) 555-0123" />}
           </Field>
         </fieldset>
         <fieldset className="space-y-3">

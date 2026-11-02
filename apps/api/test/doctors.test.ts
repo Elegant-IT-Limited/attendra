@@ -28,6 +28,17 @@ afterAll(() => api.close());
 describe('doctors', () => {
   let id: string;
 
+  it('refuses a phone typed with letters, under its field, in plain words', async () => {
+    const res = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Lettered Vet', phone: '303 CALL NOW' } });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json().issues)).toContain('Use numbers only, for example (555) 555-0123.');
+    const settings = await api.request('GET', `/api/v1/clinics/${DEMO_CLINIC.id}/settings`, { cookie: as.owner });
+    const body = { ...settings.json(), vipCallers: [{ name: 'Partner', phone: '303 555 VIP1' }] };
+    const saved = await api.request('PUT', `/api/v1/clinics/${DEMO_CLINIC.id}/settings`, { cookie: as.owner, body });
+    expect(saved.statusCode).toBe(422);
+    expect(saved.json().issues).toEqual([{ path: 'vipCallers.0.phone', message: 'Use numbers only, for example (555) 555-0123.' }]);
+  });
+
   it('everyone on the team can see them; only managers change them', async () => {
     for (const role of ['owner', 'admin', 'staff', 'viewer'] as const) expect((await api.request('GET', C, { cookie: as[role] })).statusCode, role).toBe(200);
     expect((await api.request('POST', C, { cookie: as.staff, body: kim })).statusCode).toBe(403);

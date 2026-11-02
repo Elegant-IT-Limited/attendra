@@ -20,6 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
@@ -299,15 +300,15 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="doc-phone">Phone (private)</Label>
-              <Input id="doc-phone" type="tel" autoComplete="off" value={d.phone ?? ''} placeholder="(303) 555-0100" aria-invalid={!!fieldErrors.phone || undefined} aria-describedby={fieldErrors.phone ? 'doc-phone-error' : 'doc-phone-hint'}
-                onChange={(e) => { set({ phone: e.target.value }); setFieldErrors((f) => ({ ...f, phone: undefined })); }} />
+              <PhoneInput id="doc-phone" autoComplete="off" value={d.phone ?? ''} placeholder="(555) 555-0123" aria-invalid={!!fieldErrors.phone || undefined} aria-describedby={fieldErrors.phone ? 'doc-phone-error' : 'doc-phone-hint'}
+                onValue={(phone) => { set({ phone }); setFieldErrors((f) => ({ ...f, phone: undefined })); }} />
               {fieldErrors.phone ? <p id="doc-phone-error" className="text-xs text-danger">{fieldErrors.phone}</p>
                 : <p id="doc-phone-hint" className="text-xs text-text-muted">Private: for telling {pets ? 'vets' : 'doctors'} apart, never told to callers.</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="doc-other-phones">Other numbers</Label>
-              <Input id="doc-other-phones" type="text" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
-                onChange={(e) => { set({ otherPhones: e.target.value }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
+              <Input id="doc-other-phones" type="text" inputMode="tel" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
+                onChange={(e) => { set({ otherPhones: e.target.value.replace(/[^\d\s().,+-]/g, '') }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
               {fieldErrors.otherPhones && <p id="doc-other-phones-error" className="text-xs text-danger">{fieldErrors.otherPhones}</p>}
             </div>
           </div>

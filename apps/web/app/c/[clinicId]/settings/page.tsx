@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords } from '@attendra/core';
+import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { SHOW_MENU_LINKS } from '@/lib/flags';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { VisitMoreOptions } from '@/components/settings/visit-options';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
@@ -365,7 +366,7 @@ export default function Settings() {
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Field label="Hospital name"><Input value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
-                      <Field label="Phone" hint="As you would dial it."><Input type="tel" value={h.phone} placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onChange={(e) => upd({ phone: e.target.value })} onBlur={(e) => upd({ phone: asE164(c, e.target.value) })} /></Field>
+                      <Field label="Phone" hint="As you would dial it."><PhoneInput value={h.phone} autoComplete="off" placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onValue={(phone) => upd({ phone })} onBlur={(e) => upd({ phone: asE164(c, e.target.value) })} /></Field>
                     </div>
                     <Field label="Address" hint="Read to callers as written."><Input value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
                     <Switch id={`hospital-24h-${i}`} label="Open 24 hours" checked={!h.hours} onCheckedChange={(on) => upd({ hours: on ? undefined : { open: '18:00', close: '08:00' } })} disabled={!writable || save.isPending}
@@ -455,7 +456,7 @@ export default function Settings() {
             <Item handle={handle} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
-                <Field label="Phone number" hint="As you would dial it."><Input type="tel" value={v.phone} placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onChange={(e) => upd('vipCallers', i, { phone: e.target.value })} onBlur={(e) => upd('vipCallers', i, { phone: asE164(c, e.target.value) })} /></Field>
+                <Field label="Phone number" hint="As you would dial it."><PhoneInput value={v.phone} autoComplete="off" placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onValue={(phone) => upd('vipCallers', i, { phone })} onBlur={(e) => upd('vipCallers', i, { phone: asE164(c, e.target.value) })} /></Field>
               </div>
             </Item>
           )}
@@ -540,7 +541,8 @@ export default function Settings() {
             ) : (
               <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                 {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
-                <Input aria-label="Your clinic's own line" data-own-line={n} className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
+                <Input aria-label="Your clinic's own line" data-own-line={n} type="tel" inputMode="tel" autoComplete="off" className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable}
+                  onChange={(e) => { const clean = cleanPhoneTyping(e.target.value); if (clean.dropped) e.target.value = clean.value; }} title={PHONE_NUMBERS_ONLY} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
                   onBlur={(e) => { const v = e.target.value.trim() ? asE164(c, e.target.value) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
                 <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
                 {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}

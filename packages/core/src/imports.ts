@@ -2,7 +2,7 @@
 import { type ClinicConfig, type CustomField, DEFAULT_SPECIES, type Gender, type ListName, MANAGED_LIST_MAX, managedList, onList, Provider } from './clinic';
 import { readCustomValues } from './custom-fields';
 import { parseDob, phoneDigits } from './identity';
-import { asE164, samePhone } from './phones';
+import { asE164, PHONE_NUMBERS_ONLY, phoneProblem, samePhone } from './phones';
 import { ageOn, bareName, providerName, providerPhoneIssues, providerPhones } from './providers';
 
 /**
@@ -171,6 +171,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     if (seen.has(key)) return fail('this doctor is in the file twice');
     seen.add(key);
     // the row's numbers find the doctor on file before the name does: a number is one doctor's (2026-11-01)
+    if ([r.get('phone'), ...split(r.get('other_phones'))].some((x) => x && phoneProblem(x))) return fail(`phone: ${PHONE_NUMBERS_ONLY}`);
     const rowPhones = [r.get('phone'), ...split(r.get('other_phones'))].filter(Boolean).map((x) => asE164(clinic, x));
     const twice = rowPhones.find((d) => seenPhones.has(d));
     if (twice) return fail('phone: another row in the file has this number');
@@ -315,6 +316,7 @@ export function readPatients(text: string, today: string, northAmerica = true): 
     const gender = readGender(r.get('gender'));
     if (!gender) return fail('gender is required: female, male, other or prefer not to say');
     const phone = r.get('phone');
+    if (phoneProblem(phone)) return fail(`phone: ${PHONE_NUMBERS_ONLY}`);
     if (phone.replace(/\D/g, '').length < (northAmerica ? 10 : 7)) return fail('phone is required, with the area code');
     const guardianName = r.get('guardian_name') || null;
     if (ageOn(dob, today) < 18 && !guardianName) return fail('guardian_name is required for a patient under 18');
@@ -377,6 +379,7 @@ export function readPets(text: string, today: string, northAmerica = true, speci
     const sex = r.get('sex').toLowerCase();
     const gender: Gender = sex === 'female' || sex === 'f' ? 'female' : sex === 'male' || sex === 'm' ? 'male' : 'undisclosed';
     const phone = r.get('owner_phone');
+    if (phoneProblem(phone)) return fail(`owner_phone: ${PHONE_NUMBERS_ONLY}`);
     if (phone.replace(/\D/g, '').length < (northAmerica ? 10 : 7)) return fail('owner_phone is required, with the area code');
     const key = `${pet.toLowerCase()}|${owner.toLowerCase()}|${dob}|${phoneDigits(phone)}`;
     if (seen.has(key)) return fail('this pet is in the file twice');

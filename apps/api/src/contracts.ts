@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, Gender, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, Gender, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -332,7 +332,7 @@ export const NewTask = z.object({
   /** One of the clinic's own kinds of request (Settings, Fields and lists), when one fits. */
   topic: z.string().trim().max(80).nullable().optional(),
   reason: z.string().trim().min(3, 'say what it is about').max(300),
-  callbackNumber: z.string().trim().regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (303) 555-0100').nullable().optional(),
+  callbackNumber: z.string().trim().regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).regex(/^\+?[\d\s().-]{7,20}$/, 'a phone number, like (555) 555-0123').nullable().optional(),
   /** Who it is about, as staff typed it, when no record is linked: the request's title. */
   name: z.string().trim().max(80).nullable().optional(),
   /** The pet or patient it is about, picked from the records: the request then belongs to their household. */
@@ -478,11 +478,12 @@ export const AppointmentChange = z.object({ appointmentId: z.string(), status: z
 
 const personName = z.string().trim().min(1, 'required').max(80);
 // required: with name and date of birth it is how a patient is told apart from anyone else
-const phoneNumber = z.string().trim().max(30).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
+// numbers only (no letters, + only first), then at least ten digits; the one normaliser makes it E.164
+const phoneNumber = z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
 const PatientStatus = z.enum(['active', 'new']);
 
 /** The number a pet is being added under: who owns it and which pets are on it already, for the pet form (2026-11). */
-export const HouseholdQuery = z.object({ phone: z.string().trim().min(10).max(30) });
+export const HouseholdQuery = z.object({ phone: z.string().trim().min(10).max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY) });
 export const Household = z.object({ owner: z.string().nullable(), pets: z.array(z.string()) });
 export type Household = z.infer<typeof Household>;
 export const PatientSearch = z.object({
@@ -577,8 +578,8 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
   names: z.record(z.string(), z.string().trim().max(80).transform(bareName)).optional(),
   gender: Gender,
   // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
-  phone: z.string().trim().max(30).optional(),
-  otherPhones: z.array(z.string().trim().max(30)).max(3).optional(),
+  phone: z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).optional(),
+  otherPhones: z.array(z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY)).max(3).optional(),
 });
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
