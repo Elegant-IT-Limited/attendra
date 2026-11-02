@@ -43,6 +43,7 @@ describe('provisioning', () => {
       ['POST', `${P}/users/reset-two-factor`, { email: 'not an email' }],
       ['POST', `${P}/email-confirmations`, {}],
       ['PUT', `${P}/clinics/${c}/test-call-limit`, { seconds: -1 }],
+      ['POST', `${P}/clinics/${c}/test-call-top-up`, { remainingSeconds: 1.5 }],
       ['PUT', `${P}/clinics/${c}/texting`, {}],
       ['PUT', `${P}/clinics/${c}/answering`, {}],
       ['PUT', `${P}/clinics/${c}/plan`, {}],
@@ -165,6 +166,24 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('PUT', `${P}/clinics/clinic_none/test-call-limit`, { body: { seconds: 300 }, authorization: auth })).statusCode).toBe(404);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: null }, authorization: auth })).statusCode).toBe(204);
+
+    // a top-up leaves at least this much still to use: what was used plus it, never less than before
+    const topUp = async (body: object) => api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/test-call-top-up`, { body, authorization: auth });
+    expect((await topUp({ remainingSeconds: 7200 })).json()).toEqual({ limitSeconds: null, usedSeconds: 0, newLimitSeconds: null, changed: false });
+    const call = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, channel, started_at, ended_at)
+      values (${DEMO_CLINIC.id}, 'rtc_top_up', 'web', now() - interval '15 minutes', now() - interval '5 minutes') returning id`)).rows[0] as { id: string };
+    try {
+      await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 600 }, authorization: auth });
+      const dry = await topUp({ remainingSeconds: 7200, dryRun: true });
+      expect([dry.statusCode, dry.json()]).toEqual([200, { limitSeconds: 600, usedSeconds: 600, newLimitSeconds: 7800, changed: true }]);
+      expect((await topUp({ remainingSeconds: 7200 })).json()).toMatchObject({ limitSeconds: 600, newLimitSeconds: 7800, changed: true });
+      expect((await topUp({ remainingSeconds: 7200 })).json()).toMatchObject({ limitSeconds: 7800, newLimitSeconds: 7800, changed: false });
+      expect((await topUp({ remainingSeconds: 60 })).json()).toMatchObject({ newLimitSeconds: 7800, changed: false });
+    } finally {
+      await api.t.db.execute(sql`delete from calls where id = ${call.id}`);
+      await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: null }, authorization: auth });
+    }
+    expect((await api.request('POST', `${P}/clinics/clinic_none/test-call-top-up`, { body: { remainingSeconds: 60 }, authorization: auth })).statusCode).toBe(404);
 
     // texting during calls, switched by the hosting layer when the texting registration is approved
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/texting`, { body: { enabled: true }, authorization: auth })).statusCode).toBe(204);

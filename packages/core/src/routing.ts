@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ClinicConfig, TransferTarget } from './clinic';
 import { isOpen } from './hours';
+import { callingCode, samePhone } from './phones';
+
 
 export type TransferResolution =
   | { ok: true; uri: string }
@@ -23,48 +25,18 @@ export function resolveTransfer(clinic: ClinicConfig, target: TransferTarget, at
   return pick ? { ok: true, uri: pick.uri } : { ok: false, reason: 'closed' };
 }
 
-const lastDigits = (n: string) => n.replace(/\D/g, '').slice(-10);
-
 /**
  * Where a VIP caller goes, if this caller is one and someone can take them now: the
  * front desk's number for this moment. Null for anyone else, or when the front desk
  * takes no transfers now (the assistant answers, as for any caller). Numbers are
- * compared on their last 10 digits, so +1 (303) 555-0100 and 3035550100 match.
+ * compared as E.164, so +1 (303) 555-0100 and 3035550100 match.
  */
 export function vipRoute(clinic: ClinicConfig, from: string | null, at: Date): { name: string; uri: string } | null {
-  if (!from || lastDigits(from).length < 7) return null;
-  const vip = clinic.vipCallers?.find((v) => lastDigits(v.phone) === lastDigits(from));
+  if (!from || from.replace(/\D/g, '').length < 7) return null;
+  const vip = clinic.vipCallers?.find((v) => samePhone(v.phone, from, clinic));
   if (!vip) return null;
   const route = resolveTransfer(clinic, 'front_desk', at);
   return route.ok ? { name: vip.name, uri: route.uri } : null;
-}
-
-// ITU country calling codes that are one or two digits long; every other code is three
-const ONE_DIGIT = ['1', '7'];
-const TWO_DIGITS = new Set(['20', '27', '30', '31', '32', '33', '34', '36', '39', '40', '41', '43', '44', '45', '46', '47', '48', '49', '51', '52', '53', '54', '55', '56', '57', '58',
-  '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86', '90', '91', '92', '93', '94', '95', '98']);
-
-/** The country calling code of an E.164 number: "1" for +13035550100, "44" for +442079460123. */
-export function callingCode(e164: string): string | null {
-  const digits = /^\+(\d{8,15})$/.exec(e164.replace(/^tel:/, ''))?.[1];
-  if (!digits) return null;
-  if (ONE_DIGIT.includes(digits[0]!)) return digits[0]!;
-  return TWO_DIGITS.has(digits.slice(0, 2)) ? digits.slice(0, 2) : digits.slice(0, 3);
-}
-
-/**
- * A number as staff typed it ("(303) 555-0100", "020 7946 0123"), as E.164 in the
- * clinic's own country, so texts reach it. A number typed with its own + is kept; one
- * that cannot be read is left as typed, and matching on its digits still works.
- */
-export function asE164(clinic: { phoneNumbers: string[] }, typed: string): string {
-  const t = typed.trim();
-  const digits = t.replace(/\D/g, '');
-  if (t.startsWith('+')) return digits.length >= 8 ? `+${digits}` : t;
-  const code = callingCode(clinic.phoneNumbers[0] ?? '') ?? '1';
-  if (code === '1') return digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits.startsWith('1') ? `+${digits}` : t;
-  const national = digits.startsWith('0') ? digits.slice(1) : digits;
-  return national.length >= 7 && national.length + code.length <= 15 ? `+${code}${national}` : t;
 }
 
 // +1 area codes outside the US and Canada (the Caribbean and Bermuda), where premium-rate

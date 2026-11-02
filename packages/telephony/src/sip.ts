@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { asE164, type PhoneCountry } from '@attendra/core';
+
 type Header = { name: string; value: string };
 
 const NUMBER_IN_URI = /(?:sips?:|tel:)\+?(\d{8,15})(?![\d])/g;
@@ -43,8 +45,10 @@ export function maskedHeaders(headers: Header[]): string[] {
   return headers.map((h) => `${h.name}: ${h.value.replace(/\d{7,}/g, (d) => `${d.slice(0, 4)}***${d.slice(-4)}`)}`.slice(0, 200));
 }
 
-export function callerNumber(headers: Header[]): string | null {
+export function callerNumber(headers: Header[], clinic?: PhoneCountry): string | null {
   const from = headers.find((h) => h.name.toLowerCase() === 'from')?.value ?? '';
-  const m = from.match(/(?:sips?:|tel:)\+?(\d{8,15})/);
-  return m ? `+${m[1]}` : null;
+  const m = from.match(/(?:sips?:|tel:)(\+?)(\d{8,15})/);
+  if (!m) return null;
+  // a carrier that sends the national number without its + gets the clinic's country code, like any number typed
+  return m[1] || !clinic ? `+${m[2]}` : asE164(clinic, m[2]!);
 }

@@ -23,6 +23,14 @@ describe('SIP headers from a Twilio Elastic SIP Trunk', () => {
     expect(callerNumber(headers)).toBe('+13035550147');
   });
 
+  it('gives a caller number sent without its + the clinic\'s country code', () => {
+    const bare = (n: string) => [{ name: 'From', value: `<sip:${n}@example.pstn.twilio.com>;tag=abc` }];
+    expect(callerNumber(bare('3035550147'), { phoneNumbers: ['+13035550100'] })).toBe('+13035550147');
+    expect(callerNumber(bare('13035550147'), { phoneNumbers: ['+13035550100'] })).toBe('+13035550147');
+    expect(callerNumber(bare('+442079460147'), { phoneNumbers: ['+13035550100'] })).toBe('+442079460147');
+    expect(callerNumber(bare('02079460147'), { phoneNumbers: ['+442079460123'] })).toBe('+442079460147');
+  });
+
   it('returns null instead of guessing when the header is missing or odd', () => {
     expect(dialledNumber([{ name: 'To', value: '<sip:frontdesk@example.com>' }])).toBeNull();
   });

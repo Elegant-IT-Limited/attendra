@@ -118,6 +118,24 @@ export async function setTestCallLimit(db: Database, clinicId: string, seconds: 
   return rows.length === 1;
 }
 
+/**
+ * Gives a clinic at least `remainingSeconds` of browser test-call time still to use: the
+ * limit becomes the time already used plus that, and never goes down. A clinic with no
+ * limit keeps none. With `dryRun`, only says what would change. Null for an unknown clinic.
+ */
+export async function topUpTestCalls(db: Database, clinicId: string, remainingSeconds: number, now: Date, dryRun = false):
+  Promise<{ limitSeconds: number | null; usedSeconds: number; newLimitSeconds: number | null; changed: boolean } | null> {
+  if (!Number.isInteger(remainingSeconds) || remainingSeconds < 0) throw new Error('test-call time is a whole number of seconds, 0 or more');
+  const [row] = await db.select({ id: clinics.id }).from(clinics).where(eq(clinics.id, clinicId));
+  if (!row) return null;
+  const { limitSeconds, usedSeconds } = await testCallAllowance(db, clinicId, now);
+  if (limitSeconds === null) return { limitSeconds, usedSeconds, newLimitSeconds: null, changed: false };
+  const newLimitSeconds = Math.max(limitSeconds, usedSeconds + remainingSeconds);
+  const changed = newLimitSeconds !== limitSeconds;
+  if (changed && !dryRun) await setTestCallLimit(db, clinicId, newLimitSeconds);
+  return { limitSeconds, usedSeconds, newLimitSeconds, changed };
+}
+
 /** True the first time a webhook delivery id is seen, false for every retry after. */
 export async function claimDelivery(db: Database, id: string, source: 'openai' | 'twilio'): Promise<boolean> {
   const rows = await db.insert(webhookDeliveries).values({ id, source }).onConflictDoNothing().returning({ id: webhookDeliveries.id });

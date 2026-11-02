@@ -24,7 +24,7 @@ describe('a request says who made it', () => {
     const mine = list.find((t) => t.id === id)!;
     expect(mine.createdBy).toEqual({ name: 'Ana Front', role: 'staff', avatarUrl: null });
     // the name typed is the request's title when no record is linked
-    expect(mine.details).toMatchObject({ name: 'Dana Whitfield', callback_number: '505-555-0142' });
+    expect(mine.details).toMatchObject({ name: 'Dana Whitfield', callback_number: '+15055550142' });
     expect(list.find((t) => t.id === api.taskId)).toMatchObject({ callId: api.callId, createdBy: null });
 
     // with a picture, its address comes along

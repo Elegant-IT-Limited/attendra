@@ -18,6 +18,7 @@ Without the token the routes answer 404. With it, every request needs `Authoriza
 | `POST /provisioning/users/reset-two-factor` | `{ email }`. Support, for someone who lost their phone and has nobody at the clinic to reset two-step sign-in for them. Turns it off and signs them out everywhere; they set it up again at their next sign-in. `204` or `404`. |
 | `PUT /provisioning/clinics/:clinicId/voice-engine` | `{ engine }`: `gpt-live`, `gpt-realtime`, or `null` for the deployment's default. Which engine answers the clinic's calls (see docs/live-call.md, Two engines). Settings cannot change it. |
 | `PUT /provisioning/clinics/:clinicId/test-call-limit` | `{ seconds }`, or `null` for no limit. |
+| `POST /provisioning/clinics/:clinicId/test-call-top-up` | `{ remainingSeconds, dryRun? }`: at least this much test-call time left (the limit becomes the time used plus it, never lower). Returns `{ limitSeconds, usedSeconds, newLimitSeconds, changed }`; a clinic with no limit keeps none. |
 | `PUT /provisioning/clinics/:clinicId/numbers/:number` | Points a number (E.164, URL-encoded) at the clinic: calls to it reach the assistant and texts are sent from it. |
 | `DELETE /provisioning/numbers/:number` | Stops a number reaching any clinic. |
 | `GET /provisioning/clinics/:clinicId/usage?from=&to=` | Phone calls in the period (ISO times): `{ calls, seconds }`, each call start to end, rounded up to the second. Browser test calls are not counted. |

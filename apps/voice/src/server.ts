@@ -494,7 +494,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return;
       }
       const clinic = ClinicConfig.parse(stored);
-      const from = callerNumber(headers);
+      const from = callerNumber(headers, clinic);
       if (router && clinic.voiceEngine && clinic.voiceEngine !== came) {
         deps.log.warn({ session_id: sessionId, clinic_id: clinic.id, chosen: clinic.voiceEngine, came }, 'the clinic chose another engine, but OpenAI sent this kind of call: answering with the engine it came on');
       }
