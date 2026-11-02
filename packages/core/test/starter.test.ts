@@ -45,3 +45,13 @@ describe('visit types the team books', () => {
     expect(configProblems({ providers: [], visitTypes: [{ ...types[1]!, noticeHours: 96, maxDaysAhead: 3 }] })).toEqual([{ path: 'visitTypes.0.noticeHours', message: 'surgery consultation: the notice is longer than the furthest date, so no day can be booked' }]);
   });
 });
+
+describe('the country chosen at sign-up', () => {
+  it('sets the emergency number, whatever the phone number\'s prefix', async () => {
+    const { emergencyNumberFor, starterClinic: starter } = await import('../src');
+    const uk = starter({ id: 'clinic_uk', name: 'Thames Vets', timezone: 'Europe/London', industry: 'vet', phone: '+13035550100', country: 'GB' });
+    expect(uk.country).toBe('GB');
+    expect(emergencyNumberFor(uk)).toBe('999');
+    expect(starter({ id: 'clinic_us', name: 'Elm Vets', timezone: 'America/Denver', industry: 'vet', phone: '+13035550100' }).country).toBeUndefined();
+  });
+});

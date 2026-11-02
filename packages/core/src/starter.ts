@@ -11,6 +11,8 @@ export interface StarterInput {
   industry: Industry;
   /** The clinic's own main number, E.164. It sets the country (emergency number, phone formats) until a number reaches Attendra. */
   phone: string;
+  /** The country chosen at sign-up (ISO code), for the emergency number; absent, the phone's country. */
+  country?: string | undefined;
 }
 
 const WEEKDAYS = { open: '08:00', close: '18:00' };
@@ -42,6 +44,7 @@ export function starterClinic(input: StarterInput): ClinicConfig {
     industry: input.industry,
     timezone: input.timezone,
     phoneNumbers: [input.phone],
+    ...(input.country ? { country: input.country } : {}),
     hours: { '1': [WEEKDAYS], '2': [WEEKDAYS], '3': [WEEKDAYS], '4': [WEEKDAYS], '5': [WEEKDAYS] },
     greeting: PACKS.en.greeting({ assistantName: null, clinicName: input.name }),
     languages: ['en'],
