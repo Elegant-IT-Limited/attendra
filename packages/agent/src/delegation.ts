@@ -78,12 +78,15 @@ const CLAUSE = /[.,;:!]|\b(but|pero|and now|y ahora)\b/g;
  */
 function saidSafe(text: string, safe: RegExp | undefined): boolean {
   if (!safe || /[?¿]/.test(text)) return false;
-  const m = safe.exec(text);
-  if (!m) return false;
-  const before = text.slice(0, m.index);
-  let start = 0;
-  for (const c of before.matchAll(CLAUSE)) start = c.index + c[0].length;
-  return !NOT_SAFE_BEFORE.test(before.slice(start));
+  // any one of them said plainly: "I don't think he's okay... but he's fine now" is said
+  const all = new RegExp(safe.source, safe.flags.includes('g') ? safe.flags : `${safe.flags}g`);
+  for (const m of text.matchAll(all)) {
+    const before = text.slice(0, m.index);
+    let start = 0;
+    for (const c of before.matchAll(CLAUSE)) start = c.index + c[0].length;
+    if (!NOT_SAFE_BEFORE.test(before.slice(start))) return true;
+  }
+  return false;
 }
 
 /**
@@ -155,12 +158,25 @@ export class CallAgent {
     if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
     // the trade's own emergencies (an animal in danger) are checked too, before the engine's
     const trade = industryPack(clinic.industry);
-    const fresh = detectEmergencies(this.state.recentCallerText(), trade.emergency?.phrases).filter((m) => !this.state.emergencyKinds.has(m.kind));
+    if (this.state.emergencyLocked) this.sinceLock = `${this.sinceLock} ${delta}`.slice(-400);
+    let fresh = detectEmergencies(this.state.recentCallerText(), trade.emergency?.phrases).filter((m) => !this.state.emergencyKinds.has(m.kind));
+    // At a clinic for animals an emergency is decided by its signs, not the word: "she had an emergency last week",
+    // "after her emergency surgery", "the emergency doctor" are not one. The word alone gets one short question
+    // ("Is Ginger in danger right now?"), and only a yes holds the call (two test calls were stuck on the word).
+    const danger = trade.emergency ? this.state.answerToDangerQuestion() : null;
+    let asked: Outbound[] = [];
+    if (trade.emergency && fresh.length && fresh.every((m) => m.kind === 'general')) {
+      if (this.state.emergencyLocked) for (const m of fresh) this.state.emergencyKinds.add(m.kind); // already held: nothing new to say
+      else if (danger !== 'yes') asked = this.askAboutDanger(endMs);
+      fresh = [];
+    }
+    if (danger === 'yes' && !this.state.emergencyLocked && !fresh.length) fresh = [{ kind: 'general', phrase: 'yes', language: this.state.language }];
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return [...this.maybeClearEmergency(delta), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
+    this.sinceLock = '';
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
@@ -176,7 +192,7 @@ export class CallAgent {
     // offers it, and otherwise in the language of the call. The number is the clinic's.
     const language = clinic.languages.includes(match.language) ? match.language : this.state.language;
     const pack = PACKS[language];
-    const number = emergencyNumberFor(clinic);
+    const number = emergencyNumberFor(clinic, language);
     // an animal in danger (or the bare word "emergency" at a clinic for animals) gets the trade's script
     const forTrade = trade.emergency && (isPetEmergency(match.kind) || match.kind === 'general');
     // the clinic's first choice of hospital that is open now; none open, the nearest 24-hour one
@@ -186,6 +202,7 @@ export class CallAgent {
         : pack.emergencyScript(number);
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     // what the caller must hear before anyone may end the call: the hospital's name, or the number
+    this.state.emergencyScriptSaid = false;
     this.emergencyScript = { content: script, number: forTrade && hospital ? hospital.name : number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
     // once per call, the first time a kind serious enough is heard: "this is an emergency"
     // on its own does not ring anyone, and must not stop the chest pain after it from doing so
@@ -207,23 +224,68 @@ export class CallAgent {
    * emergency on the call was an animal's (or the bare word "emergency" at a vet clinic):
    * never after a person in danger. The emergency stays on the call's record.
    */
-  private maybeClearEmergency(delta: string): Outbound[] {
+  private maybeClearEmergency(): Outbound[] {
     const s = this.state;
     const safe = industryPack(this.ctx.clinic.industry).emergency?.safe;
-    if (!s.emergencyLocked || !safe || !this.canEndByStaff()) return [];
+    if (!s.emergencyLocked || !safe) return [];
     if (![...s.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) return [];
-    const text = normalise(delta);
+    // what they said since the call was held and the assistant last spoke, across fragments ("No, it's not" / "an emergency, he's not hurt"),
+    // and at once: they are not kept waiting until the script has been heard
+    const text = normalise(this.sinceLock);
     if (!this.ctx.clinic.languages.some((l) => saidSafe(text, safe[l]))) return [];
+    return this.clearEmergency();
+  }
+
+  /** The caller's words since an emergency held the call: what may lift it. */
+  private sinceLock = '';
+
+  /** An animal emergency is lifted: the call goes on, the emergency stays on the record, and the hospital isn't said again. */
+  private clearEmergency(): Outbound[] {
+    const s = this.state;
     s.emergencyCleared = true;
+    this.sinceLock = '';
     s.revision++;
     this.log.info({ call_id: this.ctx.callId, emergency_kind: s.emergency?.kind }, 'caller said the animal is safe; the call goes on');
     this.emit({ type: 'emergency', kind: 'cleared' });
     this.emitState();
-    return [{ type: 'instructions', delegationId: null, content: 'The caller says the animal is safe and it is not an emergency. You may help with what they ask now, including booking a visit. If anything they say sounds urgent again, repeat where to take the animal.' }];
+    return [{ type: 'instructions', delegationId: null, content: 'The caller says the animal is safe and it is not an emergency. Say you are glad in a few words, then help with what they ask now, including booking a visit. Do not say the emergency hospital again unless they ask for it or describe a danger sign.' }];
+  }
+
+  /**
+   * The word "emergency" alone at a clinic for animals: one short question, once per call, and the task goes on.
+   * Only a yes, or a real sign (not breathing, bleeding, a toxin eaten...), holds the call.
+   */
+  private askAboutDanger(atMs: number): Outbound[] {
+    const s = this.state;
+    if (s.dangerQuestion) return [];
+    s.dangerQuestion = { atMs, askedAtMs: null, answered: false };
+    this.log.info({ call_id: this.ctx.callId }, 'the word "emergency" alone: asking whether the animal is in danger now');
+    const es = s.language === 'es';
+    return [{
+      type: 'instructions', delegationId: null,
+      content: 'The caller said the word "emergency". The word alone is not an emergency: it may be about the past, a planned surgery or a vet\'s title. '
+        + 'Do not give the emergency script and do not drop their request. If they clearly mean the past, a planned surgery or a title, just carry on. '
+        + (es
+          ? 'Otherwise ask once, in Spanish, in one short sentence: "¿<the pet\'s name, or su mascota> está en peligro ahora mismo, por ejemplo le cuesta respirar, sangra o se desmayó?" '
+          : 'Otherwise ask once, in one short sentence: "Is <the pet\'s name, or your pet> in danger right now, like trouble breathing, bleeding or a collapse?" ')
+        + 'If they say no, carry on with what they want. Never ask it twice.',
+    }];
+  }
+
+  /** The caller said the animal is not in danger: an emergency it held is lifted, otherwise the call simply goes on. */
+  private notInDanger(): Outbound[] {
+    const s = this.state;
+    if (s.emergencyLocked) {
+      if (![...s.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) return [];
+      return this.clearEmergency();
+    }
+    this.log.info({ call_id: this.ctx.callId }, 'the caller says the animal is not in danger; the call goes on');
+    return [{ type: 'instructions', delegationId: null, content: 'The caller says the animal is not in danger. Say you are glad in a few words, then carry on with what they want. Do not mention emergencies again unless they describe a danger sign.' }];
   }
 
   onAgentTranscript(delta: string, startMs: number, endMs: number) {
     this.state.addTranscript('agent', delta, startMs, endMs);
+    this.sinceLock = ''; // only what the caller says after the assistant's last words may lift an emergency
     this.emit({ type: 'caption', speaker: 'agent', text: delta, atMs: startMs });
     const s = this.emergencyScript;
     if (s && !s.said) {
@@ -231,6 +293,7 @@ export class CallAgent {
       // a number ("9-1-1") or a hospital's name ("City Pet ER"), however it was spaced or punctuated
       const plain = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
       s.said = plain(s.heard).includes(plain(s.number));
+      if (s.said) this.state.emergencyScriptSaid = true;
     }
   }
 

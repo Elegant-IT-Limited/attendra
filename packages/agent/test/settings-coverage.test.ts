@@ -45,6 +45,7 @@ const AUDIT: Record<string, Way> = {
   languages: 'prompt',
   primaryLanguage: 'prompt',
   emergencyNumber: 'code', // the emergency script says it
+  country: 'code', // picks the emergency number (the country's), or "your local emergency number" when it isn't on file
   voice: 'code',
   'providers[].id': 'code',
   'providers[].name': 'clinic_info',

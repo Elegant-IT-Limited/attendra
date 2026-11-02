@@ -301,6 +301,8 @@ const ClinicConfigShape = z.object({
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
   }, 'unknown IANA time zone'),
   phoneNumbers: z.array(e164).min(1),
+  // the clinic's country (ISO code), for the emergency number its scripts give; absent, the first phone number's country
+  country: z.string().regex(/^[A-Z]{2}$/, 'a two-letter country code').optional(),
   hours: WeeklyHours,
   holidays: z.array(isoDate).default([]),
   // who the assistant books with when the caller names nobody

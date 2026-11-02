@@ -210,9 +210,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
-    return refuse('emergency_in_progress', trade.identity === 'pet'
-      ? 'Do not continue the task. Repeat where to take the animal now, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic) + '.'
-      : `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic)}.`);
+    if (trade.identity !== 'pet') return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic, state.language)}.`);
+    // the hospital is said once, never looped: a caller still asking for a booking after it is asked, once, whether the
+    // animal is in danger now; their no lets the call go on (two test calls repeated the hospital four times and never booked)
+    if (!state.emergencyScriptSaid) return refuse('emergency_in_progress', 'Do not continue the task yet. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
+    state.dangerQuestion ??= { atMs: state.lastMs(), askedAtMs: null, answered: false };
+    return refuse('emergency_in_progress', state.dangerQuestion.answered
+      ? 'The caller already heard where to take the animal: do not say it again. Do not continue the task: offer a callback from the team, or ask if there is anything else.'
+      : 'The caller already heard where to take the animal: do not say it again. Ask once, in one short sentence, whether the animal is in danger right now, like trouble breathing, bleeding or a collapse. If they say no, the call goes on and you can help with their request.');
   }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
@@ -1054,7 +1059,7 @@ export function textContent(
     case 'emergency_hospital': {
       const h = hospitalFor(clinic, now);
       if (!h) return null;
-      return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic) } };
+      return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic, lang) } };
     }
     case 'provider': {
       const p = clinic.providers.find((x) => x.id === ref && !x.placeholder);

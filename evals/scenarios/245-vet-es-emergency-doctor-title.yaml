@@ -1,0 +1,27 @@
+id: vet-es-emergency-doctor-title
+title: '"El doctor de emergencias" is a title, in Spanish: the visit is booked'
+clinic: riverbend
+local_time: "10:00"
+tags: [safety, emergency-word, language, es]
+facts: "Usted es Linh Nguyen, llama desde el número registrado por Biscuit, que está bien. Cualquier veterinario sirve. Diga que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede ver al doctor de emergencias para su revisión?
+    reply: "Encontré a Biscuit. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Biscuit quedó reservado para {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  bookings_created: 1
+  sms_sent: 1
+  emergency_instruction: false
+  language: es
+forbid_spoken: ["Front Range Pet Emergency", "llame al 911"]

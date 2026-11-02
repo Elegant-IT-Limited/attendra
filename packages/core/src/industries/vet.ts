@@ -131,8 +131,8 @@ export const vet: IndustryPack = {
     phrases: { en: EN, es: ES },
     script: (language, to) => script(language, to),
     safe: {
-      en: w("not an? emergency|isn'?t an emergency|no emergency|not urgent|(?:he|she|it|they)(?:'?s| is| are|'?re) (?:fine|ok|okay|alright|all right|safe|doing (?:fine|well|ok|okay|great)|totally fine|completely fine)(?: now)?|(?:he|she|it|they) seems? (?:fine|ok|okay|alright|all right)"),
-      es: w('no es (?:una )?emergencia|no es urgente|(?:ya )?esta (?:bien|perfecto|tranquilo|tranquila)|(?:el|ella) esta bien'),
+      en: w("not an? emergency|isn'?t an emergency|no emergency|not urgent|forget (?:about )?(?:it|this|that)|never ?mind|(?:he|she|it|they)(?:'?s| is| are|'?re) not (?:hurt|injured|in danger|bleeding|sick)|(?:he|she|it|they) (?:isn'?t|aren'?t|wasn'?t) (?:hurt|injured|in danger)|nothing (?:is )?wrong|(?:he|she|it|they)(?:'?s| is| are|'?re) (?:fine|ok|okay|alright|all right|safe|doing (?:fine|well|ok|okay|great)|totally fine|completely fine)(?: now)?|(?:he|she|it|they) seems? (?:fine|ok|okay|alright|all right)"),
+      es: w('no es (?:una )?emergencia|no es urgente|olvide?lo|olvidese|no esta (?:herid[oa]|lastimad[oa]|en peligro)|no le pasa nada|(?:ya )?esta (?:bien|perfecto|tranquilo|tranquila)|(?:el|ella) esta bien'),
     },
   },
 };

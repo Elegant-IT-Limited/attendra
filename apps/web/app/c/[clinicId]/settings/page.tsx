@@ -270,7 +270,7 @@ export default function Settings() {
           </div>
           <div className="space-y-4 border-t border-border pt-5">
             <Switch id="emergency-transfer" label="Transfer emergencies to on-call" checked={c.emergencyTransferEnabled} onCheckedChange={(v) => set({ emergencyTransferEnabled: v })}
-              hint={`After the ${emergencyNumberFor(c)} script, ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
+              hint={`After the emergency script (${emergencyNumberFor(c)}), ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
             <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
               hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
             {c.recording.enabled && (

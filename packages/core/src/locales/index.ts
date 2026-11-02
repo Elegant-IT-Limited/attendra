@@ -24,54 +24,89 @@ export function detectLanguage(callerText: string, offered: readonly Language[],
   return best.code;
 }
 
-// European Union country codes, where 112 is the emergency number
 // the euro area, by calling code
 const EURO = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '+357', '+358', '+370', '+371', '+372', '+385', '+386', '+39', '+421', '+43', '+49'];
-const EU = ['+30', '+31', '+32', '+33', '+34', '+351', '+352', '+353', '+356', '+357', '+358', '+359', '+36', '+370', '+371', '+372', '+385', '+386', '+39', '+40', '+420', '+421', '+43', '+45', '+46', '+48', '+49'];
+
+/** A country Attendra knows the emergency number of: its ISO code, its name as Settings shows it, its calling code and its numbers (ambulance first). */
+export interface EmergencyCountry { code: string; name: string; prefix: string; numbers: string[] }
+
+const EU_MEMBERS: [string, string, string][] = [
+  ['AT', 'Austria', '+43'], ['BE', 'Belgium', '+32'], ['BG', 'Bulgaria', '+359'], ['HR', 'Croatia', '+385'], ['CY', 'Cyprus', '+357'],
+  ['CZ', 'Czechia', '+420'], ['DK', 'Denmark', '+45'], ['EE', 'Estonia', '+372'], ['FI', 'Finland', '+358'], ['FR', 'France', '+33'],
+  ['DE', 'Germany', '+49'], ['GR', 'Greece', '+30'], ['HU', 'Hungary', '+36'], ['IT', 'Italy', '+39'], ['LV', 'Latvia', '+371'],
+  ['LT', 'Lithuania', '+370'], ['LU', 'Luxembourg', '+352'], ['MT', 'Malta', '+356'], ['NL', 'the Netherlands', '+31'], ['PL', 'Poland', '+48'],
+  ['PT', 'Portugal', '+351'], ['RO', 'Romania', '+40'], ['SK', 'Slovakia', '+421'], ['SI', 'Slovenia', '+386'], ['ES', 'Spain', '+34'], ['SE', 'Sweden', '+46'],
+];
 
 /**
- * The emergency numbers a clinic may give callers, by the country of its first phone
- * number; the first is the default. A clinic may pick another number only from its
- * country's list, so a typo ("91") can never be what a caller in danger is told to
- * ring. A country not listed gets 112, which mobile networks route everywhere.
+ * The countries whose emergency numbers the scripts may give, by ISO code. Anything else has none on file, and the
+ * assistant says "your local emergency number": never a guess (a test call at a clinic abroad was told 112, a number
+ * its country does not use).
  */
-export function allowedEmergencyNumbers(phoneNumbers: readonly string[]): string[] {
-  const first = phoneNumbers[0] ?? '';
-  const listed = EMERGENCY_NUMBERS.find(([prefix]) => first.startsWith(prefix));
-  if (listed) return listed[1];
-  if (EU.some((c) => first.startsWith(c))) return ['112'];
-  return ['112'];
+export const EMERGENCY_COUNTRIES: EmergencyCountry[] = [
+  { code: 'US', name: 'the United States', prefix: '+1', numbers: ['911'] },
+  { code: 'CA', name: 'Canada', prefix: '+1', numbers: ['911'] },
+  { code: 'MX', name: 'Mexico', prefix: '+52', numbers: ['911'] },
+  { code: 'GB', name: 'the United Kingdom', prefix: '+44', numbers: ['999', '112'] },
+  { code: 'IE', name: 'Ireland', prefix: '+353', numbers: ['112', '999'] },
+  { code: 'AU', name: 'Australia', prefix: '+61', numbers: ['000', '112'] },
+  { code: 'NZ', name: 'New Zealand', prefix: '+64', numbers: ['111'] },
+  { code: 'HK', name: 'Hong Kong', prefix: '+852', numbers: ['999'] },
+  { code: 'SG', name: 'Singapore', prefix: '+65', numbers: ['995', '999'] }, // ambulance, then police
+  { code: 'JP', name: 'Japan', prefix: '+81', numbers: ['119', '110'] }, // ambulance, then police
+  { code: 'ZA', name: 'South Africa', prefix: '+27', numbers: ['10177', '112'] }, // ambulance, then mobile
+  { code: 'IN', name: 'India', prefix: '+91', numbers: ['112', '108'] },
+  { code: 'BR', name: 'Brazil', prefix: '+55', numbers: ['192', '190'] }, // ambulance, then police
+  ...EU_MEMBERS.map(([code, name, prefix]) => ({ code, name, prefix, numbers: ['112'] })),
+];
+
+type CountryOf = { country?: string | null; phoneNumbers: readonly string[] };
+
+/**
+ * The clinic's country for its emergency number: the country it set in Settings; without one, the country of its first
+ * phone number's calling code (+1 is the United States or Canada, both 911). Null when neither is known.
+ */
+export function emergencyCountryOf(clinic: CountryOf): EmergencyCountry | null {
+  if (clinic.country) return EMERGENCY_COUNTRIES.find((c) => c.code === clinic.country) ?? null;
+  const first = clinic.phoneNumbers[0] ?? '';
+  // the longest calling code that fits: +353 before +35..., +1 last
+  const byPrefix = [...EMERGENCY_COUNTRIES].sort((a, b) => b.prefix.length - a.prefix.length).find((c) => first.startsWith(c.prefix));
+  if (!byPrefix) return null;
+  return byPrefix.prefix === '+1' ? { code: 'US', name: 'the United States or Canada', prefix: '+1', numbers: ['911'] } : byPrefix;
+}
+
+/** The country Settings names for the emergency number ("the United Kingdom"), or null when it isn't known. */
+export function emergencyCountry(phoneNumbers: readonly string[], country?: string | null): string | null {
+  return emergencyCountryOf({ phoneNumbers, country })?.name ?? null;
 }
 
 /**
- * The emergency (ambulance first) numbers of the countries Attendra is used in most,
- * by calling code; longer codes before the shorter ones they start with.
+ * The emergency numbers a clinic may give callers, by its country; the first is the default. A clinic may pick another
+ * number only from its country's list, so a typo ("91") can never be what a caller in danger is told to ring. None for a
+ * country not on file.
  */
-const EMERGENCY_NUMBERS: [string, string[]][] = [
-  ['+353', ['112', '999']], // Ireland
-  ['+852', ['999']], // Hong Kong
-  ['+1', ['911']], // the United States and Canada
-  ['+44', ['999', '112']], // the United Kingdom
-  ['+61', ['000', '112']], // Australia
-  ['+64', ['111']], // New Zealand
-  ['+65', ['995', '999']], // Singapore: ambulance, then police
-  ['+52', ['911']], // Mexico
-  ['+81', ['119', '110']], // Japan: ambulance, then police
-  ['+27', ['10177', '112']], // South Africa: ambulance, then mobile
-  ['+91', ['112', '108']], // India
-  ['+55', ['192', '190']], // Brazil: ambulance, then police
-];
+export function allowedEmergencyNumbers(phoneNumbers: readonly string[], country?: string | null): string[] {
+  return emergencyCountryOf({ phoneNumbers, country })?.numbers ?? [];
+}
 
-/** The emergency number a clinic's scripts use: the one it set, if its country allows it, otherwise the country's. */
-export function emergencyNumberFor(clinic: { emergencyNumber?: string | null; phoneNumbers: string[] }): string {
-  const allowed = allowedEmergencyNumbers(clinic.phoneNumbers);
+/** Said instead of a number when the clinic's country isn't known: never a guess. Spanish reads after "llame al". */
+export const LOCAL_EMERGENCY_NUMBER: Record<Language, string> = { en: 'your local emergency number', es: 'número local de emergencias' };
+
+/**
+ * The emergency number a clinic's scripts use: the one it set, if its country allows it, otherwise the country's;
+ * "your local emergency number" (in the call's language) when the country isn't known.
+ */
+export function emergencyNumberFor(clinic: { emergencyNumber?: string | null; country?: string | null; phoneNumbers: string[] }, language: Language = 'en'): string {
+  const allowed = allowedEmergencyNumbers(clinic.phoneNumbers, clinic.country);
+  if (!allowed.length) return LOCAL_EMERGENCY_NUMBER[language];
   return clinic.emergencyNumber && allowed.includes(clinic.emergencyNumber) ? clinic.emergencyNumber : allowed[0]!;
 }
 
 /** Why a clinic's emergency number cannot be saved, or null when it can. */
-export function emergencyNumberProblem(clinic: { emergencyNumber?: string | null; phoneNumbers: string[] }): string | null {
-  const allowed = allowedEmergencyNumbers(clinic.phoneNumbers);
+export function emergencyNumberProblem(clinic: { emergencyNumber?: string | null; country?: string | null; phoneNumbers: string[] }): string | null {
+  const allowed = allowedEmergencyNumbers(clinic.phoneNumbers, clinic.country);
   if (!clinic.emergencyNumber || allowed.includes(clinic.emergencyNumber)) return null;
+  if (!allowed.length) return 'we don\'t know the emergency number for this clinic\'s country yet, so leave it empty: the assistant says "your local emergency number"';
   return `the emergency number must be ${allowed.join(' or ')} for this clinic's country`;
 }
 
