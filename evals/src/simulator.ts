@@ -303,7 +303,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       await segment('agent', text, clock);
     };
     if (!turn.delegate && !livePlanner) { await say(); continue; }
-    if (state.emergencyLocked) { await say(); break; } // the script holds the call; nothing else runs while it does
+    // the script holds the call; nothing else runs while it does. A caller with more to say (that it's not an emergency)
+    // still says it, and the call goes on from there
+    if (state.emergencyLocked) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
     if (livePlanner) queue.push(livePlanner);
     else {
