@@ -86,11 +86,11 @@ const simulated = process.env.ATTENDRA_SIMULATED_CALLS !== 'off';
 const realCalls = !!process.env.OPENAI_API_KEY && process.env.ATTENDRA_TEST_CALLS !== 'off';
 if (realCalls || simulated) {
   const voicePort = Number(process.env.VOICE_PORT || 8080);
-  const maxSeconds = Number(process.env.BROWSER_CALL_MAX_SECONDS || 300);
+  const maxSeconds = Number(process.env.BROWSER_CALL_MAX_SECONDS || 900);
   const internalToken = randomBytes(32).toString('base64url');
   const common = {
     db, cipher, log: createLogger({ name: 'voice', level: process.env.LOG_LEVEL ?? 'info' }), internalToken,
-    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 300, jobs: bossQueue(boss), knowledge,
+    browserCallMaxSeconds: Number.isFinite(maxSeconds) ? Math.min(Math.max(maxSeconds, 30), 1800) : 900, jobs: bossQueue(boss), knowledge,
   };
   const voiceApp = realCalls
     ? createVoiceApp({

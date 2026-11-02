@@ -141,7 +141,7 @@ export function countryCopy(clinic: { phoneNumbers: string[] }) {
     currency,
     exampleDob: us ? '03/04/1985' : '04/03/1985',
     recordingHint: us
-      ? 'Off by default. Several US states require every party to consent, so a notice plays first.'
-      : 'Off by default. Check the law where you are before recording calls. A notice plays first.',
+      ? 'Off by default. Several US states require every party to consent, so the notice is said in the greeting, before the first question.'
+      : 'Off by default. Check the law where you are before recording calls. The notice is said in the greeting, before the first question.',
   };
 }

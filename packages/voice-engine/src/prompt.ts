@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
+import { type ClinicConfig, defaultTalkStyle, greetingFor, industryPack, isOpen, openingWords, PACKS, type TalkStyle, textingOf, todaysHoursLine } from '@attendra/core';
 
 /** Who a transfer reaches, in the words the voice uses for it. */
 const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', billing: 'billing', on_call: 'the on-call vet or doctor, for an emergency' };
+
+/** The clinic's recording notice when recording is on, else null. */
+const recordingNotice = (clinic: ClinicConfig) => (clinic.recording.enabled && clinic.recording.notice ? clinic.recording.notice : null);
 
 /**
  * The conversation prompt GPT-Live starts with: voice, tone and when to hand work
@@ -15,8 +18,8 @@ const TRANSFER_TO: Record<string, string> = { front_desk: 'the front desk', bill
  * the start and the same instruction once the sideband is attached.
  */
 export function openingInstruction(clinic: ClinicConfig): string {
-  const notice = clinic.recording.enabled && clinic.recording.notice ? ` Then say: "${clinic.recording.notice}"` : '';
-  return `The call has just been answered. Greet the caller now, in ${PACKS[clinic.primaryLanguage].name}, before they say anything. Say exactly: "${clinic.greeting}"${notice} Then pause and listen. Say this greeting only once in the whole call.`;
+  // the recording notice before the greeting's question, so the caller doesn't talk over it
+  return `The call has just been answered. Greet the caller now, in ${PACKS[clinic.primaryLanguage].name}, before they say anything. Say exactly: "${openingWords(clinic.greeting, recordingNotice(clinic))}" Then pause and listen. Say this greeting only once in the whole call.`;
 }
 
 /**
@@ -111,8 +114,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
   const { terms, prompt } = industryPack(clinic.industry);
   return [
     `You answer the phone for ${clinic.name}.`,
-    `Start with exactly this greeting: "${clinic.greeting}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is. If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.`,
-    clinic.recording.enabled && clinic.recording.notice ? `Then say: "${clinic.recording.notice}"` : '',
+    `Start with exactly this greeting: "${openingWords(clinic.greeting, recordingNotice(clinic))}" It is said once, at the very start of the call. Never say it again later in the call, not after a pause, a note from the staff or a question you could not answer: carry on from where the conversation is. If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.`,
     // a name is for warmth, never for passing as a person
     `You are ${clinic.assistantName ? `${clinic.assistantName}, ` : ''}the ${terms.business}'s AI assistant. If asked, say you are an AI assistant. Never claim to be a person.`,
     `Speak ${PACKS[clinic.primaryLanguage].name}${others.length ? `. You may also speak ${others.map((l) => PACKS[l].name).join(' and ')} if the caller does; answer in the language the caller uses, and switch back if they do` : ''}. Speak no other language. If the caller speaks one you do not, say in ${PACKS[clinic.primaryLanguage].name}, kindly and in one sentence, that you can only help in ${[clinic.primaryLanguage, ...others].map((l) => PACKS[l].name).join(' or ')}, and ask if they can carry on in it. If they cannot, offer to have someone from the ${terms.business} call them back.`,

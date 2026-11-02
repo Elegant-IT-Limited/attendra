@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel } from '@attendra/core';
+import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -274,9 +274,19 @@ export default function Settings() {
               hint={`After the emergency script (${emergencyNumberFor(c)}), ring the on-call number from Transfers. The script itself always plays and cannot be turned off.`} disabled={!writable || save.isPending} />
             <Switch id="recording" label="Record calls" checked={c.recording.enabled} onCheckedChange={(v) => set({ recording: { ...c.recording, enabled: v } })}
               hint={countryCopy(c).recordingHint} disabled={!writable || save.isPending} />
-            {c.recording.enabled && (
-              <Field label="Recording notice" htmlFor="notice" hint="Played before anything else, so every caller hears it."><Input id="notice" value={c.recording.notice ?? ''} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} /></Field>
-            )}
+            {c.recording.enabled && (<>
+              <Field label="Recording notice" htmlFor="notice" hint={c.recording.notice?.trim() && !noticeIsSentence(c.recording.notice)
+                ? 'Write it as a full sentence, ending with a full stop: it is said right after the greeting\'s first words, before "How can I help you today?".'
+                : 'Said right after the clinic\'s and the assistant\'s names, before the question, so every caller hears it.'}>
+                <div className="flex flex-wrap gap-2">
+                  <Input id="notice" className="min-w-0 flex-1" maxLength={300} value={c.recording.notice ?? ''} placeholder={DEFAULT_RECORDING_NOTICE.en} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} />
+                  {(c.recording.notice ?? '') !== DEFAULT_RECORDING_NOTICE.en && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => set({ recording: { ...c.recording, notice: DEFAULT_RECORDING_NOTICE.en } })}>Use the default</Button>
+                  )}
+                </div>
+              </Field>
+              <p className="text-sm text-text-muted" data-testid="opening-preview">Callers hear: &ldquo;{openingWords(c.greeting, c.recording.notice || null)}&rdquo;</p>
+            </>)}
           </div>
         </Section>
 

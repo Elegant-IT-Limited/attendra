@@ -509,6 +509,25 @@ export const localName = (thing: { name: string; names?: Partial<Record<Language
   thing.names?.[language] ?? thing.name;
 
 /** The greeting for a language: the main greeting, the clinic's own for another language, or that language's suggestion. */
+/**
+ * The first words of a call: the greeting, with the recording notice (when one is on) said before the greeting's
+ * closing question, so the caller doesn't start talking over it ("Thanks for calling Riverbend, I'm Juniper, the
+ * clinic's AI assistant. This call may be recorded for quality and safety. How can I help you today?"). A greeting
+ * that doesn't end in a question gets the notice after it.
+ */
+export function openingWords(greeting: string, notice: string | null | undefined): string {
+  const n = notice?.trim();
+  if (!n) return greeting;
+  const m = /^([\s\S]*?[.!])\s+([^.!?]*\?)\s*$/.exec(greeting.trim());
+  return m ? `${m[1]} ${n} ${m[2]}` : `${greeting.trim()} ${n}`;
+}
+
+/** The default recording notice Settings offers, in each language: a full sentence. */
+export const DEFAULT_RECORDING_NOTICE = { en: 'This call may be recorded for quality and safety.', es: 'Esta llamada puede ser grabada por motivos de calidad y seguridad.' } as const;
+
+/** Whether a recording notice reads as a full sentence: a few words, ending in a full stop, ! or ?. Shown as a hint, never changed. */
+export const noticeIsSentence = (notice: string) => notice.trim().split(/\s+/).length >= 3 && /[.!?]$/.test(notice.trim());
+
 export function greetingFor(c: Pick<ClinicConfig, 'greeting' | 'greetings' | 'primaryLanguage' | 'assistantName' | 'name'>, language: Language): string {
   if (language === c.primaryLanguage) return c.greeting;
   return c.greetings?.[language] ?? PACKS[language].greeting({ assistantName: c.assistantName ?? null, clinicName: c.name });

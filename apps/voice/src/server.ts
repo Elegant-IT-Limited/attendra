@@ -38,7 +38,7 @@ export interface VoiceDeps {
   pairWaitMs?: number;
   /** Shared with the API for browser test calls. Without it the internal route does not exist. */
   internalToken?: string;
-  /** A browser test call is ended after this long. Defaults to 300. */
+  /** A browser test call is ended after this long. Defaults to 900 (15 minutes), still capped by the clinic's test minutes left. */
   browserCallMaxSeconds?: number;
   /** Browser test calls one clinic may have open at once. Defaults to 2. */
   browserCallsPerClinic?: number;
@@ -194,7 +194,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     });
   });
 
-  const maxSeconds = deps.browserCallMaxSeconds ?? 300;
+  const maxSeconds = deps.browserCallMaxSeconds ?? 900;
   if (!Number.isFinite(maxSeconds) || maxSeconds <= 0) throw new Error('browserCallMaxSeconds must be a positive number');
   const perClinic = deps.browserCallsPerClinic ?? 2;
   /** Open browser test calls: by call id for ending them, and a count per clinic for the limit. */

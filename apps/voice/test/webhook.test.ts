@@ -275,7 +275,7 @@ describe('browser test calls', () => {
     const res = await webCall(app, OFFER);
     await app.close();
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ callId: 'call_1', sdp: 'v=0 answer', maxSeconds: 300 });
+    expect(res.json()).toEqual({ callId: 'call_1', sdp: 'v=0 answer', maxSeconds: 900 });
     expect(engine.startBrowserCall).toHaveBeenCalledWith(expect.objectContaining({ id: DEMO_CLINIC.id }), 'v=0 offer', expect.any(Date));
     expect(d.openCall).toHaveBeenCalledWith(DEMO_CLINIC.id, 'live_web', null, 'web', 'user_ana');
     expect(engine.attach).toHaveBeenCalledWith('live_web');
@@ -286,7 +286,7 @@ describe('browser test calls', () => {
     const { d } = deps({ internalToken: TOKEN });
     const app = buildServer(d);
     expect((await webCall(app, { ...OFFER, maxSeconds: 90 })).json()).toMatchObject({ maxSeconds: 90 });
-    expect((await webCall(app, { ...OFFER, maxSeconds: 9000 })).json()).toMatchObject({ maxSeconds: 300 });
+    expect((await webCall(app, { ...OFFER, maxSeconds: 9000 })).json()).toMatchObject({ maxSeconds: 900 });
     expect((await webCall(app, { ...OFFER, maxSeconds: 0 })).statusCode).toBe(400);
     await app.close();
   });
