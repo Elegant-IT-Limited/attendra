@@ -69,3 +69,33 @@ export function initials(name: string) {
   const words = name.replace(/^Dr\.?\s+/i, '').split(/\s+/).filter(Boolean);
   return words.slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || name.slice(0, 2).toUpperCase();
 }
+
+// pixels per minute: a 15-minute visit is 26 pixels, so its block is a 24-pixel target (WCAG 2.2, 2.5.8) with a
+// gap; an 8 to 5 day is 945 pixels tall
+export const PX = 1.75;
+/** The least a visit block is drawn: a target anyone can tap. A shorter visit (5 or 10 minutes) still gets this. */
+export const MIN_BLOCK = 24;
+
+/** How tall a visit's block is drawn: as long as the visit, less a gap, and never less than a tappable target. */
+export const blockHeight = (s: number, e: number) => Math.max((e - s) * PX - 2, MIN_BLOCK);
+
+/**
+ * Columns for one lane's visits: blocks whose drawn extents meet (a cancelled visit and the one booked in its
+ * place, two booked at once, or short visits stretched to the minimum) form a group, and each in the group gets an
+ * equal share of the lane, booked before cancelled, then by start. A visit alone keeps the whole lane.
+ */
+export function placeBlocks<T extends { status: string }>(items: T[], span: (item: T) => readonly [number, number]): { item: T; column: number; columns: number }[] {
+  const drawn = items.map((item) => { const [s, e] = span(item); return { item, top: s * PX, bottom: s * PX + blockHeight(s, e) + 2 }; })
+    .sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+  const groups: (typeof drawn)[] = [];
+  let reach = -Infinity;
+  for (const d of drawn) {
+    const joins = d.top < reach;
+    if (joins) groups.at(-1)!.push(d); else groups.push([d]);
+    reach = joins ? Math.max(reach, d.bottom) : d.bottom;
+  }
+  return groups.flatMap((g) => {
+    const ordered = [...g].sort((a, b) => Number(a.item.status === 'cancelled') - Number(b.item.status === 'cancelled') || a.top - b.top);
+    return ordered.map((d, column) => ({ item: d.item, column, columns: g.length }));
+  });
+}
