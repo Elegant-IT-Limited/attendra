@@ -7,7 +7,7 @@ history: "Calls from this number in the last 30 days: 1."
 facts: "You are Grace Hale, calling from the family phone. Your cat is Juniper and she needs a check-up. Any vet and any time are fine."
 turns:
   - caller: Hi, it's Grace Hale. I'd like to book a check-up.
-    reply: "Thanks, Grace. Is this for Biscuit, Mochi or Juniper, or a new pet?"
+    reply: "Thanks, Grace. I see Biscuit, Mochi and Juniper under this number. Which one is it for, or is it a new pet?"
     delegate:
       - verify_caller: { owner_name: Grace Hale, pet_name: null }
   - caller: For Juniper.
@@ -18,4 +18,4 @@ turns:
 expect:
   outcome: abandoned
   verified: true
-  returned: ["Is this for Biscuit, Mochi or Juniper, or a new pet?"]
+  returned: ["I see Biscuit, Mochi and Juniper under this number. Which one is it for, or is it a new pet?"]

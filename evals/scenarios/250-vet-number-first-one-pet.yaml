@@ -1,0 +1,33 @@
+id: vet-number-first-one-pet
+title: 'Number first: caller ID is offered by its last four digits, the one pet on it is named, found, said first, and booked'
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550174"
+tags: [no-demo, number-first]
+facts: "You are Carmen Ortiz calling from the number on file about your dog Luna. Any time works. Say yes to the number, to the first time and to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0174?"
+  - caller: Yes, it is.
+    reply: "I see Luna under this number. Is this for Luna, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Yes, Luna.
+    reply: "I found Luna, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Luna is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["I see Luna under this number. Is this for Luna, or a new pet?", "I found Luna, your dog."]

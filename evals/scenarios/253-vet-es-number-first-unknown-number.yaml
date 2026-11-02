@@ -1,0 +1,41 @@
+id: vet-es-number-first-unknown-number
+title: 'Number first, in Spanish: a number with nothing on it is said so, then a new owner and pet are added and booked'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, language, es]
+facts: "Una llamada de prueba desde el navegador, sin identificador. Usted es Sam Rivera. Su número es 720 555 0187 y nunca ha ido a la clínica. Su perro Rex es macho y tiene tres años. Cualquier hora sirve. Diga que sí al número, a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, quiero reservar una revisión para mi perro.
+    reply: "Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"
+  - caller: 720 555 0187.
+    reply: "¿Es el 720-555-0187?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
+  - assistant: "¿Es el 720-555-0187?"
+  - caller: Sí.
+    reply: "No veo ninguna ficha con ese número. ¿Cómo se llama su perro, y es nuevo con nosotros?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "720 555 0187" }
+  - caller: Rex, es nuevo. Soy Sam Rivera, tiene tres años.
+    reply: "Ya agregué a Rex. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Rex, owner_name: Sam Rivera, species: perro, sex: male, birthday_or_age: tres años, phone: "720 555 0187" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Rex quedó reservado para {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [confirm_number, no_pets_on_number]
+  bookings_created: 1
+  language: es
+  returned: ["¿Es el 720-555-0187?", "No veo ninguna ficha con ese número."]
+  household: { phone: "+17205550187", names: [Rex] }

@@ -9,7 +9,7 @@ turns:
   - caller: Hi, I'd like to book a check-up.
     reply: "Am I speaking with Linh?"
   - caller: Yes, it's Lynn.
-    reply: "Thanks. Is this for Biscuit or Mochi, or a new pet?"
+    reply: "Thanks. I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"
     delegate:
       - verify_caller: { owner_name: Lynn, pet_name: null }
   - caller: Mochi.
@@ -31,5 +31,5 @@ expect:
   refusals: []
   bookings_created: 1
   sms_sent: 1
-  returned: ["Is this for Biscuit or Mochi, or a new pet?"]
+  returned: ["I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"]
 forbid_spoken: ["did not match", "didn't match", "couldn't find"]

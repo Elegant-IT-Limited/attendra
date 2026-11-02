@@ -8,6 +8,11 @@ channel: web
 facts: "This is a test call from the browser, so there is no caller ID. You are Linh Nguyen; the number on file is 720 555 0172. You want to cancel Biscuit's appointment on Thursday. Say yes to the read-back."
 turns:
   - caller: Hi, it's Linh. I need to cancel Biscuit's appointment on Thursday. My number is 720 555 0172.
+    reply: "That's 720-555-0172?"
+    delegate:
+      - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
+  - assistant: "That's 720-555-0172?"
+  - caller: Yes, that's right.
     reply: "I see Biscuit's wellness exam on Thursday. So I'd cancel the appointment on Thursday. Is that right?"
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: Biscuit, phone: "720 555 0172" }
@@ -20,6 +25,6 @@ turns:
 expect:
   outcome: cancelled
   verified: true
-  refusals: []
+  refusals: [confirm_number]
   sms_sent: 1
   sms_templates: [cancel_confirmed]

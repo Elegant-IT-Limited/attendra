@@ -9,7 +9,7 @@ turns:
   - caller: Hola, quiero reservar un chequeo, por favor.
     reply: "¿Hablo con Linh?"
   - caller: Sí, soy Lin.
-    reply: "Gracias. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    reply: "Gracias. Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"
     delegate:
       - verify_caller: { owner_name: Lin, pet_name: null }
   - caller: Para Mochi.
@@ -32,5 +32,5 @@ expect:
   refusals: []
   bookings_created: 1
   sms_sent: 1
-  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]
+  returned: ["Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"]
 forbid_spoken: ["no coinciden", "no encontré"]

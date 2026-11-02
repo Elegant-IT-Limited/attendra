@@ -64,6 +64,12 @@ export class CallState {
   askedIfNew = false;
   /** The owner was asked which of their pets on the number the call is for, "or a new pet": "Is it new to us?" is then never asked. */
   askedWhichPet = false;
+  /**
+   * A number the caller said, read back before it is searched ("That's 303-555-0130?"): its digits, when the read-back
+   * was handed to the voice, and when it was said. Their yes confirms it; the digits confirmed are searched from then on.
+   */
+  phoneReadback: { digits: string; atMs: number; askedAtMs: number | null } | null = null;
+  readonly phonesConfirmed = new Set<string>();
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
   phoneAsGiven: string | null = null;
   /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
@@ -204,9 +210,19 @@ export class CallState {
     // a card or social security number is never kept, shown or sent on, by either side
     const turn = this.turns.at(-1)!;
     turn.text = redactSensitive(turn.text);
+    if (speaker === 'agent' && this.phoneReadback && this.phoneReadback.askedAtMs === null && endMs > this.phoneReadback.atMs) {
+      this.phoneReadback.askedAtMs = Math.max(startMs, this.phoneReadback.atMs);
+    }
     // the danger question counts as asked once the assistant's words actually ask it, not on any reply after the note
     const q = this.dangerQuestion;
     if (speaker === 'agent' && q && q.askedAtMs === null && endMs > q.atMs && ASKED_DANGER.test(normalise(turn.text))) q.askedAtMs = Math.max(startMs, q.atMs);
+  }
+
+  /** Whether the caller said yes to the read-back of these digits since it was said. */
+  confirmedReadback(digits: string): boolean {
+    const r = this.phoneReadback;
+    if (!r || r.digits !== digits || r.askedAtMs === null) return false;
+    return isClearYes(this.latestCallerWordsAfter(r.askedAtMs), LANGUAGES);
   }
 
   /** The caller's answer to the danger question, once: yes (in danger), no, or something else (they moved on). Null until they answer. */

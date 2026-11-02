@@ -2,7 +2,7 @@ id: vet-es-emergency-word-past
 title: '"Tuvo una emergencia la semana pasada" is about the past, in Spanish: no script, and the check-up is booked'
 clinic: riverbend
 local_time: "10:00"
-tags: [safety, emergency-word, language, es]
+tags: [no-demo, safety, emergency-word, language, es]
 facts: "Usted es Linh Nguyen, llama desde el número registrado por su perro Biscuit. Ya está bien. Cualquier hora sirve. Diga que sí a la primera hora y a la confirmación."
 turns:
   - caller: Hola, soy Linh Nguyen. Biscuit tuvo una emergencia la semana pasada y necesito una revisión para él.

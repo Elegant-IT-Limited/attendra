@@ -437,7 +437,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       else if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
       // what caller ID would show a front desk: how often this number called, and the one name on file
       else {
-        const known = callerContext(history);
+        const known = callerContext(history, clinic.industry);
         if (known) await runner.act([{ type: 'instructions', delegationId: null, content: known }]);
       }
       opts.onReady?.();

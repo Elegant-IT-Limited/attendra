@@ -114,7 +114,7 @@ describe('after the emergency script', () => {
 
 describe('the person-in-danger number', () => {
   it('is never a guess for a clinic whose country is not known', async () => {
-    const abroad = { ...open, phoneNumbers: ['+9771234567'], emergencyNumber: null };
+    const abroad = { ...open, phoneNumbers: ['+9771234567'], emergencyNumber: undefined };
     const c = await w.call('+17205550172', { clinic: abroad });
     const out = instructions(c.caller('my dog ate rat poison'));
     expect(out).toContain('call your local emergency number');

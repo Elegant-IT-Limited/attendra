@@ -1,0 +1,34 @@
+id: vet-es-number-first-one-pet
+title: 'Number first, in Spanish: caller ID by its last four digits, the one pet named, found, said first, and booked'
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+17205550174"
+tags: [no-demo, number-first, language, es]
+facts: "Usted es Carmen Ortiz y llama desde el número registrado por su perra Luna. Cualquier hora sirve. Diga que sí al número, a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, quiero reservar una revisión.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0174?"
+  - caller: Sí, ese.
+    reply: "Veo a Luna con este número. ¿Es para Luna, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Sí, Luna.
+    reply: "Encontré a Luna, su perro. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Luna quedó reservada para {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  language: es
+  returned: ["Veo a Luna con este número. ¿Es para Luna, o para una mascota nueva?", "Encontré a Luna, su perro."]

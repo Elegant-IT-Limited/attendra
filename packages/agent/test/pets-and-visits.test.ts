@@ -25,7 +25,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     const c = await w.call(LINH, { clinic });
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
     expect(out.results[0]!.data).toMatchObject({ verified: false, pets_on_number: ['Biscuit', 'Mochi'], more: false });
-    expect(String(out.results[0]!.data.say)).toContain('"Is this for Biscuit or Mochi, or a new pet?"');
+    expect(String(out.results[0]!.data.say)).toContain('"I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"');
     expect(c.state.verifiedPatient).toBeNull();
     expect(await audited('patient.pets_on_number.read', c.callId)).toBe(1);
     // picking one finds it, as any lookup does
@@ -37,7 +37,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     const c = await w.call(LINH, { clinic });
     c.caller('Hola, buenos días, soy Linh. Quiero una cita, por favor.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
-    expect(String(out.results[0]!.data.say)).toContain('"¿Es para Biscuit o Mochi, o para una mascota nueva?"');
+    expect(String(out.results[0]!.data.say)).toContain('"Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"');
   });
 
   it('with no caller ID, asks for the number first; the number the caller says then opens its pets, as caller ID does (the text to the number on file is the safety net)', async () => {
@@ -51,13 +51,24 @@ describe('an owner caller ID knows picks from their pets', () => {
     }
     // a number the caller says, on a browser test call: that number's pets, to pick from
     const web = await w.call(null, { clinic, channel: 'web' });
+    // read back first, searched only after the yes
+    const readBack = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
+    expect(readBack.errors).toEqual(['confirm_number']);
+    expect(handed(readBack)).toContain("That's 720-555-0172?");
+    expect(await audited('patient.pets_on_number.read', web.callId)).toBe(0);
+    web.assistant("That's 720-555-0172?");
+    web.caller('Yes.');
     const out = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
     expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Biscuit', 'Mochi'], more: false });
     expect(await audited('patient.pets_on_number.read', web.callId)).toBe(1);
     // a number with nothing on it: the plain question, no name
     const unknown = await w.call(null, { clinic, channel: 'web' });
+    await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
+    unknown.assistant("That's 720-555-0199?");
+    unknown.caller('Yes, that is right.');
     const none = await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
-    expect(none.errors).toEqual(['pet_name']);
+    expect(none.errors).toEqual(['no_pets_on_number']);
+    expect(handed(none)).toContain("I don't see a profile under that number.");
     expect(handed(none)).not.toMatch(/biscuit|mochi/i);
   });
 
@@ -86,7 +97,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Ivy', pet_name: null } }]);
     expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Ash', 'Bean', 'Coco'], more: true });
     expect(String(out.results[0]!.data.say)).toContain(PACKS.en.whichPet({ names: ['Ash', 'Bean', 'Coco'], more: true }));
-    expect(PACKS.en.whichPet({ names: ['Ash', 'Bean', 'Coco'], more: true })).toBe('Is this for Ash, Bean or Coco, or another one?');
+    expect(PACKS.en.whichPet({ names: ['Ash', 'Bean', 'Coco'], more: true })).toBe('I see Ash, Bean and Coco under this number. Which one is it for, or is it another one?');
     expect(handed(out)).not.toMatch(/dot|echo/i);
   });
 });
@@ -135,7 +146,7 @@ describe('one question about "new" per call: the pick question, or "Is it new to
   });
 });
 
-describe('the answer to "Is this for Biscuit or Mochi, or a new pet?"', () => {
+describe('the answer to "I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"', () => {
   const answer = (question: string, said: string) => {
     const s = new CallState();
     s.addTranscript('agent', question, 0, 900);
@@ -146,7 +157,7 @@ describe('the answer to "Is this for Biscuit or Mochi, or a new pet?"', () => {
     ['a yes picks the pet named', 'Is this for Juniper, or a new pet?', 'Yes, for Juniper.', '¿Es para Juniper, o para una mascota nueva?', 'Sí, para Juniper.', null],
     ['naming one picks it', 'Is this for Biscuit or Mochi, or a new pet?', "It's for Mochi.", '¿Es para Biscuit o Mochi, o para una mascota nueva?', 'Es para Mochi.', null],
     ['"a new one" is new', 'Is this for Biscuit or Mochi, or a new pet?', 'A new one.', '¿Es para Biscuit o Mochi, o para una mascota nueva?', 'Una nueva.', 'new'],
-    ['"another one" of theirs is not new', 'Is this for Ash, Bean or Coco, or another one?', 'Yes, another one, Dot.', '¿Es para Ash, Bean o Coco, o para otra mascota?', 'Sí, otra, Dot.', null],
+    ['"another one" of theirs is not new', 'I see Ash, Bean and Coco under this number. Which one is it for, or is it another one?', 'Yes, another one, Dot.', '¿Es para Ash, Bean o Coco, o para otra mascota?', 'Sí, otra, Dot.', null],
     ['a yes to "is it new?" is still new', 'Is Orbit new to the clinic?', 'Yes.', '¿Orbit es nueva en la clínica?', 'Sí.', 'new'],
   ] as const)('%s, in English and Spanish', (_b, q, said, qEs, saidEs, expected) => {
     expect(answer(q, said)).toBe(expected);
@@ -218,14 +229,15 @@ describe('a found pet\'s visits: the last and the next, and the usual vet, never
 });
 
 describe('unchanged: what the number alone gives', () => {
-  it('still asks "Am I speaking with ...?", gives only when and how often the number called and whether a request is open, never a pet', async () => {
+  it('asks for the number first (never "Am I speaking with ...?" at a vet clinic), gives only when and how often the number called and whether a request is open, never a pet', async () => {
     const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Done.' }));
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-test');
     const c = await w.call(LINH, { clinic, history: 'Name on file for this number: Linh.\nCalls from this number in the last 30 days: 2.' });
     await c.delegate([], planner);
     const input = JSON.stringify((create.mock.calls[0]![0] as { input: unknown }).input);
-    expect(input).toContain('Am I speaking with <that name>?');
-    expect(input).toContain('¿Hablo con <that name>?');
+    expect(input).not.toContain('Am I speaking with <that name>?');
+    expect(input).toContain('A name on file is never the first question here: the number comes first');
+    expect(input).toContain("Is your pet's profile under the number you're calling from, ending 0172?");
     expect(input).toContain('from the number alone you may say only how many times and when this number called');
     expect(input).toContain('whether a request from those calls is still open with the team');
     expect(input).toContain('never what it was about');

@@ -2,7 +2,7 @@ id: vet-emergency-word-past
 title: '"He had an emergency last week" is about the past: no emergency script, and the check-up is booked'
 clinic: riverbend
 local_time: "10:00"
-tags: [safety, emergency-word]
+tags: [no-demo, safety, emergency-word]
 facts: "You are Linh Nguyen calling from the number on file about your dog Biscuit. He is fine now. Any time works. Say yes to the first time and to the read-back."
 turns:
   - caller: Hi, this is Linh Nguyen. Biscuit had an emergency last week and I need a check-up for him.

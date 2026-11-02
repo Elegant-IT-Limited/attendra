@@ -29,9 +29,15 @@ describe('language parity: the callback-promise check', () => {
 /** The lines about an owner's pets and a pet's visits (2026-11), word for word in both languages: the same facts, and a question stays a question. */
 const SEPT_14 = new Date('2026-09-14T15:00:00Z');
 const PET_LINES: [behaviour: string, line: (l: 'en' | 'es') => string, english: string, spanish: string][] = [
-  ['which pet: two names', (l) => PACKS[l].whichPet({ names: ['Biscuit', 'Max'], more: false }), 'Is this for Biscuit or Max, or a new pet?', '¿Es para Biscuit o Max, o para una mascota nueva?'],
-  ['which pet: one name', (l) => PACKS[l].whichPet({ names: ['Biscuit'], more: false }), 'Is this for Biscuit, or a new pet?', '¿Es para Biscuit, o para una mascota nueva?'],
-  ['which pet: three, and others', (l) => PACKS[l].whichPet({ names: ['Ash', 'Bean', 'Oreo'], more: true }), 'Is this for Ash, Bean or Oreo, or another one?', '¿Es para Ash, Bean u Oreo, o para otra mascota?'],
+  ['which pet: two names', (l) => PACKS[l].whichPet({ names: ['Biscuit', 'Max'], more: false }), 'I see Biscuit and Max under this number. Which one is it for, or is it a new pet?', 'Veo a Biscuit y Max con este número. ¿Para cuál es, o es para una mascota nueva?'],
+  ['which pet: one name', (l) => PACKS[l].whichPet({ names: ['Biscuit'], more: false }), 'I see Biscuit under this number. Is this for Biscuit, or a new pet?', 'Veo a Biscuit con este número. ¿Es para Biscuit, o para una mascota nueva?'],
+  ['which pet: three, and others', (l) => PACKS[l].whichPet({ names: ['Ash', 'Bean', 'Oreo'], more: true }), 'I see Ash, Bean and Oreo under this number. Which one is it for, or is it another one?', 'Veo a Ash, Bean y Oreo con este número. ¿Para cuál es, o es para otra mascota?'],
+  ['the number first, caller ID', (l) => PACKS[l].profileNumberQuestion({ last4: '0123' }), "Sure. Is your pet's profile under the number you're calling from, ending 0123?", 'Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0123?'],
+  ['the number first, no caller ID', (l) => PACKS[l].profileNumberQuestion({ last4: null }), "Sure. What phone number is your pet's profile under?", 'Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?'],
+  ['the number read back', (l) => PACKS[l].phoneReadback({ grouped: '303-555-0130' }), "That's 303-555-0130?", '¿Es el 303-555-0130?'],
+  ['found the pet', (l) => PACKS[l].foundPet({ pet: 'Mochi', species: 'Dog' }), 'I found Mochi, your dog.', 'Encontré a Mochi, su perro.'],
+  ['not on the number', (l) => PACKS[l].notSeenPet({ pet: 'Mochi' }), "I don't see Mochi under that number.", 'No veo a Mochi con ese número.'],
+  ['no pets on the number', (l) => PACKS[l].noPetsOnNumber, "I don't see a profile under that number.", 'No veo ninguna ficha con ese número.'],
   ['the last visit I can see', (l) => PACKS[l].lastVisitSeen({ pet: 'Biscuit', when: PACKS[l].speakWhen(SEPT_14, 'America/Denver'), provider: 'Dr. Elena Ruiz', visit: 'Wellness exam' }),
     'The last visit I can see for Biscuit was on Monday, September 14 at 9:00 AM with Dr. Elena Ruiz, for a wellness exam.',
     `La última visita que veo de Biscuit fue el ${PACKS.es.speakWhen(SEPT_14, 'America/Denver')} con Dr. Elena Ruiz, para wellness exam.`],

@@ -132,3 +132,41 @@ export function withPhonesAsE164<C extends ConfigPhones>(c: C): C {
     ...(c.providers ? { providers: c.providers.map((p) => ({ ...fix(p), ...(p.otherPhones ? { otherPhones: p.otherPhones.map((x) => asE164(c, x)) } : {}) })) } : {}),
   };
 }
+
+const NUMBER_WORDS: Record<string, string> = {
+  zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  cero: '0', uno: '1', un: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6', siete: '7', ocho: '8', nueve: '9',
+};
+const REPEAT: Record<string, number> = { double: 2, doble: 2, triple: 3 };
+
+/**
+ * A number as people say it, as digits: "double eight, zero three, triple five, oh one three oh" is "8803555 0130"
+ * (spaces kept between pieces). "double"/"triple" (Spanish "doble"/"triple") repeat the next digit, even when that digit
+ * comes in the next piece of speech or as a written digit ("triple 5"). Words that aren't digits are left as they are,
+ * so a number with letters is still refused where letters are refused.
+ */
+export function spokenDigits(said: string): string {
+  const tokens = said.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/(\s+|,|-|\.)/);
+  const out: string[] = [];
+  let repeat = 1;
+  for (const token of tokens) {
+    const t = token.trim();
+    if (!t || /^[,.-]$/.test(t)) { out.push(token); continue; }
+    if (REPEAT[t]) { repeat = REPEAT[t]!; continue; }
+    const digit = NUMBER_WORDS[t] ?? (/^\d+$/.test(t) ? t : null);
+    if (digit === null) { out.push(token); repeat = 1; continue; }
+    out.push(digit[0]!.repeat(repeat) + digit.slice(1));
+    repeat = 1;
+  }
+  return out.join('').replace(/\s+/g, ' ').trim();
+}
+
+/** A number read back in groups, as people say it: 303-555-0130 in North America, the national digits in threes and the rest elsewhere. */
+export function groupedNumber(clinic: PhoneCountry, number: string): string {
+  const e164 = asE164(clinic, number);
+  const code = callingCode(e164);
+  const national = code ? e164.slice(code.length + 1) : number.replace(/\D/g, '');
+  if (code === '1' && national.length === 10) return `${national.slice(0, 3)}-${national.slice(3, 6)}-${national.slice(6)}`;
+  const d = national.replace(/\D/g, '');
+  return d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : d.length > 4 ? `${d.slice(0, d.length - 4)}-${d.slice(-4)}` : d;
+}

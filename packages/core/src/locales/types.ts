@@ -95,6 +95,19 @@ export interface LanguagePack {
    * code): it is read back as given and kept, never asked for again. `digits`: the number as the caller said it.
    */
   phoneAsGiven: (v: { digits: string }) => string;
+  /**
+   * The first question when a caller wants to book, move or cancel at a clinic for animals: the number the pet's profile
+   * is under. With caller ID, offered by its last four digits ("ending 0123").
+   */
+  profileNumberQuestion: (v: { last4: string | null }) => string;
+  /** A number the caller said, read back in groups before it is searched: "That's 303-555-0130?". */
+  phoneReadback: (v: { grouped: string }) => string;
+  /** Said first after a lookup finds the pet: "I found Ginger, your dog." `species` as on the record, or null. */
+  foundPet: (v: { pet: string; species: string | null }) => string;
+  /** Said first when the pet named is not on the number: "I don't see Ginger under that number." */
+  notSeenPet: (v: { pet: string }) => string;
+  /** Said first when a number has no pets on file at all: then a new owner and pet the usual way. */
+  noPetsOnNumber: string;
   /** Asked before any lookup when a caller describes a pet (its age, its sex) and has not said whether it is new. */
   petNewQuestion: (v: { pet: string }) => string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */

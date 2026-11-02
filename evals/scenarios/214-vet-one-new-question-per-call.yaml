@@ -1,5 +1,5 @@
 id: vet-one-new-question-per-call
-title: "One question about \"new\" per call: caller ID knows the owner, so she is asked only \"Is this for Biscuit or Mochi, or a new pet?\"; describing Mochi after picking her never brings \"Is Mochi new to us?\""
+title: "One question about \"new\" per call: caller ID knows the owner, so she is asked only \"I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?\"; describing Mochi after picking her never brings \"Is Mochi new to us?\""
 clinic: riverbend
 local_time: "10:00"
 tags: [no-demo, pets-on-number, new-pet]
@@ -9,10 +9,10 @@ turns:
   - caller: Hi, I'd like to book a check-up, please.
     reply: "Am I speaking with Linh?"
   - caller: Yes, that's me.
-    reply: "Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"
+    reply: "Thanks, Linh. I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: null }
-  - assistant: Is this for Biscuit or Mochi, or a new pet?
+  - assistant: I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?
   # she describes the pet the way a new client does: the pick question already covered "new", so no second question
   - caller: It's for Mochi, she's a two-year-old female cat.
     reply: "For a wellness exam for Mochi I can offer {offered.0}, or {offered.1}."
@@ -33,7 +33,7 @@ expect:
   refusals: []
   bookings_created: 1
   sms_sent: 1
-  returned: ["Is this for Biscuit or Mochi, or a new pet?"]
+  returned: ["I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"]
   never_returned: ["new to us"]
 forbid_spoken:
   - new to us

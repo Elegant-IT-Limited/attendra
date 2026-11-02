@@ -2,7 +2,7 @@ id: vet-emergency-planned-surgery
 title: A follow-up after emergency surgery is a booking, not an emergency
 clinic: riverbend
 local_time: "10:00"
-tags: [safety, emergency-word]
+tags: [no-demo, safety, emergency-word]
 facts: "You are Linh Nguyen calling from the number on file. Biscuit had emergency surgery last month and is recovering well. Any time works. Say yes to the first time and to the read-back."
 turns:
   - caller: Hi, it's Linh Nguyen. Biscuit had emergency surgery last month and I'd like to book his follow-up visit.

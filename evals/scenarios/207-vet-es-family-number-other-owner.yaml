@@ -7,7 +7,7 @@ history: "Calls from this number in the last 30 days: 1."
 facts: "Eres Grace Hale y hablas español; llamas desde el teléfono de la familia. Tu gata es Juniper y necesita un chequeo. Cualquier veterinario y cualquier hora te sirven."
 turns:
   - caller: Hola, soy Grace Hale. Quiero reservar un chequeo, por favor.
-    reply: "Gracias, Grace. ¿Es para Biscuit, Mochi o Juniper, o para una mascota nueva?"
+    reply: "Gracias, Grace. Veo a Biscuit, Mochi y Juniper con este número. ¿Para cuál es, o es para una mascota nueva?"
     delegate:
       - verify_caller: { owner_name: Grace Hale, pet_name: null }
   - caller: Para Juniper.
@@ -19,4 +19,4 @@ expect:
   outcome: abandoned
   verified: true
   language: es
-  returned: ["¿Es para Biscuit, Mochi o Juniper, o para una mascota nueva?"]
+  returned: ["Veo a Biscuit, Mochi y Juniper con este número. ¿Para cuál es, o es para una mascota nueva?"]

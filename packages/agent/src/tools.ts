@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, groupedNumber, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -83,7 +83,25 @@ const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: stri
   heardPhone(ctx.clinic, args.callback_number) ?? ctx.callerNumber;
 /** A number the caller said, as E.164 like every number on file (as said when it isn't a whole one); null when none was said. */
 const heardPhone = (clinic: ClinicConfig, said: unknown): string | null =>
-  typeof said === 'string' && said.trim() ? asE164(clinic, said) : null;
+  typeof said === 'string' && said.trim() ? asE164(clinic, spokenDigits(said)) : null;
+
+/**
+ * A number the caller said is read back in groups before it is searched, and searched only after their yes: one said
+ * number was found only on the second try (a test call), and "double eight, triple five" is easy to mishear. The number
+ * they are calling from needs no read-back. Null when the search may go ahead.
+ */
+function readBackFirst(said: unknown, phone: string, state: CallState, ctx: CallContext, lang: CallState['language']): ToolResult | null {
+  if (typeof said !== 'string' || !said.trim()) return null;
+  // a number that isn't a whole one here is read back once as given, and kept (withPhoneAsGiven)
+  if (!wholeNumber(ctx.clinic, phone)) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic)) return null;
+  if (state.phonesConfirmed.has(digits)) return null;
+  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.phoneReadback = null; return null; }
+  const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
+  if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
+  return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
+}
 const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
@@ -923,7 +941,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   // no pet named yet: the number's pets, to pick from
-  if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang);
+  if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang, args.phone);
   // the pet described as a new client does (its age, its sex) and nothing said about being new: asked first, once, never looked up blind.
   // Not after "Is this for Biscuit or Max, or a new pet?": that question already covered "new", and a call asks only one of the two
   if (!state.askedIfNew && !state.askedWhichPet && state.saidNew() === null && !state.askedWhetherNew() && describesPet(state.callerWordsSinceFound())) {
@@ -937,11 +955,18 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const tried = identityKey(pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
+  const readBack = readBackFirst(args.phone, phone, state, ctx, lang);
+  if (readBack) return readBack;
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
-  if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang, ctx.now()) } };
+  if (found.status === 'found') {
+    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call)
+    const first = PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
+    const chosen = chosenNote(state, clinic, lang, ctx.now()).say ?? '';
+    return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want.${chosen}` } };
+  }
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   // the same answer whichever detail was wrong: never confirm what is on the number
-  return refuse('not_verified', `Say you could not find a pet by that name on this number. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
+  return refuse('not_verified', `Say first, in these words: "${PACKS[lang].notSeenPet({ pet })}" ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
 }
 
 /**
@@ -950,13 +975,16 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
  * the number is the household, and the confirmation text to the number on file is the safety net. A number
  * with no pets gets the plain question, with no name from the records.
  */
-async function whichPet(phone: string, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
+async function whichPet(phone: string, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language'], said: unknown): Promise<ToolResult> {
   const ask = refuse('pet_name', 'Ask which pet the call is about, by its name, or whether it is a new pet. Never say a pet\'s name the caller has not said. Keep what they already gave; do not ask for it again.');
   // "Is it new to us?" already asked this call: one question about "new" per call, so no pick question after it
   if (!backend.patients.petsOnNumber || state.askedIfNew) return ask;
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
+  const readBack = readBackFirst(said, phone, state, ctx, lang);
+  if (readBack) return readBack;
   const pets = await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
-  if (!pets.names.length) return ask;
+  // an unknown number: a new owner and a new pet, the usual way
+  if (!pets.names.length) return refuse('no_pets_on_number', `Say first, in these words: "${PACKS[lang].noPetsOnNumber}" Then ask the pet's name and whether it is new to the clinic; a new pet is added with register_patient under this number. Never say a pet's name the caller has not said.`);
   state.askedWhichPet = true;
   return { ok: true, data: {
     verified: false, pets_on_number: pets.names, more: pets.more,
