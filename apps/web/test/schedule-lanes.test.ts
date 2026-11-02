@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { initials, laneProviders, MANY_PROVIDERS, MAX_CHOSEN, readChosen, worksOn, writeChosen } from '../lib/schedule-lanes';
+import { blockHeight, initials, laneProviders, MANY_PROVIDERS, MAX_CHOSEN, MIN_BLOCK, placeBlocks, PX, readChosen, worksOn, writeChosen } from '../lib/schedule-lanes';
 
 const weekdays = { open: '08:00', close: '17:00' };
 type Hours = Partial<Record<'0' | '1' | '2' | '3' | '4' | '5' | '6', { open: string; close: string }[]>>;
@@ -87,5 +87,30 @@ describe('initials for a narrow lane', () => {
     expect(initials('Dr Vet 001')).toBe('V0');
     expect(initials('Okafor')).toBe('O');
     expect(initials('our veterinarian')).toBe('OV');
+  });
+});
+
+describe('visit blocks on the day grid', () => {
+  const at = (id: string, start: number, minutes: number, status = 'booked') => ({ id, status, span: [start, start + minutes] as const });
+  const place = (items: ReturnType<typeof at>[]) => Object.fromEntries(placeBlocks(items, (x) => x.span).map((p) => [p.item.id, [p.column, p.columns]]));
+
+  it('draws every visit at least 24 pixels tall, and a 15-minute one as its length', () => {
+    expect(blockHeight(540, 545)).toBe(MIN_BLOCK);
+    expect(blockHeight(540, 550)).toBe(MIN_BLOCK);
+    expect(blockHeight(540, 555)).toBeGreaterThanOrEqual(24);
+    expect(15 * PX - blockHeight(540, 555)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('keeps back-to-back 15-minute visits each in the whole lane, with nothing between them overlapping', () => {
+    expect(place([at('a', 540, 15), at('b', 555, 15), at('c', 570, 30)])).toEqual({ a: [0, 1], b: [0, 1], c: [0, 1] });
+  });
+
+  it('puts visits at the same time side by side, the booked one first', () => {
+    expect(place([at('cancelled', 600, 20, 'cancelled'), at('rebooked', 600, 20)])).toEqual({ rebooked: [0, 2], cancelled: [1, 2] });
+    expect(place([at('a', 660, 30), at('b', 675, 30), at('later', 720, 15)])).toEqual({ a: [0, 2], b: [1, 2], later: [0, 1] });
+  });
+
+  it('puts short visits stretched to the minimum side by side when their blocks would meet', () => {
+    expect(place([at('a', 480, 5), at('b', 485, 5), at('c', 490, 10)])).toEqual({ a: [0, 3], b: [1, 3], c: [2, 3] });
   });
 });

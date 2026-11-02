@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 import { E2E_PROVISIONING_TOKEN } from './e2e/auth-state';
+
+// E2E_CLOCK=2026-11-02T08:00:00Z runs the suite as if it started then: the demo API's clock (and so its seeded
+// visits) and every page's clock run that far from the real one, for checks that depend on the hour. The offset
+// is fixed once here; the workers inherit it.
+if (process.env.E2E_CLOCK && !process.env.E2E_CLOCK_OFFSET) process.env.E2E_CLOCK_OFFSET = String(Date.parse(process.env.E2E_CLOCK) - Date.now());
+const clockOffset = process.env.E2E_CLOCK_OFFSET;
+const shifted: Record<string, string> = clockOffset ? { E2E_CLOCK_OFFSET: clockOffset, NODE_OPTIONS: `--import ${fileURLToPath(new URL('./e2e/fake-clock.mjs', import.meta.url))}` } : {};
 
 // The demo API (in-memory Postgres, two demo clinics and their recorded calls) and the dashboard, started fresh
 // for every run. The setup project signs in once per role (sign-in is rate limited,
@@ -30,7 +38,7 @@ export default defineConfig({
   webServer: [
     // test calls stay off even when a .env holds an OpenAI key: these specs never spend credit. The provisioning
     // token is this suite's own, made up here: first-day.spec.ts opens an empty clinic the way the hosting layer does
-    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on', ATTENDRA_WEBHOOKS_ALLOW_LOCAL: 'on', ATTENDRA_PROVISIONING_TOKEN: E2E_PROVISIONING_TOKEN }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on', ATTENDRA_WEBHOOKS_ALLOW_LOCAL: 'on', ATTENDRA_PROVISIONING_TOKEN: E2E_PROVISIONING_TOKEN, ...shifted }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI && !process.env.E2E_CLOCK, timeout: 120_000 },
     { command: 'pnpm --filter @attendra/web dev', url: 'http://localhost:3000/sign-in', reuseExistingServer: !process.env.CI, timeout: 120_000 },
   ],
 });

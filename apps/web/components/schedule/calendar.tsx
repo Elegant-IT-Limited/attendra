@@ -5,10 +5,9 @@ import { type ClinicConfig, localParts, toMinutes } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
 import { Empty } from '@/components/ui/feedback';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
-import { closedDay, hoursFor, initials } from '@/lib/schedule-lanes';
+import { blockHeight, closedDay, hoursFor, initials, placeBlocks, PX } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
-const PX = 1.3; // pixels per minute: a 20-minute visit is 26 pixels tall
 /** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
 const LANE_MIN_REM = 7;
 type Provider = ClinicConfig['providers'][number];
@@ -122,28 +121,31 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
       {nowMin !== null && nowMin >= start && nowMin <= end && (
         <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-danger" style={{ top: (nowMin - start) * PX }} aria-hidden />
       )}
-      {appointments.map((a) => {
+      {placeBlocks(appointments, (a) => [minutesOf(a.startsAt, tz), minutesOf(a.endsAt, tz)]).map(({ item: a, column, columns }) => {
         const s = minutesOf(a.startsAt, tz);
         const e = minutesOf(a.endsAt, tz);
         const cancelled = a.status === 'cancelled';
         const Icon = a.bookedBy.kind === 'assistant' ? Bot : User;
-        const h = Math.max((e - s) * PX - 2, 18);
+        const h = blockHeight(s, e);
+        // two lines of text need 36 pixels with their padding: a 20-minute visit (33) keeps one, with the time on it
+        const twoLines = h >= 36;
         return (
           <button key={a.id} type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
             aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
-            className={cn('absolute overflow-hidden rounded-md border border-border/60 border-l-4 px-1.5 text-left text-xs leading-tight shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring',
+            className={cn('absolute z-10 overflow-hidden rounded-md border border-border/60 border-l-4 px-1.5 text-left text-xs leading-tight shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring',
               VISIT_TONES[visitIndex(a.visitTypeId) % VISIT_TONES.length],
-              cancelled ? 'right-0.5 left-1/2 z-0 border-dashed text-text-muted' : 'inset-x-0.5 z-10')}
-            style={{ top: (s - start) * PX + 1, height: h }}>
-            <span className={cn('flex items-center gap-1', h > 30 ? 'pt-1' : 'pt-0.5')}>
+              cancelled && 'border-dashed text-text-muted')}
+            // visits drawn at the same height share the lane, side by side: nothing is ever under anything
+            style={{ top: (s - start) * PX + 1, height: h, left: `calc(${(column / columns) * 100}% + 0.125rem)`, width: `calc(${100 / columns}% - 0.25rem)` }}>
+            <span className={cn('flex items-center gap-1', twoLines ? 'pt-1' : 'pt-0.5')}>
               <Icon className="size-3 shrink-0 text-text-muted" aria-hidden />
               {/* too short for a second line: the time goes on the first, and both truncate together */}
               <span className={cn('truncate font-medium', cancelled && 'line-through')}>
                 {a.confirmedAt && !cancelled && <Check className="mr-0.5 inline size-3 text-success" aria-hidden />}
-                {a.patientName}{h > 30 ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
+                {a.patientName}{twoLines ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
               </span>
             </span>
-            {h > 30 && <span className={cn('block truncate text-text-muted', cancelled && 'line-through')}>{timeOf(a.startsAt, tz)}</span>}
+            {twoLines && <span className={cn('block truncate text-text-muted', cancelled && 'line-through')}>{timeOf(a.startsAt, tz)}</span>}
           </button>
         );
       })}
