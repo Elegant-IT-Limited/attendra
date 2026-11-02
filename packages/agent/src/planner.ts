@@ -177,7 +177,12 @@ export function lookupLine(name: string, args: unknown, input: Pick<PlannerInput
   }
   if (name === 'verify_caller') {
     const pet = typeof a.pet_name === 'string' && a.pet_name.trim() && input.clinic.industry === 'vet' ? a.pet_name.trim() : null;
-    return pet ? pack.spoken.lookingUp({ kind: 'pet', pet }) : null;
+    if (pet) return pack.spoken.lookingUp({ kind: 'pet', pet });
+    // the number first, at a clinic for animals: words while the household is found, so there is no silence; not for a
+    // number said that still needs its read-back (that question is the next thing said)
+    const said = typeof a.phone === 'string' && a.phone.trim() ? a.phone.replace(/\D/g, '') : null;
+    if (input.clinic.industry === 'vet' && (!said || [...state.phonesConfirmed].some((d) => d.endsWith(said.slice(-10))))) return pack.spoken.lookingUp({ kind: 'number' });
+    return null;
   }
   if (name === 'list_appointments' || name === 'visit_summary') {
     const pet = state.verifiedPatient?.firstName ?? null;

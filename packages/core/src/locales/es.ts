@@ -110,6 +110,7 @@ export const es: LanguagePack = {
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
+      : kind === 'number' ? 'Déjeme revisar ese número.'
       : 'Déjeme consultarlo.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
   },

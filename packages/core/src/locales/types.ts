@@ -165,7 +165,7 @@ export interface LanguagePack {
      * Said the moment the backend starts a lookup, so the caller never waits in silence: what it is doing, in a few
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
      */
-    lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits'; day?: string | null; pet?: string | null }) => string;
+    lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits' | 'number'; day?: string | null; pet?: string | null }) => string;
     /** A day as people say it when a time is read back or looked up: today, tomorrow, or the weekday. `weekday` is 0 for Sunday. */
     dayWord: (v: { daysFromToday: number; weekday: number }) => string;
   };

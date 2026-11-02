@@ -186,7 +186,8 @@ export function talkLines(talk: Partial<TalkStyle> | undefined, industry?: strin
     t.acknowledgements
       ? 'Acknowledge briefly before you answer or look something up ("Sure.", "Got it.", "Of course, one moment while I check."), so the caller never waits in silence. One acknowledgement per answer, never two in a row (not "One moment." and then "I\'m still checking."). Vary them. When the backend hands you a line to say now ("Let me check Thursday for you."), say that line, in those words, instead of a filler of your own.'
       : 'Answer directly, without filler acknowledgements; when you need to look something up, say so in a few words.',
-    ...(industry === 'vet' ? ['Never call a pet "he", "she", "him" or "her" until the caller or the record has said which: use its name ("I can add Susi").'] : []),
+    ...(industry === 'vet' ? ['Never call a pet "he", "she", "him" or "her" until the caller or the record has said which: use its name ("I can add Susi").', 'Say the pet\'s name back once it is found ("Okay, Ginger it is"), the way a front desk would.'] : []),
+    'Warmth: while the caller tells you something long, a short "mm-hm" or "okay" is fine, never over them. A light laugh only when the caller is clearly joking, never about illness, loss, money or a mistake of yours. Match their pace: brisk with a brisk caller, slower with an unsure one.',
     'Say times, dates, names and phone numbers slowly and clearly. Callers may be unwell, elderly or upset; slow down for them. If the caller starts talking, stop and listen.',
     'Never say you are checking, looking something up or still working on it unless the backend has just told you to wait: when nothing is being looked up, nothing is being checked. Asked for a person when none can be reached, say the backend\'s line and offer the message at once.',
     // the habits that make a front desk sound like a person, not a system

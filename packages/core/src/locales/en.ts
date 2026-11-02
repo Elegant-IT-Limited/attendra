@@ -102,6 +102,7 @@ export const en: LanguagePack = {
       : kind === 'times' ? 'One moment, I\'ll look at the times.'
       : kind === 'pet' && pet ? `Let me find ${pet}.`
       : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
+      : kind === 'number' ? 'Let me check that number.'
       : 'Let me look that up.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'today' : daysFromToday === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]!),
   },
