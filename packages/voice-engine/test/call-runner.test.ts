@@ -343,11 +343,12 @@ describe('the conversation prompt', () => {
     expect(prompt).not.toMatch(/Spanish|attendra/i);
   });
 
-  it('at a veterinary clinic, asks which pet, finds it by owner and name, and gives no advice about animals', () => {
+  it('at a veterinary clinic, asks for the number first, finds the pet by number and name, and gives no advice about animals', () => {
     const prompt = conversationPrompt(RIVERBEND_CLINIC, NOW);
     expect(prompt).toContain("I'm Juniper, the clinic's AI assistant");
-    expect(prompt).toContain('ask which pet the visit is for');
-    expect(prompt).toContain("the phone number on file (usually the number they are calling from) and the pet's name");
+    expect(prompt).toContain("The number comes first: as soon as the caller wants to book, move or cancel a visit, ask the phone number the pet's profile is under");
+    expect(prompt).toContain('A direct question about the lookup ("did you find her?", "is he registered?") gets a direct yes or no first.');
+    expect(prompt).toContain("To find a pet you need the phone number on file and the pet's name");
     expect(prompt).toContain('Never give medical or first-aid advice for an animal');
     expect(prompt).toContain('- The clinic: hours, the veterinarians, visit types');
     expect(prompt).toContain('Interruption policy: Never talk over the caller.');

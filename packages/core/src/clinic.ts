@@ -79,6 +79,9 @@ export const Provider = z.object({
   phone: e164.optional(),
   // other numbers of theirs, so a second line never becomes a second vet
   otherPhones: z.array(e164).max(3).optional(),
+  // how the assistant and the dashboard say their name: "Dr. Ruiz" (the default for a person), or the name alone ("none")
+  // for team members who aren't vets (technicians, groomers); rooms and equipment never get one
+  title: z.enum(['dr', 'none']).optional(),
 });
 
 export const VisitType = z.object({
@@ -301,6 +304,8 @@ const ClinicConfigShape = z.object({
     try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; }
   }, 'unknown IANA time zone'),
   phoneNumbers: z.array(e164).min(1),
+  // the clinic's country (ISO code), for the emergency number its scripts give; absent, the first phone number's country
+  country: z.string().regex(/^[A-Z]{2}$/, 'a two-letter country code').optional(),
   hours: WeeklyHours,
   holidays: z.array(isoDate).default([]),
   // who the assistant books with when the caller names nobody
@@ -473,11 +478,19 @@ export type Provider = z.infer<typeof Provider>;
  * has one still loads and its calls keep running.
  */
 export function configProblems(c: Pick<z.infer<typeof ClinicConfigShape>, 'providers' | 'visitTypes'>): { path: string; message: string }[] {
-  return c.providers.flatMap((p, i) => {
-    const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
-    return unknown ? [{ path: `providers.${i}.visitTypeIds`, message: `${p.name} offers a visit type that does not exist (${unknown})` }] : [];
-  });
+  return [
+    ...c.providers.flatMap((p, i) => {
+      const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
+      return unknown ? [{ path: `providers.${i}.visitTypeIds`, message: `${p.name} offers a visit type that does not exist (${unknown})` }] : [];
+    }),
+    // a notice longer than the furthest date leaves no day it can be booked on
+    ...c.visitTypes.flatMap((v, i) => (noDayPossible(v) ? [{ path: `visitTypes.${i}.noticeHours`, message: `${v.name || 'This visit'}: the notice is longer than the furthest date, so no day can be booked` }] : [])),
+  ];
 }
+
+/** A visit type whose notice reaches past its furthest date: nothing can ever be booked. */
+export const noDayPossible = (v: { noticeHours?: number | undefined; maxDaysAhead?: number | undefined }) =>
+  !!v.noticeHours && !!v.maxDaysAhead && v.noticeHours > v.maxDaysAhead * 24;
 export type TimeOff = z.infer<typeof TimeOff>;
 export type AgeRange = z.infer<typeof AgeRange>;
 export type VisitType = z.infer<typeof VisitType>;
@@ -496,6 +509,33 @@ export const localName = (thing: { name: string; names?: Partial<Record<Language
   thing.names?.[language] ?? thing.name;
 
 /** The greeting for a language: the main greeting, the clinic's own for another language, or that language's suggestion. */
+/**
+ * The first words of a call: the greeting, with the recording notice (when one is on) said before the greeting's
+ * closing question, so the caller doesn't start talking over it ("Thanks for calling Riverbend, I'm Juniper, the
+ * clinic's AI assistant. This call may be recorded for quality and safety. How can I help you today?"). A greeting
+ * that doesn't end in a question gets the notice after it.
+ */
+export function openingWords(greeting: string, notice: string | null | undefined): string {
+  const n = notice?.trim();
+  const g = greeting.trim();
+  if (!n) return greeting;
+  // the closing question is what follows the last full stop or ! before a final "?": found by position, not a pattern
+  // that backtracks (a greeting is the clinic's own text)
+  if (!g.endsWith('?')) return `${g} ${n}`;
+  const body = g.slice(0, -1);
+  const end = Math.max(body.lastIndexOf('.'), body.lastIndexOf('!'));
+  if (end < 0 || body.lastIndexOf('?') > end) return `${g} ${n}`;
+  const intro = g.slice(0, end + 1).trim();
+  const question = g.slice(end + 1).trim();
+  return intro && question ? `${intro} ${n} ${question}` : `${g} ${n}`;
+}
+
+/** The default recording notice Settings offers, in each language: a full sentence. */
+export const DEFAULT_RECORDING_NOTICE = { en: 'This call may be recorded for quality and safety.', es: 'Esta llamada puede ser grabada por motivos de calidad y seguridad.' } as const;
+
+/** Whether a recording notice reads as a full sentence: a few words, ending in a full stop, ! or ?. Shown as a hint, never changed. */
+export const noticeIsSentence = (notice: string) => notice.trim().split(/\s+/).length >= 3 && /[.!?]$/.test(notice.trim());
+
 export function greetingFor(c: Pick<ClinicConfig, 'greeting' | 'greetings' | 'primaryLanguage' | 'assistantName' | 'name'>, language: Language): string {
   if (language === c.primaryLanguage) return c.greeting;
   return c.greetings?.[language] ?? PACKS[language].greeting({ assistantName: c.assistantName ?? null, clinicName: c.name });
@@ -565,5 +605,29 @@ export function listUsage(c: Pick<ClinicConfig, 'providers'>, name: ListName): R
     const vals = name === 'specialties' ? (p.specialty ? [p.specialty] : []) : name === 'categories' ? p.categories : [];
     for (const v of vals) out[v.toLowerCase()] = (out[v.toLowerCase()] ?? 0) + 1;
   }
+  return out;
+}
+
+/** A name has at least one letter or digit (pets and clinics may have digits): never only spaces or symbols. */
+export const HAS_NAME = /[\p{L}\p{N}]/u;
+
+/**
+ * The field standard for Settings, checked when a change is saved (not in the schema, so a configuration saved before a
+ * limit still loads and calls keep running): names that are names, the lengths Settings' fields allow, and what a caller
+ * hears said as a full sentence. Each problem is under its field's path, in words that say what to type.
+ */
+export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencyHospital' | 'moreEmergencyHospitals' | 'vipCallers'>): { path: string; message: string }[] {
+  const out: { path: string; message: string }[] = [];
+  const name = (path: string, v: string | undefined, max: number, what: string) => {
+    const t = (v ?? '').trim();
+    if (!t || !HAS_NAME.test(t)) out.push({ path, message: `${what}: type a name, not only spaces or symbols` });
+    else if (t.length > max) out.push({ path, message: `${what}: at most ${max} characters` });
+  };
+  name('name', c.name, 100, 'Clinic name');
+  c.visitTypes.forEach((v, i) => name(`visitTypes.${i}.name`, v.name, 60, 'Visit type name'));
+  (c.faqs ?? []).forEach((f, i) => { if (!f.question.trim()) out.push({ path: `faqs.${i}.question`, message: 'Question: type the question callers ask' }); else if (f.question.length > 200) out.push({ path: `faqs.${i}.question`, message: 'Question: at most 200 characters' }); });
+  if (c.recording.notice && c.recording.notice.length > 300) out.push({ path: 'recording.notice', message: 'Recording notice: at most 300 characters' });
+  [c.emergencyHospital, ...(c.moreEmergencyHospitals ?? [])].forEach((h, i) => { if (h && h.address.length > 200) out.push({ path: i ? `moreEmergencyHospitals.${i - 1}.address` : 'emergencyHospital.address', message: 'Address: at most 200 characters' }); });
+  (c.vipCallers ?? []).forEach((v, i) => { if (!HAS_NAME.test(v.name)) out.push({ path: `vipCallers.${i}.name`, message: 'Name: type a name, not only spaces or symbols' }); });
   return out;
 }

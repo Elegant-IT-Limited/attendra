@@ -24,6 +24,13 @@ const ASKED_IF_NEW = /\b(new|nuev[oa]s?|primera vez)\b[^.!]*\?/;
 /** "Is this for Juniper, or a new pet?" ("¿Es para Juniper, o para una mascota nueva?"): new is one of the choices, so a yes is not it. */
 const NEW_AS_CHOICE = /,\s*(?:or|o|u)\s+(?:a\s+|para\s+una?\s+)?(?:mascota\s+)?(?:new|nuev[oa])\b[^.!]*\?/;
 
+/** The assistant asked whether the animal is in danger now: "Is Ginger in danger right now?", "¿Está en peligro ahora mismo?". */
+const ASKED_DANGER = /\b(in danger|danger right now|en peligro|trouble breathing|le cuesta respirar)\b/;
+/** A no to it, first: "no", "nope", "she's fine", "not right now", "no, gracias, está bien". */
+const DANGER_NO = /^(?:no(?! (?:se|estoy segur[oa]|lo se)\b)|nope|nah|not (?:really|now|right now|at all)|(?:oh )?no(?:,| ) ?(?:she|he|it|they)|(?:she|he|it|they)(?:'?s| is| are|'?re) (?:fine|ok|okay|alright|all right|safe|not in danger|doing (?:fine|well|ok|okay))|para nada|esta bien|(?:el|ella) esta bien)\b/;
+/** A yes: "yes", "yeah, she is", "I think so", "sí, ahora mismo". */
+const DANGER_YES = /^(?:yes|yeah|yep|yup|i think so|it is|(?:she|he|it|they) (?:is|are)|right now|si|claro|creo que si|ahora mismo)\b/;
+
 export type PendingChange =
   | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
   | (PendingBase & { kind: 'cancel'; appointmentId: string; start: Date });
@@ -57,6 +64,12 @@ export class CallState {
   askedIfNew = false;
   /** The owner was asked which of their pets on the number the call is for, "or a new pet": "Is it new to us?" is then never asked. */
   askedWhichPet = false;
+  /**
+   * A number the caller said, read back before it is searched ("That's 303-555-0130?"): its digits, when the read-back
+   * was handed to the voice, and when it was said. Their yes confirms it; the digits confirmed are searched from then on.
+   */
+  phoneReadback: { digits: string; atMs: number; askedAtMs: number | null } | null = null;
+  readonly phonesConfirmed = new Set<string>();
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
   phoneAsGiven: string | null = null;
   /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
@@ -76,6 +89,14 @@ export class CallState {
    * set for a person in danger; a new emergency later in the call locks it again.
    */
   emergencyCleared = false;
+  /** The assistant has said the emergency script (its hospital or number is in the captions): it is never said again unasked. */
+  emergencyScriptSaid = false;
+  /**
+   * At a clinic for animals, a doubt about danger (the bare word "emergency", or a caller still talking after the
+   * script) gets one short question: "Is Ginger in danger right now?". The caller's next words answer it: a yes holds
+   * the call as an emergency, a no lets it go on. Asked once per call.
+   */
+  dangerQuestion: { atMs: number; askedAtMs: number | null; answered: boolean } | null = null;
   /** An emergency is holding the call: only the script, a transfer, a callback or the end. */
   get emergencyLocked() { return !!this.emergency && !this.emergencyCleared; }
   /** The on-call transfer an emergency asks for has been queued: it rings once per call. */
@@ -189,6 +210,37 @@ export class CallState {
     // a card or social security number is never kept, shown or sent on, by either side
     const turn = this.turns.at(-1)!;
     turn.text = redactSensitive(turn.text);
+    if (speaker === 'agent' && this.phoneReadback && this.phoneReadback.askedAtMs === null && endMs > this.phoneReadback.atMs) {
+      this.phoneReadback.askedAtMs = Math.max(startMs, this.phoneReadback.atMs);
+    }
+    // the danger question counts as asked once the assistant's words actually ask it, not on any reply after the note
+    const q = this.dangerQuestion;
+    if (speaker === 'agent' && q && q.askedAtMs === null && endMs > q.atMs && ASKED_DANGER.test(normalise(turn.text))) q.askedAtMs = Math.max(startMs, q.atMs);
+  }
+
+  /** Whether the caller said yes to the read-back of these digits since it was said. */
+  confirmedReadback(digits: string): boolean {
+    const r = this.phoneReadback;
+    if (!r || r.digits !== digits || r.askedAtMs === null) return false;
+    return isClearYes(this.latestCallerWordsAfter(r.askedAtMs), LANGUAGES);
+  }
+
+  /** The caller's answer to the danger question, once: yes (in danger), no, or something else (they moved on). Null until they answer. */
+  answerToDangerQuestion(): 'yes' | 'no' | 'other' | null {
+    const q = this.dangerQuestion;
+    if (!q || q.askedAtMs === null || q.answered) return null;
+    const said = normalise(this.latestCallerWordsAfter(q.askedAtMs));
+    if (!said) return null;
+    q.answered = true;
+    // only an answer to that question: when the assistant has said something else since ("Is it the number you're
+    // calling from?"), a "yes" is about that, never about danger (a test run locked a booking on it)
+    const lastAgent = [...this.turns].reverse().find((t) => t.speaker === 'agent');
+    // the last question the assistant asked, not anything earlier in the same breath
+    const questions = normalise(lastAgent?.text ?? '').match(/[^.!?]*\?/g) ?? [];
+    if (!ASKED_DANGER.test(questions.at(-1) ?? '')) return 'other';
+    if (DANGER_NO.test(said)) return 'no';
+    if (DANGER_YES.test(said)) return 'yes';
+    return 'other';
   }
 
   /**

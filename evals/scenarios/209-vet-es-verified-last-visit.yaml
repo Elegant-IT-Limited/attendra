@@ -14,6 +14,6 @@ expect:
   outcome: info
   verified: true
   language: es
-  returned: ["La última visita que veo de Biscuit fue el lunes, 14 de septiembre a las 9:00 a.m. con Dr. Elena Ruiz"]
+  returned: ["La última visita que veo de Biscuit fue el lunes, 14 de septiembre a las 9:00 a.m. con Dra. Elena Ruiz"]
   spoken_contains: ["La última visita que veo"]
 forbid_spoken: ["visitas este año", "veces este año", "dos visitas"]

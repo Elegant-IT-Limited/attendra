@@ -8,7 +8,7 @@ describe('voice service environment', () => {
     const env = loadEnv({ ...base, OPENAI_WEBHOOK_SECRET: '', TWILIO_ACCOUNT_SID: '', TWILIO_AUTH_TOKEN: '', BROWSER_CALL_MAX_SECONDS: '', GPT_LIVE_MODEL: '' });
     expect(env.OPENAI_WEBHOOK_SECRET).toBeUndefined();
     expect(env.TWILIO_ACCOUNT_SID).toBeUndefined();
-    expect(env.BROWSER_CALL_MAX_SECONDS).toBe(300);
+    expect(env.BROWSER_CALL_MAX_SECONDS).toBe(900);
     expect(env.GPT_LIVE_MODEL).toBe('gpt-live-1');
   });
 

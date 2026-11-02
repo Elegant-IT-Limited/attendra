@@ -19,6 +19,21 @@ test.describe.serial('patients', () => {
     await expect(page.getByRole('heading', { name: 'Maria Delgado' })).toBeVisible();
   });
 
+  test('a phone field takes numbers only: letters typed or pasted are dropped, with a note', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.getByRole('link', { name: 'Patients' }).click();
+    await page.getByRole('button', { name: 'Add patient' }).click();
+    const phone = page.getByRole('dialog', { name: 'Add patient' }).getByLabel(/Phone/);
+    await expect(phone).toHaveAttribute('type', 'tel');
+    await expect(phone).toHaveAttribute('inputmode', 'tel');
+    await phone.pressSequentially('720 CALL 555 0188');
+    await expect(phone).toHaveValue('720  555 0188');
+    await expect(page.getByText('Use numbers only, for example (555) 555-0123.')).toBeVisible();
+    await phone.fill('');
+    await phone.pressSequentially('(720) 555-0188');
+    await expect(phone).toHaveValue('(720) 555-0188');
+  });
+
   test('front desk adds a patient, then books them', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.getByRole('link', { name: 'Patients' }).click();

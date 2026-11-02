@@ -1,0 +1,21 @@
+id: vet-beyond-furthest-date
+title: 'A day beyond the furthest date is refused with the last day it can be booked (en)'
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, team-books]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, maxDaysAhead: 14 }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+turns:
+  - caller: Hi, it's Linh Nguyen. I'd like a check-up for Biscuit on the 30th of October.
+    reply: "Check-ups are booked at most 14 days ahead, so I can't book that day yet."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-30", part_of_day: any }
+expect:
+  outcome: abandoned
+  refusals: [too_far_ahead]
+  not_offered_on: ["2026-10-30"]
+

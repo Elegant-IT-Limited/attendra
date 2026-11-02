@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, groupedNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -83,7 +83,25 @@ const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: stri
   heardPhone(ctx.clinic, args.callback_number) ?? ctx.callerNumber;
 /** A number the caller said, as E.164 like every number on file (as said when it isn't a whole one); null when none was said. */
 const heardPhone = (clinic: ClinicConfig, said: unknown): string | null =>
-  typeof said === 'string' && said.trim() ? asE164(clinic, said) : null;
+  typeof said === 'string' && said.trim() ? asE164(clinic, spokenDigits(said)) : null;
+
+/**
+ * A number the caller said is read back in groups before it is searched, and searched only after their yes: one said
+ * number was found only on the second try (a test call), and "double eight, triple five" is easy to mishear. The number
+ * they are calling from needs no read-back. Null when the search may go ahead.
+ */
+function readBackFirst(said: unknown, phone: string, state: CallState, ctx: CallContext, lang: CallState['language']): ToolResult | null {
+  if (typeof said !== 'string' || !said.trim()) return null;
+  // a number that isn't a whole one here is read back once as given, and kept (withPhoneAsGiven)
+  if (!wholeNumber(ctx.clinic, phone)) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic)) return null;
+  if (state.phonesConfirmed.has(digits)) return null;
+  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.phoneReadback = null; return null; }
+  const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
+  if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
+  return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
+}
 const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
@@ -99,7 +117,7 @@ const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${
 /** A time the caller chose, as the planner hears it: when, and with whom. */
 const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language'], now?: Date) => {
   const provider = clinic.providers.find((p) => p.id === slot.providerId);
-  return `${speakSlot(slot.start, clinic.timezone, lang, now)}${provider ? ` with ${localName(provider, lang)}` : ''}`;
+  return `${speakSlot(slot.start, clinic.timezone, lang, now)}${provider ? ` with ${providerName(provider, lang)}` : ''}`;
 };
 /**
  * Once the pet or patient is found or added: the time they chose before, looked for again (it may have gone meanwhile, and
@@ -133,7 +151,8 @@ const asGiven = (clinic: ClinicConfig, phone: string) => (wholeNumber(clinic, ph
  */
 function withPhoneAsGiven(result: ToolResult, rawArgs: unknown, state: CallState, ctx: CallContext): ToolResult {
   const given = (rawArgs as { phone?: unknown } | null)?.phone;
-  const phone = typeof given === 'string' && given.trim() ? given.trim() : null;
+  // as digits ("seven two oh, triple five" is 720555): words are not "not a whole number"
+  const phone = typeof given === 'string' && given.trim() ? spokenDigits(given.trim()) : null;
   if (!phone || wholeNumber(ctx.clinic, phone) || result.data.error === 'invalid_arguments') return result;
   const digits = phone.replace(/\D/g, '');
   if (state.phoneAsGiven === digits) return result;
@@ -176,17 +195,17 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
     else if (special) reasons.push(`On ${name} ${date} the clinic is open ${hoursText(open)} only${special.note ? ` (${special.note})` : ''}.`);
     if (q.provider) {
       const off = q.provider.timeOff.find((t) => !t.start && date >= t.from && date <= t.to);
-      if (off) reasons.push(`${q.provider.name} is away ${off.from === off.to ? `on ${off.from}` : `from ${off.from} to ${off.to}`}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+      if (off) reasons.push(`${providerName(q.provider)} is away ${off.from === off.to ? `on ${off.from}` : `from ${off.from} to ${off.to}`}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
       else if (q.provider.hours) {
         const theirs = windowsOn(q.provider.hours, weekdayOf(date));
         const days = [1, 2, 3, 4, 5, 6, 0].filter((d) => windowsOn(q.provider!.hours!, d).length).map((d) => DAY_NAMES[d]);
-        if (!theirs.length) reasons.push(`${q.provider.name} is not in on ${name}s; their days are ${days.join(', ')}.`);
-        else if (hoursText(theirs) !== hoursText(open)) reasons.push(`On ${name}s ${q.provider.name} is in ${hoursText(theirs)} only.`);
+        if (!theirs.length) reasons.push(`${providerName(q.provider)} is not in on ${name}s; their days are ${days.join(', ')}.`);
+        else if (hoursText(theirs) !== hoursText(open)) reasons.push(`On ${name}s ${providerName(q.provider)} is in ${hoursText(theirs)} only.`);
       }
     }
   } else if (q.provider && awayOn(q.provider, q.today)) {
     const off = q.provider.timeOff.find((t) => !t.start && q.today >= t.from && q.today <= t.to)!;
-    reasons.push(`${q.provider.name} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+    reasons.push(`${providerName(q.provider)} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
   }
   if (q.noticeHours && q.noticeHours > 2) {
     const earliest = new Date(q.now.getTime() + q.noticeHours * 3_600_000);
@@ -210,9 +229,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
-    return refuse('emergency_in_progress', trade.identity === 'pet'
-      ? 'Do not continue the task. Repeat where to take the animal now, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic) + '.'
-      : `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic)}.`);
+    if (trade.identity !== 'pet') return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic, state.language)}.`);
+    // the hospital is said once, never looped: a caller still asking for a booking after it is asked, once, whether the
+    // animal is in danger now; their no lets the call go on (two test calls repeated the hospital four times and never booked)
+    if (!state.emergencyScriptSaid) return refuse('emergency_in_progress', 'Do not continue the task yet. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
+    state.dangerQuestion ??= { atMs: state.lastMs(), askedAtMs: null, answered: false };
+    return refuse('emergency_in_progress', state.dangerQuestion.answered
+      ? 'The caller already heard where to take the animal: do not say it again. Do not continue the task: offer a callback from the team, or ask if there is anything else.'
+      : 'The caller already heard where to take the animal: do not say it again. Ask once, in one short sentence, whether the animal is in danger right now, like trouble breathing, bleeding or a collapse. If they say no, the call goes on and you can help with their request.');
   }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
@@ -248,7 +272,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // said on the call as people say it ("today at 2:30", "Thursday at 9"); a text is read later, so it keeps the date
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang, ctx.now());
   const whenDated = (start: Date) => speakSlot(start, clinic.timezone, lang);
-  const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
+  const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p, lang) : undefined; };
   /**
    * Where a confirmation text for this change would go, or null when none would: texting must be
    * on (its registration approved), the patient must have a phone, and changes and cancellations
@@ -279,7 +303,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     const visit = pets && facts.visitTypeId ? clinic.visitTypes.find((x) => x.id === facts.visitTypeId) : undefined;
     return {
       ...(name ? { name } : {}), ...(pets && p?.firstName ? { pet: p.firstName } : {}),
-      ...(provider && provider.kind !== 'room' ? { provider: localName(provider, lang) } : {}),
+      ...(provider && provider.kind !== 'room' ? { provider: providerName(provider, lang) } : {}),
       ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
     };
   };
@@ -449,7 +473,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const visitType = clinic.visitTypes.find((v) => v.id === args.visit_type_id);
       if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => localName(v, lang)).join(', ')}.`);
       // the clinic books this one itself: a request for the team, never a time from the assistant
-      if (visitType.staffOnly) return refuse('staff_books', 'The team books this visit themselves. Say so, and offer to take a request for them to call back with create_callback: what the visit is for, and the best number.');
+      if (visitType.staffOnly) {
+        // why, the notice the clinic set, then both next steps (a test call asked for surgery and heard only "not the surgery itself")
+        const related = relatedBookable(clinic, visitType);
+        const line = PACKS[lang].teamBooks({ visit: localName(visitType, lang), notice: visitType.noticeHours ? noticeWords(visitType.noticeHours) : null, related: related ? localName(related, lang) : null });
+        return refuse('staff_books', `Say, in these words: "${line}" A request: create_callback with topic "${localName(visitType, lang)}", and in the reason the pet and the timing they want.${related ? ` The other visit: find_slots with visit_type_id ${related.id}.` : ''}`);
+      }
       const patient = state.verifiedPatient;
       // a caller who said they (or the pet) are new is looked for with a new patient's visit from the start, so a time they pick still fits once they are added
       if ((patient?.isNew || (!patient && state.saidNew() === 'new')) && visitType.audience === 'existing') {
@@ -538,12 +567,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (usual) {
           const until = addDays(from, rules.usualWithinDays - 1);
           const theirs = findSlots(clinic, busy, { ...query, providers: [usual] }).filter((s) => localDateOf(s.start, clinic.timezone) <= until);
-          const name = providerName(usual.id);
+          const name = nameOf(usual.id);
           if (theirs.length) {
             const sooner = anyone.find((s) => s.providerId !== usual.id && s.start.getTime() < theirs[0]!.start.getTime());
             slots = sooner ? [...theirs, sooner] : theirs;
             note = `The first ${theirs.length === 1 ? 'time is' : `${theirs.length} times are`} with ${name}, who usually sees ${patient.firstName}: offer ${theirs.length === 1 ? 'it' : 'them'} first.`
-              + (sooner ? ` The last one, with ${providerName(sooner.providerId)}, is sooner: mention it only if none of ${name}'s suit.` : '') + ' Do not invent other times.';
+              + (sooner ? ` The last one, with ${nameOf(sooner.providerId)}, is sooner: mention it only if none of ${name}'s suit.` : '') + ' Do not invent other times.';
           } else if (anyone.length) {
             note = `${name}, who usually sees ${patient.firstName}, has nothing in the next ${rules.usualWithinDays} ${rules.usualWithinDays === 1 ? 'day' : 'days'}. Say so, offer these with other ${trade.identity === 'pet' ? 'vets' : 'doctors'}, and offer to look later for ${name} if they would rather wait.`;
           }
@@ -552,7 +581,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       for (const s of slots) state.offered.set(s.id, s);
       // why the day or the provider the caller asked for gave nothing, so the assistant can say so before the times
       const why = whyNot(clinic, { date: args.from_date as string | null, provider: named || providers.length === 1 ? providers[0] : undefined, noticeHours: visitType.noticeHours, now, today });
-      const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
+      const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: nameOf(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
       // the caller named one exact day and time and is already found: when it is free it is staged here and read back,
       // the one round where there were two (find, then propose). Anything else comes back as the times to offer.
       if (args.propose_if_exact === true && fromTime && args.from_date && patient) {
@@ -577,7 +606,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the kind of visit too, so a reschedule looks for the same one
       return { ok: true, data: { appointments: upcoming.map((a) => {
         const visit = clinic.visitTypes.find((v) => v.id === a.visitTypeId);
-        return { appointment_id: a.id, when: when(a.start), provider: providerName(a.providerId), visit_type_id: a.visitTypeId, visit: visit ? localName(visit, lang) : null };
+        return { appointment_id: a.id, when: when(a.start), provider: nameOf(a.providerId), visit_type_id: a.visitTypeId, visit: visit ? localName(visit, lang) : null };
       }) } };
     }
 
@@ -594,15 +623,15 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       await backend.audit.record(clinic.id, { actor: 'voice-agent', action: 'patient.visits.read.call', entity: 'patient', entityId: pet.id, callId: ctx.callId });
       // a question about the pet's visits, answered, is a call the assistant handled
       if (state.outcome === 'abandoned') state.outcome = 'info';
-      const lastSeen = last ? pack.lastVisitSeen({ pet: pet.firstName, when: when(last.start), provider: providerName(last.providerId) ?? null, visit: visitName(last.visitTypeId) }) : null;
+      const lastSeen = last ? pack.lastVisitSeen({ pet: pet.firstName, when: when(last.start), provider: nameOf(last.providerId) ?? null, visit: visitName(last.visitTypeId) }) : null;
       // dates, vets and kinds of visit only: no reason, note or anything medical is in what comes back
       return {
         ok: true,
         data: {
           pet: pet.firstName,
-          next_visits: upcoming.slice(0, 3).map((a) => ({ when: when(a.start), vet: providerName(a.providerId) ?? null, visit: visitName(a.visitTypeId) })),
-          last_visit: last ? { when: when(last.start), vet: providerName(last.providerId) ?? null, visit: visitName(last.visitTypeId) } : null,
-          usual_vet: usual ? providerName(usual) ?? null : null,
+          next_visits: upcoming.slice(0, 3).map((a) => ({ when: when(a.start), vet: nameOf(a.providerId) ?? null, visit: visitName(a.visitTypeId) })),
+          last_visit: last ? { when: when(last.start), vet: nameOf(last.providerId) ?? null, visit: visitName(last.visitTypeId) } : null,
+          usual_vet: usual ? nameOf(usual) ?? null : null,
           say: `Answer only what the owner asked, in a sentence, from these facts. ${lastSeen ? `A past visit is said this way: "${lastSeen}"` : 'No earlier visit is booked or recorded here: say you can\'t see one, never that there was none.'} Never read the visits out as a list unasked and never count them: only the last and the next. Nothing medical (what was found, results, medicines, doses, weights, notes, invoices) and no copy of the records: for those say "${pack.recordsOffer}", and on a yes take create_callback with the reason starting "Records request:".`,
         },
       };
@@ -618,7 +647,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
         replacing = when(current.start);
       }
-      const provider = providerName(slot.providerId) ?? 'the provider';
+      const provider = nameOf(slot.providerId) ?? 'the provider';
       const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
@@ -918,7 +947,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   // no pet named yet: the number's pets, to pick from
-  if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang);
+  if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang, args.phone);
   // the pet described as a new client does (its age, its sex) and nothing said about being new: asked first, once, never looked up blind.
   // Not after "Is this for Biscuit or Max, or a new pet?": that question already covered "new", and a call asks only one of the two
   if (!state.askedIfNew && !state.askedWhichPet && state.saidNew() === null && !state.askedWhetherNew() && describesPet(state.callerWordsSinceFound())) {
@@ -932,11 +961,18 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const tried = identityKey(pet, phone.replace(/\D/g, '').slice(-10));
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
+  const readBack = readBackFirst(args.phone, phone, state, ctx, lang);
+  if (readBack) return readBack;
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
-  if (found.status === 'found') return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, ...chosenNote(state, clinic, lang, ctx.now()) } };
+  if (found.status === 'found') {
+    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call)
+    const first = PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
+    const chosen = chosenNote(state, clinic, lang, ctx.now()).say ?? '';
+    return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want.${chosen}` } };
+  }
   if (found.status === 'ambiguous') return refuse('needs_staff', 'Say you need a colleague to confirm the pet\'s record, and offer a callback.');
   // the same answer whichever detail was wrong: never confirm what is on the number
-  return refuse('not_verified', `Say you could not find a pet by that name on this number. ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
+  return refuse('not_verified', `Say first, in these words: "${PACKS[lang].notSeenPet({ pet })}" ${state.identitiesTried.size > 1 ? 'They have given details before: do not ask again whether the pet is new.' : 'If the owner has not said whether the pet is new to the clinic, ask that; if new, add it with register_patient under this number.'} Otherwise ask whether the pet's name or the number is right, once. ${triesLeft(state)}`);
 }
 
 /**
@@ -945,13 +981,16 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
  * the number is the household, and the confirmation text to the number on file is the safety net. A number
  * with no pets gets the plain question, with no name from the records.
  */
-async function whichPet(phone: string, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult> {
+async function whichPet(phone: string, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language'], said: unknown): Promise<ToolResult> {
   const ask = refuse('pet_name', 'Ask which pet the call is about, by its name, or whether it is a new pet. Never say a pet\'s name the caller has not said. Keep what they already gave; do not ask for it again.');
   // "Is it new to us?" already asked this call: one question about "new" per call, so no pick question after it
   if (!backend.patients.petsOnNumber || state.askedIfNew) return ask;
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
+  const readBack = readBackFirst(said, phone, state, ctx, lang);
+  if (readBack) return readBack;
   const pets = await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
-  if (!pets.names.length) return ask;
+  // an unknown number: a new owner and a new pet, the usual way
+  if (!pets.names.length) return refuse('no_pets_on_number', `Say first, in these words: "${PACKS[lang].noPetsOnNumber}" Then ask the pet's name and whether it is new to the clinic; a new pet is added with register_patient under this number. Never say a pet's name the caller has not said.`);
   state.askedWhichPet = true;
   return { ok: true, data: {
     verified: false, pets_on_number: pets.names, more: pets.more,
@@ -1054,13 +1093,13 @@ export function textContent(
     case 'emergency_hospital': {
       const h = hospitalFor(clinic, now);
       if (!h) return null;
-      return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic) } };
+      return { template: 'emergency_hospital', vars: { hospital: h.name, hospitalAddress: h.address, hospitalPhone: h.phone, emergencyNumber: emergencyNumberFor(clinic, lang) } };
     }
     case 'provider': {
       const p = clinic.providers.find((x) => x.id === ref && !x.placeholder);
       if (!p) return null;
       const details = [...(p.credentials ?? []), ...(p.specialty ? [p.specialty] : []), ...p.categories].join(', ');
-      return { template: 'provider', vars: { provider: localName(p, lang), details, clinicPhone } };
+      return { template: 'provider', vars: { provider: providerName(p, lang), details, clinicPhone } };
     }
     case 'answer': {
       const faq = ref && state.answersGiven.has(ref) ? clinic.faqs.find((f) => f.id === ref) : undefined;

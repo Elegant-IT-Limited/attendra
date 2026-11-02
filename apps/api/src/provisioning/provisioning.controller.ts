@@ -39,6 +39,8 @@ const NewAccount = z.object({
     timezone: z.string().min(1).max(64),
     industry: z.enum(INDUSTRIES),
     phone: z.string().regex(/^\+[1-9]\d{7,14}$/, 'expected E.164, like +13035550100'),
+    /** The country the owner chose at sign-up (ISO code): the emergency number callers are told, whatever the phone's prefix. */
+    country: z.string().regex(/^[A-Z]{2}$/, 'a two-letter country code').optional(),
   }),
   owner: z.object({ name: z.string().trim().min(1).max(100), email: z.email().max(254), password: z.string().min(12).max(128) }),
   /** Total browser test-call time, for a trial; absent is no limit. */

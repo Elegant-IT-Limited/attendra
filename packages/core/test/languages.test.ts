@@ -154,7 +154,7 @@ describe('wording that follows the clinic\'s country', () => {
     expect(countryCopy(DEMO_CLINIC).recordingHint).toContain('US states');
     const uk = countryCopy({ phoneNumbers: ['+442071234567'] });
     expect(uk).toMatchObject({ us: false, exampleDob: '04/03/1985', phone: { e164: '+442079460123', local: '020 7946 0123' } });
-    expect(uk.recordingHint).toBe('Off by default. Check the law where you are before recording calls. A notice plays first.');
+    expect(uk.recordingHint).toBe('Off by default. Check the law where you are before recording calls. The notice is said in the greeting, before the first question.');
     expect(countryCopy({ phoneNumbers: ['+61291234567'] }).phone.e164).toBe('+61491570123');
   });
 });

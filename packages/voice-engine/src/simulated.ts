@@ -54,7 +54,7 @@ export class SimulatedEngine implements VoiceEngine {
     const s = this.sessions.get(sessionId);
     if (!s) throw new Error('no such simulated session');
     void this.run(s);
-    const limit = setTimeout(() => this.close(s, 'max_duration'), (s.script.maxSeconds ?? 300) * 1000);
+    const limit = setTimeout(() => this.close(s, 'max_duration'), (s.script.maxSeconds ?? 900) * 1000);
     s.timers.add(limit);
   }
 

@@ -1,0 +1,29 @@
+id: vet-es-number-corrected
+title: 'A number read back and corrected in Spanish ("no, termina en 0174") is read back again, and only that one is searched'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, language, es]
+facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna. Solo quiere confirmar que Luna está registrada: cuando la encuentren, diga gracias, que llamará para reservar, y adiós."
+turns:
+  - caller: Es para Luna, el número es 720 555 0175.
+    reply: "¿Es el 720-555-0175?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0175" }
+  - assistant: "¿Es el 720-555-0175?"
+  - caller: No, perdón, termina en 0174.
+    reply: "¿Es el 720-555-0174?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "¿Es el 720-555-0174?"
+  - caller: Sí, ese.
+    reply: "Encontré a Luna, su perro."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [confirm_number, confirm_number]
+  language: es
+  returned: ["¿Es el 720-555-0175?", "¿Es el 720-555-0174?", "Encontré a Luna, su perro."]

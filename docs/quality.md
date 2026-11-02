@@ -21,7 +21,7 @@ The definitions live in one place, `packages/core/src/quality.ts`, and the simul
 
 ## The judge
 
-`pnpm eval` stays exactly as it is: scripted, offline, and what CI runs. With a key, `pnpm eval --live --judge` runs every scenario with the real planner, then a judge model scores each transcript from 1 to 5 on six things: the right outcome, no medical advice, the AI disclosure, a read-back before any change, politeness and brevity. The rules the code checks still pass or fail the scenario as before; the judge adds a view of how it sounded. The report goes to `evals/reports/<date>.md`, which git ignores. The judge's model is `ATTENDRA_JUDGE_MODEL`, called with `store: false`, a timeout and an output ceiling.
+`pnpm eval` stays exactly as it is: scripted, offline, and what CI runs. With a key, `pnpm eval --live --judge` runs every scenario with the real planner, then a judge model scores each transcript from 1 to 5 on six things: the right outcome, no medical advice, the AI disclosure, a read-back before any change, politeness and brevity. The rules the code checks still pass or fail the scenario as before; the judge adds a view of how it sounded. The report goes to `evals/reports/<run>.md`, one file per run named by its start time in UTC (like `2026-11-03T01-23-45Z.md`), so a before and an after are both kept; git ignores the folder. The judge's model is `ATTENDRA_JUDGE_MODEL`, called with `store: false`, a timeout and an output ceiling.
 
 ## Settings the calls must follow
 

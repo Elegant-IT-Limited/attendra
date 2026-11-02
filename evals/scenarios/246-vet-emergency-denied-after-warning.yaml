@@ -1,0 +1,30 @@
+id: vet-emergency-denied-after-warning
+title: An owner who says it's not an emergency after hearing the hospital carries on and books, and the hospital isn't said again
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, safety, emergency-word]
+settings: { emergencyTransferEnabled: false }
+turns:
+  - caller: Hi, Biscuit chewed a sock.
+  - assistant: "This sounds like an emergency. Please take your pet to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. If a person is hurt or in danger, call 911."
+  - caller: No, it's not an emergency, forget it, he's not hurt. He passed it yesterday. I'm Linh Nguyen, I just want a check-up for Biscuit.
+    reply: "Okay, glad he's okay. Is your pet's profile under the number you're calling from, ending 0172?"
+  - caller: Yes, that's my number. Any time this week works.
+    reply: "I found Biscuit, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  emergency_instruction: true

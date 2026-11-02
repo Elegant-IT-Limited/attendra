@@ -265,7 +265,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // whatever the real planner asks next, in the order it asks, up to ten caller lines
   const followUp = livePlanner && scenario.facts ? opts.followUp : undefined;
   const lines: Scenario['turns'] = followUp ? scenario.turns.slice(0, 1) : [...scenario.turns];
-  const over = () => state.emergency !== null || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
+  const over = () => state.emergencyLocked || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   let hungUp = false;
   let callerSilent = false;
   // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
@@ -303,7 +303,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       await segment('agent', text, clock);
     };
     if (!turn.delegate && !livePlanner) { await say(); continue; }
-    if (state.emergency) { await say(); break; } // the script takes over; nothing else runs on this call
+    // the script holds the call; nothing else runs while it does. A caller with more to say (that it's not an emergency)
+    // still says it, and the call goes on from there
+    if (state.emergencyLocked) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
     if (livePlanner) queue.push(livePlanner);
     else {

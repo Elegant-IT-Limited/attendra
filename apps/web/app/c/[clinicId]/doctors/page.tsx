@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, doctorGuide, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, bareName, doctorGuide, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
@@ -141,7 +142,7 @@ export default function DoctorsPage() {
               <Card key={p.id} className="flex flex-col" data-testid="doctor">
                 <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{p.name}</p>
+                    <p className="truncate font-medium">{providerName(p)}</p>
                     {p.placeholder && <p className="mt-1"><Badge tone="warn">A stand-in: offered only until you add your own</Badge></p>}
                     {config.data && needsPhone(config.data, p) && <p className="mt-1"><Badge tone="warn">Add a phone number</Badge></p>}
                     <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
@@ -249,7 +250,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const setDay = (day: string, windows: { open: string; close: string }[]) => set({ hours: { ...hours, [day]: windows } });
 
   return (
-    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${editing.draft.name}` : `Add ${terms.provider}`}
+    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${providerName({ ...editing.draft, gender: editing.draft.gender || undefined })}` : `Add ${terms.provider}`}
       description="Saved changes reach the assistant on the next thing a caller asks."
       footer={(
         <>
@@ -261,11 +262,26 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       )}>
       <form id="doctor-form" onSubmit={submit} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-          <div className="space-y-1.5"><Label htmlFor="doc-name">Name</Label><Input id="doc-name" required minLength={2} maxLength={80} value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Dr. Jane Example" /></div>
+          <div className="space-y-1.5"><Label htmlFor="doc-name">Name</Label>
+            <Input id="doc-name" required minLength={2} maxLength={80} value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Jane Example" aria-describedby="doc-name-hint" />
+            <p id="doc-name-hint" className="text-xs text-text-muted">
+              {d.kind === 'room' ? 'As callers hear it, e.g. "the X-ray room".' : hadTitle(d.name) ? `We add ${titleOf(d) === 'dr' ? 'Dr.' : 'no title'} for you: saved as "${bareName(d.name)}".` : `We add Dr. for you: callers hear "${providerName({ ...d, gender: d.gender || undefined })}".`}
+            </p>
+          </div>
           <div className="space-y-1.5"><Label htmlFor="doc-kind">Is a</Label>
             <Select id="doc-kind" value={d.kind} onChange={(e) => set({ kind: e.target.value as 'person' | 'room' })}><option value="person">Person</option><option value="room">Room</option></Select>
           </div>
         </div>
+        {d.kind === 'person' && (
+          <div className="space-y-1.5">
+            <Label htmlFor="doc-title">Title</Label>
+            <Select id="doc-title" className="sm:w-64" value={d.title ?? 'dr'} onChange={(e) => set({ title: e.target.value as 'dr' | 'none' })} aria-describedby="doc-title-hint">
+              <option value="dr">Dr.</option>
+              <option value="none">None (technicians, groomers, other team)</option>
+            </Select>
+            <p id="doc-title-hint" className="text-xs text-text-muted">How the assistant, the schedule and texts say their name. In Spanish, Dra. for a woman.</p>
+          </div>
+        )}
         {languages.every((l) => l === 'en') ? null : (
           <div className="space-y-3">
             <LocalNames thing={d} languages={languages} what={terms.title('provider')} onChange={(names) => set({ names })} />
@@ -283,16 +299,16 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         {d.kind === 'person' && (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="doc-phone">Phone</Label>
-              <Input id="doc-phone" type="tel" autoComplete="off" value={d.phone ?? ''} placeholder="(303) 555-0100" aria-invalid={!!fieldErrors.phone || undefined} aria-describedby={fieldErrors.phone ? 'doc-phone-error' : 'doc-phone-hint'}
-                onChange={(e) => { set({ phone: e.target.value }); setFieldErrors((f) => ({ ...f, phone: undefined })); }} />
+              <Label htmlFor="doc-phone">Phone (private)</Label>
+              <PhoneInput id="doc-phone" autoComplete="off" value={d.phone ?? ''} placeholder="(555) 555-0123" aria-invalid={!!fieldErrors.phone || undefined} aria-describedby={fieldErrors.phone ? 'doc-phone-error' : 'doc-phone-hint'}
+                onValue={(phone) => { set({ phone }); setFieldErrors((f) => ({ ...f, phone: undefined })); }} />
               {fieldErrors.phone ? <p id="doc-phone-error" className="text-xs text-danger">{fieldErrors.phone}</p>
-                : <p id="doc-phone-hint" className="text-xs text-text-muted">{pets ? 'Their own number: it is what tells one veterinarian from another.' : 'Their own number, one per doctor.'}</p>}
+                : <p id="doc-phone-hint" className="text-xs text-text-muted">Private: for telling {pets ? 'vets' : 'doctors'} apart, never told to callers.</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="doc-other-phones">Other numbers</Label>
-              <Input id="doc-other-phones" type="text" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
-                onChange={(e) => { set({ otherPhones: e.target.value }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
+              <Input id="doc-other-phones" type="text" inputMode="tel" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
+                onChange={(e) => { set({ otherPhones: e.target.value.replace(/[^\d\s().,+-]/g, '') }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
               {fieldErrors.otherPhones && <p id="doc-other-phones-error" className="text-xs text-danger">{fieldErrors.otherPhones}</p>}
             </div>
           </div>

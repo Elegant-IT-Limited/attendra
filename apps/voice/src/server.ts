@@ -38,7 +38,9 @@ export interface VoiceDeps {
   pairWaitMs?: number;
   /** Shared with the API for browser test calls. Without it the internal route does not exist. */
   internalToken?: string;
-  /** A browser test call is ended after this long. Defaults to 300. */
+  /** Webhook deliveries per address per minute, before the signature check. Defaults to 1,200. */
+  webhookRouteLimit?: number;
+  /** A browser test call is ended after this long. Defaults to 900 (15 minutes), still capped by the clinic's test minutes left. */
   browserCallMaxSeconds?: number;
   /** Browser test calls one clinic may have open at once. Defaults to 2. */
   browserCallsPerClinic?: number;
@@ -129,6 +131,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     return ++f.n > (deps.webhookRateLimit ?? 600);
   };
   app.register(async (webhooks) => {
+    // A generous limit per address on every webhook, in front of the signature check and any database work, so a flood
+    // is cut early. Far above any real call volume (behind one proxy every delivery shares an address); the forged-
+    // delivery limit above still applies on top.
+    await webhooks.register(rateLimit, { max: deps.webhookRouteLimit ?? 1200, timeWindow: 60_000, keyGenerator: (req) => req.ip });
     webhooks.post('/webhooks/openai', async (req, reply) => {
       const receivedAt = Date.now();
       let event: IncomingCall;
@@ -194,7 +200,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     });
   });
 
-  const maxSeconds = deps.browserCallMaxSeconds ?? 300;
+  const maxSeconds = deps.browserCallMaxSeconds ?? 900;
   if (!Number.isFinite(maxSeconds) || maxSeconds <= 0) throw new Error('browserCallMaxSeconds must be a positive number');
   const perClinic = deps.browserCallsPerClinic ?? 2;
   /** Open browser test calls: by call id for ending them, and a count per clinic for the limit. */
@@ -437,7 +443,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       else if (opts.vipUri) await runner.act(a.vip(opts.vipUri));
       // what caller ID would show a front desk: how often this number called, and the one name on file
       else {
-        const known = callerContext(history);
+        const known = callerContext(history, clinic.industry);
         if (known) await runner.act([{ type: 'instructions', delegationId: null, content: known }]);
       }
       opts.onReady?.();

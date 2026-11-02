@@ -4,7 +4,7 @@ import type { CallDetail } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, UserCheck, X } from 'lucide-react';
-import { localDateOf } from '@attendra/core';
+import { localDateOf, providerName } from '@attendra/core';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Outcome } from '@/components/calls/outcome';
@@ -94,7 +94,7 @@ export default function CallPage() {
         <ul className="mb-6 space-y-2">
           {c.appointments.map((a) => {
             const Icon = a.change === 'booked' ? CalendarCheck : CalendarX;
-            const provider = config.data?.providers.find((p) => p.id === a.providerId)?.name ?? 'the provider';
+            const found = config.data?.providers.find((p) => p.id === a.providerId); const provider = found ? providerName(found) : 'the provider';
             const line = `${a.change === 'booked' ? 'Booked' : 'Cancelled'}: ${shortWhen(a.startsAt, tz)} with ${provider}`;
             return (
               <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm">

@@ -81,7 +81,7 @@ test('requests can be searched and narrowed to days', async ({ browser }) => {
 test('the schedule lists cancelled visits on their own, as a history', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   await page.getByRole('link', { name: 'Schedule', exact: true }).click();
-  await page.getByLabel('Show').selectOption({ label: 'Cancelled only, as a list' });
+  await page.getByLabel('Show').selectOption({ label: 'Cancelled (history)' });
   await expect(page.getByRole('heading', { name: 'Cancelled visits' })).toBeVisible();
   await page.getByLabel('Sort').selectOption({ label: 'Visit date, latest first' });
   await expect(page.getByTestId('cancelled')).toBeVisible();

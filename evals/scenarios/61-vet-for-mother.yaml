@@ -10,6 +10,11 @@ turns:
     delegate:
       - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: null }
   - caller: It'd be under my mom's number, 720 555 0174.
+    reply: "That's 720-555-0174?"
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "That's 720-555-0174?"
+  - caller: Yes, that's right.
     reply: "Found her, thank you. For a sick visit I have {offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
@@ -25,6 +30,6 @@ turns:
 expect:
   outcome: booked
   verified: true
-  refusals: [not_verified]
+  refusals: [not_verified, confirm_number]
   bookings_created: 1
   sms_sent: 1

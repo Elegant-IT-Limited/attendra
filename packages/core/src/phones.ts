@@ -132,3 +132,78 @@ export function withPhonesAsE164<C extends ConfigPhones>(c: C): C {
     ...(c.providers ? { providers: c.providers.map((p) => ({ ...fix(p), ...(p.otherPhones ? { otherPhones: p.otherPhones.map((x) => asE164(c, x)) } : {}) })) } : {}),
   };
 }
+
+const NUMBER_WORDS: Record<string, string> = {
+  zero: '0', oh: '0', o: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9',
+  cero: '0', uno: '1', un: '1', dos: '2', tres: '3', cuatro: '4', cinco: '5', seis: '6', siete: '7', ocho: '8', nueve: '9',
+};
+const REPEAT: Record<string, number> = { double: 2, doble: 2, triple: 3 };
+
+/**
+ * A number as people say it, as digits: "double eight, zero three, triple five, oh one three oh" is "8803555 0130"
+ * (spaces kept between pieces). "double"/"triple" (Spanish "doble"/"triple") repeat the next digit, even when that digit
+ * comes in the next piece of speech or as a written digit ("triple 5"). Words that aren't digits are left as they are,
+ * so a number with letters is still refused where letters are refused.
+ */
+export function spokenDigits(said: string): string {
+  const tokens = said.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/(\s+|,|-|\.)/);
+  const out: string[] = [];
+  let repeat = 1;
+  for (const token of tokens) {
+    const t = token.trim();
+    if (!t || /^[,.-]$/.test(t)) { out.push(token); continue; }
+    if (REPEAT[t]) { repeat = REPEAT[t]!; continue; }
+    const digit = NUMBER_WORDS[t] ?? (/^\d+$/.test(t) ? t : null);
+    if (digit === null) { out.push(token); repeat = 1; continue; }
+    out.push(digit[0]!.repeat(repeat) + digit.slice(1));
+    repeat = 1;
+  }
+  return out.join('').replace(/\s+/g, ' ').trim();
+}
+
+/** A number read back in groups, as people say it: 303-555-0130 in North America, the national digits in threes and the rest elsewhere. */
+export function groupedNumber(clinic: PhoneCountry, number: string): string {
+  const e164 = asE164(clinic, number);
+  const code = callingCode(e164);
+  const national = code ? e164.slice(code.length + 1) : number.replace(/\D/g, '');
+  if (code === '1' && national.length === 10) return `${national.slice(0, 3)}-${national.slice(3, 6)}-${national.slice(6)}`;
+  const d = national.replace(/\D/g, '');
+  return d.length > 7 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : d.length > 4 ? `${d.slice(0, d.length - 4)}-${d.slice(-4)}` : d;
+}
+
+/** What a phone field takes: digits and the phone characters (a leading +, spaces, -, (, ), .). No letters, ever. */
+export const PHONE_TYPED = /^\+?[\d\s().-]*$/;
+/** The one message for a phone typed with anything else, in the browser and from the API. */
+export const PHONE_NUMBERS_ONLY = 'Use numbers only, for example (555) 555-0123.';
+
+/** Why a typed phone is refused, or null: letters, or a + anywhere but first. Empty is for the field's own rule. */
+export const phoneProblem = (typed: string): string | null => (PHONE_TYPED.test(typed.trim()) ? null : PHONE_NUMBERS_ONLY);
+
+/**
+ * A phone as it is being typed or pasted, cleaned: letters and other symbols dropped, a + kept only first.
+ * `dropped` says something was taken out, so the field can say why instead of changing silently.
+ */
+export function cleanPhoneTyping(typed: string): { value: string; dropped: boolean } {
+  const plus = typed.trimStart().startsWith('+');
+  const kept = typed.replace(/[^\d\s().-]/g, '');
+  const value = (plus ? '+' : '') + kept.replace(/^\s+/, plus ? '' : '');
+  return { value: plus ? value : kept, dropped: value.replace(/^\+/, '').length + (plus ? 1 : 0) !== typed.length };
+}
+
+/**
+ * Every phone typed into Settings that isn't numbers only, by its path ("vipCallers.0.phone"), before anything is
+ * normalised: the normaliser keeps only the digits, so "303 CALL NOW" would otherwise be saved as a number.
+ */
+export function phoneTypingIssues(body: unknown): { path: string; message: string }[] {
+  if (!body || typeof body !== 'object') return [];
+  const c = body as { phoneNumbers?: unknown; vipCallers?: unknown; emergencyHospital?: unknown; moreEmergencyHospitals?: unknown; routing?: unknown };
+  const out: { path: string; message: string }[] = [];
+  const check = (path: string, v: unknown) => { if (typeof v === 'string' && phoneProblem(v.replace(/^tel:/, ''))) out.push({ path, message: PHONE_NUMBERS_ONLY }); };
+  if (Array.isArray(c.phoneNumbers)) c.phoneNumbers.forEach((n, i) => check(`phoneNumbers.${i}`, n));
+  if (Array.isArray(c.vipCallers)) c.vipCallers.forEach((v, i) => check(`vipCallers.${i}.phone`, (v as { phone?: unknown })?.phone));
+  if (c.emergencyHospital && typeof c.emergencyHospital === 'object') check('emergencyHospital.phone', (c.emergencyHospital as { phone?: unknown }).phone);
+  if (Array.isArray(c.moreEmergencyHospitals)) c.moreEmergencyHospitals.forEach((h, i) => check(`moreEmergencyHospitals.${i}.phone`, (h as { phone?: unknown })?.phone));
+  // a transfer is a phone (tel:) or a SIP address; only the phone ones are numbers only
+  if (Array.isArray(c.routing)) c.routing.forEach((r, i) => { const uri = (r as { uri?: unknown })?.uri; if (typeof uri === 'string' && uri.startsWith('tel:')) check(`routing.${i}.uri`, uri); });
+  return out;
+}

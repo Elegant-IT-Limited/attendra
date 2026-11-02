@@ -73,7 +73,7 @@ describe('one phone number, however it is typed', () => {
     expect(vipRoute(clinic, '1 (303) 555-0177', at)?.name ?? 'no route').not.toBe(null);
     const [vet] = DEMO_CLINIC.providers;
     const taken = { ...DEMO_CLINIC, industry: 'vet' as const, providers: [{ ...vet!, id: 'p_a', name: 'Dr Avery Lane', phone: '+13035550150' }] };
-    expect(providerPhoneIssues(taken, { phone: '(303) 555-0150' }).issues).toEqual([{ path: 'phone', message: 'Dr Avery Lane already has this number.' }]);
+    expect(providerPhoneIssues(taken, { phone: '(303) 555-0150' }).issues).toEqual([{ path: 'phone', message: 'Dr. Avery Lane already has this number.' }]);
     expect(providerPhoneIssues(taken, { phone: '303 555 0151' }).phone).toBe('+13035550151');
   });
 });

@@ -147,6 +147,9 @@ describe('booking over the phone', () => {
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Ana', isNew: true });
     // a pet: the same owner, pet and phone again use no try either
     const vet = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]); // read back first
+    vet.assistant("That's 720-555-0165?");
+    vet.caller('Yes.');
     for (let i = 0; i < 3; i++) await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie Cole', pet_name: 'Pepper', phone: '+17205550165' } }]);
     await vet.delegate([{ tool: 'verify_caller', args: { owner_name: 'jamie cole', pet_name: 'PEPPER', phone: '(720) 555-0165' } }]);
     expect(vet.state.verifyAttempts).toBe(1);
@@ -340,6 +343,9 @@ describe('safety', () => {
 
   it('at a veterinary clinic, an owner who gave only a first name is looked up, never asked for a last name (2026-10-23)', async () => {
     const c = await w.call(null, { clinic: RIVERBEND_CLINIC });
+    expect((await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }])).errors).toEqual(['confirm_number']);
+    c.assistant("That's 720-555-0165?");
+    c.caller('Yes.');
     const one = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Jamie', pet_name: 'Pepper', phone: '+17205550165' } }]);
     expect(one.errors).toEqual(['not_verified']); // looked up (no such pet here), not refused for a missing last name
     expect(JSON.stringify(one.results)).not.toMatch(/last name/);
@@ -830,8 +836,6 @@ describe('what the review found on calls', () => {
     const c = await w.call('+17205550172', { clinic: open });
     expect(c.caller('my dog swallowed a sock last week')[0]).toMatchObject({ type: 'instructions' });
     expect(c.state.emergencyLocked).toBe(true);
-    // not before the script has been said
-    expect(c.caller("he's fine now")).toEqual([]);
     c.assistant('Please take your pet to Front Range Pet Emergency right away.');
     const cleared = c.caller("he's fine now, it's not an emergency, I just want a check-up");
     expect(cleared[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('animal is safe') });

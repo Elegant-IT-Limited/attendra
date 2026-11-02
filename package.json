@@ -23,6 +23,7 @@
     "db:households": "pnpm --filter @attendra/db run households",
     "db:animal-lists": "pnpm --filter @attendra/db run animal-lists",
     "db:normalise-phones": "pnpm --filter @attendra/db run normalise-phones",
+    "db:vet-titles": "pnpm --filter @attendra/db run vet-titles",
     "add-member": "pnpm --filter @attendra/api add-member",
     "demo": "turbo run demo",
     "test:e2e": "pnpm --filter @attendra/web test:e2e"

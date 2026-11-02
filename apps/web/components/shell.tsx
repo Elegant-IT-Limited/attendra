@@ -257,7 +257,8 @@ function NavLink({ item: n, href, active, count, expanded, external, newTab }: {
   // the deployment's account pages are another app on this address: a full page load, not a client-side route
   const link = external
     ? <a href={href} className={className} {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
-    : <Link href={href} aria-current={active ? 'page' : undefined} className={className}>{inner}</Link>;
+    // every page in the menu is fetched ahead (the sidebar is always on screen), so a click needs no round trip first
+    : <Link href={href} prefetch aria-current={active ? 'page' : undefined} className={className}>{inner}</Link>;
   return expanded ? link : <Tooltip content={n.label}>{link}</Tooltip>;
 }
 

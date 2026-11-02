@@ -14,6 +14,8 @@ const when = (start: Date, timeZone: string, now?: Date) => {
   return `${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(start)} ${time}`;
 };
 
+/** A pet's kind as owners say it in Spanish, with its article: "su perro". Anything else is left unsaid. */
+const SPECIES_ES: Record<string, string> = { dog: 'su perro', perro: 'su perro', cat: 'su gato', gato: 'su gato', rabbit: 'su conejo', conejo: 'su conejo', bird: 'su pájaro', parrot: 'su loro', 'guinea pig': 'su cuyo', ferret: 'su hurón', hamster: 'su hámster' };
 const DIGITS = ['cero', 'uno', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve'];
 /** A note written to follow a comma, said as a sentence of its own. */
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -65,12 +67,23 @@ export const es: LanguagePack = {
   whichPet: ({ names, more }) => {
     const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} ${or(names.at(-1)!)} ${names.at(-1)}` : names[0]!;
-    return `¿Es para ${list}, ${more ? 'o para otra mascota' : 'o para una mascota nueva'}?`;
+    return names.length > 1
+      ? `Veo a ${list.replace(/ [ou] ([^ ]+)$/, ' y $1')} con este número. ¿Para cuál es${more ? ', o es para otra mascota' : ', o es para una mascota nueva'}?`
+      : `Veo a ${list} con este número. ¿Es para ${list}, ${more ? 'o para otra mascota' : 'o para una mascota nueva'}?`;
   },
   lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${w}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
   recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
   phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
+  profileNumberQuestion: ({ last4 }) => (last4 ? `Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en ${last4}?` : 'Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?'),
+  phoneReadback: ({ grouped }) => `¿Es el ${grouped}?`,
+  foundPet: ({ pet, species }) => {
+    const kind = species ? SPECIES_ES[species.toLowerCase()] ?? null : null;
+    return kind ? `Encontré a ${pet}, ${kind}.` : `Encontré a ${pet}.`;
+  },
+  notSeenPet: ({ pet }) => `No veo a ${pet} con ese número.`,
+  noPetsOnNumber: 'No veo ninguna ficha con ese número.',
+  teamBooks: ({ visit, notice, related }) => `Nuestro equipo reserva ${visit.toLowerCase()} directamente${notice ? `, con al menos ${notice.replace(/days?/, 'días').replace(/hours?/, 'horas')} de anticipación` : ''}. Puedo dejarle una solicitud al equipo${related ? `, o reservarle primero ${related.toLowerCase()}` : ''}. ¿Qué prefiere?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
@@ -97,6 +110,7 @@ export const es: LanguagePack = {
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
+      : kind === 'number' ? 'Déjeme revisar ese número.'
       : 'Déjeme consultarlo.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
   },

@@ -1,0 +1,23 @@
+id: vet-number-double-triple
+title: '"Seven two oh, triple five, oh one seven four" is read back as 720-555-0174 before the search, then the pet is found'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first]
+facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174, which you say with 'triple five'. Your dog is Luna. Say yes to the read-back of the number. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
+turns:
+  - caller: Hi, I want to book Luna in. The number is seven two oh, triple five, oh one seven four.
+    reply: "That's 720-555-0174?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "seven two oh, triple five, oh one seven four" }
+  - assistant: "That's 720-555-0174?"
+  - caller: Yes.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "seven two oh, triple five, oh one seven four" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [confirm_number]
+  returned: ["That's 720-555-0174?", "I found Luna, your dog."]

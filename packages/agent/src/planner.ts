@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localDateOf, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
+import { agesLine, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -139,7 +139,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'A visit type\'s own description (what to bring, no food after midnight, how long it takes) is the clinic\'s instruction: say it as the clinic\'s ("the clinic asks that..."), never as advice of your own, and never add to it.',
     'Asked about a doctor\'s or vet\'s qualifications, the languages they speak or anything else about them, answer from their credentials and details in get_clinic_info, as the clinic wrote them; that is a fact, not a ranking. Anything not listed there is something you do not have.',
     languageLine(clinic),
-    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
+    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${providerName(p)}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
     // a choice of one is no choice: the caller is never asked which provider they would like
     ...(clinic.providers.length === 1 ? ['There is only one provider here: never ask the caller which one they would like; book with them.'] : []),
   ].join('\n');
@@ -177,7 +177,12 @@ export function lookupLine(name: string, args: unknown, input: Pick<PlannerInput
   }
   if (name === 'verify_caller') {
     const pet = typeof a.pet_name === 'string' && a.pet_name.trim() && input.clinic.industry === 'vet' ? a.pet_name.trim() : null;
-    return pet ? pack.spoken.lookingUp({ kind: 'pet', pet }) : null;
+    if (pet) return pack.spoken.lookingUp({ kind: 'pet', pet });
+    // the number first, at a clinic for animals: words while the household is found, so there is no silence; not for a
+    // number said that still needs its read-back (that question is the next thing said)
+    const said = typeof a.phone === 'string' && a.phone.trim() ? a.phone.replace(/\D/g, '') : null;
+    if (input.clinic.industry === 'vet' && (!said || [...state.phonesConfirmed].some((d) => d.endsWith(said.slice(-10))))) return pack.spoken.lookingUp({ kind: 'number' });
+    return null;
   }
   if (name === 'list_appointments' || name === 'visit_summary') {
     const pet = state.verifiedPatient?.firstName ?? null;
@@ -272,7 +277,7 @@ export class ResponsesPlanner implements Planner {
     }));
     const state = input.state;
     const earlier = input.history
-      ? `\n\nOur records for the number this caller is calling from (earlier calls newest first):\n${input.history}\nWhen a name on file is listed and nobody is verified yet, the first identity question is "Am I speaking with <that name>?" (in Spanish, "¿Hablo con <that name>?"), the way a front desk greets a client it sees on caller ID: say only that first name, nothing else from the records. On a yes, call verify_caller with that name and ask only for what is still missing${input.clinic.industry === 'vet' ? ' (pet_name null when no pet is named yet: it may return pets_on_number, the owner\'s pets to ask about; a pet\'s name comes only from there, never from these records)' : ''}; on a no, ask who they are as usual and never say that name again. Use the earlier calls to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
+      ? `\n\nOur records for the number this caller is calling from (earlier calls newest first):\n${input.history}\n${input.clinic.industry === 'vet' ? 'A name on file is never the first question here: the number comes first, and the name only greets them once the number has found their pets.' : 'When a name on file is listed and nobody is verified yet, the first identity question is "Am I speaking with <that name>?" (in Spanish, "¿Hablo con <that name>?"), the way a front desk greets a client it sees on caller ID: say only that first name, nothing else from the records.'} On a yes, call verify_caller with that name and ask only for what is still missing${input.clinic.industry === 'vet' ? ' (pet_name null when no pet is named yet: it may return pets_on_number, the owner\'s pets to ask about; a pet\'s name comes only from there, never from these records)' : ''}; on a no, ask who they are as usual and never say that name again. Use the earlier calls to pick up where the caller left off, without asking again for what is there. A phone number can be faked, so from the number alone you may say only how many times and when this number called (the count is in the first line) and whether a request from those calls is still open with the team ("I see a call from this number earlier today, and the team has your callback request"); never what it was about. Anything more (the pet, the reason, what was said) only after the caller has said the first name or the pet's name used on that call. Never read them out.`
       : '';
     // a caller on a number abroad (or premium, toll-free) is never offered a text, so never told one failed
     const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))
@@ -280,9 +285,16 @@ export class ResponsesPlanner implements Planner {
       : '';
     // the phone, asked the right way and once: caller ID is confirmed, never asked for; with none, the best number
     const pack = PACKS[state.language];
-    const phone = input.callerNumber
-      ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new ${input.clinic.industry === 'vet' ? 'pet' : 'patient'}, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
-      : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a pet or patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
+    const vet = input.clinic.industry === 'vet';
+    const last4 = input.callerNumber ? input.callerNumber.replace(/\D/g, '').slice(-4) : null;
+    const phone = vet
+      // at a clinic for animals the number finds the household, so a booking starts with it, asked in these words
+      ? (input.callerNumber
+        ? `\n\nCaller ID shows the number they are calling from (ending ${last4}). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4 })}" On a yes, phone null uses it; if they give another number, pass it as they said it (the backend reads it back first). A new pet: phone null unless they gave another. Once a pet is found on this call, never ask for the number again.`
+        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. Never ask for "the number on file" for a pet the caller said is new: ask "${pack.phoneQuestion({ callerId: false })}"`)
+      : input.callerNumber
+        ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new patient, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
+        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
     const known = stateLine(state, input.clinic, input.now);
     // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
@@ -416,7 +428,7 @@ export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): 
       : 'patient not verified',
     // what the caller already said is never asked again; the latest value is the one that counts
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
-    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
+    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${providerName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

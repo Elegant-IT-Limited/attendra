@@ -12,7 +12,12 @@ turns:
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
   - caller: Es el 720 555 0172.
-    reply: "Gracias. ¿Es para Biscuit o Mochi, o para una mascota nueva?"
+    reply: "¿Es el 720-555-0172?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
+  - assistant: "¿Es el 720-555-0172?"
+  - caller: Sí, ese.
+    reply: "Gracias. Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
   - caller: Para Biscuit.
@@ -24,5 +29,5 @@ expect:
   outcome: abandoned
   verified: true
   language: es
-  refusals: [phone_required]
-  returned: ["¿Es para Biscuit o Mochi, o para una mascota nueva?"]
+  refusals: [phone_required, confirm_number]
+  returned: ["Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"]

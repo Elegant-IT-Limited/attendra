@@ -1,0 +1,28 @@
+id: vet-es-emergency-word-past
+title: '"Tuvo una emergencia la semana pasada" is about the past, in Spanish: no script, and the check-up is booked'
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, safety, emergency-word, language, es]
+facts: "Usted es Linh Nguyen, llama desde el número registrado por su perro Biscuit. Ya está bien. Cualquier hora sirve. Diga que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Hola, soy Linh Nguyen. Biscuit tuvo una emergencia la semana pasada y necesito una revisión para él.
+    reply: "Me alegra que esté mejor. Encontré a Biscuit. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Biscuit quedó reservado para {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  emergency_instruction: false
+  language: es
+forbid_spoken: ["Front Range Pet Emergency", "llame al 911"]

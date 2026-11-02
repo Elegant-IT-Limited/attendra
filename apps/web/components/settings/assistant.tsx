@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, EMERGENCY_COUNTRIES, emergencyCountry, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
@@ -17,8 +17,10 @@ export function Spoken({ language, children }: { language: Language; children: s
  */
 export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (patch: Partial<ClinicConfig>) => void; disabled: boolean }) {
   const name = c.assistantName?.trim() || null;
-  const defaultNumber = emergencyNumberFor({ phoneNumbers: c.phoneNumbers });
-  const allowed = allowedEmergencyNumbers(c.phoneNumbers);
+  const defaultNumber = emergencyNumberFor({ phoneNumbers: c.phoneNumbers, country: c.country });
+  const allowed = allowedEmergencyNumbers(c.phoneNumbers, c.country);
+  const country = emergencyCountry(c.phoneNumbers, c.country);
+  const fromPhone = emergencyCountry(c.phoneNumbers);
   const toggle = (l: Language, on: boolean) => set({ languages: on ? LANGUAGES.filter((x) => x === l || c.languages.includes(x)) : c.languages.filter((x) => x !== l) });
 
   return (
@@ -28,11 +30,23 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
           <Input id="assistant-name" value={c.assistantName ?? ''} placeholder="e.g. Maya" maxLength={24}
             onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
-        <Field label="Emergency number" htmlFor="emergency-number" hint={`Set from your clinic's country: ${defaultNumber}. Leave it empty unless your area uses another number${allowed.length > 1 ? ` (${allowed.join(' or ')})` : ''}.`}>
-          <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={defaultNumber} maxLength={5}
-            onChange={(e) => set({ emergencyNumber: e.target.value.trim() || undefined })} />
+        <Field label="Country" htmlFor="clinic-country" hint="Sets the emergency number the assistant gives a person in danger.">
+          <Select id="clinic-country" value={c.country ?? ''} disabled={disabled}
+            onChange={(e) => set({ country: e.target.value || undefined, emergencyNumber: undefined })}>
+            <option value="">{fromPhone ? `From your phone number: ${fromPhone}` : 'Not set'}</option>
+            {[...EMERGENCY_COUNTRIES].sort((a, b) => a.name.replace(/^the /, '').localeCompare(b.name.replace(/^the /, ''))).map((x) => (
+              <option key={x.code} value={x.code}>{x.name.replace(/^the /, '').replace(/^./, (l) => l.toUpperCase())}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Emergency number" htmlFor="emergency-number" hint={allowed.length
+          ? `${defaultNumber}, from ${country}. Leave it empty unless your area uses another number${allowed.length > 1 ? ` (${allowed.join(' or ')})` : ''}.`
+          : 'Your country isn\'t on our list, so the assistant says "call your local emergency number". Choose your country if it is listed.'}>
+          <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={allowed.length ? defaultNumber : 'None'} maxLength={5}
+            disabled={disabled || !allowed.length} onChange={(e) => set({ emergencyNumber: e.target.value.replace(/\D/g, '') || undefined })} />
         </Field>
       </div>
+      <p className="text-sm text-text-muted" data-testid="emergency-line">A person in danger is told: &ldquo;If a person is hurt or in danger, call {defaultNumber}.&rdquo;</p>
 
       <fieldset className="space-y-3">
         <legend className="mb-2 text-sm font-medium">Languages the assistant speaks</legend>

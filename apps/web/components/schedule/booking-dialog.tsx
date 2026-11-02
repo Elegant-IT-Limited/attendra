@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange } from '@attendra/api/contracts';
-import { type ClinicConfig, industryPack, localDateOf, shownProviders, zonedInstant } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf, providerName, shownProviders, zonedInstant } from '@attendra/core';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -123,7 +123,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               <Label htmlFor="provider">{pets ? 'Veterinarian' : 'Provider'}</Label>
               <Select id="provider" value={providerId ?? ''} onChange={(e) => { setProviderId(e.target.value || null); setSlot(null); }}>
                 <option value="">{pets ? 'Any veterinarian' : 'Any provider'}</option>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {providers.map((p) => <option key={p.id} value={p.id}>{providerName(p)}</option>)}
               </Select>
             </div>
           </div>
@@ -136,7 +136,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               <div className="space-y-1.5">
                 <Label htmlFor="override-provider">{pets ? 'Veterinarian' : 'Provider'}</Label>
                 <Select id="override-provider" value={override.providerId} onChange={(e) => setOverride({ ...override, providerId: e.target.value })}>
-                  {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {providers.map((p) => <option key={p.id} value={p.id}>{providerName(p)}</option>)}
                 </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -162,7 +162,7 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-text-muted">{pets ? 'Pet' : 'Patient'}</dt><dd className="font-medium">{patient?.name}</dd>
           <dt className="text-text-muted">When</dt><dd className="font-medium">{dayTitle(localDateOf(new Date(picked.startsAt), clinic.timezone))} at {timeOf(picked.startsAt, clinic.timezone)}</dd>
-          <dt className="text-text-muted">With</dt><dd>{provider?.name}</dd>
+          <dt className="text-text-muted">With</dt><dd>{provider ? providerName(provider) : null}</dd>
           <dt className="text-text-muted">Visit</dt><dd>{capital(visit?.name ?? '')}, {visit?.minutes} minutes</dd>
           {note.trim() && <><dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{note.trim()}</dd></>}
           {override.on && <><dt className="text-text-muted">Override</dt><dd>{override.reason.trim()}</dd></>}

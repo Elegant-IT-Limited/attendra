@@ -11,6 +11,8 @@ export interface StarterInput {
   industry: Industry;
   /** The clinic's own main number, E.164. It sets the country (emergency number, phone formats) until a number reaches Attendra. */
   phone: string;
+  /** The country chosen at sign-up (ISO code), for the emergency number; absent, the phone's country. */
+  country?: string | undefined;
 }
 
 const WEEKDAYS = { open: '08:00', close: '18:00' };
@@ -25,11 +27,11 @@ export function starterClinic(input: StarterInput): ClinicConfig {
   const vet = input.industry === 'vet';
   const visitTypes = vet
     ? [
-      { id: 'vt_wellness', name: 'wellness exam', names: { es: 'chequeo general' }, minutes: 30, audience: 'existing' as const },
-      { id: 'vt_sick', name: 'sick visit', names: { es: 'consulta por enfermedad' }, minutes: 20 },
-      { id: 'vt_vaccines', name: 'vaccine appointment', names: { es: 'cita de vacunas' }, minutes: 15 },
-      { id: 'vt_new', name: 'new client exam', names: { es: 'primera consulta' }, minutes: 40, audience: 'new' as const },
-      { id: 'vt_surgery_consult', name: 'surgery consultation', names: { es: 'consulta de cirugía' }, minutes: 30 },
+      // the starter set for a vet clinic: what most callers ask for, in the minutes most clinics give them
+      { id: 'vt_wellness', name: 'check-up', names: { es: 'chequeo' }, minutes: 20, description: 'A full check-up for a pet already seen here.', audience: 'existing' as const },
+      { id: 'vt_sick', name: 'sick visit', names: { es: 'consulta por enfermedad' }, minutes: 30 },
+      { id: 'vt_vaccines', name: 'vaccines', names: { es: 'vacunas' }, minutes: 15 },
+      { id: 'vt_new', name: 'new patient visit', names: { es: 'primera consulta' }, minutes: 40, description: 'A first full check-up for a pet new to the clinic.', audience: 'new' as const },
     ]
     : [
       { id: 'vt_new', name: 'new patient visit', names: { es: 'primera consulta' }, minutes: 40, audience: 'new' as const },
@@ -42,6 +44,7 @@ export function starterClinic(input: StarterInput): ClinicConfig {
     industry: input.industry,
     timezone: input.timezone,
     phoneNumbers: [input.phone],
+    ...(input.country ? { country: input.country } : {}),
     hours: { '1': [WEEKDAYS], '2': [WEEKDAYS], '3': [WEEKDAYS], '4': [WEEKDAYS], '5': [WEEKDAYS] },
     greeting: PACKS.en.greeting({ assistantName: null, clinicName: input.name }),
     languages: ['en'],

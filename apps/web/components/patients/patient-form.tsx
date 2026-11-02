@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/controls';
 import { CustomFieldInputs } from '@/components/patients/custom-fields';
 import { useProblem } from '@/components/ui/toast';
 import { Input, Label, Select } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { api, ApiFailure, useClinicConfig } from '@/lib/api';
 import { useAddToList } from '@/lib/lists';
 
@@ -189,7 +190,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="phone">Owner&apos;s phone</Label>
-            <Input id="phone" type="tel" required minLength={10} autoComplete="off" value={form.phone} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} {...err('phone')} />
+            <PhoneInput id="phone" required minLength={10} autoComplete="off" value={form.phone} onValue={(value) => set('phone')({ target: { value } })} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} {...err('phone')} />
             {errors.phone ? problem('phone') : <p className="text-xs text-text-muted">With the area code. The number is the household: the assistant finds the pet by this number and the pet&apos;s name, and texts it after every booking.</p>}
           </div>
         </fieldset>
@@ -220,7 +221,7 @@ export function PatientForm({ clinicId, patientId, initial, submitLabel, onSaved
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" type="tel" required minLength={10} autoComplete="off" value={form.phone} onChange={set('phone')} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} {...err('phone')} />
+          <PhoneInput id="phone" required minLength={10} autoComplete="off" value={form.phone} onValue={(value) => set('phone')({ target: { value } })} placeholder={countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone.local} {...err('phone')} />
           {errors.phone ? problem('phone') : <p className="text-xs text-text-muted">With the area code. The assistant uses it, with the name and date of birth, to know who is calling. For a child, the parent&apos;s number.</p>}
         </div>
         {child && (

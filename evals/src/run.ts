@@ -2,7 +2,8 @@
 // Runs every scenario and prints a table. `pnpm eval` is scripted and offline;
 // `pnpm eval --live` swaps in the real planner model (needs OPENAI_API_KEY), and
 // `--judge` adds a model that scores each live transcript and writes
-// evals/reports/<date>.md, which git ignores.
+// evals/reports/<run>.md, which git ignores. <run> is the run's start time in UTC (2026-11-03T01-23-45Z): every run
+// keeps its own judge table and timings, so a before and an after can be compared.
 import { type PlannerSpeed, type PlannerTiming, ResponsesPlanner } from '@attendra/agent';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,8 +32,10 @@ const speed: PlannerSpeed = {
 };
 // `--timings` also prints the planner model time of every live request, to compare speed settings request by request,
 // with each round's tokens and first-token time (rounds are streamed for that), and writes them all to
-// evals/reports/timings-<date>.json
+// evals/reports/timings-<run>.json
 const perRequest = process.argv.includes('--timings');
+/** This run's name for its files: its start time in UTC, safe in a file name. */
+const RUN = new Date().toISOString().slice(0, 19).replace(/:/g, '-') + 'Z';
 const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', undefined, undefined, speed, { firstToken: perRequest }) : undefined;
 // live, a model answers the planner's follow-up questions for a scenario that lists its facts
 const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
@@ -109,7 +112,7 @@ if (timings.length) {
   if (perRequest) {
     const dir = join(import.meta.dirname, '../reports');
     mkdirSync(dir, { recursive: true });
-    const file = join(dir, `timings-${new Date().toISOString().slice(0, 10)}.json`);
+    const file = join(dir, `timings-${RUN}.json`);
     writeFileSync(file, JSON.stringify({ model: process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', speed, timings }, null, 1));
     console.log(dim(`timings: ${file}`));
   }
@@ -118,7 +121,7 @@ if (judge) {
   const date = new Date().toISOString().slice(0, 10);
   const dir = join(import.meta.dirname, '../reports');
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${date}.md`);
+  const file = join(dir, `${RUN}.md`);
   writeFileSync(file, judgeReport(runs, { date, planner: process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', judge: judge.model, transcripts }));
   console.log(dim(`report: ${file}`));
 }

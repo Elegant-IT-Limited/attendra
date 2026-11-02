@@ -45,6 +45,7 @@ const AUDIT: Record<string, Way> = {
   languages: 'prompt',
   primaryLanguage: 'prompt',
   emergencyNumber: 'code', // the emergency script says it
+  country: 'code', // picks the emergency number (the country's), or "your local emergency number" when it isn't on file
   voice: 'code',
   'providers[].id': 'code',
   'providers[].name': 'clinic_info',
@@ -67,6 +68,7 @@ const AUDIT: Record<string, Way> = {
   'providers[].credentials': 'clinic_info',
   'providers[].phone': 'staff_only', // the vet's own number tells one vet from another; never said to a caller
   'providers[].otherPhones': 'staff_only',
+  'providers[].title': 'code', // how the name is said everywhere: "Dr. Ruiz", or the name alone for a groomer (providerName)
   'providers[].custom': 'clinic_info', // under the field's label, unless the field is kept for the team
   'visitTypes[].id': 'code',
   'visitTypes[].name': 'clinic_info',

@@ -236,7 +236,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Settings' }).click();
     const line = 'For your team only. The assistant does not read this to callers.';
-    await expect(page.locator('#links').getByTestId('team-only')).toHaveText(line);
+    // Menu links are hidden for now (one flag): no section and no entry in the side list
+    await expect(page.locator('#links')).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'Menu links', exact: true })).toHaveCount(0);
     await page.getByRole('link', { name: 'Requests and kinds of request' }).click();
     await expect(page.locator('#request-fields').getByTestId('team-only')).toHaveText(line);
     await page.getByRole('tab', { name: /Doctors|Veterinarians/ }).click();

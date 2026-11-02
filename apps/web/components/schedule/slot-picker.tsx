@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { SlotList } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, localDateOf } from '@attendra/core';
+import { addDays, type ClinicConfig, localDateOf, providerName } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
     const d = localDateOf(new Date(s.startsAt), clinic.timezone);
     byDay.set(d, [...(byDay.get(d) ?? []), s]);
   }
-  const providerName = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? id;
+  const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
 
   return (
     <div className="space-y-3">
@@ -78,7 +78,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
                       className={cn('rounded-md border px-2.5 py-1.5 text-left text-sm focus-ring',
                         selected ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface hover:bg-surface-sunken')}>
                       <span className="font-medium tabular-nums">{timeOf(s.startsAt, clinic.timezone)}</span>
-                      {!providerId && <span className={cn('block text-xs', selected ? 'text-on-primary/80' : 'text-text-muted')}>{providerName(s.providerId)}</span>}
+                      {!providerId && <span className={cn('block text-xs', selected ? 'text-on-primary/80' : 'text-text-muted')}>{nameOf(s.providerId)}</span>}
                     </button>
                   );
                 })}

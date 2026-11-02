@@ -53,7 +53,7 @@ export class Judge {
 
 export const meanScore = (v: Verdict) => Math.round((Object.values(v).reduce((n, s) => n + s.score, 0) / Object.keys(v).length) * 10) / 10;
 
-/** The report `pnpm eval --live --judge` writes to evals/reports/<date>.md. */
+/** The report `pnpm eval --live --judge` writes to evals/reports/<run>.md, one file per run (its start time in UTC). */
 export function judgeReport(runs: { scenario: Scenario; result: ScenarioResult; verdict: Verdict | null; error?: string }[], meta: { date: string; planner: string; judge: string; transcripts?: boolean }): string {
   const keys = Object.keys(CRITERIA) as Criterion[];
   const judged = runs.filter((r) => r.verdict);

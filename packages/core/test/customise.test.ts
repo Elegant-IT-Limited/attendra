@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyListChange, asE164, leftOffList, listRowNote, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
+import { allowedEmergencyNumbers, applyListChange, emergencyCountry, asE164, leftOffList, listRowNote, listUsage, managedList, notOnListProblem, onList, shownProviders, withListValues, greetingFor, PACKS, textingOf, bookableProviders, ClinicConfig, clinicWarnings, currentOffers, DEMO_CLINIC, detectEmergencies, emergencyNumberFor, emergencyNumberProblem, hospitalFor, matchesSpecialty, readCustomValues, RIVERBEND_CLINIC, starterClinic, visitTypeFacts, zonedInstant } from '../src';
 
 describe('what a clinic customises', () => {
   it('shows offers only between their dates', () => {
@@ -79,10 +79,19 @@ describe('emergency hospitals', () => {
 });
 
 describe('emergency numbers by country', () => {
-  it('knows the numbers of more countries, and keeps 112 for the rest', () => {
+  it('knows the numbers of more countries, and never guesses for the rest', () => {
     const at = (n: string) => emergencyNumberFor({ phoneNumbers: [n] });
     expect([at('+13035550100'), at('+442079460123'), at('+61298765432'), at('+6495551234'), at('+525512345678'), at('+81312345678'), at('+353115551234'), at('+33155551234'), at('+9771234567')])
-      .toEqual(['911', '999', '000', '111', '911', '119', '112', '112', '112']);
+      .toEqual(['911', '999', '000', '111', '911', '119', '112', '112', 'your local emergency number']);
+    expect(emergencyNumberFor({ phoneNumbers: ['+9771234567'] }, 'es')).toBe('número local de emergencias');
+    expect(allowedEmergencyNumbers(['+9771234567'])).toEqual([]);
+    expect(emergencyNumberProblem({ phoneNumbers: ['+9771234567'], emergencyNumber: '112' })).toMatch(/local emergency number/);
+    expect([emergencyCountry(['+442079460123']), emergencyCountry(['+33155551234']), emergencyCountry(['+9771234567'])]).toEqual(['the United Kingdom', 'France', null]);
+    // the country set in Settings comes before the phone number's
+    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], country: 'GB' })).toBe('999');
+    expect(emergencyNumberFor({ phoneNumbers: ['+9771234567'], country: 'NZ' })).toBe('111');
+    expect(emergencyNumberFor({ phoneNumbers: ['+13035550100'], country: 'ZZ' })).toBe('your local emergency number');
+    expect(emergencyCountry(['+13035550100'])).toBe('the United States or Canada');
     expect(emergencyNumberProblem({ phoneNumbers: ['+353115551234'], emergencyNumber: '999' })).toBeNull();
   });
 });

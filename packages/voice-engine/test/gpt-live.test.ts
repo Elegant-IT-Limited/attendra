@@ -98,7 +98,12 @@ describe('GptLiveEngine browser calls', () => {
     expect(known).not.toContain('Scout');
     const unnamed = callerContext('Calls from this number in the last 30 days: 2.\n2026-10-24T13:20:00.000Z: A question.')!;
     expect(unnamed).not.toContain('Am I speaking with');
-    expect(unnamed).toContain("ask for their first name and their pet's name");
+    expect(unnamed).toContain('ask for their first name');
+    // at a clinic for animals the number comes first, and the name on file only greets once the number has found them
+    const vet = callerContext('Name on file for this number: Sam.\nCalls from this number in the last 30 days: 5.', 'vet')!;
+    expect(vet).not.toContain('Am I speaking with');
+    expect(vet).toContain('the number comes first');
+    expect(callerContext('Calls from this number in the last 30 days: 2.', 'vet')).toContain("the phone number their pet's profile is under");
   });
 
   it('never sends a browser session to the SIP endpoints', async () => {

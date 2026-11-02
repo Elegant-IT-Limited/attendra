@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange, AppointmentDetail, BookedBy } from '@attendra/api/contracts';
-import { type ClinicConfig, industryPack, localDateOf } from '@attendra/core';
+import { type ClinicConfig, industryPack, localDateOf, providerName } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -70,7 +70,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
 
   const close = (open: boolean) => { if (!open) { setMode('view'); setMessage(null); setSlot(null); onClose(); } };
   const a = detail.data;
-  const provider = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? id;
+  const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
   const pets = industryPack(clinic.industry).identity === 'pet';
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id);
   // a move or cancel begun keeps its buttons if the visit's start passes meanwhile: the server then says why

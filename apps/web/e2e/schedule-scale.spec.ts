@@ -22,7 +22,8 @@ const VETS_PER_DAY = 20;
 const PETS = 40;
 const SPECIALTIES = ['Surgery', 'Dentistry', 'Dermatology', 'Cardiology', 'Exotic animals', 'Internal medicine'];
 /** The starter clinic's visit types, by id and the name the doctor CSV uses. */
-const TYPES = [['vt_wellness', 'wellness exam'], ['vt_sick', 'sick visit'], ['vt_vaccines', 'vaccine appointment'], ['vt_surgery_consult', 'surgery consultation']] as const;
+// the starter set's visit types a vet clinic begins with (Check-up, Sick visit, Vaccines; New patient visit is for new pets only)
+const TYPES = [['vt_wellness', 'check-up'], ['vt_sick', 'sick visit'], ['vt_vaccines', 'vaccines']] as const;
 const PET_NAMES = ['Biscuit', 'Mochi', 'Pepper', 'Clover', 'Waffle', 'Juniper', 'Olive', 'Pickle', 'Maple', 'Nutmeg'];
 
 const vetName = (i: number) => `Dr. Vet ${String(i + 1).padStart(3, '0')}`;
@@ -116,7 +117,8 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     const report = (await imported.json()) as { counts: { add: number; error: number } };
     expect(report.counts).toMatchObject({ add: VETS, error: 0 });
     const doctors = (await (await api.get(`/api/v1/clinics/${clinicId}/doctors`)).json()) as { providers: { id: string; name: string }[] };
-    const vetIds = new Map(doctors.providers.map((p) => [p.name, p.id]));
+    // names are stored without the title the file typed ("Dr. Vet 001" is saved as "Vet 001")
+    const vetIds = new Map(doctors.providers.map((p) => [`Dr. ${p.name.replace(/^Dr\.?\s+/, '')}`, p.id]));
     expect(vetIds.size).toBe(VETS);
 
     // forty pets, on forty made-up numbers
@@ -140,9 +142,72 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     state = await context.storageState();
   });
 
-  test('opens on the Agenda: the day in time order, narrowed by vet, specialty and visit type, a row opens the visit', async ({ browser }) => {
+  test('opens on Day for everyone, remembers the view a person chose, and says what each view is', async ({ browser }) => {
+    test.setTimeout(120_000);
     const page = await openPage(browser);
     await page.goto(`/c/${clinicId}/schedule?date=${DAY}`);
+    await expect(page.getByRole('tab', { name: 'Day' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+    await expect(page.locator('#schedule-view-hint')).toHaveText('One column per vet');
+    await expect(page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ })).toBeVisible();
+    await page.getByRole('tab', { name: 'Week' }).click();
+    await expect(page.locator('#schedule-view-hint')).toHaveText('7 days side by side');
+    await page.goto(`/c/${clinicId}/schedule?date=${DAY}`);
+    await expect(page.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+    await page.getByRole('tab', { name: 'Day' }).click();
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`scrolls inside the card both ways: the last lane and the last hour reach view and open, Day and Week, ${theme}`, async ({ browser }) => {
+      test.setTimeout(120_000);
+      const page = await openPage(browser);
+      await page.addInitScript((t) => { try { localStorage.setItem('attendra.theme', t); } catch { /* none */ } }, theme);
+      // Day: the twenty vets working with visits; Week at a clinic this big: eight of the hundred with visits (My vets
+      // first), a lane each on each of the five days, with a line that says so
+      for (const [view, lanes] of [['day', VETS_PER_DAY], ['week', 5 * 8]] as const) {
+        await page.goto(`/c/${clinicId}/schedule?view=${view}&date=${DAY}`);
+        await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
+        const scroller = page.getByTestId('schedule-scroller');
+        await expect(page.getByTestId('lane')).toHaveCount(lanes);
+        if (view === 'week') await expect(page.getByTestId('schedule')).toContainText('The week shows 8 of the 100 vets with visits');
+        // for a batch report: SCHEDULE_SHOTS=<folder> keeps a picture of each view and theme
+        if (process.env.SCHEDULE_SHOTS) await page.screenshot({ path: `${process.env.SCHEDULE_SHOTS}/schedule-${view}-${theme}.png` });
+        // the grid scrolls inside its card, not the page: taller and wider than the card
+        expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight && el.scrollWidth > el.clientWidth)).toBe(true);
+        // to the far right and the bottom: the last lane and the last hour come into view, headings and hours stay put
+        await scroller.evaluate((el) => { el.scrollTo(el.scrollWidth, el.scrollHeight); });
+        const box = (await scroller.boundingBox())!;
+        const lastLane = (await page.getByTestId('lane').last().boundingBox())!;
+        expect(lastLane.x + lastLane.width).toBeLessThanOrEqual(box.x + box.width + 1);
+        // the headings' row stays at the top of the card, scrolled to the bottom
+        const headings = scroller.locator('.sticky.top-0').first();
+        expect(Math.abs((await headings.boundingBox())!.y - box.y)).toBeLessThan(2);
+        // the keyboard reaches it too
+        await scroller.evaluate((el) => { el.scrollTo(0, 0); });
+        await scroller.focus();
+        await page.keyboard.press('End');
+        await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+        // every visit block stays at least a 24-pixel target, and the last one opens
+        const blocks = page.getByTestId('appointment');
+        for (const b of (await blocks.all()).slice(-6)) { const r = (await b.boundingBox())!; expect(r.width).toBeGreaterThanOrEqual(24); }
+        // the last visit, brought to the middle of the card (clear of the sticky rows), opens with a click
+        await blocks.last().evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+        const card = (await scroller.boundingBox())!;
+        const r = (await blocks.last().boundingBox())!;
+        expect(r.x).toBeGreaterThan(card.x + 56);
+        expect(r.y).toBeGreaterThan(card.y);
+        const target = { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 12) };
+        await page.mouse.click(target!.x, target!.y);
+        await expect(page).toHaveURL(/appointment=/, { timeout: 15_000 });
+        await expect(page.getByRole('dialog')).toBeVisible({ timeout: 15_000 });
+        await page.keyboard.press('Escape');
+        await noSeriousAxe(page, `Schedule ${view} scrolled, ${theme}`);
+      }
+    });
+  }
+
+  test('the Agenda: the day in time order, narrowed by vet, specialty and visit type, a row opens the visit', async ({ browser }) => {
+    const page = await openPage(browser);
+    await page.goto(`/c/${clinicId}/schedule?view=agenda&date=${DAY}`);
     await expect(page.getByRole('tab', { name: 'Agenda' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
     const rows = page.getByTestId('agenda-row');
@@ -169,7 +234,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await page.getByRole('listbox', { name: 'Choices for veterinarian' }).getByRole('option', { name: 'None', exact: true }).click();
     await page.getByLabel('Specialty', { exact: true }).selectOption({ label: 'Surgery' });
     await expect(rows).toHaveCount(onDay.filter((x) => x.vet % SPECIALTIES.length === 0).length);
-    await page.getByLabel('Visit type').selectOption({ label: 'wellness exam' });
+    await page.getByLabel('Visit type').selectOption({ label: 'check-up' });
     await expect(rows).toHaveCount(onDay.filter((x) => x.vet % SPECIALTIES.length === 0 && x.type[0] === 'vt_wellness').length);
     await page.getByLabel('Specialty', { exact: true }).selectOption({ index: 0 });
     await page.getByLabel('Visit type').selectOption({ index: 0 });
@@ -217,7 +282,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     for (let i = 1; i < seen.length; i++) expect(seen[i]!.x).toBeGreaterThanOrEqual(seen[i - 1]!.x + seen[i - 1]!.width - 1);
 
     // wider than the card: it scrolls sideways, and the hour labels stay at the left edge
-    const scroller = page.getByTestId('schedule').locator('.overflow-x-auto').first();
+    const scroller = page.getByTestId('schedule-scroller');
     const hour = page.getByText('9 AM', { exact: true });
     const before = (await hour.boundingBox())!;
     await scroller.evaluate((el) => { el.scrollLeft = 600; });
@@ -235,7 +300,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const heads = page.getByTestId('lane-head');
     await expect(heads).toHaveCount(VETS_PER_DAY);
-    await page.getByRole('button', { name: /^Vets: choose/ }).click();
+    await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     const picker = page.getByTestId('vets-picker');
     await expect(picker).toBeVisible();
     const list = picker.getByRole('list', { name: 'Veterinarians to show' });
@@ -282,7 +347,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await expect(heads).toHaveCount(1);
     await expect(page.getByTestId('appointment')).toHaveCount(3);
     await page.getByLabel('Provider').selectOption({ index: 0 });
-    await page.getByRole('button', { name: /^Vets: choose/ }).click();
+    await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     await page.getByTestId('vets-picker').getByRole('button', { name: 'Clear' }).click();
     await expect(heads).toHaveCount(VETS_PER_DAY);
     expect(await page.evaluate((id) => localStorage.getItem(`attendra.schedule.vets.${id}`), clinicId)).toBeNull();

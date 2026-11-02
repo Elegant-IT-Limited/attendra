@@ -1,0 +1,29 @@
+id: vet-team-booked-visit
+title: 'A visit the team books, asked for directly: the reason, the notice, and both next steps; the request carries the visit and the timing'
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, team-books]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_surgery, name: surgery, names: { es: cirugía }, minutes: 60, staffOnly: true, noticeHours: 25, maxDaysAhead: 3 }
+    - { id: vt_surgery_consult, name: surgery consultation, names: { es: consulta de cirugía }, minutes: 30 }
+facts: "You are Linh Nguyen calling from the number on file about Biscuit's surgery. You want the team to call you about it, next week if possible."
+turns:
+  - caller: Hi, it's Linh Nguyen. I need to book surgery for Biscuit.
+    reply: "Our team books surgery themselves, with at least 25 hours' notice. I can take a request for the team, or book a surgery consultation first. Which would you like?"
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_surgery, provider_id: null, from_date: null, part_of_day: any }
+  - caller: A request for the team, please, for next week.
+    reply: "Done. The team will call you about Biscuit's surgery."
+    delegate:
+      - create_callback: { reason: "Biscuit: surgery, next week if possible", callback_number: null, topic: surgery }
+expect:
+  outcome: task_created
+  verified: true
+  refusals: [staff_books]
+  bookings_created: 0
+  returned: ["Our team books surgery themselves, with at least 25 hours' notice. I can take a request for the team, or book a surgery consultation first. Which would you like?"]

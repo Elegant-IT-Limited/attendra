@@ -2,7 +2,7 @@
 
 Talk to a clinic's receptionist through your microphone, from the dashboard. It runs the same agent, tools, guardrails and settings as a phone call, and the call lands in the call list marked **Browser test**. You need an OpenAI API key with a few dollars of credit. You do not need a phone number, Twilio, a public URL or a webhook.
 
-A test call costs what a phone call costs on OpenAI's side: GPT-Live is about $0.05 a minute, plus the backend model for tool steps. Calls end on their own after 5 minutes (`BROWSER_CALL_MAX_SECONDS`), and a clinic can have two open at once.
+A test call costs what a phone call costs on OpenAI's side: GPT-Live is about $0.05 a minute, plus the backend model for tool steps. Calls end on their own after 15 minutes (`BROWSER_CALL_MAX_SECONDS`), or sooner when the clinic has fewer test minutes left, and a clinic can have two open at once.
 
 What the assistant does on a test call is real for that clinic: bookings, cancellations, refill and callback requests all land where a phone call's would. Test calls never send texts. Try them on the demo clinic, whose patients are synthetic: say one of their names (Maria Delgado, born 4 March 1985, for example) to pass the identity check. On a live clinic, use a test patient.
 
@@ -49,7 +49,7 @@ Tick **Record this test call** on the Test call page to hear afterwards how the 
 
 ## Limiting test-call time
 
-A clinic can be given a total allowance of test-call time, which a hosted trial uses (10 minutes). Without one, as every clinic starts, there is no limit beyond the time limit per call.
+A clinic can be given a total allowance of test-call time, which a hosted trial uses (2 hours). Without one, as every clinic starts, there is no limit beyond the time limit per call.
 
 ```bash
 pnpm db:test-call-limit --clinic clinic_demo_maple --minutes 10
