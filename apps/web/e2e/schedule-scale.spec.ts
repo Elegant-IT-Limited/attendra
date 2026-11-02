@@ -37,9 +37,14 @@ function zoned(date: string, time: string) {
 }
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
 
-/** The next seven days from tomorrow, clinic time, and the weekdays among them: every visit falls on a weekday, in the vets' hours. */
-const DATES = Array.from({ length: 7 }, (_, i) => localDate(new Date(Date.now() + (i + 1) * 86_400_000)));
-const WEEKDAYS = DATES.filter((d) => { const wd = new Date(`${d}T12:00:00Z`).getUTCDay(); return wd >= 1 && wd <= 5; });
+/**
+ * Monday to Friday of next week, clinic time: every visit falls on a weekday, in the vets' hours, and inside the one
+ * week the Agenda shows, whatever day and hour the suite runs (seven days from tomorrow straddled two weeks).
+ */
+const addDaysTo = (date: string, n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const TODAY = localDate(new Date());
+const NEXT_MONDAY = addDaysTo(TODAY, ((8 - new Date(`${TODAY}T12:00:00Z`).getUTCDay()) % 7) || 7);
+const WEEKDAYS = Array.from({ length: 5 }, (_, i) => addDaysTo(NEXT_MONDAY, i));
 /**
  * The 300 visits: 60 a weekday, twenty vets with three each at 9, 10 and 11, a different twenty each day
  * (vets 1 to 100 over the week; 101 to 200 have nothing booked), the visit types cycling, forty pets in turn.
@@ -79,7 +84,7 @@ async function noSeriousAxe(page: Page, where: string) {
 }
 
 test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
-  test('is set up: an empty clinic, 200 vets imported, 40 pets, 300 visits over the next week', async ({ browser, request }) => {
+  test('is set up: an empty clinic, 200 vets imported, 40 pets, 300 visits over next week', async ({ browser, request }) => {
     test.setTimeout(300_000);
     const headers = { authorization: `Bearer ${E2E_PROVISIONING_TOKEN}` };
     const opened = await request.post('/api/v1/provisioning/accounts', { headers, data: {
@@ -104,7 +109,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     const csv = [
       ['id', 'name', 'gender', 'phone', 'specialty', 'categories', 'ages_min', 'ages_max', 'accepting_new_patients', 'visit_types', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'time_off'],
       // every vet needs a number of their own at a vet clinic (2026-11-01): two hundred made-up ones, in two area codes
-      ...Array.from({ length: VETS }, (_, i) => ['', vetName(i), i % 2 ? 'male' : 'female', `(${i < 100 ? '720' : '303'}) 555-01${String(i % 100).padStart(2, '0')}`, SPECIALTIES[i % SPECIALTIES.length]!, '', '', '', 'yes', TYPES.map(([, name]) => name).join('; '), ...hours, '', '', i === VETS - 1 ? `${DATES[0]} to ${DATES[6]}` : '']),
+      ...Array.from({ length: VETS }, (_, i) => ['', vetName(i), i % 2 ? 'male' : 'female', `(${i < 100 ? '720' : '303'}) 555-01${String(i % 100).padStart(2, '0')}`, SPECIALTIES[i % SPECIALTIES.length]!, '', '', '', 'yes', TYPES.map(([, name]) => name).join('; '), ...hours, '', '', i === VETS - 1 ? `${WEEKDAYS[0]} to ${WEEKDAYS[4]}` : '']),
     ].map((row) => row.map(csvCell).join(',')).join('\n');
     const imported = await api.post(`/api/v1/clinics/${clinicId}/doctors/import`, { headers: origin, data: { csv, dryRun: false } });
     expect(imported.status(), await imported.text()).toBe(200);

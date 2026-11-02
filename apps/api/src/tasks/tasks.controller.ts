@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
+import { addDays, asE164, ClinicConfig, type EventSink, readCustomValues, zonedInstant } from '@attendra/core';
 import { approvesRefills, type Database, type FrontDeskRepository, type PhiCipher, PostgresTaskQueue, requestAssignees, staffPeople, staffRole, taskFacts } from '@attendra/db';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -41,7 +41,7 @@ export class TasksController {
     if (body.topic && !topic) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'topic', message: 'not one of the clinic\'s kinds of request' }] });
     const refill = body.type === 'refill';
     const details: Record<string, string> = {
-      reason: body.reason, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: body.callbackNumber } : {}),
+      reason: body.reason, ...(topic ? { topic } : {}), ...(body.name ? { name: body.name } : {}), ...(body.callbackNumber ? { callback_number: asE164(config, body.callbackNumber) } : {}),
       ...(refill && body.medication ? { medication: body.medication } : {}), ...(refill && body.pharmacy ? { pharmacy: body.pharmacy } : {}),
     };
     // the record it is about, when one was picked: the request then belongs to that household

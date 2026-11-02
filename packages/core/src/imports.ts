@@ -2,6 +2,7 @@
 import { type ClinicConfig, type CustomField, DEFAULT_SPECIES, type Gender, type ListName, MANAGED_LIST_MAX, managedList, onList, Provider } from './clinic';
 import { readCustomValues } from './custom-fields';
 import { parseDob, phoneDigits } from './identity';
+import { asE164, samePhone } from './phones';
 import { ageOn, providerPhoneIssues, providerPhones } from './providers';
 
 /**
@@ -169,18 +170,18 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     if (seen.has(key)) return fail('this doctor is in the file twice');
     seen.add(key);
     // the row's numbers find the doctor on file before the name does: a number is one doctor's (2026-11-01)
-    const rowPhones = [r.get('phone'), ...split(r.get('other_phones'))].filter(Boolean).map(phoneDigits);
+    const rowPhones = [r.get('phone'), ...split(r.get('other_phones'))].filter(Boolean).map((x) => asE164(clinic, x));
     const twice = rowPhones.find((d) => seenPhones.has(d));
     if (twice) return fail('phone: another row in the file has this number');
     for (const d of rowPhones) seenPhones.add(d);
-    const byPhone = rowPhones.length ? clinic.providers.find((p) => providerPhones(p).some((x) => rowPhones.includes(phoneDigits(x)))) : undefined;
+    const byPhone = rowPhones.length ? clinic.providers.find((p) => providerPhones(p).some((x) => rowPhones.includes(asE164(clinic, x)))) : undefined;
     const existing = (r.get('id') && clinic.providers.find((p) => p.id === r.get('id'))) || byPhone || clinic.providers.find((p) => sameName(p.name, name));
     if (r.get('id') && !existing) return fail(`no doctor on file has the id ${r.get('id')}; leave id empty to add them`);
     if (existing && seenIds.has(existing.id)) return fail(`${existing.name} is already on another row of the file (the same number or name)`);
     if (existing) seenIds.add(existing.id);
     // the row's own number replaces one the doctor had among their others, so a number is never listed twice
     const rowPhone = r.get('phone') || (existing ? existing.phone : undefined);
-    const others = r.get('other_phones') ? split(r.get('other_phones')) : (existing?.otherPhones ?? []).filter((x) => !rowPhone || phoneDigits(x) !== phoneDigits(rowPhone));
+    const others = r.get('other_phones') ? split(r.get('other_phones')) : (existing?.otherPhones ?? []).filter((x) => !rowPhone || !samePhone(x, rowPhone, clinic));
     const phones = providerPhoneIssues(clinic, { kind: existing?.kind ?? 'person', phone: rowPhone, otherPhones: others }, existing?.id);
     if (phones.issues.length) return fail(`${phones.issues[0]!.path === 'phone' ? 'phone' : 'other_phones'}: ${phones.issues[0]!.message}`);
     // the clinic's own fields, from the columns named after them; an empty cell keeps what is on file

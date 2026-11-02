@@ -91,12 +91,12 @@ describe('a number from abroad or without its area code is read back once and ke
     expect(say(again)).not.toContain(PACKS.es.phoneAsGiven({ digits: '555 0172' }));
   });
 
-  it('a whole number is kept as it is, with no note', async () => {
+  it('a whole number is kept in E.164, with no note', async () => {
     const created = vi.spyOn(w.backend.tasks, 'create');
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller('Can someone call me back about boarding?');
     await c.delegate([{ tool: 'create_callback', args: { reason: 'Boarding question', callback_number: '(720) 555-0188', topic: null } }]);
-    expect(created.mock.calls.at(-1)![1].details.callback_number).toBe('(720) 555-0188');
+    expect(created.mock.calls.at(-1)![1].details.callback_number).toBe('+17205550188');
     created.mockRestore();
   });
 });

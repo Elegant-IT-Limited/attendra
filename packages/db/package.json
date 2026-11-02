@@ -16,7 +16,8 @@
     "test-call-limit": "tsx scripts/test-call-limit.ts",
     "rehash-lookups": "tsx scripts/rehash-lookups.ts",
     "households": "tsx scripts/households.ts",
-    "animal-lists": "tsx scripts/animal-lists.ts"
+    "animal-lists": "tsx scripts/animal-lists.ts",
+    "normalise-phones": "tsx scripts/normalise-phones.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",

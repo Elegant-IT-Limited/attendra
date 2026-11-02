@@ -79,8 +79,11 @@ function topicOf(question: string, clinicName: string): string {
 /** What to say when a number can't get texts: once, out loud instead, and never a hunt for another number. */
 const NOT_TEXTABLE = 'This number can\'t get texts: it isn\'t a mobile number in the clinic\'s country. Say so in a few words and read it out slowly instead. Don\'t offer a text again on this call, and never ask for another number to text.';
 
-const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null }) =>
-  (typeof args.callback_number === 'string' && args.callback_number.trim() ? args.callback_number.trim() : null) ?? ctx.callerNumber;
+const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null; clinic: ClinicConfig }) =>
+  heardPhone(ctx.clinic, args.callback_number) ?? ctx.callerNumber;
+/** A number the caller said, as E.164 like every number on file (as said when it isn't a whole one); null when none was said. */
+const heardPhone = (clinic: ClinicConfig, said: unknown): string | null =>
+  typeof said === 'string' && said.trim() ? asE164(clinic, said) : null;
 const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
@@ -259,7 +262,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     // a number that can't get texts (abroad, premium, toll-free) is never promised one
     if (!textableNumber(clinic, asE164(clinic, patient.phone))) return null;
     if (template !== 'booking_confirmed' && !textingOf(clinic).kinds.change_confirmed) return null;
-    const calling = !!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone);
+    const calling = !!ctx.callerNumber && samePhone(ctx.callerNumber, patient.phone, clinic);
     if (patient.isNew && !calling) return null;
     return calling ? 'calling' : 'file';
   };
@@ -306,7 +309,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     case 'verify_caller': {
       if (trade.identity === 'pet') return verifyPet(args, state, ctx, backend, lang);
       // the number on their file, as they said it, or else the number they are calling from
-      const phone = (args.phone as string | null) ?? ctx.callerNumber;
+      const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
       if (!phone) return refuse('phone_required', 'Ask for the phone number on their file, with the area code.');
       // numeric dates are month first only in North America
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
@@ -340,7 +343,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!state.notFound) return refuse('verify_first', 'First look them up with verify_caller: name, date of birth and the phone on file.');
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
-      const phone = (args.phone as string | null) ?? ctx.callerNumber;
+      const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
       if (!phone) return refuse('phone_required', askPhone(lang));
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
@@ -758,7 +761,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
       await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
       // in an emergency the script around the callback is the model's; otherwise the request taken is the whole answer
-      return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: callback === ctx.callerNumber }) }) } };
+      return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: !!ctx.callerNumber && samePhone(callback, ctx.callerNumber, clinic) }) }) } };
     }
 
     case 'set_reminder_consent': {
@@ -791,8 +794,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       let to: string | null = null;
       let target: 'this' | 'file' = 'this';
       if (asked) {
-        if (ctx.callerNumber && samePhone(asked, ctx.callerNumber)) to = ctx.callerNumber;
-        else if (onFile && samePhone(asked, onFile)) { to = onFile; target = 'file'; } else return refuse('number_not_allowed', 'Texts go only to the number they are calling from or the number on their file. Offer those; never ask for another number.');
+        if (ctx.callerNumber && samePhone(asked, ctx.callerNumber, clinic)) to = ctx.callerNumber;
+        else if (onFile && samePhone(asked, onFile, clinic)) { to = onFile; target = 'file'; } else return refuse('number_not_allowed', 'Texts go only to the number they are calling from or the number on their file. Offer those; never ask for another number.');
       } else if (ctx.callerNumber) to = ctx.callerNumber;
       if (!to) return refuse('no_number', 'Say you can\'t see the number they\'re calling from, and ask whether they\'d like it sent to the number on their file.');
       // a number abroad, premium or toll-free never gets a text: known before anything is asked
@@ -912,7 +915,7 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (pointsAtPet(String(args.pet_name))) return noPetName();
   // "new" means added, never looked up: the registration checks the pet is not on file already
   if (state.saidNew() === 'new') return refuse('pet_is_new', 'The caller said the pet is new to the clinic: do not look it up. Add it with register_patient, asking only for what it still needs that the caller has not said yet (the kind of animal, its sex, its age or birthday, the owner\'s first name).');
-  const phone = (args.phone as string | null) ?? ctx.callerNumber;
+  const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   // no pet named yet: the number's pets, to pick from
   if (!(args.pet_name as string | null)?.trim()) return whichPet(phone, state, ctx, backend, lang);
@@ -985,7 +988,7 @@ async function registerPet(
   if (pointsAtPet(String(args.pet_name))) return noPetName();
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
-  const phone = (args.phone as string | null) ?? ctx.callerNumber;
+  const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
   const owner = String(args.owner_name ?? '').trim();
   const ownerParts = owner.split(/\s+/);

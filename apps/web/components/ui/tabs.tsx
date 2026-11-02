@@ -44,8 +44,10 @@ export function Segmented<V extends string>({ value, onValueChange, options, lab
   return (
     <div role="group" aria-label={label} className={cn('flex w-fit gap-1 rounded-md border border-border-strong bg-surface p-0.5', className)}>
       {options.map((o) => (
+        // no colour transition: the pressed pill swaps its background and text at once, so it is never caught (by a
+        // reader, or by axe on a busy CI runner) halfway, with light text on a still-light background
         <button key={o.value} type="button" aria-pressed={o.value === value} onClick={() => onValueChange(o.value)}
-          className={cn('focus-ring inline-flex items-center whitespace-nowrap rounded-sm px-3 py-1 text-base transition-colors max-md:min-h-11',
+          className={cn('focus-ring inline-flex items-center whitespace-nowrap rounded-sm px-3 py-1 text-base max-md:min-h-11',
             o.value === value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
           {o.label}
         </button>

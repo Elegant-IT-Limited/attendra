@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel, withPhonesAsE164 } from '@attendra/core';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
@@ -115,7 +115,9 @@ export class SettingsController {
     // without If-Match (older clients, scripts) the save goes through as before
     const expectedVersion = ifMatch ? versionOf(ifMatch) : undefined;
     if (ifMatch && expectedVersion === undefined) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'If-Match', message: 'expected the ETag from the last read, like "v3"' }] });
-    const parsed = ClinicConfig.safeParse(body);
+    // every number as E.164 before the check, however it was typed: "(303) 555-0100" is not refused for its missing +1
+    const typed = body && typeof body === 'object' && Array.isArray((body as { phoneNumbers?: unknown }).phoneNumbers) ? withPhonesAsE164(body as Parameters<typeof withPhonesAsE164>[0]) : body;
+    const parsed = ClinicConfig.safeParse(typed);
     if (!parsed.success) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: issuesOf(parsed.error) });
     const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });

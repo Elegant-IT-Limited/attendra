@@ -28,15 +28,19 @@ const OTHER = { name: 'Morgan Ashdown', email: `morgan.${RUN}@stonebridge-demo.t
 const NEWCOMER = { name: 'Riley Okonkwo', email: `riley.${RUN}@willowbend-demo.test` };
 
 /**
- * The clinic's time zone: one of these where it is daytime now, so a visit can be booked for today and Today
- * has something to show whatever hour the suite runs. Each with a number from there.
+ * The clinic's time zone: always a US one with a US number, so a number typed the US way, "(720) 555-0162", is a US
+ * number at this clinic whatever hour the suite runs (around 08:00 UTC a London clinic once read it as +44). Of these,
+ * the first where it is between 01:00 and 15:00 now: the clinic opens 8 to 6 every day (step 2), so a visit can still
+ * be booked for today and Today has something to show. Some US zone is always in that window (see `clinicZoneAt`).
  */
 const ZONES = [
   ['America/Denver', '+17205550161'], ['America/New_York', '+12125550161'], ['America/Chicago', '+13125550161'], ['America/Los_Angeles', '+14155550161'],
-  ['Pacific/Honolulu', '+18085550161'], ['Pacific/Guam', '+16715550161'], ['Europe/London', '+442079460161'],
+  ['America/Puerto_Rico', '+17875550161'], ['Pacific/Honolulu', '+18085550161'], ['Pacific/Guam', '+16715550161'],
 ] as const;
-const hourIn = (zone: string) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
-const [ZONE, PHONE] = ZONES.find(([zone]) => hourIn(zone) >= 8 && hourIn(zone) < 15) ?? ZONES[0];
+const hourIn = (zone: string, at: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(at));
+/** The zone and number for a run starting at `at`. Some zone is always in the window: checked for every quarter hour of a year. */
+const clinicZoneAt = (at: Date) => ZONES.find(([zone]) => hourIn(zone, at) >= 1 && hourIn(zone, at) < 15);
+const [ZONE, PHONE] = clinicZoneAt(new Date()) ?? ZONES[0];
 
 /** A response the step expects to be an error: its status, a pattern for its path, and on whose page (anyone's when left out). */
 interface Expected { method?: string; path: RegExp; status: number; who?: string }
@@ -90,6 +94,8 @@ class Watch {
   async axe(page: Page, where: string) {
     // a panel sliding in is half transparent: judged once it has arrived (endless ones, like a pulse, never end)
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity));
+    // a soft navigation (a filter that writes the address) swaps the page's <title>: judged once it is back
+    await page.waitForFunction(() => document.title.trim() !== '');
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).exclude('nextjs-portal').analyze();
     for (const v of result.violations.filter((x) => x.impact === 'serious' || x.impact === 'critical')) {
       this.problems.push(`axe on ${where}: ${v.id}: ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
@@ -707,7 +713,13 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await look('Requests', url('/requests'), heading('Requests'));
     for (const filter of ['Done', 'Open', 'Mine', 'Unclaimed']) {
       const b = page.getByRole('button', { name: filter, exact: true });
-      if (await b.count()) { await b.click(); await watch.axe(page, `Requests, ${filter}`); }
+      if (await b.count()) {
+        await b.click();
+        // judged once the filter has taken: pressed, and the list's address written
+        if ((await b.getAttribute('aria-pressed')) !== null) await expect(b).toHaveAttribute('aria-pressed', 'true');
+        if (filter === 'Done') await expect(page).toHaveURL(/status=done/); else if (filter === 'Open') await expect(page).not.toHaveURL(/status=done/);
+        await watch.axe(page, `Requests, ${filter}`);
+      }
     }
     await look('Schedule week', url(`/schedule?view=week&date=${today}`), async () => { await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 }); });
     await look('Schedule month', url(`/schedule?view=month&date=${today}`), async () => { await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 }); });

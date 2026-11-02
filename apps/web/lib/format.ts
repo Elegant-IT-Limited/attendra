@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { asE164, formatPhone, isE164 } from '@attendra/core';
 
 /**
  * What depends on the clinic's country, from its first number: a 12-hour clock in
@@ -6,10 +7,11 @@
  * saying as US dollars (the model's cost is billed in them). The shell sets it once the
  * clinic's settings arrive; until then the dashboard reads as a US clinic.
  */
-const country = { hour12: true, us: true };
+const country = { hour12: true, us: true, phoneNumbers: ['+13035550100'] as readonly string[] };
 export function setClinicCountry(phoneNumbers: readonly string[]) {
   const first = phoneNumbers[0] ?? '';
   country.us = first.startsWith('+1');
+  if (first) country.phoneNumbers = phoneNumbers;
   country.hour12 = country.us || first.startsWith('+61');
 }
 /** "$0.05" at a US clinic, "US$0.05" anywhere else. */
@@ -168,18 +170,6 @@ export function zoneLabel(timeZone: string) {
   return name ? `${name} (${timeZone.replaceAll('_', ' ')})` : timeZone;
 }
 
-/**
- * A North American number as the full international one, from however it was typed: +1 and
- * ten digits, or at a clinic in North America ten digits (or 1 and ten) with any spaces,
- * dots, dashes or brackets. Null for anything else, which is shown as it was given.
- */
-function nanp(n: string): string | null {
-  const plain = n.replace(/[\s().-]/g, '');
-  if (/^\+1\d{10}$/.test(plain)) return plain;
-  if (country.us && /^1?\d{10}$/.test(plain)) return `+1${plain.slice(-10)}`;
-  return null;
-}
-
 /** A role as the clinic says it. */
 export const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
@@ -188,16 +178,19 @@ export const NEW_MEMBER = 'New team member';
 /** A team member's name as it shows anywhere: one who has not written theirs yet is "New team member". */
 export const personName = (name: string) => name.trim() || NEW_MEMBER;
 
-/** A phone number the way people write it: "(505) 555-0142". A number from elsewhere, or a partial one, as it was given. */
+/**
+ * A phone number the way people write it: the clinic's own national format for a number in its
+ * country ("(505) 555-0142", "020 7946 0123"), the international one for any other. A partial
+ * number, as it was given.
+ */
 export function phone(n: string | null | undefined) {
-  if (!n) return '';
-  const full = nanp(n);
-  return full ? `(${full.slice(2, 5)}) ${full.slice(5, 8)}-${full.slice(8)}` : n;
+  return formatPhone(country, n);
 }
 
 /** The tap-to-call link for a number: the full international number when it is known, the digits as given otherwise. */
 export function telHref(n: string) {
-  return `tel:${nanp(n) ?? n.replace(/[^\d+]/g, '')}`;
+  const e164 = asE164(country, n);
+  return `tel:${isE164(e164) ? e164 : n.replace(/[^\d+]/g, '')}`;
 }
 
 /** "4 March 1985" from YYYY-MM-DD. */

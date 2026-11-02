@@ -225,7 +225,7 @@ describe('a request written down by hand', () => {
     expect(byNumber.map((t) => t.id)).toEqual([id]);
     expect(byNumber[0]!.number).toBe(number);
     const found = (await api.request('POST', `${C}/tasks/search`, { cookie: as.staff, body: { q: 'dental cleaning' } })).json().tasks as { id: string; callId: string | null; urgent: boolean; details: Record<string, string> }[];
-    expect(found.find((t) => t.id === id)).toMatchObject({ callId: null, urgent: true, details: { reason: 'Left a voicemail about a dental cleaning', callback_number: '(303) 555-0142' } });
+    expect(found.find((t) => t.id === id)).toMatchObject({ callId: null, urgent: true, details: { reason: 'Left a voicemail about a dental cleaning', callback_number: '+13035550142' } });
     expect((await audit('task.created.callback')).find((a) => a.entity_id === id)?.actor).toMatch(/^user:/);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.viewer, body: { type: 'callback', reason: 'nope' } })).statusCode).toBe(403);
     expect((await api.request('POST', `${C}/tasks`, { cookie: as.staff, body: { type: 'callback', reason: 'boarding', topic: 'Not a kind here' } })).statusCode).toBe(422);
