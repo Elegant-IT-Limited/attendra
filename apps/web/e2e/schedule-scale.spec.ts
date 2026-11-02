@@ -141,9 +141,59 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     state = await context.storageState();
   });
 
-  test('opens on the Agenda: the day in time order, narrowed by vet, specialty and visit type, a row opens the visit', async ({ browser }) => {
+  test('opens on Day for everyone, remembers the view a person chose, and says what each view is', async ({ browser }) => {
     const page = await openPage(browser);
     await page.goto(`/c/${clinicId}/schedule?date=${DAY}`);
+    await expect(page.getByRole('tab', { name: 'Day' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+    await expect(page.locator('#schedule-view-hint')).toHaveText('One column per vet');
+    await expect(page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ })).toBeVisible();
+    await page.getByRole('tab', { name: 'Week' }).click();
+    await expect(page.locator('#schedule-view-hint')).toHaveText('7 days side by side');
+    await page.goto(`/c/${clinicId}/schedule?date=${DAY}`);
+    await expect(page.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
+    await page.getByRole('tab', { name: 'Day' }).click();
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`scrolls inside the card both ways: the last lane and the last hour reach view and open, Day and Week, ${theme}`, async ({ browser }) => {
+      test.setTimeout(120_000);
+      const page = await openPage(browser);
+      await page.addInitScript((t) => { try { localStorage.setItem('attendra.theme', t); } catch { /* none */ } }, theme);
+      // Day: the vets working with visits; Week: five days of twenty lanes, a hundred lanes in all
+      for (const [view, lanes] of [['day', VETS_PER_DAY], ['week', 5 * VETS_PER_DAY]] as const) {
+        await page.goto(`/c/${clinicId}/schedule?view=${view}&date=${DAY}`);
+        await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
+        const scroller = page.getByTestId('schedule-scroller');
+        await expect(page.getByTestId('lane')).toHaveCount(lanes);
+        // the grid scrolls inside its card, not the page: taller and wider than the card
+        expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight && el.scrollWidth > el.clientWidth)).toBe(true);
+        // to the far right and the bottom: the last lane and the last hour come into view, headings and hours stay put
+        await scroller.evaluate((el) => { el.scrollTo(el.scrollWidth, el.scrollHeight); });
+        const box = (await scroller.boundingBox())!;
+        const lastLane = (await page.getByTestId('lane').last().boundingBox())!;
+        expect(lastLane.x + lastLane.width).toBeLessThanOrEqual(box.x + box.width + 1);
+        const heading = view === 'day' ? page.getByTestId('lane-head').last() : page.getByText(/^(Fri|Sat|Sun)/).last();
+        expect((await heading.boundingBox())!.y).toBeLessThan(box.y + 60); // sticky at the top
+        // the keyboard reaches it too
+        await scroller.evaluate((el) => { el.scrollTo(0, 0); });
+        await scroller.focus();
+        await page.keyboard.press('End');
+        await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+        // every visit block stays at least a 24-pixel target, and the last one opens
+        const blocks = page.getByTestId('appointment');
+        for (const b of (await blocks.all()).slice(-6)) { const r = (await b.boundingBox())!; expect(r.width).toBeGreaterThanOrEqual(24); }
+        await blocks.last().scrollIntoViewIfNeeded();
+        await blocks.last().click();
+        await expect(page.getByRole('dialog')).toBeVisible();
+        await page.keyboard.press('Escape');
+        await noSeriousAxe(page, `Schedule ${view} scrolled, ${theme}`);
+      }
+    });
+  }
+
+  test('the Agenda: the day in time order, narrowed by vet, specialty and visit type, a row opens the visit', async ({ browser }) => {
+    const page = await openPage(browser);
+    await page.goto(`/c/${clinicId}/schedule?view=agenda&date=${DAY}`);
     await expect(page.getByRole('tab', { name: 'Agenda' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 });
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false');
     const rows = page.getByTestId('agenda-row');
@@ -218,7 +268,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     for (let i = 1; i < seen.length; i++) expect(seen[i]!.x).toBeGreaterThanOrEqual(seen[i - 1]!.x + seen[i - 1]!.width - 1);
 
     // wider than the card: it scrolls sideways, and the hour labels stay at the left edge
-    const scroller = page.getByTestId('schedule').locator('.overflow-x-auto').first();
+    const scroller = page.getByTestId('schedule-scroller');
     const hour = page.getByText('9 AM', { exact: true });
     const before = (await hour.boundingBox())!;
     await scroller.evaluate((el) => { el.scrollLeft = 600; });
@@ -236,7 +286,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const heads = page.getByTestId('lane-head');
     await expect(heads).toHaveCount(VETS_PER_DAY);
-    await page.getByRole('button', { name: /^Vets: choose/ }).click();
+    await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     const picker = page.getByTestId('vets-picker');
     await expect(picker).toBeVisible();
     const list = picker.getByRole('list', { name: 'Veterinarians to show' });
@@ -283,7 +333,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await expect(heads).toHaveCount(1);
     await expect(page.getByTestId('appointment')).toHaveCount(3);
     await page.getByLabel('Provider').selectOption({ index: 0 });
-    await page.getByRole('button', { name: /^Vets: choose/ }).click();
+    await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     await page.getByTestId('vets-picker').getByRole('button', { name: 'Clear' }).click();
     await expect(heads).toHaveCount(VETS_PER_DAY);
     expect(await page.evaluate((id) => localStorage.getItem(`attendra.schedule.vets.${id}`), clinicId)).toBeNull();

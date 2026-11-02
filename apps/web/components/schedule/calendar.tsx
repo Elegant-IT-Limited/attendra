@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils';
 
 /** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
 const LANE_MIN_REM = 7;
+/** A lane in the week view: wide enough for three visits side by side at 24px each. */
+const WEEK_LANE_MIN_REM = 5;
 type Provider = ClinicConfig['providers'][number];
 
 const minutesOf = (iso: string, tz: string) => localParts(new Date(iso), tz).minutes;
@@ -41,15 +43,20 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
   const byDate = (date: string) => appointments.filter((a) => localParts(new Date(a.startsAt), tz).date === date);
   const nowMin = localParts(now, tz).minutes;
   const visitIndex = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
-  // a week's columns share the width as before; a day's lanes each keep a readable minimum and the grid scrolls sideways
-  const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? 0 : `${LANE_MIN_REM}rem`}, 1fr))`;
-  const minWidth = week ? '640px' : `max(640px, calc(3.5rem + ${providers.length * LANE_MIN_REM}rem))`;
+  // Every lane keeps a readable minimum and the grid scrolls inside the card, both ways, instead of squeezing lanes to
+  // nothing: a day's lane is 7rem, a week's lane 5rem (three visits side by side stay 24px targets), so a week is
+  // days × vets lanes wide. Headings stay at the top and the hour column on the left while it scrolls.
+  const laneRem = week ? WEEK_LANE_MIN_REM : LANE_MIN_REM;
+  const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? `${providers.length * laneRem}rem` : `${laneRem}rem`}, 1fr))`;
+  const minWidth = `max(640px, calc(3.5rem + ${(week ? dates.length : 1) * providers.length * laneRem}rem))`;
 
   return (
-    <div className="overflow-x-auto">
+    // one scroller for both directions, so the sticky headings and hour column hold; a focusable region for the keyboard
+    <div role="region" aria-label={week ? 'Week schedule' : 'Day schedule'} tabIndex={0} data-testid="schedule-scroller"
+      className="max-h-[calc(100dvh-13rem)] min-h-80 overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
       <div style={{ minWidth }}>
         {/* column headings; the hour column stays put while the grid scrolls sideways */}
-        <div className="sticky top-0 z-20 grid border-b border-border bg-surface" style={{ gridTemplateColumns: columns }}>
+        <div className="sticky top-0 z-30 grid border-b border-border bg-surface" style={{ gridTemplateColumns: columns }}>
           <div className="sticky left-0 z-10 bg-surface" />
           {week ? dates.map((d) => {
             const holiday = closedDay(clinic, d);
@@ -74,7 +81,7 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
         </div>
         <div className="relative grid" style={{ gridTemplateColumns: columns, height }}>
           {/* hour labels and lines */}
-          <div className="sticky left-0 z-10 bg-surface">
+          <div className="sticky left-0 z-[25] bg-surface">
             {hours.map((h) => (
               <span key={h} className="absolute right-2 -translate-y-1/2 whitespace-nowrap text-xs tabular-nums text-text-muted" style={{ top: (h - start) * PX }}>
                 {h === start ? '' : `${((Math.floor(h / 60) + 11) % 12) + 1} ${h < 12 * 60 ? 'AM' : 'PM'}`}
@@ -84,7 +91,7 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
           {hours.slice(1).map((h) => <div key={h} className="pointer-events-none absolute inset-x-0 border-t border-border/70" style={{ top: (h - start) * PX, left: '3.5rem' }} />)}
           {(week ? dates : [dates[0]!]).map((date) => (
             <div key={date} className="relative border-l border-border"
-              style={week ? { gridTemplateColumns: `repeat(${providers.length}, minmax(0, 1fr))`, display: 'grid' } : { display: 'contents' }}>
+              style={week ? { gridTemplateColumns: `repeat(${providers.length}, minmax(${WEEK_LANE_MIN_REM}rem, 1fr))`, display: 'grid' } : { display: 'contents' }}>
               {providers.map((p) => (
                 <Lane key={p.id} clinic={clinic} provider={p} date={date} start={start} end={end}
                   appointments={byDate(date).filter((a) => a.providerId === p.id)} onOpen={onOpen} visitIndex={visitIndex}
@@ -112,7 +119,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
   if (cursor < end) closed.push([cursor, end]);
 
   return (
-    <div className={cn('relative', !divided ? 'border-l border-border' : 'border-l border-border/40 first:border-l-0')} data-testid="lane" role="group" aria-label={`${provider.name}, ${dayTitle(date)}`}>
+    <div className={cn('relative', !divided ? 'border-l border-border' : 'border-l border-border/40 first:border-l-0')} data-testid="lane" role="group" aria-label={`${providerName(provider)}, ${dayTitle(date)}`}>
       {closed.map(([s, e]) => (
         <div key={s} className="absolute inset-x-0 bg-[repeating-linear-gradient(135deg,var(--muted),var(--muted)_6px,transparent_6px,transparent_12px)] opacity-80"
           style={{ top: (s - start) * PX, height: (e - s) * PX }} aria-hidden />
@@ -219,7 +226,7 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
     byDate.set(d, [...(byDate.get(d) ?? []), a]);
   }
   return (
-    <div className="overflow-x-auto">
+    <div role="region" aria-label="Month schedule" tabIndex={0} className="max-h-[calc(100dvh-13rem)] overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
       <div className="min-w-[640px]" role="grid" aria-label="Month">
         <div className="grid grid-cols-7 border-b border-border text-xs font-medium text-text-muted" role="row">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} role="columnheader" className="px-2 py-2">{d}</div>)}

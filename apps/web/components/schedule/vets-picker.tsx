@@ -16,7 +16,7 @@ type Provider = ClinicConfig['providers'][number];
  * narrowed by specialty or to the ones working on the day shown. The choice applies at
  * once and is kept in this browser for this clinic (lib/schedule-lanes.ts).
  */
-export function VetsPicker({ clinic, providers, date, chosen, onChange, word }: {
+export function VetsPicker({ clinic, providers, date, chosen, onChange, word, onGrid }: {
   clinic: ClinicConfig;
   /** The providers the Schedule lists, in its order. */
   providers: Provider[];
@@ -26,6 +26,8 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word }: 
   onChange: (ids: string[]) => void;
   /** What the clinic calls them: "veterinarians" or "providers". */
   word: string;
+  /** How many have a lane on the grid now, for "Choose vets (8 of 101)". */
+  onGrid: number;
 }) {
   const id = useId();
   const [query, setQuery] = useState('');
@@ -48,15 +50,14 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word }: 
 
   return (
     <Popover className="w-80 p-3" trigger={
-      <Button variant="outline" size="sm" aria-label={`${word === 'veterinarians' ? 'Vets' : 'Providers'}: choose which are on the grid${chosen.length ? `, ${chosen.length} chosen` : ''}`}>
-        <Users /> {word === 'veterinarians' ? 'Vets' : 'Providers'}
-        {chosen.length > 0 && <span className="rounded-full bg-primary-soft px-1.5 text-xs tabular-nums text-primary">{chosen.length}</span>}
+      <Button variant="outline" size="sm" aria-label={`Choose ${word === 'veterinarians' ? 'vets' : 'providers'}: ${onGrid} of ${providers.length} on the grid${chosen.length ? `, ${chosen.length} in My ${word === 'veterinarians' ? 'vets' : 'providers'}` : ''}`}>
+        <Users /> Choose {word === 'veterinarians' ? 'vets' : 'providers'} <span className="tabular-nums text-text-muted">({onGrid} of {providers.length})</span>
       </Button>
     }>
       <div className="space-y-3" data-testid="vets-picker">
         <div>
-          <p className="text-sm font-medium">On the grid</p>
-          <p className="text-xs text-text-muted">The {word} with a visit on the day always have a lane. Pick up to {MAX_CHOSEN} more to keep on screen.</p>
+          <p className="text-sm font-medium">My {word === 'veterinarians' ? 'vets' : 'providers'}</p>
+          <p className="text-xs text-text-muted">The {word} working with a visit on the day always have a lane. Pick up to {MAX_CHOSEN} more to keep on screen; they are saved as My {word === 'veterinarians' ? 'vets' : 'providers'} in this browser.</p>
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${id}-find`} className="sr-only">Find a {one}</Label>

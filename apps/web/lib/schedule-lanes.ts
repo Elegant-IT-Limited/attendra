@@ -7,7 +7,6 @@ type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'specialDays'>;
 /** Past this many bookable providers the day grid shows only the lanes in use, and the Vets picker appears. */
 export const MANY_PROVIDERS = 8;
 /** Past this many bookable providers the Schedule opens on the Agenda, which reads at any size. */
-export const AGENDA_FIRST = 30;
 /** How many lanes the picker lets one person pin: more than this no longer fits a screen. */
 export const MAX_CHOSEN = 8;
 
@@ -98,4 +97,21 @@ export function placeBlocks<T extends { status: string }>(items: T[], span: (ite
     const ordered = [...g].sort((a, b) => Number(a.item.status === 'cancelled') - Number(b.item.status === 'cancelled') || a.top - b.top);
     return ordered.map((d, column) => ({ item: d.item, column, columns: g.length }));
   });
+}
+
+type ScheduleView = 'day' | 'week' | 'month' | 'agenda';
+const viewKey = (clinicId: string) => `attendra.schedule.view.${clinicId}`;
+
+/** The view this person last chose for a clinic, in this browser; Day when none (everyone opens on Day, 2026-11). */
+export function readView(clinicId: string): ScheduleView {
+  try {
+    const v = localStorage.getItem(viewKey(clinicId));
+    return v === 'week' || v === 'month' || v === 'agenda' ? v : 'day';
+  } catch {
+    return 'day';
+  }
+}
+
+export function writeView(clinicId: string, view: ScheduleView) {
+  try { localStorage.setItem(viewKey(clinicId), view); } catch { /* storage off: Day next time */ }
 }

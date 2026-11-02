@@ -114,3 +114,17 @@ describe('visit blocks on the day grid', () => {
     expect(place([at('a', 480, 5), at('b', 485, 5), at('c', 490, 10)])).toEqual({ a: [0, 3], b: [1, 3], c: [2, 3] });
   });
 });
+
+describe('the view a person last chose', () => {
+  it('opens on Day by default and remembers another choice in this browser', async () => {
+    const { readView, writeView } = await import('../lib/schedule-lanes');
+    const store = new Map<string, string>();
+    Object.assign(globalThis, { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) } });
+    expect(readView('clinic_a')).toBe('day');
+    writeView('clinic_a', 'week');
+    expect(readView('clinic_a')).toBe('week');
+    expect(readView('clinic_b')).toBe('day');
+    store.set('attendra.schedule.view.clinic_a', 'nonsense');
+    expect(readView('clinic_a')).toBe('day');
+  });
+});
