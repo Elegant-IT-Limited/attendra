@@ -2,7 +2,7 @@
 import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, topUpTestCalls,
 } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
@@ -63,6 +63,7 @@ const ForUser = z.object({
 const NewLocation = z.object({ clinic: NewAccount.shape.clinic, testCallMinutes: z.number().int().min(0).max(600).optional() });
 const Email = z.object({ email: z.email().max(254) });
 const Limit = z.object({ seconds: z.number().int().min(0).nullable() });
+const TopUp = z.object({ remainingSeconds: z.number().int().min(0).max(24 * 3600), dryRun: z.boolean().optional() });
 const TextingSwitch = z.object({ enabled: z.boolean() });
 const AnsweringSwitch = z.object({ paused: z.boolean() });
 const PlanBody = z.object({ plan: HostingPlan.nullable() });
@@ -222,6 +223,19 @@ export class ProvisioningController {
   @HttpCode(204)
   async limit(@Param('clinicId') clinicId: string, @Body(new ZodPipe(Limit)) body: z.infer<typeof Limit>) {
     if (!(await setTestCallLimit(this.db, clinicId, body.seconds))) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * At least this much test-call time left: the limit becomes the time used plus it, never lower than
+   * it was. For plan changes and one-off top-ups, where a total would take back what was already used.
+   */
+  @Post('clinics/:clinicId/test-call-top-up')
+  @HttpCode(200)
+  async topUp(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TopUp)) body: z.infer<typeof TopUp>) {
+    const result = await topUpTestCalls(this.db, clinicId, body.remainingSeconds, new Date(), body.dryRun ?? false);
+    if (!result) throw new NotFoundException({ error: 'not_found' });
+    if (result.changed && !body.dryRun) this.log.info({ clinic_id: clinicId, limit_seconds: result.newLimitSeconds }, 'provisioning: test-call time topped up');
+    return result;
   }
 
   /** Texting during calls on or off: the hosting layer turns it on when the clinic's texting registration (A2P) is approved. */
