@@ -332,8 +332,9 @@ export class ProvisioningController {
   async providerPhones(@Param('clinicId') clinicId: string): Promise<ProviderPhoneReport> {
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
-    const providers = bookableProviders(ClinicConfig.parse(stored).providers).filter((p) => p.kind === 'person');
-    const shared = sharedProviderPhones(providers);
+    const config = ClinicConfig.parse(stored);
+    const providers = bookableProviders(config.providers).filter((p) => p.kind === 'person');
+    const shared = sharedProviderPhones(providers, config);
     const withPhone = providers.filter((p) => p.phone).length;
     return { providers: providers.length, withPhone, withoutPhone: providers.length - withPhone, sharedNumbers: shared.numbers, providersSharing: shared.providers };
   }

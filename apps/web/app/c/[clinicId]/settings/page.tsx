@@ -192,7 +192,8 @@ export default function Settings() {
   const num = (v: string) => (v === '' ? undefined : Number(v));
   // shown as a plain phone number; stored as the tel: address a transfer dials (a sip: address is kept as typed)
   const shownUri = (uri: string) => (uri.startsWith('tel:') ? uri.slice(4) : uri);
-  const storedUri = (v: string) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${v.replace(/[^\d+]/g, '')}`);
+  // as typed while typing; as E.164 once the field is left (and again on save), so a half-typed number is never rewritten
+  const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
 
   return (
     <>
@@ -353,7 +354,7 @@ export default function Settings() {
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Field label="Hospital name"><Input value={h.name} placeholder="e.g. City Pet Emergency" onChange={(e) => upd({ name: e.target.value })} /></Field>
-                      <Field label="Phone" hint="With the country code."><Input type="tel" value={h.phone} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd({ phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+                      <Field label="Phone" hint="As you would dial it."><Input type="tel" value={h.phone} placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onChange={(e) => upd({ phone: e.target.value })} onBlur={(e) => upd({ phone: asE164(c, e.target.value) })} /></Field>
                     </div>
                     <Field label="Address" hint="Read to callers as written."><Input value={h.address} placeholder="e.g. 1200 Main Street, Denver" onChange={(e) => upd({ address: e.target.value })} /></Field>
                     <Switch id={`hospital-24h-${i}`} label="Open 24 hours" checked={!h.hours} onCheckedChange={(on) => upd({ hours: on ? undefined : { open: '18:00', close: '08:00' } })} disabled={!writable || save.isPending}
@@ -440,7 +441,7 @@ export default function Settings() {
                   </Select>
                 </Field>
                 <Field label="Phone number" hint="With the country code.">
-                  <Input type="tel" value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} />
+                  <Input type="tel" value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} onBlur={(e) => upd('routing', i, { uri: storedUri(e.target.value, true) })} />
                 </Field>
                 <Field label="When">
                   <Select value={r.when} onChange={(e) => upd('routing', i, { when: e.target.value as typeof r.when })}>
@@ -462,7 +463,7 @@ export default function Settings() {
             <Item handle={handle} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
-                <Field label="Phone number" hint="With the country code."><Input type="tel" value={v.phone} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('vipCallers', i, { phone: e.target.value.replace(/[^\d+]/g, '') })} /></Field>
+                <Field label="Phone number" hint="As you would dial it."><Input type="tel" value={v.phone} placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onChange={(e) => upd('vipCallers', i, { phone: e.target.value })} onBlur={(e) => upd('vipCallers', i, { phone: asE164(c, e.target.value) })} /></Field>
               </div>
             </Item>
           )}

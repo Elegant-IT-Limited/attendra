@@ -4,7 +4,7 @@ import { type ClinicConfig, genderWord, localName, type Provider, type VisitType
 import { sharedCustomFacts } from './custom-fields';
 import { windowsOn } from './hours';
 import { phoneDigits } from './identity';
-import { asE164 } from './routing';
+import { asE164 } from './phones';
 import type { Language } from './locales';
 import { addDays } from './time';
 
@@ -160,7 +160,7 @@ const E164 = /^\+[1-9]\d{7,14}$/;
 
 /**
  * A provider's numbers, checked: each written as the clinic's country dials it (kept in E.164), none the same twice,
- * none already another provider's at this clinic (the last digits compared, the way callers' numbers are), and at a vet
+ * none already another provider's at this clinic (compared as E.164, however each was written), and at a vet
  * clinic a new person needs one, because the number is what tells one vet from another (2026-11-01). The same number at
  * another clinic is fine. Problems come back under their field, for the form and the import alike.
  */
@@ -176,23 +176,24 @@ export function providerPhoneIssues(clinic: Pick<ClinicConfig, 'industry' | 'pho
   if (!currentId && !phone && needsPhone(clinic, { kind: (candidate.kind ?? 'person') as Provider['kind'], placeholder: candidate.placeholder, phone: undefined })) {
     issues.push({ path: 'phone', message: 'A phone number is needed: it is what tells one veterinarian from another.' });
   }
-  const mine = [phone, ...others].filter((x): x is string => !!x).map(phoneDigits);
+  const one = (x: string) => asE164(clinic, x);
+  const mine = [phone, ...others].filter((x): x is string => !!x).map(one);
   if (new Set(mine).size !== mine.length) issues.push({ path: 'otherPhones', message: 'The same number is listed twice.' });
   for (const other of clinic.providers) {
     if (other.id === currentId) continue;
-    const theirs = providerPhones(other).map(phoneDigits);
+    const theirs = providerPhones(other).map(one);
     const clash = mine.find((d) => theirs.includes(d));
     if (clash === undefined) continue;
-    issues.push({ path: phone && phoneDigits(phone) === clash ? 'phone' : 'otherPhones', message: `${other.name} already has this number.` });
+    issues.push({ path: phone && phone === clash ? 'phone' : 'otherPhones', message: `${other.name} already has this number.` });
     break;
   }
   return { phone, otherPhones: others.length ? others : undefined, issues };
 }
 
 /** The providers at a clinic that share a number, counted: how many numbers are on more than one, and how many providers that is. */
-export function sharedProviderPhones(providers: Pick<Provider, 'id' | 'phone' | 'otherPhones'>[]): { numbers: number; providers: number } {
+export function sharedProviderPhones(providers: Pick<Provider, 'id' | 'phone' | 'otherPhones'>[], clinic?: { phoneNumbers: readonly string[] }): { numbers: number; providers: number } {
   const byDigits = new Map<string, Set<string>>();
-  for (const p of providers) for (const d of new Set(providerPhones(p).map(phoneDigits))) byDigits.set(d, new Set([...(byDigits.get(d) ?? []), p.id]));
+  for (const p of providers) for (const d of new Set(providerPhones(p).map((x) => (clinic ? asE164(clinic, x) : phoneDigits(x))))) byDigits.set(d, new Set([...(byDigits.get(d) ?? []), p.id]));
   const shared = [...byDigits.values()].filter((ids) => ids.size > 1);
   return { numbers: shared.length, providers: new Set(shared.flatMap((ids) => [...ids])).size };
 }

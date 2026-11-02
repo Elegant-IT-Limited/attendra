@@ -430,8 +430,26 @@ describe('safety', () => {
     expect(out.errors).toEqual(['no_callback_number']);
     expect(spoken(out)).toContain('ask for the best number');
     await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: '303 555 0199', topic: null } }]);
-    expect(create.mock.calls.at(-1)![1].details.callback_number).toBe('303 555 0199');
+    // a number said any way is kept in the one form, E.164
+    expect(create.mock.calls.at(-1)![1].details.callback_number).toBe('+13035550199');
     create.mockRestore();
+  });
+
+  it('keeps every number the caller says as E.164, and knows it is the number they are calling from however it is said', async () => {
+    const create = vi.spyOn(w.backend.tasks, 'create');
+    const register = vi.spyOn(w.backend.patients, 'register');
+    for (const said of ['3035550163', '(303) 555-0163', '303-555-0163', '+1 303 555 0163', '1 303 555 0163']) {
+      const c = await w.call('+13035550163');
+      const out = await c.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: said, topic: null } }]);
+      expect(create.mock.calls.at(-1)![1].details.callback_number, said).toBe('+13035550163');
+      expect(spoken(out), said).toContain('call you back at this number');
+    }
+    const c = await w.call(null);
+    await c.delegate([{ tool: 'verify_caller', args: { full_name: 'Robin Vale', date_of_birth: '04/05/1990', phone: '(303) 555-0181' } }]);
+    await c.delegate([{ tool: 'register_patient', args: { first_name: 'Robin', last_name: 'Vale', date_of_birth: '04/05/1990', gender: 'female', phone: '1 303 555 0181', guardian_name: null } }]);
+    expect(register.mock.calls.at(-1)?.[1].phone).toBe('+13035550181');
+    create.mockRestore();
+    register.mockRestore();
   });
 
   it('takes one callback per call for the same purpose, however it is worded (a test call, 2026-10-25)', async () => {
