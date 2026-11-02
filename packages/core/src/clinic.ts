@@ -517,9 +517,17 @@ export const localName = (thing: { name: string; names?: Partial<Record<Language
  */
 export function openingWords(greeting: string, notice: string | null | undefined): string {
   const n = notice?.trim();
+  const g = greeting.trim();
   if (!n) return greeting;
-  const m = /^([\s\S]*?[.!])\s+([^.!?]*\?)\s*$/.exec(greeting.trim());
-  return m ? `${m[1]} ${n} ${m[2]}` : `${greeting.trim()} ${n}`;
+  // the closing question is what follows the last full stop or ! before a final "?": found by position, not a pattern
+  // that backtracks (a greeting is the clinic's own text)
+  if (!g.endsWith('?')) return `${g} ${n}`;
+  const body = g.slice(0, -1);
+  const end = Math.max(body.lastIndexOf('.'), body.lastIndexOf('!'));
+  if (end < 0 || body.lastIndexOf('?') > end) return `${g} ${n}`;
+  const intro = g.slice(0, end + 1).trim();
+  const question = g.slice(end + 1).trim();
+  return intro && question ? `${intro} ${n} ${question}` : `${g} ${n}`;
 }
 
 /** The default recording notice Settings offers, in each language: a full sentence. */

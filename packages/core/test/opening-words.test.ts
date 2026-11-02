@@ -19,3 +19,13 @@ describe('the recording notice comes before the question', () => {
     expect(noticeIsSentence('this call is recorded')).toBe(false);
   });
 });
+
+describe('the opening is found by position, never by a slow pattern', () => {
+  it('stays fast on a long run of spaces, and keeps a greeting with two questions whole', async () => {
+    const { openingWords } = await import('../src');
+    const t0 = performance.now();
+    openingWords(`! ${' '.repeat(50_000)}x`, 'Recorded.');
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(openingWords('Hi. Is it you? How can I help?', 'Recorded.')).toBe('Hi. Is it you? How can I help? Recorded.');
+  });
+});
