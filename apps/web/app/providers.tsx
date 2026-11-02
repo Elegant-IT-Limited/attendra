@@ -27,6 +27,9 @@ export function Providers({ children }: { children: ReactNode }) {
       queries: {
         retry: (count, error) => !(error instanceof ApiFailure && error.status < 500) && count < 2,
         refetchOnWindowFocus: true,
+        // fresh for 15 s: going back to a page shows what it had at once, with no refetch; the change stream
+        // refreshes what changes meanwhile, and anything older is refetched in the background
+        staleTime: 15_000,
       },
     },
   }));

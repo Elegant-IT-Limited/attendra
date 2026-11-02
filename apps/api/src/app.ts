@@ -159,8 +159,19 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   });
 
   // Method, route and status only. Bodies and query strings can carry PHI.
+  const timings = new RouteTimings();
   fastify.addHook('onResponse', async (req, reply) => {
-    deps.log.info({ method: req.method, route: req.routeOptions.url, status: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'request');
+    const ms = Math.round(reply.elapsedTime);
+    deps.log.info({ method: req.method, route: req.routeOptions.url, status: reply.statusCode, ms }, 'request');
+    timings.add(`${req.method} ${req.routeOptions.url ?? 'unknown'}`, reply.elapsedTime);
+  });
+  // p50 and p95 per route, once a minute, so the slow ones show in the logs (counts and times only)
+  const report = setInterval(() => { const rows = timings.drain(); if (rows.length) deps.log.info({ routes: rows }, 'route timings'); }, 60_000);
+  report.unref();
+  fastify.addHook('onClose', async () => clearInterval(report));
+  // the server's own time on every answer, for the browser's network panel (the round trip is the rest)
+  fastify.addHook('onSend', async (req, reply) => {
+    if (req.url.startsWith('/api/') && !reply.sent && !reply.raw.headersSent) reply.header('server-timing', `app;dur=${reply.elapsedTime.toFixed(1)}`);
   });
   // Nest turns thrown errors into responses; the server-side ones still need a trace.
   // Name and code only: a database error message can quote the values in a row.
@@ -248,4 +259,23 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
 
   await app.init();
   return app;
+}
+
+/** Response times per route in a window: p50 and p95, then reset. */
+export class RouteTimings {
+  private readonly seen = new Map<string, number[]>();
+  add(route: string, ms: number) {
+    const list = this.seen.get(route) ?? [];
+    if (list.length < 5000) list.push(ms);
+    this.seen.set(route, list);
+  }
+  drain(): { route: string; count: number; p50: number; p95: number }[] {
+    const out = [...this.seen].map(([route, list]) => {
+      const sorted = [...list].sort((a, b) => a - b);
+      const at = (q: number) => Math.round(sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]!);
+      return { route, count: sorted.length, p50: at(0.5), p95: at(0.95) };
+    });
+    this.seen.clear();
+    return out.sort((a, b) => b.p95 - a.p95);
+  }
 }

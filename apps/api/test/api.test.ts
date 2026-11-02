@@ -44,7 +44,10 @@ describe('sign-in and two-factor', () => {
   });
 
   it('answers the health check without a session, and nothing else', async () => {
-    expect((await api.request('GET', '/api/v1/health')).json()).toEqual({ ok: true, demoMode: false, passwordReset: false });
+    const health = await api.request('GET', '/api/v1/health');
+    expect(health.json()).toEqual({ ok: true, demoMode: false, passwordReset: false });
+    // the server's own time, for the browser's network panel
+    expect(health.headers['server-timing']).toMatch(/^app;dur=\d+(\.\d)?$/);
   });
 
   it('answers 401 with no session at all', async () => {
