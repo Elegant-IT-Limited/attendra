@@ -17,6 +17,9 @@ export async function newContext(browser: Browser, options?: Parameters<Browser[
   opened.splice(0, opened.length, ...opened.filter((o) => o.testId === testId));
   for (const o of earlier) await o.context.close().catch(() => {}); // already closed by its test: nothing to do
   const context = await browser.newContext(options);
+  // E2E_CLOCK (playwright.config.ts): the page's clock runs as far from the real one as the demo API's does
+  const offset = Number(process.env.E2E_CLOCK_OFFSET ?? 0);
+  if (offset) await context.clock.install({ time: Date.now() + offset });
   opened.push({ testId, context });
   return context;
 }
