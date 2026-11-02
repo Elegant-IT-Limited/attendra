@@ -9,6 +9,8 @@ settings:
     - { id: prov_bell, name: Marcus Bell, title: dr, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], phone: "+17205550192" }
 turns:
   - caller: Hi, it's Linh Nguyen. Can Biscuit see Ruiz for a check-up?
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0172?"
+  - caller: Yes.
     reply: "I found Biscuit, your dog. With Dr. Ruiz I can offer {offered.0}, or {offered.1}."
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }

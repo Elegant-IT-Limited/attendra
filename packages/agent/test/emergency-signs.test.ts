@@ -26,8 +26,8 @@ describe('the word "emergency" alone at a vet clinic', () => {
       const out = c.caller(said);
       expect(c.state.emergencyLocked).toBe(false);
       expect(c.state.emergency).toBeNull();
-      // one short question, at most, and never the script
-      expect(instructions(out)).toMatch(/in danger right now|en peligro ahora mismo/);
+      // the past, a planned surgery or a title: no question at all, and never the script
+      expect(instructions(out)).not.toMatch(/in danger right now|en peligro ahora mismo/);
       expect(instructions(out)).not.toMatch(/take your pet to|lleve a su mascota/);
       const [slots] = (await c.delegate([FIND])).results;
       expect(slots!.ok).toBe(true);
@@ -43,6 +43,17 @@ describe('the word "emergency" alone at a vet clinic', () => {
     expect(c.state.emergencyLocked).toBe(false);
     // the word again is not asked about twice
     expect(instructions(c.caller('it was not really an emergency'))).not.toContain('in danger right now');
+    expect((await c.delegate([FIND])).results[0]!.ok).toBe(true);
+  });
+
+  it('asks once when the word is unclear, and a yes to another question since is not a yes to danger (a test run)', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    const out = c.caller('I think it is an emergency, I want Biscuit checked.');
+    expect(instructions(out)).toContain('in danger right now');
+    c.assistant('Is Biscuit in danger right now, like trouble breathing, bleeding or a collapse?');
+    c.assistant("Sure. Is your pet's profile under the number you're calling from, ending 0172?");
+    c.caller("Yes, that's the number on file.");
+    expect(c.state.emergencyLocked).toBe(false);
     expect((await c.delegate([FIND])).results[0]!.ok).toBe(true);
   });
 

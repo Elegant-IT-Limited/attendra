@@ -151,7 +151,8 @@ const asGiven = (clinic: ClinicConfig, phone: string) => (wholeNumber(clinic, ph
  */
 function withPhoneAsGiven(result: ToolResult, rawArgs: unknown, state: CallState, ctx: CallContext): ToolResult {
   const given = (rawArgs as { phone?: unknown } | null)?.phone;
-  const phone = typeof given === 'string' && given.trim() ? given.trim() : null;
+  // as digits ("seven two oh, triple five" is 720555): words are not "not a whole number"
+  const phone = typeof given === 'string' && given.trim() ? spokenDigits(given.trim()) : null;
   if (!phone || wholeNumber(ctx.clinic, phone) || result.data.error === 'invalid_arguments') return result;
   const digits = phone.replace(/\D/g, '');
   if (state.phoneAsGiven === digits) return result;

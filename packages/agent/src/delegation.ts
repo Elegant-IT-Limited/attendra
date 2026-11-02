@@ -66,6 +66,12 @@ export const PROGRESS_NOTE = 'Looking it up. Do not tell the caller you are work
 // and the emergency number before an emergency transfer starts ringing
 const AFTER_EMERGENCY_SCRIPT_MS = 8000;
 
+/**
+ * The word "emergency" about the past, a planned surgery, or a title or a place: "she had an emergency last week",
+ * "after her emergency surgery", "the emergency doctor", "the emergency room". Not asked about (accents folded).
+ */
+const NOT_NOW = /\b(?:(?:had|was|were|been|after|from) (?:an? |the |her |his |their )?emergenc(?:y|ies)|emergency (?:surgery|operation|doctor|vet|veterinarian|room|clinic|hospital|visit|appointment|fund|fee|number|contact|line|follow[- ]?up)|(?:last|previous) (?:week|month|night|year|time)|(?:days?|weeks?|months?|years?) ago|(?:tuvo|tuve|hubo) una emergencia|(?:operaron|operacion|cirugia|consulta) de (?:emergencia|urgencia)|(?:doctor|doctora|veterinario|veterinaria|sala|hospital|clinica) de (?:emergencias|urgencias)|(?:la semana|el mes|el ano) pasad[oa]|hace (?:unos? )?(?:dias|semanas|meses))\b/;
+
 /** Before "he's fine" in the same clause: a no, a doubt or a wish ("I don't think he's okay", "I hope she's fine", "no está bien"). */
 const NOT_SAFE_BEFORE = /\b(no|not|never|nunca|hope|hoping|ojala|espero|if|si|whether|maybe|quizas|tal vez)\b|n't\b/;
 /** Where a clause starts again: what comes before it does not change it. */
@@ -167,7 +173,8 @@ export class CallAgent {
     let asked: Outbound[] = [];
     if (trade.emergency && fresh.length && fresh.every((m) => m.kind === 'general')) {
       if (this.state.emergencyLocked) for (const m of fresh) this.state.emergencyKinds.add(m.kind); // already held: nothing new to say
-      else if (danger !== 'yes') asked = this.askAboutDanger(endMs);
+      // the past, a planned surgery or a title: not asked about at all
+      else if (danger !== 'yes' && !NOT_NOW.test(normalise(this.state.recentCallerText()))) asked = this.askAboutDanger(endMs);
       fresh = [];
     }
     if (danger === 'yes' && !this.state.emergencyLocked && !fresh.length) fresh = [{ kind: 'general', phrase: 'yes', language: this.state.language }];

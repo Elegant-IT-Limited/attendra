@@ -5,7 +5,7 @@ local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first, language, es]
-facts: "Una llamada de prueba desde el navegador, sin identificador. Usted es Sam Rivera. Su número es 720 555 0187 y nunca ha ido a la clínica. Su perro Rex es macho y tiene tres años. Cualquier hora sirve. Diga que sí al número, a la primera hora y a la confirmación."
+facts: "Llamada de prueba, sin identificador. Usted es Sam Rivera. Cuando le pidan un número, diga solo 720 555 0187; diga que sí cuando se lo repitan. Cuando le digan que no hay ficha, diga que su perro Rex es nuevo, macho y tiene tres años. Cualquier hora sirve. Diga que sí a la primera hora y a la confirmación."
 turns:
   - caller: Hola, quiero reservar una revisión para mi perro.
     reply: "Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"

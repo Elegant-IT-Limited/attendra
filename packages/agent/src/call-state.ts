@@ -232,6 +232,12 @@ export class CallState {
     const said = normalise(this.latestCallerWordsAfter(q.askedAtMs));
     if (!said) return null;
     q.answered = true;
+    // only an answer to that question: when the assistant has said something else since ("Is it the number you're
+    // calling from?"), a "yes" is about that, never about danger (a test run locked a booking on it)
+    const lastAgent = [...this.turns].reverse().find((t) => t.speaker === 'agent');
+    // the last question the assistant asked, not anything earlier in the same breath
+    const questions = normalise(lastAgent?.text ?? '').match(/[^.!?]*\?/g) ?? [];
+    if (!ASKED_DANGER.test(questions.at(-1) ?? '')) return 'other';
     if (DANGER_NO.test(said)) return 'no';
     if (DANGER_YES.test(said)) return 'yes';
     return 'other';

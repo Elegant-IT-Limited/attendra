@@ -5,7 +5,7 @@ local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first, language, es]
-facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna."
+facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna. Solo quiere confirmar que Luna está registrada: cuando la encuentren, diga gracias, que llamará para reservar, y adiós."
 turns:
   - caller: Es para Luna, el número es 720 555 0175.
     reply: "¿Es el 720-555-0175?"

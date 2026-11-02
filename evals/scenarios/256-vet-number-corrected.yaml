@@ -5,7 +5,7 @@ local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first]
-facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174. Your dog is Luna."
+facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174. Your dog is Luna. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
 turns:
   - caller: It's for Luna, the number is 720 555 0175.
     reply: "That's 720-555-0175?"
