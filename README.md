@@ -2,7 +2,7 @@
 
 **An open-source AI receptionist for veterinary clinics, and for medical practices through its industry packs.** It answers the clinic's phone line day and night, in English and Spanish, checks who is calling (the owner and the pet at a vet clinic), adds new pets or patients, tells callers about the vets or doctors, books, moves and cancels appointments, takes refill and callback requests, sends animal emergencies to the clinic's emergency hospital, answers everyday questions from the clinic's own FAQ and documents, and hands anything clinical or urgent to a person. Staff watch calls live, coach the assistant or take over, and read a summary of every call.
 
-Attendra is built and maintained by [Elegant IT Limited](https://eleganttechbd.com), an AI-native software development studio, and is the kind of production AI system the studio builds for clients.
+Attendra is built and maintained by [Elegant IT Limited](https://eleganttechbd.com), an AI-native software development studio, and is the kind of production AI system the studio builds for clients. The [Attendra case study](https://eleganttechbd.com/works/attendra-ai-phone-receptionist) walks through how it was designed, built and run.
 
 Twilio carries the call over SIP to OpenAI GPT-Live, which holds the conversation. Every decision that matters (who the caller is, which times are really free, whether the caller said yes, what gets written, who is told) runs in this repository's TypeScript backend, where it can be tested, audited and self-hosted.
 
