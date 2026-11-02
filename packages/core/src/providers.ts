@@ -56,7 +56,7 @@ export function providerFacts(clinic: Pick<ClinicConfig, 'providers' | 'visitTyp
   const horizon = addDays(today, 28);
   return bookableProviders(clinic.providers).map((p) => ({
     provider_id: p.id,
-    name: localName(p, language),
+    name: providerName(p, language),
     kind: p.kind,
     gender: p.gender ? genderWord(p.gender) : null,
     specialty: p.specialty ?? null,
@@ -184,7 +184,7 @@ export function providerPhoneIssues(clinic: Pick<ClinicConfig, 'industry' | 'pho
     const theirs = providerPhones(other).map(one);
     const clash = mine.find((d) => theirs.includes(d));
     if (clash === undefined) continue;
-    issues.push({ path: phone && phone === clash ? 'phone' : 'otherPhones', message: `${other.name} already has this number.` });
+    issues.push({ path: phone && phone === clash ? 'phone' : 'otherPhones', message: `${providerName(other)} already has this number.` });
     break;
   }
   return { phone, otherPhones: others.length ? others : undefined, issues };
@@ -220,7 +220,7 @@ export function specialtyFacts(clinic: Pick<ClinicConfig, 'providers'>, language
   const groups = new Map<string, string[]>();
   for (const p of clinic.providers) {
     if (p.kind !== 'person' || !p.specialty) continue;
-    groups.set(p.specialty, [...(groups.get(p.specialty) ?? []), localName(p, language)]);
+    groups.set(p.specialty, [...(groups.get(p.specialty) ?? []), providerName(p, language)]);
   }
   return [...groups].map(([specialty, doctors]) => ({ specialty, doctors }));
 }
@@ -259,4 +259,27 @@ export function requestTopicFacts(clinic: Pick<ClinicConfig, 'requestTopics'>) {
 /** The clinic's offers running on this clinic-local date, as a caller may hear them. */
 export function currentOffers(clinic: Pick<ClinicConfig, 'offers'>, today: string) {
   return (clinic.offers ?? []).filter((o) => (!o.from || o.from <= today) && (!o.to || o.to >= today)).map((o) => ({ title: o.title, details: o.details, ...(o.to ? { until: o.to } : {}) }));
+}
+
+/** A title someone typed before a name: "Dr", "Dr.", "Dra.", "Doctor", "Mr", "Mrs", "Ms", "Miss". Names are stored without one. */
+const TYPED_TITLE = /^\s*(?:dr|dra|doctor|doctora|mr|mrs|ms|miss)\.?(?:\s+|$)/i;
+
+/** A name as it is stored: trimmed, with any title typed before it taken off ("Dr. Elena Ruiz" is "Elena Ruiz"). */
+export const bareName = (name: string) => name.replace(TYPED_TITLE, '').trim() || name.trim();
+
+/** Whether a typed name started with a title, so the field can say "We add Dr. for you". */
+export const hadTitle = (name: string) => TYPED_TITLE.test(name) && bareName(name) !== name.trim();
+
+/** The title a provider is said with: their own choice, or "dr" for a person and none for a room. */
+export const titleOf = (p: { kind?: 'person' | 'room'; title?: 'dr' | 'none' | undefined }) => (p.kind === 'room' ? 'none' : p.title ?? 'dr');
+
+/**
+ * A provider's name the one way it is said and shown everywhere: "Dr. Elena Ruiz", in Spanish "Dra. Elena Ruiz" for a
+ * woman ("Dr." when the gender isn't known), the name alone for a groomer or a room. A title already typed into the name
+ * is never said twice.
+ */
+export function providerName(p: { name: string; names?: Partial<Record<Language, string>> | undefined; kind?: 'person' | 'room'; title?: 'dr' | 'none' | undefined; gender?: string | undefined }, language: Language = 'en'): string {
+  const name = bareName(localName(p, language));
+  if (titleOf(p) === 'none') return name;
+  return `${language === 'es' && p.gender === 'female' ? 'Dra.' : 'Dr.'} ${name}`;
 }

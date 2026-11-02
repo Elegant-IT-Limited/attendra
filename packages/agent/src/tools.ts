@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, groupedNumber, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, groupedNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -117,7 +117,7 @@ const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${
 /** A time the caller chose, as the planner hears it: when, and with whom. */
 const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language'], now?: Date) => {
   const provider = clinic.providers.find((p) => p.id === slot.providerId);
-  return `${speakSlot(slot.start, clinic.timezone, lang, now)}${provider ? ` with ${localName(provider, lang)}` : ''}`;
+  return `${speakSlot(slot.start, clinic.timezone, lang, now)}${provider ? ` with ${providerName(provider, lang)}` : ''}`;
 };
 /**
  * Once the pet or patient is found or added: the time they chose before, looked for again (it may have gone meanwhile, and
@@ -194,17 +194,17 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
     else if (special) reasons.push(`On ${name} ${date} the clinic is open ${hoursText(open)} only${special.note ? ` (${special.note})` : ''}.`);
     if (q.provider) {
       const off = q.provider.timeOff.find((t) => !t.start && date >= t.from && date <= t.to);
-      if (off) reasons.push(`${q.provider.name} is away ${off.from === off.to ? `on ${off.from}` : `from ${off.from} to ${off.to}`}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+      if (off) reasons.push(`${providerName(q.provider)} is away ${off.from === off.to ? `on ${off.from}` : `from ${off.from} to ${off.to}`}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
       else if (q.provider.hours) {
         const theirs = windowsOn(q.provider.hours, weekdayOf(date));
         const days = [1, 2, 3, 4, 5, 6, 0].filter((d) => windowsOn(q.provider!.hours!, d).length).map((d) => DAY_NAMES[d]);
-        if (!theirs.length) reasons.push(`${q.provider.name} is not in on ${name}s; their days are ${days.join(', ')}.`);
-        else if (hoursText(theirs) !== hoursText(open)) reasons.push(`On ${name}s ${q.provider.name} is in ${hoursText(theirs)} only.`);
+        if (!theirs.length) reasons.push(`${providerName(q.provider)} is not in on ${name}s; their days are ${days.join(', ')}.`);
+        else if (hoursText(theirs) !== hoursText(open)) reasons.push(`On ${name}s ${providerName(q.provider)} is in ${hoursText(theirs)} only.`);
       }
     }
   } else if (q.provider && awayOn(q.provider, q.today)) {
     const off = q.provider.timeOff.find((t) => !t.start && q.today >= t.from && q.today <= t.to)!;
-    reasons.push(`${q.provider.name} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
+    reasons.push(`${providerName(q.provider)} is away until ${off.to}${off.note ? ` (${off.note})` : ''}, back on ${addDays(off.to, 1)}.`);
   }
   if (q.noticeHours && q.noticeHours > 2) {
     const earliest = new Date(q.now.getTime() + q.noticeHours * 3_600_000);
@@ -271,7 +271,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // said on the call as people say it ("today at 2:30", "Thursday at 9"); a text is read later, so it keeps the date
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang, ctx.now());
   const whenDated = (start: Date) => speakSlot(start, clinic.timezone, lang);
-  const providerName = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? localName(p, lang) : undefined; };
+  const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p, lang) : undefined; };
   /**
    * Where a confirmation text for this change would go, or null when none would: texting must be
    * on (its registration approved), the patient must have a phone, and changes and cancellations
@@ -302,7 +302,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     const visit = pets && facts.visitTypeId ? clinic.visitTypes.find((x) => x.id === facts.visitTypeId) : undefined;
     return {
       ...(name ? { name } : {}), ...(pets && p?.firstName ? { pet: p.firstName } : {}),
-      ...(provider && provider.kind !== 'room' ? { provider: localName(provider, lang) } : {}),
+      ...(provider && provider.kind !== 'room' ? { provider: providerName(provider, lang) } : {}),
       ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
     };
   };
@@ -566,12 +566,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (usual) {
           const until = addDays(from, rules.usualWithinDays - 1);
           const theirs = findSlots(clinic, busy, { ...query, providers: [usual] }).filter((s) => localDateOf(s.start, clinic.timezone) <= until);
-          const name = providerName(usual.id);
+          const name = nameOf(usual.id);
           if (theirs.length) {
             const sooner = anyone.find((s) => s.providerId !== usual.id && s.start.getTime() < theirs[0]!.start.getTime());
             slots = sooner ? [...theirs, sooner] : theirs;
             note = `The first ${theirs.length === 1 ? 'time is' : `${theirs.length} times are`} with ${name}, who usually sees ${patient.firstName}: offer ${theirs.length === 1 ? 'it' : 'them'} first.`
-              + (sooner ? ` The last one, with ${providerName(sooner.providerId)}, is sooner: mention it only if none of ${name}'s suit.` : '') + ' Do not invent other times.';
+              + (sooner ? ` The last one, with ${nameOf(sooner.providerId)}, is sooner: mention it only if none of ${name}'s suit.` : '') + ' Do not invent other times.';
           } else if (anyone.length) {
             note = `${name}, who usually sees ${patient.firstName}, has nothing in the next ${rules.usualWithinDays} ${rules.usualWithinDays === 1 ? 'day' : 'days'}. Say so, offer these with other ${trade.identity === 'pet' ? 'vets' : 'doctors'}, and offer to look later for ${name} if they would rather wait.`;
           }
@@ -580,7 +580,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       for (const s of slots) state.offered.set(s.id, s);
       // why the day or the provider the caller asked for gave nothing, so the assistant can say so before the times
       const why = whyNot(clinic, { date: args.from_date as string | null, provider: named || providers.length === 1 ? providers[0] : undefined, noticeHours: visitType.noticeHours, now, today });
-      const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: providerName(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
+      const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: nameOf(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
       // the caller named one exact day and time and is already found: when it is free it is staged here and read back,
       // the one round where there were two (find, then propose). Anything else comes back as the times to offer.
       if (args.propose_if_exact === true && fromTime && args.from_date && patient) {
@@ -605,7 +605,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the kind of visit too, so a reschedule looks for the same one
       return { ok: true, data: { appointments: upcoming.map((a) => {
         const visit = clinic.visitTypes.find((v) => v.id === a.visitTypeId);
-        return { appointment_id: a.id, when: when(a.start), provider: providerName(a.providerId), visit_type_id: a.visitTypeId, visit: visit ? localName(visit, lang) : null };
+        return { appointment_id: a.id, when: when(a.start), provider: nameOf(a.providerId), visit_type_id: a.visitTypeId, visit: visit ? localName(visit, lang) : null };
       }) } };
     }
 
@@ -622,15 +622,15 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       await backend.audit.record(clinic.id, { actor: 'voice-agent', action: 'patient.visits.read.call', entity: 'patient', entityId: pet.id, callId: ctx.callId });
       // a question about the pet's visits, answered, is a call the assistant handled
       if (state.outcome === 'abandoned') state.outcome = 'info';
-      const lastSeen = last ? pack.lastVisitSeen({ pet: pet.firstName, when: when(last.start), provider: providerName(last.providerId) ?? null, visit: visitName(last.visitTypeId) }) : null;
+      const lastSeen = last ? pack.lastVisitSeen({ pet: pet.firstName, when: when(last.start), provider: nameOf(last.providerId) ?? null, visit: visitName(last.visitTypeId) }) : null;
       // dates, vets and kinds of visit only: no reason, note or anything medical is in what comes back
       return {
         ok: true,
         data: {
           pet: pet.firstName,
-          next_visits: upcoming.slice(0, 3).map((a) => ({ when: when(a.start), vet: providerName(a.providerId) ?? null, visit: visitName(a.visitTypeId) })),
-          last_visit: last ? { when: when(last.start), vet: providerName(last.providerId) ?? null, visit: visitName(last.visitTypeId) } : null,
-          usual_vet: usual ? providerName(usual) ?? null : null,
+          next_visits: upcoming.slice(0, 3).map((a) => ({ when: when(a.start), vet: nameOf(a.providerId) ?? null, visit: visitName(a.visitTypeId) })),
+          last_visit: last ? { when: when(last.start), vet: nameOf(last.providerId) ?? null, visit: visitName(last.visitTypeId) } : null,
+          usual_vet: usual ? nameOf(usual) ?? null : null,
           say: `Answer only what the owner asked, in a sentence, from these facts. ${lastSeen ? `A past visit is said this way: "${lastSeen}"` : 'No earlier visit is booked or recorded here: say you can\'t see one, never that there was none.'} Never read the visits out as a list unasked and never count them: only the last and the next. Nothing medical (what was found, results, medicines, doses, weights, notes, invoices) and no copy of the records: for those say "${pack.recordsOffer}", and on a yes take create_callback with the reason starting "Records request:".`,
         },
       };
@@ -646,7 +646,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
         replacing = when(current.start);
       }
-      const provider = providerName(slot.providerId) ?? 'the provider';
+      const provider = nameOf(slot.providerId) ?? 'the provider';
       const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
@@ -1098,7 +1098,7 @@ export function textContent(
       const p = clinic.providers.find((x) => x.id === ref && !x.placeholder);
       if (!p) return null;
       const details = [...(p.credentials ?? []), ...(p.specialty ? [p.specialty] : []), ...p.categories].join(', ');
-      return { template: 'provider', vars: { provider: localName(p, lang), details, clinicPhone } };
+      return { template: 'provider', vars: { provider: providerName(p, lang), details, clinicPhone } };
     }
     case 'answer': {
       const faq = ref && state.answersGiven.has(ref) ? clinic.faqs.find((f) => f.id === ref) : undefined;

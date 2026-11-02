@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment } from '@attendra/api/contracts';
-import { type ClinicConfig, localParts, managedList, shownProviders } from '@attendra/core';
+import { type ClinicConfig, localParts, managedList, providerName, shownProviders } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -74,7 +74,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
         <div className="w-64 space-y-1">
           <Label htmlFor={`${id}-provider`} className="sr-only">{word.charAt(0).toUpperCase()}{word.slice(1)}</Label>
           <Combobox id={`${id}-provider`} label={`${word.charAt(0).toUpperCase()}${word.slice(1)}`} value={providerId} onChange={setProviderId} placeholder={`Every ${word}`}
-            options={providers.map((p) => ({ value: p.id, label: p.name }))} />
+            options={providers.map((p) => ({ value: p.id, label: providerName(p) }))} />
         </div>
         {specialties.length > 0 && (
           <div className="space-y-1">
@@ -115,7 +115,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
               const confirmed = !cancelled && !!a.confirmedAt;
               const Icon = a.bookedBy.kind === 'assistant' ? Bot : User;
               const visit = visitOf(a.visitTypeId)?.name ?? '';
-              const who = providerOf(a.providerId)?.name ?? a.providerId;
+              const who = (() => { const p = providerOf(a.providerId); return p ? providerName(p) : a.providerId; })();
               return (
                 <li key={a.id} className="absolute inset-x-0 border-b border-border/70" style={{ top, height: ROW }}>
                   <button type="button" onClick={() => onOpen(a.id)} data-testid="agenda-row"

@@ -1,0 +1,20 @@
+id: vet-es-asks-vet-phone
+title: '"¿Cuál es el teléfono de la doctora Ruiz?" gets no number, in Spanish: a message for her, or the front desk'
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, vet-titles, language, es]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Elena Ruiz, title: dr, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], phone: "+17205550191" }
+    - { id: prov_bell, name: Marcus Bell, title: dr, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], phone: "+17205550192" }
+turns:
+  - caller: Hola, ¿cuál es el teléfono de la doctora Ruiz? Quiero llamarla directamente.
+    reply: "No puedo dar el número propio de nuestros veterinarios, pero puedo dejarle un mensaje a la Dra. Ruiz o comunicarle con recepción. ¿Qué prefiere?"
+    delegate:
+      - get_clinic_info: { question: teléfono de la Dra. Ruiz }
+expect:
+  outcome: info
+  language: es
+  returned: ["Dra. Elena Ruiz"]
+  never_returned: ["+17205550191", "720-555-0191", "5550191"]
+forbid_spoken: ["555-0191", "0191"]

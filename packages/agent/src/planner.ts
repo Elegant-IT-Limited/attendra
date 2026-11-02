@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { agesLine, asE164, audienceLine, type ClinicConfig, industryPack, localDateOf, localName, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
+import { agesLine, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -139,7 +139,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     'A visit type\'s own description (what to bring, no food after midnight, how long it takes) is the clinic\'s instruction: say it as the clinic\'s ("the clinic asks that..."), never as advice of your own, and never add to it.',
     'Asked about a doctor\'s or vet\'s qualifications, the languages they speak or anything else about them, answer from their credentials and details in get_clinic_info, as the clinic wrote them; that is a fact, not a ranking. Anything not listed there is something you do not have.',
     languageLine(clinic),
-    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${p.name}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
+    `Visit types: ${clinic.visitTypes.map((v) => `${v.id} = ${v.name} (${audienceLine(v)})`).join('; ')}. Providers: ${clinic.providers.map((p) => `${p.id} = ${providerName(p)}${p.specialty ? `, ${p.specialty}` : ''}${p.categories.length ? ` (${p.categories.join(', ')})` : ''}, ${agesLine(p)}`).join('; ')}.`,
     // a choice of one is no choice: the caller is never asked which provider they would like
     ...(clinic.providers.length === 1 ? ['There is only one provider here: never ask the caller which one they would like; book with them.'] : []),
   ].join('\n');
@@ -423,7 +423,7 @@ export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): 
       : 'patient not verified',
     // what the caller already said is never asked again; the latest value is the one that counts
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
-    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${localName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
+    ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${providerName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

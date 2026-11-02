@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { ScheduleConflicts } from '@attendra/api/contracts';
-import { localDateOf } from '@attendra/core';
+import { localDateOf, providerName } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Alert } from '@/components/ui/feedback';
@@ -18,7 +18,7 @@ export function ConflictsAlert({ clinicId, className }: { clinicId: string; clas
   const q = useQuery({ queryKey: ['schedule-conflicts', clinicId], queryFn: () => api<ScheduleConflicts>(`/clinics/${clinicId}/appointments/conflicts`), enabled: can('schedule:read'), refetchInterval: 60_000 });
   const list = q.data?.conflicts ?? [];
   if (!list.length || !config.data) return null;
-  const name = (id: string) => config.data!.providers.find((p) => p.id === id)?.name ?? 'Someone no longer listed';
+  const name = (id: string) => { const p = config.data!.providers.find((x) => x.id === id); return p ? providerName(p) : 'Someone no longer listed'; };
   const total = list.reduce((n, c) => n + c.count, 0);
   const today = localDateOf(new Date(), config.data.timezone);
   return (

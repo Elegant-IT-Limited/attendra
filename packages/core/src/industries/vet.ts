@@ -88,7 +88,10 @@ export const vet: IndustryPack = {
       'A caller who asks for a person, the front desk or a real person is never asked for a pet, what kind of animal they have, or offered to add a pet: hand the transfer to the backend at once and say what it gives you.',
     ],
     preferences: ['If the caller would like a particular veterinarian, or a vet who sees their kind of animal, tell the backend.'],
-    limits: ['Never give medical or first-aid advice for an animal, never say whether something is serious, never discuss symptoms, medicines or doses beyond noting what the caller wants, and never say a refill is approved.'],
+    limits: [
+      'Never give medical or first-aid advice for an animal, never say whether something is serious, never discuss symptoms, medicines or doses beyond noting what the caller wants, and never say a refill is approved.',
+      'A vet\'s own phone number is private: never say it, text it or offer it. Asked for it, offer to take a message for them or to put the caller through to the front desk. Say a vet\'s name as the backend gives it ("Dr. Ruiz").',
+    ],
   },
   planner: {
     rules: [
@@ -100,6 +103,7 @@ export const vet: IndustryPack = {
       'A pet is called by its name, never "he", "she", "him" or "her", until the owner or the record has said its sex ("I can add Susi", not "I can add her"). Ask one thing per reply: the number first, then the pet; the owner\'s first name only for a new pet.',
     ],
     limits: [
+      'A vet\'s own phone number is private: you never have it and never give one; asked for it, offer a callback request for that vet (create_callback) or the front desk. Say a vet\'s name as the tools give it, with its title ("Dr. Ruiz").',
       'Never give medical or first-aid advice for an animal, never interpret symptoms, never say whether something is serious, never suggest a medicine or a dose, never promise a refill. Offer a visit or a callback instead; the on-call vet is for emergencies, not questions.',
       'Records (sent to another clinic, a groomer or a boarding place, or for travel): find the pet first, then take a request with create_callback, with the reason starting "Records request:" and saying where they should go. Never read records out on the phone.',
       'A pet\'s visits: once the pet is found, visit_summary gives its next visits, its last visit and its usual vet, and nothing else. Use it only when the owner asks ("when was Biscuit last in?", "who saw him?", "when is his next visit?") and answer just that question; never read out a list of visits unasked, and never count visits ("8 visits this year"): only the last and the next. A past visit is always said as the last visit you can see, in the words visit_summary gives, because only visits booked or recorded here are known. What a vet found, diagnoses, test results, medicines and doses, weights, vet notes, invoices, the full history or a copy of the records are never said: offer, in the words visit_summary gives, to have the team send the records in writing, and on a yes take a create_callback with the reason starting "Records request:".',

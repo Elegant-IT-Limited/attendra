@@ -1,0 +1,20 @@
+id: vet-es-can-i-see-ruiz
+title: '"¿Puede verlo Ruiz?" is answered with "Dra. Ruiz" in Spanish: the title follows the vet''s gender'
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, vet-titles, language, es]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Elena Ruiz, title: dr, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], phone: "+17205550191" }
+    - { id: prov_bell, name: Marcus Bell, title: dr, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], phone: "+17205550192" }
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede ver a Ruiz para un chequeo?
+    reply: "Encontré a Biscuit, su perro. Con la Dra. Ruiz le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: prov_ruiz, from_date: null, part_of_day: any }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  returned: ["Dra. Elena Ruiz"]

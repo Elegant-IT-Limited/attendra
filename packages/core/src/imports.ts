@@ -3,7 +3,7 @@ import { type ClinicConfig, type CustomField, DEFAULT_SPECIES, type Gender, type
 import { readCustomValues } from './custom-fields';
 import { parseDob, phoneDigits } from './identity';
 import { asE164, samePhone } from './phones';
-import { ageOn, providerPhoneIssues, providerPhones } from './providers';
+import { ageOn, bareName, providerName, providerPhoneIssues, providerPhones } from './providers';
 
 /**
  * Bulk lists the managers keep in a spreadsheet: doctors and patients, as CSV (Excel,
@@ -112,8 +112,8 @@ export function doctorTemplate(clinic: DoctorTemplateClinic): string {
   const example = (f: CustomField) => (f.kind === 'yesno' ? 'yes' : f.kind === 'date' ? '2026-01-15' : f.kind === 'number' ? '12' : f.kind === 'choice' || f.kind === 'multi' ? f.options?.[0] ?? '' : `e.g. ${f.label.toLowerCase()}`);
   return toCsv([
     [...DOCTOR_COLUMNS, ...fields.map(customColumn)],
-    ['', 'Dr. Jane Example', 'female', '(303) 555-0100', '', specialties[0]!, categories.slice(0, 2).join('; '), vet ? '' : '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31', ...fields.map(example)],
-    ['', 'Dr. Sam Example', 'male', '(303) 555-0101', '(303) 555-0102', specialties[1] ?? specialties[0]!, categories.slice(0, 3).join('; '), vet ? '' : '0', vet ? '' : '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', '', ...fields.map(example)],
+    ['', 'Jane Example', 'female', '(303) 555-0100', '', specialties[0]!, categories.slice(0, 2).join('; '), vet ? '' : '18', '', 'yes', visits.slice(0, 2).join('; '), '08:00-12:00; 13:00-17:00', '08:00-12:00; 13:00-17:00', '', '08:00-12:00; 13:00-17:00', '08:00-13:00', '', '', '2026-12-24 to 2026-12-31', ...fields.map(example)],
+    ['', 'Sam Example', 'male', '(303) 555-0101', '(303) 555-0102', specialties[1] ?? specialties[0]!, categories.slice(0, 3).join('; '), vet ? '' : '0', vet ? '' : '17', 'yes', visits.join('; '), '', '', '', '', '', '', '', '', ...fields.map(example)],
   ]);
 }
 
@@ -132,7 +132,8 @@ const yes = (v: string) => (v === '' ? true : /^(y|yes|true|1)$/i.test(v) ? true
 const slug = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'doctor';
 /** A new provider id, readable and unlikely to repeat: prov_jane_example_k3f9. */
 export const newProviderId = (name: string) => `prov_${slug(name.replace(/^dr\.?\s+/i, ''))}_${Math.random().toString(36).slice(2, 6)}`;
-const sameName = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]/g, '') === b.toLowerCase().replace(/[^a-z0-9]/g, '');
+// the same name, with or without a title typed before it ("Dr. Jane Example" is "Jane Example")
+const sameName = (a: string, b: string) => bareName(a).toLowerCase().replace(/[^a-z0-9]/g, '') === bareName(b).toLowerCase().replace(/[^a-z0-9]/g, '');
 
 function hoursOf(v: string): { open: string; close: string }[] | string {
   const out: { open: string; close: string }[] = [];
@@ -177,7 +178,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     const byPhone = rowPhones.length ? clinic.providers.find((p) => providerPhones(p).some((x) => rowPhones.includes(asE164(clinic, x)))) : undefined;
     const existing = (r.get('id') && clinic.providers.find((p) => p.id === r.get('id'))) || byPhone || clinic.providers.find((p) => sameName(p.name, name));
     if (r.get('id') && !existing) return fail(`no doctor on file has the id ${r.get('id')}; leave id empty to add them`);
-    if (existing && seenIds.has(existing.id)) return fail(`${existing.name} is already on another row of the file (the same number or name)`);
+    if (existing && seenIds.has(existing.id)) return fail(`${providerName(existing)} is already on another row of the file (the same number or name)`);
     if (existing) seenIds.add(existing.id);
     // the row's own number replaces one the doctor had among their others, so a number is never listed twice
     const rowPhone = r.get('phone') || (existing ? existing.phone : undefined);
@@ -223,7 +224,7 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     const parsed = Provider.safeParse({
       ...existing,
       id: existing?.id ?? newProviderId(name),
-      name,
+      name: bareName(name), // stored without a title: "Dr." is added when it is said
       gender: keep(r.get('gender'), gender, existing?.gender),
       specialty: keep(r.get('specialty'), r.get('specialty') ? spelled('specialties', r.get('specialty')) : undefined, existing?.specialty),
       categories: keep(r.get('categories'), split(r.get('categories')).map((v) => spelled('categories', v)), existing?.categories) ?? [],

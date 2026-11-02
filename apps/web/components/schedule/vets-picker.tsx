@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, managedList } from '@attendra/core';
+import { type ClinicConfig, managedList, providerName } from '@attendra/core';
 import { Users } from 'lucide-react';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -35,7 +35,7 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word }: 
   const [full, setFull] = useState(false);
   const specialties = managedList(clinic, 'specialties');
   const q = query.trim().toLowerCase();
-  const shown = providers.filter((p) => (!q || p.name.toLowerCase().includes(q))
+  const shown = providers.filter((p) => (!q || providerName(p).toLowerCase().includes(q))
     && (!specialty || (p.specialty ?? '').toLowerCase() === specialty.toLowerCase())
     && (!workingOnly || worksOn(clinic, p, date)));
   const toggle = (pid: string, on: boolean) => {
@@ -81,7 +81,7 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word }: 
           {shown.map((p) => (
             <li key={p.id} className="rounded-sm px-1 py-1 hover:bg-surface-sunken">
               <Checkbox id={`${id}-${p.id}`} checked={chosen.includes(p.id)} onCheckedChange={(on) => toggle(p.id, on)}
-                label={<span className="font-normal">{p.name}</span>}
+                label={<span className="font-normal">{providerName(p)}</span>}
                 hint={[p.specialty, worksOn(clinic, p, date) ? '' : 'Not working today'].filter(Boolean).join(', ') || undefined} />
             </li>
           ))}

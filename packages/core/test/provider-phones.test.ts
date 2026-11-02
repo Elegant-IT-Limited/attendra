@@ -71,7 +71,7 @@ describe('the doctor import with phone numbers and the clinic\'s own fields', ()
       'error:Fear Free: yes or no',
     ]);
     const marsh = rows[0]!.ok ? rows[0]!.value : null;
-    expect(marsh).toMatchObject({ id: 'prov_marsh', name: 'Dr. E. Marsh (renamed)', phone: '+17205550181', otherPhones: ['+17205550183'], categories: ['Cats'], custom: { cf_licence: 'CO-0161', cf_fear_free: 'yes' } });
+    expect(marsh).toMatchObject({ id: 'prov_marsh', name: 'E. Marsh (renamed)', phone: '+17205550181', otherPhones: ['+17205550183'], categories: ['Cats'], custom: { cf_licence: 'CO-0161', cf_fear_free: 'yes' } });
     const fresh = rows[1]!.ok ? rows[1]!.value : null;
     expect(fresh).toMatchObject({ phone: '+17205550185', otherPhones: ['+17205550186', '+17205550187'] });
   });

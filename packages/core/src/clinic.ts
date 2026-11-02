@@ -79,6 +79,9 @@ export const Provider = z.object({
   phone: e164.optional(),
   // other numbers of theirs, so a second line never becomes a second vet
   otherPhones: z.array(e164).max(3).optional(),
+  // how the assistant and the dashboard say their name: "Dr. Ruiz" (the default for a person), or the name alone ("none")
+  // for team members who aren't vets (technicians, groomers); rooms and equipment never get one
+  title: z.enum(['dr', 'none']).optional(),
 });
 
 export const VisitType = z.object({

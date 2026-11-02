@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, Gender, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, Gender, Provider, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -572,7 +572,9 @@ export const PatientProfile = PatientCard.extend({
 /** A doctor (or a room) as the Doctors page edits them. The id is made from the name when a new one has none. */
 export const DoctorInput = Provider.omit({ id: true }).extend({
   id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
-  name: z.string().trim().min(2, 'a name of at least 2 letters').max(80),
+  // stored without a title ("Dr. Elena Ruiz" is saved as "Elena Ruiz"): the title choice says it
+  name: z.string().trim().max(80).transform(bareName).pipe(z.string().min(2, 'a name of at least 2 letters')),
+  names: z.record(z.string(), z.string().trim().max(80).transform(bareName)).optional(),
   gender: Gender,
   // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
   phone: z.string().trim().max(30).optional(),

@@ -116,7 +116,8 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     const report = (await imported.json()) as { counts: { add: number; error: number } };
     expect(report.counts).toMatchObject({ add: VETS, error: 0 });
     const doctors = (await (await api.get(`/api/v1/clinics/${clinicId}/doctors`)).json()) as { providers: { id: string; name: string }[] };
-    const vetIds = new Map(doctors.providers.map((p) => [p.name, p.id]));
+    // names are stored without the title the file typed ("Dr. Vet 001" is saved as "Vet 001")
+    const vetIds = new Map(doctors.providers.map((p) => [`Dr. ${p.name.replace(/^Dr\.?\s+/, '')}`, p.id]));
     expect(vetIds.size).toBe(VETS);
 
     // forty pets, on forty made-up numbers

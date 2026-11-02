@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { CancelledList } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, industryPack, localDateOf } from '@attendra/core';
+import { addDays, type ClinicConfig, industryPack, localDateOf, providerName } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, Search, User } from 'lucide-react';
 import { useState } from 'react';
@@ -39,7 +39,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
     enabled: !!from && !!to && from <= to,
     placeholderData: keepPreviousData,
   });
-  const provider = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? 'A former provider';
+  const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : 'A former provider'; };
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? 'visit';
   const tz = clinic.timezone;
 

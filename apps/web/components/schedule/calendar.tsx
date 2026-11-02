@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment } from '@attendra/api/contracts';
-import { type ClinicConfig, localParts, toMinutes } from '@attendra/core';
+import { type ClinicConfig, localParts, providerName, toMinutes } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
 import { Empty } from '@/components/ui/feedback';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
@@ -57,17 +57,17 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
               <div key={d} className={cn('border-l border-border px-2 py-2 text-sm', d === today && 'bg-primary-soft')}>
                 <p className={cn('font-medium', d === today && 'text-primary')}>{dayTitle(d, 'short')}</p>
                 <div className="mt-1 flex gap-1 text-xs text-text-muted">
-                  {holiday ? <span>{holiday === 'Holiday' ? 'Holiday, closed' : holiday}</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={p.name}><abbr title={p.name} className="no-underline">{shortName(p.name)}</abbr></span>)}
+                  {holiday ? <span>{holiday === 'Holiday' ? 'Holiday, closed' : holiday}</span> : providers.map((p) => <span key={p.id} className="flex-1 truncate" title={providerName(p)}><abbr title={providerName(p)} className="no-underline">{shortName(providerName(p))}</abbr></span>)}
                 </div>
               </div>
             );
           }) : providers.map((p) => (
             // the whole name while the lane has room for it; initials and the surname when it is narrow. The full name is on hover either way
-            <div key={p.id} data-testid="lane-head" title={p.name} className="@container min-w-0 border-l border-border px-3 py-2.5 text-sm font-medium">
-              <span className="block truncate @max-[9rem]:hidden">{p.name}</span>
+            <div key={p.id} data-testid="lane-head" title={providerName(p)} className="@container min-w-0 border-l border-border px-3 py-2.5 text-sm font-medium">
+              <span className="block truncate @max-[9rem]:hidden">{providerName(p)}</span>
               <span className="hidden items-center gap-1.5 @max-[9rem]:flex">
                 <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-xs tabular-nums" aria-hidden>{initials(p.name)}</span>
-                <span className="truncate">{shortName(p.name)}</span>
+                <span className="truncate">{shortName(providerName(p))}</span>
               </span>
             </div>
           ))}
@@ -156,7 +156,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
 /** The same appointments as a list, for a phone: the grid does not fit in 390 pixels. */
 export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: ClinicConfig; dates: string[]; appointments: Appointment[]; onOpen: (id: string) => void }) {
   const tz = clinic.timezone;
-  const provider = (id: string) => clinic.providers.find((p) => p.id === id)?.name ?? id;
+  const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? id;
   const idx = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
   const days = dates.map((d) => ({ date: d, items: appointments.filter((a) => localParts(new Date(a.startsAt), tz).date === d) })).filter((d) => d.items.length || dates.length === 1);

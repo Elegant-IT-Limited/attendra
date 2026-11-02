@@ -36,7 +36,8 @@ describe('doctors', () => {
   it('adds a doctor with a specialty, the ages they see, weekly hours and days off, under a new id', async () => {
     const res = await api.request('POST', C, { cookie: as.admin, body: kim });
     expect(res.statusCode).toBe(201);
-    const added = res.json().providers.find((p: { name: string }) => p.name === kim.name);
+    // saved without the title typed before the name: "Dr." is said, not stored
+    const added = res.json().providers.find((p: { name: string }) => p.name === 'Jae Kim');
     id = added.id;
     expect(id).toMatch(/^prov_jae_kim_[a-z0-9]{4}$/);
     expect((await stored()).providers.find((p) => p.id === id)).toMatchObject({ specialty: 'Pediatrics', ages: { min: 0, max: 17 }, timeOff: [{ from: '2026-12-24', to: '2026-12-31' }] });
@@ -86,7 +87,7 @@ describe('doctors', () => {
   it('refuses a number another doctor at the clinic has, under the field, and keeps the numbers as the clinic dials them', async () => {
     const first = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Numbered One', phone: '(303) 555-0181', otherPhones: ['303 555 0182'] } });
     expect(first.statusCode).toBe(201);
-    expect(first.json().providers.find((p: { name: string }) => p.name === 'Dr. Numbered One')).toMatchObject({ phone: '+13035550181', otherPhones: ['+13035550182'] });
+    expect(first.json().providers.find((p: { name: string }) => p.name === 'Numbered One')).toMatchObject({ phone: '+13035550181', otherPhones: ['+13035550182'] });
     const same = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Numbered Two', phone: '+13035550182' } });
     expect(same.statusCode).toBe(422);
     expect(same.json().issues).toEqual([{ path: 'phone', message: 'Dr. Numbered One already has this number.' }]);
@@ -98,7 +99,7 @@ describe('doctors', () => {
     const dry = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: true } })).json();
     expect(dry.rows.map((r: { status: string; message: string | null }) => [r.status, r.message])).toEqual([['update', null], ['error', 'Dr. Numbered One is already on another row of the file (the same number or name)']]);
     const taken = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv: 'name,phone,specialty\nDr. Numbered Three,(303) 555-0182,Pediatrics', dryRun: true } })).json();
-    expect(taken.rows[0]).toMatchObject({ status: 'update', name: 'Dr. Numbered Three' }); // the number is the doctor: their row, renamed
+    expect(taken.rows[0]).toMatchObject({ status: 'update', name: 'Dr. Numbered Three' }); // the number is the doctor: their row, renamed (as the file typed it)
   });
 
   it('lets the stand-in a new clinic starts with go once a real doctor is added, unless a visit points at it', async () => {
@@ -113,7 +114,7 @@ describe('doctors', () => {
     await put({ ...(await stored()), providers: [...(await stored()).providers, standIn] });
     await api.t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
       values (${DEMO_CLINIC.id}, ${api.patientIds.maria}, 'prov_1', 'vt_sick', '2026-09-01T15:00:00Z', '2026-09-01T15:20:00Z', 'doctors-test-stand-in', ${api.users.owner})`);
-    const vale = (await stored()).providers.find((p) => p.name === 'Dr. Ines Vale')!;
+    const vale = (await stored()).providers.find((p) => p.name === 'Ines Vale')!;
     expect((await api.request('PUT', `${C}/${vale.id}`, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale', acceptingNewPatients: false } })).statusCode).toBe(200);
     expect((await stored()).providers.some((p) => p.id === 'prov_1')).toBe(true);
     await api.t.db.execute(sql`delete from appointments where provider_id = 'prov_1'`);
@@ -160,11 +161,11 @@ describe('doctors', () => {
     expect(dry.rows.map((r: { status: string }) => r.status)).toEqual(['add', 'update', 'error', 'error']);
     // what a row adds to the clinic's lists is said before anything is imported: the manager's OK
     expect(dry.rows[0].message).toBe('adds "Dermatology", "Skin", "Allergies" to your lists');
-    expect((await stored()).providers.some((p) => p.name === 'Dr. Lee Park')).toBe(false);
+    expect((await stored()).providers.some((p) => p.name === 'Lee Park')).toBe(false);
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
     expect(real.counts).toEqual({ add: 1, update: 1, skip: 0, error: 2, notListed: 0 });
     const after = await stored();
-    expect(after.providers.find((p) => p.name === 'Dr. Lee Park')).toMatchObject({ gender: 'female', specialty: 'Dermatology', timeOff: [{ from: '2026-11-27', to: '2026-11-27' }] });
+    expect(after.providers.find((p) => p.name === 'Lee Park')).toMatchObject({ gender: 'female', specialty: 'Dermatology', timeOff: [{ from: '2026-11-27', to: '2026-11-27' }] });
     expect(after.providers.find((p) => p.id === 'prov_okafor')!.gender).toBe('male'); // an empty cell keeps what is on file
     expect(after.providers.find((p) => p.id === 'prov_okafor')!.categories).toEqual(['Adults', 'Diabetes']);
     expect((await api.request('POST', `${C}/import`, { cookie: as.staff, body: { csv, dryRun: true } })).statusCode).toBe(403);
@@ -188,7 +189,7 @@ describe('doctors', () => {
     const real = (await api.request('POST', `${C}/import`, { cookie: as.admin, body: { csv, dryRun: false } })).json();
     expect(real.counts).toEqual({ add: 2, update: 0, skip: 0, error: 0, notListed: 1 });
     const after = await stored();
-    expect(after.providers.find((p) => p.name === 'Dr. Tomas Lindqvist')).toMatchObject({ specialty: 'Oncology', categories: ['Adults'] });
+    expect(after.providers.find((p) => p.name === 'Tomas Lindqvist')).toMatchObject({ specialty: 'Oncology', categories: ['Adults'] });
     expect(after.lists?.specialties).toEqual(sixty);
   });
 });
