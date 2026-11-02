@@ -19,7 +19,7 @@ export function Tabs<V extends string>({ value, onValueChange, tabs, label, vari
         {tabs.map((t) => (
           // with no panels under it (the page shows the view itself), a tab points at nothing: no aria-controls to a missing id
           <T.Trigger key={t.value} value={t.value} {...(children ? {} : { 'aria-controls': undefined })}
-            className={cn('focus-ring inline-flex items-center gap-1.5 whitespace-nowrap text-base transition-colors max-md:min-h-11',
+            className={cn('focus-ring inline-flex items-center gap-1.5 whitespace-nowrap text-base max-md:min-h-11',
               variant === 'line'
                 ? '-mb-px border-b-2 border-transparent px-3 py-2 text-text-muted hover:text-text data-[state=active]:border-primary data-[state=active]:font-medium data-[state=active]:text-text'
                 : 'rounded-sm px-3 py-1 text-text-muted hover:text-text data-[state=active]:bg-primary data-[state=active]:text-on-primary')}>

@@ -242,6 +242,17 @@ describe('the OpenAI webhook', () => {
     expect(engine.accept).toHaveBeenCalled();
     expect(health.statusCode).toBe(200);
   });
+
+  it('cuts a flood from one address before the signature is checked, with a limit far above real call volume', async () => {
+    const { d } = deps({ webhookRouteLimit: 3, webhookRateLimit: 1000 });
+    const verify = vi.spyOn(d, 'verifyWebhook');
+    const app = buildServer(d);
+    const codes = [];
+    for (const id of ['wh_f1', 'wh_f2', 'wh_f3', 'wh_f4', 'wh_f5']) codes.push((await post(app, incoming(id, '+13035550100', 'forged'))).statusCode);
+    await app.close();
+    expect(codes).toEqual([400, 400, 400, 429, 429]);
+    expect(verify).toHaveBeenCalledTimes(3); // the flood never reached the signature check, let alone the database
+  });
 });
 
 const TOKEN = 'internal-token-for-tests-0123456789abcdef';

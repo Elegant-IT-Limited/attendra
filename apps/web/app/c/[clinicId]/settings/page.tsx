@@ -226,7 +226,7 @@ export default function Settings() {
             {parts.map((part) => (
               <li key={part.id}>
                 <a href={`#${part.id}`} aria-current={reading === part.id ? 'location' : undefined}
-                  className={cn('focus-ring block rounded-md border-l-2 px-2.5 py-1.5 transition-colors', reading === part.id
+                  className={cn('focus-ring block rounded-md border-l-2 px-2.5 py-1.5', reading === part.id
                     ? 'border-primary bg-primary-soft font-medium text-primary' : 'border-transparent text-text-muted hover:bg-surface-sunken hover:text-text')}>
                   {part.label(terms)}
                 </a>
