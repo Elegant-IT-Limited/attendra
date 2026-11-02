@@ -230,7 +230,25 @@ export function visitTypeFacts(clinic: Pick<ClinicConfig, 'visitTypes'>, languag
     visit_type_id: v.id, name: localName(v, language), minutes: v.minutes, for: audienceLine(v),
     ...(v.description ? { description: v.description } : {}),
     ...(v.staffOnly ? { booked_by: 'the team only: take a request' } : {}),
+    // the limits, team-booked visits included, said only when they decide something ("at least 25 hours ahead")
+    ...(v.noticeHours ? { notice: `at least ${noticeWords(v.noticeHours)} ahead` } : {}),
+    ...(v.maxDaysAhead ? { furthest: `at most ${v.maxDaysAhead} day${v.maxDaysAhead === 1 ? '' : 's'} ahead` } : {}),
   }));
+}
+
+/** A notice as people say it: whole days as days ("3 days"), anything else in hours ("25 hours"). */
+export const noticeWords = (hours: number) => (hours >= 24 && hours % 24 === 0 ? `${hours / 24} day${hours === 24 ? '' : 's'}` : `${hours} hour${hours === 1 ? '' : 's'}`);
+
+/**
+ * The bookable visit a caller can have instead of one the team books: one whose name shares a word with it
+ * ("surgery consultation" for "surgery"), or null. Never another team-booked one.
+ */
+export function relatedBookable(clinic: Pick<ClinicConfig, 'visitTypes'>, staffBooked: { id: string; name: string }): { id: string; name: string } | null {
+  const wordsOf = (name: string) => name.toLowerCase().split(/[^\p{L}]+/u).filter((w) => w.length >= 4);
+  // the same word, or the same stem ("surgical" and "surgery"): at least four letters in common from the start
+  const stem = (a: string, b: string) => { let n = 0; while (n < a.length && a[n] === b[n]) n++; return n >= 4; };
+  const words = wordsOf(staffBooked.name);
+  return clinic.visitTypes.find((v) => v.id !== staffBooked.id && !v.staffOnly && wordsOf(v.name).some((x) => words.some((w) => stem(w, x)))) ?? null;
 }
 
 /** The clinic's own request topics, with what to ask the caller for each. */

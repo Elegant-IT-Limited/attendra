@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, groupedNumber, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, ageOn, asE164, groupedNumber, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
@@ -472,7 +472,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const visitType = clinic.visitTypes.find((v) => v.id === args.visit_type_id);
       if (!visitType) return refuse('unknown_visit_type', `Ask which of these they need: ${clinic.visitTypes.map((v) => localName(v, lang)).join(', ')}.`);
       // the clinic books this one itself: a request for the team, never a time from the assistant
-      if (visitType.staffOnly) return refuse('staff_books', 'The team books this visit themselves. Say so, and offer to take a request for them to call back with create_callback: what the visit is for, and the best number.');
+      if (visitType.staffOnly) {
+        // why, the notice the clinic set, then both next steps (a test call asked for surgery and heard only "not the surgery itself")
+        const related = relatedBookable(clinic, visitType);
+        const line = PACKS[lang].teamBooks({ visit: localName(visitType, lang), notice: visitType.noticeHours ? noticeWords(visitType.noticeHours) : null, related: related ? localName(related, lang) : null });
+        return refuse('staff_books', `Say, in these words: "${line}" A request: create_callback with topic "${localName(visitType, lang)}", and in the reason the pet and the timing they want.${related ? ` The other visit: find_slots with visit_type_id ${related.id}.` : ''}`);
+      }
       const patient = state.verifiedPatient;
       // a caller who said they (or the pet) are new is looked for with a new patient's visit from the start, so a time they pick still fits once they are added
       if ((patient?.isNew || (!patient && state.saidNew() === 'new')) && visitType.audience === 'existing') {

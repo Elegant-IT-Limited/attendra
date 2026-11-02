@@ -108,6 +108,11 @@ export interface LanguagePack {
   notSeenPet: (v: { pet: string }) => string;
   /** Said first when a number has no pets on file at all: then a new owner and pet the usual way. */
   noPetsOnNumber: string;
+  /**
+   * A visit the team books itself, asked for directly: why, the notice when set (in English words, "25 hours", "3 days"),
+   * then both next steps: a request for the team, or the related visit the caller can book now.
+   */
+  teamBooks: (v: { visit: string; notice: string | null; related: string | null }) => string;
   /** Asked before any lookup when a caller describes a pet (its age, its sex) and has not said whether it is new. */
   petNewQuestion: (v: { pet: string }) => string;
   /** Said with a read-back when a confirmation text will follow, so the caller's yes covers it and they can say no to the text alone. */

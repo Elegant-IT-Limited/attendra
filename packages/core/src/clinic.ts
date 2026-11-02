@@ -475,11 +475,19 @@ export type Provider = z.infer<typeof Provider>;
  * has one still loads and its calls keep running.
  */
 export function configProblems(c: Pick<z.infer<typeof ClinicConfigShape>, 'providers' | 'visitTypes'>): { path: string; message: string }[] {
-  return c.providers.flatMap((p, i) => {
-    const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
-    return unknown ? [{ path: `providers.${i}.visitTypeIds`, message: `${p.name} offers a visit type that does not exist (${unknown})` }] : [];
-  });
+  return [
+    ...c.providers.flatMap((p, i) => {
+      const unknown = p.visitTypeIds.find((id) => !c.visitTypes.some((v) => v.id === id));
+      return unknown ? [{ path: `providers.${i}.visitTypeIds`, message: `${p.name} offers a visit type that does not exist (${unknown})` }] : [];
+    }),
+    // a notice longer than the furthest date leaves no day it can be booked on
+    ...c.visitTypes.flatMap((v, i) => (noDayPossible(v) ? [{ path: `visitTypes.${i}.noticeHours`, message: `${v.name || 'This visit'}: the notice is longer than the furthest date, so no day can be booked` }] : [])),
+  ];
 }
+
+/** A visit type whose notice reaches past its furthest date: nothing can ever be booked. */
+export const noDayPossible = (v: { noticeHours?: number | undefined; maxDaysAhead?: number | undefined }) =>
+  !!v.noticeHours && !!v.maxDaysAhead && v.noticeHours > v.maxDaysAhead * 24;
 export type TimeOff = z.infer<typeof TimeOff>;
 export type AgeRange = z.infer<typeof AgeRange>;
 export type VisitType = z.infer<typeof VisitType>;

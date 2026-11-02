@@ -1,0 +1,22 @@
+id: vet-es-notice-3-days-tomorrow
+title: 'A check-up booked at least 3 days ahead, asked for tomorrow in Spanish, is never offered before the first possible day'
+clinic: riverbend
+local_time: "10:00"
+tags: [settings, team-books, language, es]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing, noticeHours: 72 }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+turns:
+  - caller: Hola, soy Linh Nguyen. ¿Biscuit puede tener un chequeo mañana?
+    reply: "Los chequeos se reservan con al menos 3 días de anticipación. Las primeras horas que tengo son {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-09-29", part_of_day: any }
+  - caller: Lo pienso, gracias.
+    reply: "Claro."
+expect:
+  outcome: abandoned
+  not_offered_on: ["2026-09-28", "2026-09-29", "2026-09-30"]
+  language: es

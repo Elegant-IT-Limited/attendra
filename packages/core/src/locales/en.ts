@@ -75,6 +75,7 @@ export const en: LanguagePack = {
   foundPet: ({ pet, species }) => (species ? `I found ${pet}, your ${species.toLowerCase()}.` : `I found ${pet}.`),
   notSeenPet: ({ pet }) => `I don't see ${pet} under that number.`,
   noPetsOnNumber: "I don't see a profile under that number.",
+  teamBooks: ({ visit, notice, related }) => `Our team books ${visit.toLowerCase()} themselves${notice ? `, with at least ${notice}' notice` : ''}. I can take a request for the team${related ? `, or book ${/^[aeiou]/i.test(related) ? 'an' : 'a'} ${related.toLowerCase()} first` : ''}. Which would you like?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
   shortDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],

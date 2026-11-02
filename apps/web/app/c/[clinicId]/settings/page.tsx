@@ -6,6 +6,8 @@ import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { SHOW_MENU_LINKS } from '@/lib/flags';
+import { VisitMoreOptions } from '@/components/settings/visit-options';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
 import { EmptyNote, Field, Item, Section, TeamOnly } from '@/components/settings/section';
@@ -120,7 +122,7 @@ export default function Settings() {
   const [newHoliday, setNewHoliday] = useState('');
   useEffect(() => { if (saved.data && !draft) setDraft(saved.data); }, [saved.data, draft]);
   const pet = draft?.industry === 'vet';
-  const parts = PARTS.filter((part) => part.id !== 'emergency' || pet || !!draft?.emergencyHospital);
+  const parts = PARTS.filter((part) => (part.id !== 'emergency' || pet || !!draft?.emergencyHospital) && (part.id !== 'links' || SHOW_MENU_LINKS));
   // the section being read, highlighted in the menu as the page scrolls
   const reading = useActiveSection(draft ? parts.map((p) => p.id) : []);
   const keep = (config: ClinicConfig, etag: string | null) => {
@@ -189,7 +191,6 @@ export default function Settings() {
     set({ [key]: ((c[key] ?? []) as object[]).map((x, j) => (j === i ? { ...x, ...patch } : x)) } as Partial<ClinicConfig>);
   const remove = <K extends ListKey>(key: K, i: number) => set({ [key]: ((c[key] ?? []) as object[]).filter((_, j) => j !== i) } as Partial<ClinicConfig>);
   const visit = (i: number, patch: Partial<ClinicConfig['visitTypes'][number]>) => upd('visitTypes', i, patch);
-  const num = (v: string) => (v === '' ? undefined : Number(v));
   // shown as a plain phone number; stored as the tel: address a transfer dials (a sip: address is kept as typed)
   const shownUri = (uri: string) => (uri.startsWith('tel:') ? uri.slice(4) : uri);
   // as typed while typing; as E.164 once the field is left (and again on save), so a half-typed number is never rewritten
@@ -376,7 +377,7 @@ export default function Settings() {
           </Section>
         )}
 
-        <Section id="visits" title="Visit types" description="What callers can book, how long each takes, and when the assistant may book it."
+        <Section id="visits" title="Visit types" description="What callers can book. The assistant offers these by name and books the minutes you set."
           action={<Button type="button" size="sm" variant="outline" onClick={() => addOrFocus(c.visitTypes, BLANK.named, (v) => `item-${v.id}`, () => { const id = newId('vt', 'visit'); set({ visitTypes: [{ id, name: '', minutes: 20, audience: 'all' }, ...c.visitTypes] }); setAdded(`item-${id}`); })}><Plus /> Visit type</Button>}>
           <Sortable items={c.visitTypes} keyOf={(v) => v.id} label={(v) => v.name} disabled={!writable || save.isPending} onMove={(f, t) => set({ visitTypes: moved(c.visitTypes, f, t) })} className="space-y-5">
           {(v, i, handle) => (
@@ -386,35 +387,16 @@ export default function Settings() {
               providers: c.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((id) => id !== v.id) })),
             })}>
               <div className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,14rem)]">
-                  <Field label="Name"><Input value={v.name} placeholder="e.g. Dental cleaning" onChange={(e) => visit(i, { name: e.target.value })} /></Field>
-                  <Field label="Minutes"><Input type="number" min={5} max={240} value={v.minutes} onChange={(e) => visit(i, { minutes: Number(e.target.value) })} /></Field>
-                  <Field label="Who can book it">
-                    <Select value={v.audience} aria-label={`${v.name}: who can book it`} onChange={(e) => visit(i, { audience: e.target.value as 'all' | 'new' | 'existing' })}>
-                      <option value="all">Anyone</option>
-                      <option value="new">{pet ? 'New clients only' : 'New patients only'}</option>
-                      <option value="existing">{pet ? 'Pets already on file' : 'Patients on file only'}</option>
-                    </Select>
-                  </Field>
+                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
+                  <Field label="Name"><Input value={v.name} maxLength={60} placeholder="e.g. Dental cleaning" onChange={(e) => visit(i, { name: e.target.value })} /></Field>
+                  <Field label="Minutes"><Input type="number" inputMode="numeric" min={5} max={240} step={5} value={v.minutes} onChange={(e) => visit(i, { minutes: Number(e.target.value) })} /></Field>
                 </div>
                 {c.languages.some((l) => l !== 'en') && <div className="grid gap-4 sm:grid-cols-2"><LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => visit(i, { names })} /></div>}
-                <Field label="What it is, for callers" hint="Optional. Said when a caller asks what it includes.">
+                <Field label="What it includes" hint="Optional. Said when a caller asks what it includes.">
                   <Input maxLength={300} value={v.description ?? ''} placeholder={pet ? 'e.g. Core vaccines and a full check-up' : 'e.g. A full check-up and any tests due'}
                     onChange={(e) => visit(i, { description: e.target.value || undefined })} />
                 </Field>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <Field label="Notice, in hours" hint="Booked at least this far ahead. Empty: 2 hours.">
-                    <Input type="number" min={0} max={720} value={v.noticeHours ?? ''} placeholder="2" aria-label={`${v.name}: notice in hours`} onChange={(e) => visit(i, { noticeHours: num(e.target.value) })} />
-                  </Field>
-                  <Field label="Up to, days ahead" hint="Booked at most this far out. Empty: no limit.">
-                    <Input type="number" min={1} max={365} value={v.maxDaysAhead ?? ''} placeholder="No limit" aria-label={`${v.name}: days ahead`} onChange={(e) => visit(i, { maxDaysAhead: num(e.target.value) })} />
-                  </Field>
-                  <Field label="Free after, in minutes" hint="Kept free after each one, on calls and at the desk.">
-                    <Input type="number" min={0} max={120} value={v.bufferMinutes ?? ''} placeholder="0" aria-label={`${v.name}: minutes free after`} onChange={(e) => visit(i, { bufferMinutes: num(e.target.value) })} />
-                  </Field>
-                </div>
-                <Switch id={`staff-only-${v.id}`} label="Team books it" hint="The assistant never offers times for it. It takes a request for the team instead."
-                  checked={!!v.staffOnly} onCheckedChange={(on) => visit(i, { staffOnly: on || undefined })} disabled={!writable || save.isPending} />
+                <VisitMoreOptions v={v} pet={pet} onChange={(patch) => visit(i, patch)} disabled={!writable || save.isPending} />
               </div>
             </Item>
           )}
@@ -512,6 +494,7 @@ export default function Settings() {
           </div>
         </Section>
 
+        {SHOW_MENU_LINKS && (
         <Section id="links" title="Links in your menu" description="Shortcuts for your team, not for callers: your practice software, a lab portal, a form. Each shows in this dashboard's menu on the left, for everyone at the clinic, and opens in a new tab. The assistant does not use them; links it may text a caller are under Texting."
           action={<Button type="button" size="sm" variant="outline" disabled={(c.menuLinks?.length ?? 0) >= 8} onClick={() => addOrFocus(c.menuLinks ?? [], (l) => !l.label.trim() && /^(https?:\/\/)?$/.test(l.url.trim()), (_l, i) => `item-link-${i}`, () => { set({ menuLinks: [{ label: '', url: 'https://' }, ...(c.menuLinks ?? [])] }); setAdded('item-link-0'); })}><Plus /> Link</Button>}>
           <TeamOnly />
@@ -527,6 +510,7 @@ export default function Settings() {
           )}
           </Sortable>
         </Section>
+        )}
 
         <Section id="records" title="Call records" description="Transcripts and call summaries are deleted once they are older than this. The call itself stays in the list, with its outcome, and the audit log keeps how many were deleted.">
           <Field label="Keep transcripts and summaries for" htmlFor="retention" hint="One year unless you choose otherwise; three years at most. Your own records system keeps the medical record.">
