@@ -20,6 +20,7 @@ describe('"Dr." built in', () => {
     expect(providerName({ name: 'Pat Groomer', kind: 'person', title: 'none' })).toBe('Pat Groomer');
     expect(providerName({ name: 'the X-ray room', kind: 'room' })).toBe('the X-ray room');
     expect(titleOf({ kind: 'room', title: 'dr' })).toBe('none');
+    expect(providerName({ name: 'our veterinarian', kind: 'person', placeholder: true })).toBe('our veterinarian');
   });
 
   it('gives the assistant the titled name, and never a vet\'s own phone', () => {

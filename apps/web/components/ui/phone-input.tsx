@@ -17,7 +17,9 @@ export function PhoneInput({ value, onValue, 'aria-describedby': describedBy, ..
   const [note, setNote] = useState(false);
   const take = (typed: string) => {
     const { value: clean, dropped } = cleanPhoneTyping(typed);
-    setNote(dropped);
+    // shown from the first letter taken out until the field is emptied: the next digit typed must not hide it again
+    if (dropped) setNote(true);
+    else if (!clean.trim()) setNote(false);
     onValue(clean);
   };
   return (

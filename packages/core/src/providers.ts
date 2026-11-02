@@ -278,8 +278,9 @@ export const titleOf = (p: { kind?: 'person' | 'room'; title?: 'dr' | 'none' | u
  * woman ("Dr." when the gender isn't known), the name alone for a groomer or a room. A title already typed into the name
  * is never said twice.
  */
-export function providerName(p: { name: string; names?: Partial<Record<Language, string>> | undefined; kind?: 'person' | 'room'; title?: 'dr' | 'none' | undefined; gender?: string | undefined }, language: Language = 'en'): string {
+export function providerName(p: { name: string; names?: Partial<Record<Language, string>> | undefined; kind?: 'person' | 'room'; title?: 'dr' | 'none' | undefined; gender?: string | undefined; placeholder?: boolean | undefined }, language: Language = 'en'): string {
   const name = bareName(localName(p, language));
-  if (titleOf(p) === 'none') return name;
+  // the stand-in a new clinic starts with is "our veterinarian", never "Dr. our veterinarian"
+  if (titleOf(p) === 'none' || p.placeholder) return name;
   return `${language === 'es' && p.gender === 'female' ? 'Dra.' : 'Dr.'} ${name}`;
 }

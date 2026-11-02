@@ -274,7 +274,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await panel.getByLabel('Name').fill('Dr. Elena Marsh');
     await panel.getByLabel('Gender').selectOption({ label: 'Female' });
     // a vet's own number tells one vet from another: asked for on every new vet (2026-11-01)
-    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0171');
+    await panel.getByLabel('Phone (private)', { exact: true }).fill('(720) 555-0171');
     await pick(panel, 'Specialty', 'Surgery');
     // the animals come from the clinic's own list, which a new clinic has from the start (2026-11-01: "Dog is not on your list")
     const animals = panel.getByRole('combobox', { name: 'Animals and services' });
@@ -294,7 +294,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await panel.getByLabel('Name').fill('Dr. Owen Castillo');
     await panel.getByLabel('Gender').selectOption({ label: 'Male' });
     // the same number as Dr. Marsh is refused under the field, then a number of his own goes through
-    await panel.getByLabel('Phone', { exact: true }).fill('720 555 0171');
+    await panel.getByLabel('Phone (private)', { exact: true }).fill('720 555 0171');
     const specialty = panel.getByRole('combobox', { name: 'Specialty' });
     await specialty.click();
     await specialty.fill('Exotic');
@@ -304,7 +304,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(specialty).toHaveValue('Exotic animals');
     await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel.getByText('Dr. Elena Marsh already has this number.')).toBeVisible();
-    await panel.getByLabel('Phone', { exact: true }).fill('(720) 555-0172');
+    await panel.getByLabel('Phone (private)', { exact: true }).fill('(720) 555-0172');
     await panel.getByRole('button', { name: 'Save' }).click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId('doctor')).toHaveCount(2);
@@ -420,9 +420,9 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
 
   await watch.step('5. Booking: each pet booked, one moved, one cancelled; the Schedule, Today and the pet\'s page agree', {}, async () => {
     // Clover today, at the first open time; Biscuit and Pepper next week, clear of a visit about to start
-    const clover = await bookFromPet('Clover', 'Wellness exam (30 min)', 'Dr. Owen Castillo');
-    await bookFromPet('Biscuit', 'Sick visit (20 min)', 'Dr. Elena Marsh', 1);
-    await bookFromPet('Pepper', 'Vaccine appointment (15 min)', 'Dr. Elena Marsh', 1);
+    const clover = await bookFromPet('Clover', 'Check-up (20 min)', 'Dr. Owen Castillo');
+    await bookFromPet('Biscuit', 'Sick visit (30 min)', 'Dr. Elena Marsh', 1);
+    await bookFromPet('Pepper', 'Vaccines (15 min)', 'Dr. Elena Marsh', 1);
     await watch.axe(page, 'a pet\'s page, with a visit');
 
     // Biscuit's moves to the week after

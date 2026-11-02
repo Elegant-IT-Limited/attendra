@@ -2,7 +2,7 @@
 'use client';
 import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
-import { type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, weekdayOf, windowsOn } from '@attendra/core';
+import { type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, weekdayOf, windowsOn, providerName } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
@@ -218,10 +218,10 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
                     if (c - Math.max(cursor, nowMin) >= 20) rows.push({ kind: 'gap', s: Math.max(cursor, nowMin), e: c });
                   }
                   return (
-                    <section key={p.id} className="px-5 py-4" aria-label={p.name}>
+                    <section key={p.id} className="px-5 py-4" aria-label={providerName(p)}>
                       <h3 className="mb-2 flex items-baseline justify-between text-sm font-semibold">
                         {/* the starter's placeholder is "our veterinarian": a heading starts with a capital */}
-                        {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
+                        {providerName(p).charAt(0).toUpperCase() + providerName(p).slice(1)}
                         <span className="text-xs font-normal text-text-muted">{windows.length ? `${mine.length} booked` : ''}</span>
                       </h3>
                       {!windows.length ? <p className="text-sm text-text-muted">Not working today.</p> : !rows.length ? <p className="text-sm text-text-muted">Nothing left today.</p> : (

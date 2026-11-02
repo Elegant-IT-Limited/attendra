@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { bookingOf, type BookingRules, type ClinicConfig, type Terms } from '@attendra/core';
+import { bookingOf, type BookingRules, type ClinicConfig, type Terms, providerName } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { RadioGroup, Switch } from '@/components/ui/controls';
 import { Input } from '@/components/ui/input';
@@ -58,7 +58,7 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
                   <>
                     {handle}
                     <span className="w-5 text-right text-sm tabular-nums text-text-muted">{i + 1}</span>
-                    <span className="flex-1 text-sm">{p.name}{p.specialty ? <span className="text-text-muted">, {p.specialty}</span> : null}</span>
+                    <span className="flex-1 text-sm">{providerName(p)}{p.specialty ? <span className="text-text-muted">, {p.specialty}</span> : null}</span>
                   </>
                 )}
               </Sortable>

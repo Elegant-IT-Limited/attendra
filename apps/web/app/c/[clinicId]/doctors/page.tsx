@@ -250,7 +250,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const setDay = (day: string, windows: { open: string; close: string }[]) => set({ hours: { ...hours, [day]: windows } });
 
   return (
-    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${editing.draft.name}` : `Add ${terms.provider}`}
+    <Panel open onOpenChange={(o) => { if (!o) onClose(); }} side="right" title={editing.id ? `Edit ${providerName({ ...editing.draft, gender: editing.draft.gender || undefined })}` : `Add ${terms.provider}`}
       description="Saved changes reach the assistant on the next thing a caller asks."
       footer={(
         <>

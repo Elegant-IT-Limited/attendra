@@ -2,7 +2,7 @@
 'use client';
 import { useToast } from '@/components/ui/toast';
 import type { PatientProfile } from '@attendra/api/contracts';
-import { industryPack, localDateOf } from '@attendra/core';
+import { industryPack, localDateOf, providerName } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bot, CalendarPlus, CheckCircle2, Phone, User, Users } from 'lucide-react';
 import Link from 'next/link';
@@ -69,7 +69,7 @@ export default function PatientPage() {
   }
   const p = patient.data;
   const tz = clinic.timezone;
-  const provider = (id: string | null) => clinic.providers.find((x) => x.id === id)?.name ?? null;
+  const provider = (id: string | null) => { const x = clinic.providers.find((v) => v.id === id); return x ? providerName(x) : null; };
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? id;
   const now = Date.now();
   const upcoming = p.appointments.filter((a) => a.status === 'booked' && Date.parse(a.startsAt) > now);

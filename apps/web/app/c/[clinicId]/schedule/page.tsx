@@ -21,7 +21,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
-import { laneProviders, MANY_PROVIDERS, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
+import { laneProviders, MANY_PROVIDERS, MAX_CHOSEN, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
 type View = 'day' | 'week' | 'month' | 'agenda';
@@ -129,7 +129,13 @@ function ScheduleScreen() {
   const dates = view === 'month' ? Array.from({ length: 42 }, (_, i) => addDays(from, i))
     : weekly ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
   // one provider picked in the dropdown is the grid; otherwise every lane, or on a big clinic the lanes in use (lib/schedule-lanes.ts)
-  const providers = providerId ? listed.filter((p) => p.id === providerId) : laneProviders(clinic, listed, dates, appointments.map((a) => a.providerId), chosen);
+  const lanesInUse = providerId ? listed.filter((p) => p.id === providerId) : laneProviders(clinic, listed, dates, appointments.map((a) => a.providerId), chosen);
+  // A week of a big clinic draws My vets, or the first few with visits that week: a hundred vets × five days is 500
+  // lanes, 40,000 px wide and too slow to use (ezyVet's Week shows one calendar). Day still draws every vet in use.
+  const weekCapped = !providerId && view === 'week' && manyProviders && lanesInUse.length > MAX_CHOSEN;
+  const providers = weekCapped
+    ? (chosen.length ? lanesInUse.filter((p) => chosen.includes(p.id)) : []).concat(lanesInUse.filter((p) => !chosen.includes(p.id))).slice(0, MAX_CHOSEN)
+    : lanesInUse;
   const step = weekly ? 7 : 1;
   const go = (by: 1 | -1) => set({ date: view === 'month' ? shiftMonth(date, by) : addDays(date, by * step) });
   const unit = view === 'month' ? 'month' : weekly ? 'week' : 'day';
@@ -207,7 +213,7 @@ function ScheduleScreen() {
           <div>
             <h2 className="font-semibold">{view === 'month' ? monthTitle(date) : weekly ? `Week of ${dayTitle(from)}` : dayTitle(date)}{!weekly && view !== 'month' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
-              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${!weekly && view !== 'month' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}`}
+              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${!weekly && view !== 'month' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}${weekCapped ? `. The week shows ${providers.length} of the ${lanesInUse.length} ${pets ? 'vets' : 'providers'} with visits: ${chosen.length ? 'your chosen ones first' : 'choose vets to pick which'}, or use Day or Agenda for everyone.` : ''}`}
             </p>
           </div>
           <Legend clinic={clinic} />
