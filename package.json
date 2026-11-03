@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "eval": "pnpm --filter @attendra/evals run eval",
     "sim": "pnpm --filter @attendra/evals run sim",
+    "evals:draft-from-call": "pnpm --filter @attendra/evals run draft-from-call",
     "db:migrate": "pnpm --filter @attendra/db run migrate",
     "db:seed": "pnpm --filter @attendra/db run seed",
     "db:add-number": "pnpm --filter @attendra/db run add-number",

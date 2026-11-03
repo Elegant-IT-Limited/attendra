@@ -7,7 +7,8 @@
   "scripts": {
     "eval": "tsx src/run.ts",
     "typecheck": "tsc --noEmit -p .",
-    "sim": "tsx sim/run.ts"
+    "sim": "tsx sim/run.ts",
+    "draft-from-call": "tsx src/draft-from-call.ts"
   },
   "dependencies": {
     "@attendra/agent": "workspace:*",
