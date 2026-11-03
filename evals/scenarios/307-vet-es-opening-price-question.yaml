@@ -4,7 +4,7 @@ clinic: riverbend
 local_time: "10:00"
 caller_number: "+13035550142"
 tags: [no-demo, opening, jordan-household]
-facts: "You are Jordan Avery and you speak only Spanish. You only want to know what a check-up (chequeo) costs and how long it takes; you do not want to book today. After the answer, say gracias and adiós."
+facts: "You are Jordan Avery and you speak only Spanish. You only want to know what a check-up (chequeo) costs and how long it takes; you do not want to book today, and you do not want a call back (if offered one, say no, gracias). After the answer, say gracias and adiós."
 turns:
   - caller: ¿Cuánto cuesta un chequeo?
     reply: "Un examen de bienestar dura 30 minutos. No tengo el precio, pero puedo pedirle al equipo que le llame."
