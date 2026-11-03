@@ -34,6 +34,8 @@ export default function TestCallPage() {
   const log = useRef<HTMLDivElement>(null);
   useEffect(() => { const el = log.current; if (el) el.scrollTop = el.scrollHeight; }, [captions]);
   const left = allowance.data?.limitSeconds == null ? null : Math.max(0, allowance.data.limitSeconds - allowance.data.usedSeconds);
+  // the server's minimum, never a number here: below it the start is refused
+  const noTime = left !== null && allowance.data !== undefined && left < allowance.data.minSeconds;
 
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
   // the page's own title above it: the menu leads here for a simulated call too
@@ -65,7 +67,7 @@ export default function TestCallPage() {
             </div>
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>
-              : <Button onClick={() => void start()} disabled={left !== null && left < 15}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
+              : <Button onClick={() => void start()} disabled={noTime}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
             {recordable && (
               <div className="w-full text-left">
                 <Checkbox id="record-test-call" checked={record} onCheckedChange={setRecord} label="Record this test call"
@@ -90,8 +92,8 @@ export default function TestCallPage() {
               </div>
             )}
             {/* the time left, unless the line above already says it */}
-            {left !== null && (left < 15 || phase !== 'idle' || !limitIsTimeLeft(allowance.data)) && (
-              <p className="text-sm text-text-muted" data-testid="test-minutes-left">{left < 15 ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
+            {left !== null && (noTime || phase !== 'idle' || !limitIsTimeLeft(allowance.data)) && (
+              <p className="text-sm text-text-muted" data-testid="test-minutes-left">{noTime ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
             )}
             {phase === 'ended' && callId && can('calls:read') && (
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>

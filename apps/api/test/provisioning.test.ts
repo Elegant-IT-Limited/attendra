@@ -82,7 +82,7 @@ describe('provisioning', () => {
     const settings = await api.request('GET', `/api/v1/clinics/${clinicId}/settings`, { cookie });
     expect(settings.statusCode).toBe(200);
     expect(settings.json()).toMatchObject({ industry: 'vet', afterHours: 'requests', phoneNumbers: ['+13125550100'] });
-    expect((await api.request('GET', `/api/v1/clinics/${clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 600, usedSeconds: 0, perCallSeconds: null, callSeconds: null });
+    expect((await api.request('GET', `/api/v1/clinics/${clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 600, usedSeconds: 0, perCallSeconds: null, callSeconds: null, minSeconds: 15 });
     expect(await clinicForNumber(api.t.db, '+13125550100')).toBeNull();
 
     // the same email again
@@ -141,7 +141,7 @@ describe('provisioning', () => {
     const settings = (await api.request('GET', `/api/v1/clinics/${made.clinicId}/settings`, { cookie })).json();
     expect(settings).toMatchObject({ name: 'Lakeside Pet Care', timezone: 'America/Denver', phoneNumbers: ['+13035550190'] });
     expect(settings.greeting).not.toContain('Oak Hill');
-    expect((await api.request('GET', `/api/v1/clinics/${made.clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 300, usedSeconds: 0, perCallSeconds: null, callSeconds: null });
+    expect((await api.request('GET', `/api/v1/clinics/${made.clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 300, usedSeconds: 0, perCallSeconds: null, callSeconds: null, minSeconds: 15 });
     expect((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = 'organization.created.by_owner' and clinic_id = ${made.clinicId}`)).rows)
       .toEqual([{ actor: `user:${opened.userId}`, entity_id: made.organizationId }]);
     // the first business is untouched: still one clinic in its organization

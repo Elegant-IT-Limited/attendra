@@ -60,7 +60,7 @@ describe('browser test calls', () => {
 
   it('keeps a clinic with a test-call limit within it, and says how much is left', async () => {
     const none = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
-    expect(none).toEqual({ limitSeconds: null, usedSeconds: 0, perCallSeconds: 900, callSeconds: 900 });
+    expect(none).toEqual({ limitSeconds: null, usedSeconds: 0, perCallSeconds: 900, callSeconds: 900, minSeconds: 15 });
     expect(await setTestCallLimit(api.t.db, DEMO_CLINIC.id, 600)).toBe(true);
     try {
       const { usedSeconds } = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();

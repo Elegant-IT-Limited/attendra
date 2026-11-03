@@ -286,6 +286,8 @@ export const TestCallAllowance = z.object({
   perCallSeconds: z.number().nullable(),
   /** How long the next test call can last: the smaller of the per-call limit and the clinic's time left. Null with `perCallSeconds`. */
   callSeconds: z.number().nullable(),
+  /** The least time left that still starts a test call; below it the start is refused (403 test_minutes_used). */
+  minSeconds: z.number(),
 });
 
 export const TaskQuery = z.object({

@@ -76,7 +76,7 @@ export class TestCallsController {
     }
     const left = limitSeconds === null ? null : Math.max(0, limitSeconds - usedSeconds);
     const callSeconds = perCallSeconds === null ? null : left === null ? perCallSeconds : Math.min(perCallSeconds, left);
-    return { limitSeconds, usedSeconds, perCallSeconds, callSeconds };
+    return { limitSeconds, usedSeconds, perCallSeconds, callSeconds, minSeconds: MIN_TEST_SECONDS };
   }
 
   /**
