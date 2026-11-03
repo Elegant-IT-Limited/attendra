@@ -145,9 +145,10 @@ export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery
       const exact = that.filter((s) => minutesOf(s) === target);
       const before = that.find((s) => minutesOf(s) < target);
       const after = that.find((s) => minutesOf(s) > target);
-      const order = [...exact, ...[before, after].filter((s): s is Slot => !!s).sort((a, b) => Math.abs(minutesOf(a) - target) - Math.abs(minutesOf(b) - target)), ...that];
-      const out: Slot[] = [];
-      for (const s of order) {
+      // the time asked for and the nearest on each side are always said, however close together
+      const lead = [...exact.slice(0, 1), ...[before, after].filter((s): s is Slot => !!s).sort((a, b) => Math.abs(minutesOf(a) - target) - Math.abs(minutesOf(b) - target))].slice(0, limit);
+      const out: Slot[] = [...lead];
+      for (const s of that) {
         if (out.length >= limit) break;
         if (out.includes(s) || !fits(out, s)) continue;
         out.push(s);

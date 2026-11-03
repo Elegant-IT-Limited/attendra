@@ -208,7 +208,7 @@ export const es: LanguagePack = {
     notWorkingThatDay: ({ provider, weekday, days }) => `${provider} no trabaja ${losDias(weekday)}. ${days.length ? `Atiende ${diasPalabras(days)}.` : 'No tiene horario esta semana.'}`,
     fullyBooked: ({ provider, date }) => (provider ? `${provider} no tiene horas libres el ${fullDay(date)}.` : `No tenemos horas libres el ${fullDay(date)}.`),
     nothingThrough: ({ provider, date }) => `No encuentro horas libres${provider ? ` con ${provider}` : ''} hasta el ${fullDay(date)}.`,
-    tooFarAhead: ({ visit, days, lastDate }) => `Reservamos ${visit} con hasta ${days} días de anticipación, así que el último día que puedo reservar es el ${fullDay(lastDate)}.`,
+    tooFarAhead: ({ visit, days, lastDate }) => `${mayuscula(visit)} se reserva con hasta ${days} días de anticipación, así que el último día que puedo reservarla es el ${fullDay(lastDate)}.`,
     notice: ({ visit, hours, firstDate }) => `${mayuscula(visit)} necesita al menos ${avisoTexto(hours)} de anticipación, así que el primer día que puedo reservar es el ${fullDay(firstDate)}.`,
     clinicClosed: ({ date, note }) => `La clínica está cerrada el ${fullDay(date)}${note ? ` (${note})` : ''}.`,
   },

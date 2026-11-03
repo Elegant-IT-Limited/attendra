@@ -48,6 +48,8 @@ const subject = (provider: string, p: Pronoun) => (p === 'female' ? 'She\'s' : p
 const possessive = (provider: string, p: Pronoun) => (p === 'female' ? 'her' : p === 'male' ? 'his' : `${provider}'s`);
 const noticeText = (hours: number) => (hours % 24 === 0 ? `${hours / 24} ${hours === 24 ? 'day' : 'days'}'` : `${hours} hours'`);
 const capitalFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** "a sick visit", "an exam". */
+const withArticle = (s: string) => `${/^[aeiou]/i.test(s) ? 'an' : 'a'} ${s}`;
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 /** A note written to follow a comma, said as a sentence of its own. */
@@ -187,8 +189,8 @@ export const en: LanguagePack = {
     notWorkingThatDay: ({ provider, pronoun, weekday, days }) => `${provider} doesn't work on ${WEEKDAYS[weekday]}s. ${days.length ? `${subject(provider, pronoun)} in ${daysWords(days)}.` : `${subject(provider, pronoun)} not on the schedule this week.`}`,
     fullyBooked: ({ provider, date }) => `${provider ? `${provider} is` : 'We\'re'} fully booked on ${fullDay(date)}.`,
     nothingThrough: ({ provider, date }) => `I can't find a free time${provider ? ` with ${provider}` : ''} through ${fullDay(date)}.`,
-    tooFarAhead: ({ visit, days, lastDate }) => `We book ${visit} up to ${days} days ahead, so the last day I can book is ${fullDay(lastDate)}.`,
-    notice: ({ visit, hours, firstDate }) => `${capitalFirst(visit)} needs ${noticeText(hours)} notice, so the first day I can book is ${fullDay(firstDate)}.`,
+    tooFarAhead: ({ visit, days, lastDate }) => `${capitalFirst(withArticle(visit))} can be booked up to ${days} days ahead, so the last day I can book it is ${fullDay(lastDate)}.`,
+    notice: ({ visit, hours, firstDate }) => `${capitalFirst(withArticle(visit))} needs ${noticeText(hours)} notice, so the first day I can book it is ${fullDay(firstDate)}.`,
     clinicClosed: ({ date, note }) => `The clinic is closed on ${fullDay(date)}${note ? ` (${note})` : ''}.`,
   },
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',

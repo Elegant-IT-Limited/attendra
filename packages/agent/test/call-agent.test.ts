@@ -931,7 +931,8 @@ describe('when a visit may be booked', () => {
     const { r } = await find('2026-10-12');
     expect(r.ok).toBe(false);
     expect(r.data.error).toBe('too_far_ahead');
-    expect(r.data.say).toContain('2026-10-01');
+    expect(r.data.say).toContain('Thursday, October 1');
+    expect(r.data.reason).toBe('too_far_ahead');
   });
 });
 

@@ -24,7 +24,8 @@ describe('a booking, then "make it 4" on the same call', () => {
     expect(data(found, 1).filled_from_memory).toEqual(['from_date', 'from_time']);
     const first = (data(found, 1).slots as { slot_id: string; when: string }[])[0]!;
     expect(first.when).toBe('Wednesday, September 30, at 5:00 PM');
-    expect(String(data(found, 1).say_as)).toMatch(/^On Wednesday, September 30, I have /);
+    // the direct answer first: the time asked for is free
+    expect(String(data(found, 1).say_as)).toMatch(/^Yes, 5:00 PM on Wednesday, September 30 is free with Dr\. /);
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: first.slot_id, replaces_appointment_id: null } }]);
     c.assistant('Shall I book it?');
     c.caller('Yes.');
