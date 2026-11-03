@@ -85,10 +85,10 @@ export interface LanguagePack {
   /** Asked before a refill request is logged, when texting is on: only a yes gets the team's decision by text. */
   refillTextOffer: string;
   /**
-   * The one question about the caller's phone number for a new pet or patient: on a call with caller ID,
-   * whether that number is the best one; with none (a browser test call, a hidden number), the best number.
+   * At a clinic for people, on a call with caller ID: whether the number they are calling from is the best one for a new
+   * patient. A clinic for animals asks profileNumberQuestion instead (2026-11-14).
    */
-  phoneQuestion: (v: { callerId: boolean }) => string;
+  sameNumberQuestion: string;
   /** The number to call back, for a callback request only (never for a booking): "What's the best number to reach you?". */
   callbackNumberQuestion: string;
   /** Asked once on a number the caller said, before anything from its records is used: "And your name?". */
@@ -193,6 +193,8 @@ export interface LanguagePack {
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
      */
     lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits' | 'number'; day?: string | null; pet?: string | null }) => string;
+    /** Said once, on the first request of a call, when the backend has said nothing after a second: never a silence. */
+    oneMoment: string;
     /** A day as people say it when a time is read back or looked up: today, tomorrow, or the weekday. `weekday` is 0 for Sunday. */
     dayWord: (v: { daysFromToday: number; weekday: number }) => string;
     /**

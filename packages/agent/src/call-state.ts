@@ -83,6 +83,8 @@ export class CallState {
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;
   proposals = 0;
+  /** Requests the planner has taken on this call: the first one says "One moment." when it has nothing to say after a second. */
+  requestsPlanned = 0;
   /** Bumped on every delegation. Work finishing under an old revision is discarded. */
   revision = 0;
   emergency: { kind: string; atMs: number } | null = null;

@@ -87,7 +87,7 @@ export const en: LanguagePack = {
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
-  phoneQuestion: ({ callerId }) => (callerId ? "Is the number you're calling from the best one for you?" : "What's the best number to reach you?"),
+  sameNumberQuestion: "Is the number you're calling from the best one for you?",
   callbackNumberQuestion: "What's the best number to reach you?",
   yourNameQuestion: 'And your name?',
   whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
@@ -166,6 +166,7 @@ export const en: LanguagePack = {
       : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
       : kind === 'number' ? 'Let me check that number.'
       : 'Let me look that up.',
+    oneMoment: 'One moment.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'today' : daysFromToday === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]!),
     offerTimes: ({ days, provider }) => {
       if (!days.length) return '';

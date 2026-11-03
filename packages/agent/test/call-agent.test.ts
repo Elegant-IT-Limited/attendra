@@ -436,7 +436,7 @@ describe('safety', () => {
     const hidden = await w.call(null);
     const out = await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: null, topic: null } }]);
     expect(out.errors).toEqual(['no_callback_number']);
-    expect(spoken(out)).toContain('ask for the best number');
+    expect(spoken(out)).toContain('ask, in these words: "What\'s the best number to reach you?"');
     await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: '303 555 0199', topic: null } }]);
     // a number said any way is kept in the one form, E.164
     expect(create.mock.calls.at(-1)![1].details.callback_number).toBe('+13035550199');

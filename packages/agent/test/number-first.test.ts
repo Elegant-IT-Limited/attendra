@@ -77,3 +77,18 @@ describe('a spoken number is read back before the search', () => {
     expect(said(out)).toContain("I don't see Ginger under that number.");
   });
 });
+
+// the opening (2026-11-14): with caller ID the voice is handed the number question once, as the caller first speaks, so it
+// asks it itself the moment they want to book, with no backend round before it
+describe('the number question with caller ID', () => {
+  it('is handed to the voice once, in the call\'s words, at a clinic for animals only', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    const first = c.caller('Hi, my dog needs a check-up.');
+    const notes = first.filter((o) => o.type === 'instructions').map((o) => o.content);
+    expect(notes).toEqual(['The caller is calling from a number ending 0172. As soon as they want to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend, in these words: Sure. Is your pet\'s profile under the number you\'re calling from, ending 0172? Then hand their answer to the backend.']);
+    expect(c.caller('It\'s for Biscuit.').filter((o) => o.type === 'instructions')).toEqual([]);
+    // none without caller ID: the browser session has its own line from the start
+    const web = await w.call(null, { clinic, channel: 'web' });
+    expect(web.caller('Hi, my dog needs a check-up.').filter((o) => o.type === 'instructions')).toEqual([]);
+  });
+});

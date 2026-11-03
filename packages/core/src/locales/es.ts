@@ -92,7 +92,7 @@ export const es: LanguagePack = {
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
-  phoneQuestion: ({ callerId }) => (callerId ? '¿El número desde el que llama es el mejor para comunicarnos con usted?' : '¿Cuál es el mejor número para comunicarnos con usted?'),
+  sameNumberQuestion: '¿El número desde el que llama es el mejor para comunicarnos con usted?',
   callbackNumberQuestion: '¿Cuál es el mejor número para comunicarnos con usted?',
   yourNameQuestion: '¿Y su nombre?',
   whichPetVerified: ({ owner, names, more, offerNew }) => {
@@ -185,6 +185,7 @@ export const es: LanguagePack = {
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
       : kind === 'number' ? 'Déjeme revisar ese número.'
       : 'Déjeme consultarlo.',
+    oneMoment: 'Un momento.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
     offerTimes: ({ days, provider }) => {
       if (!days.length) return '';

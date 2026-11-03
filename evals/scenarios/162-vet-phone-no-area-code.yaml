@@ -8,7 +8,7 @@ channel: web
 facts: "This is a test call from the browser, so there is no caller ID. You are Ines Moreau. Juniper is your female cat, two years old, new to the clinic. Your number is 555 0193: give it just like that, with no area code, once when asked. If you are asked for the area code or the number again, say that is the number you have, a little annoyed. Any vet and any time are fine. Say yes to the first time offered and to the read-back."
 turns:
   - caller: Hi, I'd like to bring in my cat Juniper. She's new to you, a two year old female. I'm Ines.
-    reply: "Welcome, Ines. What's the best number to reach you?"
+    reply: "Welcome, Ines. What phone number is your pet's profile under?"
     delegate:
       - register_patient: { pet_name: Juniper, owner_name: Ines, species: cat, sex: female, birthday_or_age: two years old, phone: null }
   - caller: It's 555 0193.

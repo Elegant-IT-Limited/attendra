@@ -144,6 +144,22 @@ export class CallAgent {
   }
 
   /**
+   * At a clinic for animals, with caller ID: the number question in the backend's words, handed to the voice once, as the
+   * caller first speaks, so it asks it itself the moment they want to book, move or cancel: no backend round, no silence
+   * (2026-11-14). A browser call without caller ID has its own line from the start (noCallerIdLine). Worded with no
+   * quotation marks: a standing instruction, not a line to say now.
+   */
+  private numberQuestion(): Outbound[] {
+    const { clinic, callerNumber } = this.ctx;
+    if (this.numberQuestionSent || !callerNumber || industryPack(clinic.industry).identity !== 'pet' || this.state.ending || this.state.emergencyLocked) return [];
+    this.numberQuestionSent = true;
+    const last4 = callerNumber.replace(/\D/g, '').slice(-4);
+    return [{ type: 'instructions', delegationId: null, content: `The caller is calling from a number ending ${last4}. As soon as they want to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend, in these words: ${PACKS[this.state.language].profileNumberQuestion({ last4 })} Then hand their answer to the backend.` }];
+  }
+
+  private numberQuestionSent = false;
+
+  /**
    * This number's earlier calls, read while the call was being answered: the greeting never waits on the database.
    * Used from the first request on; a caller cannot ask for anything before they have been greeted.
    */
@@ -184,7 +200,7 @@ export class CallAgent {
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall(), ...this.numberQuestion()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
     this.sinceLock = '';
 

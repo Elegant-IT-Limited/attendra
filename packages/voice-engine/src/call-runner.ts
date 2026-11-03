@@ -154,6 +154,7 @@ export class CallRunner {
       case 'session.input_transcript.delta': {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
         this.callerSaidAt = Date.now();
+        this.marks.callerWords(e.start_ms, this.callerSaidAt);
         this.nudged = 0;
         await this.dispatch(this.agent.onCallerTranscript(e.delta, e.start_ms, e.end_ms));
         return this.flushFinishedTurns();
@@ -162,6 +163,7 @@ export class CallRunner {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
         const now = Date.now();
+        this.marks.greetingWords(e.end_ms, now);
         // the start of a reply, for the logs (no words): the first one is the greeting, timed from the start of the call
         if (!this.speaking) {
           this.speaking = true;
@@ -170,7 +172,12 @@ export class CallRunner {
             this.log.info({ session_id: this.sessionId, ms: now - this.startedAt, opening_nudged: this.openingNudged }, 'first words from the assistant');
             this.timing();
           }
-          else this.log.info({ session_id: this.sessionId, after_caller_ms: this.callerSaidAt > this.agentSpokeAt ? now - this.callerSaidAt : null }, 'assistant started speaking');
+          else {
+            this.log.info({ session_id: this.sessionId, after_caller_ms: this.callerSaidAt > this.agentSpokeAt ? now - this.callerSaidAt : null }, 'assistant started speaking');
+            // the first reply to the caller: how long the gap was before they spoke, and after
+            const opening = this.marks.replyStarted(now);
+            if (opening) this.log.info({ session_id: this.sessionId, ...opening }, 'opening timing');
+          }
         }
         this.agentSpokeAt = now;
         this.speakingUntil = Math.max(this.speakingUntil, this.agentSpokeAt) + e.delta.length * SPOKEN_MS_PER_CHAR;
@@ -192,6 +199,7 @@ export class CallRunner {
           return;
         }
         this.log.info({ session_id: this.sessionId, delegation_id: id, at: new Date().toISOString(), ms: Date.now() - this.startedAt }, 'delegation created');
+        this.marks.delegation();
         const entry: { answer: Outbound[]; sentAt: number | null } = { answer: [], sentAt: null };
         this.delegations.set(id, entry);
         // the progress note goes out immediately; the result follows when the tools finish

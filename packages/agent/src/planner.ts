@@ -156,6 +156,9 @@ function languageLine(clinic: ClinicConfig): string {
   return `Write what the assistant says ${write}.${usted} Pass questions to get_clinic_info and search_knowledge in ${primary}, in a few words.`;
 }
 
+/** How long the first request of a call may say nothing before "One moment." is said. */
+export const FIRST_REQUEST_FILLER_MS = 1000;
+
 /** The tools whose start is worth a word to the caller: reads only. A write is never announced, so nothing is said as done before the backend confirms it. */
 const READ_TOOLS = new Set<string>(['find_slots', 'get_clinic_info', 'search_knowledge', 'list_appointments', 'visit_summary', 'verify_caller']);
 
@@ -299,7 +302,8 @@ export class ResponsesPlanner implements Planner {
     const noTexts = textingOf(input.clinic).enabled && input.callerNumber && !textableNumber(input.clinic, asE164(input.clinic, input.callerNumber))
       ? '\n\nThe number this caller is calling from cannot get texts (it is not a mobile number in the clinic\'s country). Do not offer to text anything and never ask for another number: give the address, hours and every other detail out loud. A verified caller\'s number on file may still get a booking confirmation.'
       : '';
-    // the phone, asked the right way and once: caller ID is confirmed, never asked for; with none, the best number
+    // the phone, asked the right way and once: caller ID is confirmed, never asked for; with none, the number the pet's
+    // profile is under at a clinic for animals (the best number is for callbacks only), the best number at one for people
     const pack = PACKS[state.language];
     const vet = input.clinic.industry === 'vet';
     const last4 = input.callerNumber ? input.callerNumber.replace(/\D/g, '').slice(-4) : null;
@@ -307,10 +311,10 @@ export class ResponsesPlanner implements Planner {
       // at a clinic for animals the number finds the household, so a booking starts with it, asked in these words
       ? (input.callerNumber
         ? `\n\nCaller ID shows the number they are calling from (ending ${last4}). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4 })}" On a yes, phone null uses it; if they give another number, pass it as they said it (the backend reads it back first). A new pet: phone null unless they gave another. Once a pet is found on this call, never ask for the number again.`
-        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. Never ask for "the number on file" for a pet the caller said is new: ask "${pack.phoneQuestion({ callerId: false })}"`)
+        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. A pet the caller said is new is asked the same question, for the number its profile will be under. A number to call them back is asked only for a callback request, never for a booking.`)
       : input.callerNumber
-        ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new patient, ask only, once: "${pack.phoneQuestion({ callerId: true })}"`
-        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.phoneQuestion({ callerId: false })}" Never ask for "the number on file" for a patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
+        ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new patient, ask only, once: "${pack.sameNumberQuestion}"`
+        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.callbackNumberQuestion}" Never ask for "the number on file" for a patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
     const transcript = transcriptFor(state);
     const known = stateLine(state, input.clinic, input.now);
     // what OpenAI's prompt cache can reuse is the unchanged start of the request: the rules and tools, then this call's
@@ -345,68 +349,82 @@ export class ResponsesPlanner implements Planner {
       input.onLookup!(line);
     } : undefined;
 
-    for (let round = 0; round < this.maxRounds; round++) {
-      const asked = performance.now();
-      const body = (): Omit<ResponseCreateParams, 'stream'> => ({
-        model, instructions, input: conversation, tools, store: false,
-        max_output_tokens: this.limits.maxOutputTokens,
-        ...(effort ? { reasoning: { effort } } : {}),
-        ...(this.speed.tier ? { service_tier: this.speed.tier } : {}),
-        // with store: false the model's reasoning must travel with the request, encrypted
-        include: ['reasoning.encrypted_content'],
-        // one cache per clinic: its calls share the fixed prefix (rules, tools, its own facts)
-        prompt_cache_key: input.clinic.id,
-      });
-      let answer: Awaited<ReturnType<ResponsesPlanner['round']>>;
-      try {
-        answer = await this.round(body(), asked, round === 0 ? announce : undefined);
-      } catch (err) {
-        // a round that timed out or errored is tried once more on the fallback model, and the request stays on it;
-        // a second failure is the request's (the caller hears the apology and the callback offer, as before)
-        const fallback = this.speed.fallbackModel;
-        if (!fallback || model === fallback) throw err;
-        model = fallback;
-        timing.model = fallback;
-        timing.fallback = true;
-        answer = await this.round(body(), asked, round === 0 ? announce : undefined);
+    // the call's first request (often "Hi, my dog needs a check-up"): a round with no lookup to announce left the caller in
+    // silence for the whole round ("why are you paused?", 2026-11-14). After a second with nothing said, "One moment."
+    const filler = state.requestsPlanned++ === 0 && input.onLookup ? setTimeout(() => {
+      if (timing.announced) return;
+      timing.announced = true;
+      timing.firstWordsMs = Math.round(performance.now() - planStart);
+      input.onLookup!(pack.spoken.oneMoment);
+    }, FIRST_REQUEST_FILLER_MS) : undefined;
+
+    try {
+      for (let round = 0; round < this.maxRounds; round++) {
+        const asked = performance.now();
+        const body = (): Omit<ResponseCreateParams, 'stream'> => ({
+          model, instructions, input: conversation, tools, store: false,
+          max_output_tokens: this.limits.maxOutputTokens,
+          ...(effort ? { reasoning: { effort } } : {}),
+          ...(this.speed.tier ? { service_tier: this.speed.tier } : {}),
+          // with store: false the model's reasoning must travel with the request, encrypted
+          include: ['reasoning.encrypted_content'],
+          // one cache per clinic: its calls share the fixed prefix (rules, tools, its own facts)
+          prompt_cache_key: input.clinic.id,
+        });
+        let answer: Awaited<ReturnType<ResponsesPlanner['round']>>;
+        try {
+          answer = await this.round(body(), asked, round === 0 ? announce : undefined);
+        } catch (err) {
+          // a round that timed out or errored is tried once more on the fallback model, and the request stays on it;
+          // a second failure is the request's (the caller hears the apology and the callback offer, as before)
+          const fallback = this.speed.fallbackModel;
+          if (!fallback || model === fallback) throw err;
+          model = fallback;
+          timing.model = fallback;
+          timing.fallback = true;
+          answer = await this.round(body(), asked, round === 0 ? announce : undefined);
+        }
+        const { res, firstTokenMs } = answer;
+        clearTimeout(filler);
+        timing.rounds++;
+        timing.modelMs += performance.now() - asked;
+        const calls = res.output.filter((o) => o.type === 'function_call');
+        timing.requests.push({
+          ms: Math.round(performance.now() - asked), firstTokenMs, served: res.service_tier ?? null,
+          inputTokens: res.usage?.input_tokens ?? null, cachedTokens: res.usage?.input_tokens_details?.cached_tokens ?? null,
+          outputTokens: res.usage?.output_tokens ?? null, reasoningTokens: res.usage?.output_tokens_details?.reasoning_tokens ?? null,
+          calls: calls.map((c) => c.name),
+        });
+        const say = res.output_text?.trim() || null;
+        // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
+        if (!calls.length && !corrected && round < this.maxRounds - 1 && say && emptyPromise(say, state, doneBefore) && state.requestMade === requestBefore) {
+          corrected = true;
+          conversation.push({ role: 'assistant', content: say }, { role: 'user', content: EMPTY_PROMISE_NOTE });
+          continue;
+        }
+        if (!calls.length) return done({ say });
+        for (const item of res.output) {
+          if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
+        }
+        const results: ToolResult[] = [];
+        for (const call of calls) {
+          const name = call.name as ToolName;
+          const toolAsked = performance.now();
+          const result = TOOL_NAMES.includes(name)
+            ? await execute(name, safeJson(call.arguments))
+            : { ok: false, data: { error: 'unknown_tool' } };
+          timing.toolMs += performance.now() - toolAsked;
+          results.push(result);
+          conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
+        }
+        // one tool that did the whole thing and wrote the words for it (a read-back, "booked", the goodbye): those are
+        // said as they are, with no further round. A refusal, an error or a lookup goes back to the model as before.
+        // a refusal with words of its own (no line to transfer to) is said the same way: the offer of a callback, at once
+        const spoken = results.length === 1 && typeof results[0]!.data.spoken === 'string' ? results[0]!.data.spoken : null;
+        if (spoken) return done({ say: spoken });
       }
-      const { res, firstTokenMs } = answer;
-      timing.rounds++;
-      timing.modelMs += performance.now() - asked;
-      const calls = res.output.filter((o) => o.type === 'function_call');
-      timing.requests.push({
-        ms: Math.round(performance.now() - asked), firstTokenMs, served: res.service_tier ?? null,
-        inputTokens: res.usage?.input_tokens ?? null, cachedTokens: res.usage?.input_tokens_details?.cached_tokens ?? null,
-        outputTokens: res.usage?.output_tokens ?? null, reasoningTokens: res.usage?.output_tokens_details?.reasoning_tokens ?? null,
-        calls: calls.map((c) => c.name),
-      });
-      const say = res.output_text?.trim() || null;
-      // "I'll take care of it" with nothing waiting for a yes and nothing done is a promise nobody keeps: once, it is sent back
-      if (!calls.length && !corrected && round < this.maxRounds - 1 && say && emptyPromise(say, state, doneBefore) && state.requestMade === requestBefore) {
-        corrected = true;
-        conversation.push({ role: 'assistant', content: say }, { role: 'user', content: EMPTY_PROMISE_NOTE });
-        continue;
-      }
-      if (!calls.length) return done({ say });
-      for (const item of res.output) {
-        if (item.type === 'function_call' || item.type === 'reasoning' || item.type === 'message') conversation.push(item as ResponseInputItem);
-      }
-      const results: ToolResult[] = [];
-      for (const call of calls) {
-        const name = call.name as ToolName;
-        const toolAsked = performance.now();
-        const result = TOOL_NAMES.includes(name)
-          ? await execute(name, safeJson(call.arguments))
-          : { ok: false, data: { error: 'unknown_tool' } };
-        timing.toolMs += performance.now() - toolAsked;
-        results.push(result);
-        conversation.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result.data) });
-      }
-      // one tool that did the whole thing and wrote the words for it (a read-back, "booked", the goodbye): those are
-      // said as they are, with no further round. A refusal, an error or a lookup goes back to the model as before.
-      // a refusal with words of its own (no line to transfer to) is said the same way: the offer of a callback, at once
-      const spoken = results.length === 1 && typeof results[0]!.data.spoken === 'string' ? results[0]!.data.spoken : null;
-      if (spoken) return done({ say: spoken });
+    } finally {
+      clearTimeout(filler);
     }
     // out of rounds: a callback that is promised is one that exists, taken through the same
     // tool the model would use, so its rules and the request for staff apply
@@ -414,7 +432,8 @@ export class ResponsesPlanner implements Planner {
       const taken = await execute('create_callback', { reason: 'The assistant could not finish the caller\'s request', callback_number: input.callerNumber });
       if (taken.ok) return done({ say: 'I wasn\'t able to finish that, so I\'ve asked someone from the clinic to call you back at the number you\'re calling from.' });
     }
-    return done({ say: 'I wasn\'t able to finish that. Would you like someone from the clinic to call you back? If so, tell me the best number to reach you.' });
+    // no number to call back: the offer, and the one question for a callback number, in the caller's language
+    return done({ say: `${pack.couldNotFinish} ${pack.callbackNumberQuestion}` });
   }
 }
 

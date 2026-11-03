@@ -103,7 +103,7 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
   return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
 }
-const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
+const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_number', `Say you can't see the number they're calling from, and ask, in these words: "${PACKS[lang].callbackNumberQuestion}" Then call this again with it.`);
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
@@ -113,8 +113,12 @@ const seesAnimals = (p: { categories: string[]; categoryNames?: Record<string, s
   return names.length ? names.join(lang === 'es' ? ' y ' : ' and ') : null;
 };
 
-/** No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked once. */
-const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${PACKS[lang].phoneQuestion({ callerId: false })}" Keep everything else they already gave; do not ask for it again.`;
+/**
+ * No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked
+ * once. At a clinic for animals it is the number the pet's profile is under, for a new pet too (its profile will be
+ * under it); the best number to reach someone is for callbacks only (2026-11-14).
+ */
+const askPhone = (lang: CallState['language'], pets = true) => `Ask once, in these words: "${pets ? PACKS[lang].profileNumberQuestion({ last4: null }) : PACKS[lang].callbackNumberQuestion}" Keep everything else they already gave; do not ask for it again.`;
 /** A time the caller chose, as the planner hears it: when, and with whom. */
 const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language'], now?: Date) => {
   const provider = clinic.providers.find((p) => p.id === slot.providerId);
@@ -378,7 +382,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
       const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
-      if (!phone) return refuse('phone_required', askPhone(lang));
+      if (!phone) return refuse('phone_required', askPhone(lang, false));
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       const today = localDateOf(ctx.now(), clinic.timezone);
@@ -803,7 +807,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'create_refill_request': {
       const callback = callbackNumber(args, ctx);
-      if (!callback) return NO_CALLBACK_NUMBER();
+      if (!callback) return NO_CALLBACK_NUMBER(state.language);
       // the team's decision goes out by text only on a yes, asked before the request is logged
       const textUpdates = typeof args.text_updates === 'boolean' ? args.text_updates : null;
       if (textingOf(clinic).enabled && textUpdates === null) {
@@ -825,7 +829,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const asked = typeof args.topic === 'string' ? same(args.topic) : '';
       const topic = asked ? clinic.requestTopics?.find((t) => same(t.name) === asked || t.id === args.topic) : undefined;
       const callback = callbackNumber(args, ctx);
-      if (!callback) return NO_CALLBACK_NUMBER();
+      if (!callback) return NO_CALLBACK_NUMBER(state.language);
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once

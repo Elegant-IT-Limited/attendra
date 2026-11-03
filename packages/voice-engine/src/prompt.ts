@@ -32,13 +32,20 @@ export function openingIfNotStarted(opening: string): string {
 }
 
 /**
- * What the voice knows on a browser test call: there is no caller ID, so the one phone question is the best number,
- * asked once, in the caller's language.
+ * What the voice knows on a browser test call: there is no caller ID. At a clinic for animals, a booking, a change or a
+ * cancellation starts with the number the pet's profile is under, asked by the voice at once in the backend's words, with
+ * no wait for the backend (the caller heard silence while it was asked for, 2026-11-14); the best number to reach them is
+ * for a callback only. At a clinic for people, the best number, asked once.
  */
 export function noCallerIdLine(clinic: ClinicConfig): string {
-  const asks = clinic.languages.map((l) => `"${PACKS[l].phoneQuestion({ callerId: false })}"`).join(' or ');
-  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new. Take the number as they give it, even from abroad or without an area code, and never ask for it again.`;
+  const asks = (line: (l: ClinicConfig['primaryLanguage']) => string) => clinic.languages.map((l) => `"${line(l)}"`).join(' or ');
+  const keep = 'Take the number as they give it, even from abroad or without an area code, and never ask for it again.';
+  if (industryPack(clinic.industry).identity === 'pet') {
+    return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. As soon as the caller wants to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend: ${asks((l) => PACKS[l].profileNumberQuestion({ last4: null }))}, in the caller's language; then hand their answer to the backend. A number to call them back is asked only when taking a callback request, never for a booking. ${keep}`;
+  }
+  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks((l) => PACKS[l].callbackNumberQuestion)}, in the caller's language. Never ask for "the number on file" for a patient the caller said is new. ${keep}`;
 }
+
 
 /**
  * The opening for a caller on the clinic's VIP list: a short hello that says who is
