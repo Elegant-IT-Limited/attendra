@@ -126,6 +126,7 @@ export const es: LanguagePack = {
   },
   whichWeek: ({ first, second }) => `¿Este ${fullDay(first)}, o el ${fullDay(second)}?`,
   bookedByCallerNote: ({ name }) => `reservada por quien llamó: ${name}`,
+  foundByLastFourNote: 'encontrada en la llamada por los últimos cuatro dígitos del número y el nombre de la mascota',
   // written without accents: the text is normalised before it is matched
   memory: {
     species: {
@@ -182,6 +183,10 @@ export const es: LanguagePack = {
   },
   notSeenPet: ({ pet }) => `No veo a ${pet} con ese número.`,
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
+  lastFourQuestion: ({ after }) => (after === 'no_profile'
+    ? '¿Cuáles son los últimos cuatro dígitos del número con el que podría estar la ficha, y el nombre de su mascota? Si es nueva para nosotros, la puedo registrar.'
+    : 'Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?'),
+  lastFourNoMatch: 'No encontré una sola ficha con esos datos.',
   teamBooks: ({ visit, notice, related }) => `Nuestro equipo reserva ${visit.toLowerCase()} directamente${notice ? `, con al menos ${notice.replace(/days?/, 'días').replace(/hours?/, 'horas')} de anticipación` : ''}. Puedo dejarle una solicitud al equipo${related ? `, o reservarle primero ${related.toLowerCase()}` : ''}. ¿Qué prefiere?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${sinEl(when)} está confirmada.`,
@@ -226,12 +231,12 @@ export const es: LanguagePack = {
     goodbye: 'Que le vaya bien. ¡Adiós!',
     callbackTaken: ({ sameNumber }) => `De acuerdo, se lo paso al equipo y alguien le llamará ${sameNumber ? 'a este número' : 'al número que me dio'}. ¿Hay algo más en lo que le pueda ayudar?`,
     refillTaken: 'He enviado la solicitud de la receta al equipo; la revisarán y se pondrán en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
+    urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
     noTransfer: 'Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
-    urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
@@ -253,14 +258,14 @@ export const es: LanguagePack = {
       return `es ${phrase}, el ${day}`;
     },
   },
+  petEmergencyNext: ({ pet, transfer }) => `Ahora mismo no puedo reservar una visita de rutina para ${pet ?? 'su mascota'}, con lo que está pasando. ${transfer
+    ? 'Le puedo pasar con nuestro equipo ahora mismo. ¿Quiere?'
+    : 'Puedo enviarle a nuestro equipo un mensaje urgente para que le llamen lo antes posible. ¿Quiere?'}`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +
     'Do not give medical advice, do not ask about symptoms, and do not continue booking. ' +
     'If the caller says they are safe and it is not an emergency, you may continue.',
-  petEmergencyNext: ({ pet, transfer }) => `Ahora mismo no puedo reservar una visita de rutina para ${pet ?? 'su mascota'}, con lo que está pasando. ${transfer
-    ? 'Le puedo pasar con nuestro equipo ahora mismo. ¿Quiere?'
-    : 'Puedo enviarle a nuestro equipo un mensaje urgente para que le llamen lo antes posible. ¿Quiere?'}`,
   selfHarmScript: (n, crisis) =>
     'The caller may be at risk of harming themselves. Stop the current task. Say, in Spanish, calmly and kindly: ' +
     `"Me alegra mucho que haya llamado. Si está en peligro ahora mismo, llame al ${n}.` +

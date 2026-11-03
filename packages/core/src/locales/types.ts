@@ -105,6 +105,8 @@ export interface LanguagePack {
   whichWeek: (v: { first: string; second: string }) => string;
   /** The note the team sees on a booking made on a number whose owner on file did not match the name the caller gave. */
   bookedByCallerNote: (v: { name: string }) => string;
+  /** The team's note on a booking for a pet found by the last four digits of its number and its name, not the whole number. */
+  foundByLastFourNote: string;
   /** The words that pick facts out of what a caller says, for the call memory (memory-words.ts). Closed lists only. */
   memory: MemoryWords;
   /**
@@ -138,6 +140,14 @@ export interface LanguagePack {
   /** Said first when a number has no pets on file at all: then a new owner and pet the usual way. */
   noPetsOnNumber: string;
   /**
+   * The second way to find a pet's profile, asked once: after two read-backs the caller said were wrong
+   * ('wrong_readbacks'), or a number with no profile on it ('no_profile', which also offers to add a new pet). The
+   * last four digits of the number on file and the pet's name; never a number or a name from the records.
+   */
+  lastFourQuestion: (v: { after: 'wrong_readbacks' | 'no_profile' }) => string;
+  /** Said first when the last four digits and the pet's name do not find exactly one household: then a request for the team. */
+  lastFourNoMatch: string;
+  /**
    * A visit the team books itself, asked for directly: why, the notice when set (in English words, "25 hours", "3 days"),
    * then both next steps: a request for the team, or the related visit the caller can book now.
    */
@@ -153,6 +163,12 @@ export interface LanguagePack {
 
   /** The fixed emergency instruction, with the clinic's emergency number. */
   emergencyScript: (emergencyNumber: string) => string;
+  /**
+   * After an animal's emergency script, to a caller who still wants a visit for that pet or asks for something: no
+   * routine visit for it on this call, and the next step, the team now (`transfer`: a line takes calls and the clinic is
+   * open) or an urgent request. `pet`: its name, or null. The hospital is never said again unless they ask.
+   */
+  petEmergencyNext: (v: { pet: string | null; transfer: boolean }) => string;
   /** The one warning an insulting caller hears, and the goodbye when the call is ended for it: said word for word. */
   abuseWarning: string;
   abuseGoodbye: string;
@@ -163,12 +179,6 @@ export interface LanguagePack {
    * call they got may not have come from the clinic. Then the choice: a client with a request, or a message.
    */
   returnedCallLine: (v: { clinic: string }) => string;
-  /**
-   * After an animal's emergency script, to a caller who still wants a visit for that pet or asks for something: no
-   * routine visit for it on this call, and the next step, the team now (`transfer`: a line takes calls and the clinic is
-   * open) or an urgent request. `pet`: its name, or null. The hospital is never said again unless they ask.
-   */
-  petEmergencyNext: (v: { pet: string | null; transfer: boolean }) => string;
   /**
    * The backend's own words for the caller, spoken as they are when a tool's result is the whole answer, so the model is
    * not asked again (2026-11). Each ends with the next question when one follows (the reminder offer, anything else?).
@@ -188,6 +198,8 @@ export interface LanguagePack {
     callbackTaken: (v: { sameNumber: boolean }) => string;
     /** A refill request logged: with the team, never approved or timed. */
     refillTaken: string;
+    /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
+    urgentRequestTaken: string;
     /** A text just sent. */
     textSent: string;
     /** The caller's answer to the reminder offer, acknowledged. */
@@ -198,8 +210,6 @@ export interface LanguagePack {
     noTransfer: string;
     /**
      * Said the moment the backend starts a lookup, so the caller never waits in silence: what it is doing, in a few
-    /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
-    urgentRequestTaken: string;
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
      */
     lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits' | 'number'; day?: string | null; pet?: string | null }) => string;

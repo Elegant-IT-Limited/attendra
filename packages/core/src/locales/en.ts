@@ -117,6 +117,7 @@ export const en: LanguagePack = {
   whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
   whichWeek: ({ first, second }) => `This ${fullDay(first)}, or ${fullDay(second)}?`,
   bookedByCallerNote: ({ name }) => `booked by caller: ${name}`,
+  foundByLastFourNote: 'found on the call by the last four digits of the number and the pet\'s name',
   memory: {
     species: {
       dog: 'dog', puppy: 'dog', pup: 'dog', doggy: 'dog', cat: 'cat', kitten: 'cat', kitty: 'cat', rabbit: 'rabbit', bunny: 'rabbit',
@@ -163,6 +164,10 @@ export const en: LanguagePack = {
   foundPet: ({ pet, species }) => (species ? `I found ${pet}, your ${species.toLowerCase()}.` : `I found ${pet}.`),
   notSeenPet: ({ pet }) => `I don't see ${pet} under that number.`,
   noPetsOnNumber: "I don't see a profile under that number.",
+  lastFourQuestion: ({ after }) => (after === 'no_profile'
+    ? "What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
+    : "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"),
+  lastFourNoMatch: "I couldn't find one profile with those details.",
   teamBooks: ({ visit, notice, related }) => `Our team books ${visit.toLowerCase()} themselves${notice ? `, with at least ${notice}' notice` : ''}. I can take a request for the team${related ? `, or book ${/^[aeiou]/i.test(related) ? 'an' : 'a'} ${related.toLowerCase()} first` : ''}. Which would you like?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
@@ -207,12 +212,12 @@ export const en: LanguagePack = {
     goodbye: 'Take care, goodbye!',
     callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
+    urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
     noTransfer: 'I can\'t put you through right now, but I\'ll have the team call you back. What\'s it about?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day}${/\d$/.test(day) ? ',' : ''} for you.`
-    urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
       : kind === 'times' ? 'One moment, I\'ll look at the times.'
       : kind === 'pet' && pet ? `Let me find ${pet}.`
       : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
@@ -234,14 +239,14 @@ export const en: LanguagePack = {
       return `that's ${phrase}, ${day}`;
     },
   },
+  petEmergencyNext: ({ pet, transfer }) => `I can't book a routine visit for ${pet ?? 'your pet'} while this is going on. ${transfer
+    ? 'I can put you through to our team right now. Would you like that?'
+    : 'I can send our team an urgent message to call you back as soon as they can. Would you like that?'}`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +
     `"If this is a medical emergency, please hang up and call ${n} right away." ` +
     'Do not give medical advice, do not ask about symptoms, and do not continue booking. ' +
     'If the caller says they are safe and it is not an emergency, you may continue.',
-  petEmergencyNext: ({ pet, transfer }) => `I can't book a routine visit for ${pet ?? 'your pet'} while this is going on. ${transfer
-    ? 'I can put you through to our team right now. Would you like that?'
-    : 'I can send our team an urgent message to call you back as soon as they can. Would you like that?'}`,
   selfHarmScript: (n, crisis) =>
     'The caller may be at risk of harming themselves. Stop the current task. Say, calmly and kindly: ' +
     `"I'm really glad you called. If you are in danger right now, please call ${n}.` +

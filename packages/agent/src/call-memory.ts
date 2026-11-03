@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, spokenDigits, asE164, normalise } from '@attendra/core';
+import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise } from '@attendra/core';
 
 /** Where a fact came from: the caller's own words, a tool's arguments, the clinic's records, or the planner model's reading of the call (the intent). */
 export type FactSource = 'caller' | 'tool' | 'record' | 'model';
@@ -109,7 +109,7 @@ export class CallMemory {
       if (age) this.set('age', age, 'tool', atTurn);
       const phone = text('phone');
       if (phone) {
-        const digits = asE164(clinic, spokenDigits(phone)).replace(/\D/g, '');
+        const digits = heardNumber(clinic, phone).replace(/\D/g, '');
         const current = this.get('number');
         if (current?.digits !== digits) this.set('number', { digits, readBack: false, callerId: !!callerNumber && callerNumber.replace(/\D/g, '') === digits }, 'tool', atTurn);
       } else if (callerNumber && !this.has('number')) {
