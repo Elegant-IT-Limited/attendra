@@ -273,6 +273,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit });
       });
 
+      // The usual time limit for one test call, so the dashboard can say it before the call. This config is its one source.
+      internal.get('/internal/web-calls/limits', async (req, reply) => {
+        if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
+        return { maxSeconds };
+      });
+
       // The dashboard's way out when the browser cannot send session.close itself:
       // the page was closed while connecting, or its data channel never opened.
       internal.post('/internal/web-calls/:callId/end', async (req, reply) => {

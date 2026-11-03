@@ -13,7 +13,7 @@ let api: Awaited<ReturnType<typeof startApi>>;
 let staff: string;
 let viewer: string;
 const voice = {
-  browserCalls: true, simulatedCalls: false, startTestCall: vi.fn(), endTestCall: vi.fn(async () => {}),
+  browserCalls: true, simulatedCalls: false, startTestCall: vi.fn(), endTestCall: vi.fn(async () => {}), limits: vi.fn(async () => ({ maxSeconds: 900 })),
   startSimulatedCall: vi.fn(), liveCalls: vi.fn(async () => []), liveStream: vi.fn(async () => null), coach: vi.fn(), takeOver: vi.fn(), endCall: vi.fn(),
 };
 
@@ -60,7 +60,7 @@ describe('browser test calls', () => {
 
   it('keeps a clinic with a test-call limit within it, and says how much is left', async () => {
     const none = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
-    expect(none).toEqual({ limitSeconds: null, usedSeconds: 0 });
+    expect(none).toEqual({ limitSeconds: null, usedSeconds: 0, perCallSeconds: 900, callSeconds: 900 });
     expect(await setTestCallLimit(api.t.db, DEMO_CLINIC.id, 600)).toBe(true);
     try {
       const { usedSeconds } = (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
@@ -78,6 +78,31 @@ describe('browser test calls', () => {
       await setTestCallLimit(api.t.db, DEMO_CLINIC.id, null);
     }
     await expect(setTestCallLimit(api.t.db, DEMO_CLINIC.id, -1)).rejects.toThrow('whole number');
+  });
+
+  it('says the voice service\'s limit for one call, and how long the next call can last: the smaller of it and the time left', async () => {
+    const get = async () => (await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff })).json();
+    voice.limits.mockResolvedValue({ maxSeconds: 600 });
+    try {
+      expect(await get()).toMatchObject({ limitSeconds: null, perCallSeconds: 600, callSeconds: 600 });
+      expect(await setTestCallLimit(api.t.db, DEMO_CLINIC.id, 7200)).toBe(true);
+      const plenty = await get();
+      expect(plenty).toMatchObject({ limitSeconds: 7200, perCallSeconds: 600, callSeconds: 600 });
+      // less left than one call: the time left
+      await setTestCallLimit(api.t.db, DEMO_CLINIC.id, plenty.usedSeconds + 420);
+      const little = await get();
+      expect(little.perCallSeconds).toBe(600);
+      expect(little.callSeconds).toBe(little.limitSeconds - little.usedSeconds);
+      expect(little.callSeconds).toBeLessThan(600);
+      // the voice service cannot be reached: no per-call number, and the page still gets an answer
+      voice.limits.mockRejectedValueOnce(Object.assign(new Error('refused'), { status: 502 }));
+      const down = await api.request('GET', `${C}/test-calls/allowance`, { cookie: staff });
+      expect(down.statusCode).toBe(200);
+      expect(down.json()).toMatchObject({ limitSeconds: little.limitSeconds, perCallSeconds: null, callSeconds: null });
+    } finally {
+      voice.limits.mockResolvedValue({ maxSeconds: 900 });
+      await setTestCallLimit(api.t.db, DEMO_CLINIC.id, null);
+    }
   });
 
   it('passes on the per-clinic limit, and says so when the voice service is down', async () => {
@@ -121,6 +146,28 @@ describe('the voice client', () => {
       await expect(client.endTestCall('clinic_maple', 'c1')).rejects.toMatchObject({ status: 404 });
       expect(seen[0]).toEqual({ url: '/voice/internal/web-calls', auth: `Bearer ${'t'.repeat(32)}`, body: JSON.stringify({ clinicId: 'clinic_maple', userId: 'u1', sdp: 'v=0 offer' }) });
       expect(seen[1]!.url).toBe('/voice/internal/web-calls/c1/end');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('asks the voice service for its per-call limit with the token, at most once a minute', async () => {
+    const seen: (string | undefined)[] = [];
+    let answer = 200;
+    const server = createServer((req, res) => {
+      seen.push(req.headers.authorization);
+      if (answer !== 200) { res.writeHead(answer).end(); return; }
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ maxSeconds: 720 }));
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const client = httpVoiceClient(base, 't'.repeat(32));
+      expect(await client.limits!()).toEqual({ maxSeconds: 720 });
+      expect(await client.limits!()).toEqual({ maxSeconds: 720 });
+      expect(seen).toEqual([`Bearer ${'t'.repeat(32)}`]);
+      answer = 401;
+      await expect(httpVoiceClient(base, 'u'.repeat(32)).limits!()).rejects.toMatchObject({ status: 401 });
     } finally {
       server.close();
     }

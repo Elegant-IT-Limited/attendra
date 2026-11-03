@@ -21,8 +21,20 @@ export function httpVoiceClient(baseUrl: string, token: string, timeoutMs = 15_0
     return { ok: false, status: res.status, error: b.error ?? `voice_${res.status}`, by: b.by };
   };
 
+  // the limit changes only with the voice service's config: asked at most once a minute
+  let limits: { value: { maxSeconds: number }; at: number } | null = null;
+
   return {
     ...capabilities,
+    async limits() {
+      if (limits && Date.now() - limits.at < 60_000) return limits.value;
+      const res = await fetch(`${base}/internal/web-calls/limits`, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      if (res.status !== 200) throw refused(res.status);
+      const { maxSeconds } = await res.json() as { maxSeconds?: unknown };
+      if (typeof maxSeconds !== 'number' || !Number.isFinite(maxSeconds) || maxSeconds <= 0) throw refused(502);
+      limits = { value: { maxSeconds }, at: Date.now() };
+      return limits.value;
+    },
     async startSimulatedCall(clinicId, userId) {
       const res = await post('/internal/simulated-calls', { clinicId, userId });
       if (res.status !== 201) throw refused(res.status);

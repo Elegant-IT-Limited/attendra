@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type RecordingDeps, recordingName, startCallRecording } from '../lib/call-recording';
+import { mustWarnBeforeLeaving, type RecordingDeps, recordingName, type SaveDeps, type SavedRecording, saveRecording, startCallRecording } from '../lib/call-recording';
 
 /** The browser's audio graph and recorder, as fakes that remember what was connected and recorded. */
 function fakes(supported: string[]) {
@@ -75,5 +75,51 @@ describe('recording a browser test call on this computer', () => {
 
   it('names the file by its type', () => {
     expect(recordingName(new Date(2026, 0, 5, 9, 7), 'webm')).toBe('attendra-test-call-2026-01-05-0907.webm');
+  });
+});
+
+/** A page that remembers every download link clicked, or refuses the click. */
+function page(refuse = false) {
+  const clicks: { href: string; download: string }[] = [];
+  const deps: SaveDeps = {
+    createElement: () => {
+      const a = { href: '', download: '', click() { if (refuse) throw new Error('blocked'); clicks.push({ href: a.href, download: a.download }); }, remove() {} };
+      return a;
+    },
+    append: () => {},
+  };
+  return { deps, clicks };
+}
+
+describe('saving the recording by itself', () => {
+  it('saves once, under its name, and "Save again" saves the same file; nothing goes over the network', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const f = fakes(['audio/webm;codecs=opus']);
+    const r = startCallRecording(stream('assistant'), stream('mic'), f.deps);
+    const saved = await r.stop();
+    const p = page();
+    expect(saveRecording(saved, p.deps)).toBe(true);
+    expect(p.clicks).toEqual([{ href: 'blob:local/1', download: 'attendra-test-call-2026-11-08-1432.webm' }]);
+    expect(saveRecording(saved, p.deps)).toBe(true);
+    expect(p.clicks).toHaveLength(2);
+    expect(p.clicks[1]).toEqual(p.clicks[0]);
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockRestore();
+  });
+
+  it('says so when the browser refuses, so the page can offer the link', () => {
+    const p = page(true);
+    expect(saveRecording({ url: 'blob:local/2', name: 'attendra-test-call-2026-11-08-1432.webm', blob: new Blob([]) }, p.deps)).toBe(false);
+    expect(p.clicks).toEqual([]);
+  });
+
+  it('asks before leaving while it records, while it stops, and until it is saved', () => {
+    const rec: SavedRecording = { url: 'blob:local/3', name: 'attendra-test-call-2026-11-08-1432.webm', blob: new Blob([]) };
+    const at = (recording: boolean, stopping: boolean, saved: SavedRecording | null, savedAt: Date | null) => mustWarnBeforeLeaving({ recording, stopping, saved, savedAt });
+    expect(at(false, false, null, null)).toBe(false); // before any call
+    expect(at(true, false, null, null)).toBe(true); // recording
+    expect(at(false, true, null, null)).toBe(true); // the call ended, the file is being made
+    expect(at(false, false, rec, null)).toBe(true); // the browser refused to save it
+    expect(at(false, false, rec, new Date())).toBe(false); // saved
   });
 });

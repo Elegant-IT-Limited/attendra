@@ -63,10 +63,20 @@ export class TestCallsController {
   /** How much browser test-call time the clinic has, when it has a limit (hosted trials do). */
   @Get('allowance')
   @Requires('calls:test')
-  @ApiOperation({ summary: 'The clinic\'s test-call time: its limit (null is none) and the seconds used' })
+  @ApiOperation({ summary: 'The clinic\'s test-call time: its limit (null is none), the seconds used, the limit for one call, and how long the next call can last' })
   @ApiOkResponse({ schema: schemaOf(TestCallAllowance) })
   async allowance(@Param('clinicId') clinicId: string): Promise<TestCallAllowance> {
-    return testCallAllowance(this.db, clinicId, this.now());
+    const { limitSeconds, usedSeconds } = await testCallAllowance(this.db, clinicId, this.now());
+    // the per-call limit belongs to the voice service; without it the page still renders, with no number
+    let perCallSeconds: number | null = null;
+    try {
+      perCallSeconds = (await this.voice?.limits?.())?.maxSeconds ?? null;
+    } catch (err) {
+      this.log.warn({ clinic_id: clinicId, name: (err as Error).name, code: (err as { code?: string }).code }, 'test call limits unavailable');
+    }
+    const left = limitSeconds === null ? null : Math.max(0, limitSeconds - usedSeconds);
+    const callSeconds = perCallSeconds === null ? null : left === null ? perCallSeconds : Math.min(perCallSeconds, left);
+    return { limitSeconds, usedSeconds, perCallSeconds, callSeconds };
   }
 
   /**

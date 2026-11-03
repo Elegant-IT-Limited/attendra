@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
+import { E2E_PROVISIONING_TOKEN } from './auth-state';
 import { openAs } from './session';
 
 // Never places a real call: the test-call request is answered here, whatever server runs.
@@ -63,7 +64,7 @@ test('"Record this test call" can be ticked, and stays ticked from page to page 
   const tick = page.getByRole('checkbox', { name: 'Record this test call' });
   await expect(tick).toBeVisible();
   await expect(tick).not.toBeChecked();
-  await expect(page.getByText('Saved as a file on this computer only. Nothing is uploaded.')).toBeVisible();
+  await expect(page.getByText('Saved to your Downloads when the call ends, on this computer only. Nothing is uploaded.')).toBeVisible();
   await tick.click();
   await expect(tick).toBeChecked();
   // nothing records until a call is live
@@ -76,4 +77,141 @@ test('"Record this test call" can be ticked, and stays ticked from page to page 
   await expect(page.getByRole('checkbox', { name: 'Record this test call' })).toBeChecked();
   await page.getByRole('checkbox', { name: 'Record this test call' }).click();
   await expect(page.getByRole('checkbox', { name: 'Record this test call' })).not.toBeChecked();
+});
+
+/** The page is told test calls are on (the demo has no voice key); nothing else about /me changes. */
+const testCallsOn = (p: Page) => p.route('**/api/v1/me', async (route) => {
+  const res = await route.fetch();
+  await route.fulfill({ response: res, json: { ...(await res.json()), testCalls: true } });
+});
+type Allowance = { limitSeconds: number | null; usedSeconds: number; perCallSeconds: number | null; callSeconds: number | null };
+/** Opens Test call and hands back the allowance the page itself read from the API. */
+async function openTestCall(page: Page, clinic: string) {
+  const answer = page.waitForResponse((r) => r.url().endsWith(`/clinics/${clinic}/test-calls/allowance`) && r.request().method() === 'GET');
+  await page.goto(`/c/${clinic}/test-call`);
+  return (await (await answer).json()) as Allowance;
+}
+
+// The limit before a call is the server's: the voice service's limit for one call, or the clinic's time left when that is less.
+test('before a call, the page says the limit the API gives: one call\'s, or the time left when that is less', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk', testCallsOn);
+  const clinic = new URL(page.url()).pathname.split('/')[2]!;
+  const label = page.getByTestId('test-call-limit');
+
+  // no limit for the clinic: one call's limit, from the voice service's config
+  const open = await openTestCall(page, clinic);
+  expect(open.limitSeconds).toBeNull();
+  expect(open.perCallSeconds).toEqual(expect.any(Number));
+  expect(open.callSeconds).toBe(open.perCallSeconds);
+  await expect(label).toHaveText(`One test call can last up to ${Math.floor(open.callSeconds! / 60)} minutes`);
+
+  // a trial with less left than one call: the time left
+  const limit = (seconds: number | null) => page.request.put(`/api/v1/provisioning/clinics/${clinic}/test-call-limit`, { headers: { authorization: `Bearer ${E2E_PROVISIONING_TOKEN}` }, data: { seconds } });
+  expect((await limit(open.usedSeconds + Math.floor(open.perCallSeconds! / 2))).status()).toBe(204);
+  try {
+    const small = await openTestCall(page, clinic);
+    expect(small.callSeconds).toBe(small.limitSeconds! - small.usedSeconds);
+    expect(small.callSeconds!).toBeLessThan(small.perCallSeconds!);
+    await expect(label).toHaveText(`You have ${Math.floor(small.callSeconds! / 60)} minutes of test calls left`);
+  } finally {
+    expect((await limit(null)).status()).toBe(204);
+  }
+});
+
+/**
+ * A browser test call with no OpenAI and no audio from anywhere: the peer connection and MediaRecorder are
+ * stand-ins (the recorder's deps come from the window), the start is answered here, and the microphone is a
+ * silent stream from WebAudio (no device and no permission, on any machine). The recording is a few known bytes, so a request that carried it would show.
+ */
+const RECORDING = 'FAKE-RECORDING-BYTES-5550142';
+async function fakeBrowserCall(page: Page, maxSeconds: number) {
+  await page.addInitScript((bytes) => {
+    class FakeRecorder {
+      static isTypeSupported(t: string) { return t === 'audio/webm;codecs=opus'; }
+      state: RecordingState = 'inactive';
+      mimeType: string;
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      constructor(_stream: MediaStream, options?: MediaRecorderOptions) { this.mimeType = options?.mimeType ?? ''; }
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob([bytes]) }); setTimeout(() => this.onstop?.(), 0); }
+    }
+    class FakePeer {
+      iceGatheringState = 'complete';
+      connectionState = 'new';
+      localDescription: RTCSessionDescriptionInit | null = null;
+      ontrack: ((e: { streams: MediaStream[] }) => void) | null = null;
+      onconnectionstatechange: (() => void) | null = null;
+      private stream: MediaStream | null = null;
+      private channel: { readyState: string; onopen: (() => void) | null; onclose: (() => void) | null; onmessage: unknown; send: () => void; close: () => void } | null = null;
+      addEventListener() {}
+      addTrack(_t: MediaStreamTrack, s: MediaStream) { this.stream = s; }
+      createDataChannel() {
+        const ch = { readyState: 'connecting', onopen: null as (() => void) | null, onclose: null as (() => void) | null, onmessage: null, send() {},
+          close() { if (ch.readyState === 'closed') return; ch.readyState = 'closed'; setTimeout(() => ch.onclose?.(), 0); } };
+        this.channel = ch;
+        return ch;
+      }
+      async createOffer() { return { type: 'offer', sdp: 'v=0 offer' }; }
+      async setLocalDescription(d: RTCSessionDescriptionInit) { this.localDescription = d; }
+      // the assistant's audio is the stand-in microphone played back: enough for the recorder's mix
+      async setRemoteDescription() { setTimeout(() => { this.ontrack?.({ streams: [this.stream!] }); this.channel!.readyState = 'open'; this.channel!.onopen?.(); }, 50); }
+      close() { this.channel?.close(); }
+    }
+    Object.assign(window, { MediaRecorder: FakeRecorder, RTCPeerConnection: FakePeer });
+    navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+  }, RECORDING);
+  await page.route('**/api/v1/clinics/*/test-calls', (r) => r.fulfill({ status: 201, json: { callId: 'call_fake_recording', sdp: 'v=0 answer', maxSeconds } }));
+  await page.route('**/api/v1/clinics/*/test-calls/*/end', (r) => r.fulfill({ status: 202, json: { ending: true } }));
+}
+
+test('the recording saves itself to Downloads when the call ends, asks before a reload while recording, and is never uploaded', async ({ browser }) => {
+  test.slow();
+  const page = await openAs(browser, 'frontdesk', async (p) => { await testCallsOn(p); await fakeBrowserCall(p, 600); });
+  const clinic = new URL(page.url()).pathname.split('/')[2]!;
+  const carried: string[] = [];
+  page.on('request', (r) => { if ((r.postData() ?? '').includes(RECORDING)) carried.push(r.url()); });
+  await openTestCall(page, clinic);
+  await page.getByRole('checkbox', { name: 'Record this test call' }).click();
+  await page.getByRole('button', { name: 'Start test call' }).click();
+  await expect(page.getByTestId('recording-on')).toBeVisible();
+
+  // a reload while recording: the browser asks first; staying keeps the call and its recording
+  const asked = page.waitForEvent('dialog');
+  void page.reload().catch(() => {}); // cancelled by the dialog
+  const dialog = await asked;
+  expect(dialog.type()).toBe('beforeunload');
+  await dialog.dismiss();
+  await expect(page.getByTestId('recording-on')).toBeVisible();
+
+  // signing out asks too; staying keeps the call
+  // (confirm() holds the click until the dialog is answered, so it is answered from the listener)
+  let leave: string[] = [];
+  page.once('dialog', (d) => { leave = [d.type(), d.message()]; void d.dismiss(); });
+  await page.getByRole('button', { name: /account and theme/ }).first().click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await expect.poll(() => leave).toEqual(['confirm', 'The test call recording is not saved yet. Leave anyway and lose it?']);
+  await expect(page).toHaveURL(new RegExp(`/c/${clinic}/test-call$`));
+  await expect(page.getByTestId('recording-on')).toBeVisible();
+
+  // the call ends: the file is saved, under the name the call started with
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'End call' }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^attendra-test-call-\d{4}-\d{2}-\d{2}-\d{4}\.webm$/);
+  const saved = page.getByTestId('recording-saved');
+  await expect(saved).toContainText(`Saved to your Downloads: ${file.suggestedFilename()}`);
+
+  // "Save again": the same file, the same name
+  const again = page.waitForEvent('download');
+  await saved.getByRole('button', { name: 'Save again' }).click();
+  expect((await again).suggestedFilename()).toBe(file.suggestedFilename());
+
+  // saved, so a reload no longer asks; and no request ever carried the recording
+  let askedAgain = false;
+  page.on('dialog', (d) => { askedAgain = true; void d.dismiss(); });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Start test call' })).toBeVisible();
+  expect(askedAgain).toBe(false);
+  expect(carried).toEqual([]);
 });

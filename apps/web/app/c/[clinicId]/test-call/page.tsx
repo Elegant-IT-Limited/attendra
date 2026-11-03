@@ -16,6 +16,7 @@ import { Alert, Empty } from '@/components/ui/feedback';
 import { api, useClinic } from '@/lib/api';
 import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
+import { limitIsTimeLeft, testCallLimitLabel } from '@/lib/test-call-limit';
 import { cn } from '@/lib/utils';
 
 const TEST_CALLS_DOC = 'https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/test-calls.md';
@@ -24,7 +25,7 @@ export default function TestCallPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { data: me, clinic, can } = useClinic(clinicId);
   // the call itself lives in the clinic's frame (TestCallProvider), so it keeps going on other pages; this page starts it and shows it
-  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved } = useTestCall();
+  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved, savedAt, saveAgain, markSaved } = useTestCall();
   const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
   // only in the browser, after the first render: the server cannot know, and the two must render the same
   const [recordable, setRecordable] = useState(false);
@@ -55,10 +56,11 @@ export default function TestCallPage() {
               <p className="font-medium">
                 {{ idle: 'Ready', connecting: 'Connecting…', live: 'Live', ending: 'Ending…', ended: 'Call ended' }[phase]}
               </p>
-              <p className={cn('text-sm tabular-nums', phase === 'live' && maxSeconds - seconds <= 60 ? 'font-medium text-warning' : 'text-text-muted')} data-testid="test-call-clock">
-                {phase === 'live' ? `${clock(seconds * 1000)} · ${clock(Math.max(0, maxSeconds - seconds) * 1000)} left`
-                  : phase === 'ended' ? (seconds >= maxSeconds - 5 ? `${clock(seconds * 1000)} · ended at the ${Math.round(maxSeconds / 60)}-minute limit for one test call` : clock(seconds * 1000))
-                  : `One test call can last up to ${Math.round(maxSeconds / 60)} minutes`}
+              {/* every limit here is the server's: the allowance before the call, the start's answer during it */}
+              <p className={cn('text-sm tabular-nums', phase === 'live' && maxSeconds !== null && maxSeconds - seconds <= 60 ? 'font-medium text-warning' : 'text-text-muted')} data-testid="test-call-clock">
+                {phase === 'live' ? (maxSeconds === null ? clock(seconds * 1000) : `${clock(seconds * 1000)} · ${clock(Math.max(0, maxSeconds - seconds) * 1000)} left`)
+                  : phase === 'ended' ? (maxSeconds !== null && seconds >= maxSeconds - 5 ? `${clock(seconds * 1000)} · ended at the ${Math.round(maxSeconds / 60)}-minute limit for one test call` : clock(seconds * 1000))
+                  : <span data-testid="test-call-limit">{allowance.isPending ? '\u00a0' : testCallLimitLabel(allowance.data)}</span>}
               </p>
             </div>
             {busy
@@ -67,7 +69,7 @@ export default function TestCallPage() {
             {recordable && (
               <div className="w-full text-left">
                 <Checkbox id="record-test-call" checked={record} onCheckedChange={setRecord} label="Record this test call"
-                  hint="Saved as a file on this computer only. Nothing is uploaded." />
+                  hint="Saved to your Downloads when the call ends, on this computer only. Nothing is uploaded." />
               </div>
             )}
             {recording && (
@@ -75,10 +77,20 @@ export default function TestCallPage() {
                 <span className="relative flex size-2.5" aria-hidden><span className="absolute inline-flex size-full rounded-full bg-danger animate-live" /><span className="relative inline-flex size-2.5 rounded-full bg-danger" /></span> Recording on this computer
               </p>
             )}
-            {saved && !recording && (
-              <a href={saved.url} download={saved.name} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"><Download className="size-4" /> Save the recording</a>
+            {saved && !recording && savedAt && (
+              <div role="status" className="space-y-1 text-sm" data-testid="recording-saved">
+                <p className="break-all text-text-muted">Saved to your Downloads: <span className="font-medium text-text">{saved.name}</span></p>
+                <button type="button" onClick={saveAgain} className="focus-ring inline-flex items-center gap-1.5 rounded-sm text-primary hover:underline"><Download className="size-4" /> Save again</button>
+              </div>
             )}
-            {left !== null && (
+            {saved && !recording && !savedAt && (
+              <div role="alert" className="space-y-1 text-sm">
+                <p className="text-warning">Your browser did not save it: save it now.</p>
+                <a href={saved.url} download={saved.name} onClick={markSaved} className="inline-flex items-center gap-1.5 text-primary hover:underline"><Download className="size-4" /> Save the recording</a>
+              </div>
+            )}
+            {/* the time left, unless the line above already says it */}
+            {left !== null && (left < 15 || phase !== 'idle' || !limitIsTimeLeft(allowance.data)) && (
               <p className="text-sm text-text-muted" data-testid="test-minutes-left">{left < 15 ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
             )}
             {phase === 'ended' && callId && can('calls:read') && (

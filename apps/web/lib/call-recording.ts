@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** A finished recording: kept in this browser only, until the person saves it or the page is closed. */
+/** A finished recording: kept in this browser only. It saves itself to Downloads when the call ends; never uploaded. */
 export interface SavedRecording { url: string; name: string; blob: Blob }
 
 /** What the recorder needs from the browser; tests pass fakes. */
@@ -61,6 +61,42 @@ export function startCallRecording(remote: MediaStream, mic: MediaStream | null,
       return stopped;
     },
   };
+}
+
+/** What saving needs from the page; tests pass a fake. */
+export interface SaveDeps { createElement: (tag: 'a') => Pick<HTMLAnchorElement, 'href' | 'download' | 'click' | 'remove'>; append: (a: HTMLAnchorElement) => void }
+
+/**
+ * Saves the recording to the person's Downloads folder: a click on a download link to the file this browser
+ * already holds. Nothing goes over the network. False when the browser refused, so the page can offer the link.
+ */
+export function saveRecording(saved: SavedRecording, deps: SaveDeps = pageDeps()): boolean {
+  try {
+    const a = deps.createElement('a');
+    a.href = saved.url;
+    a.download = saved.name;
+    deps.append(a as HTMLAnchorElement);
+    a.click();
+    a.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Asked before the page goes (a reload, another clinic, signing out) while a recording would be lost. */
+export const LEAVE_WARNING = 'The test call recording is not saved yet. Leave anyway and lose it?';
+
+/**
+ * Whether leaving now would lose a recording: while it records, while it is being stopped, and once it is
+ * done until it has been saved (by itself, or with the link when the browser refused).
+ */
+export function mustWarnBeforeLeaving(s: { recording: boolean; stopping: boolean; saved: SavedRecording | null; savedAt: Date | null }): boolean {
+  return s.recording || s.stopping || (s.saved !== null && s.savedAt === null);
+}
+
+function pageDeps(): SaveDeps {
+  return { createElement: (tag) => document.createElement(tag), append: (a) => { document.body.append(a); } };
 }
 
 function browserDeps(): RecordingDeps {

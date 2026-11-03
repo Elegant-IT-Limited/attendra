@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
-import { type SavedRecording, startCallRecording } from '@/lib/call-recording';
+import { LEAVE_WARNING, mustWarnBeforeLeaving, type SavedRecording, saveRecording, startCallRecording } from '@/lib/call-recording';
 import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
 
 export type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
@@ -53,7 +53,8 @@ interface TestCallState {
   captions: Caption[];
   callId: string | null;
   seconds: number;
-  maxSeconds: number;
+  /** The call's time limit, from the server's answer to the start; null before a call has started. */
+  maxSeconds: number | null;
   micNote: string | null;
   /** The microphone track ended under the call (another app took it, the phone locked). */
   micStopped: boolean;
@@ -73,8 +74,16 @@ interface TestCallState {
   setRecord: (on: boolean) => void;
   /** Recording now, on this computer only. */
   recording: boolean;
-  /** The last call's recording, held in this tab, to save as a file. Never uploaded. */
+  /** The last call's recording, held in this tab, saved to Downloads by itself when the call ends. Never uploaded. */
   saved: SavedRecording | null;
+  /** When it was saved to Downloads; null when the browser refused and the person still has to save it. */
+  savedAt: Date | null;
+  /** Saves the same recording again, under the same name. */
+  saveAgain: () => void;
+  /** The person saved it with the link, after the browser refused the automatic save. */
+  markSaved: () => void;
+  /** Leaving now would lose a recording: asks first. True when it is fine to go. */
+  confirmLeave: () => boolean;
 }
 
 const TestCallContext = createContext<TestCallState | null>(null);
@@ -104,7 +113,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [callId, setCallId] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
-  const [maxSeconds, setMaxSeconds] = useState(300);
+  const [maxSeconds, setMaxSeconds] = useState<number | null>(null);
   const [simulated, setSimulated] = useState<Simulated | null>(null);
   const simulatedId = useRef<string | null>(null);
   const attempt = useRef<Attempt | null>(null);
@@ -112,7 +121,8 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   // a recording of the call, made and kept in this browser only
   const [record, setRecord] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [saved, setSaved] = useState<SavedRecording | null>(null);
+  const [saved, setSaved] = useState<(SavedRecording & { savedAt: Date | null }) | null>(null);
+  const [stopping, setStopping] = useState(false);
   const [remoteUp, setRemoteUp] = useState(false);
   const recorder = useRef<ReturnType<typeof startCallRecording> | null>(null);
 
@@ -267,7 +277,12 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
       const r = recorder.current;
       recorder.current = null;
       setRecording(false);
-      void r.stop().then(setSaved);
+      setStopping(true);
+      // saved to Downloads the moment it is done, whichever page of the clinic is open
+      void r.stop().then((rec) => {
+        setStopping(false);
+        setSaved({ ...rec, savedAt: saveRecording(rec) ? new Date() : null });
+      });
     }
   }, [record, phase, remoteUp, problem]);
 
@@ -285,7 +300,24 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [phase]);
-  useEffect(() => { if (phase === 'live' && seconds >= maxSeconds) end(); }, [phase, seconds, maxSeconds, end]);
+  useEffect(() => { if (phase === 'live' && maxSeconds !== null && seconds >= maxSeconds) end(); }, [phase, seconds, maxSeconds, end]);
+
+  // A recording not yet saved is lost with the page: the browser asks before a reload or a closed tab,
+  // and the clinic switcher and sign-out ask through confirmLeave
+  const unsaved = mustWarnBeforeLeaving({ recording, stopping, saved, savedAt: saved?.savedAt ?? null });
+  const unsavedNow = useRef(unsaved);
+  unsavedNow.current = unsaved;
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [unsaved]);
+  const confirmLeave = useCallback(() => !unsavedNow.current || window.confirm(LEAVE_WARNING), []);
+  const saveAgain = useCallback(() => {
+    if (saved && saveRecording(saved)) setSaved({ ...saved, savedAt: new Date() });
+  }, [saved]);
+  const markSaved = useCallback(() => setSaved((s) => s && { ...s, savedAt: new Date() }), []);
 
   const startSimulated = useCallback(async () => {
     const { callId: id } = await api<{ callId: string }>(`/clinics/${clinicId}/test-calls/simulated`, { method: 'POST' });
@@ -340,7 +372,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const value: TestCallState = {
     clinicId, phase, captions, callId, seconds, maxSeconds, micNote, micStopped, muted, simulated,
     start, end, toggleMute, dismiss: () => setMicStopped(false), startSimulated, endSimulated: () => endSimulated(), hangUpNow,
-    record, setRecord, recording, saved,
+    record, setRecord, recording, saved, savedAt: saved?.savedAt ?? null, saveAgain, markSaved, confirmLeave,
   };
 
   return (

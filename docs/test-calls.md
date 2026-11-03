@@ -45,7 +45,7 @@ The call ends when you press End, when the page is closed (the page asks the API
 
 ## Recording a test call
 
-Tick **Record this test call** on the Test call page to hear afterwards how the call sounded (a voice that seemed to change, a long pause), which the transcript cannot show. The browser records the assistant and your microphone, mixed, with `MediaRecorder`, and shows "Recording on this computer" while it does. When the call ends, **Save the recording** saves it as a file (WebM, or M4A in Safari) on your computer. Nothing is uploaded: the recording never leaves the browser, and Attendra keeps no audio of any call.
+Tick **Record this test call** on the Test call page to hear afterwards how the call sounded (a voice that seemed to change, a long pause), which the transcript cannot show. The browser records the assistant and your microphone, mixed, with `MediaRecorder`, and shows "Recording on this computer" while it does. When the call ends, it saves itself to your Downloads folder (`attendra-test-call-YYYY-MM-DD-HHmm.webm`, or `.m4a` in Safari), whichever page of the clinic is open, and the page says "Saved to your Downloads" with **Save again**. If the browser refuses a download nobody clicked (Safari and Firefox may), the page says so and offers **Save the recording**. Until it is saved, reloading or closing the tab, opening another clinic or signing out asks first. Nothing is uploaded: the recording never leaves the browser, and Attendra keeps no audio of any call.
 
 ## Limiting test-call time
 
@@ -56,6 +56,6 @@ pnpm db:test-call-limit --clinic clinic_demo_maple --minutes 10
 pnpm db:test-call-limit --clinic clinic_demo_maple --none
 ```
 
-The Test call page then shows the time left. A call starts only with at least 15 seconds left, and ends when the allowance runs out. The limit is kept outside the clinic's settings, so the people who edit those cannot raise it. `GET /api/v1/clinics/:clinicId/test-calls/allowance` answers `{ limitSeconds, usedSeconds }`.
+The Test call page then shows the time left. A call starts only with at least 15 seconds left, and ends when the allowance runs out. The limit is kept outside the clinic's settings, so the people who edit those cannot raise it. `GET /api/v1/clinics/:clinicId/test-calls/allowance` answers `{ limitSeconds, usedSeconds, perCallSeconds, callSeconds }`: `perCallSeconds` is the voice service's limit for one call (null when it cannot be reached) and `callSeconds` the smaller of that and the time left, which the Test call page shows before the call.
 
 A test call cannot be transferred, since there is no phone line to transfer. When the assistant would transfer, for an emergency or a caller asking for a person, it says the words, the transfer step is logged as failed, and the conversation goes on.

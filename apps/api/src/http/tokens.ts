@@ -41,6 +41,8 @@ export interface VoiceClient {
   /** `maxSeconds` shortens the call when the clinic has less test time left than the usual limit. */
   startTestCall(clinicId: string, userId: string, sdpOffer: string, maxSeconds?: number): Promise<{ callId: string; sdp: string; maxSeconds: number }>;
   endTestCall(clinicId: string, callId: string): Promise<void>;
+  /** The usual time limit for one test call, from the voice service's own config. Absent on a client that cannot ask. */
+  limits?(): Promise<{ maxSeconds: number }>;
   startSimulatedCall(clinicId: string, userId: string): Promise<{ callId: string }>;
   liveCalls(clinicId: string): Promise<LiveCallSummary[]>;
   /** The call's event stream, or null when it is not live. The body is Server-Sent Events. */

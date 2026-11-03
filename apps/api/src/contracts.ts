@@ -278,7 +278,15 @@ export const EmergencyReviewInput = z.object({
 export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
 /** A clinic's browser test-call time: its limit (null is none) and what its test calls have used. */
-export const TestCallAllowance = z.object({ limitSeconds: z.number().nullable(), usedSeconds: z.number() });
+export const TestCallAllowance = z.object({
+  /** The clinic's test-call time in all (null is no limit) and the seconds used so far. */
+  limitSeconds: z.number().nullable(),
+  usedSeconds: z.number(),
+  /** The voice service's usual limit for one test call; null when it cannot be reached. */
+  perCallSeconds: z.number().nullable(),
+  /** How long the next test call can last: the smaller of the per-call limit and the clinic's time left. Null with `perCallSeconds`. */
+  callSeconds: z.number().nullable(),
+});
 
 export const TaskQuery = z.object({
   status: z.enum(['open', 'done']).default('open'),

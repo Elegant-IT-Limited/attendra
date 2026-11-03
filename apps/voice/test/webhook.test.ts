@@ -371,6 +371,18 @@ describe('browser test calls', () => {
     expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id }, 'wrong')).statusCode).toBe(401);
   });
 
+  it('says its usual time limit for one call to the API only, from its own config', async () => {
+    const app = buildServer(deps({ internalToken: TOKEN, browserCallMaxSeconds: 600 }).d);
+    const limits = (token: string) => app.inject({ method: 'GET', url: '/internal/web-calls/limits', headers: { authorization: `Bearer ${token}` } });
+    expect((await limits(TOKEN)).json()).toEqual({ maxSeconds: 600 });
+    expect((await limits('wrong')).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/internal/web-calls/limits' })).statusCode).toBe(401);
+    await app.close();
+    const fallback = buildServer(deps({ internalToken: TOKEN }).d);
+    expect((await fallback.inject({ method: 'GET', url: '/internal/web-calls/limits', headers: { authorization: `Bearer ${TOKEN}` } })).json()).toEqual({ maxSeconds: 900 });
+    await fallback.close();
+  });
+
   it('refuses a time limit that would switch the limit off', () => {
     expect(() => buildServer(deps({ browserCallMaxSeconds: Number.NaN }).d)).toThrow('browserCallMaxSeconds');
     expect(() => buildServer(deps({ browserCallMaxSeconds: 0 }).d)).toThrow('browserCallMaxSeconds');
