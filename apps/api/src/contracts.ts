@@ -90,6 +90,8 @@ export const CallSummary = z.object({
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
   verified: z.boolean(),
+  /** A browser test call started as a number ("Call as"): its last four digits, for the same roles as the number; null otherwise. */
+  calledAsLast4: z.string().nullable(),
   /** The number's first call to this clinic (false on a browser test call); on the list only, not on one call's page. */
   firstCall: z.boolean().optional(),
   /** From the call's summary, once the worker has written it: codes only. */
@@ -275,8 +277,23 @@ export const EmergencyReviewInput = z.object({
   reviewerRole: z.string().trim().min(2, 'their role, like Veterinarian, DVM').max(60),
 });
 
-export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024) });
-export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number() });
+/**
+ * "Call as" on a browser test call: no caller ID (as before), a number from the clinic's
+ * records (needs patients:read too; the API reads the number, the browser never sees it),
+ * or a number typed (numbers only). The voice service treats it as the call's caller ID.
+ */
+export const CallAs = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('none') }),
+  z.object({ kind: z.literal('record'), patientId: z.uuid() }),
+  z.object({ kind: z.literal('typed'), number: z.string().trim().min(1, 'type a number').max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY) }),
+]);
+export type CallAs = z.infer<typeof CallAs>;
+export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024), callAs: CallAs.optional() });
+/** `calledAsLast4`: the last four digits of the number the call was started as; null without one. */
+export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number(), calledAsLast4: z.string().nullable().optional() });
+/** What "Call as" offers from the records: one row per household, "Jordan · …0123". Never the whole number. */
+export const TestCallNumbersQuery = z.object({ q: z.string().trim().max(100).default('') });
+export const TestCallNumbers = z.object({ numbers: z.array(z.object({ patientId: z.string(), label: z.string() })) });
 /** A clinic's browser test-call time: its limit (null is none) and what its test calls have used. */
 export const TestCallAllowance = z.object({
   /** The clinic's test-call time in all (null is no limit) and the seconds used so far. */
@@ -785,6 +802,7 @@ export type TextList = z.infer<typeof TextList>;
 export type TestCall = z.infer<typeof TestCall>;
 export type EmergencyReview = z.infer<typeof EmergencyReview>;
 export type TestCallAllowance = z.infer<typeof TestCallAllowance>;
+export type TestCallNumbers = z.infer<typeof TestCallNumbers>;
 export type TaskCount = z.infer<typeof TaskCount>;
 export type AuditEntry = z.infer<typeof AuditEntry>;
 export type AuditList = z.infer<typeof AuditList>;

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
+import { CALL_AS_FAILURES, type CallAs } from '@/lib/call-as';
 import { LEAVE_WARNING, mustWarnBeforeLeaving, type SavedRecording, saveRecording, startCallRecording } from '@/lib/call-recording';
 import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
 
@@ -60,7 +61,10 @@ interface TestCallState {
   micStopped: boolean;
   muted: boolean;
   simulated: Simulated | null;
-  start: () => Promise<void>;
+  /** `callAs`: start the call as a number ("Call as"); left out, with no caller ID. */
+  start: (callAs?: CallAs) => Promise<void>;
+  /** The last four digits of the number this call was started as, from the server; null with no caller ID. */
+  calledAsLast4: string | null;
   end: () => void;
   toggleMute: () => void;
   /** Puts the bar away once a stopped microphone has been read about. */
@@ -114,6 +118,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const [callId, setCallId] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [maxSeconds, setMaxSeconds] = useState<number | null>(null);
+  const [calledAsLast4, setCalledAsLast4] = useState<string | null>(null);
   const [simulated, setSimulated] = useState<Simulated | null>(null);
   const simulatedId = useRef<string | null>(null);
   const attempt = useRef<Attempt | null>(null);
@@ -182,14 +187,14 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     setTimeout(() => finish(a), 15_000); // no session.closed in time: end it through the API as well
   }, [finish]);
 
-  async function start() {
+  async function start(callAs?: CallAs) {
     if (attempt.current) return;
     const a: Attempt = { cancelled: false };
     attempt.current = a;
     setFailure(null); setMicNote(null); setMicStopped(false); setMuted(false); setCaptions([]); setCallId(null); setSeconds(0); setPhase('connecting');
-    setRemoteUp(false);
+    setRemoteUp(false); setCalledAsLast4(null);
     setSaved((old) => { if (old) URL.revokeObjectURL(old.url); return null; });
-    const fail = (key: string) => { setFailure(FAILURES[key] ?? FAILURES.voice_unavailable!); finish(a, 'idle'); };
+    const fail = (key: string) => { setFailure(FAILURES[key] ?? CALL_AS_FAILURES[key] ?? FAILURES.voice_unavailable!); finish(a, 'idle'); };
 
     try {
       a.mic = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
@@ -250,11 +255,12 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
       await peer.setLocalDescription(await peer.createOffer());
       await gathered(peer);
       if (a.cancelled) return;
-      const res = await api<TestCall>(`/clinics/${clinicId}/test-calls`, { method: 'POST', body: JSON.stringify({ sdp: peer.localDescription!.sdp }) });
+      const res = await api<TestCall>(`/clinics/${clinicId}/test-calls`, { method: 'POST', body: JSON.stringify({ sdp: peer.localDescription!.sdp, ...(callAs ? { callAs } : {}) }) });
       if (a.cancelled) return endRemote(res.callId); // ended while the call was starting
       a.callId = res.callId;
       setCallId(res.callId);
       setMaxSeconds(res.maxSeconds);
+      setCalledAsLast4(res.calledAsLast4 ?? null);
       await peer.setRemoteDescription({ type: 'answer', sdp: res.sdp });
     } catch (err) {
       if (a.cancelled) return;
@@ -372,7 +378,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   const value: TestCallState = {
     clinicId, phase, captions, callId, seconds, maxSeconds, micNote, micStopped, muted, simulated,
     start, end, toggleMute, dismiss: () => setMicStopped(false), startSimulated, endSimulated: () => endSimulated(), hangUpNow,
-    record, setRecord, recording, saved, savedAt: saved?.savedAt ?? null, saveAgain, markSaved, confirmLeave,
+    record, setRecord, recording, saved, savedAt: saved?.savedAt ?? null, saveAgain, markSaved, confirmLeave, calledAsLast4,
   };
 
   return (

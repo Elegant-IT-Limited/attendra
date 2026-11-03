@@ -88,12 +88,12 @@ export class GptLiveEngine implements VoiceEngine {
     this.voices.set(sessionId, clinic.voice);
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerId?: boolean } = {}) {
     // no retries: a retried create would be a second, billed session
     const session = this.session(clinic, now);
     const created = await this.client.live.create({
-      // no caller ID on a browser call: the voice asks the number the pet's profile is under itself (a clinic for people: the best number)
-      session: { ...session, instructions: `${session.instructions}\n${noCallerIdLine(clinic)}`, client: { data_channel: BROWSER_DATA_CHANNEL } },
+      // no caller ID on a browser call: the voice asks the number the pet's profile is under itself (a clinic for people: the best number); unless staff started it as a number ("Call as")
+      session: { ...session, instructions: opts.callerId ? session.instructions : `${session.instructions}\n${noCallerIdLine(clinic)}`, client: { data_channel: BROWSER_DATA_CHANNEL } },
       transport: { type: 'webrtc', sdp: sdpOffer },
     }, { timeout: 10_000, maxRetries: 0 });
     this.browser.add(created.session.id);

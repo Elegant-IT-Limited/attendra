@@ -83,6 +83,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `call.summary.written` | Wrote a call summary |
 | `call.taken_over` | Took over a live call |
 | `call.test.started` | Started a browser test call |
+| `call.test.called_as` | Started a browser test call as a number (its last four digits are on the call) |
 | `call.transcript.read` | Read a call transcript to summarise it |
 | `call.transcript.viewed` | Read a call transcript |
 | `call.transferred.<target>` | Transferred the call (<target>) |
@@ -103,6 +104,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `patient.created` | Added a patient |
 | `patient.identified` | Verified a caller |
 | `patient.lookups.rehashed` | Updated how patient names are matched |
+| `patient.phone.called_as` | Used a patient's number for a browser test call ("Call as") |
 | `patient.recent.viewed` | Looked at recent patients |
 | `patient.search.result` | Saw a patient in search results |
 | `patient.searched` | Searched for a patient |

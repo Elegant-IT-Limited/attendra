@@ -43,6 +43,16 @@ The browser's data channel is limited to what a page needs: it may send `session
 
 The call ends when you press End, when the page is closed (the page asks the API to end it if it cannot say so itself), at the time limit, or when the voice service loses its sideband for good (it reconnects a few times first): a browser would otherwise keep talking to a model with no tools behind it.
 
+## Call as a number
+
+By default a test call has no caller ID, and the assistant asks for a number when it needs one. **Call as** on the Test call page starts it as a number instead, so you can try what a known caller hears:
+
+- **No caller ID**: as before.
+- **A number from your records**: search by the owner's name or the last digits. Each number shows once, as the owner's first name and its last four digits ("Jordan · …0123"); the whole number never reaches the page. Needs permission to read patients as well as to make test calls.
+- **Type a number**: numbers only.
+
+The voice service then treats that number exactly as a phone call's caller ID, for this test call only: it reads the number's earlier calls and record, and does not tell the voice there is no caller ID. The call is still a browser test: it is never transferred and never sends a text. The call record keeps only the last four digits, shown as "Browser test, called as …ending 0123"; it does not count as a call from that number. The API checks the staff member and the clinic, resolves a record's number itself, and audits it (`patient.phone.called_as`, then `call.test.called_as` with the call). Only the voice service's internal route for browser calls reads it: a phone call's caller ID comes from the carrier, and nothing in a phone webhook can change it.
+
 ## Recording a test call
 
 Tick **Record this test call** on the Test call page to hear afterwards how the call sounded (a voice that seemed to change, a long pause), which the transcript cannot show. The browser records the assistant and your microphone, mixed, with `MediaRecorder`, and shows "Recording on this computer" while it does. When the call ends, it saves itself to your Downloads folder (`attendra-test-call-YYYY-MM-DD-HHmm.webm`, or `.m4a` in Safari), whichever page of the clinic is open, and the page says "Saved to your Downloads" with **Save again**. If the browser refuses a download nobody clicked (Safari and Firefox may), the page says so and offers **Save the recording**. Until it is saved, reloading or closing the tab, opening another clinic or signing out asks first. Nothing is uploaded: the recording never leaves the browser, and Attendra keeps no audio of any call.

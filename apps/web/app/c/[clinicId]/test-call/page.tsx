@@ -6,6 +6,7 @@ import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { CallAsPicker } from '@/components/calls/call-as';
 import { SimulatedCall } from '@/components/calls/simulated-call';
 import { FAILURES, useTestCall } from '@/components/calls/test-call';
 import { PageHeader } from '@/components/shell';
@@ -14,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
 import { Alert, Empty } from '@/components/ui/feedback';
 import { api, useClinic } from '@/lib/api';
+import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
 import { limitIsTimeLeft, testCallLimitLabel } from '@/lib/test-call-limit';
@@ -25,7 +27,9 @@ export default function TestCallPage() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { data: me, clinic, can } = useClinic(clinicId);
   // the call itself lives in the clinic's frame (TestCallProvider), so it keeps going on other pages; this page starts it and shows it
-  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved, savedAt, saveAgain, markSaved } = useTestCall();
+  const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved, savedAt, saveAgain, markSaved, calledAsLast4 } = useTestCall();
+  // "Call as": null while the choice is not finished
+  const [callAs, setCallAs] = useState<CallAs | null>(NO_CALLER_ID);
   const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
   // only in the browser, after the first render: the server cannot know, and the two must render the same
   const [recordable, setRecordable] = useState(false);
@@ -65,9 +69,10 @@ export default function TestCallPage() {
                   : <span data-testid="test-call-limit">{allowance.isPending ? '\u00a0' : testCallLimitLabel(allowance.data)}</span>}
               </p>
             </div>
+            <CallAsPicker clinicId={clinicId} canReadRecords={can('patients:read')} onChange={setCallAs} live={busy} calledAsLast4={calledAsLast4} />
             {busy
               ? <Button variant="danger" onClick={end} disabled={phase === 'ending'}><PhoneOff /> End call</Button>
-              : <Button onClick={() => void start()} disabled={noTime}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
+              : <Button onClick={() => void start(callAs ?? undefined)} disabled={!callAs || noTime}><Mic /> {phase === 'ended' ? 'Call again' : 'Start test call'}</Button>}
             {recordable && (
               <div className="w-full text-left">
                 <Checkbox id="record-test-call" checked={record} onCheckedChange={setRecord} label="Record this test call"

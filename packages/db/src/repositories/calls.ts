@@ -18,16 +18,22 @@ export class CallRepository {
   /**
    * `startedBy` is the staff member behind a browser test call: the audit row is
    * written in the same transaction, so no test call exists without one.
+   * `calledAsLast4` is the last four digits of the number a browser test call was
+   * started as ("Call as"): kept on the call and audited with it, never the number
+   * itself, and refused on anything but a browser test call.
    */
-  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string): Promise<string> {
+  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string, calledAsLast4?: string | null): Promise<string> {
+    if (calledAsLast4 && (channel !== 'web' || !startedBy || fromNumber)) throw new Error('only a browser test call is started as a number');
+    if (calledAsLast4 && !/^\d{4}$/.test(calledAsLast4)) throw new Error('called as: the last four digits only');
     return withClinic(this.db, clinicId, async (tx) => {
       const fromHash = fromNumber ? this.cipher.hash(callerKey(clinicId, fromNumber)) : null;
       const fromEnc = fromNumber ? this.cipher.encrypt(fromNumber, phiContext(clinicId, 'calls.from')) : null;
-      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel }).onConflictDoNothing().returning({ id: calls.id });
+      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel, calledAsLast4: calledAsLast4 || null }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
         await tx.insert(auditLogs).values(startedBy
           ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
           : { clinicId, actor: SYSTEM, action: 'call.opened', entity: 'call', entityId: row.id, callId: row.id });
+        if (calledAsLast4) await tx.insert(auditLogs).values({ clinicId, actor: `user:${startedBy}`, action: 'call.test.called_as', entity: 'call', entityId: row.id, callId: row.id });
         return row.id;
       }
       const [existing] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.openaiSessionId, openaiSessionId));

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { asE164, ClinicConfig, isE164, PHONE_NUMBERS_ONLY } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
-import { type Database, testCallAllowance } from '@attendra/db';
-import { Body, Controller, Get, HttpCode, HttpException, Inject, Param, Post } from '@nestjs/common';
+import { type Database, type FrontDeskRepository, type PatientRecords, testCallAllowance } from '@attendra/db';
+import { Body, Controller, ForbiddenException, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, UnprocessableEntityException } from '@nestjs/common';
 import { ApiAcceptedResponse, ApiBody, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { TestCall, TestCallAllowance, TestCallStart } from '../contracts';
+import { can } from '../access';
+import { type CallAs, TestCall, TestCallAllowance, TestCallNumbers, TestCallNumbersQuery, TestCallStart } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, DB, LOGGER, VOICE, type VoiceClient } from '../http/tokens';
+import { CLOCK, DB, FRONT_DESK, LOGGER, PATIENTS, VOICE, type VoiceClient } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 /** Under this much test time left, a call would end before it said anything useful. */
@@ -18,7 +20,35 @@ const MIN_TEST_SECONDS = 15;
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/test-calls')
 export class TestCallsController {
-  constructor(@Inject(VOICE) private readonly voice: VoiceClient | null, @Inject(LOGGER) private readonly log: Logger, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date) {}
+  constructor(@Inject(VOICE) private readonly voice: VoiceClient | null, @Inject(LOGGER) private readonly log: Logger, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(PATIENTS) private readonly records: PatientRecords, @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository) {}
+
+  /** A number from the records needs the records: a role that may not read patients may still type one. */
+  private mayReadRecords(staff: Staff) {
+    if (!staff.role || !can(staff.role, 'patients:read')) throw new ForbiddenException({ error: 'forbidden', message: `a ${staff.role ?? 'member'} cannot patients:read` });
+  }
+
+  /**
+   * The number a test call is started as, as E.164, or null for no caller ID. A record's
+   * number is read here, in this clinic only (another clinic's record is not found); a typed
+   * one must read as a whole number. Only browser test calls come through here: a phone
+   * call's caller ID is the carrier's, and nothing the API sends can change it.
+   */
+  private async callAs(clinicId: string, callAs: CallAs | undefined, staff: Staff): Promise<string | null> {
+    if (!callAs || callAs.kind === 'none') return null;
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    const clinic = ClinicConfig.parse(stored);
+    if (callAs.kind === 'record') {
+      this.mayReadRecords(staff);
+      const phone = await this.records.phoneOf(clinicId, callAs.patientId, staff.userId);
+      if (!phone) throw new NotFoundException({ error: 'not_found' });
+      return asE164(clinic, phone);
+    }
+    const number = asE164(clinic, callAs.number);
+    if (!isE164(number)) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'callAs.number', message: PHONE_NUMBERS_ONLY }] });
+    return number;
+  }
 
   private available(): VoiceClient {
     if (!this.voice) throw new HttpException({ error: 'voice_not_configured' }, 503);
@@ -44,20 +74,38 @@ export class TestCallsController {
   @Post()
   @HttpCode(201)
   @Requires('calls:test')
-  @ApiOperation({ summary: 'Start a test call from the browser (WebRTC). Audited.' })
+  @ApiOperation({ summary: 'Start a test call from the browser (WebRTC), with no caller ID or "as" a number from the records (needs patients:read) or typed. Audited.' })
   @ApiBody({ schema: schemaOf(TestCallStart) })
   @ApiCreatedResponse({ schema: schemaOf(TestCall) })
   async start(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TestCallStart)) body: z.infer<typeof TestCallStart>, @CurrentStaff() staff: Staff): Promise<TestCall> {
     const voice = this.available();
+    const callAs = await this.callAs(clinicId, body.callAs, staff);
     // a clinic with a test-call limit (a hosted trial) gets only the time it has left
     const { limitSeconds, usedSeconds } = await testCallAllowance(this.db, clinicId, this.now());
     const left = limitSeconds === null ? undefined : limitSeconds - usedSeconds;
     if (left !== undefined && left < MIN_TEST_SECONDS) throw new HttpException({ error: 'test_minutes_used' }, 403);
     try {
-      return await voice.startTestCall(clinicId, staff.userId, body.sdp, left);
+      const started = await voice.startTestCall(clinicId, staff.userId, body.sdp, left, callAs ? { callAs } : undefined);
+      return { ...started, calledAsLast4: callAs ? callAs.replace(/\D/g, '').slice(-4) : null };
     } catch (err) {
       this.failed(clinicId, err, 'start');
     }
+  }
+
+  /**
+   * The numbers on file a test call can be started as: one per household, "Jordan · …0123",
+   * never the whole number, at most 20. A POST, not a GET: what is typed can be a name, and
+   * URLs end up in logs. Audited like a patient search.
+   */
+  @Post('numbers')
+  @HttpCode(200)
+  @Requires('calls:test')
+  @ApiOperation({ summary: 'Numbers from the records for "Call as": the owner\'s first name and the last four digits, one per household, at most 20. Needs patients:read too. Audited.' })
+  @ApiBody({ schema: schemaOf(TestCallNumbersQuery) })
+  @ApiOkResponse({ schema: schemaOf(TestCallNumbers) })
+  async numbers(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TestCallNumbersQuery)) body: z.infer<typeof TestCallNumbersQuery>, @CurrentStaff() staff: Staff): Promise<TestCallNumbers> {
+    this.mayReadRecords(staff);
+    return { numbers: await this.records.callAsNumbers(clinicId, body.q, staff.userId, this.now()) };
   }
 
   /** How much browser test-call time the clinic has, when it has a limit (hosted trials do). */

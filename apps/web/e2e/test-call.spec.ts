@@ -215,3 +215,93 @@ test('the recording saves itself to Downloads when the call ends, asks before a 
   expect(askedAgain).toBe(false);
   expect(carried).toEqual([]);
 });
+
+// "Call as": the picker reads the demo's made-up records through the real API; the start request is answered here, so no call is placed.
+test('"Call as" offers numbers from the records by first name and last four digits, takes typed numbers only, and starts the call with the choice', async ({ browser }) => {
+  const starts: { callAs?: unknown }[] = [];
+  const page = await openAs(browser, 'frontdesk', async (p) => {
+    // a silent microphone made in the page: no device or permission prompt is needed for a call that is never placed
+    await p.addInitScript(() => {
+      navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+    });
+    await p.route('**/api/v1/me', async (route) => {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, json: { ...(await res.json()), testCalls: true } });
+    });
+    await p.route('**/api/v1/clinics/*/test-calls', async (route) => {
+      starts.push(route.request().postDataJSON() as { callAs?: unknown });
+      await route.fulfill({ status: 503, json: { error: 'voice_not_configured' } });
+    });
+  });
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/test-call`);
+  const callAs = page.getByLabel('Call as', { exact: true });
+  await expect(callAs).toHaveValue('none');
+  await expect(page.getByText('The assistant asks for a number when it needs one.')).toBeVisible();
+
+  // from the records: one row per household, the owner's first name and the last four digits, never the whole number
+  await callAs.selectOption({ label: 'A number from your records' });
+  const list = page.getByRole('listbox', { name: 'Numbers from your records' });
+  // before anything is typed, the newest records
+  await expect(list.getByRole('option').first()).toHaveText(/^\p{L}+ · …\d{4}$/u);
+  await expect(list).not.toContainText('555');
+  const start = page.getByRole('button', { name: 'Start test call' });
+  await expect(start).toBeDisabled(); // nothing picked yet
+  const find = page.getByPlaceholder('Owner name or last digits');
+  // Maria and her two children share one number: one row, under her name
+  await find.fill('Delgado');
+  await expect(list.getByRole('option')).toHaveText(['Maria · …0147']);
+  await find.fill('0147');
+  await expect(list.getByRole('option')).toHaveText(['Maria · …0147']);
+  await find.fill('whit');
+  await expect(list.getByRole('option')).toHaveText(['James · …0163']);
+  await list.getByRole('option', { name: 'James · …0163' }).click();
+  await expect(list.getByRole('option', { name: 'James · …0163' })).toHaveAttribute('aria-selected', 'true');
+  await start.click();
+  await expect(page.getByText('Test calls are not set up on this server.')).toBeVisible();
+  await expect.poll(() => starts.length).toBe(1);
+  expect(starts[0]!.callAs).toEqual({ kind: 'record', patientId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+  await page.keyboard.press('Escape');
+
+  // typed: letters are dropped as they come, with a note, and the number goes as typed (the server reads it)
+  await callAs.selectOption({ label: 'Type a number' });
+  const number = page.getByLabel('Number to call as');
+  await number.pressSequentially('303-555-O1');
+  await expect(page.getByText('Use numbers only, for example (555) 555-0123.')).toBeVisible();
+  await expect(number).toHaveValue('303-555-1');
+  await number.fill('');
+  await number.pressSequentially('303-555-0142');
+  await start.click();
+  await expect.poll(() => starts.length).toBe(2);
+  expect(starts[1]!.callAs).toEqual({ kind: 'typed', number: '303-555-0142' });
+  await page.keyboard.press('Escape');
+
+  // no caller ID: today's call, nothing sent
+  await callAs.selectOption({ label: 'No caller ID' });
+  await start.click();
+  await expect.poll(() => starts.length).toBe(3);
+  expect(starts[2]!.callAs).toEqual({ kind: 'none' });
+});
+
+// The badge: the last four digits are the server's (here a call the list is told was started as …0123).
+test('a browser test call started as a number says so on the calls list and the call\'s page', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk', async (p) => {
+    await p.route(/\/api\/v1\/clinics\/[^/]+\/calls(\?.*)?$/, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const res = await route.fetch();
+      const body = await res.json() as { calls: { id: string; channel: string; calledAsLast4: string | null }[] };
+      body.calls[0] = { ...body.calls[0]!, channel: 'web', calledAsLast4: '0123' };
+      await route.fulfill({ response: res, json: body });
+    });
+    await p.route(/\/api\/v1\/clinics\/[^/]+\/calls\/[0-9a-f-]{36}$/, async (route) => {
+      const res = await route.fetch();
+      await route.fulfill({ response: res, json: { ...(await res.json()), channel: 'web', calledAsLast4: '0123' } });
+    });
+  });
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/calls`);
+  await expect(page.getByText('Browser test, called as …ending 0123').first()).toBeVisible();
+  const calls = ((await (await page.request.get(`/api/v1/clinics/${clinic}/calls`)).json()) as { calls: { id: string }[] }).calls;
+  await page.goto(`/c/${clinic}/calls/${calls[0]!.id}`);
+  await expect(page.getByText('Browser test, called as …ending 0123')).toBeVisible();
+});

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
+import { testCallBadge } from '@/lib/call-as';
 import { requestNumber, clinicTime, clock, duration, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
@@ -85,7 +86,7 @@ export default function CallPage() {
         <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
           <Outcome outcome={c.outcome} emergency={c.emergency} />
           {allCancelled && <Badge tone="warn">Booking since cancelled</Badge>}
-          {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
+          {c.channel === 'web' && <Badge tone="accent">{testCallBadge(c.calledAsLast4)}</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
           {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
         </div>

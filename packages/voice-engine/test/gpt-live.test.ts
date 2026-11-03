@@ -33,6 +33,18 @@ describe('GptLiveEngine browser calls', () => {
     expect(BROWSER_DATA_CHANNEL.allowed_client_events).toEqual(['session.close']);
   });
 
+  it('leaves out the "no caller ID" line when staff started the browser call as a number ("Call as"), and nothing else changes', async () => {
+    const { client, create } = fakeClient();
+    const engine = new GptLiveEngine(client);
+    await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW);
+    await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW, { callerId: true });
+    const [plain, calledAs] = (create.mock.calls as unknown as [{ session: { instructions: string } & Record<string, unknown>; transport: unknown }][]).map((c) => c[0]);
+    expect(plain!.session.instructions).toContain(noCallerIdLine(DEMO_CLINIC));
+    expect(calledAs!.session.instructions).not.toContain('there is no caller ID');
+    expect(`${calledAs!.session.instructions}\n${noCallerIdLine(DEMO_CLINIC)}`).toBe(plain!.session.instructions);
+    expect(calledAs!.transport).toEqual(plain!.transport);
+  });
+
   it('tells GPT-Live to greet first on a phone call: a developer message at the start, and the same opening handed to the runner once, to send when the session starts', async () => {
     const { client, sessions } = fakeClient();
     const sockets = fakeSockets();

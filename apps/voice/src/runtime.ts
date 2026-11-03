@@ -89,7 +89,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     claimDelivery: (id) => claimDelivery(db, id, 'openai'),
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
-    openCall: (clinicId, sessionId, from, channel, startedBy) => calls.open(clinicId, sessionId, from, channel, startedBy),
+    openCall: (clinicId, sessionId, from, channel, startedBy, calledAsLast4) => calls.open(clinicId, sessionId, from, channel, startedBy, calledAsLast4),
     // the earlier calls from this number, and the one first name on file for it, as a front desk's caller ID shows
     historyFor: async (clinicId, from, callId) => {
       const [calls, name] = await Promise.all([summaries.historyFor(clinicId, from, callId), directory.nameOnFile(clinicId, from, callId)]);

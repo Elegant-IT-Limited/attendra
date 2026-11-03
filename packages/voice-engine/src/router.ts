@@ -39,9 +39,9 @@ export class EngineRouter implements VoiceEngine {
     return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now, opening);
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerId?: boolean } = {}) {
     const engine = this.engineFor(clinic);
-    const started = await engine.startBrowserCall(clinic, sdpOffer, now);
+    const started = await engine.startBrowserCall(clinic, sdpOffer, now, opts);
     this.bySession.set(started.sessionId, engine);
     return started;
   }

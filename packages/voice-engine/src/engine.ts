@@ -14,9 +14,10 @@ export interface VoiceEngine {
   /**
    * Starts a conversation with a browser instead of a phone: takes the browser's
    * WebRTC offer, returns the session id and the answer for the browser to apply.
-   * The session is then attached and run exactly like a phone call.
+   * The session is then attached and run exactly like a phone call. `callerId`: staff
+   * started it as a number ("Call as"), so it has caller ID like a phone call.
    */
-  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date): Promise<{ sessionId: string; sdpAnswer: string }>;
+  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts?: { callerId?: boolean }): Promise<{ sessionId: string; sdpAnswer: string }>;
   reject(sessionId: string, sipStatus: number): Promise<void>;
   attach(sessionId: string): Sideband;
   transfer(sessionId: string, targetUri: string): Promise<void>;
