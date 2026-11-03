@@ -113,6 +113,11 @@ export class CallState {
   /** The clinic's assistant is paused (its plan): the caller hears a short line and goes to the team, or the call ends. */
   answeringPaused = false;
   /** A request for the team (a callback, a refill) was made on this call. */
+  /**
+   * The animal an emergency is about, as far as the call knows it (its name, its kind): after the script, a routine
+   * visit for it is still refused, while another pet's needs are answered as usual (2026-11-15).
+   */
+  emergencyPet: { name: string | null; species: string | null } | null = null;
   requestMade = false;
   /** How often the assistant was told to make the callback it had promised. */
   promiseNudges = 0;

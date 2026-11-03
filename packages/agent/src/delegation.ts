@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { bySubject, claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -169,7 +169,10 @@ export class CallAgent {
     // the trade's own emergencies (an animal in danger) are checked too, before the engine's
     const trade = industryPack(clinic.industry);
     if (this.state.emergencyLocked) this.sinceLock = `${this.sinceLock} ${delta}`.slice(-400);
-    let fresh = detectEmergencies(this.state.recentCallerText(), trade.emergency?.phrases).filter((m) => !this.state.emergencyKinds.has(m.kind));
+    // who a red flag is about: at a clinic for animals, the person list's words mean a person in danger only when a person is their subject
+    const recent = this.state.recentCallerText();
+    const heard = detectEmergencies(recent, trade.emergency?.phrases);
+    let fresh = (trade.emergency?.subjects ? bySubject(heard, recent, trade.emergency.subjects, this.petNames()) : heard).filter((m) => !this.state.emergencyKinds.has(m.kind));
     // At a clinic for animals an emergency is decided by its signs, not the word: "she had an emergency last week",
     // "after her emergency surgery", "the emergency doctor" are not one. The word alone gets one short question
     // ("Is Ginger in danger right now?"), and only a yes holds the call (two test calls were stuck on the word).
@@ -191,6 +194,7 @@ export class CallAgent {
 
     for (const m of fresh) this.state.emergencyKinds.add(m.kind);
     this.state.emergency ??= { kind: match.kind, atMs: endMs };
+    if (trade.emergency && (isPetEmergency(match.kind) || match.kind === 'general')) this.state.emergencyPet = this.petInDanger(recent, match);
     this.state.outcome = 'emergency';
     this.state.pending = null; // nothing half-booked survives an emergency
     this.state.textOffer = null; // nor a text offered before it
@@ -245,6 +249,23 @@ export class CallAgent {
     const text = normalise(this.sinceLock);
     if (!this.ctx.clinic.languages.some((l) => saidSafe(text, safe[l]))) return [];
     return this.clearEmergency();
+  }
+
+  /** The pets this call has named: the ones on the number, the one being talked about, the one found. */
+  private petNames(): string[] {
+    const s = this.state;
+    return [...new Set([...s.memory.pets, s.memory.get('petName'), s.verifiedPatient?.firstName, s.known.get('pet\'s name')].filter((n): n is string => !!n))];
+  }
+
+  /** The animal an emergency is about: a pet of the call's named before the red flag (else the one being talked about), and its kind as the call knows it. */
+  private petInDanger(recent: string, match: { phrase: string; at?: number }): { name: string | null; species: string | null } {
+    const s = this.state;
+    const said = normalise(recent);
+    const before = said.slice(0, match.at ?? said.length);
+    const named = this.petNames().map((n) => ({ n, at: before.lastIndexOf(normalise(n)) })).filter((x) => x.at >= 0).sort((a, b) => b.at - a.at)[0]?.n;
+    const name = named ?? s.memory.get('petName') ?? s.verifiedPatient?.firstName ?? null;
+    const found = s.verifiedPatient && name && s.verifiedPatient.firstName === name ? s.verifiedPatient.species ?? null : null;
+    return { name, species: found ?? s.memory.get('species') ?? null };
   }
 
   /** The caller's words since an emergency held the call: what may lift it. */

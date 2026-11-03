@@ -212,6 +212,7 @@ export const en: LanguagePack = {
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
     noTransfer: 'I can\'t put you through right now, but I\'ll have the team call you back. What\'s it about?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Let me check ${day}${/\d$/.test(day) ? ',' : ''} for you.`
+    urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
       : kind === 'times' ? 'One moment, I\'ll look at the times.'
       : kind === 'pet' && pet ? `Let me find ${pet}.`
       : kind === 'visits' && pet ? `Let me look at ${pet}'s visits.`
@@ -238,6 +239,9 @@ export const en: LanguagePack = {
     `"If this is a medical emergency, please hang up and call ${n} right away." ` +
     'Do not give medical advice, do not ask about symptoms, and do not continue booking. ' +
     'If the caller says they are safe and it is not an emergency, you may continue.',
+  petEmergencyNext: ({ pet, transfer }) => `I can't book a routine visit for ${pet ?? 'your pet'} while this is going on. ${transfer
+    ? 'I can put you through to our team right now. Would you like that?'
+    : 'I can send our team an urgent message to call you back as soon as they can. Would you like that?'}`,
   selfHarmScript: (n, crisis) =>
     'The caller may be at risk of harming themselves. Stop the current task. Say, calmly and kindly: ' +
     `"I'm really glad you called. If you are in danger right now, please call ${n}.` +
@@ -251,7 +255,7 @@ export const en: LanguagePack = {
     ['unresponsive', /\b(unconscious|passed out|not (waking|responding)|unresponsive|seizure|fitting)\b/],
     ['self_harm', /\b(kill (myself|me)|end (it all|my life)|suicid(e|al)|hurt myself|(don'?t|do not) (really |even )?want to (live|be alive|be here)( anymore)?|better off dead)\b/],
     ['overdose', /\b(overdos(e|ed|es|ing)|took too (many|much)|took a (whole|full) bottle|swallowed (a bottle|the whole|bleach|poison)|poison(ed|ing|ous)?|drank (bleach|poison))\b/],
-    ['allergic', /\b(throat (is )?(closing|swelling)|anaphyla(xis|ctic)|tongue (is )?swelling)\b/],
+    ['allergic', /\b(throat (is )?(closing|swelling|swollen)|anaphyla(xis|ctic)|tongue (is )?(swelling|swollen))\b/],
     ['general', /\b(emergency|call (an )?ambulance|911)\b/],
   ],
   // also a question about emergencies, not a report of one: "is this an emergency?", "what counts as an emergency?"

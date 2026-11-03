@@ -67,6 +67,24 @@ const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'p
 // after an emergency the only things left to do are to hand the caller to a person
 // (send_text narrows itself: in an emergency, only the hospital's details)
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
+/**
+ * Whether a tool, after an animal's emergency script, is about the pet in danger: its routine visit stays refused. Finding
+ * a pet is never refused (it may be another one, or the one a request is for); the rest is about the pet found or being
+ * talked about, which counts as another pet only when its name, or else its kind, differs from the one in danger. When the
+ * call cannot tell, it is the same pet.
+ */
+function aboutPetInDanger(name: ToolName, args: Record<string, unknown>, state: CallState): boolean {
+  if (name === 'verify_caller') return false;
+  const danger = state.emergencyPet;
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const pet = name === 'register_patient' ? { name: text(args.pet_name), species: text(args.species) }
+    : state.verifiedPatient ? { name: state.verifiedPatient.firstName, species: state.verifiedPatient.species ?? null }
+      : { name: state.memory.get('petName') ?? null, species: state.memory.get('species') ?? null };
+  if (!danger) return true;
+  if (danger.name && pet.name) return soundsLike(danger.name, pet.name);
+  if (danger.species && pet.species) return danger.species.toLowerCase() === pet.species.toLowerCase();
+  return true;
+}
 /** Texts the assistant may send on one call after a yes. Confirmations do not count. */
 export const MAX_TEXTS_PER_CALL = 3;
 /** The assistant's own words that offered a text: "I can text you…", "…por mensaje". */
@@ -239,13 +257,18 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
     if (trade.identity !== 'pet') return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic, state.language)}.`);
-    // the hospital is said once, never looped: a caller still asking for a booking after it is asked, once, whether the
-    // animal is in danger now; their no lets the call go on (two test calls repeated the hospital four times and never booked)
+    // where to take the animal comes first, and is said once (two test calls repeated the hospital four times)
     if (!state.emergencyScriptSaid) return refuse('emergency_in_progress', 'Do not continue the task yet. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
-    state.dangerQuestion ??= { atMs: state.lastMs(), askedAtMs: null, answered: false };
-    return refuse('emergency_in_progress', state.dangerQuestion.answered
-      ? 'The caller already heard where to take the animal: do not say it again. Do not continue the task: offer a callback from the team, or ask if there is anything else.'
-      : 'The caller already heard where to take the animal: do not say it again. Ask once, in one short sentence, whether the animal is in danger right now, like trouble breathing, bleeding or a collapse. If they say no, the call goes on and you can help with their request.');
+    // After the pet warning has been said once, never a loop (Vetra, 2026-11-03): finding who they are and another pet's
+    // needs go on as usual; a routine visit for the pet in danger stays refused, with the next step, the team now or an
+    // urgent request for them. The hospital again only when the caller asks for it.
+    if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) {
+      const pet = state.emergencyPet?.name ?? null;
+      const transfer = resolveTransfer(ctx.clinic, 'front_desk', ctx.now()).ok && isOpen(ctx.clinic, ctx.now());
+      return refuse('emergency_in_progress', `The caller already heard where to take the animal: do not say it again unless they ask where to go. No routine visit for ${pet ?? 'this pet'} can be booked on this call. Say, in these words: "${PACKS[state.language].petEmergencyNext({ pet, transfer })}" `
+        + (transfer ? 'On a yes, call transfer_call with front_desk. ' : 'On a yes, call create_callback with what they want and the best number: the team gets it as urgent. ')
+        + 'A question about another pet is answered as usual.');
+    }
   }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
@@ -869,8 +892,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };
       await emit({ type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'callback', patientId: state.verifiedPatient?.id ?? null, callId: ctx.callId } });
-      // in an emergency the script around the callback is the model's; otherwise the request taken is the whole answer
-      return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: !!ctx.callerNumber && samePhone(callback, ctx.callerNumber, clinic) }) }) } };
+      // in a person's emergency the script around the callback is the model's; after an animal's script, the urgent request
+      // taken is the answer; otherwise the request taken is the whole answer
+      const afterPetScript = state.emergencyLocked && trade.identity === 'pet' && state.emergencyScriptSaid;
+      return { ok: true, data: { task_id: task.id, ...(state.emergencyLocked ? { urgent: true } : {}),
+        ...(afterPetScript ? { spoken: pack.spoken.urgentRequestTaken } : state.emergencyLocked ? {} : { spoken: pack.spoken.callbackTaken({ sameNumber: !!ctx.callerNumber && samePhone(callback, ctx.callerNumber, clinic) }) }) } };
     }
 
     case 'set_reminder_consent': {
@@ -884,6 +910,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       await backend.patients.setTextConsent!(clinic.id, offer.patientId, ctx.callId);
       state.verifiedPatient!.textsOk = true;
+        // taken while an emergency holds the call: urgent, so it leads the Requests page and Today
+        ...(state.emergencyLocked ? { urgent: true } : {}),
       return { ok: true, data: { reminders: true, say: 'Say they will get a reminder text before the visit.', spoken: pack.spoken.reminders({ agreed: true }) } };
     }
 

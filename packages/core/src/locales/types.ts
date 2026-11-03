@@ -164,6 +164,12 @@ export interface LanguagePack {
    */
   returnedCallLine: (v: { clinic: string }) => string;
   /**
+   * After an animal's emergency script, to a caller who still wants a visit for that pet or asks for something: no
+   * routine visit for it on this call, and the next step, the team now (`transfer`: a line takes calls and the clinic is
+   * open) or an urgent request. `pet`: its name, or null. The hospital is never said again unless they ask.
+   */
+  petEmergencyNext: (v: { pet: string | null; transfer: boolean }) => string;
+  /**
    * The backend's own words for the caller, spoken as they are when a tool's result is the whole answer, so the model is
    * not asked again (2026-11). Each ends with the next question when one follows (the reminder offer, anything else?).
    */
@@ -192,6 +198,8 @@ export interface LanguagePack {
     noTransfer: string;
     /**
      * Said the moment the backend starts a lookup, so the caller never waits in silence: what it is doing, in a few
+    /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
+    urgentRequestTaken: string;
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
      */
     lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits' | 'number'; day?: string | null; pet?: string | null }) => string;

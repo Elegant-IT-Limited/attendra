@@ -231,6 +231,7 @@ export const es: LanguagePack = {
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
     noTransfer: 'Ahora mismo no puedo pasarle con nadie, pero pediré que el equipo le llame. ¿De qué se trata?',
     lookingUp: ({ kind, day, pet }) => kind === 'times_on' && day ? `Déjeme revisar ${day === 'hoy' || day === 'mañana' ? day : `el ${day}`}.`
+    urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
       : kind === 'times' ? 'Un momento, reviso los horarios.'
       : kind === 'pet' && pet ? `Déjeme buscar a ${pet}.`
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
@@ -257,6 +258,9 @@ export const es: LanguagePack = {
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +
     'Do not give medical advice, do not ask about symptoms, and do not continue booking. ' +
     'If the caller says they are safe and it is not an emergency, you may continue.',
+  petEmergencyNext: ({ pet, transfer }) => `Ahora mismo no puedo reservar una visita de rutina para ${pet ?? 'su mascota'}, con lo que está pasando. ${transfer
+    ? 'Le puedo pasar con nuestro equipo ahora mismo. ¿Quiere?'
+    : 'Puedo enviarle a nuestro equipo un mensaje urgente para que le llamen lo antes posible. ¿Quiere?'}`,
   selfHarmScript: (n, crisis) =>
     'The caller may be at risk of harming themselves. Stop the current task. Say, in Spanish, calmly and kindly: ' +
     `"Me alegra mucho que haya llamado. Si está en peligro ahora mismo, llame al ${n}.` +
@@ -272,7 +276,7 @@ export const es: LanguagePack = {
     ['self_harm', words('suicid(io|arme|arse|a)|matarme|quitarme la vida|no quiero (vivir|seguir viviendo)|hacerme dano|mejor (estaria )?muert[oa]')],
     // "se tomó" only with what was taken: "se tomó el día libre" is not an emergency
     ['overdose', words('sobredosis|veneno|envenenad[oa]|(me tome|tome|se tomo) (demasiad[oa]s?|tod[oa]s?|todas las pastillas|las pastillas|el frasco|un frasco|una botella|veneno|lejia|cloro|algo)')],
-    ['allergic', words('se me (esta )?cerrando la garganta|(se me )?cierra la garganta|anafilaxia|lengua hinchada')],
+    ['allergic', words('se (me|le) (esta )?(cerrando|hinchando) la garganta|(se (me|le) )?cierra la garganta|garganta hinchada|anafilaxia|lengua hinchada')],
     ['general', words('emergencia|(llame|llamen|necesito) una ambulancia|ambulancia')],
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),

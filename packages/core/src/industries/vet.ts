@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
-import type { PetEmergencyKind } from '../emergency';
+import type { PetEmergencyKind, SubjectWords } from '../emergency';
 import { B, E, PACKS } from '../locales';
 import { PROPOSE_IF_EXACT } from '../tool-notes';
 import type { EmergencyDestination, IndustryPack } from './types';
@@ -51,6 +51,26 @@ const ES: [PetEmergencyKind, RegExp][] = [
   ['pet_birth', near('horas|mucho tiempo|todo el dia|toda la noche', 'de parto|pariendo|dando a luz|empujando', 20)],
   ['pet_birth', w('(?:cachorro|gatito) (?:atorado|atascado)')],
 ];
+
+/**
+ * Who a red flag is about (bySubject): the caller themselves, another person, or an animal. A pet or a person counts when
+ * it is someone's ("my dog", "the cat", "her son"), not in passing ("bitten by a dog"). Words like "baby", "boy" and
+ * "girl" are left out: owners call their pets that.
+ */
+const SUBJECTS: Partial<Record<'en' | 'es', SubjectWords>> = {
+  en: {
+    firstPerson: /(?:^|[^\p{L}'])(?:i|i'?m|im|i am|i'?ve|ive|i have|i got|i feel|me|my)(?: (?:having|getting|got|feeling|been|really|just|also|kind of|some|a|bad|real|this|so|starting to|started))*\s*$/u,
+    firstPersonPhrase: w("i|i'?m|me|my|myself"),
+    person: w("(?:my|our|his|her|their|the|a|your) (?:husband|wife|son|daughter|kid|kids|child|children|mom|mother|mum|dad|father|partner|boyfriend|girlfriend|friend|grandma|grandmother|grandpa|grandfather|brother|sister|neighbou?r|roommate|coworker|man|woman|person|family)|someone|somebody"),
+    pet: w("(?:my|our|his|her|their|the|this|your) (?:\\p{L}+ )?(?:dog|doggy|doggie|pup|puppy|cat|kitty|kitten|pet|rabbit|bunny|bird|parrot|budgie|hamster|guinea pig|ferret|horse|pony|lizard|snake|turtle|tortoise|goat|animal)(?:'s|s)?"),
+  },
+  es: {
+    firstPerson: /(?:^|[^\p{L}])(?:yo|me|mi)\s*$/u,
+    firstPersonPhrase: w('me|mi|puedo|estoy|tome'),
+    person: w('(?:mi|mis|nuestr[oa]s?|su|sus|el|la|un|una) (?:esposo|esposa|marido|mujer|hij[oa]s?|nin[oa]s?|mama|madre|papa|padre|abuel[oa]|herman[oa]|novi[oa]|amig[oa]|pareja|vecin[oa]|persona|senor|senora)|alguien'),
+    pet: w('(?:mi|mis|nuestr[oa]s?|su|sus|el|la|este|esta) (?:perr[oa]s?|perrit[oa]s?|cachorr[oa]s?|gat[oa]s?|gatit[oa]s?|mascotas?|conej[oa]s?|pajar[oa]s?|loro|hamster|huron|caballo|tortuga|animal(?:ito)?)'),
+  },
+};
 
 function script(language: 'en' | 'es', to: EmergencyDestination): string {
   const h = to.hospital;
@@ -140,6 +160,7 @@ export const vet: IndustryPack = {
     phrases: { en: EN, es: ES },
     script: (language, to) => script(language, to),
     safe: {
+    subjects: SUBJECTS,
       en: w("not an? emergency|isn'?t an emergency|no emergency|not urgent|forget (?:about )?(?:it|this|that)|never ?mind|(?:he|she|it|they)(?:'?s| is| are|'?re) not (?:hurt|injured|in danger|bleeding|sick)|(?:he|she|it|they) (?:isn'?t|aren'?t|wasn'?t) (?:hurt|injured|in danger)|nothing (?:is )?wrong|(?:he|she|it|they)(?:'?s| is| are|'?re) (?:fine|ok|okay|alright|all right|safe|doing (?:fine|well|ok|okay|great)|totally fine|completely fine)(?: now)?|(?:he|she|it|they) seems? (?:fine|ok|okay|alright|all right)"),
       es: w('no es (?:una )?emergencia|no es urgente|olvide?lo|olvidese|no esta (?:herid[oa]|lastimad[oa]|en peligro)|no le pasa nada|(?:ya )?esta (?:bien|perfecto|tranquilo|tranquila)|(?:el|ella) esta bien'),
     },

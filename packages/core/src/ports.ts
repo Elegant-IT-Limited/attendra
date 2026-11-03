@@ -127,6 +127,8 @@ export interface TaskQueue {
 export interface AuditLog {
   record(clinicId: string, entry: { actor: string; action: string; entity: string; entityId: string | null; callId?: string }): Promise<void>;
 }
+    /** Leads the Requests page and Today: a request taken while an emergency holds the call. */
+    urgent?: boolean;
 
 export type SmsTemplate = keyof LanguagePack['sms'];
 /** Why a text did not go: refused before the carrier, or refused by it. */
