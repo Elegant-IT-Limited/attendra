@@ -1,0 +1,33 @@
+id: vet-memory-name-and-day-early
+title: "Call memory: the pet and the day said in the first sentence (\"for Pepper, on Thursday\") are kept; the times come from Thursday with no question about the day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, memory, jordan-household]
+facts: "You are Jordan Avery, calling from the number on file. Your cat Pepper needs a check-up on Thursday; any vet and any time that day are fine. Take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, this is for Pepper. I'd like to bring her in for a check-up on Thursday.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes, it is.
+    reply: "I found Pepper, your cat. I have {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Pepper, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Pepper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-01"
+  not_offered_on: ["2026-09-28", "2026-09-29", "2026-09-30"]
+  spoken_contains: ["Thursday, October 1"]
+  returned: ["I found Pepper, your cat."]
+forbid_spoken: ["which day", "what day", "who is this for", "your name"]

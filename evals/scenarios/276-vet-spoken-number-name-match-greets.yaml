@@ -1,0 +1,48 @@
+id: vet-spoken-number-name-match-greets
+title: "A spoken number (a browser test call): read back, then \"And your name?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, record, household, jordan-household]
+facts: "This is a test call from the browser, so there is no caller ID. You are Jordan Avery. The number on file is 303 555 0142. Your dog Biscuit needs a check-up. Give your first name only when asked. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up for one of my pets.
+    reply: "Sure. What phone number is your pet's profile under?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: 303 555 0142.
+    reply: "That's 303-555-0142?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
+  - assistant: "That's 303-555-0142?"
+  - caller: Yes, that's right.
+    reply: "And your name?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
+  - caller: Jordon.
+    reply: "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: Jordon, pet_name: null, phone: "303 555 0142" }
+  - caller: Biscuit.
+    reply: "I found Biscuit, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Jordon, pet_name: Biscuit, phone: "303 555 0142" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required, confirm_number, owner_check]
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["And your name?", "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"]
+  appointment_note_empty: true
+forbid_spoken: ["best number", "I don't have your name"]

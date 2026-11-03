@@ -1,0 +1,40 @@
+id: vet-no-caller-id-new-pet-number-wording
+title: "No caller ID (a browser test call), a new pet: the number is asked as the pet's profile number, never \"the best number\""
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, wording, new-pet]
+facts: "This is a test call from the browser, so there is no caller ID. You are Sam Rivera, new to the clinic. Your new kitten Nova, a girl, three months old, needs a first visit. Your number is 303 555 0187. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I have a new kitten, Nova. She's a girl, three months old. Can I book her first visit?
+    reply: "Sure. What phone number is your pet's profile under?"
+    delegate:
+      - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+  - caller: It's 303 555 0187.
+    reply: "And your first name?"
+    delegate:
+      - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0187" }
+  - caller: Sam.
+    reply: "Nova is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Nova, owner_name: Sam Rivera, species: null, sex: null, birthday_or_age: null, phone: "303 555 0187" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Nova is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [phone_required, owner_name]
+  bookings_created: 1
+  sms_sent: 0
+  spoken_contains: ["What phone number is your pet's profile under?"]
+  household: { phone: "+13035550187", names: [Nova] }
+  pet_on_file: { phone: "+13035550187", name: Nova, species: cat }
+forbid_spoken: ["best number", "mejor número", "what kind of animal"]

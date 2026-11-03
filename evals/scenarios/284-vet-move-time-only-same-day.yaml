@@ -1,0 +1,43 @@
+id: vet-move-time-only-same-day
+title: "Booked Wednesday at 5:30, then \"make it 4:30\": the move keeps Wednesday, and the read-back says both full dates"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, dates, move, jordan-household]
+facts: "You are Jordan Avery, calling from the number on file. Biscuit, your dog, needs a check-up on Wednesday at 5:30. Once it is booked, you ask to make it 4:30 the same day instead. Say yes to each read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up for Biscuit on Wednesday at 5:30.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit, your dog. I have {offered.0}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: The 5:30 one, please.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  - caller: Actually, can you make it 4:30 instead?
+    reply: "I have {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Yes, that one.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Done, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["from Wednesday, September 30, at 5:30 PM to Wednesday, September 30, at 4:30 PM"]
+forbid_spoken: ["October 7"]

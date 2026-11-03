@@ -1,0 +1,36 @@
+id: vet-known-number-new-pet-under-owner
+title: "Caller ID on a known number, and \"a new one\": the puppy is added under the owner on file, with no question about the owner's name"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, record, new-pet, jordan-household]
+facts: "You are Jordan Avery, calling from the number on file. Your new puppy Milo, a boy, three months old, needs a first visit. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I need to make an appointment.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: A new one. A puppy called Milo, he's a boy, three months old.
+    reply: "Milo is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Milo, owner_name: null, species: dog, sex: male, birthday_or_age: three months old, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Milo is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"]
+  returned: ["Milo is now registered"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Milo] }
+forbid_spoken: ["your name", "su nombre", "owner's first name", "I don't have your name"]

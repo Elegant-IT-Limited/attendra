@@ -1,0 +1,44 @@
+id: vet-es-move-time-only-same-day
+title: "Spanish: booked Wednesday at 5:30, then \"mejor a las 4:30\": the move keeps Wednesday, and the read-back says both full dates"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, dates, move, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu perro Biscuit necesita un chequeo el miércoles a las 5:30 de la tarde. Una vez reservada, pides cambiarla a las 4:30 el mismo día. Di sí a cada confirmación."
+turns:
+  - caller: Hola, quiero reservar un chequeo para Biscuit el miércoles a las 5:30 de la tarde.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí.
+    reply: "Encontré a Biscuit. Tengo {offered.0}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: La de las 5:30, por favor.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Biscuit queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿me la puede cambiar? Mejor a las 4:30.
+    reply: "Tengo {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Sí, esa.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["del miércoles 30 de septiembre a las 5:30 de la tarde al miércoles 30 de septiembre a las 4:30 de la tarde"]
+forbid_spoken: ["7 de octubre"]

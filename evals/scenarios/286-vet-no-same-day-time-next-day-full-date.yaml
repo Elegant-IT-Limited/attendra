@@ -1,0 +1,36 @@
+id: vet-no-same-day-time-next-day-full-date
+title: "Wednesday at 5 asked, and Wednesday has nothing at all (both vets away): the next day's times are said with their full date, Thursday, October 1"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, dates, jordan-household]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-30", to: "2026-09-30", note: conference }] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-30", to: "2026-09-30", note: conference }] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "You are Jordan Avery, calling from the number on file. Biscuit, your dog, needs a check-up on Wednesday at 5. If Wednesday has nothing, Thursday is fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, can I book a check-up for Biscuit on Wednesday at 5?
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit, your dog. There's nothing on Wednesday, September 30. {offered.0}, or {offered.1}?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: The first one is fine.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-01"
+  not_offered_on: ["2026-09-30"]
+  spoken_contains: ["Thursday, October 1"]

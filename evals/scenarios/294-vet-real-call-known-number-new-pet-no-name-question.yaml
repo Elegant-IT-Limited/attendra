@@ -1,0 +1,50 @@
+id: vet-real-call-known-number-new-pet-no-name-question
+title: "A real call, step 3 (made-up data): a browser test call called as a known number (Call as), \"a new pet\": greeted by name, never asked for the owner's name, the pet joins the owner's household; Wednesday at 5:20, booked, moved to 4:40 the same day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+channel: web
+tags: [no-demo, from-call, record, call-as, new-pet, jordan-household]
+facts: "This is a test call from the browser, called as the number on file. You are Jordan Avery. Your new kitten Nova, a girl, four months old, needs a first visit on Wednesday at 5:20; once it is booked, you ask to make it 4:40 the same day. Say yes to each read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: A new pet. A kitten called Nova, she's a girl, four months old. Wednesday at 5:20 would be great.
+    reply: "Nova is added. I have {offered.0}."
+    delegate:
+      - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: The 5:20, please.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Nova is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  - caller: Actually, can you make it 4:40 instead?
+    reply: "I have {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Yes, that one.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Done, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?", "to Wednesday, September 30, at 4:40 PM"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Nova] }
+  pet_on_file: { phone: "+13035550142", name: Nova, species: cat }
+forbid_spoken: ["your name", "owner's first name", "I don't have your name", "what kind of animal"]

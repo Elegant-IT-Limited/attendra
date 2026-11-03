@@ -1,0 +1,45 @@
+id: vet-real-call-time-taken-same-day-nearest-first
+title: "A real call, step 6 (made-up data): Wednesday at 5 is taken; the nearest times that same Wednesday are offered first, never another day; booked, then moved within the day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, from-call, dates, jordan-household]
+settings:
+  providers:
+    - { id: prov_ruiz, name: Dr. Elena Ruiz, gender: female, specialty: General practice, categories: [Dogs, Cats, Dentistry], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-30", to: "2026-09-30", start: "17:00", end: "17:30", note: team meeting }] }
+    - { id: prov_bell, name: Dr. Marcus Bell, gender: male, specialty: General practice, categories: [Dogs, Cats, Senior pets], visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_new], timeOff: [{ from: "2026-09-30", to: "2026-09-30", start: "17:00", end: "17:30", note: team meeting }] }
+    - { id: prov_sato, name: Dr. Hana Sato, gender: female, specialty: Exotic pets, categories: [Rabbits, Birds, Reptiles, Small mammals], visitTypeIds: [vt_wellness, vt_sick, vt_new], hours: { "2": [{ open: "08:00", close: "18:00" }], "4": [{ open: "08:00", close: "18:00" }] } }
+facts: "You are Jordan Avery, calling from the number on file. Biscuit, your dog, needs a check-up on Wednesday at 5. If 5 is taken, the nearest time that day is fine; once it is booked, you ask to move it to the other time offered that day. Say yes to each read-back."
+turns:
+  - caller: Hi, can I book a check-up for Biscuit on Wednesday at 5?
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit, your dog. There isn't a 5 o'clock opening on Wednesday, September 30; the nearest that day are {offered.0} and {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: The first one.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  - caller: Actually, could you move it to the other one that day?
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[1]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Done, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  not_offered_on: ["2026-10-01", "2026-10-02", "2026-10-05"]
+  spoken_contains: ["Nothing is free at exactly 17:00 on Wednesday, September 30; the nearest that day are"]
+forbid_spoken: ["Thursday, October 1"]

@@ -1,0 +1,51 @@
+id: vet-es-real-call-known-number-new-pet-no-name-question
+title: "Spanish, a real call, step 3 (made-up data): a browser test call called as a known number (Call as), \"una mascota nueva\": greeted by name, never asked for the owner's name, the pet joins the owner's household; Wednesday at 5:20, booked, moved to 4:40 the same day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+channel: web
+tags: [no-demo, from-call, record, call-as, new-pet, jordan-household, language, es]
+facts: "Es una llamada de prueba desde el navegador, como si llamara desde el número de la ficha. Eres Jordan Avery y hablas español. Tu gatita nueva Nova, hembra, de cuatro meses, necesita una primera consulta el miércoles a las 5:20 de la tarde; una vez reservada, pides cambiarla a las 4:40 el mismo día. Di sí a cada confirmación."
+turns:
+  - caller: Hola, quiero reservar un chequeo.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí.
+    reply: "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Una mascota nueva. Una gatita, Nova, es hembra y tiene cuatro meses. El miércoles a las 5:20 de la tarde sería perfecto.
+    reply: "Nova ya está registrada. Tengo {offered.0}."
+    delegate:
+      - register_patient: { pet_name: Nova, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: La de las 5:20, por favor.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Nova queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿me la puede cambiar? Mejor a las 4:40.
+    reply: "Tengo {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Sí, esa.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?", "al miércoles 30 de septiembre a las 4:40 de la tarde"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Nova] }
+  pet_on_file: { phone: "+13035550142", name: Nova, species: cat }
+forbid_spoken: ["su nombre", "your name", "no tengo su nombre", "qué tipo de animal"]

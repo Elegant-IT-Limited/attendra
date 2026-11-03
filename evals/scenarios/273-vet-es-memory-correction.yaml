@@ -1,0 +1,33 @@
+id: vet-es-memory-correction
+title: "Spanish: \"mi perro... no, perdón, es una gata\" is corrected in the same breath; the new pet is added as a cat"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, memory, new-pet, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu gata nueva Olive, hembra, de cuatro meses, necesita una primera consulta; es nueva en la clínica. Cualquier veterinario y cualquier hora te sirven; acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, necesito una primera consulta para mi perro. No, perdón, es una gata. Es una mascota nueva.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí. Se llama Olive y tiene cuatro meses.
+    reply: "Olive ya está registrada. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Olive, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Olive queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Olive is now registered"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Olive] }
+  pet_on_file: { phone: "+13035550142", name: Olive, species: cat }
+forbid_spoken: ["qué tipo de animal", "qué animal", "su nombre"]
