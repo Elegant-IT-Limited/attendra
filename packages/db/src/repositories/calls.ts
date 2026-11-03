@@ -150,3 +150,38 @@ export async function saveClinic(db: Database, orgId: string, config: { id: stri
     await db.execute(sql`insert into phone_numbers (e164, clinic_id) values (${n}, ${config.id}) on conflict (e164) do update set clinic_id = excluded.clinic_id`);
   }
 }
+
+/** One line of a call's transcript as timings only: who spoke, when on the call's audio timeline, and how many characters. Never the text. */
+export interface TimelineSegment { speaker: 'caller' | 'agent'; startMs: number; endMs: number; chars: number }
+
+/**
+ * A call's timeline, read-only, for timing the opening (2026-11): each stored line's speaker, start and end on
+ * the audio timeline, and its length in characters, decrypted in memory to count them and never returned. The
+ * clinic is found by trying each one in its own scope, as the tenancy rules require. Null when no clinic has the call.
+ */
+export async function callTimeline(db: Database, cipher: PhiCipher, callId: string): Promise<{ clinicId: string; channel: string; segments: TimelineSegment[] } | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) throw new Error('a call id is a UUID');
+  for (const { id: clinicId } of await db.select({ id: clinics.id }).from(clinics).orderBy(clinics.id)) {
+    const found = await withClinic(db, clinicId, async (tx) => {
+      const [call] = await tx.select({ channel: calls.channel }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call) return null;
+      const ctx = phiContext(clinicId, 'call_segments.text');
+      const rows = await tx.select({ speaker: callSegments.speaker, textEnc: callSegments.textEnc, startMs: callSegments.startMs, endMs: callSegments.endMs }).from(callSegments)
+        .where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId))).orderBy(callSegments.startMs, callSegments.id);
+      return { clinicId, channel: call.channel, segments: rows.map((r) => ({ speaker: r.speaker, startMs: r.startMs, endMs: r.endMs, chars: cipher.decrypt(r.textEnc, ctx).length })) };
+    });
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The timeline's printout: a header, then one line a segment with the gap since the line before it ended. No text. */
+export function formatCallTimeline(callId: string, t: { clinicId: string; channel: string; segments: TimelineSegment[] }): string[] {
+  const lines = [`call ${callId} · clinic ${t.clinicId} · ${t.channel} · ${t.segments.length} segments`, 'speaker start_ms end_ms chars gap_ms'];
+  let lastEnd: number | null = null;
+  for (const s of t.segments) {
+    lines.push(`${s.speaker} ${s.startMs} ${s.endMs} ${s.chars} ${lastEnd === null ? '-' : s.startMs - lastEnd}`);
+    lastEnd = lastEnd === null ? s.endMs : Math.max(lastEnd, s.endMs);
+  }
+  return lines;
+}
