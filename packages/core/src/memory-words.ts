@@ -91,7 +91,7 @@ export function extractFacts(text: string, lang: Language, opts: { today: string
   const move = lastIndex(t, words.intent.move);
   const cancel = lastIndex(t, words.intent.cancel);
   if (move >= 0 || cancel >= 0) out.intent = cancel > move ? 'cancel' : 'move';
-  else if (lastIndex(t, words.intent.book) >= 0) out.intent = 'book';
+  else if (lastIndex(t, words.intent.book) >= 0 || (lastIndex(t, words.intent.visit) >= 0 && lastIndex(t, words.intent.want) >= 0)) out.intent = 'book';
 
   const day = saidDay(t, lang, opts.today);
   if (day !== undefined) out.day = day;

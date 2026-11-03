@@ -106,7 +106,9 @@ export const en: LanguagePack = {
     age: /\b(\d{1,2}|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen)[ -](years?|months?|weeks?)[ -]old\b/g,
     numbers: { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, eighteen: 18 },
     intent: {
-      book: /\b(book|appointment|check-?up|come in|bring (?:him|her|them|it) in|see (?:a|the) vet|schedule)\b/g,
+      book: /\b(book|come in|bring (?:him|her|them|it) in|see (?:a|the) vet|schedule)\b/g,
+      visit: /\b(appointment|check-?up|visit|exam)\b/g,
+      want: /\b(need|needs|want|wants|wanted|like|get|make|due|have to|has to)\b/g,
       move: /\b(move|reschedule|change (?:it|the|my|that|his|her|our) (?:appointment|visit|time)|change it to|make it|another time instead)\b/g,
       cancel: /\b(cancel)\b/g,
     },

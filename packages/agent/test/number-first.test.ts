@@ -91,4 +91,11 @@ describe('the number question with caller ID', () => {
     const web = await w.call(null, { clinic, channel: 'web' });
     expect(web.caller('Hi, my dog needs a check-up.').filter((o) => o.type === 'instructions')).toEqual([]);
   });
+
+  it('waits for a visit to book, move or cancel: a price question gets no number question (live eval 2026-11-03)', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    const ins = (said: string) => c.caller(said).filter((o) => o.type === 'instructions').map((o) => o.content);
+    expect(ins('How long does a check-up take, and what does it cost?')).toEqual([]);
+    expect(ins('Okay, then I would like to book one for Biscuit.')).toHaveLength(1);
+  });
 });

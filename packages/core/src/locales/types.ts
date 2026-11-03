@@ -262,7 +262,8 @@ export interface MemoryWords {
   /** Number words, as the age is said: "two" to 2. */
   numbers: Record<string, number>;
   /** What the call is about. */
-  intent: { book: RegExp; move: RegExp; cancel: RegExp };
+  /** `book`: words that ask for a visit on their own; `visit` ("a check-up", "una cita") asks only next to a `want` word, so "how long does a check-up take" is a question, not a booking. */
+  intent: { book: RegExp; visit: RegExp; want: RegExp; move: RegExp; cancel: RegExp };
   /** Weekday names, Sunday first, and month names, January first, as matched (normalised). */
   weekdays: string[];
   months: string[];

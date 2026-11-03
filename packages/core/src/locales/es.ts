@@ -111,13 +111,16 @@ export const es: LanguagePack = {
       lagartija: 'lizard', serpiente: 'snake', tortuga: 'turtle',
     },
     female: /\b(hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada)\b/g,
-    male: /\b(macho|nino|castrado)\b/g,
+    // "mi perro", "mi gato": said of one's own pet, the masculine is a male (a female is "mi perra", "mi gata", the later word wins)
+    male: /\b(macho|nino|castrado|perro|perrito|gato|gatito|conejo|cachorro)\b/g,
     she: /\b(ella)\b/,
     he: /(?!)/,
     age: /\b(?:tiene|de)\s+(\d{1,2}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|dieciocho)\s+(anos?|mes(?:es)?|semanas?)\b/g,
     numbers: { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15, dieciocho: 18 },
     intent: {
-      book: /\b(cita|reservar|agendar|consulta|chequeo|revision|traerl[oa])\b/g,
+      book: /\b(reservar|agendar|traerl[oa]|traer)\b/g,
+      visit: /\b(cita|consulta|chequeo|revision)\b/g,
+      want: /\b(quiero|quisiera|necesito|necesita|gustaria|hacer|sacar|toca)\b/g,
       move: /\b(cambiar|mover|reprogramar|cambiela|cambiala|pasela|pasala|mejor a las)\b/g,
       cancel: /\b(cancelar|anular)\b/g,
     },

@@ -57,7 +57,21 @@ describe('what the call is about', () => {
     ['I need to reschedule', 'move'],
     ['I want to cancel the appointment', 'cancel'],
     ['I wanted to book, actually no, cancel it', 'cancel'],
+    ['Hi, my dog needs a check-up', 'book'],
+    ["I'd like an appointment for Biscuit", 'book'],
   ])('%s', (said, intent) => expect(en(said).intent).toBe(intent));
+  it('a question about a visit is not a booking (live eval 2026-11-03)', () => {
+    expect(en('How long does a check-up take, and roughly what does it cost?').intent).toBeUndefined();
+    expect(es('¿Cuánto dura una consulta y cuánto cuesta?').intent).toBeUndefined();
+    expect(es('Quiero una cita para Bolt').intent).toBe('book');
+    expect(es('quiero traer a mi perro por primera vez').intent).toBe('book');
+  });
+  it('"mi perro" is a male, "mi perra" a female; the later word wins', () => {
+    expect(es('quiero traer a mi perro').sex).toBe('male');
+    expect(es('mi perra Luna').sex).toBe('female');
+    expect(es('mi perro, bueno, es perra').sex).toBe('female');
+    expect(en('my dog needs a check-up').sex).toBeUndefined();
+  });
   it('Spanish', () => {
     expect(es('quiero hacer una cita').intent).toBe('book');
     expect(es('quiero cambiar la cita').intent).toBe('move');

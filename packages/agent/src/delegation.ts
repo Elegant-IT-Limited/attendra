@@ -152,6 +152,10 @@ export class CallAgent {
   private numberQuestion(): Outbound[] {
     const { clinic, callerNumber } = this.ctx;
     if (this.numberQuestionSent || !callerNumber || industryPack(clinic.industry).identity !== 'pet' || this.state.ending || this.state.emergencyLocked) return [];
+    // only once the caller has said they want a visit booked, moved or cancelled: handed over earlier, the voice asked it
+    // after a price question too (live eval 2026-11-03, vet-how-long-and-price); a later turn that says it sends it then
+    const intent = this.state.memory.get('intent');
+    if (intent !== 'book' && intent !== 'move' && intent !== 'cancel') return [];
     this.numberQuestionSent = true;
     const last4 = callerNumber.replace(/\D/g, '').slice(-4);
     return [{ type: 'instructions', delegationId: null, content: `The caller is calling from a number ending ${last4}. As soon as they want to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend, in these words: ${PACKS[this.state.language].profileNumberQuestion({ last4 })} Then hand their answer to the backend.` }];
