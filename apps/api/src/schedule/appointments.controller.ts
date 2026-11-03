@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, awayOn, BOOKING_LEAD_MINUTES, bookingOf, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, awayOn, bookingOf, DESK_LEAD_MINUTES, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -24,7 +24,7 @@ const REFUSED: Record<SlotProblem | 'cancelled' | 'just_cancelled', string> = {
   holiday: 'The clinic is closed that day. The front desk can squeeze it in with Override.',
   away: 'The provider is away then. The front desk can squeeze it in with Override.',
   past: 'That time has already passed.',
-  too_soon: `That time is less than ${BOOKING_LEAD_MINUTES / 60} hours away. The front desk can squeeze it in with Override.`,
+  too_soon: `That time starts in less than ${DESK_LEAD_MINUTES} minutes. The front desk can squeeze it in with Override.`,
   not_offered: 'This provider does not do that visit type.',
   unknown_provider: 'There is no such provider at this clinic.',
   unknown_visit_type: 'There is no such visit type at this clinic.',
@@ -108,7 +108,7 @@ export class AppointmentsController {
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
     // the grid and the lead time the times were found with, so the dialog says the same numbers
     return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString(), ...(s.outsideClinicHours ? { outsideClinicHours: true } : {}) })),
-      startEvery: bookingOf(clinic).startEvery, leadMinutes: BOOKING_LEAD_MINUTES };
+      startEvery: bookingOf(clinic).startEvery, leadMinutes: DESK_LEAD_MINUTES };
   }
 
   /**

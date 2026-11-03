@@ -48,11 +48,14 @@ export interface SlotQuery {
   startEvery?: number;
 }
 
-/**
- * How far ahead a booking must start, in minutes: the assistant's lead, and the dashboard's New booking dialog's, so
- * the desk never picks a time about to pass (2026-11-15). A walk-in sooner than that is the desk's Override.
- */
+/** How far ahead the assistant books, in minutes: no same-hour surprises for the front desk. */
 export const BOOKING_LEAD_MINUTES = 120;
+/**
+ * How far ahead the front desk books, in minutes: someone standing at the desk can take the 2:40, but not a time that
+ * has begun by the time it is picked and confirmed (2026-11-15: the New booking dialog offered a time already past).
+ * The dialog reads it from the slots API; a sooner walk-in is the desk's Override.
+ */
+export const DESK_LEAD_MINUTES = 5;
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 

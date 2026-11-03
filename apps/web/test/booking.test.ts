@@ -1,24 +1,25 @@
-import { BOOKING_LEAD_MINUTES, bookingOf, ClinicConfig, RIVERBEND_CLINIC } from '@attendra/core';
+import { bookingOf, ClinicConfig, DESK_LEAD_MINUTES, RIVERBEND_CLINIC } from '@attendra/core';
 import { describe, expect, it } from 'vitest';
 import { gridLabel, upcomingSlots, vetChoices } from '../lib/booking';
 import { outsideDesk } from '../lib/schedule-lanes';
 
 describe('the New booking dialog (2026-11-15)', () => {
-  it('hides times sooner than the lead time, the assistant\'s two hours, however long ago the list loaded', () => {
-    const now = new Date('2026-11-04T16:00:00Z');
+  it('at 10:00, hides 10:00 and 10:04 and shows 10:10: the desk\'s lead as the server sends it', () => {
+    // 10:00 AM in Denver. 10:04 is a real start when a vet's hours open at 10:04 (a window's opening is always a start,
+    // then the grid): it begins in under the desk's 5 minutes, so it is hidden like 10:00 itself
+    const now = new Date('2026-11-04T17:00:00Z');
     const at = (minutes: number) => ({ startsAt: new Date(now.getTime() + minutes * 60_000).toISOString() });
-    // the 10:00 AM offered at 10:20 (call 8.5): a time already past is never shown
-    expect(upcomingSlots([at(-20), at(30), at(119), at(120), at(180)], now)).toEqual([at(120), at(180)]);
-    expect(BOOKING_LEAD_MINUTES).toBe(120);
-    // the server's own lead wins when it sends one
-    expect(upcomingSlots([at(10), at(30)], now, 15)).toEqual([at(30)]);
+    const server = { leadMinutes: DESK_LEAD_MINUTES };
+    expect(upcomingSlots([at(-20), at(0), at(4), at(10), at(20)], now, server.leadMinutes)).toEqual([at(10), at(20)]);
+    // a list loaded at 9:50 that still holds 10:00 shows it no more at 10:00 (the 10:00 AM offered at 10:20)
+    expect(upcomingSlots([at(0)], now, server.leadMinutes)).toEqual([]);
   });
 
   it('says the grid and the lead the server used, word for word', () => {
-    const server = { startEvery: bookingOf(RIVERBEND_CLINIC).startEvery, leadMinutes: BOOKING_LEAD_MINUTES };
-    expect(gridLabel(server.startEvery, server.leadMinutes)).toBe('Start times every 10 minutes, from 2 hours from now. For a walk-in sooner than that, use Override.');
+    const server = { startEvery: bookingOf(RIVERBEND_CLINIC).startEvery, leadMinutes: DESK_LEAD_MINUTES };
+    expect(gridLabel(server.startEvery, server.leadMinutes)).toBe(`Start times every ${server.startEvery} minutes. Times starting in the next ${DESK_LEAD_MINUTES} minutes are not shown; for one sooner, use Override.`);
     const fifteen = bookingOf(ClinicConfig.parse({ ...RIVERBEND_CLINIC, booking: { startEvery: 15 } })).startEvery;
-    expect(gridLabel(fifteen)).toContain(`every ${fifteen} minutes`);
+    expect(gridLabel(fifteen, server.leadMinutes)).toContain(`every ${fifteen} minutes`);
   });
 
   it('lists every vet, greying out with why those who do not do the visit', () => {

@@ -107,7 +107,7 @@ test.describe.serial('the schedule', () => {
     await expect(block).toContainText(`${name} · ${time}`);
   });
 
-  test('New booking never offers a time sooner than the assistant\'s lead, and says the grid the server used (2026-11-15)', async ({ browser }) => {
+  test('New booking never offers a time sooner than the desk\'s lead, and says the grid and the lead the server sent', async ({ browser }) => {
     const page = await openAs(browser, 'frontdesk');
     await page.goto(`/c/${clinicOf(page)}/schedule`);
     await page.getByRole('button', { name: 'New booking' }).click();
@@ -117,7 +117,7 @@ test.describe.serial('the schedule', () => {
     const loaded = page.waitForResponse((r) => /\/appointments\/slots\?/.test(r.url()) && r.ok());
     await dialog.getByRole('button', { name: /James Whitaker/ }).click();
     const server = await (await loaded).json() as { slots: { startsAt: string }[]; startEvery: number; leadMinutes: number };
-    await expect(dialog.getByTestId('slot-grid')).toHaveText(`Start times every ${server.startEvery} minutes, from ${server.leadMinutes / 60} hours from now. For a walk-in sooner than that, use Override.`);
+    await expect(dialog.getByTestId('slot-grid')).toHaveText(`Start times every ${server.startEvery} minutes. Times starting in the next ${server.leadMinutes} minutes are not shown; for one sooner, use Override.`);
     // every time shown starts at least the lead time from now, on the suite's clock (E2E_CLOCK)
     const shown = await dialog.getByRole('radio').evaluateAll((els) => els.map((e) => e.getAttribute('data-starts-at')!));
     const earliest = testNow() + server.leadMinutes * 60_000;

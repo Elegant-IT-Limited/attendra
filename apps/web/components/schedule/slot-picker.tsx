@@ -43,7 +43,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
   });
   const byDay = new Map<string, SlotList['slots']>();
   // never a time sooner than the lead time, however long ago the list loaded (the desk was offered 10:00 AM at 10:20)
-  const shown = upcomingSlots(slots.data?.slots ?? [], new Date(), slots.data?.leadMinutes);
+  const shown = upcomingSlots(slots.data?.slots ?? [], new Date(), slots.data?.leadMinutes ?? 0);
   // earliest first within a day, whoever the provider: the search returns them provider by provider
   const sorted = [...shown].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.providerId.localeCompare(b.providerId));
   for (const s of sorted) {
@@ -63,7 +63,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
           Later <ChevronRight />
         </Button>
       </div>
-      {slots.data?.startEvery && <p className="text-xs text-text-muted" data-testid="slot-grid">{gridLabel(slots.data.startEvery, slots.data.leadMinutes)}</p>}
+      {slots.data?.startEvery && slots.data.leadMinutes !== undefined && <p className="text-xs text-text-muted" data-testid="slot-grid">{gridLabel(slots.data.startEvery, slots.data.leadMinutes)}</p>}
       {slots.isPending ? <Skeleton className="h-40" /> : slots.isError ? (
         <p className="text-sm text-danger">{isBusy(slots.error) ? BUSY : 'Open times did not load. Try again in a moment.'}</p>
       ) : byDay.size === 0 ? (

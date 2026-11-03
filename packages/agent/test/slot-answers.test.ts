@@ -1,4 +1,4 @@
-import { ClinicConfig, RIVERBEND_CLINIC } from '@attendra/core';
+import { BOOKING_LEAD_MINUTES, ClinicConfig, DESK_LEAD_MINUTES, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { systemPrompt } from '../src';
@@ -55,6 +55,18 @@ describe('a vet\'s own hours (item 1)', () => {
     const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'when is Dr. Vance in' } }]);
     const vance = (out.results[0]!.data.providers as { name: string; hours: string }[]).find((p) => p.name === 'Dr. Mara Vance')!;
     expect(vance.hours).toBe('Fri 09:00-13:00, 14:00-18:00; Sun 09:00-13:00');
+  });
+});
+
+describe('the lead time', () => {
+  it('at 10:00 the assistant offers nothing before 12:00, while the desk keeps its own 5 minutes', async () => {
+    const ten = zonedInstant('2026-09-29', '10:00', clinic.timezone);
+    const c = await w.call('+13035550190', { clinic, now: ten });
+    const out = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: 'prov_khan', from_date: '2026-09-29', part_of_day: 'any', from_time: null } }]);
+    const slots = out.results[0]!.data.slots as { when: string }[];
+    expect(slots[0]!.when).toBe('Tuesday, September 29, at 12:00 PM');
+    expect([...c.state.offered.values()].every((s) => s.start.getTime() >= ten.getTime() + BOOKING_LEAD_MINUTES * 60_000)).toBe(true);
+    expect([BOOKING_LEAD_MINUTES, DESK_LEAD_MINUTES]).toEqual([120, 5]);
   });
 });
 
