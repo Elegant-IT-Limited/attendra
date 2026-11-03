@@ -38,7 +38,7 @@ describe('a spoken number is read back before the search', () => {
     expect(c.state.memory.verified).toBe('name_match');
     expect(c.state.verifiedPatient?.firstName).toBe('Biscuit');
     // said first, before any times
-    expect(said(found)).toContain('Say first, in these words: \\"I found Biscuit, your dog.\\"');
+    expect(said(found)).toContain('Say first, in these words: \\"Thanks, Linh. I found Biscuit, your dog.\\"');
   });
 
   it('reads "double" and "triple" as digits', async () => {

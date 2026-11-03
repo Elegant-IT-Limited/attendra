@@ -30,6 +30,17 @@ describe('caller ID', () => {
   });
 });
 
+describe('caller ID and the pet named at once', () => {
+  it('thanks the caller by the owner\'s name on file before the pet found, once a call', async () => {
+    const c = await w.call('+17205550174', { clinic });
+    c.caller('Hi, I\'d like to book a check-up for Luna.');
+    const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Luna', phone: null } }]);
+    expect(out.errors).toEqual([null]);
+    expect(handed(out)).toContain('Thanks, Carmen. I found Luna, your dog.');
+    expect(c.state.memory.greeted).toBe(true);
+  });
+});
+
 describe('a number the caller says', () => {
   async function onWeb() {
     const c = await w.call(null, { clinic, channel: 'web' });

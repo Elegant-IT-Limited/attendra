@@ -99,6 +99,8 @@ export interface LanguagePack {
    * new pet?"). `more`: they have others; `offerNew`: the caller has not said the pet is new.
    */
   whichPetVerified: (v: { owner: string; names: string[]; more: boolean; offerNew: boolean }) => string;
+  /** A verified caller who named the pet at once is thanked by the owner's name on file, before the pet found: "Thanks, Jordan." */
+  thanksOwner: (v: { owner: string }) => string;
   /** The one question when "next Wednesday" could be either week: "This Wednesday, November 4, or Wednesday, November 11?". Dates are YYYY-MM-DD. */
   whichWeek: (v: { first: string; second: string }) => string;
   /** The note the team sees on a booking made on a number whose owner on file did not match the name the caller gave. */

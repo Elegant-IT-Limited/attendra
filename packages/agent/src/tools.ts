@@ -1017,8 +1017,15 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (check) return check;
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') {
-    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call)
-    const first = PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
+    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call).
+    // A verified caller who named the pet at once is thanked by the owner's name first, as the pick question does (2026-11-14)
+    let thanks = '';
+    if (state.memory.verified && !state.memory.greeted) {
+      const known = await knownHousehold(phone, state, ctx, backend);
+      if (known?.owner) thanks = `${PACKS[lang].thanksOwner({ owner: known.owner })} `;
+    }
+    if (thanks) state.memory.greeted = true;
+    const first = thanks + PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
     const chosen = chosenNote(state, clinic, lang, ctx.now()).say ?? '';
     return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want.${chosen}` } };
   }
@@ -1049,6 +1056,7 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   state.askedWhichPet = true;
   state.memory.pets = pets.names;
   // a caller the number knows is thanked by name, and never asked for it: "Thanks, Jordan. Is this for Biscuit or Pepper?"
+  if (known?.owner) state.memory.greeted = true;
   const question = known?.owner
     ? PACKS[lang].whichPetVerified({ owner: known.owner, names: pets.names, more: pets.more, offerNew: state.saidNew() !== 'new' })
     : PACKS[lang].whichPet(pets);

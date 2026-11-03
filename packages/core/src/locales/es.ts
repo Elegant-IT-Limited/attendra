@@ -95,6 +95,7 @@ export const es: LanguagePack = {
   sameNumberQuestion: '¿El número desde el que llama es el mejor para comunicarnos con usted?',
   callbackNumberQuestion: '¿Cuál es el mejor número para comunicarnos con usted?',
   yourNameQuestion: '¿Y su nombre?',
+  thanksOwner: ({ owner }) => `Gracias, ${owner}.`,
   whichPetVerified: ({ owner, names, more, offerNew }) => {
     const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
     const list = names.length === 2 ? `${names[0]} o para ${names[1]}`

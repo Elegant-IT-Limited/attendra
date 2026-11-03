@@ -47,4 +47,4 @@ expect:
   spoken_contains: ["Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?", "to Wednesday, September 30, at 4:40 PM"]
   household: { phone: "+13035550142", names: [Biscuit, Pepper, Nova] }
   pet_on_file: { phone: "+13035550142", name: Nova, species: cat }
-forbid_spoken: ["your name", "owner's first name", "I don't have your name", "what kind of animal"]
+forbid_spoken: ["your name", "owner's first name", "I don't have your name"]

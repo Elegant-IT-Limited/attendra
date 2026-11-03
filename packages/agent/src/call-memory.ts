@@ -44,6 +44,8 @@ export class CallMemory {
   whichWeekAsked = false;
   /** The number "And your name?" was asked for: asked once per number. */
   nameAskedFor: string | null = null;
+  /** The caller was thanked by the owner's name on file: once a call (the pick question or the pet found). */
+  greeted = false;
   /** The first names of the pets on the number, as the records list them. */
   pets: string[] = [];
   /** The visit booked (or moved to) on this call, for a time-only move ("make it 4:40") that keeps its day. */

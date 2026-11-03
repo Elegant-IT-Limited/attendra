@@ -90,6 +90,7 @@ export const en: LanguagePack = {
   sameNumberQuestion: "Is the number you're calling from the best one for you?",
   callbackNumberQuestion: "What's the best number to reach you?",
   yourNameQuestion: 'And your name?',
+  thanksOwner: ({ owner }) => `Thanks, ${owner}.`,
   whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
   whichWeek: ({ first, second }) => `This ${fullDay(first)}, or ${fullDay(second)}?`,
   bookedByCallerNote: ({ name }) => `booked by caller: ${name}`,

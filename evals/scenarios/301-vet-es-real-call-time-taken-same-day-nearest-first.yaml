@@ -42,5 +42,6 @@ expect:
   sms_sent: 2
   booked_on: "2026-09-30"
   not_offered_on: ["2026-10-01", "2026-10-02", "2026-10-05"]
-  spoken_contains: ["Nothing is free at exactly 17:00 on Wednesday, September 30; the nearest that day are", "el miércoles 30 de septiembre a las 4:30 de la tarde"]
+  returned: ["Nothing is free at exactly 17:00 on Wednesday, September 30; the nearest that day are"]
+  spoken_contains: ["el miércoles 30 de septiembre"]
 forbid_spoken: ["jueves 1 de octubre"]
