@@ -37,7 +37,8 @@ describe('GptLiveEngine browser calls', () => {
     const { client, create } = fakeClient();
     const engine = new GptLiveEngine(client);
     await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW);
-    await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW, { callerId: true });
+    // a clinic for people: caller ID adds no number line (its identity questions are its own)
+    await engine.startBrowserCall(DEMO_CLINIC, 'v=0 offer', NOW, { callerNumber: '+13035550142' });
     const [plain, calledAs] = (create.mock.calls as unknown as [{ session: { instructions: string } & Record<string, unknown>; transport: unknown }][]).map((c) => c[0]);
     expect(plain!.session.instructions).toContain(noCallerIdLine(DEMO_CLINIC));
     expect(calledAs!.session.instructions).not.toContain('there is no caller ID');

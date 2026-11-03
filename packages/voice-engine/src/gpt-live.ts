@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import type { DataChannelConfig } from 'openai/resources/live/live';
 import { SidebandWS } from 'openai/resources/live/sideband/ws';
 import type { Sideband, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt, noCallerIdLine, openingInstruction } from './prompt';
+import { callerIdLine, conversationPrompt, noCallerIdLine, openingInstruction } from './prompt';
 
 /**
  * What a browser tab may see and do on its own data channel. It is untrusted, so
@@ -68,10 +68,11 @@ export class GptLiveEngine implements VoiceEngine {
     return voice ? { engine: this.name, voice } : null;
   }
 
-  private session(clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic)) {
+  /** `line`: what this call's caller ID (or its lack) means for the number question, at the end of the instructions. */
+  private session(clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic), line: string | null = null) {
     return {
       model: this.model,
-      instructions: conversationPrompt(clinic, now),
+      instructions: line ? `${conversationPrompt(clinic, now)}\n${line}` : conversationPrompt(clinic, now),
       // GPT-Live waits for the caller unless told to speak first (OpenAI: "Greet before the caller speaks")
       input: [{ type: 'message' as const, role: 'developer' as const, content: [{ type: 'input_text' as const, text: opening }] }],
       audio: { output: { voice: clinic.voice } },
@@ -82,18 +83,21 @@ export class GptLiveEngine implements VoiceEngine {
     };
   }
 
-  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic)) {
-    await this.client.live.sessions.accept(sessionId, { session: { type: 'live', ...this.session(clinic, now, opening) } });
+  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening = openingInstruction(clinic), opts: { callerNumber?: string | null } = {}) {
+    const line = opts.callerNumber ? callerIdLine(clinic, opts.callerNumber) : null;
+    await this.client.live.sessions.accept(sessionId, { session: { type: 'live', ...this.session(clinic, now, opening, line) } });
     this.openings.set(sessionId, opening);
     this.voices.set(sessionId, clinic.voice);
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerId?: boolean } = {}) {
-    // no retries: a retried create would be a second, billed session
-    const session = this.session(clinic, now);
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerNumber?: string | null } = {}) {
+    // no retries: a retried create would be a second, billed session. No caller ID on a browser call: the voice asks the
+    // number the pet's profile is under itself, for a visit only (a clinic for people: the best number); unless staff
+    // started it as a number ("Call as"), when it has caller ID like a phone call
+    const line = opts.callerNumber ? callerIdLine(clinic, opts.callerNumber) : noCallerIdLine(clinic);
+    const session = this.session(clinic, now, undefined, line);
     const created = await this.client.live.create({
-      // no caller ID on a browser call: the voice asks the number the pet's profile is under itself (a clinic for people: the best number); unless staff started it as a number ("Call as")
-      session: { ...session, instructions: opts.callerId ? session.instructions : `${session.instructions}\n${noCallerIdLine(clinic)}`, client: { data_channel: BROWSER_DATA_CHANNEL } },
+      session: { ...session, client: { data_channel: BROWSER_DATA_CHANNEL } },
       transport: { type: 'webrtc', sdp: sdpOffer },
     }, { timeout: 10_000, maxRetries: 0 });
     this.browser.add(created.session.id);

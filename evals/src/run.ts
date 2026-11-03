@@ -36,7 +36,7 @@ const speed: PlannerSpeed = {
 const perRequest = process.argv.includes('--timings');
 /** This run's name for its files: its start time in UTC, safe in a file name. */
 const RUN = new Date().toISOString().slice(0, 19).replace(/:/g, '-') + 'Z';
-const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', undefined, undefined, speed, { firstToken: perRequest }) : undefined;
+const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', undefined, undefined, speed, { firstToken: perRequest }, { intent: true }) : undefined;
 // live, a model answers the planner's follow-up questions for a scenario that lists its facts
 const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
 // `--tag=hardcore` keeps the scenarios with that tag; `--transcripts` puts every call's transcript in the report, not only the failed ones

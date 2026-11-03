@@ -1,0 +1,31 @@
+id: vet-es-opening-seen-thursday
+title: 'In Spanish, caller ID: "¿podrían ver a Biscuit el jueves?" is a visit, so the profile number question comes at once'
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, opening, jordan-household]
+facts: "You are Jordan Avery and you speak only Spanish, calling from your own number, the one on file. Your dog Biscuit needs to be seen this Thursday (el jueves), any time and any vet. Say sí when asked if the profile is under this number. Take the first time offered and say sí to the read-back."
+turns:
+  - caller: "¿Hola, podrían ver a Biscuit el jueves?"
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: "Sí."
+    reply: "Encontré a Biscuit. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-01", part_of_day: any }
+  - caller: "La primera."
+    reply: "Para confirmar: {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Sí, por favor."
+    reply: "Listo. Biscuit tiene cita {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  intent: book
+  first_reply_contains: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  language: es

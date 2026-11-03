@@ -54,7 +54,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
   return buildServer(wire(rt, {
     verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
     engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
-    planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed),
+    planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed, {}, { intent: true }),
   }));
 }
 

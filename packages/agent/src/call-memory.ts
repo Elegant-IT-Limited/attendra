@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, spokenDigits, asE164, normalise } from '@attendra/core';
 
-/** Where a fact came from: the caller's own words, a tool's arguments, or the clinic's records. */
-export type FactSource = 'caller' | 'tool' | 'record';
+/** Where a fact came from: the caller's own words, a tool's arguments, the clinic's records, or the planner model's reading of the call (the intent). */
+export type FactSource = 'caller' | 'tool' | 'record' | 'model';
 export interface Fact<T> { value: T; source: FactSource; atTurn: number }
 
 /** The facts the call memory holds, by name. */
@@ -77,12 +77,18 @@ export class CallMemory {
     if (said.species) this.set('species', said.species, 'caller', atTurn);
     if (said.sex) this.set('sex', said.sex, 'caller', atTurn);
     if (said.age) this.set('age', said.age, 'caller', atTurn);
-    if (said.intent) this.set('intent', said.intent, 'caller', atTurn);
+    // the planner model's reading of the intent wins; the word lists are the fallback when it gave none (a timeout)
+    if (said.intent && this.fact('intent')?.source !== 'model') this.set('intent', said.intent, 'caller', atTurn);
     if (said.day !== undefined) this.set('day', said.day, 'caller', atTurn);
     if (said.time) this.set('time', said.time, 'caller', atTurn);
     const vet = vetNamed(text, clinic);
     if (vet) this.set('vet', vet, 'caller', atTurn);
     else if (said.anyVet) this.forget('vet');
+  }
+
+  /** What the caller wants from this call, as the planner model read the conversation on a request it planned. */
+  fromModel(intent: MemoryFacts['intent'], atTurn: number) {
+    this.set('intent', intent, 'model', atTurn);
   }
 
   /** What a tool was given: the planner passes what the caller said, so those are facts of the call too. */

@@ -255,8 +255,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         let started: { sessionId: string; sdpAnswer: string };
         try {
           marks.mark('accept_sent');
-          // with a number to call as, the voice has caller ID: no "there is no caller ID" line
-          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerId: !!body.callAs });
+          // with a number to call as, the voice has caller ID: its number line, not "there is no caller ID"
+          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null });
           marks.mark('accepted');
         } catch (err) {
           hold(clinic.id, -1);
@@ -530,10 +530,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const paused = front ? { uri: front.ok ? front.uri : null } : undefined;
       const vip = paused ? null : vipRoute(clinic, from, now());
       const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
-      const vipArgs = opening ? [opening] as const : [] as const;
       marks.mark('accept_sent');
-      if (router) await router.acceptWith(via, sessionId, clinic, now(), ...vipArgs);
-      else await deps.engine.accept(sessionId, clinic, now(), ...vipArgs);
+      // the caller ID goes in from the start: the voice asks the number question itself, for a visit only (2026-11-14)
+      if (router) await router.acceptWith(via, sessionId, clinic, now(), opening, { callerNumber: from });
+      else await deps.engine.accept(sessionId, clinic, now(), opening, { callerNumber: from });
       accepted = true;
       marks.mark('accepted');
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');

@@ -78,24 +78,24 @@ describe('a spoken number is read back before the search', () => {
   });
 });
 
-// the opening (2026-11-14): with caller ID the voice is handed the number question once, as the caller first speaks, so it
-// asks it itself the moment they want to book, with no backend round before it
+// the opening (2026-11-14, option C): with caller ID the voice has the number question from the start of the call and
+// judges itself whether the caller wants a visit (callerIdLine, voice-engine); the agent sends nothing for it on a turn
 describe('the number question with caller ID', () => {
-  it('is handed to the voice once, in the call\'s words, at a clinic for animals only', async () => {
+  it('is never handed over turn by turn: not for a booking, not for a question', async () => {
     const c = await w.call('+17205550172', { clinic });
-    const first = c.caller('Hi, my dog needs a check-up.');
-    const notes = first.filter((o) => o.type === 'instructions').map((o) => o.content);
-    expect(notes).toEqual(['The caller is calling from a number ending 0172. As soon as they want to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend, in these words: Sure. Is your pet\'s profile under the number you\'re calling from, ending 0172? Then hand their answer to the backend.']);
-    expect(c.caller('It\'s for Biscuit.').filter((o) => o.type === 'instructions')).toEqual([]);
-    // none without caller ID: the browser session has its own line from the start
-    const web = await w.call(null, { clinic, channel: 'web' });
-    expect(web.caller('Hi, my dog needs a check-up.').filter((o) => o.type === 'instructions')).toEqual([]);
+    const ins = (said: string) => c.caller(said).filter((o) => o.type === 'instructions');
+    expect(ins('How much is a check-up?')).toEqual([]);
+    expect(ins('Hi, my dog needs a check-up.')).toEqual([]);
   });
 
-  it('waits for a visit to book, move or cancel: a price question gets no number question (live eval 2026-11-03)', async () => {
+  it('the planner model\'s intent wins over the word lists, which stay the fallback', async () => {
     const c = await w.call('+17205550172', { clinic });
-    const ins = (said: string) => c.caller(said).filter((o) => o.type === 'instructions').map((o) => o.content);
-    expect(ins('How long does a check-up take, and what does it cost?')).toEqual([]);
-    expect(ins('Okay, then I would like to book one for Biscuit.')).toHaveLength(1);
+    c.caller('How much is a check-up?');
+    expect(c.state.memory.get('intent')).toBeUndefined();
+    c.state.memory.fromModel('book', 0);
+    c.caller('I want to cancel it, actually.'); // words: cancel; the model's reading stands until it reads again
+    expect(c.state.memory.fact('intent')).toMatchObject({ value: 'book', source: 'model' });
+    c.state.memory.fromModel('cancel', 1);
+    expect(c.state.memory.get('intent')).toBe('cancel');
   });
 });

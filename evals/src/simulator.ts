@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -389,6 +389,17 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (livePlanner) {
     check(!callerSilent, 'the model playing the caller gave no line, so the call stopped early (the test, not the assistant)');
     for (const err of errors) check(false, `backend error: ${err}`);
+  }
+  // live, the planner model's reading of the intent (read alongside, never waited for): given a moment to arrive
+  if (livePlanner && e.intent) {
+    for (let i = 0; i < 60 && state.memory.fact('intent')?.source !== 'model'; i++) await new Promise((r) => setTimeout(r, 100));
+    const read = state.memory.fact('intent');
+    check(read?.source === 'model' && read.value === e.intent, `intent ${read ? `${read.value} (${read.source})` : 'none'}, expected ${e.intent} from the model`);
+  }
+  if (e.first_reply_contains) {
+    const first = transcript.findIndex((t) => t.speaker === 'caller');
+    const reply = transcript.slice(first + 1).filter((t) => t.speaker === 'assistant').map((t) => t.text).slice(0, 2).join(' ');
+    check(normalise(reply).includes(normalise(e.first_reply_contains)), `the first reply was "${reply}", expected it to contain "${e.first_reply_contains}"`);
   }
   // live, a call that answered a question and changed nothing is as good as one that changed nothing
   const sameOutcome = state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');

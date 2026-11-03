@@ -77,6 +77,11 @@ export const Scenario = z.object({
     // or no note on any of them
     appointment_note_contains: z.array(z.string()).default([]),
     appointment_note_empty: z.boolean().default(false),
+    // live only: what the planner model read the caller wanting from the call, into the call memory (2026-11-14); scripted
+    // runs have no model to read it, so the check is skipped there
+    intent: z.enum(['book', 'move', 'cancel', 'question']).optional(),
+    // the first thing the assistant says after the caller's first line contains this (the number question at once, or not)
+    first_reply_contains: z.string().optional(),
     // a pet on file on that number when the call ends, with the kind of animal its record says (a pet added on the call
     // as the caller described it, never asked twice)
     pet_on_file: z.object({ phone: z.string(), name: z.string(), species: z.string() }).optional(),

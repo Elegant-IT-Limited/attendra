@@ -66,10 +66,11 @@ describe('what the call is about', () => {
     expect(es('Quiero una cita para Bolt').intent).toBe('book');
     expect(es('quiero traer a mi perro por primera vez').intent).toBe('book');
   });
-  it('"mi perro" is a male, "mi perra" a female; the later word wins', () => {
-    expect(es('quiero traer a mi perro').sex).toBe('male');
-    expect(es('mi perra Luna').sex).toBe('female');
-    expect(es('mi perro, bueno, es perra').sex).toBe('female');
+  it('the kind of animal never says the sex: only what the caller says about it does', () => {
+    expect(es('quiero traer a mi perro').sex).toBeUndefined();
+    expect(es('mi gato no come').sex).toBeUndefined();
+    expect(es('es macho').sex).toBe('male');
+    expect(es('es hembra, la tengo desde cachorra').sex).toBe('female');
     expect(en('my dog needs a check-up').sex).toBeUndefined();
   });
   it('Spanish', () => {

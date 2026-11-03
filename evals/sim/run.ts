@@ -30,7 +30,7 @@ console.log(`attendra sim  ${count} calls · planner ${plannerModel} · caller $
 const runs: Simulation[] = [];
 for (let i = 0; i < count; i++) {
   const persona = personas[i % personas.length]!;
-  const run = await simulate(persona, new ModelCaller(openai, callerModel, persona), new ResponsesPlanner(openai, plannerModel));
+  const run = await simulate(persona, new ModelCaller(openai, callerModel, persona), new ResponsesPlanner(openai, plannerModel, undefined, undefined, undefined, undefined, { intent: true }));
   runs.push(run);
   console.log(`  ${run.goalMet ? 'met ' : 'MISS'}  ${persona.id.padEnd(26)} ${String(run.result.outcome).padEnd(13)} ${run.result.callerTurns} turns${run.result.hungUp ? '  ended by the assistant' : ''}${run.result.refusals.length ? `  refused: ${run.result.refusals.join(', ')}` : ''}`);
 }

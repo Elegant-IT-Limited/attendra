@@ -143,25 +143,6 @@ export class CallAgent {
     if (!state.turns.length) state.language = ctx.clinic.primaryLanguage;
   }
 
-  /**
-   * At a clinic for animals, with caller ID: the number question in the backend's words, handed to the voice once, as the
-   * caller first speaks, so it asks it itself the moment they want to book, move or cancel: no backend round, no silence
-   * (2026-11-14). A browser call without caller ID has its own line from the start (noCallerIdLine). Worded with no
-   * quotation marks: a standing instruction, not a line to say now.
-   */
-  private numberQuestion(): Outbound[] {
-    const { clinic, callerNumber } = this.ctx;
-    if (this.numberQuestionSent || !callerNumber || industryPack(clinic.industry).identity !== 'pet' || this.state.ending || this.state.emergencyLocked) return [];
-    // only once the caller has said they want a visit booked, moved or cancelled: handed over earlier, the voice asked it
-    // after a price question too (live eval 2026-11-03, vet-how-long-and-price); a later turn that says it sends it then
-    const intent = this.state.memory.get('intent');
-    if (intent !== 'book' && intent !== 'move' && intent !== 'cancel') return [];
-    this.numberQuestionSent = true;
-    const last4 = callerNumber.replace(/\D/g, '').slice(-4);
-    return [{ type: 'instructions', delegationId: null, content: `The caller is calling from a number ending ${last4}. As soon as they want to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend, in these words: ${PACKS[this.state.language].profileNumberQuestion({ last4 })} Then hand their answer to the backend.` }];
-  }
-
-  private numberQuestionSent = false;
 
   /**
    * This number's earlier calls, read while the call was being answered: the greeting never waits on the database.
@@ -204,7 +185,7 @@ export class CallAgent {
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
-    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall(), ...this.numberQuestion()];
+    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
     this.sinceLock = '';
 
@@ -710,7 +691,7 @@ export class CallAgent {
         call_id: this.ctx.callId, delegation_id: delegationId, ms, tools: toolCalls,
         ...(timing ? {
           model_ms: timing.modelMs, rounds: timing.rounds, model: timing.model, effort: timing.effort, tier: timing.tier, fallback: timing.fallback, simple: timing.simple,
-          first_words_ms: timing.firstWordsMs, announced: timing.announced,
+          first_words_ms: timing.firstWordsMs, announced: timing.announced, intent: timing.intent ?? null,
           tool_ms: timing.toolMs, prompt_chars: timing.prompt,
           requests: timing.requests.map((r) => ({
             ms: r.ms, first_token_ms: r.firstTokenMs, input_tokens: r.inputTokens, cached_tokens: r.cachedTokens,

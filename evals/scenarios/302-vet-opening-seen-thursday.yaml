@@ -1,0 +1,30 @@
+id: vet-opening-seen-thursday
+title: 'Caller ID: "could Biscuit be seen Thursday?" is a visit, so the profile number question comes at once'
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, opening, jordan-household]
+facts: "You are Jordan Avery, calling from your own number, the one on file. Your dog Biscuit needs to be seen this Thursday, any time and any vet. Say yes when asked if the profile is under this number. Take the first time offered and say yes to the read-back."
+turns:
+  - caller: "Hi, could Biscuit be seen Thursday?"
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: "Yes, it is."
+    reply: "I found Biscuit. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: "2026-10-01", part_of_day: any }
+  - caller: "The first one."
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  intent: book
+  first_reply_contains: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"

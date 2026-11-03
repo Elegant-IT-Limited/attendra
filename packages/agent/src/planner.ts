@@ -47,7 +47,15 @@ export interface PlannerTiming {
   /** A round failed on the main model and the request went on with the fallback model (`model` is then the fallback). */
   fallback: boolean;
   requests: RoundTiming[]; toolMs: number; prompt: PromptSizes;
+  /** The intent the model read alongside, when it had come by the answer ('pending' when not yet; null when off or unread). */
+  intent?: CallIntent | 'pending' | null;
 }
+
+export const CALL_INTENTS = ['book', 'move', 'cancel', 'question'] as const;
+export type CallIntent = typeof CALL_INTENTS[number];
+const INTENT_TIMEOUT_MS = 5_000;
+const INTENT_SCHEMA = { type: 'object', properties: { intent: { type: 'string', enum: [...CALL_INTENTS] } }, required: ['intent'], additionalProperties: false };
+const INTENT_PROMPT = 'You read a phone call to a clinic, in any language. Say what the caller wants from this call so far: "book" (a new visit: any wish to be seen, come in, get an appointment, vaccines or shots that are due, a check-up for their pet), "move" (change the time or day of a visit they have), "cancel" (call off a visit they have), or "question" (anything else: prices, hours, how long a visit takes, what a visit includes, directions, a refill or a message). When they both ask a question and want a visit, the visit. Answer with the JSON only.';
 /** `served` is the processing tier OpenAI reports for the round, when a tier was asked for. */
 export interface RoundTiming {
   ms: number; firstTokenMs: number | null; served: string | null;
@@ -238,7 +246,29 @@ export class ResponsesPlanner implements Planner {
      * timeout only covers the wait for the headers, so a streamed round is capped with its own signal instead.
      */
     private readonly measure: { firstToken?: boolean } = {},
+    /**
+     * `intent`: alongside each request it plans, the model reads what the caller wants from the call (book, move, cancel or
+     * a question) into the call memory, for later turns and the record (2026-11-14). A small request of its own, never
+     * waited for: the answer is not delayed by it. Off where a fake client counts the requests (the unit tests).
+     */
+    private readonly features: { intent?: boolean } = {},
   ) {}
+
+  /** What the caller wants from the call, as the model reads the conversation; null when it could not say in time. */
+  private async readIntent(input: PlannerInput, transcript: string): Promise<CallIntent | null> {
+    try {
+      const res = await this.openai.responses.create({
+        model: this.model, store: false, instructions: INTENT_PROMPT, input: transcript.slice(-2_000), max_output_tokens: 300,
+        ...(this.speed.tier ? { service_tier: this.speed.tier } : {}),
+        text: { format: { type: 'json_schema', name: 'call_intent', strict: true, schema: INTENT_SCHEMA } },
+        prompt_cache_key: `${input.clinic.id}:intent`,
+      }, { timeout: INTENT_TIMEOUT_MS, maxRetries: 0 });
+      const intent = (safeJson(res.output_text ?? '') as { intent?: unknown } | null)?.intent;
+      return CALL_INTENTS.includes(intent as CallIntent) ? intent as CallIntent : null;
+    } catch {
+      return null; // the word lists stay the fallback
+    }
+  }
 
   /** One round of the model, with or without streaming; the final response either way, and when the first visible token came. */
   private async round(body: Omit<ResponseCreateParams, 'stream'>, asked: number, onCall?: (name: string, args: unknown) => void): Promise<{ res: Response; firstTokenMs: number | null }> {
@@ -310,8 +340,8 @@ export class ResponsesPlanner implements Planner {
     const phone = vet
       // at a clinic for animals the number finds the household, so a booking starts with it, asked in these words
       ? (input.callerNumber
-        ? `\n\nCaller ID shows the number they are calling from (ending ${last4}). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4 })}" On a yes, phone null uses it; if they give another number, pass it as they said it (the backend reads it back first). A new pet: phone null unless they gave another. Once a pet is found on this call, never ask for the number again.`
-        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). For a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. A pet the caller said is new is asked the same question, for the number its profile will be under. A number to call them back is asked only for a callback request, never for a booking.`)
+        ? `\n\nCaller ID shows the number they are calling from (ending ${last4}). Only for a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4 })}" For a question (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question. On a yes, phone null uses it; if they give another number, pass it as they said it (the backend reads it back first). A new pet: phone null unless they gave another. Once a pet is found on this call, never ask for the number again.`
+        : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). Only for a booking, a change or a cancellation, the first question is, in these words: "${pack.profileNumberQuestion({ last4: null })}" For a question (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question. Pass the number exactly as they said it, words and all ("double eight", "triple five"), even from abroad or without an area code: the backend reads it back before it searches; never ask for it again, and never once a pet is found. A pet the caller said is new is asked the same question, for the number its profile will be under. A number to call them back is asked only for a callback request, never for a booking.`)
       : input.callerNumber
         ? `\n\nCaller ID shows the number they are calling from: phone null uses it, so never ask for a number. If you need to check it for a new patient, ask only, once: "${pack.sameNumberQuestion}"`
         : `\n\nThere is no caller ID on this call (a browser test call or a hidden number). When a phone number is needed, ask once: "${pack.callbackNumberQuestion}" Never ask for "the number on file" for a patient the caller said is new. Pass the number exactly as they gave it, even from abroad or without an area code: the backend keeps it and says how to read it back; never ask for it again.`;
@@ -334,11 +364,21 @@ export class ResponsesPlanner implements Planner {
     let model = faster?.model ?? this.model;
     const effort = faster?.effort ?? this.speed.effort ?? null;
     const planStart = performance.now();
+    // the intent, read alongside and never waited for: into the call memory when it comes, the words' reading until then
+    let intentRead: CallIntent | 'pending' | null = null;
+    if (this.features.intent) {
+      intentRead = 'pending';
+      const atTurn = state.turns.length - 1;
+      void this.readIntent(input, transcript).then((intent) => {
+        intentRead = intent;
+        if (intent) state.memory.fromModel(intent, atTurn);
+      });
+    }
     const timing: PlannerTiming = {
       model, effort, tier: this.speed.tier ?? null, simple, rounds: 0, modelMs: 0, firstWordsMs: 0, announced: false, fallback: false, requests: [], toolMs: 0,
       prompt: { instructions: instructions.length, tools: JSON.stringify(tools).length, transcript: transcript.length, state: known.length, history: earlier.length, notes: noTexts.length + phone.length },
     };
-    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs), firstWordsMs: timing.announced ? timing.firstWordsMs : Math.round(performance.now() - planStart) } });
+    const done = (out: PlannerOutput): PlannerOutput => ({ ...out, timing: { ...timing, intent: intentRead, modelMs: Math.round(timing.modelMs), toolMs: Math.round(timing.toolMs), firstWordsMs: timing.announced ? timing.firstWordsMs : Math.round(performance.now() - planStart) } });
     // the first round's first read tool: the voice says what the backend is doing, at once, in the caller's language
     const announce = input.onLookup ? (name: string, args: unknown) => {
       if (timing.announced) return;

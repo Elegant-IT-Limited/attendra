@@ -41,11 +41,30 @@ export function noCallerIdLine(clinic: ClinicConfig): string {
   const asks = (line: (l: ClinicConfig['primaryLanguage']) => string) => clinic.languages.map((l) => `"${line(l)}"`).join(' or ');
   const keep = 'Take the number as they give it, even from abroad or without an area code, and never ask for it again.';
   if (industryPack(clinic.industry).identity === 'pet') {
-    return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. As soon as the caller wants to book, move or cancel a visit, ask at once, yourself, before handing anything to the backend: ${asks((l) => PACKS[l].profileNumberQuestion({ last4: null }))}, in the caller's language; then hand their answer to the backend. A number to call them back is asked only when taking a callback request, never for a booking. ${keep}`;
+    return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. ${onlyForAVisit(asks((l) => PACKS[l].profileNumberQuestion({ last4: null })))} A number to call them back is asked only when taking a callback request, never for a booking. ${keep}`;
   }
   return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks((l) => PACKS[l].callbackNumberQuestion)}, in the caller's language. Never ask for "the number on file" for a patient the caller said is new. ${keep}`;
 }
 
+
+/**
+ * The number question, given from the start and judged by the voice itself (2026-11-14): asked at once, with no backend
+ * round, only when the caller wants a visit booked, moved or cancelled; a question is just answered. No word list decides it.
+ */
+function onlyForAVisit(question: string): string {
+  return `Only when the caller wants to book, move or cancel a visit, first ask, yourself, before handing anything to the backend: ${question}, in the caller's language; then hand their answer to the backend. For questions (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question.`;
+}
+
+/**
+ * What the voice knows on a call with caller ID at a clinic for animals, from the start of the call: the number question
+ * for a visit, in the backend's words. Null at a clinic for people, which has its own identity questions.
+ */
+export function callerIdLine(clinic: ClinicConfig, callerNumber: string): string | null {
+  if (industryPack(clinic.industry).identity !== 'pet') return null;
+  const last4 = callerNumber.replace(/\D/g, '').slice(-4);
+  const asks = clinic.languages.map((l) => `"${PACKS[l].profileNumberQuestion({ last4 })}"`).join(' or ');
+  return `Caller ID shows the number they are calling from, ending ${last4}. ${onlyForAVisit(asks)}`;
+}
 
 /**
  * The opening for a caller on the clinic's VIP list: a short hello that says who is

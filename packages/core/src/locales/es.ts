@@ -111,8 +111,8 @@ export const es: LanguagePack = {
       lagartija: 'lizard', serpiente: 'snake', tortuga: 'turtle',
     },
     female: /\b(hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada)\b/g,
-    // "mi perro", "mi gato": said of one's own pet, the masculine is a male (a female is "mi perra", "mi gata", the later word wins)
-    male: /\b(macho|nino|castrado|perro|perrito|gato|gatito|conejo|cachorro)\b/g,
+    // only words that say the sex: "perro" and "gato" are said of either sex, so they never set it
+    male: /\b(macho|nino|castrado)\b/g,
     she: /\b(ella)\b/,
     he: /(?!)/,
     age: /\b(?:tiene|de)\s+(\d{1,2}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|dieciocho)\s+(anos?|mes(?:es)?|semanas?)\b/g,
