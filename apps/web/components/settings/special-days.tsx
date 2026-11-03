@@ -13,7 +13,7 @@ import { dayTitle } from '@/lib/format';
  * assistant says ("Christmas Eve"). Added from the top, kept in date order. A date
  * already a holiday or already listed is refused.
  */
-export function SpecialDaysEditor({ days, holidays, onChange }: { days: SpecialDay[]; holidays: string[]; onChange: (days: SpecialDay[]) => void }) {
+export function SpecialDaysEditor({ days, holidays, providers = [], onChange }: { days: SpecialDay[]; holidays: string[]; providers?: { id: string; name: string }[]; onChange: (days: SpecialDay[]) => void }) {
   const [date, setDate] = useState('');
   // the row just added is kept in date order: bring it into view, outlined, with the cursor in it
   const [added, setAdded] = useState<string | null>(null);
@@ -59,6 +59,21 @@ export function SpecialDaysEditor({ days, holidays, onChange }: { days: SpecialD
               ))}
               {d.windows.length === 1 && <Button type="button" size="sm" variant="ghost" aria-label={`More hours, ${d.date}`} onClick={() => upd(i, { windows: [...d.windows, { open: '13:00', close: '17:00' }] })}><Plus /> More hours</Button>}
               <Input aria-label={`${d.date} note`} maxLength={60} className="min-w-40 flex-1" placeholder="Note, like Christmas Eve" value={d.note ?? ''} onChange={(e) => upd(i, { note: e.target.value || undefined })} />
+              {providers.length > 0 && (
+                // the clinic closes, but these vets keep their own hours that day (bookableWindows)
+                <details className="w-full text-sm">
+                  <summary className="cursor-pointer text-text-muted">Vets who still work their own hours this day{d.providerIds?.length ? ` (${d.providerIds.length})` : ''}</summary>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
+                    {providers.map((p) => (
+                      <label key={p.id} className="flex items-center gap-2">
+                        <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={!!d.providerIds?.includes(p.id)}
+                          onChange={(e) => { const ids = e.target.checked ? [...(d.providerIds ?? []), p.id] : (d.providerIds ?? []).filter((x) => x !== p.id); upd(i, { providerIds: ids.length ? ids : undefined }); }} />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              )}
               <Button type="button" size="icon" variant="ghost" className="text-text-muted hover:text-danger" aria-label={`Remove ${d.date}`} onClick={() => onChange(days.filter((_, j) => j !== i))}><Trash2 /></Button>
             </li>
           ))}

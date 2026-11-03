@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY } from '@attendra/core';
+import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -361,7 +361,7 @@ export default function Settings() {
             </div>
           )}
           <h3 className="pt-2 text-base font-medium">Special days</h3>
-          <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} onChange={(specialDays) => set({ specialDays })} />
+          <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} providers={c.providers.filter((p) => !p.placeholder).map((p) => ({ id: p.id, name: providerName(p) }))} onChange={(specialDays) => set({ specialDays })} />
         </Section>
 
         {(pet || c.emergencyHospital) && (

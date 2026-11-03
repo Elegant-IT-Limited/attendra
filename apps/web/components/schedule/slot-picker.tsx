@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { api, BUSY, isBusy } from '@/lib/api';
+import { gridLabel, upcomingSlots } from '@/lib/booking';
 import { usePets } from '@/lib/terms';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -41,8 +42,10 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
     })}`),
   });
   const byDay = new Map<string, SlotList['slots']>();
+  // never a time sooner than the lead time, however long ago the list loaded (the desk was offered 10:00 AM at 10:20)
+  const shown = upcomingSlots(slots.data?.slots ?? [], new Date(), slots.data?.leadMinutes);
   // earliest first within a day, whoever the provider: the search returns them provider by provider
-  const sorted = [...(slots.data?.slots ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.providerId.localeCompare(b.providerId));
+  const sorted = [...shown].sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.providerId.localeCompare(b.providerId));
   for (const s of sorted) {
     const d = localDateOf(new Date(s.startsAt), clinic.timezone);
     byDay.set(d, [...(byDay.get(d) ?? []), s]);
@@ -60,6 +63,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
           Later <ChevronRight />
         </Button>
       </div>
+      {slots.data?.startEvery && <p className="text-xs text-text-muted" data-testid="slot-grid">{gridLabel(slots.data.startEvery, slots.data.leadMinutes)}</p>}
       {slots.isPending ? <Skeleton className="h-40" /> : slots.isError ? (
         <p className="text-sm text-danger">{isBusy(slots.error) ? BUSY : 'Open times did not load. Try again in a moment.'}</p>
       ) : byDay.size === 0 ? (
@@ -73,7 +77,7 @@ export function SlotPicker({ clinicId, clinic, visitTypeId, providerId, from, on
                 {list.map((s) => {
                   const selected = value?.startsAt === s.startsAt && value.providerId === s.providerId;
                   return (
-                    <button key={`${s.providerId}@${s.startsAt}`} type="button" role="radio" aria-checked={selected}
+                    <button key={`${s.providerId}@${s.startsAt}`} type="button" role="radio" aria-checked={selected} data-starts-at={s.startsAt}
                       onClick={() => onChange({ providerId: s.providerId, startsAt: s.startsAt })}
                       className={cn('rounded-md border px-2.5 py-1.5 text-left text-sm focus-ring',
                         selected ? 'border-primary bg-primary text-on-primary' : 'border-border-strong bg-surface hover:bg-surface-sunken')}>

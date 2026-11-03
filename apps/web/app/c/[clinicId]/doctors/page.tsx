@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, bareName, doctorGuide, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, bareName, doctorGuide, OWN_HOURS_NOTE, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -371,6 +371,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
               onChange={(e) => set({ ownHours: e.target.checked, hours: e.target.checked ? (d.hours ?? clinicHours) : d.hours })} />
             Their own hours, not the clinic&apos;s
           </label>
+          {d.ownHours && <p className="text-xs text-text-muted" data-testid="own-hours-note">{OWN_HOURS_NOTE.en}</p>}
           {d.ownHours && (
             <div className="space-y-2 rounded-md border border-border p-3">
               {DAYS.map(([day, label]) => {
