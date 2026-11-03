@@ -131,6 +131,7 @@ export const es: LanguagePack = {
     tomorrow: /(?<!\b(?:la|esta|pasado)\s)\b(manana)\b/g,
     thisWord: 'este',
     nextWord: 'proximo',
+    anyVet: /\b(cualquier (?:doctor|doctora|veterinari[oa])|cualquiera|me da igual (?:quien|cual)|no importa (?:quien|cual))\b/g,
     anyDay: /\b(cualquier dia|lo (?:antes|mas pronto) posible|la primera (?:cita|hora) (?:disponible|libre)|lo primero que tenga)\b/g,
     time: /\b(?:(a las|a la|como a las|despues de las|tipo)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(de la (?:manana|tarde|noche)|a\.?m\b\.?|p\.?m\b\.?))?(?!\s*(?:anos?|meses|semanas?|dias?|horas?|minutos?|mascotas?|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))\b)(?![\d:-])/g,
     after: /^despues de las$/,

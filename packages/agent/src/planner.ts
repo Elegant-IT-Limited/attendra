@@ -4,6 +4,7 @@ import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
 import { z } from 'zod';
+import { memoryLine } from './call-memory';
 import type { CallState } from './call-state';
 import type { ToolResult } from './tools';
 
@@ -108,6 +109,7 @@ export function systemPrompt(clinic: ClinicConfig, nowLine: string) {
     `When the caller has said who they are, even only in part, and nobody is verified yet, call verify_caller with exactly what they said before you ask anything else, with phone null (the number they are calling from) unless they gave another: it says what is still missing. ${clinic.industry === 'vet' ? 'At this veterinary clinic the phone number (caller ID, or the number they say) and the pet\'s name find the pet: the owner\'s name only greets them or adds a new pet, so never hold a pet back for it, and never ask for a last name; when no pet by that name is on the number, ask whether the pet is new.' : 'With only a first name, ask just for the last name, never for a "full name".'} Details that were not found are never looked up again as they are: ask whether they are new, or for the detail that may be wrong. Once they have said they are not new, never ask that again: say which detail did not match and ask for it once more.`,
     ...planner.rules,
     'Never end a call on a caller who is frustrated or whose request is unfinished: apologise, say what you can still do, or offer a callback, and end it only after they say goodbye. A caller who says they have to go, or says goodbye with nothing pending, gets a short goodbye and end_call: ask them nothing, not even "anything else".',
+    'The call memory in the state line is the truth about what the caller said. Never ask for a fact that is in it; if a tool needs it, pass it from there (or null: the tool fills it). A caller\'s correction ("no, it\'s a cat") replaces the old value at once.',
     'Once a change is committed it is done: do not look for times again, do not check it, and never say it was not completed. The state line lists what is done on this call.',
     'Never ask for the same detail a third time. When the caller has given a detail twice and it still does not work, or they are upset, stop asking: apologise once, then offer to have the team call them back (create_callback with what you already have) and say when to expect it. Offer that callback once: if they try again instead, do not offer it again in the same words; say you cannot check more details on this call, that the team can help them on a callback or at the desk, and ask what else you can do.',
     'A time the caller picks before they (or their pet) are found: call propose_booking with it all the same. The backend keeps the choice and, once they are found or added, says how to read it back and book it on their yes. Until then say you will book it right after that; never "I\'ll take care of it", and never that it is booked or done.',
@@ -428,6 +430,7 @@ export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): 
       : 'patient not verified',
     // what the caller already said is never asked again; the latest value is the one that counts
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
+    ...(clinic && memoryLine(state.memory, clinic, state.language) ? [memoryLine(state.memory, clinic, state.language)!] : []),
     ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${providerName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',

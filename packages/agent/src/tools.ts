@@ -9,6 +9,7 @@ import {
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
+import { fillFromMemory } from './call-memory';
 import type { CallState } from './call-state';
 import { answerFromFaqs } from './knowledge';
 
@@ -97,7 +98,7 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   const digits = phone.replace(/\D/g, '');
   if (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic)) return null;
   if (state.phonesConfirmed.has(digits)) return null;
-  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.phoneReadback = null; return null; }
+  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.memory.confirmNumber(digits); state.phoneReadback = null; return null; }
   const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
   return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
@@ -218,8 +219,13 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
 export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
-  const result = await toolCall(name, rawArgs, state, ctx, backend, revision);
-  return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, rawArgs, state, ctx) : result;
+  // what the call already established fills an argument the planner left out, so the caller is never asked for it again
+  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber });
+  if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
+  if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
+  const done = await toolCall(name, args, state, ctx, backend, revision);
+  const result = filled.length ? { ...done, data: { ...done.data, filled_from_memory: filled } } : done;
+  return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, args, state, ctx) : result;
 }
 
 async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision: number): Promise<ToolResult> {
@@ -642,10 +648,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!slot) return refuse('slot_not_offered', 'Only offer times returned by find_slots. Look up slots again.');
       const replaces = (args.replaces_appointment_id as string | null) ?? null;
       let replacing: string | null = null;
+      let replacesStart: Date | null = null;
       if (replaces) {
         const current = (await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now())).find((a) => a.id === replaces);
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
         replacing = when(current.start);
+        replacesStart = current.start;
       }
       const provider = nameOf(slot.providerId) ?? 'the provider';
       const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
@@ -657,7 +665,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
-      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, replacesStart, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
@@ -722,6 +730,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         oldStillActive = moved.status === 'not_found';
       }
       state.outcome = pending.replacesAppointmentId && !oldStillActive ? 'rescheduled' : 'booked';
+      // the visit this call booked or moved to, so "make it 4:40" moves it and keeps its day
+      if (result.status === 'booked' || result.status === 'already_done') {
+        const a = result.appointment;
+        if (state.outcome === 'rescheduled' && state.memory.visit?.appointmentId === pending.replacesAppointmentId) state.memory.moved = { from: state.memory.visit.start, to: a.start };
+        else if (state.outcome === 'rescheduled' && pending.replacesStart) state.memory.moved = { from: pending.replacesStart, to: a.start };
+        state.memory.visit = { appointmentId: a.id, start: a.start, visitTypeId: a.visitTypeId, providerId: a.providerId };
+      }
       if (result.status === 'booked') {
         const a = result.appointment;
         const facts = { appointmentId: a.id, patientId: patient.id, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.start.toISOString(), endsAt: a.end.toISOString(), by: 'assistant', callId: ctx.callId };
@@ -992,6 +1007,7 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   // an unknown number: a new owner and a new pet, the usual way
   if (!pets.names.length) return refuse('no_pets_on_number', `Say first, in these words: "${PACKS[lang].noPetsOnNumber}" Then ask the pet's name and whether it is new to the clinic; a new pet is added with register_patient under this number. Never say a pet's name the caller has not said.`);
   state.askedWhichPet = true;
+  state.memory.pets = pets.names;
   return { ok: true, data: {
     verified: false, pets_on_number: pets.names, more: pets.more,
     say: `Ask, in these words: "${PACKS[lang].whichPet(pets)}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number. Say nothing else about these pets until one is found.`,
@@ -1009,14 +1025,24 @@ async function findPetOnce(pet: string, phone: string, tried: string, state: Cal
     state.verifiedPatient = found.patient;
     state.verifiedOwner = found.patient.guardianName ?? state.verifiedOwner;
     state.newFromTurn = state.turns.length;
+    rememberPet(state, found.patient);
     return found;
   }
+  // a name not found on the number is not filled in again
+  if (state.memory.get('petName') && soundsLike(pet, state.memory.get('petName')!)) state.memory.forget('petName');
   state.verifyAttempts++;
   if (found.status === 'not_found') {
     state.notFound = true;
     state.identitiesTried.add(tried);
   }
   return found;
+}
+
+/** The pet found or added is the one the call is about: its name and kind, as the record has them. */
+function rememberPet(state: CallState, pet: { firstName: string; species?: string | null }) {
+  const turn = state.turns.length;
+  state.memory.set('petName', pet.firstName, 'record', turn);
+  if (pet.species) state.memory.set('species', pet.species.toLowerCase(), 'record', turn);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
@@ -1031,10 +1057,13 @@ async function registerPet(
   if (!phone) return refuse('phone_required', askPhone(lang));
   const owner = String(args.owner_name ?? '').trim();
   const ownerParts = owner.split(/\s+/);
-  if (!owner && !state.verifiedOwner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
-  const birth = parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
-  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const petName = String(args.pet_name).trim();
+  // only what is still missing once the call memory has filled what the caller already said, one thing at a time
+  if (!owner && !state.verifiedOwner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
+  if (!(args.species as string | null)?.trim()) return refuse('pet_species', `Ask what kind of animal ${petName} is. Keep everything else they already gave.`);
+  if (!args.sex) return refuse('pet_sex', `Ask whether ${petName} is female or male. Keep everything else they already gave.`);
+  const birth = args.birthday_or_age ? parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy') : null;
+  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const species = String(args.species).trim().toLowerCase();
   const sex = args.sex === 'unknown' ? 'undisclosed' : (args.sex as Gender);
   // A pet is added only when the identity check finds no such pet: a caller who said it is new is not made to wait for a
@@ -1053,6 +1082,7 @@ async function registerPet(
   if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add any other pets, and offer a callback.');
   if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
   state.verifiedPatient = result.patient;
+  rememberPet(state, result.patient);
   state.verifiedOwner = result.patient.guardianName ?? owner ?? state.verifiedOwner;
   state.newFromTurn = state.turns.length;
   if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang, ctx.now()).say ?? ''}` } }; }

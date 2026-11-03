@@ -16,6 +16,8 @@ export interface SaidFacts {
   intent?: 'book' | 'move' | 'cancel';
   day?: SaidDay | null;
   time?: SaidTime;
+  /** The caller said any vet or doctor will do: a vet named earlier no longer holds. */
+  anyVet?: true;
 }
 
 const lastIndex = (text: string, re: RegExp): number => {
@@ -95,6 +97,7 @@ export function extractFacts(text: string, lang: Language, opts: { today: string
   if (day !== undefined) out.day = day;
   const time = saidTime(t, lang);
   if (time) out.time = time;
+  if (lastIndex(t, words.anyVet) >= 0) out.anyVet = true;
   return out;
 }
 
@@ -119,6 +122,10 @@ function saidDay(t: string, lang: Language, today: string): SaidDay | null | und
     ? new RegExp(`${B}(\\d{1,2})\\s+de\\s+(${months})${E}`, 'gu')
     : new RegExp(`${B}(${months})\\s+(\\d{1,2})(?:st|nd|rd|th)?${E}`, 'gu');
   add(dated, (m) => {
+    // a date of birth is not a day for a visit: "born March 4th, 1985", "her birthday is May 2"
+    const at = m.index ?? 0;
+    const after = t.slice(at + m[0].length, at + m[0].length + 8);
+    if (/^(?:st|nd|rd|th)?,?\s*(?:de\s+|del\s+)?\d{4}/.test(after) || /\b(?:born|birth|birthday|dob|naci\w*|cumple\w*)\b[^.?!]{0,20}$/.test(t.slice(Math.max(0, at - 30), at))) return undefined;
     const [dayN, monthName] = lang === 'es' ? [Number(m[1]), m[2]!] : [Number(m[2]), m[1]!];
     const month = w.months.indexOf(monthName) + 1;
     if (!month || dayN < 1 || dayN > 31) return undefined;

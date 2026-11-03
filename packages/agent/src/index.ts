@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+export * from './call-memory';
 export * from './call-state';
 export * from './delegation';
 export * from './knowledge';

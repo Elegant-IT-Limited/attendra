@@ -266,6 +266,8 @@ export interface MemoryWords {
   /** The word before a weekday that means the coming one ("this", "este") and the one that may mean the week after ("next", "el próximo"). */
   thisWord: string;
   nextWord: string;
+  /** "Any doctor is fine", "whoever": a vet the caller named earlier no longer holds. */
+  anyVet: RegExp;
   /** "Any day", "the first available": what the caller said about the day no longer holds. */
   anyDay: RegExp;
   /**

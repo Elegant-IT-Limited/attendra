@@ -119,6 +119,7 @@ export const en: LanguagePack = {
     tomorrow: /\b(tomorrow)\b/g,
     thisWord: 'this',
     nextWord: 'next',
+    anyVet: /\b(any (?:family )?(?:doctor|vet|veterinarian|one)|anyone|anybody|whoever|no preference|(?:it )?doesn'?t matter (?:who|which))\b/g,
     anyDay: /\b(any ?day|first (?:available|opening|time)|earliest|soonest|whenever)\b/g,
     time: /\b(?:(at|around|about|after)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
     after: /^after$/,

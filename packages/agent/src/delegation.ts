@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
@@ -162,6 +162,9 @@ export class CallAgent {
     this.emit({ type: 'caption', speaker: 'caller', text: redactSensitive(delta), atMs: startMs });
     const { clinic } = this.ctx;
     if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
+    // what the caller says is kept in the call memory, from the whole turn so far: a fact said once is never asked again
+    const turn = this.state.turns.at(-1);
+    if (turn?.speaker === 'caller') this.state.memory.fromCaller(turn.text, this.state.language, clinic, localDateOf(this.ctx.now(), clinic.timezone), this.state.turns.length - 1);
     // the trade's own emergencies (an animal in danger) are checked too, before the engine's
     const trade = industryPack(clinic.industry);
     if (this.state.emergencyLocked) this.sinceLock = `${this.sinceLock} ${delta}`.slice(-400);
@@ -622,7 +625,7 @@ export class CallAgent {
         await this.actions?.record({
           tool: name,
           argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms']) },
+          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory']) },
           revision,
           patientId: this.state.verifiedPatient?.id ?? null,
         });

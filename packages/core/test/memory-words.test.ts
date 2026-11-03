@@ -98,6 +98,12 @@ describe('the day', () => {
     expect(en('January 5').day).toEqual({ date: '2027-01-05' });
   });
 
+  it('a date of birth is not a day for a visit', () => {
+    expect(en('this is Maria Delgado, born March 4th 1985').day).toBeUndefined();
+    expect(en('her birthday is May 2').day).toBeUndefined();
+    expect(es('nació el 4 de marzo de 2020').day).toBeUndefined();
+  });
+
   it('"any day" clears the day; the later day said wins', () => {
     expect(en('the first available is fine').day).toBeNull();
     expect(en('Thursday, no, make it Friday').day).toEqual({ date: '2026-11-06' });
@@ -123,5 +129,13 @@ describe('the time', () => {
     expect(en('she is 2 years old').time).toBeUndefined();
     expect(en('my number is 303-555-0142').time).toBeUndefined();
     expect(en('I have 2 dogs').time).toBeUndefined();
+  });
+});
+
+describe('any vet', () => {
+  it('"any family doctor is fine" lets go of a vet named before', () => {
+    expect(en('And for me, any family doctor is fine.').anyVet).toBe(true);
+    expect(es('con cualquier veterinario').anyVet).toBe(true);
+    expect(en('with Dr. Ruiz please').anyVet).toBeUndefined();
   });
 });
