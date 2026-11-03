@@ -1,5 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { daysAhead, type LanguagePack } from './types';
+import { clock12, dateParts, wallClock } from './dates';
+import { daysAhead, type LanguagePack, type OfferDay } from './types';
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** "Wednesday, November 4". */
+const fullDay = (date: string) => { const d = dateParts(date); return `${WEEKDAYS[d.weekday]}, ${MONTHS[d.month - 1]} ${d.day}`; };
+const period = (hour: number) => (hour < 12 ? 'AM' : 'PM');
+/** "Wednesday, November 4, at 5:20 PM": the weekday, the date and the time, every time, never the year. */
+const fullWhen = (start: Date, timeZone: string) => {
+  const w = wallClock(start, timeZone);
+  const c = clock12(w.hour, w.minute);
+  return `${fullDay(w.date)}, at ${c.hour}:${c.minutes} ${period(w.hour)}`;
+};
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+/** "a, b or c". */
+const orList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} or ${items.at(-1)}` : items[0] ?? '');
+/** One day's times: "8:00, 8:40 or 9:20 AM"; AM or PM said once per run, and with each time when the vets differ. */
+const dayTimes = (day: OfferDay) => {
+  const withVets = day.times.some((t) => t.provider);
+  return orList(day.times.map((t, i) => {
+    const next = day.times[i + 1];
+    const c = clock12(t.hour, t.minute);
+    const showPeriod = withVets || !next || period(next.hour) !== period(t.hour);
+    return `${c.hour}:${c.minutes}${showPeriod ? ` ${period(t.hour)}` : ''}${t.provider ? ` with ${t.provider}` : ''}`;
+  }));
+};
 
 const when = (start: Date, timeZone: string, now?: Date) => {
   const time = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start);
@@ -38,6 +64,8 @@ export const en: LanguagePack = {
   greeting: ({ assistantName, clinicName }) => `Thanks for calling ${clinicName}. ${assistantName ? `I'm ${assistantName}, the` : "I'm the"} clinic's AI assistant. How can I help you today?`,
   disclosure: /\b(ai|artificial intelligence|automated|virtual)\b.{0,20}\b(assistant|receptionist|agent)\b/i,
   speakWhen: when,
+  fullWhen,
+  fullDay,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
   readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) =>
     `${w} ${providerKind === 'room' ? `in the ${provider.replace(/^the /i, '').replace(/^\p{Lu}(?!\p{Lu})/u, (c) => c.toLowerCase())}` : `with ${provider}`} for ${/^[aeiou]/i.test(visit) ? 'an' : 'a'} ${visit}${replacing ? `, moving it from ${replacing}` : ''}`,
@@ -63,6 +91,40 @@ export const en: LanguagePack = {
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
   phoneQuestion: ({ callerId }) => (callerId ? "Is the number you're calling from the best one for you?" : "What's the best number to reach you?"),
+  callbackNumberQuestion: "What's the best number to reach you?",
+  yourNameQuestion: 'And your name?',
+  whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
+  whichWeek: ({ first, second }) => `This ${fullDay(first)}, or ${fullDay(second)}?`,
+  bookedByCallerNote: ({ name }) => `booked by caller: ${name}`,
+  memory: {
+    species: {
+      dog: 'dog', puppy: 'dog', pup: 'dog', doggy: 'dog', cat: 'cat', kitten: 'cat', kitty: 'cat', rabbit: 'rabbit', bunny: 'rabbit',
+      bird: 'bird', parrot: 'parrot', parakeet: 'parakeet', 'guinea pig': 'guinea pig', hamster: 'hamster', ferret: 'ferret',
+      lizard: 'lizard', snake: 'snake', turtle: 'turtle', tortoise: 'tortoise',
+    },
+    female: /\b(female|a girl|(?:she|it)'?s a girl|spayed)\b/g,
+    male: /\b(male|a boy|(?:he|it)'?s a boy|neutered)\b/g,
+    she: /\b(she|her|she'?s)\b/,
+    he: /\b(he|him|his|he'?s)\b/,
+    age: /\b(\d{1,2}|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|eighteen)[ -](years?|months?|weeks?)[ -]old\b/g,
+    numbers: { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, eighteen: 18 },
+    intent: {
+      book: /\b(book|appointment|check-?up|come in|bring (?:him|her|them|it) in|see (?:a|the) vet|schedule)\b/g,
+      move: /\b(move|reschedule|change (?:it|the|my|that|his|her|our) (?:appointment|visit|time)|another time instead)\b/g,
+      cancel: /\b(cancel)\b/g,
+    },
+    weekdays: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
+    months: ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'],
+    today: /\b(today|this (?:afternoon|morning|evening))\b/g,
+    tomorrow: /\b(tomorrow)\b/g,
+    thisWord: 'this',
+    nextWord: 'next',
+    anyDay: /\b(any ?day|first (?:available|opening|time)|earliest|soonest|whenever)\b/g,
+    time: /\b(?:(at|around|about|after)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
+    after: /^after$/,
+    pm: /p\.?m|afternoon|evening/,
+    am: /a\.?m|morning/,
+  },
   whichPet: ({ names, more }) => (names.length > 1
     ? `I see ${names.slice(0, -1).join(', ')} and ${names.at(-1)} under this number. Which one is it for${more ? ', or is it another one' : ', or is it a new pet'}?`
     : `I see ${names[0]} under this number. Is this for ${names[0]}, ${more ? 'or another one' : 'or a new pet'}?`),
@@ -105,6 +167,19 @@ export const en: LanguagePack = {
       : kind === 'number' ? 'Let me check that number.'
       : 'Let me look that up.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'today' : daysFromToday === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][weekday]!),
+    offerTimes: ({ days, provider }) => {
+      if (!days.length) return '';
+      const [first, ...rest] = days.map((d) => ({ day: fullDay(d.date), times: dayTimes(d) }));
+      const others = rest.map((d, i) => `${i === rest.length - 1 ? 'or ' : ''}on ${d.day}, ${d.times}`);
+      return `On ${first!.day}, I have ${[first!.times, ...others].join(', ')}${provider ? ` with ${provider}` : ''}.`;
+    },
+    dayShift: ({ days, day }) => {
+      const n = Math.abs(days);
+      const phrase = days === 1 ? 'the next day' : days === -1 ? 'the day before'
+        : n % 7 === 0 && n <= 28 ? `${n === 7 ? 'one week' : `${NUMBER_WORDS[n / 7]} weeks`} ${days > 0 ? 'later' : 'earlier'}`
+          : n < 7 ? `${NUMBER_WORDS[n]} days ${days > 0 ? 'later' : 'earlier'}` : 'a different day';
+      return `that's ${phrase}, ${day}`;
+    },
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +

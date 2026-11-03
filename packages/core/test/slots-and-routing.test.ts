@@ -70,6 +70,25 @@ describe('finding slots', () => {
   });
 });
 
+describe('the asked day first (sameDayFirst)', () => {
+  const hm = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+  // Dr. Okafor is booked 16:20-16:40 on Tuesday: "at 4:30" finds the nearest that day, before and after
+  const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '16:20', tz), end: zonedInstant('2026-09-29', '16:40', tz) }];
+  it('offers the nearest times that day, before and after, in time order', () => {
+    const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', sameDayFirst: true, limit: 2 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['29/09, 16:00', '29/09, 16:40']);
+  });
+  it('without it, only times after', () => {
+    const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', limit: 2 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['29/09, 16:40', '30/09, 16:40']);
+  });
+  it('a day with nothing goes on to the next days, from that time', () => {
+    const full = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '07:00', tz), end: zonedInstant('2026-09-29', '20:00', tz) }];
+    const slots = findSlots(DEMO_CLINIC, full, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', sameDayFirst: true, limit: 1 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['30/09, 16:40']);
+  });
+});
+
 describe('doctors by specialty', () => {
   const asked = (term: string) => DEMO_CLINIC.providers.filter((p) => matchesSpecialty(p, term)).map((p) => p.id);
   it('matches a specialty or a category the way a caller says it', () => {

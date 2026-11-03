@@ -1,5 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { daysAhead, type LanguagePack, words } from './types';
+import { clock12, dateParts, wallClock } from './dates';
+import { daysAhead, type LanguagePack, type OfferDay, words } from './types';
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+/** "miércoles 4 de noviembre", without the article: "el" goes before it, or "del" and "al". */
+const fullDay = (date: string) => { const d = dateParts(date); return `${DIAS[d.weekday]} ${d.day} de ${MESES[d.month - 1]}`; };
+/** The part of the day as said after a time: "de la mañana" before noon, "del mediodía" at 12:00, "de la tarde" to 19:59, "de la noche" after. */
+const partOfDay = (hour: number, minute: number) => (hour === 12 && minute === 0 ? 'del mediodía' : hour > 0 && hour < 12 ? 'de la mañana' : hour >= 12 && hour < 20 ? 'de la tarde' : 'de la noche');
+/** "5:20", with "a la" before 1 o'clock and "a las" before any other hour. */
+const hora = (hour: number, minute: number) => { const c = clock12(hour, minute); return { at: c.hour === 1 ? 'a la' : 'a las', time: `${c.hour}:${c.minutes}` }; };
+/** "el miércoles 4 de noviembre a las 5:20 de la tarde": the weekday, the date and the time, every time, never the year. */
+const fullWhen = (start: Date, timeZone: string) => {
+  const w = wallClock(start, timeZone);
+  const h = hora(w.hour, w.minute);
+  return `el ${fullDay(w.date)} ${h.at} ${h.time} ${partOfDay(w.hour, w.minute)}`;
+};
+/** "o" is "u" before a word said with an o sound: "8:00" is "ocho", "11:00" is "once". */
+const oBefore = (hour: number) => (hour % 12 === 8 || hour % 12 === 11 ? 'u' : 'o');
+/** One day's times: "a las 8:00, 8:40 o 9:20 de la mañana"; the part of the day once per run, and with each time when the vets differ. */
+const horas = (day: OfferDay) => {
+  const withVets = day.times.some((t) => t.provider);
+  const said = day.times.map((t, i) => {
+    const next = day.times[i + 1];
+    const h = hora(t.hour, t.minute);
+    const part = partOfDay(t.hour, t.minute);
+    const showPart = withVets || !next || partOfDay(next.hour, next.minute) !== part;
+    return `${withVets || i === 0 ? `${h.at} ` : ''}${h.time}${showPart ? ` ${part}` : ''}${t.provider ? ` con ${t.provider}` : ''}`;
+  });
+  // "u" only when the time itself follows ("8:00 u 8:40"), not before "a las"
+  return said.length > 1 ? `${said.slice(0, -1).join(', ')} ${withVets ? 'o' : oBefore(day.times.at(-1)!.hour)} ${said.at(-1)}` : said[0] ?? '';
+};
+const NUMEROS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce'];
 
 // Spanish as spoken in the United States: usted, clear and short. Accents are
 // removed before matching (normalise), so "sí" and "si", "está" and "esta" meet.
@@ -39,6 +71,8 @@ export const es: LanguagePack = {
   greeting: ({ assistantName, clinicName }) => `Gracias por llamar a ${clinicName}. ${assistantName ? `Soy ${assistantName}, la` : 'Soy la'} asistente virtual con inteligencia artificial de la clínica. ¿En qué le puedo ayudar?`,
   disclosure: /\b(asistente (virtual|de ia|con inteligencia artificial|automatizad[oa])|inteligencia artificial)\b/i,
   speakWhen: when,
+  fullWhen,
+  fullDay,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
   readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) => `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
   readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
@@ -63,6 +97,46 @@ export const es: LanguagePack = {
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   phoneQuestion: ({ callerId }) => (callerId ? '¿El número desde el que llama es el mejor para comunicarnos con usted?' : '¿Cuál es el mejor número para comunicarnos con usted?'),
+  callbackNumberQuestion: '¿Cuál es el mejor número para comunicarnos con usted?',
+  yourNameQuestion: '¿Y su nombre?',
+  whichPetVerified: ({ owner, names, more, offerNew }) => {
+    const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
+    const list = names.length === 2 ? `${names[0]} o para ${names[1]}`
+      : names.length > 2 ? `${names.slice(0, -1).join(', ')} ${or(names.at(-1)!)} ${names.at(-1)}` : names[0] ?? '';
+    return `Gracias, ${owner}. ¿Es para ${list}${more ? ', o para otra mascota' : offerNew ? ', o para una mascota nueva' : ''}?`;
+  },
+  whichWeek: ({ first, second }) => `¿Este ${fullDay(first)}, o el ${fullDay(second)}?`,
+  bookedByCallerNote: ({ name }) => `reservada por quien llamó: ${name}`,
+  // written without accents: the text is normalised before it is matched
+  memory: {
+    species: {
+      perro: 'dog', perra: 'dog', perrito: 'dog', perrita: 'dog', cachorro: 'dog', cachorra: 'dog', gato: 'cat', gata: 'cat', gatito: 'cat', gatita: 'cat',
+      conejo: 'rabbit', coneja: 'rabbit', pajaro: 'bird', loro: 'parrot', perico: 'parakeet', cuyo: 'guinea pig', hamster: 'hamster', huron: 'ferret',
+      lagartija: 'lizard', serpiente: 'snake', tortuga: 'turtle',
+    },
+    female: /\b(hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada)\b/g,
+    male: /\b(macho|nino|castrado)\b/g,
+    she: /\b(ella)\b/,
+    he: /(?!)/,
+    age: /\b(?:tiene|de)\s+(\d{1,2}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|dieciocho)\s+(anos?|mes(?:es)?|semanas?)\b/g,
+    numbers: { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15, dieciocho: 18 },
+    intent: {
+      book: /\b(cita|reservar|agendar|consulta|chequeo|revision|traerl[oa])\b/g,
+      move: /\b(cambiar|mover|reprogramar)\b/g,
+      cancel: /\b(cancelar|anular)\b/g,
+    },
+    weekdays: ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
+    months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    today: /\b(hoy)\b/g,
+    tomorrow: /(?<!\b(?:la|esta|pasado)\s)\b(manana)\b/g,
+    thisWord: 'este',
+    nextWord: 'proximo',
+    anyDay: /\b(cualquier dia|lo (?:antes|mas pronto) posible|la primera (?:cita|hora) (?:disponible|libre)|lo primero que tenga)\b/g,
+    time: /\b(?:(a las|a la|como a las|despues de las|tipo)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(de la (?:manana|tarde|noche)|a\.?m\b\.?|p\.?m\b\.?))?(?!\s*(?:anos?|meses|semanas?|dias?|horas?|minutos?|mascotas?|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))\b)(?![\d:-])/g,
+    after: /^despues de las$/,
+    pm: /tarde|noche|p\.?m/,
+    am: /manana|a\.?m/,
+  },
   // "o" becomes "u" before a name that starts with an o sound: "Max u Oreo"
   whichPet: ({ names, more }) => {
     const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
@@ -113,6 +187,19 @@ export const es: LanguagePack = {
       : kind === 'number' ? 'Déjeme revisar ese número.'
       : 'Déjeme consultarlo.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
+    offerTimes: ({ days, provider }) => {
+      if (!days.length) return '';
+      const [first, ...rest] = days.map((d) => ({ day: fullDay(d.date), times: horas(d) }));
+      const others = rest.map((d, i) => `${i === rest.length - 1 ? 'o ' : ''}el ${d.day} ${d.times}`);
+      return `El ${first!.day} tengo ${[first!.times, ...others].join(', ')}${provider ? `, con ${provider}` : ''}.`;
+    },
+    dayShift: ({ days, day }) => {
+      const n = Math.abs(days);
+      const phrase = days === 1 ? 'el día siguiente' : days === -1 ? 'el día anterior'
+        : n % 7 === 0 && n <= 28 ? `${n === 7 ? 'una semana' : `${NUMEROS[n / 7]} semanas`} ${days > 0 ? 'después' : 'antes'}`
+          : n < 7 ? `${NUMEROS[n]} días ${days > 0 ? 'después' : 'antes'}` : 'otro día';
+      return `es ${phrase}, el ${day}`;
+    },
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
