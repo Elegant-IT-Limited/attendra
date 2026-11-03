@@ -613,8 +613,11 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
   // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
   phone: z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).optional(),
   otherPhones: z.array(z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY)).max(3).optional(),
+  // left out: a new doctor does every visit type, and a change keeps what they do
+  visitTypeIds: z.array(z.string()).min(1, 'choose at least one visit type they do').optional(),
 });
-export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
+/** `noProvider`: each visit type nobody does, with Settings' warning for it ("No vet does Dental care: callers can't book it"). */
+export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType), noProvider: z.array(z.object({ visitTypeId: z.string(), message: z.string() })) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
 export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });
 export const ImportResult = z.object({

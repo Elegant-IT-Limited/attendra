@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, withListValues } from '@attendra/core';
+import { allVisitTypeIds, ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, noProviderWarnings, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, withListValues } from '@attendra/core';
 import type { FrontDeskRepository, Tx } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
@@ -60,6 +60,9 @@ async function withoutStandIn(desk: FrontDeskRepository, clinicId: string, provi
   return keep;
 }
 
+/** The doctors, the visit types, and a warning for each type nobody does (the same words Settings shows). */
+const listOf = (c: ClinicConfig): DoctorList => ({ providers: c.providers, visitTypes: c.visitTypes, noProvider: noProviderWarnings(c) });
+
 @ApiTags('doctors')
 @ApiCookieAuth()
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
@@ -74,8 +77,7 @@ export class DoctorsController {
   async list(@Param('clinicId') clinicId: string): Promise<DoctorList> {
     const stored = await this.desk.settings(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
-    const c = ClinicConfig.parse(stored);
-    return { providers: c.providers, visitTypes: c.visitTypes };
+    return listOf(ClinicConfig.parse(stored));
   }
 
   @Post()
@@ -92,7 +94,7 @@ export class DoctorsController {
       if ('issues' in checked) return checked;
       const custom = customOf(c, body.custom, undefined);
       if ('error' in custom) return custom;
-      return { config: { ...c, providers: [...c.providers, { ...body, ...checked, id, custom: custom.values } as Provider] } };
+      return { config: { ...c, providers: [...c.providers, { ...body, visitTypeIds: body.visitTypeIds ?? allVisitTypeIds(c), ...checked, id, custom: custom.values } as Provider] } };
     });
   }
 
@@ -109,7 +111,7 @@ export class DoctorsController {
       if ('issues' in checked) return checked;
       const custom = customOf(c, body.custom, current.custom);
       if ('error' in custom) return custom;
-      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, ...checked, id: providerId, custom: custom.values } as Provider : p)) } };
+      return { config: { ...c, providers: c.providers.map((p) => (p.id === providerId ? { ...body, visitTypeIds: body.visitTypeIds ?? current.visitTypeIds, ...checked, id: providerId, custom: custom.values } as Provider : p)) } };
     });
   }
 
@@ -189,6 +191,6 @@ export class DoctorsController {
       if (out.status === 422) throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'custom', message: out.error }] });
       throw new ConflictException({ error: out.error.startsWith('They have') ? 'has_upcoming_visits' : 'conflict', message: out.error });
     }
-    return { providers: out.config.providers, visitTypes: out.config.visitTypes };
+    return listOf(out.config);
   }
 }
