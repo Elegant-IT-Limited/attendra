@@ -523,8 +523,9 @@ export class FrontDeskRepository {
   async waitingTasks(clinicId: string, limit = 20) {
     return withClinic(this.db, clinicId, async (tx) => {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
-      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId }).from(tasks)
-        .where(waiting).orderBy(desc(tasks.createdAt), desc(tasks.id)).limit(limit);
+      // urgent ones first (a request taken during an emergency), as on the Requests page
+      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId, urgent: tasks.urgent }).from(tasks)
+        .where(waiting).orderBy(desc(tasks.urgent), desc(tasks.createdAt), desc(tasks.id)).limit(limit);
       const counts = await tx.select({ type: tasks.type, n: sql<number>`count(*)::int` }).from(tasks).where(waiting).groupBy(tasks.type);
       const byType = Object.fromEntries(counts.map((c) => [c.type, Number(c.n)]));
       return { tasks: rows, total: counts.reduce((n, c) => n + Number(c.n), 0), byType };

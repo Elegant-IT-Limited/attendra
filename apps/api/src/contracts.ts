@@ -757,7 +757,8 @@ export const AssistantChoices = z.object({
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
 
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
+// urgent ones first: they lead Today's list
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

@@ -51,6 +51,19 @@ test('Requests waiting counts every waiting request, not only the 20 listed', as
   await expect(card).toContainText('23');
 });
 
+test('an urgent request (taken during an emergency) is at the top of Needs attention', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const at = (minutes: number) => new Date(testNow() - minutes * 60_000).toISOString();
+  const tasks = [
+    { id: '00000000-0000-4000-8000-000000000001', number: 1041, type: 'callback', createdAt: at(30), callId: null, urgent: true },
+    { id: '00000000-0000-4000-8000-000000000002', number: 1042, type: 'refill', createdAt: at(5), callId: null, urgent: false },
+  ];
+  await page.route('**/tasks/waiting', (route) => route.fulfill({ json: { tasks, total: 2, byType: { callback: 1, refill: 1 } } }));
+  await page.reload();
+  const list = page.getByRole('list', { name: 'Needs attention' });
+  await expect(list.getByRole('listitem').first()).toContainText('Urgent · R-1041', { timeout: 30_000 });
+});
+
 test('the start page says so when the server fails, instead of loading for ever', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   await page.route((u) => u.pathname === '/api/v1/me', (route) => route.fulfill({ status: 503, json: { error: 'unavailable' } }));
