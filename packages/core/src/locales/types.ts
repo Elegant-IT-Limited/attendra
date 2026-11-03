@@ -210,6 +210,8 @@ export interface LanguagePack {
      */
     dayShift: (v: { days: number; day: string }) => string;
   };
+  /** find_slots' direct answers, reasons and the front-desk sentence. */
+  slots: SlotLines;
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;
   couldNotFinish: string;
@@ -244,6 +246,45 @@ export interface LanguagePack {
 }
 
 /** One day of offered times: the day (YYYY-MM-DD) and its times, each as hour and minutes on the 24-hour clock. */
+/** A time of day, 24-hour. */
+export interface Clock { hour: number; minute: number }
+/** How a provider is referred to again in a sentence: "she", "he", or their name when the clinic did not say. */
+export type Pronoun = 'female' | 'male' | null;
+
+/**
+ * find_slots' own lines (2026-11-15): the direct answer to "is 4 PM free?" first, the true reason when nothing fits,
+ * and the front-desk sentence for a vet who works outside the clinic's hours. `date` is clinic-local YYYY-MM-DD.
+ */
+export interface SlotLines {
+  /** "Yes, 4:00 PM on Tuesday, November 11 is free with Dr. Rahman. Shall I book it?" */
+  exactFree: (v: { date: string; time: Clock; provider: string | null }) => string;
+  /** "Not at 4:00, but 3:50 or 4:20 PM on Tuesday, November 11." */
+  notAt: (v: { time: Clock; day: OfferDay }) => string;
+  /** "The nearest is 9:00 AM on Friday, November 6." */
+  nearest: (v: { day: OfferDay }) => string;
+  /** The asked time is outside the vet's hours that day: "Dr. Morgan starts at 9 on Fridays." (or "finishes at 6"). */
+  vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
+  /**
+   * A time the vet keeps while the clinic's front desk is closed: "The clinic's front desk is closed on Sundays, but Dr.
+   * Morgan sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time.
+   */
+  frontDesk: (v: { weekday: number; provider: string; from: Clock; to: Clock; clinicOpens: Clock | null; clinicCloses: Clock | null }) => string;
+  /** "Dr. Morgan doesn't do dental care; her visits are surgery and new client exam. Dr. Bennett and Dr. Khan do dental care. Shall I look with them?" */
+  doesntDoType: (v: { provider: string; pronoun: Pronoun; visit: string; theirVisits: string[]; others: string[] }) => string;
+  /** "Dr. Morgan doesn't work on Tuesdays. She's in Wednesday to Friday and Sunday." `days` 0 = Sunday. */
+  notWorkingThatDay: (v: { provider: string; pronoun: Pronoun; weekday: number; days: number[] }) => string;
+  /** "Dr. Morgan is fully booked on Friday, November 6." */
+  fullyBooked: (v: { provider: string | null; date: string }) => string;
+  /** Nothing at all in the search: "I can't find a free time with Dr. Morgan through Friday, December 4." */
+  nothingThrough: (v: { provider: string | null; date: string }) => string;
+  /** "We book dental cleanings up to 30 days ahead, so the last day I can book is Friday, December 4." */
+  tooFarAhead: (v: { visit: string; days: number; lastDate: string }) => string;
+  /** "A dental cleaning needs 48 hours' notice, so the first day I can book is Friday, November 6." */
+  notice: (v: { visit: string; hours: number; firstDate: string }) => string;
+  /** "The clinic is closed on Thursday, November 26 (Thanksgiving)." */
+  clinicClosed: (v: { date: string; note: string | null }) => string;
+}
+
 export interface OfferDay { date: string; times: { hour: number; minute: number; provider: string | null }[] }
 
 /**
@@ -285,6 +326,10 @@ export interface MemoryWords {
   time: RegExp;
   /** Words before a time that mean "no earlier than" rather than "at about". */
   after: RegExp;
+  /** Words before a time that mean "no later than": "earlier than 6", "before 6". */
+  before: RegExp;
+  /** Words before a time that mean either side of it: "around 5". */
+  around: RegExp;
   /** Parts of the day after a time that put it in the afternoon or evening. */
   pm: RegExp;
   am: RegExp;

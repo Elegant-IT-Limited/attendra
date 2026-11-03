@@ -7,7 +7,7 @@ const sick = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_sick')!;
 
 describe('the booking rules', () => {
   it('default to the usual vet first within 3 days, the fewest visits on a tie, and matching the animal', () => {
-    expect(bookingOf({})).toEqual({ noPreference: 'usual_first', usualWithinDays: 3, tieBreak: 'fewest_visits', matchAnimal: true });
+    expect(bookingOf({})).toEqual({ noPreference: 'usual_first', usualWithinDays: 3, tieBreak: 'fewest_visits', matchAnimal: true, startEvery: 10 });
   });
 
   it('take the usual one as the most visits in two years, the latest breaking a tie, never a cancelled or future one', () => {

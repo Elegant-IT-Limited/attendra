@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, awayOn, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, awayOn, BOOKING_LEAD_MINUTES, bookingOf, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -20,10 +20,11 @@ const isUuid = (s: string) => z.uuid().safeParse(s).success;
 /** What the front desk is told when a time cannot be booked. */
 const REFUSED: Record<SlotProblem | 'cancelled' | 'just_cancelled', string> = {
   taken: 'That time was just taken. Pick another one.',
-  closed: 'That time is outside the provider\'s hours, or not on the visit\'s time grid. The front desk can squeeze it in with Override.',
+  closed: 'That time is outside the provider\'s hours, or not on the clinic\'s start-time grid. The front desk can squeeze it in with Override.',
   holiday: 'The clinic is closed that day. The front desk can squeeze it in with Override.',
   away: 'The provider is away then. The front desk can squeeze it in with Override.',
   past: 'That time has already passed.',
+  too_soon: `That time is less than ${BOOKING_LEAD_MINUTES / 60} hours away. The front desk can squeeze it in with Override.`,
   not_offered: 'This provider does not do that visit type.',
   unknown_provider: 'There is no such provider at this clinic.',
   unknown_visit_type: 'There is no such visit type at this clinic.',
@@ -105,7 +106,9 @@ export class AppointmentsController {
     // every opening in the days asked for: the picker shows them by day, and a cap would drop the last days
     const slots = openSlots(clinic, busy, { visitTypeId: q.visitTypeId, providerId: q.providerId, from, days: q.days, partOfDay: q.partOfDay, now, limit: 5000,
       patient: fit ? { age: ageOn(fit.dob, today), isNew: fit.isNew } : undefined });
-    return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString() })) };
+    // the grid and the lead time the times were found with, so the dialog says the same numbers
+    return { slots: slots.map((s) => ({ providerId: s.providerId, visitTypeId: s.visitTypeId, startsAt: s.start.toISOString(), endsAt: s.end.toISOString(), ...(s.outsideClinicHours ? { outsideClinicHours: true } : {}) })),
+      startEvery: bookingOf(clinic).startEvery, leadMinutes: BOOKING_LEAD_MINUTES };
   }
 
   /**
@@ -134,9 +137,11 @@ export class AppointmentsController {
       const closedDay = special
         ? !special.windows.some((w) => toMinutes(w.open) <= minutes && end <= toMinutes(w.close))
         : clinic.holidays.includes(date);
+      // a vet the special day lists keeps their own hours that day
+      const listed = !!provider && !!special?.providerIds?.includes(provider.id);
       // a booking that overlaps a part-day absence counts too
       const awayThen = !!provider && (awayOn(provider, date) || awayWindows(provider, date).some((a) => minutes < a.end && end > a.start));
-      const reason = closedDay ? 'holiday' : awayThen ? 'away' : null;
+      const reason = closedDay && !listed ? 'holiday' : awayThen ? 'away' : null;
       if (!reason) continue;
       const key = `${date}|${b.providerId}`;
       const entry = found.get(key) ?? { date, providerId: b.providerId, reason, count: 0 };

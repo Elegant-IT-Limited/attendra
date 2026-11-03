@@ -1,4 +1,4 @@
-import { type BusyInterval, DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { BOOKING_LEAD_MINUTES, type BusyInterval, DEMO_CLINIC, zonedInstant } from '@attendra/core';
 import { CallRepository, createPhiCipher, saveClinic, seedDemo } from '@attendra/db';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { sql } from 'drizzle-orm';
@@ -56,7 +56,8 @@ describe('the booking rules, shared with the assistant', () => {
     const busy = [{ providerId: 'prov_okafor', start: at('2026-09-29', '08:00'), end: at('2026-09-29', '08:20'), visitTypeId: 'vt_sick' }];
     const desk = (start: Date, b: BusyInterval[] = busy) => slotProblem(clinic, b, { providerId: 'prov_okafor', visitTypeId: 'vt_sick', start }, NOW);
     expect(desk(at('2026-09-29', '08:30'))).toBeNull();
-    expect(desk(at('2026-09-29', '08:20'))).toBe('closed'); // off the 30-minute grid a 10-minute buffer makes
+    expect(desk(at('2026-09-29', '08:20'))).toBe('taken'); // inside the 10 minutes kept after the 8:00 visit
+    expect(desk(at('2026-09-29', '08:35'))).toBe('closed'); // off the clinic's 10-minute grid
     // a 9:00 visit needs 9:00 to 9:30 free: one at 9:25 is in its buffer
     expect(desk(at('2026-09-29', '09:00'), [{ providerId: 'prov_okafor', start: at('2026-09-29', '09:25'), end: at('2026-09-29', '09:45') }])).toBe('taken');
     // the front desk can book tomorrow morning and a month out
@@ -77,19 +78,22 @@ describe('the booking rules, shared with the assistant', () => {
     expect(rule({ start: at('2026-09-29', '09:00'), visitTypeId: 'vt_nothing' })).toBe('unknown_visit_type');
   });
 
-  it('offers the front desk every open slot with no lead time, and nothing the rules refuse', () => {
+  it('offers the front desk every start on the clinic\'s grid, from the same two hours ahead as the assistant, and nothing the rules refuse', () => {
     const morning = at('2026-09-29', '08:05');
     const slots = openSlots(DEMO_CLINIC, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now: morning });
-    expect(slots[0]!.start).toEqual(at('2026-09-29', '08:20'));
+    // 8:05 plus BOOKING_LEAD_MINUTES, on the 10-minute grid; every start, not only times a visit apart
+    expect(slots[0]!.start).toEqual(at('2026-09-29', '10:10'));
+    expect(slots[1]!.start).toEqual(at('2026-09-29', '10:20'));
     for (const s of slots) expect(slotProblem(DEMO_CLINIC, [], { providerId: s.providerId, visitTypeId: s.visitTypeId, start: s.start }, morning)).toBeNull();
   });
 
-  it('never offers a time that starts in the next few minutes: it would have begun by the time it is booked', () => {
+  it('never offers or books a time sooner than the lead time; a walk-in that soon is Override (2026-11-15)', () => {
     const first = (now: Date) => openSlots(DEMO_CLINIC, [], { visitTypeId: 'vt_sick', providerId: 'prov_okafor', from: '2026-09-29', days: 1, now })[0]!.start;
-    expect(first(at('2026-09-29', '08:15'))).toEqual(at('2026-09-29', '08:20'));
-    // at 8:19:59.86, the 8:20 is no longer offered (a booking sent 0.3 s later was refused as past)
-    expect(first(new Date(at('2026-09-29', '08:20').getTime() - 140))).toEqual(at('2026-09-29', '08:40'));
-    expect(first(at('2026-09-29', '08:16'))).toEqual(at('2026-09-29', '08:40'));
+    expect(BOOKING_LEAD_MINUTES).toBe(120);
+    expect(first(at('2026-09-29', '08:15'))).toEqual(at('2026-09-29', '10:20'));
+    const req = { providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-09-29', '09:00') };
+    expect(slotProblem(DEMO_CLINIC, [], req, at('2026-09-29', '08:15'))).toBe('too_soon');
+    expect(slotProblem(DEMO_CLINIC, [], req, at('2026-09-29', '08:15'), { override: true })).toBeNull();
   });
 });
 

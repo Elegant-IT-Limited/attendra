@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Language, PACKS } from './locales';
-import type { ClinicConfig, Provider, VisitType } from './clinic';
-import { specialDayOf, windowsOn } from './hours';
+import { bookingOf, type ClinicConfig, type Provider, type VisitType } from './clinic';
+import { bookableWindows, insideWindows } from './hours';
 import { awayOn, awayWindows, providerName } from './providers';
-import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
+import { addDays, fromMinutes, localParts, toMinutes, zonedInstant } from './time';
 
 /** Booked time. With its visit type, a visit that keeps a buffer after it blocks that too. */
 export interface BusyInterval { providerId: string; start: Date; end: Date; visitTypeId?: string }
@@ -14,7 +14,12 @@ export interface Slot {
   visitTypeId: string;
   start: Date;
   end: Date;
+  /** The vet sees patients then by their own hours while the clinic's front desk is closed: the caller is told so. */
+  outsideClinicHours?: boolean;
 }
+
+/** Which side of the caller's time to look: "around 5" (either), "earlier than 6" (before), "after 3" (after). */
+export type NearDirection = 'around' | 'before' | 'after';
 
 export interface SlotQuery {
   visitType: VisitType;
@@ -22,7 +27,7 @@ export interface SlotQuery {
   from: string; // local YYYY-MM-DD, inclusive
   days: number;
   partOfDay?: 'morning' | 'afternoon' | 'any';
-  /** The earliest local time of day the caller wants (HH:MM): "after 3" or "at 3:30". */
+  /** Earliest first, no earlier than this local time of day (HH:MM). */
   fromTime?: string;
   now: Date;
   leadMinutes?: number; // no same-hour surprises for the front desk
@@ -32,11 +37,22 @@ export interface SlotQuery {
   /** One slot per start time: the first of those free then, so a caller hears three different times, not one time three times. */
   distinctTimes?: boolean;
   /**
-   * With `fromTime`: the asked day first, nearest that time on either side ("at 4:30": 4:40 and 4:20), up to `limit`, the
-   * nearest first (the exact time, when free, leads); only when that day has nothing, the next days from that time on.
+   * The times nearest to one the caller named on a day ("is 4 PM free?"): the exact time first when it is free, then
+   * that day's nearest on the allowed side, closest first ("not at 4, but 3:50 or 4:20"). When that day has nothing,
+   * the free time nearest to it on each next working day, one a day, with `days` as the window.
    */
-  sameDayFirst?: boolean;
+  near?: { date: string; time: string; direction: NearDirection };
+  /** Every free start on the grid (the desk's picker and its checks), not only times a visit apart. */
+  allStarts?: boolean;
+  /** The clinic's start-time grid in minutes; by default its booking rules' startEvery. */
+  startEvery?: number;
 }
+
+/**
+ * How far ahead a booking must start, in minutes: the assistant's lead, and the dashboard's New booking dialog's, so
+ * the desk never picks a time about to pass (2026-11-15). A walk-in sooner than that is the desk's Override.
+ */
+export const BOOKING_LEAD_MINUTES = 120;
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 
@@ -53,76 +69,118 @@ export function clashes(busy: BusyInterval[], visitTypes: Pick<VisitType, 'id' |
     && start.getTime() < b.end.getTime() + bufferOf(visitTypes, b.visitTypeId) * MINUTE);
 }
 
+type SlotClinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[]; specialDays?: ClinicConfig['specialDays']; booking?: ClinicConfig['booking'] };
+
 /**
- * Free slots in clinic-local time, earliest first: day by day, and within a day by
- * start time across every provider, with the providers' given order breaking a tie,
- * so results are deterministic. The step is the visit length: a 30-minute visit
- * offers 9:00, 9:30, 10:00, and with a 10-minute buffer after it 9:00, 9:40, 10:20.
+ * The starts on a window: its opening, then every clock multiple of `every` after it (8:05, 8:10, 8:20 on a 10-minute
+ * grid), as long as the visit and its buffer end inside the window.
  */
-export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[]; specialDays?: ClinicConfig['specialDays'] }, busy: BusyInterval[], q: SlotQuery): Slot[] {
-  const limit = q.limit ?? 3;
-  if (q.sameDayFirst && q.fromTime) {
-    const target = toMinutes(q.fromTime);
-    const that = findSlots(clinic, busy, { ...q, sameDayFirst: false, fromTime: undefined, days: 1, limit: 500 });
-    if (that.length) {
-      const off = (s: Slot) => Math.abs(localParts(s.start, clinic.timezone).minutes - target);
-      return [...that].sort((a, b) => off(a) - off(b) || a.start.getTime() - b.start.getTime()).slice(0, limit);
-    }
-  }
-  const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * MINUTE;
-  const buffer = q.visitType.bufferMinutes ?? 0;
-  const step = q.visitType.minutes + buffer;
-  const out: Slot[] = [];
-  for (let i = 0; i < q.days && out.length < limit; i++) {
-    const date = addDays(q.from, i);
-    // a special day has its own hours; a holiday, none
-    const special = specialDayOf(clinic, date);
-    if (special ? !special.windows.length : clinic.holidays.includes(date)) continue;
-    const weekday = weekdayOf(date);
-    const day: { slot: Slot; order: number }[] = [];
-    q.providers.forEach((provider, order) => {
-      if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
-      const away = awayWindows(provider, date);
-      // a provider's own hours are kept inside the clinic's that day (a special day's own, or the week's):
-      // nobody is seen while the clinic is closed, at lunch or after hours, whatever their own hours say
-      const open = special ? special.windows : windowsOn(clinic.hours, weekday);
-      const windows = provider.hours ? intersect(windowsOn(provider.hours, weekday), open) : open;
-      for (const w of windows) {
-        for (let m = toMinutes(w.open); m + q.visitType.minutes <= toMinutes(w.close); m += step) {
-          if (q.partOfDay === 'morning' && m >= 12 * 60) break;
-          if (q.partOfDay === 'afternoon' && m < 12 * 60) continue;
-          if (q.fromTime && m < toMinutes(q.fromTime)) continue;
-          // away for part of the day: nothing that overlaps it
-          if (away.some((a) => m < a.end && m + q.visitType.minutes > a.start)) continue;
-          const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
-          const end = new Date(start.getTime() + q.visitType.minutes * MINUTE);
-          if (start.getTime() < earliest) continue;
-          if (clashes(busy, clinic.visitTypes, provider.id, start, end, buffer)) continue;
-          day.push({ slot: { id: slotId(provider.id, start), providerId: provider.id, visitTypeId: q.visitType.id, start, end }, order });
-        }
-      }
-    });
-    // the visits each one already has that day, for a tie broken by the fewest
-    const load = (providerId: string) => (q.tieBreak === 'fewest'
-      ? busy.filter((b) => b.providerId === providerId && localParts(b.start, clinic.timezone).date === date).length : 0);
-    const loads = new Map(q.providers.map((p) => [p.id, load(p.id)]));
-    day.sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime() || loads.get(a.slot.providerId)! - loads.get(b.slot.providerId)! || a.order - b.order);
-    for (const { slot } of day) {
-      if (q.distinctTimes && out.some((s) => s.start.getTime() === slot.start.getTime())) continue;
-      out.push(slot);
-      if (out.length >= limit) return out;
-    }
-  }
+export function gridStarts(open: number, close: number, length: number, every: number): number[] {
+  const out: number[] = [];
+  for (let m = open; m + length <= close; m = (Math.floor(m / every) + 1) * every) out.push(m);
   return out;
 }
 
-/** The parts of two lists of windows that overlap. */
-function intersect(a: { open: string; close: string }[], b: { open: string; close: string }[]) {
-  const out: { open: string; close: string }[] = [];
-  for (const x of a) for (const y of b) {
-    const open = Math.max(toMinutes(x.open), toMinutes(y.open));
-    const close = Math.min(toMinutes(x.close), toMinutes(y.close));
-    if (open < close) out.push({ open: fromMinutes(open), close: fromMinutes(close) });
+/** Every free start on one date, all providers, in the order found (provider by provider), each with its provider's place in the list. */
+function freeOnDay(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery, date: string, earliest: number): { slot: Slot; order: number }[] {
+  const buffer = q.visitType.bufferMinutes ?? 0;
+  const every = q.startEvery ?? bookingOf(clinic).startEvery;
+  const out: { slot: Slot; order: number }[] = [];
+  q.providers.forEach((provider, order) => {
+    if (!provider.visitTypeIds.includes(q.visitType.id) || awayOn(provider, date)) return;
+    const away = awayWindows(provider, date);
+    // the vet's own hours decide, even outside the clinic's; the clinic's are for vets with none (bookableWindows)
+    const { windows, clinicWindows } = bookableWindows(clinic, provider, date);
+    for (const w of windows) {
+      for (const m of gridStarts(toMinutes(w.open), toMinutes(w.close), q.visitType.minutes + buffer, every)) {
+        // away for part of the day: nothing that overlaps it
+        if (away.some((a) => m < a.end && m + q.visitType.minutes > a.start)) continue;
+        const start = zonedInstant(date, fromMinutes(m), clinic.timezone);
+        if (start.getTime() < earliest) continue;
+        const end = new Date(start.getTime() + q.visitType.minutes * MINUTE);
+        if (clashes(busy, clinic.visitTypes, provider.id, start, end, buffer)) continue;
+        out.push({ slot: { id: slotId(provider.id, start), providerId: provider.id, visitTypeId: q.visitType.id, start, end, outsideClinicHours: !insideWindows(clinicWindows, m) }, order });
+      }
+    }
+  });
+  return out;
+}
+
+/**
+ * Free slots in clinic-local time, earliest first: day by day, and within a day by
+ * start time across every provider, with the providers' given order breaking a tie,
+ * so results are deterministic. Starts sit on the clinic's grid (every 10 minutes by
+ * default), and the times offered are spread a visit apart (8:00, 8:20, 8:40 for a
+ * 20-minute visit), while any start on the grid can be asked for and booked.
+ * With `near`, the times nearest to the one the caller named instead.
+ */
+export function findSlots(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery): Slot[] {
+  const limit = q.limit ?? 3;
+  const earliest = q.now.getTime() + (q.leadMinutes ?? BOOKING_LEAD_MINUTES) * MINUTE;
+  const gap = (q.visitType.minutes + (q.visitType.bufferMinutes ?? 0)) * MINUTE;
+  const minutesOf = (s: Slot) => localParts(s.start, clinic.timezone).minutes;
+  // the visits each one already has that day, for a tie broken by the fewest
+  const loadOn = (date: string) => {
+    const loads = new Map(q.providers.map((p) => [p.id, q.tieBreak === 'fewest' ? busy.filter((b) => b.providerId === p.id && localParts(b.start, clinic.timezone).date === date).length : 0]));
+    return (id: string) => loads.get(id) ?? 0;
+  };
+  // a time offered is a visit apart from the ones already offered that day (with that vet, or with anyone when the times are distinct)
+  const fits = (chosen: Slot[], slot: Slot) => !chosen.some((c) => (q.distinctTimes ? c.start.getTime() === slot.start.getTime() : false)
+    || (!q.allStarts && (q.distinctTimes || c.providerId === slot.providerId) && localDateOf(c.start, clinic.timezone) === localDateOf(slot.start, clinic.timezone)
+      && Math.abs(c.start.getTime() - slot.start.getTime()) < gap));
+
+  if (q.near) {
+    const target = toMinutes(q.near.time);
+    const side = (m: number) => (q.near!.direction === 'before' ? m < target : q.near!.direction === 'after' ? m >= target : true);
+    const ranked = (date: string) => {
+      const load = loadOn(date);
+      return freeOnDay(clinic, busy, q, date, earliest).filter(({ slot }) => side(minutesOf(slot)))
+        .sort((a, b) => Math.abs(minutesOf(a.slot) - target) - Math.abs(minutesOf(b.slot) - target) || a.slot.start.getTime() - b.slot.start.getTime()
+          || load(a.slot.providerId) - load(b.slot.providerId) || a.order - b.order)
+        .map((x) => x.slot);
+    };
+    const that = ranked(q.near.date);
+    if (that.length) {
+      // around a time: the nearest on each side first ("3:50 or 4:20"), then the rest by distance
+      const exact = that.filter((s) => minutesOf(s) === target);
+      const before = that.find((s) => minutesOf(s) < target);
+      const after = that.find((s) => minutesOf(s) > target);
+      const order = [...exact, ...[before, after].filter((s): s is Slot => !!s).sort((a, b) => Math.abs(minutesOf(a) - target) - Math.abs(minutesOf(b) - target)), ...that];
+      const out: Slot[] = [];
+      for (const s of order) {
+        if (out.length >= limit) break;
+        if (out.includes(s) || !fits(out, s)) continue;
+        out.push(s);
+      }
+      return out;
+    }
+    // nothing that day: the nearest to that time on each next working day, one a day
+    const out: Slot[] = [];
+    for (let i = 1; i < q.days && out.length < limit; i++) {
+      const date = addDays(q.near.date, i);
+      if (date < q.from) continue;
+      const best = ranked(date)[0];
+      if (best) out.push(best);
+    }
+    return out;
+  }
+
+  const out: Slot[] = [];
+  for (let i = 0; i < q.days && out.length < limit; i++) {
+    const date = addDays(q.from, i);
+    const load = loadOn(date);
+    const day = freeOnDay(clinic, busy, q, date, earliest).filter(({ slot }) => {
+      const m = minutesOf(slot);
+      if (q.partOfDay === 'morning' && m >= 12 * 60) return false;
+      if (q.partOfDay === 'afternoon' && m < 12 * 60) return false;
+      return !(q.fromTime && m < toMinutes(q.fromTime));
+    });
+    day.sort((a, b) => a.slot.start.getTime() - b.slot.start.getTime() || load(a.slot.providerId) - load(b.slot.providerId) || a.order - b.order);
+    for (const { slot } of day) {
+      if (!fits(out, slot)) continue;
+      out.push(slot);
+      if (out.length >= limit) return out;
+    }
   }
   return out;
 }

@@ -129,7 +129,9 @@ describe('the time', () => {
   it.each([
     ['Wednesday at 5', { time: '17:00', mode: 'at' }],
     ['Wednesday 5:20', { time: '17:20', mode: 'at' }],
-    ['around 9 am', { time: '09:00', mode: 'at' }],
+    ['around 9 am', { time: '09:00', mode: 'around' }],
+    ['earlier than 6', { time: '18:00', mode: 'before' }],
+    ['before 5 pm', { time: '17:00', mode: 'before' }],
     ['after 3', { time: '15:00', mode: 'after' }],
     ['make it 4:40', { time: '16:40', mode: 'at' }],
     ['actually, can you make it 4?', { time: '16:00', mode: 'at' }],

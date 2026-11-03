@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { clock12, dateParts, wallClock } from './dates';
-import { type LanguagePack, type OfferDay } from './types';
+import { type Clock, type LanguagePack, type OfferDay, type Pronoun } from './types';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -27,6 +27,27 @@ const dayTimes = (day: OfferDay) => {
   }));
 };
 
+/** "a, b and c". */
+const andList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0] ?? '');
+/** "9", "9:30", the way a front desk says an hour in a sentence about hours ("from 9 to 1"). */
+const hourWords = (t: Clock) => { const c = clock12(t.hour, t.minute); return t.minute ? `${c.hour}:${c.minutes}` : String(c.hour); };
+/** "4:00 PM". */
+const timeWords = (t: Clock) => { const c = clock12(t.hour, t.minute); return `${c.hour}:${c.minutes} ${period(t.hour)}`; };
+/** Weekdays Monday first, runs of three or more as a range: "Wednesday to Friday and Sunday". */
+const daysWords = (days: number[]) => {
+  const order = [1, 2, 3, 4, 5, 6, 0].filter((d) => days.includes(d));
+  const runs: number[][] = [];
+  for (const d of order) {
+    const last = runs.at(-1);
+    const prev = last?.at(-1);
+    if (last && prev !== undefined && [1, 2, 3, 4, 5, 6, 0].indexOf(d) === [1, 2, 3, 4, 5, 6, 0].indexOf(prev) + 1) last.push(d); else runs.push([d]);
+  }
+  return andList(runs.flatMap((r) => (r.length >= 3 ? [`${WEEKDAYS[r[0]!]} to ${WEEKDAYS[r.at(-1)!]}`] : r.map((d) => WEEKDAYS[d]!))));
+};
+const subject = (provider: string, p: Pronoun) => (p === 'female' ? 'She\'s' : p === 'male' ? 'He\'s' : `${provider} is`);
+const possessive = (provider: string, p: Pronoun) => (p === 'female' ? 'her' : p === 'male' ? 'his' : `${provider}'s`);
+const noticeText = (hours: number) => (hours % 24 === 0 ? `${hours / 24} ${hours === 24 ? 'day' : 'days'}'` : `${hours} hours'`);
+const capitalFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 /** A note written to follow a comma, said as a sentence of its own. */
@@ -121,8 +142,10 @@ export const en: LanguagePack = {
     nextWord: 'next',
     anyVet: /\b(any (?:family )?(?:doctor|vet|veterinarian|one)|anyone|anybody|whoever|no preference|(?:it )?doesn'?t matter (?:who|which))\b/g,
     anyDay: /\b(any ?day|first (?:available|opening|time)|earliest|soonest|whenever)\b/g,
-    time: /\b(?:(at|around|about|after|make it|move it to|change it to|how about|what about)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
+    time: /\b(?:(at|around|about|after|before|earlier than|no later than|make it|move it to|change it to|how about|what about)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
     after: /^after$/,
+    before: /^(?:before|earlier than|no later than)$/,
+    around: /^(?:around|about)$/,
     pm: /p\.?m|afternoon|evening/,
     am: /a\.?m|morning/,
   },
@@ -147,6 +170,27 @@ export const en: LanguagePack = {
   abuseGoodbye: 'I\'m going to end the call now. You\'re welcome to call back any time. Goodbye.',
   takeOver: 'I\'m connecting you with a member of our team now.',
   returnedCallLine: ({ clinic }) => `This is ${clinic}'s phone assistant. The clinic doesn't usually call out from this line, so the call you got may not have come from us. Are you a client of ${clinic}, or can I take a message for the team?`,
+  slots: {
+    exactFree: ({ date, time, provider }) => `Yes, ${timeWords(time)} on ${fullDay(date)} is free${provider ? ` with ${provider}` : ''}. Shall I book it?`,
+    notAt: ({ time, day }) => `Not at ${clock12(time.hour, time.minute).hour}:${clock12(time.hour, time.minute).minutes}, but ${dayTimes(day)} on ${fullDay(day.date)}.`,
+    nearest: ({ day }) => `The nearest ${day.times.length > 1 ? 'are' : 'is'} ${dayTimes(day)} on ${fullDay(day.date)}.`,
+    vetHours: ({ provider, weekday, starts, ends }) => (starts
+      ? `${provider} starts at ${hourWords(starts)} on ${WEEKDAYS[weekday]}s.`
+      : `${provider} finishes at ${hourWords(ends!)} on ${WEEKDAYS[weekday]}s.`),
+    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses }) => (clinicOpens && clinicCloses
+      ? from.hour * 60 + from.minute < clinicOpens.hour * 60 + clinicOpens.minute
+        ? `The clinic's front desk opens at ${hourWords(clinicOpens)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients from ${hourWords(from)}.`
+        : `The clinic's front desk closes at ${hourWords(clinicCloses)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients until ${hourWords(to)}.`
+      : `The clinic's front desk is closed on ${WEEKDAYS[weekday]}s, but ${provider} sees patients ${WEEKDAYS[weekday]} from ${hourWords(from)} to ${hourWords(to)}.`),
+    doesntDoType: ({ provider, pronoun, visit, theirVisits, others }) => `${provider} doesn't do ${visit}; ${possessive(provider, pronoun)} visits are ${andList(theirVisits)}. `
+      + (others.length ? `${andList(others)} ${others.length > 1 ? 'do' : 'does'} ${visit}. Shall I look with ${others.length > 1 ? 'them' : others[0]}?` : `Nobody here does ${visit} at the moment. Shall I take a request for the team?`),
+    notWorkingThatDay: ({ provider, pronoun, weekday, days }) => `${provider} doesn't work on ${WEEKDAYS[weekday]}s. ${days.length ? `${subject(provider, pronoun)} in ${daysWords(days)}.` : `${subject(provider, pronoun)} not on the schedule this week.`}`,
+    fullyBooked: ({ provider, date }) => `${provider ? `${provider} is` : 'We\'re'} fully booked on ${fullDay(date)}.`,
+    nothingThrough: ({ provider, date }) => `I can't find a free time${provider ? ` with ${provider}` : ''} through ${fullDay(date)}.`,
+    tooFarAhead: ({ visit, days, lastDate }) => `We book ${visit} up to ${days} days ahead, so the last day I can book is ${fullDay(lastDate)}.`,
+    notice: ({ visit, hours, firstDate }) => `${capitalFirst(visit)} needs ${noticeText(hours)} notice, so the first day I can book is ${fullDay(firstDate)}.`,
+    clinicClosed: ({ date, note }) => `The clinic is closed on ${fullDay(date)}${note ? ` (${note})` : ''}.`,
+  },
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
   couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
   spoken: {

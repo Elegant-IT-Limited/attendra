@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ClinicConfig, EmergencyHospital } from './clinic';
 import { type Language, PACKS } from './locales';
-import { addDays, localParts, toMinutes, weekdayOf } from './time';
+import { addDays, fromMinutes, localParts, toMinutes, weekdayOf } from './time';
 
 type Hours = ClinicConfig['hours'];
 
@@ -21,6 +21,49 @@ export function windowsOnDate(clinic: Days, date: string) {
   if (clinic.holidays.includes(date)) return [];
   return windowsOn(clinic.hours, weekdayOf(date));
 }
+
+type Window = { open: string; close: string };
+
+/** The weekly hours a provider is booked by: their own when they have some, else the clinic's. */
+export const ownHours = (clinic: Pick<ClinicConfig, 'hours'>, provider: { hours?: Hours | undefined }): Hours => provider.hours ?? clinic.hours;
+
+/**
+ * When one provider can be seen on one date, and the clinic's own hours that date, for every surface that books or
+ * shows a time (the assistant, the desk's checks, the booking dialog, the schedule grid, the hours the assistant
+ * says). A provider's own hours decide, even outside the clinic's (a Sunday-only vet, a vet in until 7 at a clinic
+ * that closes at 5); the clinic's hours are for providers with none of their own. A holiday, or a special day, still
+ * closes the clinic for everyone, except for a provider the special day lists. A special day with shorter hours keeps
+ * a provider with their own hours inside them. Time off is not counted here (awayOn, awayWindows).
+ */
+export function bookableWindows(clinic: Days, provider: { id: string; hours?: Hours | undefined }, date: string): { windows: Window[]; clinicWindows: Window[] } {
+  const weekday = weekdayOf(date);
+  const clinicWindows = windowsOnDate(clinic, date);
+  const special = specialDayOf(clinic, date);
+  if (special?.providerIds?.includes(provider.id)) return { windows: windowsOn(ownHours(clinic, provider), weekday), clinicWindows };
+  if (special) return { windows: provider.hours && special.windows.length ? intersectWindows(windowsOn(provider.hours, weekday), special.windows) : special.windows, clinicWindows };
+  if (clinic.holidays.includes(date)) return { windows: [], clinicWindows };
+  return { windows: windowsOn(ownHours(clinic, provider), weekday), clinicWindows };
+}
+
+/** The parts of two lists of windows that overlap. */
+export function intersectWindows(a: Window[], b: Window[]): Window[] {
+  const out: Window[] = [];
+  for (const x of a) for (const y of b) {
+    const open = Math.max(toMinutes(x.open), toMinutes(y.open));
+    const close = Math.min(toMinutes(x.close), toMinutes(y.close));
+    if (open < close) out.push({ open: fromMinutes(open), close: fromMinutes(close) });
+  }
+  return out;
+}
+
+/** Whether a local time of day (minutes) falls while the clinic's front desk is open: inside one of its windows. */
+export const insideWindows = (windows: Window[], minutes: number) => windows.some((w) => minutes >= toMinutes(w.open) && minutes < toMinutes(w.close));
+
+/** Settings, a vet's own hours: what those hours mean, in the dashboard's languages. */
+export const OWN_HOURS_NOTE = {
+  en: 'Hours outside the clinic\'s hours are bookable for this vet.',
+  es: 'Las horas fuera del horario de la clínica se pueden reservar con este veterinario.',
+} as const;
 
 /** Open right now, in the clinic's zone, with holidays counted as closed all day and special days by their own hours. */
 export function isOpen(clinic: Days, at: Date): boolean {

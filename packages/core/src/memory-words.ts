@@ -4,8 +4,8 @@ import { addDays, weekdayOf } from './time';
 
 /** A day the caller named: one date, or two when "next Wednesday" could be this week's or the week after's. */
 export type SaidDay = { date: string } | { either: [string, string] };
-/** A time of day the caller asked for (HH:MM): "at 5" or "around 5" is about that time, "after 3" no earlier than it. */
-export interface SaidTime { time: string; mode: 'at' | 'after' }
+/** A time of day the caller asked for (HH:MM): "at 5", "around 5" either side of it, "after 3" no earlier, "earlier than 6" before it. */
+export interface SaidTime { time: string; mode: 'at' | 'around' | 'before' | 'after' }
 
 /** What a caller's words say, by closed word lists only. A fact not said is left out; `day: null` means "any day" was said. */
 export interface SaidFacts {
@@ -152,7 +152,7 @@ function saidTime(t: string, lang: Language): SaidTime | undefined {
     else if (part && w.am.test(part) && hour === 12) hour = 0;
     // no part of the day said: a clinic's hours decide, 1 to 6 is the afternoon
     else if (!part && hour >= 1 && hour <= 6) hour += 12;
-    out = { time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, mode: word && w.after.test(word) ? 'after' : 'at' };
+    out = { time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, mode: !word ? 'at' : w.after.test(word) ? 'after' : w.before.test(word) ? 'before' : w.around.test(word) ? 'around' : 'at' };
   }
   return out;
 }

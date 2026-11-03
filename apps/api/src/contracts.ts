@@ -481,7 +481,12 @@ export const SlotQuery = z.object({
 export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
 export type ScheduleConflicts = z.infer<typeof ScheduleConflicts>;
 
-export const SlotList = z.object({ slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime() })) });
+export const SlotList = z.object({
+  slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), outsideClinicHours: z.boolean().optional() })),
+  // the clinic's start-time grid and the lead time (minutes) the times were found with: the dialog says these numbers
+  startEvery: z.number().int().optional(),
+  leadMinutes: z.number().int().optional(),
+});
 
 export const BookAppointment = z.object({
   patientId: z.uuid(),
