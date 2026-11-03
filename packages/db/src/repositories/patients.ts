@@ -440,3 +440,77 @@ export function sameOwnerName(said: string, onFile: string): boolean {
   if (!a || !b) return false;
   return a === b || (a.slice(0, 2) === b.slice(0, 2) && soundsLike(a, b));
 }
+
+/** One group of records on a shared number, as the dry run reports it: counts and dates only, never a name, a number or a hash. */
+export interface SharedNumberGroup {
+  clinicId: string;
+  industry: string;
+  /** `number`: the same stored phone lookup; `last 9`: the same last nine digits stored under more than one lookup (two spellings of one number). */
+  groupedBy: 'number' | 'last 9';
+  pets: number;
+  /** Distinct owner names on the group, compared the way names are compared everywhere (case, accents and spacing do not count). */
+  owners: number;
+  /** Records in the group with no owner name. */
+  withoutOwner: number;
+  /** The records' creation dates, YYYY-MM-DD in UTC, each once, oldest first. */
+  created: string[];
+}
+
+/**
+ * The shared-number check (2026-11), read-only: per clinic, the records whose number is shared by more than one
+ * owner name, or (at a veterinary clinic) carries an owner on some records and none on others, grouped by the stored
+ * phone lookup; and the numbers whose last nine digits sit under more than one stored lookup (a number stored in two
+ * spellings, from before the lookups were rebuilt), which a number said on a call can miss. Decrypts in memory only;
+ * returns counts and dates. Writes nothing, not even an audit row. The owner of the install decides what to do with it.
+ */
+export async function sharedNumbers(db: Database, cipher: PhiCipher): Promise<{ clinics: number; groups: SharedNumberGroup[] }> {
+  const all = await db.select({ id: clinics.id, config: clinics.config }).from(clinics).orderBy(clinics.id);
+  const groups: SharedNumberGroup[] = [];
+  for (const clinic of all) {
+    const industry = String((clinic.config as { industry?: unknown } | null)?.industry ?? 'clinic');
+    const clinicId = clinic.id;
+    const rows = await withClinic(db, clinicId, (tx) => tx.select({ phoneHash: patients.phoneHash, phone: patients.phoneEnc, guardian: patients.guardianNameEnc, createdAt: patients.createdAt })
+      .from(patients).where(and(eq(patients.clinicId, clinicId), isNotNull(patients.phoneEnc))).orderBy(patients.createdAt));
+    const guardianCtx = phiContext(clinicId, 'patients.guardian_name');
+    const phoneCtx = phiContext(clinicId, 'patients.phone');
+    const records = rows.map((r) => ({
+      stored: r.phoneHash,
+      last9: cipher.hash(phoneKey(clinicId, cipher.decrypt(r.phone!, phoneCtx))),
+      owner: r.guardian ? normalizeName(cipher.decrypt(r.guardian, guardianCtx)) || null : null,
+      created: r.createdAt.toISOString().slice(0, 10),
+    }));
+    const summary = (groupedBy: SharedNumberGroup['groupedBy'], g: typeof records): SharedNumberGroup => ({
+      clinicId, industry, groupedBy, pets: g.length,
+      owners: new Set(g.flatMap((r) => (r.owner ? [r.owner] : []))).size,
+      withoutOwner: g.filter((r) => !r.owner).length,
+      created: [...new Set(g.map((r) => r.created))].sort(),
+    });
+    const byStored = new Map<string, typeof records>();
+    const byLast9 = new Map<string, typeof records>();
+    for (const r of records) {
+      if (r.stored) byStored.set(r.stored, [...(byStored.get(r.stored) ?? []), r]);
+      byLast9.set(r.last9, [...(byLast9.get(r.last9) ?? []), r]);
+    }
+    for (const g of byStored.values()) {
+      if (g.length < 2) continue;
+      const s = summary('number', g);
+      if (s.owners > 1 || (industry === 'vet' && s.owners > 0 && s.withoutOwner > 0)) groups.push(s);
+    }
+    for (const g of byLast9.values()) {
+      if (g.length > 1 && new Set(g.map((r) => r.stored)).size > 1) groups.push(summary('last 9', g));
+    }
+  }
+  return { clinics: all.length, groups };
+}
+
+/** The dry run's printout: one line a group, then the totals. No names, no numbers, no hashes. */
+export function formatSharedNumbers(r: { clinics: number; groups: SharedNumberGroup[] }): string[] {
+  const lines = r.groups.map((g) => [`clinic ${g.clinicId}`, g.industry, `grouped by ${g.groupedBy}`, `pets ${g.pets}`, `owners ${g.owners}`,
+    ...(g.withoutOwner ? [`without owner ${g.withoutOwner}`] : []), `created ${g.created.join(', ')}`].join(' · '));
+  const total = (by: SharedNumberGroup['groupedBy']) => {
+    const gs = r.groups.filter((g) => g.groupedBy === by);
+    return `${gs.length} groups (${gs.reduce((n, g) => n + g.pets, 0)} pets)`;
+  };
+  lines.push(`shared numbers: by number ${total('number')} · by last 9 ${total('last 9')} · across ${r.clinics} clinics checked (dry run, nothing written)`);
+  return lines;
+}

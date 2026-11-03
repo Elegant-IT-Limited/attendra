@@ -18,7 +18,8 @@
     "households": "tsx scripts/households.ts",
     "animal-lists": "tsx scripts/animal-lists.ts",
     "normalise-phones": "tsx scripts/normalise-phones.ts",
-    "vet-titles": "tsx scripts/vet-titles.ts"
+    "vet-titles": "tsx scripts/vet-titles.ts",
+    "shared-numbers": "tsx scripts/shared-numbers.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
