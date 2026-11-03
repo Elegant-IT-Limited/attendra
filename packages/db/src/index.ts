@@ -6,6 +6,7 @@ export * from './migrate';
 export * from './repositories/calls';
 export * from './repositories/phone-cleanup';
 export * from './repositories/title-cleanup';
+export * from './repositories/visit-type-coverage';
 export * from './repositories/patients';
 export * from './repositories/patient-records';
 export * from './repositories/front-desk';

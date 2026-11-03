@@ -20,6 +20,7 @@
     "normalise-phones": "tsx scripts/normalise-phones.ts",
     "vet-titles": "tsx scripts/vet-titles.ts",
     "shared-numbers": "tsx scripts/shared-numbers.ts",
+    "visit-type-coverage": "tsx scripts/visit-type-coverage.ts",
     "call-timeline": "tsx scripts/call-timeline.ts"
   },
   "dependencies": {
