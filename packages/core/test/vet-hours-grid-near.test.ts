@@ -82,7 +82,7 @@ describe('start times on the clinic\'s grid (item 2)', () => {
     expect(START_EVERY_CHOICES).toEqual([5, 10, 15, 20, 30]);
   });
 
-  it('a 20-minute visit can start at 8:30 (call 80bf12d1: "isn\'t available at 8:30")', () => {
+  it('a 20-minute visit can start at 8:30 (a tester call: "isn\'t available at 8:30")', () => {
     expect(times(findSlots(clinic, [], { ...thursday, visitType: vt('vt_exam') }))).toContain('Thu 08:30');
   });
 

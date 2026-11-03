@@ -278,7 +278,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     if (trade.identity !== 'pet') return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic, state.language)}.`);
     // where to take the animal comes first, and is said once (two test calls repeated the hospital four times)
     if (!state.emergencyScriptSaid) return refuse('emergency_in_progress', 'Do not continue the task yet. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
-    // After the pet warning has been said once, never a loop (Vetra, 2026-11-03): finding who they are and another pet's
+    // After the pet warning has been said once, never a loop (a tester clinic, 2026-11-03): finding who they are and another pet's
     // needs go on as usual; a routine visit for the pet in danger stays refused, with the next step, the team now or an
     // urgent request for them. The hospital again only when the caller asks for it.
     if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) {

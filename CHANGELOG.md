@@ -16,7 +16,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ### Changed (calls: pet emergencies and finding the profile)
 
 - **Who a red flag is about.** "Can't breathe", "throat swelling" and the other person-in-danger words give the 911 line only when a person is the subject; about a pet they give the pet emergency line with the clinic's emergency hospital. After it, no loop: the assistant offers the team now (a transfer when the clinic is open and has a route) or an urgent request, which leads Today and Requests. A routine visit for that pet stays refused; another pet is helped as usual. One urgent item per call.
-- **A second way to the profile.** A spoken country prefix is dropped when the rest is a whole national number ("880 303 555 0130" is (303) 555-0130). After two wrong read-backs, or a number with no profile, the assistant asks for the last four digits and the pet's name, and accepts only one pet in one household; otherwise a request for the team. Nothing from the record is said first.
+- **A second way to the profile.** A spoken country prefix is dropped when the rest is a whole national number ("52 303 555 0130" is (303) 555-0130). After two wrong read-backs, or a number with no profile, the assistant asks for the last four digits and the pet's name, and accepts only one pet in one household; otherwise a request for the team. Nothing from the record is said first.
 
 ### Fixed (setup and dashboard)
 

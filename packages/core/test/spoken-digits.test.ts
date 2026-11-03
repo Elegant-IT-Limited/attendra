@@ -29,12 +29,12 @@ describe('a number as people say it', () => {
   });
 });
 
-// A number said with its country prefix ("880 303 555 0130") was read back with it three times and the call gave up
+// A number said with its country prefix ("52 303 555 0130") was read back with it three times and the call gave up
 // (2026-11-03). The prefix is dropped when what follows is one whole national number for the clinic's country.
 describe('a spoken country prefix', () => {
   const UK = { phoneNumbers: ['+442079460000'] };
   it.each([
-    ['880 303 555 0130', '+13035550130'],
+    ['52 303 555 0130', '+13035550130'],
     ['eight eight oh, three oh three, triple five, oh one three oh', '+13035550130'],
     ['1 303 555 0130', '+13035550130'],
     ['011 303 555 0130', '+13035550130'],
@@ -46,16 +46,16 @@ describe('a spoken country prefix', () => {
   });
 
   it('keeps what is not a prefix and a whole number after it, and a number said with + or 00', () => {
-    expect(withoutSpokenPrefix(US, '880 103 555 0130')).toBe('880 103 555 0130'); // no area code starts with 1
+    expect(withoutSpokenPrefix(US, '52 103 555 0130')).toBe('52 103 555 0130'); // no area code starts with 1
     expect(withoutSpokenPrefix(US, '12 303 555 0130')).toBe('12 303 555 0130'); // 12 is no country's code
     expect(withoutSpokenPrefix(US, '555 0130')).toBe('555 0130');
-    expect(heardNumber(US, '+880 303 555 0130')).toBe('+8803035550130');
-    expect(heardNumber(US, '00 880 303 555 0130')).toBe('+8803035550130');
+    expect(heardNumber(US, '+52 303 555 0130')).toBe('+523035550130');
+    expect(heardNumber(US, '00 52 303 555 0130')).toBe('+523035550130');
   });
 
   it('elsewhere, with the home 0 said after the prefix', () => {
-    expect(heardNumber(UK, '880 20 7946 0123')).toBe('+442079460123');
-    expect(heardNumber(UK, '880 020 7946 0123')).toBe('+442079460123');
+    expect(heardNumber(UK, '52 20 7946 0123')).toBe('+442079460123');
+    expect(heardNumber(UK, '52 020 7946 0123')).toBe('+442079460123');
     expect(heardNumber(UK, '020 7946 0123')).toBe('+442079460123');
   });
 });

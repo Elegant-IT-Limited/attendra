@@ -56,7 +56,7 @@ export function nothingFound(clinic: ClinicConfig, q: { providers: Provider[]; f
   return { code: 'fully_booked', line: PACKS[q.lang].slots.nothingThrough({ provider: one ? nameIn(one, q.lang) : null, date: addDays(q.from, q.days - 1) }) };
 }
 
-/** The asked time is before the vet starts or after they finish that day: "Dr. Morgan starts at 9 on Fridays." */
+/** The asked time is before the vet starts or after they finish that day: "Dr. Vance starts at 9 on Fridays." */
 export function vetHoursLine(clinic: ClinicConfig, vet: Provider, date: string, time: string, lang: Language, direction: 'around' | 'before' | 'after' = 'around'): string | null {
   const windows = bookableWindows(clinic, vet, date).windows;
   if (!windows.length) return null;
@@ -71,7 +71,7 @@ export function vetHoursLine(clinic: ClinicConfig, vet: Provider, date: string, 
 
 /**
  * The front-desk sentence for the first offered time a vet keeps while the clinic's desk is closed, or null: "The
- * clinic's front desk is closed on Sundays, but Dr. Morgan sees patients Sunday from 9 to 1."
+ * clinic's front desk is closed on Sundays, but Dr. Vance sees patients Sunday from 9 to 1."
  */
 export function frontDeskLine(clinic: ClinicConfig, slots: Slot[], lang: Language): string | null {
   const slot = slots.find((s) => s.outsideClinicHours);

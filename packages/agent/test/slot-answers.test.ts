@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { systemPrompt } from '../src';
 import { world } from './support';
 
-// Made-up vets (2026-11-15). The front desk is open Monday to Friday 8 to 6 and Saturday morning. Dr. Morgan keeps her
+// Made-up vets (2026-11-15). The front desk is open Monday to Friday 8 to 6 and Saturday morning. Dr. Vance keeps her
 // own hours (Sunday 9 to 1, Friday 9 to 1 and 2 to 6) and does sick visits and new patient exams only; Dr. Rahman is
 // in until 7 on weekdays, and away 4:00 to 4:20 on Wednesday, September 30. The calls are on Monday, September 28.
 const FRIDAY = [{ open: '09:00', close: '13:00' }, { open: '14:00', close: '18:00' }];
@@ -13,7 +13,7 @@ const clinic = ClinicConfig.parse({
   ...RIVERBEND_CLINIC, afterHours: 'book',
   visitTypes: [...RIVERBEND_CLINIC.visitTypes, { id: 'vt_quick', name: 'quick check', names: { es: 'revisión rápida' }, minutes: 10 }],
   providers: [
-    { id: 'prov_morgan', name: 'Dr. Sophia Morgan', gender: 'female', visitTypeIds: ['vt_sick', 'vt_new'], hours: { 0: [{ open: '09:00', close: '13:00' }], 5: FRIDAY } },
+    { id: 'prov_morgan', name: 'Dr. Mara Vance', gender: 'female', visitTypeIds: ['vt_sick', 'vt_new'], hours: { 0: [{ open: '09:00', close: '13:00' }], 5: FRIDAY } },
     { id: 'prov_rahman', name: 'Dr. Omar Rahman', gender: 'male', visitTypeIds: ['vt_wellness', 'vt_sick', 'vt_vaccines', 'vt_quick'],
       hours: { 1: LATE, 2: LATE, 3: LATE, 4: LATE, 5: LATE }, timeOff: [{ from: '2026-09-30', to: '2026-09-30', start: '16:00', end: '16:20', note: 'team meeting' }] },
     { id: 'prov_khan', name: 'Dr. Leila Khan', gender: 'female', visitTypeIds: ['vt_wellness', 'vt_sick', 'vt_vaccines', 'vt_quick'] },
@@ -35,13 +35,13 @@ describe('a vet\'s own hours (item 1)', () => {
   it('a Sunday with the vet who works it: offered, with the front-desk sentence first', async () => {
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-04' });
     expect(r.slots[0]!.when).toBe('Sunday, October 4, at 9:00 AM');
-    expect(r.say_as).toBe('The clinic\'s front desk is closed on Sundays, but Dr. Sophia Morgan sees patients Sunday from 9 to 1. On Sunday, October 4, I have 9:00, 9:20 or 9:40 AM with Dr. Sophia Morgan.');
+    expect(r.say_as).toBe('The clinic\'s front desk is closed on Sundays, but Dr. Mara Vance sees patients Sunday from 9 to 1. On Sunday, October 4, I have 9:00, 9:20 or 9:40 AM with Dr. Mara Vance.');
     expect(r.reason).toBeUndefined();
   });
 
   it('the same in Spanish', async () => {
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-04' }, { language: 'es' });
-    expect(r.say_as).toMatch(/^La recepción de la clínica está cerrada los domingos, pero (?:la )?Dra\. Sophia Morgan atiende el domingo de 9 a 1\. /);
+    expect(r.say_as).toMatch(/^La recepción de la clínica está cerrada los domingos, pero (?:la )?Dra\. Mara Vance atiende el domingo de 9 a 1\. /);
   });
 
   it('after the desk closes: "closes at 6, but Dr. Rahman sees patients until 7"', async () => {
@@ -52,14 +52,14 @@ describe('a vet\'s own hours (item 1)', () => {
 
   it('get_clinic_info gives the hours the search uses', async () => {
     const c = await w.call('+13035550190', { clinic });
-    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'when is Dr. Morgan in' } }]);
-    const morgan = (out.results[0]!.data.providers as { name: string; hours: string }[]).find((p) => p.name === 'Dr. Sophia Morgan')!;
-    expect(morgan.hours).toBe('Fri 09:00-13:00, 14:00-18:00; Sun 09:00-13:00');
+    const out = await c.delegate([{ tool: 'get_clinic_info', args: { question: 'when is Dr. Vance in' } }]);
+    const vance = (out.results[0]!.data.providers as { name: string; hours: string }[]).find((p) => p.name === 'Dr. Mara Vance')!;
+    expect(vance.hours).toBe('Fri 09:00-13:00, 14:00-18:00; Sun 09:00-13:00');
   });
 });
 
 describe('the nearest times to the one asked for (item 3)', () => {
-  it('Tamal\'s example: "is Dr. Rahman available on September 30 at 4 PM?" with 4:00 taken', async () => {
+  it('The owner\'s example: "is Dr. Rahman available on September 30 at 4 PM?" with 4:00 taken', async () => {
     const r = await find({ visit_type_id: 'vt_quick', provider_id: 'prov_rahman', from_date: '2026-09-30', from_time: '16:00', time_mode: 'at' });
     expect(r.exact).toEqual({ time: '16:00', free: false });
     expect(r.say_as).toBe('Not at 4:00, but 3:50 or 4:20 PM on Wednesday, September 30.');
@@ -78,7 +78,7 @@ describe('the nearest times to the one asked for (item 3)', () => {
 
   it('a time outside the vet\'s hours: when they start, then the nearest', async () => {
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-02', from_time: '08:00', time_mode: 'at' });
-    expect(r.say_as).toBe('Dr. Sophia Morgan starts at 9 on Fridays. The nearest are 9:00 or 9:20 AM on Friday, October 2.');
+    expect(r.say_as).toBe('Dr. Mara Vance starts at 9 on Fridays. The nearest are 9:00 or 9:20 AM on Friday, October 2.');
   });
 
   it('in Spanish: "a las 4:00 no, pero..."', async () => {
@@ -92,7 +92,7 @@ describe('the true reason (item 4)', () => {
     const r = await find({ visit_type_id: 'vt_vaccines', provider_id: 'prov_morgan', from_date: '2026-10-02' });
     expect(r.reason).toBe('doesnt_do_type');
     expect(r.slots).toEqual([]);
-    expect(r.say_as).toBe('Dr. Sophia Morgan doesn\'t do vaccine appointment; her visits are sick visit and new patient exam. Dr. Omar Rahman and Dr. Leila Khan do vaccine appointment. Shall I look with them?');
+    expect(r.say_as).toBe('Dr. Mara Vance doesn\'t do vaccine appointment; her visits are sick visit and new patient exam. Dr. Omar Rahman and Dr. Leila Khan do vaccine appointment. Shall I look with them?');
     const es = await find({ visit_type_id: 'vt_vaccines', provider_id: 'prov_morgan', from_date: '2026-10-02' }, { language: 'es' });
     expect(es.say_as).toContain('no hace cita de vacunas');
   });
@@ -100,14 +100,14 @@ describe('the true reason (item 4)', () => {
   it('not working that day: their days, then the times on them', async () => {
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-09-29' });
     expect(r.reason).toBe('not_working_that_day');
-    expect(r.say_as).toMatch(/^Dr\. Sophia Morgan doesn't work on Tuesdays\. She's in Friday and Sunday\. On Friday, October 2, I have /);
+    expect(r.say_as).toMatch(/^Dr\. Mara Vance doesn't work on Tuesdays\. She's in Friday and Sunday\. On Friday, October 2, I have /);
   });
 
   it('fully booked that day: said, then the nearest after it', async () => {
     const busy = ClinicConfig.parse({ ...clinic, providers: clinic.providers.map((p) => (p.id === 'prov_morgan' ? { ...p, timeOff: [{ from: '2026-10-02', to: '2026-10-02', start: '08:00', end: '18:00' }] } : p)) });
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-02' }, { clinic: busy });
     expect(r.reason).toBe('fully_booked');
-    expect(r.say_as).toMatch(/^Dr\. Sophia Morgan is fully booked on Friday, October 2\. The clinic's front desk is closed on Sundays, but Dr\. Sophia Morgan sees patients Sunday from 9 to 1\. On Sunday, October 4, I have /);
+    expect(r.say_as).toMatch(/^Dr\. Mara Vance is fully booked on Friday, October 2\. The clinic's front desk is closed on Sundays, but Dr\. Mara Vance sees patients Sunday from 9 to 1\. On Sunday, October 4, I have /);
   });
 
   it('notice: the first day it can be booked', async () => {

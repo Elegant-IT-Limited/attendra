@@ -169,7 +169,7 @@ const NANP = /^[2-9]\d{2}[2-9]\d{6}$/;
 const isCallingCode = (digits: string) => digits.length >= 1 && digits.length <= 3 && digits[0] !== '0' && callingCode(`+${digits}0000000`) === digits;
 
 /**
- * A number the caller said, with a country prefix they said aloud dropped: "880 303 555 0130" is (303) 555-0130 at a
+ * A number the caller said, with a country prefix they said aloud dropped: "52 303 555 0130" is (303) 555-0130 at a
  * clinic in the United States, and so is "1 303 555 0130" (a test call, 2026-11-03, was read back with its prefix three
  * times). Only when the digits after the prefix are one whole national number for the clinic's country and the prefix is
  * a country calling code (or 011, dialled out of North America); otherwise, or with a + or 00 said, as it was given.
@@ -184,7 +184,7 @@ export function withoutSpokenPrefix(clinic: PhoneCountry, said: string): string 
   if (!length || digits.length <= length) return t;
   const national = digits.slice(-length);
   if (code === '1' ? !NANP.test(national) : national.startsWith('0')) return t;
-  // the prefix as said, without the home 0 a caller may say before the national number ("880 020 7946 0123")
+  // the prefix as said, without the home 0 a caller may say before the national number ("52 020 7946 0123")
   const prefix = digits.slice(0, -length);
   const trunk = TRUNK[code];
   const plain = trunk && prefix.length > trunk.length && prefix.endsWith(trunk) ? prefix.slice(0, -trunk.length) : null;

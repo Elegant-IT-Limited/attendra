@@ -18,16 +18,16 @@ const verify = (phone: string | null, pet: string | null = null, last4: string |
 describe('a spoken country prefix', () => {
   it('is dropped before the read-back, and the number found', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
-    const out = await c.delegate([verify('880 720 555 0174', 'Luna')]);
+    const out = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(out.errors).toEqual(['confirm_number']);
     expect(said(out)).toContain("That's 720-555-0174?");
     c.assistant("That's 720-555-0174?");
     c.caller('Yes.');
-    const named = await c.delegate([verify('880 720 555 0174', 'Luna')]);
+    const named = await c.delegate([verify('52 720 555 0174', 'Luna')]);
     expect(named.errors).toEqual(['owner_check']);
     c.assistant('And your name?');
     c.caller('Carmen.');
-    const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Carmen', pet_name: 'Luna', phone: '880 720 555 0174', phone_last4: null } }]);
+    const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Carmen', pet_name: 'Luna', phone: '52 720 555 0174', phone_last4: null } }]);
     expect(found.errors).toEqual([null]);
     expect(c.state.verifiedPatient?.firstName).toBe('Luna');
   });

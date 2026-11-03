@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bySubject, detectEmergencies, industryPack, isPetEmergency } from '../src';
 
 // Who a red flag is about at a clinic for animals (2026-11-15): "My dog Luna's throat is swelling" got the 911 line
-// (Vetra, 2026-11-03). The person list fires the emergency number's script only when a person is the subject.
+// (a tester clinic, 2026-11-03). The person list fires the emergency number's script only when a person is the subject.
 const vet = industryPack('vet').emergency!;
 const judged = (text: string, pets: string[] = []) => bySubject(detectEmergencies(text, vet.phrases), text, vet.subjects!, pets);
 /** 'pet' when the call gets the animal's script (a pet kind leads), 'person' when the emergency number's. */

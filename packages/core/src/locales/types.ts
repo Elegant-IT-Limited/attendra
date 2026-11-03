@@ -285,21 +285,21 @@ export interface SlotLines {
   notAt: (v: { time: Clock; day: OfferDay }) => string;
   /** "The nearest is 9:00 AM on Friday, November 6." */
   nearest: (v: { day: OfferDay }) => string;
-  /** The asked time is outside the vet's hours that day: "Dr. Morgan starts at 9 on Fridays." (or "finishes at 6"). */
+  /** The asked time is outside the vet's hours that day: "Dr. Vance starts at 9 on Fridays." (or "finishes at 6"). */
   vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
   /**
    * A time the vet keeps while the clinic's front desk is closed: "The clinic's front desk is closed on Sundays, but Dr.
-   * Morgan sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time; with
+   * Vance sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time; with
    * `oneDay` (a holiday or a special day the vet is listed for), that date instead of the weekday.
    */
   frontDesk: (v: { weekday: number; provider: string; from: Clock; to: Clock; clinicOpens: Clock | null; clinicCloses: Clock | null; oneDay?: string | null }) => string;
-  /** "Dr. Morgan doesn't do dental care; her visits are surgery and new client exam. Dr. Bennett and Dr. Khan do dental care. Shall I look with them?" */
+  /** "Dr. Vance doesn't do dental care; her visits are surgery and new client exam. Dr. Bennett and Dr. Khan do dental care. Shall I look with them?" */
   doesntDoType: (v: { provider: string; pronoun: Pronoun; visit: string; theirVisits: string[]; others: string[] }) => string;
-  /** "Dr. Morgan doesn't work on Tuesdays. She's in Wednesday to Friday and Sunday." `days` 0 = Sunday. */
+  /** "Dr. Vance doesn't work on Tuesdays. She's in Wednesday to Friday and Sunday." `days` 0 = Sunday. */
   notWorkingThatDay: (v: { provider: string; pronoun: Pronoun; weekday: number; days: number[] }) => string;
-  /** "Dr. Morgan is fully booked on Friday, November 6." */
+  /** "Dr. Vance is fully booked on Friday, November 6." */
   fullyBooked: (v: { provider: string | null; date: string }) => string;
-  /** Nothing at all in the search: "I can't find a free time with Dr. Morgan through Friday, December 4." */
+  /** Nothing at all in the search: "I can't find a free time with Dr. Vance through Friday, December 4." */
   nothingThrough: (v: { provider: string | null; date: string }) => string;
   /** "We book dental cleanings up to 30 days ahead, so the last day I can book is Friday, December 4." */
   tooFarAhead: (v: { visit: string; days: number; lastDate: string }) => string;

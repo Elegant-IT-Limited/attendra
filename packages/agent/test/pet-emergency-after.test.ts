@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { world } from './support';
 
 // A pet emergency gets the pet's script, never the 911 line, and after it has been said once there is no loop
-// (Vetra, 2026-11-03: "My dog Luna's throat is swelling" got 911, and a caller still asking to book was refused on every
+// (a tester clinic, 2026-11-03: "My dog Luna's throat is swelling" got 911, and a caller still asking to book was refused on every
 // tool). The next step is the team now, or an urgent request; another pet's needs are answered as usual.
 let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(seedRiverbend); }, 60_000);

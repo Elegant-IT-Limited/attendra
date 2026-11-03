@@ -98,7 +98,7 @@ export function subjectOf(text: string, match: Pick<EmergencyMatch, 'phrase' | '
 /**
  * At a clinic for animals, a red flag from the person list (throat swelling, can't breathe) is a person in danger only
  * when a person is its subject: the same words about a pet, or with nobody named, are the animal's emergency, whose
- * script also tells a person in danger to call the emergency number (Vetra, 2026-11-03: "my dog Luna's throat is
+ * script also tells a person in danger to call the emergency number (a tester clinic, 2026-11-03: "my dog Luna's throat is
  * swelling" got the 911 line). An animal's phrase the caller says of themselves ("I can't breathe") is dropped: the
  * person list answers it. Self-harm and the bare word are left as they are.
  */
