@@ -20,16 +20,17 @@ describe('a Spanish call at Maple Street', () => {
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: '4 de marzo de 1985' } },
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
-    expect(said(found)).toContain('mañana a las 8:00');
+    expect(said(found)).toContain('el martes 29 de septiembre a las 8:00 de la mañana');
+    expect(said(found)).toContain('El martes 29 de septiembre tengo a las 8:00, 8:20 u 8:40 de la mañana, con Dr. Nkem Okafor.');
     c.caller('La primera, por favor.');
     const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
-    expect(c.state.pending?.readback).toBe('mañana a las 8:00 a.m. con Dr. Nkem Okafor, para consulta por enfermedad');
+    expect(c.state.pending?.readback).toBe('el martes 29 de septiembre a las 8:00 de la mañana con Dr. Nkem Okafor, para consulta por enfermedad');
     expect(said(proposed)).toContain('consulta por enfermedad');
     c.assistant('Para confirmar: martes a las 8 con la doctora Okafor. ¿Está bien?');
     c.caller('Sí, está bien.');
     await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(c.state.outcome).toBe('booked');
-    expect(w.sms.at(-1)).toMatchObject({ template: 'booking_confirmed', language: 'es', when: 'martes, 29 de septiembre a las 8:00 a.m.' });
+    expect(w.sms.at(-1)).toMatchObject({ template: 'booking_confirmed', language: 'es', when: 'el martes 29 de septiembre a las 8:00 de la mañana' });
   });
 
   it('gives the emergency script in Spanish, with 911 and 988', async () => {

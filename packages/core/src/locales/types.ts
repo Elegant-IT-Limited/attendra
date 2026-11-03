@@ -25,10 +25,9 @@ export interface LanguagePack {
   /** Words that disclose an AI assistant, in this language. A greeting without them is refused. */
   disclosure: RegExp;
 
-  /** "Tuesday, October 6 at 3:00 PM" in this language, in the clinic's zone. */
   /**
-   * A time as people say it on the phone. With `now`, a day within the week is "today", "tomorrow" or its weekday
-   * ("Thursday at 2:30 PM"); further out, or without `now` (a text read later), the weekday and date.
+   * A time as it is said on a call and written in a text: fullWhen, every time (2026-11-14). `now` is kept for callers
+   * that pass it and changes nothing: "today" and "Thursday" alone left the date to the caller.
    */
   speakWhen: (start: Date, timeZone: string, now?: Date) => string;
   /**
@@ -43,7 +42,11 @@ export interface LanguagePack {
   speakPhone: (e164: string) => string;
   /** The read-back before a booking or a move. */
   /** `providerKind` is how the provider is named: "with" a person, "in" a room. */
-  readbackBooking: (v: { when: string; provider: string; providerKind: 'person' | 'room'; visit: string; replacing: string | null }) => string;
+  /**
+   * `replacing`: the time being moved from (fullWhen), and then the read-back says both times in full ("move Biscuit's
+   * check-up from Wednesday, November 4, at 5:20 PM to ..."); `shift` how the day changes (dayShift), when it does.
+   */
+  readbackBooking: (v: { when: string; provider: string; providerKind: 'person' | 'room'; visit: string; replacing: string | null; pet?: string | null; shift?: string | null }) => string;
   /** The read-back before a cancellation. */
   readbackCancel: (v: { when: string }) => string;
 
@@ -164,7 +167,7 @@ export interface LanguagePack {
    */
   spoken: {
     /** A booking or a move read back as a question, with the confirmation-text note when a text will follow. */
-    readback: (v: { readback: string; textNote: string | null }) => string;
+    readback: (v: { readback: string; textNote: string | null; move?: boolean }) => string;
     /** A cancellation read back as a question. */
     cancelReadback: (v: { readback: string; textNote: string | null }) => string;
     /** The change is made; `then` is the question that follows (the reminder offer, or anything else?). */

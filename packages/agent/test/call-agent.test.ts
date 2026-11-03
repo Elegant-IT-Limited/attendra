@@ -44,7 +44,9 @@ describe('booking over the phone', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     expect(c.state.verifiedPatient?.firstName).toBe('Maria');
-    expect(spoken(verify)).toContain('tomorrow at 8:00 AM');
+    expect(spoken(verify)).toContain('Tuesday, September 29, at 8:00 AM');
+    // the times as they are said: the date once
+    expect(spoken(verify)).toContain('On Tuesday, September 29, I have 8:00, 8:20 or 8:40 AM with Dr. Nkem Okafor.');
 
     c.assistant('I have Tuesday at 8, 8:20 or 8:40 with Dr. Okafor.');
     c.caller('The first one please.');

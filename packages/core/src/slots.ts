@@ -32,8 +32,8 @@ export interface SlotQuery {
   /** One slot per start time: the first of those free then, so a caller hears three different times, not one time three times. */
   distinctTimes?: boolean;
   /**
-   * With `fromTime`: the asked day first, nearest that time on either side ("at 4:30": 4:20 and 4:40), up to `limit`, in
-   * time order; only when that day has nothing, the next days from that time on, as without it.
+   * With `fromTime`: the asked day first, nearest that time on either side ("at 4:30": 4:40 and 4:20), up to `limit`, the
+   * nearest first (the exact time, when free, leads); only when that day has nothing, the next days from that time on.
    */
   sameDayFirst?: boolean;
 }
@@ -66,7 +66,7 @@ export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'tim
     const that = findSlots(clinic, busy, { ...q, sameDayFirst: false, fromTime: undefined, days: 1, limit: 500 });
     if (that.length) {
       const off = (s: Slot) => Math.abs(localParts(s.start, clinic.timezone).minutes - target);
-      return [...that].sort((a, b) => off(a) - off(b) || a.start.getTime() - b.start.getTime()).slice(0, limit).sort((a, b) => a.start.getTime() - b.start.getTime());
+      return [...that].sort((a, b) => off(a) - off(b) || a.start.getTime() - b.start.getTime()).slice(0, limit);
     }
   }
   const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * MINUTE;

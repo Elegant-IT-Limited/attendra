@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { clock12, dateParts, wallClock } from './dates';
-import { daysAhead, type LanguagePack, type OfferDay, words } from './types';
+import { type LanguagePack, type OfferDay, words } from './types';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -35,16 +35,9 @@ const NUMEROS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete'
 
 // Spanish as spoken in the United States: usted, clear and short. Accents are
 // removed before matching (normalise), so "sí" and "si", "está" and "esta" meet.
-const when = (start: Date, timeZone: string, now?: Date) => {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h12' }).format(start).replace(/\D/g, ''));
-  const time = `a ${hour === 1 ? 'la' : 'las'} ${new Intl.DateTimeFormat('es-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start)}`;
-  const soon = now ? daysAhead(start, timeZone, now) : null;
-  // the same day is "hoy", the next "mañana", the rest of the week its day; after that the date too
-  if (soon === 0) return `hoy ${time}`;
-  if (soon === 1) return `mañana ${time}`;
-  if (soon !== null && soon > 1 && soon < 7) return `el ${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long' }).format(start)} ${time}`;
-  return `${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(start)} ${time}`;
-};
+
+/** A full time after "el", "del" or "al": the article it starts with is dropped, so "del el miércoles" is never said. */
+const sinEl = (w: string | undefined) => (w ?? '').replace(/^el\s+/i, '');
 
 /** A pet's kind as owners say it in Spanish, with its article: "su perro". Anything else is left unsaid. */
 const SPECIES_ES: Record<string, string> = { dog: 'su perro', perro: 'su perro', cat: 'su gato', gato: 'su gato', rabbit: 'su conejo', conejo: 'su conejo', bird: 'su pájaro', parrot: 'su loro', 'guinea pig': 'su cuyo', ferret: 'su hurón', hamster: 'su hámster' };
@@ -70,26 +63,29 @@ export const es: LanguagePack = {
   ],
   greeting: ({ assistantName, clinicName }) => `Gracias por llamar a ${clinicName}. ${assistantName ? `Soy ${assistantName}, la` : 'Soy la'} asistente virtual con inteligencia artificial de la clínica. ¿En qué le puedo ayudar?`,
   disclosure: /\b(asistente (virtual|de ia|con inteligencia artificial|automatizad[oa])|inteligencia artificial)\b/i,
-  speakWhen: when,
+  // en entero siempre (2026-11-14): el día de la semana, la fecha y la hora
+  speakWhen: (start, timeZone) => fullWhen(start, timeZone),
   fullWhen,
   fullDay,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
-  readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) => `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
-  readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
+  readbackBooking: ({ when: w, provider, providerKind, visit, replacing, pet, shift }) => (replacing
+    ? `cambiar la cita${pet ? ` de ${pet}` : ''} del ${sinEl(replacing)} al ${sinEl(w)} ${providerKind === 'room' ? 'en' : 'con'} ${provider}${shift ? `; ${shift}` : ''}`
+    : `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}`),
+  readbackCancel: ({ when: w }) => `cancelar la cita del ${sinEl(w)}`,
   sms: {
-    booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${sinEl(v.when)}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}${ref(v)}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
-    change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió al ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${v.when} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió ${v.from ? `del ${sinEl(v.from)} ` : ''}al ${sinEl(v.when)}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${sinEl(v.when)} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
     hours: (v) => `Horario de ${v.clinic}: ${v.hours}. Responda STOP para no recibir más mensajes.`,
     emergency_hospital: (v) => `${v.clinic}: urgencias veterinarias: ${v.hospital}, ${v.hospitalAddress}, tel. ${v.hospitalPhone}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     answer: (v) => `${v.clinic}: ${v.answer} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     link: (v) => `${v.clinic}: ${v.label}: ${v.url} Responda STOP para no recibir más mensajes.`,
-    reminder: (v) => `${v.clinic}: ${hola(v, `le recordamos ${citaDe(v)} el ${v.when}.`)} Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
+    reminder: (v) => `${v.clinic}: ${hola(v, `le recordamos ${citaDe(v)} el ${sinEl(v.when)}.`)} Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
   },
   textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
   textSent: 'Listo, se lo acabo de enviar.',
@@ -122,7 +118,7 @@ export const es: LanguagePack = {
     numbers: { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15, dieciocho: 18 },
     intent: {
       book: /\b(cita|reservar|agendar|consulta|chequeo|revision|traerl[oa])\b/g,
-      move: /\b(cambiar|mover|reprogramar)\b/g,
+      move: /\b(cambiar|mover|reprogramar|cambiela|cambiala|pasela|pasala|mejor a las)\b/g,
       cancel: /\b(cancelar|anular)\b/g,
     },
     weekdays: ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
@@ -146,7 +142,7 @@ export const es: LanguagePack = {
       ? `Veo a ${list.replace(/ [ou] ([^ ]+)$/, ' y $1')} con este número. ¿Para cuál es${more ? ', o es para otra mascota' : ', o es para una mascota nueva'}?`
       : `Veo a ${list} con este número. ¿Es para ${list}, ${more ? 'o para otra mascota' : 'o para una mascota nueva'}?`;
   },
-  lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${w}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
+  lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${sinEl(w)}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
   recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
   phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
@@ -160,7 +156,7 @@ export const es: LanguagePack = {
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
   teamBooks: ({ visit, notice, related }) => `Nuestro equipo reserva ${visit.toLowerCase()} directamente${notice ? `, con al menos ${notice.replace(/days?/, 'días').replace(/hours?/, 'horas')} de anticipación` : ''}. Puedo dejarle una solicitud al equipo${related ? `, o reservarle primero ${related.toLowerCase()}` : ''}. ¿Qué prefiere?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
-  smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
+  smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${sinEl(when)} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
@@ -170,7 +166,9 @@ export const es: LanguagePack = {
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   spoken: {
-    readback: ({ readback, textNote }) => `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`,
+    readback: ({ readback, textNote, move }) => (move
+      ? `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Hago el cambio?`
+      : `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`),
     cancelReadback: ({ readback, textNote }) => `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Es correcto?`,
     done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'Listo, la cita queda reservada.' : kind === 'rescheduled' ? 'Listo, la cita queda cambiada.' : 'Listo, la cita queda cancelada.'}${textSent ? ' Le he enviado un mensaje de confirmación.' : ''} ${then}`,
     anythingElse: '¿Hay algo más en lo que le pueda ayudar?',

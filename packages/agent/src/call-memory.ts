@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, extractFacts, type Language, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, spokenDigits, asE164, normalise } from '@attendra/core';
+import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, spokenDigits, asE164, normalise } from '@attendra/core';
 
 /** Where a fact came from: the caller's own words, a tool's arguments, or the clinic's records. */
 export type FactSource = 'caller' | 'tool' | 'record';
@@ -40,6 +40,8 @@ export class CallMemory {
    * the record is said, and the booking carries a note for the team), no owner on file, or not given after "And your name?".
    */
   nameCheck: { digits: string; result: 'match' | 'no_match' | 'no_owner' | 'not_given' } | null = null;
+  /** "This Wednesday, November 4, or Wednesday, November 11?" was asked: once per call. */
+  whichWeekAsked = false;
   /** The number "And your name?" was asked for: asked once per number. */
   nameAskedFor: string | null = null;
   /** The first names of the pets on the number, as the records list them. */
@@ -112,7 +114,10 @@ export class CallMemory {
       const vet = text('provider_id');
       if (vet) this.set('vet', vet, 'tool', atTurn);
       const day = text('from_date');
-      if (day) this.set('day', { date: day }, 'tool', atTurn);
+      // "next Wednesday" that could be either week stays the caller's until it has been asked about
+      const either = this.fact('day');
+      const unasked = either?.source === 'caller' && !!either.value && 'either' in either.value && !this.whichWeekAsked;
+      if (day && !unasked) this.set('day', { date: day }, 'tool', atTurn);
       const time = text('from_time');
       // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3")
       if (time && this.get('time')?.time !== time) this.set('time', { time, mode: 'after' }, 'tool', atTurn);
@@ -148,7 +153,7 @@ function vetNamed(text: string, clinic: ClinicConfig): string | null {
  * never has to ask again for what the caller already said. A value the planner passed is never replaced. Returns the
  * arguments and the names of those filled (logged, never their values).
  */
-export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemory, opts: { industry: string; verifiedPatient: boolean; callerNumber: string | null; ownerOnFile?: string | null }): { args: unknown; filled: string[] } {
+export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemory, opts: { industry: string; verifiedPatient: boolean; callerNumber: string | null; ownerOnFile?: string | null; timeZone?: string }): { args: unknown; filled: string[] } {
   if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return { args: rawArgs, filled: [] };
   const args = { ...(rawArgs as Record<string, unknown>) };
   const filled: string[] = [];
@@ -174,6 +179,11 @@ export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemor
   if (name === 'find_slots') {
     // only what the caller said: a day or a vet the planner passed before and leaves out now is one it no longer means
     const said = <K extends 'day' | 'time' | 'vet'>(k: K) => { const f = memory.fact(k); return f?.source === 'caller' ? f.value : undefined; };
+    // "make it 4:40" after a booking or a move on this call: a time with no new day keeps the visit's day
+    const time = memory.fact('time');
+    const dayFact = memory.fact('day');
+    const timeOnly = time?.source === 'caller' && (!dayFact || dayFact.source !== 'caller' || dayFact.atTurn < time.atTurn);
+    if (memory.get('intent') === 'move' && memory.visit && timeOnly && opts.timeZone) fill('from_date', localDateOf(memory.visit.start, opts.timeZone));
     const day = said('day');
     if (day && 'date' in day) fill('from_date', day.date);
     fill('from_time', said('time')?.time);

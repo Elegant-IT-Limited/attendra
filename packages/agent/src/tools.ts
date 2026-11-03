@@ -4,7 +4,7 @@ import {
   addDays, ageOn, asE164, groupedNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
-  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
+  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
   hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
@@ -220,7 +220,7 @@ export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
   // what the call already established fills an argument the planner left out, so the caller is never asked for it again
-  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber, ownerOnFile: state.memory.verified ? state.memory.owner : null });
+  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber, ownerOnFile: state.memory.verified ? state.memory.owner : null, timeZone: ctx.clinic.timezone });
   if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
   if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
   const done = await toolCall(name, args, state, ctx, backend, revision);
@@ -279,7 +279,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // everything said back to the caller is in the language they are speaking
   const lang = state.language;
   const pack = PACKS[lang];
-  // said on the call as people say it ("today at 2:30", "Thursday at 9"); a text is read later, so it keeps the date
+  // said in full, on the call and in a text alike: "Wednesday, November 4, at 5:20 PM" (2026-11-14)
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang, ctx.now());
   const whenDated = (start: Date) => speakSlot(start, clinic.timezone, lang);
   const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p, lang) : undefined; };
@@ -322,13 +322,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
    * yes is their consent to it; a caller who said no to the text gets none. The change stands
    * whatever happens to the text; it is never reported as failed.
    */
-  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false): Promise<boolean> => {
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false, from: Date | null = null): Promise<boolean> => {
     const patient = state.verifiedPatient;
     if (declined || !patient?.phone || !confirmationTarget(template)) return false;
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
-        vars: { clinic: clinic.name, when: whenDated(start), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
+        vars: { clinic: clinic.name, when: whenDated(start), ...(from ? { from: whenDated(from) } : {}), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
         kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
       });
       if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
@@ -545,6 +545,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       const now = ctx.now();
       const today = localDateOf(now, clinic.timezone);
+      // "next Wednesday" said early in a week could be this week's or the next: asked once, never guessed
+      const said = state.memory.fact('day');
+      if (said?.source === 'caller' && said.value && 'either' in said.value && !state.memory.whichWeekAsked
+        && (!args.from_date || said.value.either.includes(String(args.from_date)))) {
+        state.memory.whichWeekAsked = true;
+        const [first, second] = said.value.either;
+        return refuse('which_week', `"Next ${DAY_NAMES[weekdayOf(first)]}" could be either. Ask once, in these words: "${pack.whichWeek({ first, second })}" Then call find_slots with the day they pick (${first} or ${second}).`);
+      }
       const requested = (args.from_date as string | null) ?? today;
       const from = requested < today ? today : requested;
       // the clinic's booking window for this visit: how far ahead the assistant may book it
@@ -565,11 +573,20 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         }
       }
       const fromTime = (args.from_time as string | null) ?? undefined;
-      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
+      // a time the caller asked for "at" or "around" on a day they named (not "after"): that day's nearest times first, before
+      // and after it, and the next days only when that day has none (a caller asked for 5:20 and heard only later days)
+      const saidTime = state.memory.get('time');
+      const sameDayFirst = !!fromTime && !!args.from_date && saidTime?.time === fromTime && saidTime.mode === 'at';
+      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, sameDayFirst, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
       // with anyone: three different times, each with the vet the clinic's rule picks for it
       const anyone = findSlots(clinic, busy, { ...query, providers, distinctTimes: !named });
       let slots = anyone;
-      let note = anyone.length ? `Offer these as written. Do not invent other times.${fromTime && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : ''}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
+      const exactFree = !!fromTime && anyone.some((s) => localDateOf(s.start, clinic.timezone) === from && localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime));
+      const sameDay = anyone.filter((s) => localDateOf(s.start, clinic.timezone) === from);
+      const nearest = sameDayFirst && !exactFree && sameDay.length
+        ? ` Nothing is free at exactly ${fromTime} on ${PACKS.en.fullDay(from)}; the nearest that day are ${sameDay.map((s) => { const m = localParts(s.start, clinic.timezone).minutes; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }).join(' and ')}: say so, then offer them.`
+        : fromTime && !exactFree && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : '';
+      let note = anyone.length ? `Offer these as written, in the words of say_as. Do not invent other times.${nearest}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
       // nobody named: their usual vet first, when that vet is free soon enough
       // the usual vet is a fact of the record: said only to a caller the number knows
       const recordOpen = trade.identity !== 'pet' || !!state.memory.verified;
@@ -607,6 +624,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         ok: true,
         data: {
           slots: found,
+          // the times in the caller's language, each day said once with its full date
+          ...(slots.length ? { say_as: offerTimesLine(slots, clinic, lang) } : {}),
           note,
           ...(why ? { why_not_as_asked: why } : {}),
         },
@@ -665,7 +684,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
-      const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing });
+      // a move says both times in full, and how the day shifts when it does ("that's one week later, Wednesday, November 11")
+      const shift = replacesStart ? dayShift(replacesStart, slot.start, clinic.timezone, lang) : null;
+      const pet = trade.identity === 'pet' ? state.verifiedPatient?.firstName ?? null : null;
+      const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing, pet, shift });
       // the same change proposed again after it was read back keeps its read-back, so the yes the caller gave still counts
       const same = state.pending;
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
@@ -676,7 +698,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
       const textNote = target ? pack.confirmTextNote({ target }) : null;
-      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote }) } };
+      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote, move: !!replaces }) } };
     }
 
     case 'propose_cancellation': {
@@ -755,7 +777,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       // a move is confirmed as a move, a new booking as a booking
       const smsSent = result.status === 'booked'
-        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText)
+        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText, state.outcome === 'rescheduled' ? pending.replacesStart ?? null : null)
         : false;
       // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
       const reminders = textingOf(clinic).reminders;
@@ -765,7 +787,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
-      state.done.push(`booked ${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
+      state.done.push(`${pending.replacesAppointmentId ? 'moved: ' : 'booked '}${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
       return {
         ok: true,
         data: {

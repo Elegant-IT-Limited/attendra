@@ -172,8 +172,9 @@ describe('a request the prompt cache can reuse', () => {
     expect(JSON.stringify(a.tools)).toBe(JSON.stringify(b.tools));
     expect(a.instructions).toContain('Today is Monday, 2026-09-28. The clinic is closed today.');
     expect(a.instructions).not.toContain('20:14');
-    expect(a.input[0]!.content).toMatch(/The time now: 20:14 clinic time\.$/);
-    expect(b.input[0]!.content).toMatch(/The time now: 20:15 clinic time\.$/);
+    // the clock, then the 14-day date table, last: neither touches the cached prefix
+    expect(a.input[0]!.content).toMatch(/The time now: 20:14 clinic time\.\n\nDates: \w{3} \w{3} \d+ = \d{4}-\d{2}-\d{2} \(today\), [^\n]*\.$/);
+    expect(b.input[0]!.content).toMatch(/The time now: 20:15 clinic time\.\n\nDates: [^\n]*\.$/);
     // the fixed notes open the message, and the second request's message starts with the first's
     expect(a.input[0]!.content.startsWith('Our records for the number this caller is calling from')).toBe(true);
     const upTo = (s: string) => s.slice(0, s.indexOf('Caller: Hi, it\'s Maria.') + 'Caller: Hi, it\'s Maria.'.length);
@@ -242,13 +243,13 @@ describe('the voice says what the backend is doing the moment a lookup starts', 
     const now = new Date('2026-09-28T16:00:00Z'); // a Monday in Denver
     const out = await new ResponsesPlanner({ responses: { create: streaming('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-01', part_of_day: 'any' }) } } as never, 'gpt-main')
       .plan({ clinic: DEMO_CLINIC, state: c.state, nowLine: '', now, onLookup: (line) => order.push(`said: ${line}`) }, async (name) => { order.push(`ran: ${name}`); return { ok: true, data: { slots: [] } }; });
-    expect(order).toEqual(['said: Let me check Thursday for you.', 'ran: find_slots']);
+    expect(order).toEqual(['said: Let me check Thursday, October 1, for you.', 'ran: find_slots']);
     expect(out.say).toBe('Here you are.');
     expect(out.timing).toMatchObject({ announced: true, rounds: 2 });
     expect(out.timing!.firstWordsMs).toBeLessThanOrEqual(out.timing!.modelMs + out.timing!.toolMs);
-    // today and tomorrow, in words; no date: the times
-    expect(lookupLine('find_slots', { from_date: '2026-09-28' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check today for you.');
-    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check tomorrow for you.');
+    // every day in full, today and tomorrow too (2026-11-14); no date: the times
+    expect(lookupLine('find_slots', { from_date: '2026-09-28' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check Monday, September 28, for you.');
+    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me check Tuesday, September 29, for you.');
     expect(lookupLine('find_slots', { from_date: null }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('One moment, I\'ll look at the times.');
     expect(lookupLine('get_clinic_info', { question: 'parking' }, { clinic: DEMO_CLINIC, now }, c.state)).toBe('Let me look that up.');
     // a write is never announced: nothing is said as done before the backend confirms it
@@ -256,8 +257,8 @@ describe('the voice says what the backend is doing the moment a lookup starts', 
     // Spanish
     const es = await w.call('+13035550147');
     es.caller('¿Puedo ir el jueves?');
-    expect(lookupLine('find_slots', { from_date: '2026-10-01' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar el jueves.');
-    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar mañana.');
+    expect(lookupLine('find_slots', { from_date: '2026-10-01' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar el jueves 1 de octubre.');
+    expect(lookupLine('find_slots', { from_date: '2026-09-29' }, { clinic: DEMO_CLINIC, now }, es.state)).toBe('Déjeme revisar el martes 29 de septiembre.');
     expect(lookupLine('verify_caller', { pet_name: 'Mochi' }, { clinic: { ...DEMO_CLINIC, industry: 'vet' }, now }, es.state)).toBe('Déjeme buscar a Mochi.');
   });
 

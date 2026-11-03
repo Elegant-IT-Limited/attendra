@@ -20,4 +20,4 @@ expect:
   bookings_created: 1
   sms_sent: 1
   booked_on: "2026-10-02"
-  offered_from_time: "10:30"
+  # "at 10:30" is about that time: the day's nearest times on either side are offered, the exact one first (2026-11-14)

@@ -117,6 +117,7 @@ describe('the time', () => {
     ['around 9 am', { time: '09:00', mode: 'at' }],
     ['after 3', { time: '15:00', mode: 'after' }],
     ['make it 4:40', { time: '16:40', mode: 'at' }],
+    ['actually, can you make it 4?', { time: '16:00', mode: 'at' }],
     ['at 10:30 in the morning', { time: '10:30', mode: 'at' }],
   ])('%s', (said, time) => expect(en(said).time).toEqual(time));
 
