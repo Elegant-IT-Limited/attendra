@@ -85,7 +85,11 @@ describe('body limits', () => {
       api.app.getHttpAdapter().getInstance().inject({ method, url, headers: { cookie: as.admin, origin: ORIGIN, 'content-type': type }, payload });
     const doc = await upload(as.admin, 'A megabyte', big);
     expect(doc.statusCode).toBe(201);
-    expect((await api.request('DELETE', `${C}/knowledge/documents/${doc.json().id}`, { cookie: as.admin })).statusCode).toBe(204);
+    // labelled JSON with no body, as the hosted setup page sends it: still removed
+    const removed = await api.request('DELETE', `${C}/knowledge/documents/${doc.json().id}`, { cookie: as.admin, headers: { 'content-type': 'application/json' } });
+    expect(removed.statusCode, removed.body).toBe(204);
+    // a POST labelled JSON still needs its body
+    expect((await api.request('POST', `${C}/knowledge/ask`, { cookie: as.admin, headers: { 'content-type': 'application/json' } })).statusCode).toBe(400);
     for (const type of ['text/plain', 'application/pdf', 'application/octet-stream', 'text/markdown']) {
       expect((await inject('PUT', `${C}/settings`, type, big)).statusCode, type).toBe(413);
       expect((await inject('POST', `${C}/knowledge/ask`, type, big)).statusCode, type).toBe(413);

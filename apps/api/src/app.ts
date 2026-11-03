@@ -144,6 +144,11 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   fastify.addContentTypeParser(['application/pdf', 'text/plain', 'text/markdown', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
   // a person's picture (PUT /me/avatar), checked by its first bytes in the route, within the 512 KB limit
   fastify.addContentTypeParser(['image/webp', 'image/png', 'image/jpeg'], { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+  // A DELETE carries no body, but a client may still label it JSON (the hosted setup page did, so
+  // removing a vet or a document failed with a 400 that said nothing): no body is read as no body
+  fastify.addHook('onRequest', async (req) => {
+    if (req.method === 'DELETE' && !Number(req.headers['content-length'] ?? 0) && !req.headers['transfer-encoding']) delete req.headers['content-type'];
+  });
   fastify.addHook('onRoute', (route) => {
     if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
     if (IMPORT_ROUTES.includes(route.url) && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 3 * 1024 * 1024;

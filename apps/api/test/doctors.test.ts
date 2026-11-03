@@ -160,6 +160,27 @@ describe('doctors', () => {
     expect((await stored()).providers.some((p) => p.id === id)).toBe(false);
   });
 
+  it('removes the right one of two vets with the same name, and says why one with visits to come stays', async () => {
+    const add = async (phone: string) => (await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'John Doe', phone } })).json().providers
+      .find((p: { name: string; phone?: string }) => p.name === 'John Doe' && p.phone === phone).id as string;
+    const one = await add('+13035550141');
+    const two = await add('+13035550142');
+    expect(one).not.toBe(two);
+    const at = zonedInstant('2026-10-05', '09:00', DEMO_CLINIC.timezone).toISOString();
+    const booking = await api.request('POST', `/api/v1/clinics/${DEMO_CLINIC.id}/appointments`, {
+      cookie: as.staff, body: { patientId: api.patientIds.maria, providerId: one, visitTypeId: 'vt_sick', startsAt: at, idempotencyKey: 'doctors-test-john-doe' },
+    });
+    expect(booking.statusCode, booking.body).toBe(201);
+    // the hosted setup page labels its DELETE as JSON with no body: that once failed with a 400 and no words
+    const json = { 'content-type': 'application/json' };
+    const refused = await api.request('DELETE', `${C}/${one}`, { cookie: as.owner, headers: json });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: 'has_upcoming_visits', message: 'They have 1 booked visit still to come. Move or cancel it on the Schedule first.' });
+    const res = await api.request('DELETE', `${C}/${two}`, { cookie: as.owner, headers: json });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await stored()).providers.filter((p) => p.name === 'John Doe').map((p) => p.id)).toEqual([one]);
+  });
+
   it('imports doctors from a CSV: checks first, then adds new ones and updates the ones on file', async () => {
     const csv = [
       'id,name,gender,specialty,categories,ages_min,ages_max,accepting_new_patients,visit_types,mon,tue,wed,thu,fri,sat,sun,time_off',
