@@ -1,0 +1,41 @@
+id: vet-es-shared-last-four-request
+title: 'In Spanish, two households share the last four digits and both have a Biscuit: no match, and a request for the team'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way, last-four-twin, language, es]
+facts: "Una llamada de prueba desde el navegador. Eres Linh Nguyen; das 720 555 0182 y luego 720 555 0183 y dices que no a las dos confirmaciones. Cuando te pidan los últimos cuatro dígitos y el nombre de la mascota, di 0172 y Biscuit. Di que sí a una solicitud para el equipo, al 720 555 0172."
+turns:
+  - caller: Necesito reservar a Biscuit. Mi número es 720 555 0182.
+    reply: "¿Es el 720-555-0182?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0182" }
+  - assistant: "¿Es el 720-555-0182?"
+  - caller: No, 720 555 0183.
+    reply: "¿Es el 720-555-0183?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0183" }
+  - assistant: "¿Es el 720-555-0183?"
+  - caller: No, mmm, ¿720 555 0184?
+    reply: "Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0184" }
+  - assistant: "Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?"
+  - caller: Termina en cero uno siete dos, y la mascota se llama Biscuit.
+    reply: "No encontré una sola ficha con esos datos. Puedo dejar una solicitud para que el equipo la busque y le llame. ¿A qué número?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+  - caller: Sí, por favor, al 720 555 0172.
+    reply: "De acuerdo, se lo paso al equipo y alguien le llamará al número que me dio."
+    delegate:
+      - create_callback: { reason: "Quiere reservar a Biscuit; no se encontró la ficha en la llamada", callback_number: "720 555 0172" }
+expect:
+  outcome: task_created
+  verified: false
+  language: es
+  refusals: [confirm_number, confirm_number, ask_last_four, last_four_no_match]
+  bookings_created: 0
+  urgent_requests: 0
+  returned: ["No encontré una sola ficha con esos datos."]
+  never_returned: ["Robin", "Linh", "303-555-0172"]

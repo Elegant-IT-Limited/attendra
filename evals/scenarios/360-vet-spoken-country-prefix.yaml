@@ -1,0 +1,29 @@
+id: vet-spoken-country-prefix
+title: 'A number said with a country prefix ("880 720 555 0174") is read back without it, and the pet is found (a test call, 2026-11-03)'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way]
+facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174, and you say it with 880 in front, as 880 720 555 0174. Your dog is Luna. Say yes to the read-back. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
+turns:
+  - caller: It's for Luna. The number is 880 720 555 0174.
+    reply: "That's 720-555-0174?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "880 720 555 0174" }
+  - assistant: "That's 720-555-0174?"
+  - caller: Yes, that's it.
+    reply: "And your name?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "880 720 555 0174" }
+  - assistant: "And your name?"
+  - caller: Carmen Ortiz.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "880 720 555 0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  refusals: [confirm_number, owner_check]
+  returned: ["That's 720-555-0174?", "I found Luna, your dog."]
+  never_returned: ["880-720", "8807205550174"]

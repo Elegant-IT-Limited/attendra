@@ -26,6 +26,8 @@ export const clinicOf = (scenario: Scenario): ClinicConfig => {
 };
 /** Jordan Avery's pets, made up, on 303-555-0142: the household of the scenarios built from a real call (tag jordan-household). */
 export const JORDAN_PHONE = '+13035550142';
+/** A second household ending 0172, like Linh's 720-555-0172. */
+export const LAST_FOUR_TWIN_PHONE = '+13035550172';
 const JORDAN_PETS = [
   { firstName: 'Biscuit', dob: '2021-06-12', gender: 'male', species: 'dog' },
   { firstName: 'Pepper', dob: '2022-03-08', gender: 'female', species: 'cat' },
@@ -238,6 +240,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (scenario.tags.includes('jordan-household') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Pepper', JORDAN_PHONE)).status === 'not_found') {
     for (const pet of JORDAN_PETS) await seeded.create(clinic.id, { ...pet, lastName: 'Avery', phone: JORDAN_PHONE, guardianName: 'Jordan Avery' });
   }
+  // another household whose number shares Linh's last four digits (0172), with a dog called Biscuit too: the last four
+  // digits and the pet's name find two households, so nobody (made-up data, 2026-11-15)
+  if (scenario.tags.includes('last-four-twin') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Biscuit', LAST_FOUR_TWIN_PHONE)).status === 'not_found') {
+    await seeded.create(clinic.id, { firstName: 'Biscuit', lastName: 'Marsh', dob: '2020-06-01', phone: LAST_FOUR_TWIN_PHONE, guardianName: 'Robin Marsh', gender: 'male', species: 'dog' });
+  }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   // a name on file in the scenario's history is the one the records give for the number when the call starts, as the voice service reads it
   const historyName = /^Name on file for this number: (.+)\.$/m.exec(scenario.history ?? '')?.[1] ?? null;
@@ -313,9 +320,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
       await segment('agent', text, clock);
     };
     if (!turn.delegate && !livePlanner) { await say(); continue; }
-    // the script holds the call; nothing else runs while it does. A caller with more to say (that it's not an emergency)
-    // still says it, and the call goes on from there
-    if (state.emergencyLocked) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
+    // the script holds the call; nothing else runs until it has been said. A caller with more to say (that it's not an
+    // emergency) still says it, and the call goes on from there. After an animal's script, the backend answers again:
+    // another pet's needs, or the next step for this one (2026-11-15)
+    if (state.emergencyLocked && !state.emergencyScriptSaid) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
     if (livePlanner) queue.push(livePlanner);
     else {
@@ -407,6 +415,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (!livePlanner) check(JSON.stringify(observed.refusals) === JSON.stringify(e.refusals), `refusals ${JSON.stringify(observed.refusals)}, expected ${JSON.stringify(e.refusals)}`);
   if (e.verified !== undefined) check(!!state.verifiedPatient === e.verified, `verified ${!!state.verifiedPatient}, expected ${e.verified}`);
   check(created === e.bookings_created, `${created} bookings created, expected ${e.bookings_created}`);
+  if (e.urgent_requests !== undefined) {
+    const urgent = (await withClinic(db, clinic.id, (tx) => tx.select().from(schema.tasks).where(eq(schema.tasks.callId, callId)))).filter((t) => t.urgent).length;
+    check(urgent === e.urgent_requests, `${urgent} urgent requests for the team, expected ${e.urgent_requests}`);
+  }
   check(sms.length === e.sms_sent, `${sms.length} texts sent, expected ${e.sms_sent}`);
   if (e.sms_templates.length) check(JSON.stringify(sms) === JSON.stringify(e.sms_templates), `texts ${JSON.stringify(sms)}, expected ${JSON.stringify(e.sms_templates)}`);
   check((transfer && transfer.type === 'transfer' ? transfer.uri : null) === e.transfer_to, `transfer to ${transfer && transfer.type === 'transfer' ? transfer.uri : 'nobody'}, expected ${e.transfer_to ?? 'nobody'}`);
