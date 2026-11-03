@@ -128,8 +128,8 @@ export class CallMemory {
       if (day && !unasked) this.set('day', { date: day }, 'tool', atTurn);
       const time = text('from_time');
       const mode = text('time_mode');
-      // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3"), or the planner's
-      if (time && this.get('time')?.time !== time) this.set('time', { time, mode: mode === 'before' || mode === 'after' || mode === 'around' ? mode : 'at' }, 'tool', atTurn);
+      // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3"), or the planner's (after, with none)
+      if (time && this.get('time')?.time !== time) this.set('time', { time, mode: mode === 'before' || mode === 'around' || mode === 'at' ? mode : 'after' }, 'tool', atTurn);
     }
   }
 

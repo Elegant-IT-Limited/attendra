@@ -179,7 +179,9 @@ export const en: LanguagePack = {
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} starts at ${hourWords(starts)} on ${WEEKDAYS[weekday]}s.`
       : `${provider} finishes at ${hourWords(ends!)} on ${WEEKDAYS[weekday]}s.`),
-    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses }) => (clinicOpens && clinicCloses
+    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses, oneDay }) => (oneDay
+      ? `The clinic's front desk is closed on ${fullDay(oneDay)}, but ${provider} sees patients that day from ${hourWords(from)} to ${hourWords(to)}.`
+      : clinicOpens && clinicCloses
       ? from.hour * 60 + from.minute < clinicOpens.hour * 60 + clinicOpens.minute
         ? `The clinic's front desk opens at ${hourWords(clinicOpens)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients from ${hourWords(from)}.`
         : `The clinic's front desk closes at ${hourWords(clinicCloses)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients until ${hourWords(to)}.`

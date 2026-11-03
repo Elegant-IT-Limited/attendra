@@ -24,7 +24,7 @@ describe('the call memory', () => {
     m.fromToolArgs('register_patient', { pet_name: 'Pepper', owner_name: 'Jordan', species: 'Rabbit', sex: 'female', birthday_or_age: '3 years', phone: '303-555-0142' }, clinic, null, 1);
     expect([m.get('petName'), m.get('saidName'), m.get('species'), m.get('number')]).toEqual(['Pepper', 'Jordan', 'rabbit', { digits: '13035550142', readBack: false, callerId: false }]);
     m.fromToolArgs('find_slots', { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', from_time: '15:00' }, clinic, null, 2);
-    expect([m.get('visitType'), m.get('day'), m.get('time')]).toEqual(['vt_wellness', { date: '2026-10-01' }, { time: '15:00', mode: 'at' }]);
+    expect([m.get('visitType'), m.get('day'), m.get('time')]).toEqual(['vt_wellness', { date: '2026-10-01' }, { time: '15:00', mode: 'after' }]);
   });
 
   it('fills an argument the planner left null, and never one it passed', () => {

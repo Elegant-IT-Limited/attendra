@@ -198,7 +198,9 @@ export const es: LanguagePack = {
     vetHours: ({ provider, weekday, starts, ends }) => (starts
       ? `${provider} empieza ${aLas(starts)} ${losDias(weekday)}.`
       : `${provider} termina ${aLas(ends!)} ${losDias(weekday)}.`),
-    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses }) => (clinicOpens && clinicCloses
+    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses, oneDay }) => (oneDay
+      ? `La recepción de la clínica está cerrada el ${fullDay(oneDay)}, pero ${provider} atiende ese día de ${horaCorta(from)} a ${horaCorta(to)}.`
+      : clinicOpens && clinicCloses
       ? from.hour * 60 + from.minute < clinicOpens.hour * 60 + clinicOpens.minute
         ? `La recepción de la clínica abre ${aLas(clinicOpens)} ${losDias(weekday)}, pero ${provider} atiende desde ${aLas(from).replace(/^a /, '')}.`
         : `La recepción de la clínica cierra ${aLas(clinicCloses)} ${losDias(weekday)}, pero ${provider} atiende hasta ${aLas(to).replace(/^a /, '')}.`

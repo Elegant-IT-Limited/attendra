@@ -86,5 +86,7 @@ export function frontDeskLine(clinic: ClinicConfig, slots: Slot[], lang: Languag
     weekday: weekdayOf(date), provider: nameIn(vet, lang), from: clock(toMinutes(w.open)), to: clock(toMinutes(w.close)),
     clinicOpens: clinicWindows.length ? clock(toMinutes(clinicWindows[0]!.open)) : null,
     clinicCloses: clinicWindows.length ? clock(toMinutes(clinicWindows.at(-1)!.close)) : null,
+    // closed that date only (a holiday, a special day), not every such weekday
+    oneDay: !clinicWindows.length && windowsOn(clinic.hours, weekdayOf(date)).length ? date : null,
   });
 }

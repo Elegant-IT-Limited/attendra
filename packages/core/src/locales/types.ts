@@ -266,9 +266,10 @@ export interface SlotLines {
   vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
   /**
    * A time the vet keeps while the clinic's front desk is closed: "The clinic's front desk is closed on Sundays, but Dr.
-   * Morgan sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time.
+   * Morgan sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time; with
+   * `oneDay` (a holiday or a special day the vet is listed for), that date instead of the weekday.
    */
-  frontDesk: (v: { weekday: number; provider: string; from: Clock; to: Clock; clinicOpens: Clock | null; clinicCloses: Clock | null }) => string;
+  frontDesk: (v: { weekday: number; provider: string; from: Clock; to: Clock; clinicOpens: Clock | null; clinicCloses: Clock | null; oneDay?: string | null }) => string;
   /** "Dr. Morgan doesn't do dental care; her visits are surgery and new client exam. Dr. Bennett and Dr. Khan do dental care. Shall I look with them?" */
   doesntDoType: (v: { provider: string; pronoun: Pronoun; visit: string; theirVisits: string[]; others: string[] }) => string;
   /** "Dr. Morgan doesn't work on Tuesdays. She's in Wednesday to Friday and Sunday." `days` 0 = Sunday. */

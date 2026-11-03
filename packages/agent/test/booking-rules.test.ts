@@ -63,7 +63,7 @@ describe('a time of day the caller names', () => {
     expect(slots.every((s) => /Thursday, October 1, at (3|4|5):\d\d PM/.test(s.when))).toBe(true);
     expect(String(after.results[0]!.data.note)).not.toContain('exactly');
     // 10:35 is not on the clinic's 10-minute grid: the nearest either side are offered, and the answer leads with that
-    const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35' } }]);
+    const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35', time_mode: 'at' } }]);
     expect(String(odd.results[0]!.data.note)).toContain('Nothing is free at exactly 10:35');
     expect((odd.results[0]!.data.slots as { when: string }[])[0]!.when).toContain('10:30 AM');
     expect(odd.results[0]!.data.say_as).toBe('Not at 10:35, but 10:30 or 10:40 AM on Thursday, October 1.');

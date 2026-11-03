@@ -5,7 +5,7 @@ import {
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
-  bookableWindows, hospitalFor, hoursSummary, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
+  bookableWindows, hospitalFor, hoursSummary, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
@@ -587,7 +587,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // the caller's time and how they said it: "is 4 free?" or "around 5" looks either side of it, "earlier than 6" before
       // it, "after 3" after it, nearest first, on the day they named (a caller asked "earlier than 6" and heard the morning)
       const saidTime = state.memory.get('time');
-      const mode = (args.time_mode as string | null) ?? (saidTime && saidTime.time === fromTime ? saidTime.mode : null) ?? 'at';
+      // with no mode from the planner or the caller's words, a time is the earliest they want, as before time_mode
+      const mode = (args.time_mode as string | null) ?? (saidTime && saidTime.time === fromTime ? saidTime.mode : null) ?? 'after';
       const near = fromTime && mode !== 'earliest' ? { date: from, time: fromTime, direction: (mode === 'before' || mode === 'after' ? mode : 'around') as NearDirection } : undefined;
       const query = { visitType, from, days, now, leadMinutes, partOfDay: (near ? 'any' : args.part_of_day) as 'any', fromTime: near ? undefined : fromTime, near,
         // the nearest two to a time asked for: "not at 4, but 3:50 or 4:20"
@@ -637,7 +638,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       else if (slots === anyone && near && sameDay.length) {
         const several = !named && new Set(sameDay.map((x) => x.providerId)).size > 1;
         const day = { date: from, times: [...sameDay].sort((x, y) => x.start.getTime() - y.start.getTime()).map((s) => { const m = localParts(s.start, clinic.timezone).minutes; return { hour: Math.floor(m / 60), minute: m % 60, provider: several ? nameOf(s.providerId) ?? null : null }; }) };
-        sayAs.push(outside ? pack.slots.nearest({ day }) : pack.slots.notAt({ time: askedTime, day }));
+        // "not at 4, but..." for a time asked for; for "earlier than 6" or "after 3", simply the nearest on that side
+        sayAs.push(outside || near.direction !== 'around' ? pack.slots.nearest({ day }) : pack.slots.notAt({ time: askedTime, day }));
       } else if (slots.length) sayAs.push(offerTimesLine(slots, clinic, lang));
       const found = slots.map((s) => ({ slot_id: s.id, when: when(s.start), provider: nameOf(s.providerId), specialty: clinic.providers.find((x) => x.id === s.providerId)?.specialty ?? null }));
       // the caller named one exact day and time and is already found: when it is free it is staged here and read back,

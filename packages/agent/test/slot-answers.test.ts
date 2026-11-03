@@ -73,7 +73,7 @@ describe('the nearest times to the one asked for (item 3)', () => {
   it('"earlier than 6": the latest times before 6, not the morning', async () => {
     const r = await find({ visit_type_id: 'vt_quick', provider_id: 'prov_khan', from_date: '2026-09-30', from_time: '18:00', time_mode: 'before' });
     expect(r.slots.map((s) => s.when)).toEqual(['Wednesday, September 30, at 5:50 PM', 'Wednesday, September 30, at 5:40 PM']);
-    expect(r.say_as).toBe('Not at 6:00, but 5:40 or 5:50 PM on Wednesday, September 30.');
+    expect(r.say_as).toBe('The nearest are 5:40 or 5:50 PM on Wednesday, September 30.');
   });
 
   it('a time outside the vet\'s hours: when they start, then the nearest', async () => {
