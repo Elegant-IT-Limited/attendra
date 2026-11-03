@@ -1,5 +1,6 @@
 import { type Browser, type BrowserContext, expect, type Page, test } from '@playwright/test';
 import { STATE } from './auth-state';
+import { testNow } from './clock';
 
 /**
  * Every signed-in page polls the API (the request count, live calls, the plan) and refetches on each change
@@ -10,8 +11,12 @@ import { STATE } from './auth-state';
  */
 const opened: { testId: string; context: BrowserContext }[] = [];
 
-/** A new browser context for this test, closed when a later test opens its own. */
-export async function newContext(browser: Browser, options?: Parameters<Browser['newContext']>[0]) {
+/**
+ * A new browser context for this test, closed when a later test opens its own. `realClock` leaves the page's clock
+ * alone under E2E_CLOCK: Playwright's fake clock also fakes `performance.now()`, counted from its install rather than
+ * the navigation, so a test that times a page with it needs the real one (its dates come from the URL, not the hour).
+ */
+export async function newContext(browser: Browser, options?: Parameters<Browser['newContext']>[0], { realClock = false } = {}) {
   const testId = test.info().testId;
   const earlier = opened.filter((o) => o.testId !== testId);
   opened.splice(0, opened.length, ...opened.filter((o) => o.testId === testId));
@@ -19,7 +24,7 @@ export async function newContext(browser: Browser, options?: Parameters<Browser[
   const context = await browser.newContext(options);
   // E2E_CLOCK (playwright.config.ts): the page's clock runs as far from the real one as the demo API's does
   const offset = Number(process.env.E2E_CLOCK_OFFSET ?? 0);
-  if (offset) await context.clock.install({ time: Date.now() + offset });
+  if (offset && !realClock) await context.clock.install({ time: testNow() });
   opened.push({ testId, context });
   return context;
 }
