@@ -1,0 +1,50 @@
+id: vet-es-sched-vet-doesnt-do-type
+title: "Spanish: dental care with Dr. Morgan, who does not do it: the true reason and who does; booked with Dr. Khan"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, scheduling-1115, jordan-household, language, es]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental care, names: { es: cuidado dental }, minutes: 30 }
+    - { id: vt_consult, name: surgery consultation, names: { es: consulta de cirugía }, minutes: 30 }
+  providers:
+    - { id: prov_morgan, name: Dr. Sophia Morgan, gender: female, specialty: Surgery, visitTypeIds: [vt_sick, vt_consult, vt_new], hours: { "0": [{ open: "09:00", close: "13:00" }], "5": [{ open: "09:00", close: "13:00" }, { open: "14:00", close: "18:00" }] } }
+    - { id: prov_rahman, name: Dr. Omar Rahman, gender: male, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental], hours: { "1": [{ open: "08:00", close: "19:00" }], "2": [{ open: "08:00", close: "19:00" }], "3": [{ open: "08:00", close: "19:00" }], "4": [{ open: "08:00", close: "19:00" }], "5": [{ open: "08:00", close: "19:00" }] }, timeOff: [{ from: "2026-10-01", to: "2026-10-01", start: "16:10", end: "16:20", note: team huddle }] }
+    - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
+facts: "Eres Jordan Avery y hablas español. Llamas desde el número de la ficha. Biscuit necesita cuidado dental el viernes; pediste a la doctora Morgan, pero la doctora Khan está bien. Di sí."
+turns:
+  - caller: "¿Puede la doctora Morgan hacerle cuidado dental a Biscuit el viernes?"
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí.
+    reply: "Encontré a Biscuit. La doctora Morgan no hace cuidado dental; el doctor Rahman y la doctora Khan sí. ¿Busco con ellos?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_dental, provider_id: prov_morgan, from_date: "2026-10-02", part_of_day: any, from_time: null }
+  - caller: "Sí, con la doctora Khan entonces."
+    reply: "Con la doctora Khan tengo {offered.0}."
+    delegate:
+      - find_slots: { visit_type_id: vt_dental, provider_id: prov_khan, from_date: "2026-10-02", part_of_day: any, from_time: null }
+  - caller: "Esa me sirve."
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Biscuit queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_khan
+  booked_on: "2026-10-02"
+  # the backend's own words to the planner (say_as), in the caller's language
+  returned: ["Dra. Sophia Morgan no hace cuidado dental; sus consultas son consulta por enfermedad, consulta de cirugía y primera consulta. Dr. Omar Rahman y Dra. Leila Khan hacen cuidado dental. ¿Busco con ellos?"]
+forbid_spoken: ["no tiene horas libres", "próximas dos semanas"]

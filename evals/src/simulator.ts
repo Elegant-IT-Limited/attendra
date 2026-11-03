@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -154,13 +154,13 @@ function offeredOutsideHours(clinic: ClinicConfig, offered: { start: Date; end: 
     const endMin = local.minutes + Math.round((slot.end.getTime() - slot.start.getTime()) / 60_000);
     const inside = (windows: { open: string; close: string }[]) => windows.some((w) => local.minutes >= toMinutes(w.open) && endMin <= toMinutes(w.close));
     const when = `${local.date} ${String(Math.floor(local.minutes / 60)).padStart(2, '0')}:${String(local.minutes % 60).padStart(2, '0')}`;
-    if (!inside(windowsOnDate(clinic, local.date))) { out.push(`${when} is outside the clinic's hours that day`); continue; }
     const provider = clinic.providers.find((p) => p.id === slot.providerId);
     if (!provider) { out.push(`${when} is with an unknown provider ${slot.providerId}`); continue; }
+    // the vet's own hours decide, even outside the clinic's; holidays and special days close it for all but those listed
+    if (!inside(bookableWindows(clinic, provider, local.date).windows)) { out.push(`${when} is outside ${provider.name}'s hours that day`); continue; }
     if (!provider.visitTypeIds.includes(slot.visitTypeId)) out.push(`${when} is with ${provider.name}, who does not give that visit`);
     if (awayOn(provider, local.date)) out.push(`${when} is with ${provider.name}, who is away that day`);
     if (awayWindows(provider, local.date).some((w) => local.minutes < w.end && endMin > w.start)) out.push(`${when} is with ${provider.name} during their time off`);
-    if (provider.hours && !inside(windowsOn(provider.hours, weekdayOf(local.date)))) out.push(`${when} is outside ${provider.name}'s own hours`);
   }
   return out;
 }
