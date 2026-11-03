@@ -38,7 +38,7 @@ export interface CallForSummary {
   transcript: { speaker: 'caller' | 'agent'; text: string }[];
   /** Tool names and their results: codes like verified, booked, error. Never arguments. */
   actions: { tool: string; result: Record<string, unknown> }[];
-  tasks: { type: string }[];
+  tasks: { type: string; urgent?: boolean }[];
   /** The patient the assistant verified on the call, if any. */
   patientId: string | null;
   /** The number the call came from, for the request's "call back on". */
@@ -122,7 +122,7 @@ export class CallSummaryRepository {
       if (existing) return 'done';
       const segments = await tx.select().from(callSegments).where(eq(callSegments.callId, callId)).orderBy(callSegments.startMs, callSegments.id);
       const actions = await tx.select({ tool: callActions.tool, result: callActions.result }).from(callActions).where(eq(callActions.callId, callId)).orderBy(callActions.id);
-      const callTasks = await tx.select({ type: tasks.type }).from(tasks).where(eq(tasks.callId, callId));
+      const callTasks = await tx.select({ type: tasks.type, urgent: tasks.urgent }).from(tasks).where(eq(tasks.callId, callId));
       await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'call.transcript.read', entity: 'call', entityId: callId, callId });
       const ctx = phiContext(clinicId, 'call_segments.text');
       return {

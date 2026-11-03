@@ -137,6 +137,16 @@ describe('follow-up requests', () => {
     await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId: emergency });
     expect(await tasksOf(emergency)).toHaveLength(1);
   });
+
+  it('an urgent request the assistant took on an emergency call is that call\'s one urgent item (11-15)', async () => {
+    const callId = await calls.open(DEMO_CLINIC.id, `live_worker_${++n}`, '+13035550148');
+    await new PostgresTaskQueue(t.db, cipher).create(DEMO_CLINIC.id, { type: 'callback', callId, patientId: null, idempotencyKey: `urgent:${callId}`, details: { reason: 'Pet emergency: call back now.' }, urgent: true });
+    await calls.close(DEMO_CLINIC.id, callId, { reason: 'caller_hangup', voiceSeconds: 50, outcome: 'emergency', emergency: true });
+    await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId });
+    const all = await tasksOf(callId);
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ type: 'callback', urgent: true });
+  });
 });
 
 describe('the retention purge', () => {
