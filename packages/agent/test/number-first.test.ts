@@ -27,8 +27,15 @@ describe('a spoken number is read back before the search', () => {
     expect(said(second)).toContain("That's 720-555-0172?");
     c.assistant("That's 720-555-0172?");
     c.caller('Yes, that one.');
-    const found = await c.delegate([verify('720 555 0172', 'Biscuit')]);
+    // a number said is checked by the caller's name, asked once, before anything from its records is used
+    const named = await c.delegate([verify('720 555 0172', 'Biscuit')]);
+    expect(named.errors).toEqual(['owner_check']);
+    expect(said(named)).toContain('And your name?');
+    c.assistant('And your name?');
+    c.caller('Linh.');
+    const found = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Biscuit', phone: '720 555 0172' } }]);
     expect(found.errors).toEqual([null]);
+    expect(c.state.memory.verified).toBe('name_match');
     expect(c.state.verifiedPatient?.firstName).toBe('Biscuit');
     // said first, before any times
     expect(said(found)).toContain('Say first, in these words: \\"I found Biscuit, your dog.\\"');

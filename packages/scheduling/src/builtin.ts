@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { AppointmentSummary, BookingResult, SchedulerAdapter, Slot } from '@attendra/core';
-import { type Database, schema, withClinic } from '@attendra/db';
+import { type Database, type PhiCipher, phiContext, schema, withClinic } from '@attendra/db';
 import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { byKey, insertAppointment } from './write';
 
@@ -15,7 +15,8 @@ const summary = (r: typeof appointments.$inferSelect): AppointmentSummary =>
  * so the agent never knows which one it is talking to.
  */
 export class BuiltinScheduler implements SchedulerAdapter {
-  constructor(private readonly db: Database, private readonly actor = 'voice-agent') {}
+  /** With `cipher`, a booking's note for the team is kept on the appointment, encrypted; without it, none is kept. */
+  constructor(private readonly db: Database, private readonly actor = 'voice-agent', private readonly cipher?: PhiCipher) {}
 
   async busy(clinicId: string, providerIds: string[], from: Date, to: Date) {
     if (!providerIds.length) return [];
@@ -35,7 +36,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
    * who already has a visit then, with any provider, is refused as the front desk
    * refuses them: "patient_busy".
    */
-  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult> {
+  async book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; note?: string | null }): Promise<BookingResult> {
     const existing = await byKey(this.db, clinicId, input.idempotencyKey);
     if (existing) return { status: 'already_done', appointment: summary(existing) };
     const busy = await withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id }).from(appointments).where(and(
@@ -47,6 +48,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
     const result = await insertAppointment(this.db, clinicId, {
       patientId: input.patientId, providerId: input.slot.providerId, visitTypeId: input.slot.visitTypeId,
       startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
+      noteEnc: input.note?.trim() && this.cipher ? this.cipher.encrypt(input.note.trim(), phiContext(clinicId, 'appointments.note')) : null,
     }, { actor: this.actor, action: 'appointment.booked', callId: input.callId });
     return result.status === 'slot_taken' ? result : { status: result.status, appointment: summary(result.row) };
   }

@@ -35,6 +35,13 @@ export class CallMemory {
   verified: 'caller_id' | 'name_match' | null = null;
   /** The owner's first name on file: set only once verified, and never printed before. */
   owner: string | null = null;
+  /**
+   * The one name check on a number the caller said (its digits): matched, not matched (they may still book; nothing from
+   * the record is said, and the booking carries a note for the team), no owner on file, or not given after "And your name?".
+   */
+  nameCheck: { digits: string; result: 'match' | 'no_match' | 'no_owner' | 'not_given' } | null = null;
+  /** The number "And your name?" was asked for: asked once per number. */
+  nameAskedFor: string | null = null;
   /** The first names of the pets on the number, as the records list them. */
   pets: string[] = [];
   /** The visit booked (or moved to) on this call, for a time-only move ("make it 4:40") that keeps its day. */
@@ -110,6 +117,11 @@ export class CallMemory {
       // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3")
       if (time && this.get('time')?.time !== time) this.set('time', { time, mode: 'after' }, 'tool', atTurn);
     }
+  }
+
+  /** The name the caller gave when it did not match the owner on file, for the team's note on a booking; null otherwise. */
+  get bookedByCaller(): string | null {
+    return this.nameCheck?.result === 'no_match' ? this.get('saidName')?.split(/\s+/)[0] ?? null : null;
   }
 
   /** The digits read back and said yes to. */

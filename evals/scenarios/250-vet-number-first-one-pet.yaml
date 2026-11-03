@@ -9,7 +9,7 @@ turns:
   - caller: Hi, I'd like to book a check-up.
     reply: "Sure. Is your pet's profile under the number you're calling from, ending 0174?"
   - caller: Yes, it is.
-    reply: "I see Luna under this number. Is this for Luna, or a new pet?"
+    reply: "Thanks, Carmen. Is this for Luna, or a new pet?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: null }
   - caller: Yes, Luna.
@@ -30,4 +30,4 @@ expect:
   verified: true
   bookings_created: 1
   sms_sent: 1
-  returned: ["I see Luna under this number. Is this for Luna, or a new pet?", "I found Luna, your dog."]
+  returned: ["Thanks, Carmen. Is this for Luna, or a new pet?", "I found Luna, your dog."]

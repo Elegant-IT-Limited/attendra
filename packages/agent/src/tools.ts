@@ -220,7 +220,7 @@ export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
   // what the call already established fills an argument the planner left out, so the caller is never asked for it again
-  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber });
+  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber, ownerOnFile: state.memory.verified ? state.memory.owner : null });
   if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
   if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
   const done = await toolCall(name, args, state, ctx, backend, revision);
@@ -250,6 +250,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // a pet's visits only once it is found by its owner, its name and the phone: the number alone, or the owner's name, is not enough
   if (name === 'visit_summary' && !state.verifiedPatient) {
     return refuse('not_verified', 'Nothing about a pet\'s visits can be said before the pet is found. Find it first with verify_caller (the owner\'s first name, the pet\'s name, the phone), asking only for what the caller has not said yet; say nothing about any visit until then.');
+  }
+  // the record (next and last visit, the usual vet) only for a caller the number knows: caller ID, or the owner's name matched
+  if (name === 'visit_summary' && trade.identity === 'pet' && !state.memory.verified) {
+    return refuse('not_verified', 'Details from the pet\'s record (its visits, its vet) are not given on this call. Say, kindly and in a few words, that you can\'t go into the record on this call, and that you can still book, move or cancel a visit, or have the team call back. Never say a name from the records, and never say why.');
   }
   if (PATIENT_TOOLS.has(name) && !state.verifiedPatient) {
     // a time the caller chose before the pet or patient is found is kept, and read back once they are
@@ -567,7 +571,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       let slots = anyone;
       let note = anyone.length ? `Offer these as written. Do not invent other times.${fromTime && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : ''}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
       // nobody named: their usual vet first, when that vet is free soon enough
-      if (!asked && patient && rules.noPreference === 'usual_first' && backend.scheduler.history) {
+      // the usual vet is a fact of the record: said only to a caller the number knows
+      const recordOpen = trade.identity !== 'pet' || !!state.memory.verified;
+      if (!asked && patient && recordOpen && rules.noPreference === 'usual_first' && backend.scheduler.history) {
         const usualId = usualProviderOf(await backend.scheduler.history(clinic.id, patient.id, now), now);
         const usual = providers.find((p) => p.id === usualId);
         if (usual) {
@@ -711,9 +717,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         return { ok: true, data: { cancelled: true, sms_sent: smsSent, spoken: pack.spoken.done({ kind: 'cancelled', textSent: smsSent, then: pack.spoken.anythingElse }) } };
       }
 
+      // booked on a number whose owner on file is not the name the caller gave: the team sees who booked it
+      const byCaller = trade.identity === 'pet' ? state.memory.bookedByCaller : null;
       const result = await backend.scheduler.book(clinic.id, {
         patientId: patient.id, slot: pending.slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'book', pending.slot.id, pending.seq),
         replacesAppointmentId: pending.replacesAppointmentId,
+        ...(byCaller ? { note: PACKS[clinic.primaryLanguage].bookedByCallerNote({ name: byCaller }) } : {}),
       });
       state.pending = null;
       if (result.status === 'slot_taken') {
@@ -978,6 +987,8 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
   const readBack = readBackFirst(args.phone, phone, state, ctx, lang);
   if (readBack) return readBack;
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  if (check) return check;
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') {
     // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call)
@@ -1003,15 +1014,68 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const readBack = readBackFirst(said, phone, state, ctx, lang);
   if (readBack) return readBack;
-  const pets = await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
+  const check = await checkOwner(phone, said, state, ctx, backend, lang);
+  if (check) return check;
+  const known = await knownHousehold(phone, state, ctx, backend);
+  const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
   if (!pets.names.length) return refuse('no_pets_on_number', `Say first, in these words: "${PACKS[lang].noPetsOnNumber}" Then ask the pet's name and whether it is new to the clinic; a new pet is added with register_patient under this number. Never say a pet's name the caller has not said.`);
   state.askedWhichPet = true;
   state.memory.pets = pets.names;
+  // a caller the number knows is thanked by name, and never asked for it: "Thanks, Jordan. Is this for Biscuit or Pepper?"
+  const question = known?.owner
+    ? PACKS[lang].whichPetVerified({ owner: known.owner, names: pets.names, more: pets.more, offerNew: state.saidNew() !== 'new' })
+    : PACKS[lang].whichPet(pets);
   return { ok: true, data: {
-    verified: false, pets_on_number: pets.names, more: pets.more,
-    say: `Ask, in these words: "${PACKS[lang].whichPet(pets)}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number. Say nothing else about these pets until one is found.`,
+    verified: false, pets_on_number: pets.names, more: pets.more, ...(known?.owner ? { owner: known.owner } : {}),
+    say: `Ask, in these words: "${question}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number (never ask for the owner's name: it is on file). Say nothing else about these pets until one is found.`,
   } };
+}
+
+/**
+ * Who the caller is to the number, checked once per number before its records are used (2026-11-14). Caller ID is
+ * enough. A number they said is checked against the owner on file by the name they give: "And your name?" is asked once
+ * when they have not given one. A match opens the record (the owner's name, the pets' visits). No match still books, as
+ * before (the confirmation text goes to the number on file), but nothing from the record is said and the booking carries
+ * a note for the team. Null when the call may go on; otherwise the question to ask.
+ */
+async function checkOwner(phone: string, said: unknown, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult | null> {
+  const m = state.memory;
+  const digits = phone.replace(/\D/g, '');
+  const spoken = typeof said === 'string' && said.trim() !== '';
+  if (!spoken || (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic))) {
+    if (m.verified !== 'caller_id') { m.verified = 'caller_id'; m.owner = null; }
+    return null;
+  }
+  // a number said after another one: the earlier check was about that one
+  if (m.nameCheck && m.nameCheck.digits !== digits) { m.nameCheck = null; m.verified = null; m.owner = null; }
+  if (m.nameCheck || !backend.patients.ownerMatches) return null;
+  const name = m.get('saidName') ?? null;
+  const result = await backend.patients.ownerMatches(ctx.clinic.id, phone, name, ctx.callId);
+  if (result === 'name_needed') {
+    if (m.nameAskedFor === digits) { m.nameCheck = { digits, result: 'not_given' }; return null; }
+    m.nameAskedFor = digits;
+    return refuse('owner_check', `Ask, in these words: "${PACKS[lang].yourNameQuestion}" When they answer, call verify_caller again with the same number and owner_name as they said it. Never say a name from the records first, and never say you don't have their name.`);
+  }
+  m.nameCheck = { digits, result };
+  m.verified = result === 'match' ? 'name_match' : null;
+  ctx.log?.info({ call_id: ctx.callId, owner_check: result }, 'owner checked on a spoken number');
+  return null;
+}
+
+/** For a caller the number knows: the owner's first name on file and the pets, kept in the call memory. Null otherwise. */
+async function knownHousehold(phone: string, state: CallState, ctx: CallContext, backend: Backend): Promise<{ owner: string | null; names: string[]; more: boolean } | null> {
+  if (!state.memory.verified || !backend.patients.householdOnNumber) return null;
+  const household = await backend.patients.householdOnNumber(ctx.clinic.id, phone, ctx.callId);
+  // caller ID, and the caller said a name that is not the owner's (another person on a family phone): never greeted by the owner's
+  const said = state.memory.get('saidName');
+  if (household.owner && state.memory.verified === 'caller_id' && said && backend.patients.ownerMatches
+    && await backend.patients.ownerMatches(ctx.clinic.id, phone, said, ctx.callId) === 'no_match') return { ...household, owner: null };
+  if (household.owner) {
+    state.memory.owner = household.owner;
+    state.verifiedOwner ??= household.owner;
+  }
+  return household;
 }
 
 /**
@@ -1055,7 +1119,13 @@ async function registerPet(
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
-  const owner = String(args.owner_name ?? '').trim();
+  // a number the caller said is checked by their name before a pet is added under its owner; caller ID needs nothing
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  if (check) return check;
+  // a known number's owner is the pet's owner: never asked for, and never a second owner on the number
+  if (state.memory.verified && !state.memory.owner) await knownHousehold(phone, state, ctx, backend);
+  const onFile = state.memory.verified ? state.memory.owner : null;
+  const owner = String(args.owner_name ?? '').trim() || onFile || '';
   const ownerParts = owner.split(/\s+/);
   const petName = String(args.pet_name).trim();
   // only what is still missing once the call memory has filled what the caller already said, one thing at a time
@@ -1093,6 +1163,7 @@ async function registerPet(
     details: {
       reason: 'New pet added by the assistant. Check the details and confirm them.',
       pet_name: petName, species, sex: args.sex === 'unknown' ? 'unknown' : String(args.sex), owner_name: owner, phone: asGiven(clinic, phone),
+      ...(state.memory.bookedByCaller ? { note: PACKS[clinic.primaryLanguage].bookedByCallerNote({ name: state.memory.bookedByCaller }) } : {}),
       date_of_birth: birth.dob, ...(birth.estimated ? { date_of_birth_note: `Estimated from the age the owner gave: ${String(args.birthday_or_age)}` } : {}),
     },
   });

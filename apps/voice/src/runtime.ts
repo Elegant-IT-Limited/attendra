@@ -112,7 +112,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     }),
     backend: {
       patients: directory,
-      scheduler: new BuiltinScheduler(db),
+      scheduler: new BuiltinScheduler(db, 'voice-agent', cipher),
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
       knowledge: rt.knowledge,

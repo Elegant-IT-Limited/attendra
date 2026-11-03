@@ -5,7 +5,7 @@ local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first, language, es]
-facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna. Diga que sí a la confirmación del número. Solo quiere confirmar que Luna está registrada: cuando la encuentren, diga gracias, que llamará para reservar, y adiós."
+facts: "Llamada de prueba. Usted es Carmen Ortiz; el número registrado es 720 555 0174. Su perra es Luna. Diga que sí a la confirmación del número y diga su nombre cuando se lo pidan. Solo quiere confirmar que Luna está registrada: cuando la encuentren, diga gracias, que llamará para reservar, y adiós."
 turns:
   - caller: Hola, quiero una cita para Luna. El número es siete dos cero, cinco cinco cinco, cero uno siete cuatro.
     reply: "¿Es el 720-555-0174?"
@@ -13,12 +13,17 @@ turns:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "siete dos cero, doble cinco cinco, cero uno siete cuatro" }
   - assistant: "¿Es el 720-555-0174?"
   - caller: Sí.
-    reply: "Encontré a Luna, su perro."
+    reply: "¿Y su nombre?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "¿Y su nombre?"
+  - caller: Carmen Ortiz.
+    reply: "Encontré a Luna, su perro."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
 expect:
   outcome: abandoned
   verified: true
-  refusals: [confirm_number]
+  refusals: [confirm_number, owner_check]
   language: es
-  returned: ["¿Es el 720-555-0174?", "Encontré a Luna, su perro."]
+  returned: ["¿Y su nombre?", "¿Es el 720-555-0174?", "Encontré a Luna, su perro."]

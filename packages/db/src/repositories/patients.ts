@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, soundsLike, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { type CallPatient, fold, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, soundsLike, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
 import { and, count, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -178,6 +178,46 @@ export class PostgresPatientDirectory implements PatientDirectory {
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.pets_on_number.read', entity: 'call', entityId: callId, callId });
       const all = [...names.values()];
       return { names: all.slice(0, 3), more: all.length > 3 };
+    });
+  }
+
+  /**
+   * The household on a number for a caller who is known (caller ID, or a name that matched): the owner's first name on
+   * file and the pets' first names, at most three with `more` for the rest. Audited as a read of the household on the
+   * call; finding nothing is not.
+   */
+  async householdOnNumber(clinicId: string, phone: string, callId: string): Promise<{ owner: string | null; names: string[]; more: boolean }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select({ first: patients.firstNameEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(20);
+      const names = new Map<string, string>();
+      for (const r of rows) {
+        const n = this.cipher.decrypt(r.first, ctx('first_name')).trim().split(/\s+/)[0] ?? '';
+        if (n && !names.has(n.toLowerCase())) names.set(n.toLowerCase(), n);
+      }
+      if (!names.size) return { owner: null, names: [], more: false };
+      const owner = (await this.ownerOnFile(tx, clinicId, phone))?.split(/\s+/)[0] ?? null;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.household.read.call', entity: 'call', entityId: callId, callId });
+      const all = [...names.values()];
+      return { owner, names: all.slice(0, 3), more: all.length > 3 };
+    });
+  }
+
+  /**
+   * Whether the name a caller gave on a number they said is the owner's on file: the first words compared by sound and
+   * with the same first two letters, accents and case aside ("Jordon" is Jordan). The name on file never leaves this
+   * method: only the result does, and only the result is audited. 'name_needed' when the number has an owner and no name
+   * was given; 'no_owner' when the number has no owner on file (a new household).
+   */
+  async ownerMatches(clinicId: string, phone: string, saidName: string | null, callId: string): Promise<'match' | 'no_match' | 'no_owner' | 'name_needed'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const owner = await this.ownerOnFile(tx, clinicId, phone);
+      if (!owner) return 'no_owner' as const;
+      if (!saidName?.trim()) return 'name_needed' as const;
+      const result = sameOwnerName(saidName, owner) ? 'match' as const : 'no_match' as const;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: `patient.owner_check.${result}`, entity: 'call', entityId: callId, callId });
+      return result;
     });
   }
 
@@ -391,4 +431,12 @@ export async function unifyHouseholds(db: Database, cipher: PhiCipher, opts: { a
     pets += moved.changed;
   }
   return { clinics: ids.length, numbers, pets };
+}
+
+/** The first word of a name a caller said against the owner's on file: by sound, and the same first two letters ("Al" is not "Ali" by sound alone). */
+export function sameOwnerName(said: string, onFile: string): boolean {
+  const first = (n: string) => fold(n).toLowerCase().replace(/[^\p{L}\s'-]/gu, '').trim().split(/\s+/)[0] ?? '';
+  const [a, b] = [first(said), first(onFile)];
+  if (!a || !b) return false;
+  return a === b || (a.slice(0, 2) === b.slice(0, 2) && soundsLike(a, b));
 }

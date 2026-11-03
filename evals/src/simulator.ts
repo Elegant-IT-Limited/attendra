@@ -197,7 +197,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
-  const scheduler = new BuiltinScheduler(db);
+  const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
   const sms: string[] = [];
   const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages

@@ -99,7 +99,7 @@ export function callerContext(history: string | null, industry?: string): string
     industry === 'vet'
       // at a clinic for animals the number finds the household: a booking starts with it, and the name only greets
       ? (name
-        ? `For a booking, a change or a cancellation the number comes first, as the backend asks it. Once the backend has found the household on this number, you may greet ${name} by name; never say the name before that, and never say it if they say it is someone else.`
+        ? `For a booking, a change or a cancellation the number comes first, as the backend asks it. Once the backend says the caller is verified (it thanks them by name), you may use ${name}; never say the name before that, and never say it if they say it is someone else.`
         : 'For a booking, a change or a cancellation the number comes first, as the backend asks it.')
       : name
         ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" (in Spanish, "¿Hablo con ${name}?") On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`
