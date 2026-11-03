@@ -31,7 +31,7 @@ export async function world(seed: typeof seedDemo = seedDemo) {
   const backend = {
     events: { emit: async (_clinicId: string, e: DomainEvent) => { events.push(e); } },
     patients: new PostgresPatientDirectory(t.db, cipher),
-    scheduler: new BuiltinScheduler(t.db),
+    scheduler: new BuiltinScheduler(t.db, 'voice-agent', cipher),
     tasks: new PostgresTaskQueue(t.db, cipher),
     audit: new PostgresAuditLog(t.db),
     messenger,

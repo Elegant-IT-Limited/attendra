@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, soundsLike, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
+import { type CallPatient, fold, Gender, MAX_NEW_PATIENTS_PER_PHONE_PER_DAY, namesMatch, normalizeName, soundsLike, type PatientDirectory, type PatientLookup, phoneDigits, type Registration } from '@attendra/core';
 import { and, count, eq, gt, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -178,6 +178,46 @@ export class PostgresPatientDirectory implements PatientDirectory {
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.pets_on_number.read', entity: 'call', entityId: callId, callId });
       const all = [...names.values()];
       return { names: all.slice(0, 3), more: all.length > 3 };
+    });
+  }
+
+  /**
+   * The household on a number for a caller who is known (caller ID, or a name that matched): the owner's first name on
+   * file and the pets' first names, at most three with `more` for the rest. Audited as a read of the household on the
+   * call; finding nothing is not.
+   */
+  async householdOnNumber(clinicId: string, phone: string, callId: string): Promise<{ owner: string | null; names: string[]; more: boolean }> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select({ first: patients.firstNameEnc }).from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, phone))))).orderBy(patients.createdAt).limit(20);
+      const names = new Map<string, string>();
+      for (const r of rows) {
+        const n = this.cipher.decrypt(r.first, ctx('first_name')).trim().split(/\s+/)[0] ?? '';
+        if (n && !names.has(n.toLowerCase())) names.set(n.toLowerCase(), n);
+      }
+      if (!names.size) return { owner: null, names: [], more: false };
+      const owner = (await this.ownerOnFile(tx, clinicId, phone))?.split(/\s+/)[0] ?? null;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.household.read.call', entity: 'call', entityId: callId, callId });
+      const all = [...names.values()];
+      return { owner, names: all.slice(0, 3), more: all.length > 3 };
+    });
+  }
+
+  /**
+   * Whether the name a caller gave on a number they said is the owner's on file: the first words compared by sound and
+   * with the same first two letters, accents and case aside ("Jordon" is Jordan). The name on file never leaves this
+   * method: only the result does, and only the result is audited. 'name_needed' when the number has an owner and no name
+   * was given; 'no_owner' when the number has no owner on file (a new household).
+   */
+  async ownerMatches(clinicId: string, phone: string, saidName: string | null, callId: string): Promise<'match' | 'no_match' | 'no_owner' | 'name_needed'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const owner = await this.ownerOnFile(tx, clinicId, phone);
+      if (!owner) return 'no_owner' as const;
+      if (!saidName?.trim()) return 'name_needed' as const;
+      const result = sameOwnerName(saidName, owner) ? 'match' as const : 'no_match' as const;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: `patient.owner_check.${result}`, entity: 'call', entityId: callId, callId });
+      return result;
     });
   }
 
@@ -391,4 +431,86 @@ export async function unifyHouseholds(db: Database, cipher: PhiCipher, opts: { a
     pets += moved.changed;
   }
   return { clinics: ids.length, numbers, pets };
+}
+
+/** The first word of a name a caller said against the owner's on file: by sound, and the same first two letters ("Al" is not "Ali" by sound alone). */
+export function sameOwnerName(said: string, onFile: string): boolean {
+  const first = (n: string) => fold(n).toLowerCase().replace(/[^\p{L}\s'-]/gu, '').trim().split(/\s+/)[0] ?? '';
+  const [a, b] = [first(said), first(onFile)];
+  if (!a || !b) return false;
+  return a === b || (a.slice(0, 2) === b.slice(0, 2) && soundsLike(a, b));
+}
+
+/** One group of records on a shared number, as the dry run reports it: counts and dates only, never a name, a number or a hash. */
+export interface SharedNumberGroup {
+  clinicId: string;
+  industry: string;
+  /** `number`: the same stored phone lookup; `last 9`: the same last nine digits stored under more than one lookup (two spellings of one number). */
+  groupedBy: 'number' | 'last 9';
+  pets: number;
+  /** Distinct owner names on the group, compared the way names are compared everywhere (case, accents and spacing do not count). */
+  owners: number;
+  /** Records in the group with no owner name. */
+  withoutOwner: number;
+  /** The records' creation dates, YYYY-MM-DD in UTC, each once, oldest first. */
+  created: string[];
+}
+
+/**
+ * The shared-number check (2026-11), read-only: per clinic, the records whose number is shared by more than one
+ * owner name, or (at a veterinary clinic) carries an owner on some records and none on others, grouped by the stored
+ * phone lookup; and the numbers whose last nine digits sit under more than one stored lookup (a number stored in two
+ * spellings, from before the lookups were rebuilt), which a number said on a call can miss. Decrypts in memory only;
+ * returns counts and dates. Writes nothing, not even an audit row. The owner of the install decides what to do with it.
+ */
+export async function sharedNumbers(db: Database, cipher: PhiCipher): Promise<{ clinics: number; groups: SharedNumberGroup[] }> {
+  const all = await db.select({ id: clinics.id, config: clinics.config }).from(clinics).orderBy(clinics.id);
+  const groups: SharedNumberGroup[] = [];
+  for (const clinic of all) {
+    const industry = String((clinic.config as { industry?: unknown } | null)?.industry ?? 'clinic');
+    const clinicId = clinic.id;
+    const rows = await withClinic(db, clinicId, (tx) => tx.select({ phoneHash: patients.phoneHash, phone: patients.phoneEnc, guardian: patients.guardianNameEnc, createdAt: patients.createdAt })
+      .from(patients).where(and(eq(patients.clinicId, clinicId), isNotNull(patients.phoneEnc))).orderBy(patients.createdAt));
+    const guardianCtx = phiContext(clinicId, 'patients.guardian_name');
+    const phoneCtx = phiContext(clinicId, 'patients.phone');
+    const records = rows.map((r) => ({
+      stored: r.phoneHash,
+      last9: cipher.hash(phoneKey(clinicId, cipher.decrypt(r.phone!, phoneCtx))),
+      owner: r.guardian ? normalizeName(cipher.decrypt(r.guardian, guardianCtx)) || null : null,
+      created: r.createdAt.toISOString().slice(0, 10),
+    }));
+    const summary = (groupedBy: SharedNumberGroup['groupedBy'], g: typeof records): SharedNumberGroup => ({
+      clinicId, industry, groupedBy, pets: g.length,
+      owners: new Set(g.flatMap((r) => (r.owner ? [r.owner] : []))).size,
+      withoutOwner: g.filter((r) => !r.owner).length,
+      created: [...new Set(g.map((r) => r.created))].sort(),
+    });
+    const byStored = new Map<string, typeof records>();
+    const byLast9 = new Map<string, typeof records>();
+    for (const r of records) {
+      if (r.stored) byStored.set(r.stored, [...(byStored.get(r.stored) ?? []), r]);
+      byLast9.set(r.last9, [...(byLast9.get(r.last9) ?? []), r]);
+    }
+    for (const g of byStored.values()) {
+      if (g.length < 2) continue;
+      const s = summary('number', g);
+      if (s.owners > 1 || (industry === 'vet' && s.owners > 0 && s.withoutOwner > 0)) groups.push(s);
+    }
+    for (const g of byLast9.values()) {
+      if (g.length > 1 && new Set(g.map((r) => r.stored)).size > 1) groups.push(summary('last 9', g));
+    }
+  }
+  return { clinics: all.length, groups };
+}
+
+/** The dry run's printout: one line a group, then the totals. No names, no numbers, no hashes. */
+export function formatSharedNumbers(r: { clinics: number; groups: SharedNumberGroup[] }): string[] {
+  const lines = r.groups.map((g) => [`clinic ${g.clinicId}`, g.industry, `grouped by ${g.groupedBy}`, `pets ${g.pets}`, `owners ${g.owners}`,
+    ...(g.withoutOwner ? [`without owner ${g.withoutOwner}`] : []), `created ${g.created.join(', ')}`].join(' · '));
+  const total = (by: SharedNumberGroup['groupedBy']) => {
+    const gs = r.groups.filter((g) => g.groupedBy === by);
+    return `${gs.length} groups (${gs.reduce((n, g) => n + g.pets, 0)} pets)`;
+  };
+  lines.push(`shared numbers: by number ${total('number')} · by last 9 ${total('last 9')} · across ${r.clinics} clinics checked (dry run, nothing written)`);
+  return lines;
 }

@@ -8,7 +8,7 @@ channel: web
 facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Linh Nguyen y hablas español. Tu perro Biscuit necesita un chequeo. El teléfono de su ficha es 720 555 0172."
 turns:
   - caller: Hola, soy Linh Nguyen. Quiero reservar un chequeo, por favor.
-    reply: "Gracias, Linh. ¿Cuál es el mejor número para comunicarnos con usted?"
+    reply: "Gracias, Linh. ¿Con qué número de teléfono está registrada la ficha de su mascota?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
   - caller: Es el 720 555 0172.
@@ -17,7 +17,7 @@ turns:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
   - assistant: "¿Es el 720-555-0172?"
   - caller: Sí, ese.
-    reply: "Gracias. Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"
+    reply: "Gracias, Linh. ¿Es para Biscuit o para Mochi, o para una mascota nueva?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
   - caller: Para Biscuit.
@@ -30,4 +30,4 @@ expect:
   verified: true
   language: es
   refusals: [phone_required, confirm_number]
-  returned: ["Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"]
+  returned: ["Gracias, Linh. ¿Es para Biscuit o para Mochi, o para una mascota nueva?"]

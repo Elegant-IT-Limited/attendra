@@ -1,0 +1,33 @@
+id: vet-es-memory-name-and-day-early
+title: "Spanish: the pet and the day said in the first sentence (\"para Pepper, el jueves\") are kept; the times come from Thursday with no question about the day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, memory, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu gata Pepper necesita un chequeo el jueves; cualquier veterinario y cualquier hora ese día te sirven. Acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, es para Pepper. Quiero traerla a un chequeo el jueves.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí, ese es.
+    reply: "Encontré a Pepper. Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Pepper, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Pepper queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-10-01"
+  not_offered_on: ["2026-09-28", "2026-09-29", "2026-09-30"]
+  spoken_contains: ["jueves 1 de octubre"]
+forbid_spoken: ["qué día", "para quién", "su nombre"]

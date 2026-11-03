@@ -25,17 +25,28 @@ export interface LanguagePack {
   /** Words that disclose an AI assistant, in this language. A greeting without them is refused. */
   disclosure: RegExp;
 
-  /** "Tuesday, October 6 at 3:00 PM" in this language, in the clinic's zone. */
   /**
-   * A time as people say it on the phone. With `now`, a day within the week is "today", "tomorrow" or its weekday
-   * ("Thursday at 2:30 PM"); further out, or without `now` (a text read later), the weekday and date.
+   * A time as it is said on a call and written in a text: fullWhen, every time (2026-11-14). `now` is kept for callers
+   * that pass it and changes nothing: "today" and "Thursday" alone left the date to the caller.
    */
   speakWhen: (start: Date, timeZone: string, now?: Date) => string;
+  /**
+   * A time said in full, every time, in the clinic's zone: the weekday, the date and the time, never the year
+   * ("Wednesday, November 4, at 5:20 PM", "el miércoles 4 de noviembre a las 5:20 de la tarde"). Built from parts, so
+   * it does not depend on the ICU version Node ships.
+   */
+  fullWhen: (start: Date, timeZone: string) => string;
+  /** A clinic-local date (YYYY-MM-DD) as a day: "Wednesday, November 4", "miércoles 4 de noviembre" (no article). */
+  fullDay: (date: string) => string;
   /** A phone number read out digit by digit. */
   speakPhone: (e164: string) => string;
   /** The read-back before a booking or a move. */
   /** `providerKind` is how the provider is named: "with" a person, "in" a room. */
-  readbackBooking: (v: { when: string; provider: string; providerKind: 'person' | 'room'; visit: string; replacing: string | null }) => string;
+  /**
+   * `replacing`: the time being moved from (fullWhen), and then the read-back says both times in full ("move Biscuit's
+   * check-up from Wednesday, November 4, at 5:20 PM to ..."); `shift` how the day changes (dayShift), when it does.
+   */
+  readbackBooking: (v: { when: string; provider: string; providerKind: 'person' | 'room'; visit: string; replacing: string | null; pet?: string | null; shift?: string | null }) => string;
   /** The read-back before a cancellation. */
   readbackCancel: (v: { when: string }) => string;
 
@@ -74,10 +85,28 @@ export interface LanguagePack {
   /** Asked before a refill request is logged, when texting is on: only a yes gets the team's decision by text. */
   refillTextOffer: string;
   /**
-   * The one question about the caller's phone number for a new pet or patient: on a call with caller ID,
-   * whether that number is the best one; with none (a browser test call, a hidden number), the best number.
+   * At a clinic for people, on a call with caller ID: whether the number they are calling from is the best one for a new
+   * patient. A clinic for animals asks profileNumberQuestion instead (2026-11-14).
    */
-  phoneQuestion: (v: { callerId: boolean }) => string;
+  sameNumberQuestion: string;
+  /** The number to call back, for a callback request only (never for a booking): "What's the best number to reach you?". */
+  callbackNumberQuestion: string;
+  /** Asked once on a number the caller said, before anything from its records is used: "And your name?". */
+  yourNameQuestion: string;
+  /**
+   * The pick question once the caller is known (caller ID, or a spoken number whose name matched the owner on file):
+   * thanks by the owner's first name, then the pets by first name ("Thanks, Jordan. Is this for Biscuit or Pepper, or a
+   * new pet?"). `more`: they have others; `offerNew`: the caller has not said the pet is new.
+   */
+  whichPetVerified: (v: { owner: string; names: string[]; more: boolean; offerNew: boolean }) => string;
+  /** A verified caller who named the pet at once is thanked by the owner's name on file, before the pet found: "Thanks, Jordan." */
+  thanksOwner: (v: { owner: string }) => string;
+  /** The one question when "next Wednesday" could be either week: "This Wednesday, November 4, or Wednesday, November 11?". Dates are YYYY-MM-DD. */
+  whichWeek: (v: { first: string; second: string }) => string;
+  /** The note the team sees on a booking made on a number whose owner on file did not match the name the caller gave. */
+  bookedByCallerNote: (v: { name: string }) => string;
+  /** The words that pick facts out of what a caller says, for the call memory (memory-words.ts). Closed lists only. */
+  memory: MemoryWords;
   /**
    * Asked once caller ID matched and the owner said who they are: which of their pets the call is for, by
    * first name (at most three; `more` when they have others), or a new one.
@@ -140,7 +169,7 @@ export interface LanguagePack {
    */
   spoken: {
     /** A booking or a move read back as a question, with the confirmation-text note when a text will follow. */
-    readback: (v: { readback: string; textNote: string | null }) => string;
+    readback: (v: { readback: string; textNote: string | null; move?: boolean }) => string;
     /** A cancellation read back as a question. */
     cancelReadback: (v: { readback: string; textNote: string | null }) => string;
     /** The change is made; `then` is the question that follows (the reminder offer, or anything else?). */
@@ -166,8 +195,20 @@ export interface LanguagePack {
      * words, never a result. `day` is already in the caller's words ("today", "Thursday"); `pet` the pet's name.
      */
     lookingUp: (v: { kind: 'times' | 'times_on' | 'pet' | 'info' | 'visits' | 'number'; day?: string | null; pet?: string | null }) => string;
+    /** Said once, on the first request of a call, when the backend has said nothing after a second: never a silence. */
+    oneMoment: string;
     /** A day as people say it when a time is read back or looked up: today, tomorrow, or the weekday. `weekday` is 0 for Sunday. */
     dayWord: (v: { daysFromToday: number; weekday: number }) => string;
+    /**
+     * Several times offered at once, grouped by day so each date is said once: "On Wednesday, November 4, I have 8:00,
+     * 8:40 or 9:20 AM." With `provider` on a time, each time says its vet; `provider` for them all, once at the end.
+     */
+    offerTimes: (v: { days: OfferDay[]; provider: string | null }) => string;
+    /**
+     * How a move shifts the day, said after the read-back when the dates differ: "that's one week later, Wednesday,
+     * November 11". `days` is the new date minus the old (never 0); `day` the new day's words (fullDay).
+     */
+    dayShift: (v: { days: number; day: string }) => string;
   };
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;
@@ -200,6 +241,53 @@ export interface LanguagePack {
   describesPet: RegExp;
   /** The whole "name" only points at a pet, with no name in it: "the other one", "my cat", "not the dog". */
   pointsAtPet: RegExp;
+}
+
+/** One day of offered times: the day (YYYY-MM-DD) and its times, each as hour and minutes on the 24-hour clock. */
+export interface OfferDay { date: string; times: { hour: number; minute: number; provider: string | null }[] }
+
+/**
+ * Closed word lists, matched against normalised text (lower case, no accents), that fill the call memory from the
+ * caller's own words. No free-text guessing: a word that is not on a list is not a fact.
+ */
+export interface MemoryWords {
+  /** The kind of animal, as the caller says it after "my", "a", "our": word to the English name kept in the memory. */
+  species: Record<string, string>;
+  /** Words that say the pet's sex on their own ("female", "a girl"; "perra", "hembra"). */
+  female: RegExp;
+  male: RegExp;
+  /** He or she, counted only in a turn that also names the animal. */
+  she: RegExp;
+  he: RegExp;
+  /** "2 years old", "six months old", "tiene 2 años": the number word (group 1) and the unit (group 2). */
+  age: RegExp;
+  /** Number words, as the age is said: "two" to 2. */
+  numbers: Record<string, number>;
+  /** What the call is about. */
+  /** `book`: words that ask for a visit on their own; `visit` ("a check-up", "una cita") asks only next to a `want` word, so "how long does a check-up take" is a question, not a booking. */
+  intent: { book: RegExp; visit: RegExp; want: RegExp; move: RegExp; cancel: RegExp };
+  /** Weekday names, Sunday first, and month names, January first, as matched (normalised). */
+  weekdays: string[];
+  months: string[];
+  today: RegExp;
+  tomorrow: RegExp;
+  /** The word before a weekday that means the coming one ("this", "este") and the one that may mean the week after ("next", "el próximo"). */
+  thisWord: string;
+  nextWord: string;
+  /** "Any doctor is fine", "whoever": a vet the caller named earlier no longer holds. */
+  anyVet: RegExp;
+  /** "Any day", "the first available": what the caller said about the day no longer holds. */
+  anyDay: RegExp;
+  /**
+   * A time of day the caller asked for: group 1 the word before it ("at", "around", "after"; "a las", "después de las"),
+   * group 2 the hour, group 3 the minutes, group 4 the part of the day (am/pm, "de la tarde").
+   */
+  time: RegExp;
+  /** Words before a time that mean "no earlier than" rather than "at about". */
+  after: RegExp;
+  /** Parts of the day after a time that put it in the afternoon or evening. */
+  pm: RegExp;
+  am: RegExp;
 }
 
 /** Word edges that work for any script: JavaScript's \b only knows ASCII letters. */

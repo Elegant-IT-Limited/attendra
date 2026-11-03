@@ -17,6 +17,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic } from '@/lib/api';
+import { testCallBadge } from '@/lib/call-as';
 import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } from '@/lib/format';
 import { SPOOFED_SIGN, SPOOFING_DOC, shortFirstCalls } from '@/lib/spoofing';
 import { usePets } from '@/lib/terms';
@@ -161,7 +162,7 @@ function Calls() {
                   <TD>
                     <span className="inline-flex flex-wrap items-center gap-1.5">
                       <Outcome outcome={c.outcome} emergency={c.emergency} />
-                      {c.channel === 'web' && <Badge tone="accent">Browser test</Badge>}
+                      {c.channel === 'web' && <Badge tone="accent">{testCallBadge(c.calledAsLast4)}</Badge>}
                       {c.needsReview && <Badge tone="warn">Needs review</Badge>}
                     </span>
                   </TD>

@@ -9,7 +9,7 @@ turns:
   - caller: Hi, I need to make an appointment.
     reply: "Am I speaking with Linh?"
   - caller: Yes.
-    reply: "Thanks, Linh. I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"
+    reply: "Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"
     delegate:
       - verify_caller: { owner_name: Linh, pet_name: null }
   - caller: A new one. We just got a puppy, Pip. He's a boy, about four months old.
@@ -30,5 +30,5 @@ expect:
   verified: true
   bookings_created: 1
   sms_sent: 1
-  returned: ["I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?", "Pip is now registered"]
+  returned: ["Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?", "Pip is now registered"]
 forbid_spoken: ["What's the best number", "Is the number you're calling from"]

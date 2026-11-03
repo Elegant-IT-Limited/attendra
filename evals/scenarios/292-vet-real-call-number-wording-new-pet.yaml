@@ -1,0 +1,52 @@
+id: vet-real-call-number-wording-new-pet
+title: "A real call, step 2 (made-up data): a browser call with no caller ID about a new pet is asked for the pet's profile number, never \"the best number\"; then the whole call: name, the pet added under the owner on file, Wednesday at 5:20, booked, moved to 4:40 the same day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, from-call, wording, new-pet, jordan-household]
+facts: "This is a test call from the browser, so there is no caller ID. You are Jordan Avery. The number on file is 303 555 0142. Your new puppy Milo, a boy, three months old, needs a first visit on Wednesday at 5:20; once it is booked, you ask to make it 4:40 the same day. Say yes to each read-back."
+turns:
+  - caller: Hi, I have a new pet I'd like to bring in, a puppy called Milo. He's a boy, three months old.
+    reply: "Sure. What phone number is your pet's profile under?"
+    delegate:
+      - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+  - caller: 303 555 0142.
+    reply: "And your name?"
+    delegate:
+      - register_patient: { pet_name: Milo, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: "303 555 0142" }
+  - caller: Jordan. Could we do Wednesday at 5:20?
+    reply: "Milo is added. I have {offered.0}."
+    delegate:
+      - register_patient: { pet_name: Milo, owner_name: Jordan, species: null, sex: null, birthday_or_age: null, phone: "303 555 0142" }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: The 5:20, please.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Milo is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+  - caller: Actually, can you make it 4:40 instead?
+    reply: "I have {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Yes, that one.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Done, it's moved."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  refusals: [phone_required, owner_check]
+  bookings_created: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["Sure. What phone number is your pet's profile under?", "And your name?", "to Wednesday, September 30, at 4:40 PM"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Milo] }
+  pet_on_file: { phone: "+13035550142", name: Milo, species: dog }
+forbid_spoken: ["best number", "mejor número", "what kind of animal", "I don't have your name"]

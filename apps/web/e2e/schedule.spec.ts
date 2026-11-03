@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAs } from './session';
+import { testDate } from './clock';
 
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
 
@@ -9,7 +10,7 @@ const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
  */
 async function findInWeek(page: Page, name: RegExp, upcoming = false) {
   // next week in the demo clinics' own time zone, not UTC: on a Sunday evening in Denver it is already Monday in UTC
-  const nextWeek = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(Date.now() + 7 * 86_400_000));
+  const nextWeek = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate(7 * 86_400_000));
   await page.goto(`/c/${clinicOf(page)}/schedule?view=week${upcoming ? `&date=${nextWeek}` : ''}`);
   const block = page.getByTestId('appointment').and(page.getByRole('button', { name }));
   const heading = page.getByRole('heading', { level: 2, name: /^Week of / });

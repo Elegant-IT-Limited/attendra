@@ -2,7 +2,7 @@
 import { type Language, PACKS } from './locales';
 import type { ClinicConfig, Provider, VisitType } from './clinic';
 import { specialDayOf, windowsOn } from './hours';
-import { awayOn, awayWindows } from './providers';
+import { awayOn, awayWindows, providerName } from './providers';
 import { addDays, fromMinutes, localParts, toMinutes, weekdayOf, zonedInstant } from './time';
 
 /** Booked time. With its visit type, a visit that keeps a buffer after it blocks that too. */
@@ -31,6 +31,11 @@ export interface SlotQuery {
   tieBreak?: 'order' | 'fewest';
   /** One slot per start time: the first of those free then, so a caller hears three different times, not one time three times. */
   distinctTimes?: boolean;
+  /**
+   * With `fromTime`: the asked day first, nearest that time on either side ("at 4:30": 4:40 and 4:20), up to `limit`, the
+   * nearest first (the exact time, when free, leads); only when that day has nothing, the next days from that time on.
+   */
+  sameDayFirst?: boolean;
 }
 
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
@@ -56,6 +61,14 @@ export function clashes(busy: BusyInterval[], visitTypes: Pick<VisitType, 'id' |
  */
 export function findSlots(clinic: Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visitTypes?: VisitType[]; specialDays?: ClinicConfig['specialDays'] }, busy: BusyInterval[], q: SlotQuery): Slot[] {
   const limit = q.limit ?? 3;
+  if (q.sameDayFirst && q.fromTime) {
+    const target = toMinutes(q.fromTime);
+    const that = findSlots(clinic, busy, { ...q, sameDayFirst: false, fromTime: undefined, days: 1, limit: 500 });
+    if (that.length) {
+      const off = (s: Slot) => Math.abs(localParts(s.start, clinic.timezone).minutes - target);
+      return [...that].sort((a, b) => off(a) - off(b) || a.start.getTime() - b.start.getTime()).slice(0, limit);
+    }
+  }
   const earliest = q.now.getTime() + (q.leadMinutes ?? 120) * MINUTE;
   const buffer = q.visitType.bufferMinutes ?? 0;
   const step = q.visitType.minutes + buffer;
@@ -121,4 +134,43 @@ export function speakSlot(start: Date, timeZone: string, language: Language = 'e
 
 export function localDateOf(at: Date, timeZone: string) {
   return localParts(at, timeZone).date;
+}
+
+/** Slots by the clinic-local day they fall on, the days in the order they first appear, each day's times in time order. */
+export function groupSlotsByDay(slots: Slot[], timeZone: string): { date: string; slots: Slot[] }[] {
+  const days: { date: string; slots: Slot[] }[] = [];
+  for (const slot of slots) {
+    const date = localDateOf(slot.start, timeZone);
+    const day = days.find((d) => d.date === date);
+    if (day) day.slots.push(slot); else days.push({ date, slots: [slot] });
+  }
+  for (const d of days) d.slots.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return days;
+}
+
+/**
+ * Several offered times in one sentence, each date said once: "On Wednesday, November 4, I have 8:00, 8:40 or 9:20 AM
+ * with Dr. Ruiz." The vet is said once when all the times are with one (a person; a room is not named), and with each
+ * time when they differ.
+ */
+export function offerTimesLine(slots: Slot[], clinic: Pick<ClinicConfig, 'timezone' | 'providers'>, language: Language = 'en'): string {
+  const people = new Set(slots.map((s) => s.providerId));
+  const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p && p.kind !== 'room' ? providerName(p, language) : null; };
+  const one = people.size === 1 ? nameOf(slots[0]!.providerId) : null;
+  const days = groupSlotsByDay(slots, clinic.timezone).map((d) => ({
+    date: d.date,
+    times: d.slots.map((s) => { const m = localParts(s.start, clinic.timezone).minutes; return { hour: Math.floor(m / 60), minute: m % 60, provider: people.size > 1 ? nameOf(s.providerId) : null }; }),
+  }));
+  return PACKS[language].spoken.offerTimes({ days, provider: one });
+}
+
+/**
+ * How a move shifts the day, in the caller's language ("that's one week later, Wednesday, November 11"), or null when
+ * the new time is on the same day as the old one.
+ */
+export function dayShift(from: Date, to: Date, timeZone: string, language: Language = 'en'): string | null {
+  const [a, b] = [localDateOf(from, timeZone), localDateOf(to, timeZone)];
+  if (a === b) return null;
+  const days = Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86_400_000);
+  return PACKS[language].spoken.dayShift({ days, day: PACKS[language].fullDay(b) });
 }

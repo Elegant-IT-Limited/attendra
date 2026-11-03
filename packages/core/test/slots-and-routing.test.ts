@@ -12,7 +12,7 @@ describe('finding slots', () => {
     const clinic = { ...DEMO_CLINIC, visitTypes: DEMO_CLINIC.visitTypes.map((v) => (v.id === 'vt_sick' ? buffered : v)) };
     // the grid steps by visit plus buffer: 8:00, 8:30, 9:00
     expect(findSlots(clinic, [], { visitType: buffered, providers: okafor, from: '2026-09-29', days: 5, now }).map((s) => speakSlot(s.start, tz)))
-      .toEqual(['Tuesday, September 29 at 8:00 AM', 'Tuesday, September 29 at 8:30 AM', 'Tuesday, September 29 at 9:00 AM']);
+      .toEqual(['Tuesday, September 29, at 8:00 AM', 'Tuesday, September 29, at 8:30 AM', 'Tuesday, September 29, at 9:00 AM']);
     // a sick visit booked 8:00-8:20 keeps 8:20-8:30 free for any visit after it; with no buffer set, 8:20 is free
     const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '08:00', tz), end: zonedInstant('2026-09-29', '08:20', tz), visitTypeId: 'vt_sick' }];
     const next = [zonedInstant('2026-09-29', '08:20', tz), zonedInstant('2026-09-29', '08:40', tz)] as const;
@@ -24,7 +24,7 @@ describe('finding slots', () => {
   it('offers the three earliest free slots, in clinic time', () => {
     const slots = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: okafor, from: '2026-09-29', days: 5, now });
     expect(slots.map((s) => speakSlot(s.start, tz))).toEqual([
-      'Tuesday, September 29 at 8:00 AM', 'Tuesday, September 29 at 8:20 AM', 'Tuesday, September 29 at 8:40 AM',
+      'Tuesday, September 29, at 8:00 AM', 'Tuesday, September 29, at 8:20 AM', 'Tuesday, September 29, at 8:40 AM',
     ]);
   });
 
@@ -32,7 +32,7 @@ describe('finding slots', () => {
     // Dr. Okafor is booked until 10:00; Dr. Lindqvist starts at 9:00 on Tuesdays
     const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '08:00', tz), end: zonedInstant('2026-09-29', '10:00', tz) }];
     const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: DEMO_CLINIC.providers, from: '2026-09-29', days: 5, now, limit: 6 });
-    expect(slots.map((s) => `${s.providerId} ${speakSlot(s.start, tz).replace('Tuesday, September 29 at ', '')}`)).toEqual([
+    expect(slots.map((s) => `${s.providerId} ${speakSlot(s.start, tz).replace('Tuesday, September 29, at ', '')}`)).toEqual([
       'prov_lindqvist 9:00 AM', 'prov_lindqvist 9:20 AM', 'prov_lindqvist 9:40 AM', 'prov_okafor 10:00 AM', 'prov_lindqvist 10:00 AM', 'prov_okafor 10:20 AM',
     ]);
   });
@@ -40,7 +40,7 @@ describe('finding slots', () => {
   it('skips booked time and respects afternoon-only requests', () => {
     const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '13:00', tz), end: zonedInstant('2026-09-29', '14:00', tz) }];
     const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 5, now, partOfDay: 'afternoon' });
-    expect(speakSlot(slots[0]!.start, tz)).toBe('Tuesday, September 29 at 2:00 PM');
+    expect(speakSlot(slots[0]!.start, tz)).toBe('Tuesday, September 29, at 2:00 PM');
   });
 
   it('uses a provider\'s own hours and never offers a visit type they do not do', () => {
@@ -48,7 +48,7 @@ describe('finding slots', () => {
     const annual = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_annual')!;
     const newPatient = DEMO_CLINIC.visitTypes.find((v) => v.id === 'vt_new')!;
     expect(speakSlot(findSlots(DEMO_CLINIC, [], { visitType: annual, providers: lindqvist, from: '2026-09-29', days: 5, now })[0]!.start, tz))
-      .toBe('Tuesday, September 29 at 9:00 AM');
+      .toBe('Tuesday, September 29, at 9:00 AM');
     expect(findSlots(DEMO_CLINIC, [], { visitType: newPatient, providers: lindqvist, from: '2026-09-29', days: 14, now })).toEqual([]);
   });
 
@@ -66,7 +66,26 @@ describe('finding slots', () => {
   it('keeps a lead time so the front desk is not surprised by a booking an hour away', () => {
     const morning = zonedInstant('2026-09-29', '08:05', tz);
     const slots = findSlots(DEMO_CLINIC, [], { visitType: sick, providers: okafor, from: '2026-09-29', days: 1, now: morning });
-    expect(speakSlot(slots[0]!.start, tz)).toBe('Tuesday, September 29 at 10:20 AM');
+    expect(speakSlot(slots[0]!.start, tz)).toBe('Tuesday, September 29, at 10:20 AM');
+  });
+});
+
+describe('the asked day first (sameDayFirst)', () => {
+  const hm = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+  // Dr. Okafor is booked 16:20-16:40 on Tuesday: "at 4:30" finds the nearest that day, before and after
+  const busy = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '16:20', tz), end: zonedInstant('2026-09-29', '16:40', tz) }];
+  it('offers the nearest times that day, before and after, the nearest first', () => {
+    const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', sameDayFirst: true, limit: 2 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['29/09, 16:40', '29/09, 16:00']);
+  });
+  it('without it, only times after', () => {
+    const slots = findSlots(DEMO_CLINIC, busy, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', limit: 2 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['29/09, 16:40', '30/09, 16:40']);
+  });
+  it('a day with nothing goes on to the next days, from that time', () => {
+    const full = [{ providerId: 'prov_okafor', start: zonedInstant('2026-09-29', '07:00', tz), end: zonedInstant('2026-09-29', '20:00', tz) }];
+    const slots = findSlots(DEMO_CLINIC, full, { visitType: sick, providers: okafor, from: '2026-09-29', days: 14, now, fromTime: '16:30', sameDayFirst: true, limit: 1 });
+    expect(slots.map((s) => hm(s.start))).toEqual(['30/09, 16:40']);
   });
 });
 

@@ -30,18 +30,18 @@ export class EngineRouter implements VoiceEngine {
   }
 
   /** Takes a phone call with a given engine, whatever the clinic chose: the call came in on it. */
-  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date, opening?: string) {
+  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: { callerNumber?: string | null } = {}) {
     this.bySession.set(sessionId, engine);
-    await (opening === undefined ? engine.accept(sessionId, clinic, now) : engine.accept(sessionId, clinic, now, opening));
+    await engine.accept(sessionId, clinic, now, opening, opts);
   }
 
-  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string) {
-    return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now, opening);
+  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: { callerNumber?: string | null } = {}) {
+    return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now, opening, opts);
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerNumber?: string | null } = {}) {
     const engine = this.engineFor(clinic);
-    const started = await engine.startBrowserCall(clinic, sdpOffer, now);
+    const started = await engine.startBrowserCall(clinic, sdpOffer, now, opts);
     this.bySession.set(started.sessionId, engine);
     return started;
   }

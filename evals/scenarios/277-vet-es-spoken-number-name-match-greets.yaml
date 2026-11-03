@@ -1,0 +1,49 @@
+id: vet-es-spoken-number-name-match-greets
+title: "Spanish: a spoken number (a browser test call), read back, then \"¿Y su nombre?\" once; \"Jordon\" matches the owner on file, so the caller is greeted by name and the pets are offered"
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, record, household, jordan-household, language, es]
+facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Jordan Avery y hablas español. El número de la ficha es 303 555 0142. Tu perro Biscuit necesita un chequeo. Da tu nombre solo si te lo piden. Cualquier veterinario y cualquier hora te sirven; acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, quiero reservar un chequeo para una de mis mascotas.
+    reply: "Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: El 303 555 0142.
+    reply: "¿Es el 303-555-0142?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
+  - assistant: "¿Es el 303-555-0142?"
+  - caller: Sí, ese.
+    reply: "¿Y su nombre?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: "303 555 0142" }
+  - caller: Jordon.
+    reply: "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: Jordon, pet_name: null, phone: "303 555 0142" }
+  - caller: Para Biscuit.
+    reply: "Encontré a Biscuit. Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: Jordon, pet_name: Biscuit, phone: "303 555 0142" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Biscuit queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [phone_required, confirm_number, owner_check]
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["¿Y su nombre?", "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"]
+  appointment_note_empty: true
+forbid_spoken: ["mejor número", "no tengo su nombre"]

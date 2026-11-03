@@ -3,6 +3,7 @@ import { type APIRequestContext, type Browser, expect, type Locator, type Page, 
 import { E2E_PROVISIONING_TOKEN } from './auth-state';
 import { png } from './png';
 import { newContext, signInPatiently } from './session';
+import { testDate } from './clock';
 
 /*
  * A brand-new owner's first day, through the screens only. The other specs start from the demo's
@@ -40,7 +41,7 @@ const ZONES = [
 const hourIn = (zone: string, at: Date) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(at));
 /** The zone and number for a run starting at `at`. Some zone is always in the window: checked for every quarter hour of a year. */
 const clinicZoneAt = (at: Date) => ZONES.find(([zone]) => hourIn(zone, at) >= 1 && hourIn(zone, at) < 15);
-const [ZONE, PHONE] = clinicZoneAt(new Date()) ?? ZONES[0];
+const [ZONE, PHONE] = clinicZoneAt(testDate()) ?? ZONES[0];
 
 /** A response the step expects to be an error: its status, a pattern for its path, and on whose page (anyone's when left out). */
 interface Expected { method?: string; path: RegExp; status: number; who?: string }
@@ -145,7 +146,7 @@ function provisioning(request: APIRequestContext) {
     /** A hosted plan whose account pages are on this address, under /account, as the hosting layer's are. */
     async plan(clinicId: string) {
       const res = await request.put(`/api/v1/provisioning/clinics/${clinicId}/plan`, { headers, data: { plan: {
-        status: 'active', includedMinutes: 300, periodStart: new Date(Date.now() - 86_400_000).toISOString(), periodEnd: new Date(Date.now() + 29 * 86_400_000).toISOString(), trialEndsAt: null, endsAt: null,
+        status: 'active', includedMinutes: 300, periodStart: testDate(-86_400_000).toISOString(), periodEnd: testDate(29 * 86_400_000).toISOString(), trialEndsAt: null, endsAt: null,
         manageUrl: `/account/billing?clinic=${clinicId}`, addLocationUrl: `/account/locations?clinic=${clinicId}`, newClinicUrl: '/account/new-clinic',
       } } });
       expect(res.status(), await res.text()).toBe(204);
@@ -416,7 +417,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(dialog).toBeHidden();
     return when;
   };
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE }).format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE }).format(testDate());
 
   await watch.step('5. Booking: each pet booked, one moved, one cancelled; the Schedule, Today and the pet\'s page agree', {}, async () => {
     // Clover today, at the first open time; Biscuit and Pepper next week, clear of a visit about to start
@@ -461,7 +462,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await petPage('Biscuit');
     await expect(page.getByText('Upcoming', { exact: true })).toHaveCount(1);
     await expect(page.getByText(`${movedDay} at ${movedTime}`, { exact: true })).toBeVisible();
-    const movedDate = [...Array(30).keys()].map((n) => new Date(Date.now() + n * 86_400_000))
+    const movedDate = [...Array(30).keys()].map((n) => testDate(n * 86_400_000))
       .find((d) => new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, weekday: 'long', day: 'numeric', month: 'long' }).format(d) === movedDay);
     expect(movedDate, `a date for ${movedDay}`).toBeTruthy();
     await page.goto(`${home}/schedule?view=day&date=${new Intl.DateTimeFormat('en-CA', { timeZone: ZONE }).format(movedDate)}`);

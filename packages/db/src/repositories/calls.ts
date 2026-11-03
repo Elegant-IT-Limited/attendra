@@ -18,16 +18,22 @@ export class CallRepository {
   /**
    * `startedBy` is the staff member behind a browser test call: the audit row is
    * written in the same transaction, so no test call exists without one.
+   * `calledAsLast4` is the last four digits of the number a browser test call was
+   * started as ("Call as"): kept on the call and audited with it, never the number
+   * itself, and refused on anything but a browser test call.
    */
-  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string): Promise<string> {
+  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string, calledAsLast4?: string | null): Promise<string> {
+    if (calledAsLast4 && (channel !== 'web' || !startedBy || fromNumber)) throw new Error('only a browser test call is started as a number');
+    if (calledAsLast4 && !/^\d{4}$/.test(calledAsLast4)) throw new Error('called as: the last four digits only');
     return withClinic(this.db, clinicId, async (tx) => {
       const fromHash = fromNumber ? this.cipher.hash(callerKey(clinicId, fromNumber)) : null;
       const fromEnc = fromNumber ? this.cipher.encrypt(fromNumber, phiContext(clinicId, 'calls.from')) : null;
-      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel }).onConflictDoNothing().returning({ id: calls.id });
+      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel, calledAsLast4: calledAsLast4 || null }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
         await tx.insert(auditLogs).values(startedBy
           ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
           : { clinicId, actor: SYSTEM, action: 'call.opened', entity: 'call', entityId: row.id, callId: row.id });
+        if (calledAsLast4) await tx.insert(auditLogs).values({ clinicId, actor: `user:${startedBy}`, action: 'call.test.called_as', entity: 'call', entityId: row.id, callId: row.id });
         return row.id;
       }
       const [existing] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.openaiSessionId, openaiSessionId));
@@ -149,4 +155,39 @@ export async function saveClinic(db: Database, orgId: string, config: { id: stri
   for (const n of config.phoneNumbers) {
     await db.execute(sql`insert into phone_numbers (e164, clinic_id) values (${n}, ${config.id}) on conflict (e164) do update set clinic_id = excluded.clinic_id`);
   }
+}
+
+/** One line of a call's transcript as timings only: who spoke, when on the call's audio timeline, and how many characters. Never the text. */
+export interface TimelineSegment { speaker: 'caller' | 'agent'; startMs: number; endMs: number; chars: number }
+
+/**
+ * A call's timeline, read-only, for timing the opening (2026-11): each stored line's speaker, start and end on
+ * the audio timeline, and its length in characters, decrypted in memory to count them and never returned. The
+ * clinic is found by trying each one in its own scope, as the tenancy rules require. Null when no clinic has the call.
+ */
+export async function callTimeline(db: Database, cipher: PhiCipher, callId: string): Promise<{ clinicId: string; channel: string; segments: TimelineSegment[] } | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) throw new Error('a call id is a UUID');
+  for (const { id: clinicId } of await db.select({ id: clinics.id }).from(clinics).orderBy(clinics.id)) {
+    const found = await withClinic(db, clinicId, async (tx) => {
+      const [call] = await tx.select({ channel: calls.channel }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.id, callId)));
+      if (!call) return null;
+      const ctx = phiContext(clinicId, 'call_segments.text');
+      const rows = await tx.select({ speaker: callSegments.speaker, textEnc: callSegments.textEnc, startMs: callSegments.startMs, endMs: callSegments.endMs }).from(callSegments)
+        .where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId))).orderBy(callSegments.startMs, callSegments.id);
+      return { clinicId, channel: call.channel, segments: rows.map((r) => ({ speaker: r.speaker, startMs: r.startMs, endMs: r.endMs, chars: cipher.decrypt(r.textEnc, ctx).length })) };
+    });
+    if (found) return found;
+  }
+  return null;
+}
+
+/** The timeline's printout: a header, then one line a segment with the gap since the line before it ended. No text. */
+export function formatCallTimeline(callId: string, t: { clinicId: string; channel: string; segments: TimelineSegment[] }): string[] {
+  const lines = [`call ${callId} · clinic ${t.clinicId} · ${t.channel} · ${t.segments.length} segments`, 'speaker start_ms end_ms chars gap_ms'];
+  let lastEnd: number | null = null;
+  for (const s of t.segments) {
+    lines.push(`${s.speaker} ${s.startMs} ${s.endMs} ${s.chars} ${lastEnd === null ? '-' : s.startMs - lastEnd}`);
+    lastEnd = lastEnd === null ? s.endMs : Math.max(lastEnd, s.endMs);
+  }
+  return lines;
 }

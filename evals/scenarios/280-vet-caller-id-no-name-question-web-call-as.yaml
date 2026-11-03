@@ -1,0 +1,36 @@
+id: vet-caller-id-no-name-question-web-call-as
+title: "A browser test call \"called as\" a known number (the test-call page's Call as) is a caller ID call: greeted by the owner's name on file and asked which pet; never asked for a name"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+channel: web
+tags: [no-demo, record, call-as, jordan-household]
+facts: "This is a test call from the browser, called as the number on file. You are Jordan Avery. Your cat Pepper needs a check-up. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I'd like to book a check-up.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes, it is.
+    reply: "Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Pepper.
+    reply: "I found Pepper, your cat. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Pepper, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Pepper is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Thanks, Jordan. Is this for Biscuit or Pepper, or a new pet?"]
+  appointment_note_empty: true
+forbid_spoken: ["your name", "owner's first name"]

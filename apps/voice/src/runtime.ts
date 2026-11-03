@@ -54,7 +54,7 @@ export function createVoiceApp(rt: VoiceRuntime) {
   return buildServer(wire(rt, {
     verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
     engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
-    planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed),
+    planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed, {}, { intent: true }),
   }));
 }
 
@@ -89,7 +89,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     claimDelivery: (id) => claimDelivery(db, id, 'openai'),
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
-    openCall: (clinicId, sessionId, from, channel, startedBy) => calls.open(clinicId, sessionId, from, channel, startedBy),
+    openCall: (clinicId, sessionId, from, channel, startedBy, calledAsLast4) => calls.open(clinicId, sessionId, from, channel, startedBy, calledAsLast4),
     // the earlier calls from this number, and the one first name on file for it, as a front desk's caller ID shows
     historyFor: async (clinicId, from, callId) => {
       const [calls, name] = await Promise.all([summaries.historyFor(clinicId, from, callId), directory.nameOnFile(clinicId, from, callId)]);
@@ -112,7 +112,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     }),
     backend: {
       patients: directory,
-      scheduler: new BuiltinScheduler(db),
+      scheduler: new BuiltinScheduler(db, 'voice-agent', cipher),
       tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db),
       knowledge: rt.knowledge,

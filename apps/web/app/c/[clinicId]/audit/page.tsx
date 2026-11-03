@@ -16,6 +16,8 @@ import { clinicTime, dayTitle, personName, zoneLabel } from '@/lib/format';
 const ACTIONS: Record<string, string> = {
   'call.transcript.viewed': 'Read a call transcript',
   'call.test.started': 'Started a browser test call',
+  'call.test.called_as': 'Started a browser test call as a number',
+  'patient.phone.called_as': 'Used a patient\'s number for a browser test call',
   'task.viewed': 'Viewed a request',
   'task.claimed': 'Claimed a request',
   'task.done': 'Closed a request',

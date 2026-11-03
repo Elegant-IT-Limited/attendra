@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openAs, signInAgain } from './session';
+import { testDate, testNow } from './clock';
 
 test('Today shows what needs attention, the day\'s appointments, what the assistant did and the latest calls', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
@@ -43,7 +44,7 @@ test('Today shows what needs attention, the day\'s appointments, what the assist
 test('Requests waiting counts every waiting request, not only the 20 listed', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
   // more waiting than the list holds: the route lists the oldest 20 and says how many in all
-  const tasks = Array.from({ length: 20 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, type: 'callback', createdAt: new Date(Date.now() - (i + 1) * 60_000).toISOString(), callId: null }));
+  const tasks = Array.from({ length: 20 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, type: 'callback', createdAt: new Date(testNow() - (i + 1) * 60_000).toISOString(), callId: null }));
   await page.route('**/tasks/waiting', (route) => route.fulfill({ json: { tasks, total: 23 } }));
   await page.reload();
   const card = page.locator('div').filter({ has: page.getByText('Requests waiting', { exact: true }) }).filter({ hasText: 'Nobody has them yet' }).last();
@@ -60,7 +61,7 @@ test('the start page says so when the server fails, instead of loading for ever'
 
 test('Today marks each kind of waiting request with its own icon, as Requests does', async ({ browser }) => {
   const page = await openAs(browser, 'frontdesk');
-  const at = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  const at = (m: number) => testDate(-m * 60_000).toISOString();
   const tasks = [
     { id: '00000000-0000-4000-8000-00000000a001', type: 'refill', createdAt: at(4), callId: null },
     { id: '00000000-0000-4000-8000-00000000a002', type: 'callback', createdAt: at(3), callId: null },

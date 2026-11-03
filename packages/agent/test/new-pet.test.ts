@@ -92,18 +92,19 @@ describe('a caller who says the pet is new (2026-11)', () => {
     expect(c.state.verifiedPatient?.id).toBe(w.patientIds.biscuit);
   });
 
-  it('with no caller ID, asks once for the best number to reach them, in the caller\'s language, never for the number on the pet\'s file', async () => {
+  it('with no caller ID, asks once for the number the pet\'s profile is under, in the caller\'s language, never the best number (2026-11-14)', async () => {
     const c = await w.call(null, { clinic, channel: 'web' });
     c.caller("I'm Ray Chen, my dog Waffles is new.");
     const out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Waffles', owner_name: 'Ray Chen', species: 'dog', sex: 'male', birthday_or_age: '3 years', phone: null } }]);
     expect(out.errors).toEqual(['phone_required']);
-    expect(say(out)).toContain('Ask once, in these words: "What\'s the best number to reach you?"');
-    expect(say(out)).not.toMatch(/on (the pet's|its) file/);
+    expect(say(out)).toContain('Ask once, in these words: "Sure. What phone number is your pet\'s profile under?"');
+    expect(say(out)).not.toMatch(/best number/);
     const es = await w.call(null, { clinic, channel: 'web' });
     es.caller('Hola, soy Ray Chen. Quiero una cita para mi perro Waffles.');
     const looked = await es.delegate([{ tool: 'verify_caller', args: { owner_name: 'Ray Chen', pet_name: 'Waffles', phone: null } }]);
     expect(looked.errors).toEqual(['phone_required']);
-    expect(say(looked)).toContain('"¿Cuál es el mejor número para comunicarnos con usted?"');
+    expect(say(looked)).toContain('"Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"');
+    expect(say(looked)).not.toMatch(/mejor número/);
   });
 });
 

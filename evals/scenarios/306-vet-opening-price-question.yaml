@@ -1,0 +1,20 @@
+id: vet-opening-price-question
+title: "Caller ID: \"how much is a check-up?\" is a question: it is answered, with no number question"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, opening, jordan-household]
+facts: "You are Jordan Avery. You only want to know what a check-up costs and how long it takes; you do not want to book today, and you do not want a call back (if offered one, say no thanks). After the answer, say thanks and goodbye."
+turns:
+  - caller: How much is a check-up?
+    reply: "A wellness exam takes 30 minutes. I don't have the price, but I can ask the team to call you about it."
+    delegate:
+      - get_clinic_info: { question: "Check-up price and length" }
+  - caller: No, that's fine, thanks. Bye.
+    reply: "You're welcome. Goodbye!"
+expect:
+  outcome: info
+  bookings_created: 0
+  sms_sent: 0
+  intent: question
+forbid_spoken: ["profile", "number you're calling from"]

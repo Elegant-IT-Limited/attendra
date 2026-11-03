@@ -4,11 +4,12 @@ import {
   addDays, ageOn, asE164, groupedNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
-  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant,
+  toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
   hospitalFor, hoursSummary, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOn, windowsOnDate,
 } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { createHash } from 'node:crypto';
+import { fillFromMemory } from './call-memory';
 import type { CallState } from './call-state';
 import { answerFromFaqs } from './knowledge';
 
@@ -97,12 +98,12 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   const digits = phone.replace(/\D/g, '');
   if (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic)) return null;
   if (state.phonesConfirmed.has(digits)) return null;
-  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.phoneReadback = null; return null; }
+  if (state.confirmedReadback(digits)) { state.phonesConfirmed.add(digits); state.memory.confirmNumber(digits); state.phoneReadback = null; return null; }
   const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
   return refuse('confirm_number', `Before searching, read the number back once, in these words: "${PACKS[lang].phoneReadback({ grouped: groupedNumber(ctx.clinic, phone) })}" On a yes, call this again with the same number. On a no, ask for the number again and call this with the new one.${asked ? ' They have not said yes to it yet.' : ''}`);
 }
-const NO_CALLBACK_NUMBER = () => refuse('no_callback_number', 'Say you can\'t see the number they\'re calling from, and ask for the best number to call them back. Then call this again with it.');
+const NO_CALLBACK_NUMBER = (lang: CallState['language']) => refuse('no_callback_number', `Say you can't see the number they're calling from, and ask, in these words: "${PACKS[lang].callbackNumberQuestion}" Then call this again with it.`);
 const MEDICAL = () => refuse('medical_question', `Do not answer it, and do not read anything from the clinic's documents. Say: "${MEDICAL_REFUSAL}" Offer to take a callback.`);
 
 const refuse = (code: string, say: string): ToolResult => ({ ok: false, data: { error: code, say } });
@@ -112,8 +113,12 @@ const seesAnimals = (p: { categories: string[]; categoryNames?: Record<string, s
   return names.length ? names.join(lang === 'es' ? ' y ' : ' and ') : null;
 };
 
-/** No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked once. */
-const askPhone = (lang: CallState['language']) => `Ask once, in these words: "${PACKS[lang].phoneQuestion({ callerId: false })}" Keep everything else they already gave; do not ask for it again.`;
+/**
+ * No caller ID (a browser test call, a hidden number): the one question for a number, in the caller's language, asked
+ * once. At a clinic for animals it is the number the pet's profile is under, for a new pet too (its profile will be
+ * under it); the best number to reach someone is for callbacks only (2026-11-14).
+ */
+const askPhone = (lang: CallState['language'], pets = true) => `Ask once, in these words: "${pets ? PACKS[lang].profileNumberQuestion({ last4: null }) : PACKS[lang].callbackNumberQuestion}" Keep everything else they already gave; do not ask for it again.`;
 /** A time the caller chose, as the planner hears it: when, and with whom. */
 const choiceOf = (slot: Slot, clinic: ClinicConfig, lang: CallState['language'], now?: Date) => {
   const provider = clinic.providers.find((p) => p.id === slot.providerId);
@@ -218,8 +223,13 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
 export async function runTool(
   name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision = state.revision,
 ): Promise<ToolResult> {
-  const result = await toolCall(name, rawArgs, state, ctx, backend, revision);
-  return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, rawArgs, state, ctx) : result;
+  // what the call already established fills an argument the planner left out, so the caller is never asked for it again
+  const { args, filled } = fillFromMemory(name, rawArgs, state.memory, { industry: ctx.clinic.industry, verifiedPatient: !!state.verifiedPatient, callerNumber: ctx.callerNumber, ownerOnFile: state.memory.verified ? state.memory.owner : null, timeZone: ctx.clinic.timezone });
+  if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
+  if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
+  const done = await toolCall(name, args, state, ctx, backend, revision);
+  const result = filled.length ? { ...done, data: { ...done.data, filled_from_memory: filled } } : done;
+  return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, args, state, ctx) : result;
 }
 
 async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx: CallContext, backend: Backend, revision: number): Promise<ToolResult> {
@@ -245,6 +255,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   if (name === 'visit_summary' && !state.verifiedPatient) {
     return refuse('not_verified', 'Nothing about a pet\'s visits can be said before the pet is found. Find it first with verify_caller (the owner\'s first name, the pet\'s name, the phone), asking only for what the caller has not said yet; say nothing about any visit until then.');
   }
+  // the record (next and last visit, the usual vet) only for a caller the number knows: caller ID, or the owner's name matched
+  if (name === 'visit_summary' && trade.identity === 'pet' && !state.memory.verified) {
+    return refuse('not_verified', 'Details from the pet\'s record (its visits, its vet) are not given on this call. Say, kindly and in a few words, that you can\'t go into the record on this call, and that you can still book, move or cancel a visit, or have the team call back. Never say a name from the records, and never say why.');
+  }
   if (PATIENT_TOOLS.has(name) && !state.verifiedPatient) {
     // a time the caller chose before the pet or patient is found is kept, and read back once they are
     const chosen = name === 'propose_booking' ? state.offered.get(String((parsed.data as { slot_id?: unknown }).slot_id)) : undefined;
@@ -269,7 +283,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   // everything said back to the caller is in the language they are speaking
   const lang = state.language;
   const pack = PACKS[lang];
-  // said on the call as people say it ("today at 2:30", "Thursday at 9"); a text is read later, so it keeps the date
+  // said in full, on the call and in a text alike: "Wednesday, November 4, at 5:20 PM" (2026-11-14)
   const when = (start: Date) => speakSlot(start, clinic.timezone, lang, ctx.now());
   const whenDated = (start: Date) => speakSlot(start, clinic.timezone, lang);
   const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p, lang) : undefined; };
@@ -312,13 +326,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
    * yes is their consent to it; a caller who said no to the text gets none. The change stands
    * whatever happens to the text; it is never reported as failed.
    */
-  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false): Promise<boolean> => {
+  const confirmByText = async (template: 'booking_confirmed' | 'change_confirmed' | 'cancel_confirmed', start: Date, appointmentId: string, visitFacts: { providerId?: string; visitTypeId?: string } = {}, declined = false, from: Date | null = null): Promise<boolean> => {
     const patient = state.verifiedPatient;
     if (declined || !patient?.phone || !confirmationTarget(template)) return false;
     try {
       const text = await backend.messenger.sendTemplate(clinic.id, {
         to: patient.phone, template, idempotencyKey: key(ctx.callId, template === 'booking_confirmed' ? 'sms' : template, appointmentId), language: lang,
-        vars: { clinic: clinic.name, when: whenDated(start), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
+        vars: { clinic: clinic.name, when: whenDated(start), ...(from ? { from: whenDated(from) } : {}), clinicPhone: callUsNumber(clinic), ...personal(visitFacts) },
         kind: 'auto', about: { callId: ctx.callId, patientId: patient.id, appointmentId },
       });
       if (text.status === 'not_sent') ctx.log?.info({ call_id: ctx.callId, reason: text.reason }, 'confirmation text not sent; the change stands');
@@ -368,7 +382,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
       if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help with anyone else, and offer a callback.');
       const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
-      if (!phone) return refuse('phone_required', askPhone(lang));
+      if (!phone) return refuse('phone_required', askPhone(lang, false));
       const dob = parseDob(String(args.date_of_birth), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
       if (!dob) return refuse('unclear_date_of_birth', dobAgain(String(args.date_of_birth), ctx.now(), northAmerica(clinic)));
       const today = localDateOf(ctx.now(), clinic.timezone);
@@ -535,6 +549,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       const now = ctx.now();
       const today = localDateOf(now, clinic.timezone);
+      // "next Wednesday" said early in a week could be this week's or the next: asked once, never guessed
+      const said = state.memory.fact('day');
+      if (said?.source === 'caller' && said.value && 'either' in said.value && !state.memory.whichWeekAsked
+        && (!args.from_date || said.value.either.includes(String(args.from_date)))) {
+        state.memory.whichWeekAsked = true;
+        const [first, second] = said.value.either;
+        return refuse('which_week', `"Next ${DAY_NAMES[weekdayOf(first)]}" could be either. Ask once, in these words: "${pack.whichWeek({ first, second })}" Then call find_slots with the day they pick (${first} or ${second}).`);
+      }
       const requested = (args.from_date as string | null) ?? today;
       const from = requested < today ? today : requested;
       // the clinic's booking window for this visit: how far ahead the assistant may book it
@@ -555,13 +577,24 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         }
       }
       const fromTime = (args.from_time as string | null) ?? undefined;
-      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
+      // a time the caller asked for "at" or "around" on a day they named (not "after"): that day's nearest times first, before
+      // and after it, and the next days only when that day has none (a caller asked for 5:20 and heard only later days)
+      const saidTime = state.memory.get('time');
+      const sameDayFirst = !!fromTime && !!args.from_date && saidTime?.time === fromTime && saidTime.mode === 'at';
+      const query = { visitType, from, days, now, leadMinutes, partOfDay: args.part_of_day as 'any', fromTime, sameDayFirst, tieBreak: rules.tieBreak === 'fewest_visits' ? 'fewest' as const : 'order' as const };
       // with anyone: three different times, each with the vet the clinic's rule picks for it
       const anyone = findSlots(clinic, busy, { ...query, providers, distinctTimes: !named });
       let slots = anyone;
-      let note = anyone.length ? `Offer these as written. Do not invent other times.${fromTime && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : ''}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
+      const exactFree = !!fromTime && anyone.some((s) => localDateOf(s.start, clinic.timezone) === from && localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime));
+      const sameDay = anyone.filter((s) => localDateOf(s.start, clinic.timezone) === from);
+      const nearest = sameDayFirst && !exactFree && sameDay.length
+        ? ` Nothing is free at exactly ${fromTime} on ${PACKS.en.fullDay(from)}; the nearest that day are ${sameDay.map((s) => { const m = localParts(s.start, clinic.timezone).minutes; return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; }).join(' and ')}: say so, then offer them.`
+        : fromTime && !exactFree && !anyone.some((s) => localParts(s.start, clinic.timezone).minutes === toMinutes(fromTime)) ? ` Nothing is free at exactly ${fromTime}; say so and offer these, the nearest after it.` : '';
+      let note = anyone.length ? `Offer these as written, in the words of say_as. Do not invent other times.${nearest}` : `No openings ${lastDay && days < 14 ? 'before bookings close for this visit' : 'in the next two weeks'}; offer a callback.`;
       // nobody named: their usual vet first, when that vet is free soon enough
-      if (!asked && patient && rules.noPreference === 'usual_first' && backend.scheduler.history) {
+      // the usual vet is a fact of the record: said only to a caller the number knows
+      const recordOpen = trade.identity !== 'pet' || !!state.memory.verified;
+      if (!asked && patient && recordOpen && rules.noPreference === 'usual_first' && backend.scheduler.history) {
         const usualId = usualProviderOf(await backend.scheduler.history(clinic.id, patient.id, now), now);
         const usual = providers.find((p) => p.id === usualId);
         if (usual) {
@@ -595,6 +628,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         ok: true,
         data: {
           slots: found,
+          // the times in the caller's language, each day said once with its full date
+          ...(slots.length ? { say_as: offerTimesLine(slots, clinic, lang) } : {}),
           note,
           ...(why ? { why_not_as_asked: why } : {}),
         },
@@ -642,27 +677,32 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (!slot) return refuse('slot_not_offered', 'Only offer times returned by find_slots. Look up slots again.');
       const replaces = (args.replaces_appointment_id as string | null) ?? null;
       let replacing: string | null = null;
+      let replacesStart: Date | null = null;
       if (replaces) {
         const current = (await backend.scheduler.upcoming(clinic.id, state.verifiedPatient!.id, ctx.now())).find((a) => a.id === replaces);
         if (!current) return refuse('unknown_appointment', 'Use list_appointments to find the appointment being moved.');
         replacing = when(current.start);
+        replacesStart = current.start;
       }
       const provider = nameOf(slot.providerId) ?? 'the provider';
       const providerKind = clinic.providers.find((x) => x.id === slot.providerId)?.kind ?? 'person';
       const visitType = clinic.visitTypes.find((v) => v.id === slot.visitTypeId);
       const visit = visitType ? localName(visitType, lang) : 'visit';
-      const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing });
+      // a move says both times in full, and how the day shifts when it does ("that's one week later, Wednesday, November 11")
+      const shift = replacesStart ? dayShift(replacesStart, slot.start, clinic.timezone, lang) : null;
+      const pet = trade.identity === 'pet' ? state.verifiedPatient?.firstName ?? null : null;
+      const readback = pack.readbackBooking({ when: when(slot.start), provider, providerKind, visit, replacing, pet, shift });
       // the same change proposed again after it was read back keeps its read-back, so the yes the caller gave still counts
       const same = state.pending;
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
-      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, replacesStart, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
       state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
       const textNote = target ? pack.confirmTextNote({ target }) : null;
-      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote }) } };
+      return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote, move: !!replaces }) } };
     }
 
     case 'propose_cancellation': {
@@ -703,9 +743,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         return { ok: true, data: { cancelled: true, sms_sent: smsSent, spoken: pack.spoken.done({ kind: 'cancelled', textSent: smsSent, then: pack.spoken.anythingElse }) } };
       }
 
+      // booked on a number whose owner on file is not the name the caller gave: the team sees who booked it
+      const byCaller = trade.identity === 'pet' ? state.memory.bookedByCaller : null;
       const result = await backend.scheduler.book(clinic.id, {
         patientId: patient.id, slot: pending.slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'book', pending.slot.id, pending.seq),
         replacesAppointmentId: pending.replacesAppointmentId,
+        ...(byCaller ? { note: PACKS[clinic.primaryLanguage].bookedByCallerNote({ name: byCaller }) } : {}),
       });
       state.pending = null;
       if (result.status === 'slot_taken') {
@@ -722,6 +765,13 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         oldStillActive = moved.status === 'not_found';
       }
       state.outcome = pending.replacesAppointmentId && !oldStillActive ? 'rescheduled' : 'booked';
+      // the visit this call booked or moved to, so "make it 4:40" moves it and keeps its day
+      if (result.status === 'booked' || result.status === 'already_done') {
+        const a = result.appointment;
+        if (state.outcome === 'rescheduled' && state.memory.visit?.appointmentId === pending.replacesAppointmentId) state.memory.moved = { from: state.memory.visit.start, to: a.start };
+        else if (state.outcome === 'rescheduled' && pending.replacesStart) state.memory.moved = { from: pending.replacesStart, to: a.start };
+        state.memory.visit = { appointmentId: a.id, start: a.start, visitTypeId: a.visitTypeId, providerId: a.providerId };
+      }
       if (result.status === 'booked') {
         const a = result.appointment;
         const facts = { appointmentId: a.id, patientId: patient.id, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.start.toISOString(), endsAt: a.end.toISOString(), by: 'assistant', callId: ctx.callId };
@@ -731,7 +781,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       // a move is confirmed as a move, a new booking as a booking
       const smsSent = result.status === 'booked'
-        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText)
+        ? await confirmByText(state.outcome === 'rescheduled' ? 'change_confirmed' : 'booking_confirmed', result.appointment.start, result.appointment.id, { providerId: result.appointment.providerId, visitTypeId: result.appointment.visitTypeId }, noText, state.outcome === 'rescheduled' ? pending.replacesStart ?? null : null)
         : false;
       // a clinic that sends reminders asks once, after a booking, whoever has not said yes yet
       const reminders = textingOf(clinic).reminders;
@@ -741,7 +791,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         state.reminderOffer = { patientId: patient.id, offeredAtMs: state.lastMs(), askedAtMs: null };
         state.remindersAsked = true;
       }
-      state.done.push(`booked ${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
+      state.done.push(`${pending.replacesAppointmentId ? 'moved: ' : 'booked '}${pending.readback}${smsSent ? ' (confirmation text sent)' : ''}`);
       return {
         ok: true,
         data: {
@@ -757,7 +807,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'create_refill_request': {
       const callback = callbackNumber(args, ctx);
-      if (!callback) return NO_CALLBACK_NUMBER();
+      if (!callback) return NO_CALLBACK_NUMBER(state.language);
       // the team's decision goes out by text only on a yes, asked before the request is logged
       const textUpdates = typeof args.text_updates === 'boolean' ? args.text_updates : null;
       if (textingOf(clinic).enabled && textUpdates === null) {
@@ -779,7 +829,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const asked = typeof args.topic === 'string' ? same(args.topic) : '';
       const topic = asked ? clinic.requestTopics?.find((t) => same(t.name) === asked || t.id === args.topic) : undefined;
       const callback = callbackNumber(args, ctx);
-      if (!callback) return NO_CALLBACK_NUMBER();
+      if (!callback) return NO_CALLBACK_NUMBER(state.language);
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once
@@ -963,10 +1013,19 @@ async function verifyPet(args: Record<string, unknown>, state: CallState, ctx: C
   if (state.identitiesTried.has(tried)) return triedAgain(state, 'the pet');
   const readBack = readBackFirst(args.phone, phone, state, ctx, lang);
   if (readBack) return readBack;
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  if (check) return check;
   const found = await findPetOnce(pet, phone, tried, state, ctx, backend);
   if (found.status === 'found') {
-    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call)
-    const first = PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
+    // the result first, in one short sentence, before any times: a caller had to ask "have you found her?" (a test call).
+    // A verified caller who named the pet at once is thanked by the owner's name first, as the pick question does (2026-11-14)
+    let thanks = '';
+    if (state.memory.verified && !state.memory.greeted) {
+      const known = await knownHousehold(phone, state, ctx, backend);
+      if (known?.owner) thanks = `${PACKS[lang].thanksOwner({ owner: known.owner })} `;
+    }
+    if (thanks) state.memory.greeted = true;
+    const first = thanks + PACKS[lang].foundPet({ pet: found.patient.firstName, species: found.patient.species ?? null });
     const chosen = chosenNote(state, clinic, lang, ctx.now()).say ?? '';
     return { ok: true, data: { verified: true, pet_name: found.patient.firstName, species: found.patient.species ?? null, say: `Say first, in these words: "${first}" Then go on with what they want.${chosen}` } };
   }
@@ -988,14 +1047,69 @@ async function whichPet(phone: string, state: CallState, ctx: CallContext, backe
   if (state.verifyAttempts >= MAX_VERIFY_ATTEMPTS) return refuse('too_many_attempts', 'Offer to have the front desk call them back, and take a callback number.');
   const readBack = readBackFirst(said, phone, state, ctx, lang);
   if (readBack) return readBack;
-  const pets = await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
+  const check = await checkOwner(phone, said, state, ctx, backend, lang);
+  if (check) return check;
+  const known = await knownHousehold(phone, state, ctx, backend);
+  const pets = known ?? await backend.patients.petsOnNumber(ctx.clinic.id, phone, ctx.callId);
   // an unknown number: a new owner and a new pet, the usual way
   if (!pets.names.length) return refuse('no_pets_on_number', `Say first, in these words: "${PACKS[lang].noPetsOnNumber}" Then ask the pet's name and whether it is new to the clinic; a new pet is added with register_patient under this number. Never say a pet's name the caller has not said.`);
   state.askedWhichPet = true;
+  state.memory.pets = pets.names;
+  // a caller the number knows is thanked by name, and never asked for it: "Thanks, Jordan. Is this for Biscuit or Pepper?"
+  if (known?.owner) state.memory.greeted = true;
+  const question = known?.owner
+    ? PACKS[lang].whichPetVerified({ owner: known.owner, names: pets.names, more: pets.more, offerNew: state.saidNew() !== 'new' })
+    : PACKS[lang].whichPet(pets);
   return { ok: true, data: {
-    verified: false, pets_on_number: pets.names, more: pets.more,
-    say: `Ask, in these words: "${PACKS[lang].whichPet(pets)}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number. Say nothing else about these pets until one is found.`,
+    verified: false, pets_on_number: pets.names, more: pets.more, ...(known?.owner ? { owner: known.owner } : {}),
+    say: `Ask, in these words: "${question}" When they name one, call verify_caller with that pet's name; a new pet is added with register_patient under this number (never ask for the owner's name: it is on file). Say nothing else about these pets until one is found.`,
   } };
+}
+
+/**
+ * Who the caller is to the number, checked once per number before its records are used (2026-11-14). Caller ID is
+ * enough. A number they said is checked against the owner on file by the name they give: "And your name?" is asked once
+ * when they have not given one. A match opens the record (the owner's name, the pets' visits). No match still books, as
+ * before (the confirmation text goes to the number on file), but nothing from the record is said and the booking carries
+ * a note for the team. Null when the call may go on; otherwise the question to ask.
+ */
+async function checkOwner(phone: string, said: unknown, state: CallState, ctx: CallContext, backend: Backend, lang: CallState['language']): Promise<ToolResult | null> {
+  const m = state.memory;
+  const digits = phone.replace(/\D/g, '');
+  const spoken = typeof said === 'string' && said.trim() !== '';
+  if (!spoken || (ctx.callerNumber && samePhone(phone, ctx.callerNumber, ctx.clinic))) {
+    if (m.verified !== 'caller_id') { m.verified = 'caller_id'; m.owner = null; }
+    return null;
+  }
+  // a number said after another one: the earlier check was about that one
+  if (m.nameCheck && m.nameCheck.digits !== digits) { m.nameCheck = null; m.verified = null; m.owner = null; }
+  if (m.nameCheck || !backend.patients.ownerMatches) return null;
+  const name = m.get('saidName') ?? null;
+  const result = await backend.patients.ownerMatches(ctx.clinic.id, phone, name, ctx.callId);
+  if (result === 'name_needed') {
+    if (m.nameAskedFor === digits) { m.nameCheck = { digits, result: 'not_given' }; return null; }
+    m.nameAskedFor = digits;
+    return refuse('owner_check', `Ask, in these words: "${PACKS[lang].yourNameQuestion}" When they answer, call verify_caller again with the same number and owner_name as they said it. Never say a name from the records first, and never say you don't have their name.`);
+  }
+  m.nameCheck = { digits, result };
+  m.verified = result === 'match' ? 'name_match' : null;
+  ctx.log?.info({ call_id: ctx.callId, owner_check: result }, 'owner checked on a spoken number');
+  return null;
+}
+
+/** For a caller the number knows: the owner's first name on file and the pets, kept in the call memory. Null otherwise. */
+async function knownHousehold(phone: string, state: CallState, ctx: CallContext, backend: Backend): Promise<{ owner: string | null; names: string[]; more: boolean } | null> {
+  if (!state.memory.verified || !backend.patients.householdOnNumber) return null;
+  const household = await backend.patients.householdOnNumber(ctx.clinic.id, phone, ctx.callId);
+  // caller ID, and the caller said a name that is not the owner's (another person on a family phone): never greeted by the owner's
+  const said = state.memory.get('saidName');
+  if (household.owner && state.memory.verified === 'caller_id' && said && backend.patients.ownerMatches
+    && await backend.patients.ownerMatches(ctx.clinic.id, phone, said, ctx.callId) === 'no_match') return { ...household, owner: null };
+  if (household.owner) {
+    state.memory.owner = household.owner;
+    state.verifiedOwner ??= household.owner;
+  }
+  return household;
 }
 
 /**
@@ -1009,14 +1123,24 @@ async function findPetOnce(pet: string, phone: string, tried: string, state: Cal
     state.verifiedPatient = found.patient;
     state.verifiedOwner = found.patient.guardianName ?? state.verifiedOwner;
     state.newFromTurn = state.turns.length;
+    rememberPet(state, found.patient);
     return found;
   }
+  // a name not found on the number is not filled in again
+  if (state.memory.get('petName') && soundsLike(pet, state.memory.get('petName')!)) state.memory.forget('petName');
   state.verifyAttempts++;
   if (found.status === 'not_found') {
     state.notFound = true;
     state.identitiesTried.add(tried);
   }
   return found;
+}
+
+/** The pet found or added is the one the call is about: its name and kind, as the record has them. */
+function rememberPet(state: CallState, pet: { firstName: string; species?: string | null }) {
+  const turn = state.turns.length;
+  state.memory.set('petName', pet.firstName, 'record', turn);
+  if (pet.species) state.memory.set('species', pet.species.toLowerCase(), 'record', turn);
 }
 
 /** A new pet, with its owner as the guardian on the record. The front desk checks every one. */
@@ -1029,12 +1153,21 @@ async function registerPet(
   if (state.registrations >= MAX_REGISTRATIONS) return refuse('too_many_registrations', 'Say the front desk will help add any other pets, and offer a callback.');
   const phone = heardPhone(clinic, args.phone) ?? ctx.callerNumber;
   if (!phone) return refuse('phone_required', askPhone(lang));
-  const owner = String(args.owner_name ?? '').trim();
+  // a number the caller said is checked by their name before a pet is added under its owner; caller ID needs nothing
+  const check = await checkOwner(phone, args.phone, state, ctx, backend, lang);
+  if (check) return check;
+  // a known number's owner is the pet's owner: never asked for, and never a second owner on the number
+  if (state.memory.verified && !state.memory.owner) await knownHousehold(phone, state, ctx, backend);
+  const onFile = state.memory.verified ? state.memory.owner : null;
+  const owner = String(args.owner_name ?? '').trim() || onFile || '';
   const ownerParts = owner.split(/\s+/);
-  if (!owner && !state.verifiedOwner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
-  const birth = parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy');
-  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const petName = String(args.pet_name).trim();
+  // only what is still missing once the call memory has filled what the caller already said, one thing at a time
+  if (!owner && !state.verifiedOwner) return refuse('owner_name', 'Ask for the owner\'s first name. Keep everything else they already gave.');
+  if (!(args.species as string | null)?.trim()) return refuse('pet_species', `Ask what kind of animal ${petName} is. Keep everything else they already gave.`);
+  if (!args.sex) return refuse('pet_sex', `Ask whether ${petName} is female or male. Keep everything else they already gave.`);
+  const birth = args.birthday_or_age ? parsePetBirth(String(args.birthday_or_age), ctx.now(), northAmerica(clinic) ? 'mdy' : 'dmy') : null;
+  if (!birth) return refuse('unclear_age', 'Ask for the pet\'s age, roughly, or its birthday with the year (a birthday without a year is not enough). Keep everything else they already gave.');
   const species = String(args.species).trim().toLowerCase();
   const sex = args.sex === 'unknown' ? 'undisclosed' : (args.sex as Gender);
   // A pet is added only when the identity check finds no such pet: a caller who said it is new is not made to wait for a
@@ -1053,6 +1186,7 @@ async function registerPet(
   if (result.status === 'limited') return refuse('daily_registration_limit', 'Say the front desk will help add any other pets, and offer a callback.');
   if (state.verifiedPatient?.id !== result.patient.id) { state.pending = null; state.offered.clear(); }
   state.verifiedPatient = result.patient;
+  rememberPet(state, result.patient);
   state.verifiedOwner = result.patient.guardianName ?? owner ?? state.verifiedOwner;
   state.newFromTurn = state.turns.length;
   if (result.status === 'exists') { state.verifyAttempts++; return { ok: true, data: { verified: true, pet_name: result.patient.firstName, already_a_patient: true, say: `The pet is already on file here: carry on as for any patient.${chosenNote(state, clinic, lang, ctx.now()).say ?? ''}` } }; }
@@ -1063,6 +1197,7 @@ async function registerPet(
     details: {
       reason: 'New pet added by the assistant. Check the details and confirm them.',
       pet_name: petName, species, sex: args.sex === 'unknown' ? 'unknown' : String(args.sex), owner_name: owner, phone: asGiven(clinic, phone),
+      ...(state.memory.bookedByCaller ? { note: PACKS[clinic.primaryLanguage].bookedByCallerNote({ name: state.memory.bookedByCaller }) } : {}),
       date_of_birth: birth.dob, ...(birth.estimated ? { date_of_birth_note: `Estimated from the age the owner gave: ${String(args.birthday_or_age)}` } : {}),
     },
   });

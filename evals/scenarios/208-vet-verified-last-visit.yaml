@@ -13,6 +13,6 @@ turns:
 expect:
   outcome: info
   verified: true
-  returned: ["The last visit I can see for Biscuit was on Monday, September 14 at 9:00 AM with Dr. Elena Ruiz", "\"usual_vet\":\"dr. elena ruiz\""]
+  returned: ["The last visit I can see for Biscuit was on Monday, September 14, at 9:00 AM with Dr. Elena Ruiz", "\"usual_vet\":\"dr. elena ruiz\""]
   spoken_contains: ["The last visit I can see"]
 forbid_spoken: ["visits this year", "times this year", "2 visits", "two visits"]

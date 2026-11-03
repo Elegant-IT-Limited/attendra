@@ -144,7 +144,7 @@ export class FrontDeskRepository {
       const rows = await tx.select({
         id: calls.id, startedAt: calls.startedAt, cursor: sql<string>`${calls.startedAt}::text`, endedAt: calls.endedAt, outcome: calls.outcome,
         emergency: calls.emergencyFlag, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, channel: calls.channel, patientId: calls.patientId,
-        firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, fromEnc: calls.fromEnc,
+        firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, fromEnc: calls.fromEnc, calledAsLast4: calls.calledAsLast4,
         // each step once, in the order the call took them; a confirmation says how it ended.
         // A confirm with nothing pending changed nothing and is left out here; the call page still shows it.
         tools: sql<string[]>`coalesce((select array_agg(s.step order by s.first) from (
@@ -188,10 +188,12 @@ export class FrontDeskRepository {
         await recordView(tx, { clinicId, actor: actorOf(opts.names.userId), action: 'calls.listed', entity: 'call', entityId: key }, 5);
       }
       const ctx = (col: string) => phiContext(clinicId, col);
-      return rows.map(({ firstNameEnc, lastNameEnc, fromEnc, ...r }) => ({
+      return rows.map(({ firstNameEnc, lastNameEnc, fromEnc, calledAsLast4, ...r }) => ({
         ...r, voiceSeconds: r.voiceSeconds === null ? null : Number(r.voiceSeconds),
         // the number they called from, for the same roles as the name: staff call back from the list
         callerNumber: opts.names && fromEnc ? this.cipher.decrypt(fromEnc, ctx('calls.from')) : null,
+        // a browser test call started as a number: its last four digits, for the same roles
+        calledAsLast4: opts.names ? calledAsLast4 : null,
         patientName: opts.names && firstNameEnc && lastNameEnc
           ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : null,
       }));
@@ -293,6 +295,7 @@ export class FrontDeskRepository {
         id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag,
         closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds), channel: call.channel,
         callerNumber: call.fromEnc ? this.cipher.decrypt(call.fromEnc, phiContext(clinicId, 'calls.from')) : null,
+        calledAsLast4: call.calledAsLast4,
         patient: caller ? {
           id: caller.id,
           name: `${this.cipher.decrypt(caller.firstNameEnc, phiContext(clinicId, 'patients.first_name'))} ${this.cipher.decrypt(caller.lastNameEnc, phiContext(clinicId, 'patients.last_name'))}`,

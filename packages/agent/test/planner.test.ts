@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ClinicConfig, DEMO_CLINIC } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { type Outbound, ResponsesPlanner } from '../src';
 
 const commentary = (out: Outbound[]) => out.flatMap((o) => (o.type === 'commentary' ? [o.content] : [])).join(' ');
@@ -63,6 +63,29 @@ describe('the production planner', () => {
     expect(input).toContain('What\'s the best number to reach you?');
   });
 
+  it('at a clinic for animals with no caller ID, asks the number the pet\'s profile is under, never the best number (2026-11-14)', async () => {
+    const create = vi.fn(async (..._args: unknown[]) => ({ output: [], output_text: 'Done.' }));
+    const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-test');
+    const browser = await w.call(null, { channel: 'web', clinic: { ...RIVERBEND_CLINIC } });
+    await browser.delegate([], planner);
+    const input = JSON.stringify((create.mock.calls[0]![0] as { input: unknown }).input);
+    expect(input).toContain('Sure. What phone number is your pet\'s profile under?');
+    expect(input).not.toMatch(/best number|mejor número/);
+  });
+
+  it('says "One moment." when the call\'s first request has said nothing after a second, and only on the first (2026-11-14)', async () => {
+    const slow = vi.fn(async () => { await new Promise((r) => setTimeout(r, 1_200)); return { output: [], output_text: 'Sure. What phone number is your pet\'s profile under?' }; });
+    const planner = new ResponsesPlanner({ responses: { create: slow } } as never, 'gpt-test');
+    const c = await w.call(null, { channel: 'web', clinic: { ...RIVERBEND_CLINIC } });
+    c.caller('Hi, my dog needs a check-up.');
+    const said: string[] = [];
+    const first = await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, nowLine: '', onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
+    expect(said).toEqual(['One moment.']);
+    expect(first.timing).toMatchObject({ announced: true });
+    await planner.plan({ clinic: RIVERBEND_CLINIC, state: c.state, nowLine: '', onLookup: (line) => said.push(line) }, async () => ({ ok: true, data: {} }));
+    expect(said).toEqual(['One moment.']);
+  });
+
   it('after its last round, creates the callback it promises, or asks for a number when there is none', async () => {
     // a model that only ever calls a tool, so the rounds run out
     const create = vi.fn(async () => ({ output: [{ type: 'function_call', name: 'get_clinic_info', call_id: 'c1', arguments: '{"question":"hours"}' }], output_text: '' }));
@@ -74,7 +97,7 @@ describe('the production planner', () => {
     expect(tasks).toEqual([{ type: 'callback' }]);
     const noNumber = await w.call(null);
     const asked = await noNumber.delegate([], planner);
-    expect(commentary(asked)).toContain('tell me the best number');
+    expect(commentary(asked)).toContain('What\'s the best number to reach you?');
     expect((await w.t.db.execute(sql`select type from tasks where call_id = ${noNumber.callId}`)).rows).toEqual([]);
   });
 });

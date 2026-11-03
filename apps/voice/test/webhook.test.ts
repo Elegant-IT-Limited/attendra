@@ -1,5 +1,5 @@
-import { ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC } from '@attendra/core';
+import { type Planner, ScriptedPlanner } from '@attendra/agent';
+import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import twilio from 'twilio';
@@ -49,7 +49,7 @@ describe('the OpenAI webhook', () => {
     const app = buildServer(d);
     expect((await post(app, incoming('wh_2', '+13035550100'))).statusCode).toBe(200);
     await app.close();
-    expect(engine.accept).toHaveBeenCalledWith('live_abc', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date));
+    expect(engine.accept).toHaveBeenCalledWith('live_abc', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
     expect(engine.attach).toHaveBeenCalledWith('live_abc');
   });
 
@@ -189,7 +189,7 @@ describe('the OpenAI webhook', () => {
     ] } });
     await post(app, body);
     await app.close();
-    expect(engine.accept).toHaveBeenCalledWith('live_trunk', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date));
+    expect(engine.accept).toHaveBeenCalledWith('live_trunk', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
   });
 
   it('a call to an unknown number is not matched through the caller\'s own number', async () => {
@@ -215,7 +215,7 @@ describe('the OpenAI webhook', () => {
     await post(app, twin('wh_l2', 'live.transport.incoming', 'live_u1_none', '+19995550121'));
     await app.close();
     expect(engine.accept).toHaveBeenCalledTimes(1);
-    expect(engine.accept).toHaveBeenCalledWith('live_u1_same', expect.anything(), expect.any(Date));
+    expect(engine.accept).toHaveBeenCalledWith('live_u1_same', expect.anything(), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
     expect(engine.reject).toHaveBeenCalledTimes(1);
     expect(engine.reject).toHaveBeenCalledWith('live_u1_none', 404);
   });
@@ -225,7 +225,7 @@ describe('the OpenAI webhook', () => {
     const app = buildServer(d);
     await post(app, JSON.stringify({ sig: 'ok', id: 'wh_solo', type: 'realtime.call.incoming', data: { type: 'sip', call_id: 'rtc_u1_solo', sip_headers: [{ name: 'To', value: '<sip:+13035550100@x>' }] } }));
     await app.close();
-    expect(engine.accept).toHaveBeenCalledWith('rtc_u1_solo', expect.anything(), expect.any(Date));
+    expect(engine.accept).toHaveBeenCalledWith('rtc_u1_solo', expect.anything(), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
   });
 
   it('answers 429 once one address sends more forged deliveries than the limit, and still takes a signed call from it', async () => {
@@ -286,9 +286,9 @@ describe('browser test calls', () => {
     const res = await webCall(app, OFFER);
     await app.close();
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ callId: 'call_1', sdp: 'v=0 answer', maxSeconds: 900 });
-    expect(engine.startBrowserCall).toHaveBeenCalledWith(expect.objectContaining({ id: DEMO_CLINIC.id }), 'v=0 offer', expect.any(Date));
-    expect(d.openCall).toHaveBeenCalledWith(DEMO_CLINIC.id, 'live_web', null, 'web', 'user_ana');
+    expect(res.json()).toEqual({ callId: 'call_1', sdp: 'v=0 answer', maxSeconds: 900, calledAsLast4: null });
+    expect(engine.startBrowserCall).toHaveBeenCalledWith(expect.objectContaining({ id: DEMO_CLINIC.id }), 'v=0 offer', expect.any(Date), { callerNumber: null });
+    expect(d.openCall).toHaveBeenCalledWith(DEMO_CLINIC.id, 'live_web', null, 'web', 'user_ana', undefined);
     expect(engine.attach).toHaveBeenCalledWith('live_web');
     expect(engine.release).toHaveBeenCalledWith('live_web');
   });
@@ -371,9 +371,103 @@ describe('browser test calls', () => {
     expect((await internal(app, '/internal/web-calls/call_1/end', { clinicId: DEMO_CLINIC.id }, 'wrong')).statusCode).toBe(401);
   });
 
+  it('says its usual time limit for one call to the API only, from its own config', async () => {
+    const app = buildServer(deps({ internalToken: TOKEN, browserCallMaxSeconds: 600 }).d);
+    const limits = (token: string) => app.inject({ method: 'GET', url: '/internal/web-calls/limits', headers: { authorization: `Bearer ${token}` } });
+    expect((await limits(TOKEN)).json()).toEqual({ maxSeconds: 600 });
+    expect((await limits('wrong')).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/internal/web-calls/limits' })).statusCode).toBe(401);
+    await app.close();
+    const fallback = buildServer(deps({ internalToken: TOKEN }).d);
+    expect((await fallback.inject({ method: 'GET', url: '/internal/web-calls/limits', headers: { authorization: `Bearer ${TOKEN}` } })).json()).toEqual({ maxSeconds: 900 });
+    await fallback.close();
+  });
+
   it('refuses a time limit that would switch the limit off', () => {
     expect(() => buildServer(deps({ browserCallMaxSeconds: Number.NaN }).d)).toThrow('browserCallMaxSeconds');
     expect(() => buildServer(deps({ browserCallMaxSeconds: 0 }).d)).toThrow('browserCallMaxSeconds');
+  });
+});
+
+describe('"Call as": a browser test call with a caller ID, never a phone call', () => {
+  const CALL_AS = '+17205550142';
+  // a front desk line at every hour, so a transfer would go through on a phone call
+  const CLINIC = { ...RIVERBEND_CLINIC, routing: [{ target: 'front_desk' as const, uri: 'tel:+17205550151', when: 'always' as const }] };
+  /** A planner that notes the number the agent was given, then tries a transfer and a text, as a real call could. */
+  function probe() {
+    const seen: { callerNumber?: string | null; transfer?: unknown; text?: unknown } = {};
+    const planner: Planner = {
+      plan: async (input, execute) => {
+        seen.callerNumber = input.callerNumber ?? null;
+        seen.transfer = await execute('transfer_call', { target: 'front_desk' });
+        // the caller has said yes to a text of the hours
+        input.state.textOffer = { kind: 'hours', ref: null, to: 'this', offeredAtMs: 0, askedAtMs: 0 };
+        seen.text = await execute('send_text', { kind: 'hours', ref: null, to: null });
+        return { say: null };
+      },
+    };
+    return { seen, planner };
+  }
+  const backend = (sendTemplate: ReturnType<typeof vi.fn>) => ({ messenger: { sendTemplate }, audit: { record: vi.fn(async () => {}) } }) as unknown as VoiceDeps['backend'];
+
+  it('a web call started as a number: that number is the caller ID for this call only, its history is read, no "no caller ID" line, the row keeps its last four digits, and the channel stays web (no transfer, no text)', async () => {
+    const historyFor = vi.fn(async () => 'Calls from this number in the last 30 days: 1.');
+    const sendTemplate = vi.fn(async () => ({ status: 'not_sent', reason: 'test_call' }));
+    const { seen, planner } = probe();
+    const { sideband, emit, drop } = openSideband();
+    const { d, engine } = deps({ internalToken: TOKEN, historyFor, planner, backend: backend(sendTemplate), clinicById: async (id) => (id === CLINIC.id ? CLINIC : null) });
+    engine.attach.mockImplementation(() => sideband);
+    const app = buildServer(d);
+    const res = await webCall(app, { ...OFFER, clinicId: RIVERBEND_CLINIC.id, callAs: CALL_AS });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({ callId: 'call_1', calledAsLast4: '0142' });
+    expect(engine.startBrowserCall).toHaveBeenCalledWith(expect.objectContaining({ id: RIVERBEND_CLINIC.id }), 'v=0 offer', expect.any(Date), { callerNumber: CALL_AS });
+    // the row holds no number, only the last four digits
+    expect(d.openCall).toHaveBeenCalledWith(RIVERBEND_CLINIC.id, 'live_web', null, 'web', 'user_ana', '0142');
+    await new Promise((r) => setTimeout(r, 10));
+    expect(historyFor).toHaveBeenCalledWith(RIVERBEND_CLINIC.id, CALL_AS, 'call_1');
+    emit({ type: 'session.input_transcript.delta', event_id: 'c1', delta: 'Yes, please text me the hours.', start_ms: 10, end_ms: 900 } as never);
+    emit({ type: 'session.delegation.created', event_id: 'd1', delegation: { id: 'del_1', target: 'client' } } as never);
+    await vi.waitFor(() => expect(seen.text).toBeDefined());
+    expect(seen.callerNumber).toBe(CALL_AS);
+    // still a browser test call: never transferred, and the text is marked as a test call, so it is never sent
+    expect(seen.transfer).toMatchObject({ ok: true, data: { test_call: true } });
+    expect(sendTemplate).toHaveBeenCalledWith(RIVERBEND_CLINIC.id, expect.objectContaining({ to: CALL_AS, testCall: true }));
+    expect(sendTemplate.mock.calls.every((c) => (c as unknown as [string, { testCall?: boolean }])[1].testCall === true)).toBe(true);
+    drop(1000);
+    await app.close();
+  });
+
+  it('refuses a "Call as" that is not a whole E.164 number, and the route is the API\'s only', async () => {
+    const { d, engine } = deps({ internalToken: TOKEN });
+    const app = buildServer(d);
+    expect((await webCall(app, { ...OFFER, callAs: '303-555-0142' })).statusCode).toBe(400);
+    expect((await webCall(app, { ...OFFER, callAs: '+1303555O142' })).statusCode).toBe(400);
+    expect((await webCall(app, { ...OFFER, callAs: CALL_AS }, 'wrong')).statusCode).toBe(401);
+    expect(engine.startBrowserCall).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('a phone call carrying callAs or call_as in its body, query or headers keeps the carrier\'s caller ID', async () => {
+    const historyFor = vi.fn(async () => null);
+    const { d } = deps({ historyFor });
+    const app = buildServer(d);
+    const event = (id: string, extra: { top?: Record<string, unknown>; data?: Record<string, unknown>; sip?: { name: string; value: string }[] } = {}) => JSON.stringify({
+      sig: 'ok', id, type: 'live.transport.incoming', ...extra.top,
+      data: { type: 'sip', session_id: `live_${id}`, ...extra.data, sip_headers: [{ name: 'To', value: '<sip:+13035550100@sip.api.openai.com>' }, { name: 'From', value: '<sip:+13035550147@x>' }, ...(extra.sip ?? [])] },
+    });
+    const send = (body: string, url = '/webhooks/openai', headers: Record<string, string> = {}) =>
+      app.inject({ method: 'POST', url, headers: { 'content-type': 'application/json', ...headers }, payload: body });
+    await send(event('wh_as1', { top: { callAs: CALL_AS, call_as: CALL_AS } }));
+    await send(event('wh_as2', { data: { callAs: CALL_AS, call_as: CALL_AS, caller_number: CALL_AS } }));
+    await send(event('wh_as3'), `/webhooks/openai?callAs=${encodeURIComponent(CALL_AS)}&call_as=${encodeURIComponent(CALL_AS)}`);
+    await send(event('wh_as4'), '/webhooks/openai', { 'x-call-as': CALL_AS, 'call-as': CALL_AS, callas: CALL_AS });
+    await send(event('wh_as5', { sip: [{ name: 'X-Call-As', value: CALL_AS }, { name: 'callAs', value: CALL_AS }, { name: 'call_as', value: CALL_AS }] }));
+    await app.close();
+    expect(d.openCall).toHaveBeenCalledTimes(5);
+    for (const call of (d.openCall as ReturnType<typeof vi.fn>).mock.calls) expect(call).toEqual([DEMO_CLINIC.id, expect.stringMatching(/^live_wh_as\d$/), '+13035550147', 'phone']);
+    expect(historyFor).toHaveBeenCalledTimes(5);
+    for (const call of historyFor.mock.calls) expect((call as unknown as unknown[])[1]).toBe('+13035550147');
   });
 });
 
@@ -452,9 +546,9 @@ describe('two engines: GPT-Live and the Realtime API', () => {
     await post(app, realtimeCall('wh_rt_1'));
     await post(app, incoming('wh_rt_2', '+13035550100'));
     await app.close();
-    expect(realtime.accept).toHaveBeenCalledWith('rtc_1', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date));
+    expect(realtime.accept).toHaveBeenCalledWith('rtc_1', expect.objectContaining({ id: DEMO_CLINIC.id }), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
     expect(realtime.attach).toHaveBeenCalledWith('rtc_1');
-    expect(live.accept).toHaveBeenCalledWith('live_abc', expect.anything(), expect.any(Date));
+    expect(live.accept).toHaveBeenCalledWith('live_abc', expect.anything(), expect.any(Date), undefined, { callerNumber: expect.toBeOneOf([null, expect.any(String)]) });
   });
 
   it('starts a test call with the engine the clinic was given', async () => {

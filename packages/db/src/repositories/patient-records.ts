@@ -14,6 +14,9 @@ export const PATIENT_SCAN_LIMIT = 20_000;
 export const SEARCH_RESULTS = 25;
 /** The newest patients the list shows before anything is typed. */
 export const NEWEST_PATIENTS = 50;
+/** The most numbers "Call as" offers at once, and the newest records it reads before anything is typed. */
+export const CALL_AS_NUMBERS = 20;
+const CALL_AS_SCAN = 200;
 
 export type PatientStatus = 'active' | 'new';
 export interface PatientCard {
@@ -351,6 +354,59 @@ export class PatientRecords {
     if (!unique.length) return new Map();
     const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), inArray(patients.id, unique)));
     return new Map(rows.map((r) => { const c = this.card(clinicId, r); return [r.id, `${c.firstName} ${c.lastName}`]; }));
+  }
+
+  /**
+   * The numbers on file a browser test call can be started as ("Call as"): one per
+   * household (everyone on one phone), labelled with the owner's first name and the
+   * number's last four digits, never the whole number; at most CALL_AS_NUMBERS. Found
+   * the way the patient search finds records (a name, the owner's name, some digits);
+   * with nothing typed, the newest records. Audited like a search or the list: how many
+   * and which records, never what was typed.
+   */
+  async callAsNumbers(clinicId: string, query: string, userId: string, today = new Date()): Promise<{ patientId: string; label: string }[]> {
+    const q = query.trim() ? readQuery(query, today) : null;
+    if (query.trim() && !q) return [];
+    return withClinic(this.db, clinicId, async (tx) => {
+      const cards = q
+        ? (await this.hits(tx, clinicId, q, null)).hits.sort((a, b) => a.rank - b.rank || byName(a.hit, b.hit)).map((x) => x.hit as PatientCard)
+        : (await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(desc(patients.createdAt), desc(patients.id)).limit(CALL_AS_SCAN)).map((r) => this.card(clinicId, r));
+      // in the order found, one row per phone: the owner's own record when it is there
+      const households = new Map<string, PatientCard[]>();
+      for (const c of cards) {
+        if (!c.phone) continue;
+        const key = c.phone.replace(/\D/g, '').slice(-10);
+        households.set(key, [...(households.get(key) ?? []), c]);
+      }
+      const numbers = [...households.values()].slice(0, CALL_AS_NUMBERS).map((members) => {
+        const guardian = members.find((m) => m.guardianName)?.guardianName ?? null;
+        const own = members.find((m) => !m.guardianName) ?? members[0]!;
+        const owner = (guardian ?? own.firstName).trim().split(/\s+/)[0] ?? '';
+        return { patientId: own.id, label: `${owner} · …${own.phone!.replace(/\D/g, '').slice(-4)}` };
+      });
+      const ids = numbers.map((n) => n.patientId);
+      if (q) {
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.searched', entity: 'patient', entityId: `matches:${ids.length}` });
+        await auditResults(tx, clinicId, userId, ids);
+      } else if (ids.length) {
+        await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.list.viewed', entity: 'patient', entityId: patientSetKey(ids) }, 5);
+      }
+      return numbers;
+    });
+  }
+
+  /**
+   * The phone on one record, for a browser test call started as it ("Call as"). Null when
+   * this clinic has no such record (another clinic's is hidden by its row policy) or it
+   * has no phone. Audited: a staff member used this record's number.
+   */
+  async phoneOf(clinicId: string, patientId: string, userId: string): Promise<string | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [r] = await tx.select({ phoneEnc: patients.phoneEnc }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      if (!r?.phoneEnc) return null;
+      await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.phone.called_as', entity: 'patient', entityId: patientId });
+      return this.cipher.decrypt(r.phoneEnc, phiContext(clinicId, 'patients.phone'));
+    });
   }
 
   /** Every patient whose own or owner's name matches the words, for searches that go through another table (a patient's calls). Not audited here: the search that uses it is. */

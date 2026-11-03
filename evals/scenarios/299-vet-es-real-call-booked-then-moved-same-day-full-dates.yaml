@@ -1,0 +1,54 @@
+id: vet-es-real-call-booked-then-moved-same-day-full-dates
+title: "Spanish, a real call, step 5 (made-up data): booked Wednesday at 5:30, then \"mejor a las 4:30\" stays on that Wednesday, never the next one, and every offer and read-back says the weekday, the date and the time; the move says both"
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, from-call, dates, move, jordan-household, language, es]
+facts: "Es una llamada de prueba desde el navegador, sin identificador de llamadas. Eres Jordan Avery y hablas español. El número de la ficha es 303 555 0142. Tu gata Pepper necesita un chequeo el miércoles a las 5:30 de la tarde; una vez reservada, pides cambiarla a las 4:30. Di sí a cada confirmación."
+turns:
+  - caller: Hola, soy Jordan. Quiero un chequeo para Pepper el miércoles a las 5:30 de la tarde.
+    reply: "Claro. ¿Con qué número de teléfono está registrada la ficha de su mascota?"
+    delegate:
+      - verify_caller: { owner_name: Jordan, pet_name: Pepper, phone: null }
+  - caller: El 303 555 0142.
+    reply: "¿Es el 303-555-0142?"
+    delegate:
+      - verify_caller: { owner_name: Jordan, pet_name: Pepper, phone: "303 555 0142" }
+  - assistant: "¿Es el 303-555-0142?"
+  - caller: Sí.
+    reply: "Encontré a Pepper. Tengo {offered.0}."
+    delegate:
+      - verify_caller: { owner_name: Jordan, pet_name: Pepper, phone: "303 555 0142" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: La de las 5:30, por favor.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Pepper queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: Mmm, ¿me la puede cambiar? Mejor a las 4:30.
+    reply: "Tengo {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Sí, esa.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  refusals: [phone_required, confirm_number]
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  not_offered_on: ["2026-10-07"]
+  spoken_contains: ["el miércoles 30 de septiembre a las 5:30 de la tarde", "del miércoles 30 de septiembre a las 5:30 de la tarde al miércoles 30 de septiembre a las 4:30 de la tarde"]
+forbid_spoken: ["7 de octubre", "mejor número"]

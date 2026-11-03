@@ -49,7 +49,7 @@ export class TextAssistant implements AssistantUnderTest {
     this.greeting = clinic.greeting;
     this.planner = new Watched(planner);
     const backend = {
-      patients: new PostgresPatientDirectory(db, cipher), scheduler: new BuiltinScheduler(db), tasks: new PostgresTaskQueue(db, cipher),
+      patients: new PostgresPatientDirectory(db, cipher), scheduler: new BuiltinScheduler(db, 'voice-agent', cipher), tasks: new PostgresTaskQueue(db, cipher),
       audit: new PostgresAuditLog(db), messenger: { sendTemplate: async () => ({ status: 'sent' as const, messageId: 'sms-1' }) }, knowledge: new HybridKnowledgeBase(new KnowledgeRepository(db), new LocalEmbedder()),
     };
     const calls = new CallRepository(db, cipher);

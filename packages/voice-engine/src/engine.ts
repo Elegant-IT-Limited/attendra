@@ -9,14 +9,18 @@ import type { CommentaryAppendEvent, InstructionsAppendEvent, ThinkingAppendEven
  */
 export interface VoiceEngine {
   readonly name: string;
-  /** `opening`: what to say first, when not the clinic's usual greeting (a VIP's hello). */
-  accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string): Promise<void>;
+  /**
+   * `opening`: what to say first, when not the clinic's usual greeting (a VIP's hello). `callerNumber`: the caller ID, so
+   * the voice knows from the start to ask the number question for a visit (callerIdLine).
+   */
+  accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts?: { callerNumber?: string | null }): Promise<void>;
   /**
    * Starts a conversation with a browser instead of a phone: takes the browser's
    * WebRTC offer, returns the session id and the answer for the browser to apply.
-   * The session is then attached and run exactly like a phone call.
+   * The session is then attached and run exactly like a phone call. `callerNumber`: staff
+   * started it as a number ("Call as"), so it has caller ID like a phone call.
    */
-  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date): Promise<{ sessionId: string; sdpAnswer: string }>;
+  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts?: { callerNumber?: string | null }): Promise<{ sessionId: string; sdpAnswer: string }>;
   reject(sessionId: string, sipStatus: number): Promise<void>;
   attach(sessionId: string): Sideband;
   transfer(sessionId: string, targetUri: string): Promise<void>;

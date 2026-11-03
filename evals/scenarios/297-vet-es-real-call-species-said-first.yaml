@@ -1,0 +1,46 @@
+id: vet-es-real-call-species-said-first
+title: "Spanish, a real call, step 4 (made-up data): \"mi perra\" in the first sentence is never asked again; the new pet is added as a dog; Wednesday at 5:20, booked, moved to 4:40 the same day"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, from-call, memory, new-pet, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu perra nueva Hazel, hembra, de dos años, necesita una primera consulta el miércoles a las 5:20 de la tarde; es nueva en la clínica. Una vez reservada, pides cambiarla a las 4:40 el mismo día. Di sí a cada confirmación."
+turns:
+  - caller: Hola, mi perra necesita un chequeo. Es una mascota nueva, la acabamos de adoptar.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí. Se llama Hazel, es hembra y tiene dos años. El miércoles a las 5:20 de la tarde, si puede ser.
+    reply: "Hazel ya está registrada. Tengo {offered.0}."
+    delegate:
+      - register_patient: { pet_name: Hazel, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: La de las 5:20, por favor.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Hazel queda reservada."
+    delegate:
+      - commit_pending: {}
+  - caller: En realidad, ¿me la puede cambiar? Mejor a las 4:40.
+    reply: "Tengo {offered.3}."
+    delegate:
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
+  - caller: Sí, esa.
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda cambiada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: rescheduled
+  verified: true
+  language: es
+  bookings_created: 2
+  sms_sent: 2
+  booked_on: "2026-09-30"
+  spoken_contains: ["al miércoles 30 de septiembre a las 4:40 de la tarde"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Hazel] }
+  pet_on_file: { phone: "+13035550142", name: Hazel, species: dog }
+forbid_spoken: ["qué tipo de animal", "qué animal", "su nombre", "hembra o macho"]

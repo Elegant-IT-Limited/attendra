@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "eval": "pnpm --filter @attendra/evals run eval",
     "sim": "pnpm --filter @attendra/evals run sim",
+    "evals:draft-from-call": "pnpm --filter @attendra/evals run draft-from-call",
     "db:migrate": "pnpm --filter @attendra/db run migrate",
     "db:seed": "pnpm --filter @attendra/db run seed",
     "db:add-number": "pnpm --filter @attendra/db run add-number",
@@ -24,6 +25,8 @@
     "db:animal-lists": "pnpm --filter @attendra/db run animal-lists",
     "db:normalise-phones": "pnpm --filter @attendra/db run normalise-phones",
     "db:vet-titles": "pnpm --filter @attendra/db run vet-titles",
+    "db:shared-numbers": "pnpm --filter @attendra/db run shared-numbers",
+    "db:call-timeline": "pnpm --filter @attendra/db run call-timeline",
     "add-member": "pnpm --filter @attendra/api add-member",
     "demo": "turbo run demo",
     "test:e2e": "pnpm --filter @attendra/web test:e2e"

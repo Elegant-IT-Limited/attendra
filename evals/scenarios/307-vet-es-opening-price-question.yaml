@@ -1,0 +1,21 @@
+id: vet-es-opening-price-question
+title: "In Spanish, caller ID: \"¿cuánto cuesta un chequeo?\" is a question: it is answered, with no number question"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, opening, jordan-household]
+facts: "You are Jordan Avery and you speak only Spanish. You only want to know what a check-up (chequeo) costs and how long it takes; you do not want to book today, and you do not want a call back (if offered one, say no, gracias). After the answer, say gracias and adiós."
+turns:
+  - caller: ¿Cuánto cuesta un chequeo?
+    reply: "Un examen de bienestar dura 30 minutos. No tengo el precio, pero puedo pedirle al equipo que le llame."
+    delegate:
+      - get_clinic_info: { question: "Precio y duración de un chequeo" }
+  - caller: No, está bien, gracias. Adiós.
+    reply: "De nada. ¡Adiós!"
+expect:
+  outcome: info
+  bookings_created: 0
+  sms_sent: 0
+  intent: question
+  language: es
+forbid_spoken: ["ficha", "desde el que llama"]

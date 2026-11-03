@@ -38,9 +38,14 @@ export interface VoiceClient {
   readonly browserCalls: boolean;
   /** Whether it can play a scripted call with no audio, for the demo. */
   readonly simulatedCalls: boolean;
-  /** `maxSeconds` shortens the call when the clinic has less test time left than the usual limit. */
-  startTestCall(clinicId: string, userId: string, sdpOffer: string, maxSeconds?: number): Promise<{ callId: string; sdp: string; maxSeconds: number }>;
+  /**
+   * `maxSeconds` shortens the call when the clinic has less test time left than the usual limit.
+   * `callAs`: the E.164 number a browser test call is started as, which the voice service treats as its caller ID.
+   */
+  startTestCall(clinicId: string, userId: string, sdpOffer: string, maxSeconds?: number, opts?: { callAs?: string }): Promise<{ callId: string; sdp: string; maxSeconds: number }>;
   endTestCall(clinicId: string, callId: string): Promise<void>;
+  /** The usual time limit for one test call, from the voice service's own config. Absent on a client that cannot ask. */
+  limits?(): Promise<{ maxSeconds: number }>;
   startSimulatedCall(clinicId: string, userId: string): Promise<{ callId: string }>;
   liveCalls(clinicId: string): Promise<LiveCallSummary[]>;
   /** The call's event stream, or null when it is not live. The body is Server-Sent Events. */

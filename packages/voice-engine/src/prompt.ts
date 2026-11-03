@@ -32,12 +32,38 @@ export function openingIfNotStarted(opening: string): string {
 }
 
 /**
- * What the voice knows on a browser test call: there is no caller ID, so the one phone question is the best number,
- * asked once, in the caller's language.
+ * What the voice knows on a browser test call: there is no caller ID. At a clinic for animals, a booking, a change or a
+ * cancellation starts with the number the pet's profile is under, asked by the voice at once in the backend's words, with
+ * no wait for the backend (the caller heard silence while it was asked for, 2026-11-14); the best number to reach them is
+ * for a callback only. At a clinic for people, the best number, asked once.
  */
 export function noCallerIdLine(clinic: ClinicConfig): string {
-  const asks = clinic.languages.map((l) => `"${PACKS[l].phoneQuestion({ callerId: false })}"`).join(' or ');
-  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks}, in the caller's language. Never ask for "the number on file" for a pet or patient the caller said is new. Take the number as they give it, even from abroad or without an area code, and never ask for it again.`;
+  const asks = (line: (l: ClinicConfig['primaryLanguage']) => string) => clinic.languages.map((l) => `"${line(l)}"`).join(' or ');
+  const keep = 'Take the number as they give it, even from abroad or without an area code, and never ask for it again.';
+  if (industryPack(clinic.industry).identity === 'pet') {
+    return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. ${onlyForAVisit(asks((l) => PACKS[l].profileNumberQuestion({ last4: null })))} A number to call them back is asked only when taking a callback request, never for a booking. ${keep}`;
+  }
+  return `This is a test call from the browser: there is no caller ID, so you do not have the number they are calling from. When a phone number is needed, ask once: ${asks((l) => PACKS[l].callbackNumberQuestion)}, in the caller's language. Never ask for "the number on file" for a patient the caller said is new. ${keep}`;
+}
+
+
+/**
+ * The number question, given from the start and judged by the voice itself (2026-11-14): asked at once, with no backend
+ * round, only when the caller wants a visit booked, moved or cancelled; a question is just answered. No word list decides it.
+ */
+function onlyForAVisit(question: string): string {
+  return `Only when the caller wants to book, move or cancel a visit, first ask, yourself, before handing anything to the backend: ${question}, in the caller's language; then hand their answer to the backend. For questions (prices, hours, how long a visit takes, what a visit includes), just answer, with no number question.`;
+}
+
+/**
+ * What the voice knows on a call with caller ID at a clinic for animals, from the start of the call: the number question
+ * for a visit, in the backend's words. Null at a clinic for people, which has its own identity questions.
+ */
+export function callerIdLine(clinic: ClinicConfig, callerNumber: string): string | null {
+  if (industryPack(clinic.industry).identity !== 'pet') return null;
+  const last4 = callerNumber.replace(/\D/g, '').slice(-4);
+  const asks = clinic.languages.map((l) => `"${PACKS[l].profileNumberQuestion({ last4 })}"`).join(' or ');
+  return `Caller ID shows the number they are calling from, ending ${last4}. ${onlyForAVisit(asks)}`;
 }
 
 /**
@@ -99,7 +125,7 @@ export function callerContext(history: string | null, industry?: string): string
     industry === 'vet'
       // at a clinic for animals the number finds the household: a booking starts with it, and the name only greets
       ? (name
-        ? `For a booking, a change or a cancellation the number comes first, as the backend asks it. Once the backend has found the household on this number, you may greet ${name} by name; never say the name before that, and never say it if they say it is someone else.`
+        ? `For a booking, a change or a cancellation the number comes first, as the backend asks it. Once the backend says the caller is verified (it thanks them by name), you may use ${name}; never say the name before that, and never say it if they say it is someone else.`
         : 'For a booking, a change or a cancellation the number comes first, as the backend asks it.')
       : name
         ? `When the caller first says what they need, ask before anything else: "Am I speaking with ${name}?" (in Spanish, "¿Hablo con ${name}?") On a yes, use the name and pass it on to the backend; on a no, ask who they are and never say that name again.`

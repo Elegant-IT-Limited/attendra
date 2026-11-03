@@ -1,0 +1,36 @@
+id: vet-this-vs-next-wednesday
+title: "\"Next Wednesday\" said on a Monday could be either week: asked once, with both full dates; \"this Wednesday\" is the coming one"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, dates, jordan-household]
+facts: "You are Jordan Avery, calling from the number on file. Biscuit, your dog, needs a check-up next Wednesday; when asked which week, you mean this Wednesday, the coming one. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, it's Jordan. I'd like a check-up for Biscuit next Wednesday.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit, your dog. This Wednesday, September 30, or Wednesday, October 7?"
+    delegate:
+      - verify_caller: { owner_name: Jordan, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: This Wednesday.
+    reply: "I have {offered.0}, or {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [which_week]
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-30"
+  not_offered_on: ["2026-10-07"]
+  spoken_contains: ["This Wednesday, September 30, or Wednesday, October 7?", "Wednesday, September 30, at"]

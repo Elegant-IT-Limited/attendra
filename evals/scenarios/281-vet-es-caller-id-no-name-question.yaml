@@ -1,0 +1,36 @@
+id: vet-es-caller-id-no-name-question
+title: "Spanish: caller ID on a known number, said yes to: greeted by the owner's name on file and asked which pet; never asked for a name"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, record, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu gata Pepper necesita un chequeo. Cualquier veterinario y cualquier hora te sirven; acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, quiero reservar un chequeo.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí, ese es.
+    reply: "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Para Pepper.
+    reply: "Encontré a Pepper. Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Pepper, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Pepper queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"]
+  appointment_note_empty: true
+forbid_spoken: ["su nombre", "your name"]

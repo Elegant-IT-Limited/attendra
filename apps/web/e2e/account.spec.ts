@@ -1,9 +1,10 @@
 import { createHmac } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { newContext, openAs, signInPatiently } from './session';
+import { testNow } from './clock';
 
 /** The 6-digit code an authenticator app shows now for a base32 secret (RFC 6238: SHA-1, 30 seconds). */
-function totp(secret: string, at = Date.now()) {
+function totp(secret: string, at = testNow()) {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const bits = [...secret.replace(/=+$/, '').toUpperCase()].map((c) => alphabet.indexOf(c).toString(2).padStart(5, '0')).join('');
   const key = Buffer.from(bits.match(/.{8}/g)!.map((b) => parseInt(b, 2)));

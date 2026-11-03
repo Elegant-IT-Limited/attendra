@@ -25,9 +25,11 @@ describe('an owner caller ID knows picks from their pets', () => {
     const c = await w.call(LINH, { clinic });
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
     expect(out.results[0]!.data).toMatchObject({ verified: false, pets_on_number: ['Biscuit', 'Mochi'], more: false });
-    expect(String(out.results[0]!.data.say)).toContain('"I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"');
+    // caller ID is enough: thanked by the owner's name on file, never asked for it (2026-11-14)
+    expect(String(out.results[0]!.data.say)).toContain('"Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"');
     expect(c.state.verifiedPatient).toBeNull();
-    expect(await audited('patient.pets_on_number.read', c.callId)).toBe(1);
+    expect(c.state.memory.verified).toBe('caller_id');
+    expect(await audited('patient.household.read.call', c.callId)).toBe(1);
     // picking one finds it, as any lookup does
     const picked = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: 'Mochi', phone: null } }]);
     expect(picked.results[0]!.data).toMatchObject({ verified: true, pet_name: 'Mochi' });
@@ -37,7 +39,7 @@ describe('an owner caller ID knows picks from their pets', () => {
     const c = await w.call(LINH, { clinic });
     c.caller('Hola, buenos días, soy Linh. Quiero una cita, por favor.');
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh', pet_name: null } }]);
-    expect(String(out.results[0]!.data.say)).toContain('"Veo a Biscuit y Mochi con este número. ¿Para cuál es, o es para una mascota nueva?"');
+    expect(String(out.results[0]!.data.say)).toContain('"Gracias, Linh. ¿Es para Biscuit o para Mochi, o para una mascota nueva?"');
   });
 
   it('with no caller ID, asks for the number first; the number the caller says then opens its pets, as caller ID does (the text to the number on file is the safety net)', async () => {
@@ -60,7 +62,10 @@ describe('an owner caller ID knows picks from their pets', () => {
     web.caller('Yes.');
     const out = await web.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0172' } }]);
     expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Biscuit', 'Mochi'], more: false });
-    expect(await audited('patient.pets_on_number.read', web.callId)).toBe(1);
+    // the name they gave matches the owner on file: the record is theirs to hear
+    expect(web.state.memory.verified).toBe('name_match');
+    expect(await audited('patient.household.read.call', web.callId)).toBe(1);
+    expect(await audited('patient.owner_check.match', web.callId)).toBe(1);
     // a number with nothing on it: the plain question, no name
     const unknown = await w.call(null, { clinic, channel: 'web' });
     await unknown.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: null, phone: '720 555 0199' } }]);
@@ -96,7 +101,8 @@ describe('an owner caller ID knows picks from their pets', () => {
     const c = await w.call(many, { clinic });
     const out = await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Ivy', pet_name: null } }]);
     expect(out.results[0]!.data).toMatchObject({ pets_on_number: ['Ash', 'Bean', 'Coco'], more: true });
-    expect(String(out.results[0]!.data.say)).toContain(PACKS.en.whichPet({ names: ['Ash', 'Bean', 'Coco'], more: true }));
+    expect(String(out.results[0]!.data.say)).toContain(PACKS.en.whichPetVerified({ owner: 'Ivy', names: ['Ash', 'Bean', 'Coco'], more: true, offerNew: true }));
+    expect(PACKS.en.whichPetVerified({ owner: 'Ivy', names: ['Ash', 'Bean', 'Coco'], more: true, offerNew: true })).toBe('Thanks, Ivy. Is this for Ash, Bean or Coco, or another one?');
     expect(PACKS.en.whichPet({ names: ['Ash', 'Bean', 'Coco'], more: true })).toBe('I see Ash, Bean and Coco under this number. Which one is it for, or is it another one?');
     expect(handed(out)).not.toMatch(/dot|echo/i);
   });

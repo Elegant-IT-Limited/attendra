@@ -7,6 +7,7 @@ export * from './confirmation';
 export * from './custom-fields';
 export * from './locales';
 export * from './medical';
+export * from './memory-words';
 export * from './quality';
 export * from './demo';
 export * from './emergency';

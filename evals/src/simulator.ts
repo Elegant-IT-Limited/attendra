@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
-import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
+import { addDays, awayOn, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, windowsOn, windowsOnDate, zonedInstant } from '@attendra/core';
+import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
 import { createLogger } from '@attendra/observability';
@@ -24,6 +24,12 @@ export const clinicOf = (scenario: Scenario): ClinicConfig => {
   const approved = { ...base, texting: { ...textingOf(base), enabled: true } };
   return ClinicConfig.parse({ ...approved, ...scenario.settings });
 };
+/** Jordan Avery's pets, made up, on 303-555-0142: the household of the scenarios built from a real call (tag jordan-household). */
+export const JORDAN_PHONE = '+13035550142';
+const JORDAN_PETS = [
+  { firstName: 'Biscuit', dob: '2021-06-12', gender: 'male', species: 'dog' },
+  { firstName: 'Pepper', dob: '2022-03-08', gender: 'female', species: 'cat' },
+] as const;
 const defaultCaller = (scenario: Scenario) => ({ maple: DEMO_PATIENTS[0].phone, cedar_park: CEDAR_PARK_PATIENTS[0].phone, riverbend: RIVERBEND_PETS[0].phone })[scenario.clinic];
 /** Each demo clinic's seed: the clinic and its patients. */
 export const SEEDS = { maple: seedDemo, cedar_park: seedCedarPark, riverbend: seedRiverbend } as const;
@@ -197,7 +203,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const now = opts.now ?? (scenario.local_time ? zonedInstant('2026-09-28', scenario.local_time, clinic.timezone) : SIM_NOW);
   const callerNumber = scenario.caller_number === undefined ? defaultCaller(scenario) : scenario.caller_number;
   const { livePlanner } = opts;
-  const scheduler = new BuiltinScheduler(db);
+  const scheduler = new BuiltinScheduler(db, 'voice-agent', cipher);
   const sms: string[] = [];
   const messenger: Messenger = { async sendTemplate(_c, m) { sms.push(m.template); return { status: 'sent', messageId: `sms-${sms.length}` }; } };
   // the demo clinic's documents, with local embeddings: fixed, so every run finds the same passages
@@ -227,6 +233,10 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   const seeded = new PostgresPatientDirectory(db, cipher, 'seed');
   if (scenario.tags.includes('family-number') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Juniper', RIVERBEND_PETS[0].phone)).status === 'not_found') {
     await seeded.create(clinic.id, { firstName: 'Juniper', lastName: 'Hale', dob: '2022-04-01', phone: RIVERBEND_PETS[0].phone, guardianName: 'Grace Hale', gender: 'female', species: 'cat' });
+  }
+  // Jordan Avery's household on 303-555-0142: Biscuit, a dog, and Pepper, a cat (made-up data, for the item 26 scenarios)
+  if (scenario.tags.includes('jordan-household') && scenario.clinic === 'riverbend' && (await seeded.findPet(clinic.id, 'Pepper', JORDAN_PHONE)).status === 'not_found') {
+    for (const pet of JORDAN_PETS) await seeded.create(clinic.id, { ...pet, lastName: 'Avery', phone: JORDAN_PHONE, guardianName: 'Jordan Avery' });
   }
   const callId = await calls.open(clinic.id, opts.sessionId ?? `live_${scenario.id}`, callerNumber);
   // a name on file in the scenario's history is the one the records give for the number when the call starts, as the voice service reads it
@@ -380,6 +390,17 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     check(!callerSilent, 'the model playing the caller gave no line, so the call stopped early (the test, not the assistant)');
     for (const err of errors) check(false, `backend error: ${err}`);
   }
+  // live, the planner model's reading of the intent (read alongside, never waited for): given a moment to arrive
+  if (livePlanner && e.intent) {
+    for (let i = 0; i < 60 && state.memory.fact('intent')?.source !== 'model'; i++) await new Promise((r) => setTimeout(r, 100));
+    const read = state.memory.fact('intent');
+    check(read?.source === 'model' && read.value === e.intent, `intent ${read ? `${read.value} (${read.source})` : 'none'}, expected ${e.intent} from the model`);
+  }
+  if (e.first_reply_contains) {
+    const first = transcript.findIndex((t) => t.speaker === 'caller');
+    const reply = transcript.slice(first + 1).filter((t) => t.speaker === 'assistant').map((t) => t.text).slice(0, 2).join(' ');
+    check(normalise(reply).includes(normalise(e.first_reply_contains)), `the first reply was "${reply}", expected it to contain "${e.first_reply_contains}"`);
+  }
   // live, a call that answered a question and changed nothing is as good as one that changed nothing
   const sameOutcome = state.outcome === e.outcome || (!!livePlanner && e.outcome === 'abandoned' && state.outcome === 'info');
   check(sameOutcome, `outcome ${state.outcome}, expected ${e.outcome}`);
@@ -412,6 +433,12 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   }
   // the demo plays each call on its own day, so a date that follows from "today" is checked only on the eval's day
   if (e.booked_on && !opts.now) check(createdRows.every((a) => localDateOf(a.startsAt, clinic.timezone) === e.booked_on), `booked on ${JSON.stringify(createdRows.map((a) => localDateOf(a.startsAt, clinic.timezone)))}, expected ${e.booked_on}`);
+  // the note for the team on the appointments the call made ("booked by caller: Alex"), stored encrypted like a staff note
+  if (e.appointment_note_contains.length) {
+    const notes = createdRows.map((a) => (a.noteEnc ? cipher.decrypt(a.noteEnc, phiContext(clinic.id, 'appointments.note')) : ''));
+    for (const phrase of e.appointment_note_contains) check(notes.some((n) => n.toLowerCase().includes(phrase.toLowerCase())), `no appointment note says "${phrase}" (notes: ${JSON.stringify(notes)})`);
+  }
+  if (e.appointment_note_empty) check(createdRows.every((a) => !a.noteEnc), 'an appointment made on the call carries a note, expected none');
   for (const date of e.not_offered_on) {
     const on = [...state.offered.values()].filter((s) => localDateOf(s.start, clinic.timezone) === date);
     check(on.length === 0, `offered ${on.length} time(s) on ${date}, a day it must not offer`);
@@ -433,6 +460,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const names = await householdOf(db, cipher, clinic.id, e.household.phone);
     const want = e.household.names.map((n) => n.toLowerCase()).sort();
     check(JSON.stringify(names.map((n) => n.toLowerCase()).sort()) === JSON.stringify(want), `on ${e.household.phone}: ${JSON.stringify(names)}, expected ${JSON.stringify(e.household.names)}`);
+  }
+  if (e.pet_on_file && !opts.now) {
+    const found = await new PostgresPatientDirectory(db, cipher, 'eval').findPet(clinic.id, e.pet_on_file.name, e.pet_on_file.phone);
+    const species = found.status === 'found' ? found.patient.species ?? null : null;
+    check(species?.toLowerCase() === e.pet_on_file.species.toLowerCase(), `${e.pet_on_file.name} on ${e.pet_on_file.phone}: ${found.status === 'found' ? `a ${species ?? 'pet with no kind'}` : found.status}, expected a ${e.pet_on_file.species}`);
   }
   if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
   // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)

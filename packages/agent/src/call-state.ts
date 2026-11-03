@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
+import { CallMemory } from './call-memory';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -32,7 +33,7 @@ const DANGER_NO = /^(?:no(?! (?:se|estoy segur[oa]|lo se)\b)|nope|nah|not (?:rea
 const DANGER_YES = /^(?:yes|yeah|yep|yup|i think so|it is|(?:she|he|it|they) (?:is|are)|right now|si|claro|creo que si|ahora mismo)\b/;
 
 export type PendingChange =
-  | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null })
+  | (PendingBase & { kind: 'book'; slot: Slot; replacesAppointmentId: string | null; replacesStart?: Date | null })
   | (PendingBase & { kind: 'cancel'; appointmentId: string; start: Date });
 
 /**
@@ -58,6 +59,8 @@ export class CallState {
    * the phone), as the latest identity check or registration passed it: asked once, and a correction replaces it.
    */
   readonly known = new Map<string, string>();
+  /** Everything the call has established, from the caller's words, the tools and the records: never asked twice (2026-11-14). */
+  readonly memory = new CallMemory();
   /** The turn from which the caller's words about being new count: after a pet or patient is found or added, it is about the next one. */
   newFromTurn = 0;
   /** The caller was asked whether the pet is new before any lookup, because they described it (its age, its sex): asked once. */
@@ -80,6 +83,8 @@ export class CallState {
   readonly offered = new Map<string, Slot>();
   pending: PendingChange | null = null;
   proposals = 0;
+  /** Requests the planner has taken on this call: the first one says "One moment." when it has nothing to say after a second. */
+  requestsPlanned = 0;
   /** Bumped on every delegation. Work finishing under an old revision is discarded. */
   revision = 0;
   emergency: { kind: string; atMs: number } | null = null;

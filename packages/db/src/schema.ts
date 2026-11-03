@@ -114,6 +114,8 @@ export const calls = pgTable('calls', {
   closeReason: text('close_reason'),
   channel: text('channel', { enum: ['phone', 'web'] }).notNull().default('phone'),
   patientId: uuid('patient_id'),
+  /** A browser test call started "as" a number: its last four digits only (migration 0043). Null on every phone call. */
+  calledAsLast4: text('called_as_last4'),
 });
 
 export const callSegments = pgTable('call_segments', {

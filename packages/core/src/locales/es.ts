@@ -1,18 +1,43 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { daysAhead, type LanguagePack, words } from './types';
+import { clock12, dateParts, wallClock } from './dates';
+import { type LanguagePack, type OfferDay, words } from './types';
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+/** "miércoles 4 de noviembre", without the article: "el" goes before it, or "del" and "al". */
+const fullDay = (date: string) => { const d = dateParts(date); return `${DIAS[d.weekday]} ${d.day} de ${MESES[d.month - 1]}`; };
+/** The part of the day as said after a time: "de la mañana" before noon, "del mediodía" at 12:00, "de la tarde" to 19:59, "de la noche" after. */
+const partOfDay = (hour: number, minute: number) => (hour === 12 && minute === 0 ? 'del mediodía' : hour > 0 && hour < 12 ? 'de la mañana' : hour >= 12 && hour < 20 ? 'de la tarde' : 'de la noche');
+/** "5:20", with "a la" before 1 o'clock and "a las" before any other hour. */
+const hora = (hour: number, minute: number) => { const c = clock12(hour, minute); return { at: c.hour === 1 ? 'a la' : 'a las', time: `${c.hour}:${c.minutes}` }; };
+/** "el miércoles 4 de noviembre a las 5:20 de la tarde": the weekday, the date and the time, every time, never the year. */
+const fullWhen = (start: Date, timeZone: string) => {
+  const w = wallClock(start, timeZone);
+  const h = hora(w.hour, w.minute);
+  return `el ${fullDay(w.date)} ${h.at} ${h.time} ${partOfDay(w.hour, w.minute)}`;
+};
+/** "o" is "u" before a word said with an o sound: "8:00" is "ocho", "11:00" is "once". */
+const oBefore = (hour: number) => (hour % 12 === 8 || hour % 12 === 11 ? 'u' : 'o');
+/** One day's times: "a las 8:00, 8:40 o 9:20 de la mañana"; the part of the day once per run, and with each time when the vets differ. */
+const horas = (day: OfferDay) => {
+  const withVets = day.times.some((t) => t.provider);
+  const said = day.times.map((t, i) => {
+    const next = day.times[i + 1];
+    const h = hora(t.hour, t.minute);
+    const part = partOfDay(t.hour, t.minute);
+    const showPart = withVets || !next || partOfDay(next.hour, next.minute) !== part;
+    return `${withVets || i === 0 ? `${h.at} ` : ''}${h.time}${showPart ? ` ${part}` : ''}${t.provider ? ` con ${t.provider}` : ''}`;
+  });
+  // "u" only when the time itself follows ("8:00 u 8:40"), not before "a las"
+  return said.length > 1 ? `${said.slice(0, -1).join(', ')} ${withVets ? 'o' : oBefore(day.times.at(-1)!.hour)} ${said.at(-1)}` : said[0] ?? '';
+};
+const NUMEROS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce'];
 
 // Spanish as spoken in the United States: usted, clear and short. Accents are
 // removed before matching (normalise), so "sí" and "si", "está" and "esta" meet.
-const when = (start: Date, timeZone: string, now?: Date) => {
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hourCycle: 'h12' }).format(start).replace(/\D/g, ''));
-  const time = `a ${hour === 1 ? 'la' : 'las'} ${new Intl.DateTimeFormat('es-US', { timeZone, hour: 'numeric', minute: '2-digit' }).format(start)}`;
-  const soon = now ? daysAhead(start, timeZone, now) : null;
-  // the same day is "hoy", the next "mañana", the rest of the week its day; after that the date too
-  if (soon === 0) return `hoy ${time}`;
-  if (soon === 1) return `mañana ${time}`;
-  if (soon !== null && soon > 1 && soon < 7) return `el ${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long' }).format(start)} ${time}`;
-  return `${new Intl.DateTimeFormat('es-US', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(start)} ${time}`;
-};
+
+/** A full time after "el", "del" or "al": the article it starts with is dropped, so "del el miércoles" is never said. */
+const sinEl = (w: string | undefined) => (w ?? '').replace(/^el\s+/i, '');
 
 /** A pet's kind as owners say it in Spanish, with its article: "su perro". Anything else is left unsaid. */
 const SPECIES_ES: Record<string, string> = { dog: 'su perro', perro: 'su perro', cat: 'su gato', gato: 'su gato', rabbit: 'su conejo', conejo: 'su conejo', bird: 'su pájaro', parrot: 'su loro', 'guinea pig': 'su cuyo', ferret: 'su hurón', hamster: 'su hámster' };
@@ -38,31 +63,81 @@ export const es: LanguagePack = {
   ],
   greeting: ({ assistantName, clinicName }) => `Gracias por llamar a ${clinicName}. ${assistantName ? `Soy ${assistantName}, la` : 'Soy la'} asistente virtual con inteligencia artificial de la clínica. ¿En qué le puedo ayudar?`,
   disclosure: /\b(asistente (virtual|de ia|con inteligencia artificial|automatizad[oa])|inteligencia artificial)\b/i,
-  speakWhen: when,
+  // en entero siempre (2026-11-14): el día de la semana, la fecha y la hora
+  speakWhen: (start, timeZone) => fullWhen(start, timeZone),
+  fullWhen,
+  fullDay,
   speakPhone: (e164) => e164.replace(/\D/g, '').split('').map((d) => DIGITS[Number(d)]).join(' '),
-  readbackBooking: ({ when: w, provider, providerKind, visit, replacing }) => `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}${replacing ? `, en lugar de la cita del ${replacing}` : ''}`,
-  readbackCancel: ({ when: w }) => `cancelar la cita del ${w}`,
+  readbackBooking: ({ when: w, provider, providerKind, visit, replacing, pet, shift }) => (replacing
+    ? `cambiar la cita${pet ? ` de ${pet}` : ''} del ${sinEl(replacing)} al ${sinEl(w)} ${providerKind === 'room' ? 'en' : 'con'} ${provider}${shift ? `; ${shift}` : ''}`
+    : `${w} ${providerKind === 'room' ? 'en' : 'con'} ${provider}, para ${visit}`),
+  readbackCancel: ({ when: w }) => `cancelar la cita del ${sinEl(w)}`,
   sms: {
-    booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    booking_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} es el ${sinEl(v.when)}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     request_ready: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} está listo para recoger.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     refill_sent: (v) => `${v.clinic}: ${hola(v, `${pedidoDe(v)}${ref(v)} se envió a ${v.pharmacy}.`)} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}${ref(v)}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
-    change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió al ${v.when}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
-    cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${v.when} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió ${v.from ? `del ${sinEl(v.from)} ` : ''}al ${sinEl(v.when)}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${sinEl(v.when)} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
     hours: (v) => `Horario de ${v.clinic}: ${v.hours}. Responda STOP para no recibir más mensajes.`,
     emergency_hospital: (v) => `${v.clinic}: urgencias veterinarias: ${v.hospital}, ${v.hospitalAddress}, tel. ${v.hospitalPhone}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,
     provider: (v) => `${v.clinic}: ${v.provider}${v.details ? `, ${v.details}` : ''}. ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     answer: (v) => `${v.clinic}: ${v.answer} ¿Preguntas? Llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     link: (v) => `${v.clinic}: ${v.label}: ${v.url} Responda STOP para no recibir más mensajes.`,
-    reminder: (v) => `${v.clinic}: ${hola(v, `le recordamos ${citaDe(v)} el ${v.when}.`)} Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
+    reminder: (v) => `${v.clinic}: ${hola(v, `le recordamos ${citaDe(v)} el ${sinEl(v.when)}.`)} Responda C para confirmarla, o llame al ${v.clinicPhone} para cambiarla. Responda STOP para no recibir más mensajes.`,
   },
   textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
   textSent: 'Listo, se lo acabo de enviar.',
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
-  phoneQuestion: ({ callerId }) => (callerId ? '¿El número desde el que llama es el mejor para comunicarnos con usted?' : '¿Cuál es el mejor número para comunicarnos con usted?'),
+  sameNumberQuestion: '¿El número desde el que llama es el mejor para comunicarnos con usted?',
+  callbackNumberQuestion: '¿Cuál es el mejor número para comunicarnos con usted?',
+  yourNameQuestion: '¿Y su nombre?',
+  thanksOwner: ({ owner }) => `Gracias, ${owner}.`,
+  whichPetVerified: ({ owner, names, more, offerNew }) => {
+    const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
+    const list = names.length === 2 ? `${names[0]} o para ${names[1]}`
+      : names.length > 2 ? `${names.slice(0, -1).join(', ')} ${or(names.at(-1)!)} ${names.at(-1)}` : names[0] ?? '';
+    return `Gracias, ${owner}. ¿Es para ${list}${more ? ', o para otra mascota' : offerNew ? ', o para una mascota nueva' : ''}?`;
+  },
+  whichWeek: ({ first, second }) => `¿Este ${fullDay(first)}, o el ${fullDay(second)}?`,
+  bookedByCallerNote: ({ name }) => `reservada por quien llamó: ${name}`,
+  // written without accents: the text is normalised before it is matched
+  memory: {
+    species: {
+      perro: 'dog', perra: 'dog', perrito: 'dog', perrita: 'dog', cachorro: 'dog', cachorra: 'dog', gato: 'cat', gata: 'cat', gatito: 'cat', gatita: 'cat',
+      conejo: 'rabbit', coneja: 'rabbit', pajaro: 'bird', loro: 'parrot', perico: 'parakeet', cuyo: 'guinea pig', hamster: 'hamster', huron: 'ferret',
+      lagartija: 'lizard', serpiente: 'snake', tortuga: 'turtle',
+    },
+    female: /\b(hembra|nina|perra|perrita|gata|gatita|coneja|cachorra|esterilizada)\b/g,
+    // only words that say the sex: "perro" and "gato" are said of either sex, so they never set it
+    male: /\b(macho|nino|castrado)\b/g,
+    she: /\b(ella)\b/,
+    he: /(?!)/,
+    age: /\b(?:tiene|de)\s+(\d{1,2}|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|dieciocho)\s+(anos?|mes(?:es)?|semanas?)\b/g,
+    numbers: { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, quince: 15, dieciocho: 18 },
+    intent: {
+      book: /\b(reservar|agendar|traerl[oa]|traer)\b/g,
+      visit: /\b(cita|consulta|chequeo|revision)\b/g,
+      want: /\b(quiero|quisiera|necesito|necesita|gustaria|hacer|sacar|toca)\b/g,
+      move: /\b(cambiar|mover|reprogramar|cambiela|cambiala|pasela|pasala|mejor a las)\b/g,
+      cancel: /\b(cancelar|anular)\b/g,
+    },
+    weekdays: ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'],
+    months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    today: /\b(hoy)\b/g,
+    tomorrow: /(?<!\b(?:la|esta|pasado)\s)\b(manana)\b/g,
+    thisWord: 'este',
+    nextWord: 'proximo',
+    anyVet: /\b(cualquier (?:doctor|doctora|veterinari[oa])|cualquiera|me da igual (?:quien|cual)|no importa (?:quien|cual))\b/g,
+    anyDay: /\b(cualquier dia|lo (?:antes|mas pronto) posible|la primera (?:cita|hora) (?:disponible|libre)|lo primero que tenga)\b/g,
+    time: /\b(?:(a las|a la|como a las|despues de las|tipo)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(de la (?:manana|tarde|noche)|a\.?m\b\.?|p\.?m\b\.?))?(?!\s*(?:anos?|meses|semanas?|dias?|horas?|minutos?|mascotas?|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))\b)(?![\d:-])/g,
+    after: /^despues de las$/,
+    pm: /tarde|noche|p\.?m/,
+    am: /manana|a\.?m/,
+  },
   // "o" becomes "u" before a name that starts with an o sound: "Max u Oreo"
   whichPet: ({ names, more }) => {
     const or = (next: string) => (/^h?o/i.test(next) ? 'u' : 'o');
@@ -71,7 +146,7 @@ export const es: LanguagePack = {
       ? `Veo a ${list.replace(/ [ou] ([^ ]+)$/, ' y $1')} con este número. ¿Para cuál es${more ? ', o es para otra mascota' : ', o es para una mascota nueva'}?`
       : `Veo a ${list} con este número. ¿Es para ${list}, ${more ? 'o para otra mascota' : 'o para una mascota nueva'}?`;
   },
-  lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${w}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
+  lastVisitSeen: ({ pet, when: w, provider, visit }) => `La última visita que veo de ${pet} fue el ${sinEl(w)}${provider ? ` con ${provider}` : ''}${visit ? `, para ${visit.toLowerCase()}` : ''}.`,
   recordsOffer: 'No puedo dar detalles médicos por teléfono, pero puedo pedirle al equipo que le envíe el historial por escrito. ¿Le parece bien?',
   phoneAsGiven: ({ digits }) => `Tengo ${digits}. Lo anoto tal como me lo dio.`,
   petNewQuestion: ({ pet }) => `¿Es la primera vez que ${pet} viene con nosotros?`,
@@ -85,7 +160,7 @@ export const es: LanguagePack = {
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
   teamBooks: ({ visit, notice, related }) => `Nuestro equipo reserva ${visit.toLowerCase()} directamente${notice ? `, con al menos ${notice.replace(/days?/, 'días').replace(/hours?/, 'horas')} de anticipación` : ''}. Puedo dejarle una solicitud al equipo${related ? `, o reservarle primero ${related.toLowerCase()}` : ''}. ¿Qué prefiere?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
-  smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${when} está confirmada.`,
+  smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${sinEl(when)} está confirmada.`,
   shortDays: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
   smsNoReplies: ({ clinicPhone }) => `Este número no lee respuestas. Llame al ${clinicPhone}.`,
   abuseWarning: 'Quiero ayudarle, pero si este lenguaje continúa tendré que terminar la llamada. También puedo pedir que alguien de la clínica le llame.',
@@ -95,7 +170,9 @@ export const es: LanguagePack = {
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   spoken: {
-    readback: ({ readback, textNote }) => `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`,
+    readback: ({ readback, textNote, move }) => (move
+      ? `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Hago el cambio?`
+      : `Tengo ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Le reservo la cita?`),
     cancelReadback: ({ readback, textNote }) => `Entonces, quiere ${readback}. ${textNote ? `${sentence(textNote)}. ` : ''}¿Es correcto?`,
     done: ({ kind, textSent, then }) => `${kind === 'booked' ? 'Listo, la cita queda reservada.' : kind === 'rescheduled' ? 'Listo, la cita queda cambiada.' : 'Listo, la cita queda cancelada.'}${textSent ? ' Le he enviado un mensaje de confirmación.' : ''} ${then}`,
     anythingElse: '¿Hay algo más en lo que le pueda ayudar?',
@@ -112,7 +189,21 @@ export const es: LanguagePack = {
       : kind === 'visits' && pet ? `Déjeme ver las visitas de ${pet}.`
       : kind === 'number' ? 'Déjeme revisar ese número.'
       : 'Déjeme consultarlo.',
+    oneMoment: 'Un momento.',
     dayWord: ({ daysFromToday, weekday }) => (daysFromToday === 0 ? 'hoy' : daysFromToday === 1 ? 'mañana' : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'][weekday]!),
+    offerTimes: ({ days, provider }) => {
+      if (!days.length) return '';
+      const [first, ...rest] = days.map((d) => ({ day: fullDay(d.date), times: horas(d) }));
+      const others = rest.map((d, i) => `${i === rest.length - 1 ? 'o ' : ''}el ${d.day} ${d.times}`);
+      return `El ${first!.day} tengo ${[first!.times, ...others].join(', ')}${provider ? `, con ${provider}` : ''}.`;
+    },
+    dayShift: ({ days, day }) => {
+      const n = Math.abs(days);
+      const phrase = days === 1 ? 'el día siguiente' : days === -1 ? 'el día anterior'
+        : n % 7 === 0 && n <= 28 ? `${n === 7 ? 'una semana' : `${NUMEROS[n / 7]} semanas`} ${days > 0 ? 'después' : 'antes'}`
+          : n < 7 ? `${NUMEROS[n]} días ${days > 0 ? 'después' : 'antes'}` : 'otro día';
+      return `es ${phrase}, el ${day}`;
+    },
   },
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +

@@ -70,14 +70,16 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
 
   // Drops every cached call, transcript and task before leaving, and reloads, so the
   // next person at this screen starts from nothing.
-  const { hangUpNow } = useTestCall();
+  const { hangUpNow, confirmLeave } = useTestCall();
   const signOut = useCallback(async (reason?: 'idle') => {
+    // a test call recording not yet saved is lost on the way out: the person is asked (an idle sign-out cannot ask)
+    if (!reason && !confirmLeave()) return;
     hangUpNow(); // a test call ends while the session can still end it
     markSignedOut();
     await authClient.signOut().catch(() => {});
     queries.clear();
     window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
-  }, [queries, hangUpNow]);
+  }, [queries, hangUpNow, confirmLeave]);
 
   // the deployment's idle minutes (15 by default) sign out, counted across every tab of the
   // dashboard: a tab left in the background never signs out the one being worked in (they share the session)
@@ -133,6 +135,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: ROLE_LABEL[c.role] ?? c.role, organizationId: c.organizationId, organizationName: c.organizationName }));
   const here = clinics.find((c) => c.id === clinicId) ?? { id: clinic.id, name: clinic.name, role: user.role };
   const toClinic = (id: string) => {
+    if (!confirmLeave()) return; // another clinic ends this one's test call, and its unsaved recording with it
     router.push(`/c/${id}${pathname.split('/')[3] ? `/${pathname.split('/')[3]}` : ''}`);
     const to = clinics.find((c) => c.id === id);
     if (to) toast({ tone: 'success', message: `Now in ${to.name}.` });

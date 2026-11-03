@@ -1,0 +1,37 @@
+id: vet-es-this-vs-next-wednesday
+title: "Spanish: \"el próximo miércoles\" said on a Monday could be either week: asked once, with both full dates; \"este miércoles\" is the coming one"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, dates, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu perro Biscuit necesita un chequeo el próximo miércoles; si te preguntan qué semana, es este miércoles, el que viene primero. Cualquier veterinario y cualquier hora te sirven; acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, soy Jordan. Quiero un chequeo para Biscuit el próximo miércoles.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí.
+    reply: "Encontré a Biscuit. ¿Este miércoles 30 de septiembre, o el miércoles 7 de octubre?"
+    delegate:
+      - verify_caller: { owner_name: Jordan, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: Este miércoles.
+    reply: "Tengo {offered.0}, o {offered.1}."
+    delegate:
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Biscuit queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [which_week]
+  bookings_created: 1
+  sms_sent: 1
+  booked_on: "2026-09-30"
+  not_offered_on: ["2026-10-07"]
+  spoken_contains: ["¿Este miércoles 30 de septiembre, o el miércoles 7 de octubre?", "miércoles 30 de septiembre a las"]

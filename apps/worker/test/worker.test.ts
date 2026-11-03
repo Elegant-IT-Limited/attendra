@@ -421,7 +421,7 @@ describe('appointment reminders', () => {
     expect(await h('21:00').appointmentReminders()).toEqual({ sent: 0 }); // quiet hours
     expect(await h('10:30').appointmentReminders()).toEqual({ sent: 1 });
     expect(await h('10:40').appointmentReminders()).toEqual({ sent: 0 }); // claimed once
-    expect(bodies).toEqual([expect.stringMatching(/^Reminder Vets: A reminder of Biscuit's sick visit with Dr\. Nkem Okafor on Wednesday, October 7 at 10:00 AM\. Reply C to confirm, or call \(303\) 555-0124/)]);
+    expect(bodies).toEqual([expect.stringMatching(/^Reminder Vets: A reminder of Biscuit's sick visit with Dr\. Nkem Okafor on Wednesday, October 7, at 10:00 AM\. Reply C to confirm, or call \(303\) 555-0124/)]);
     const [row] = await withClinic(t.db, REM.id, (tx) => tx.select().from(schema.appointments).where(eq(schema.appointments.id, soon)));
     expect(row!.reminderSentAt).toBeInstanceOf(Date);
     expect(row!.reminderSmsId).toEqual(expect.any(String));

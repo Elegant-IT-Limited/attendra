@@ -5,7 +5,7 @@ local_time: "10:00"
 caller_number: null
 channel: web
 tags: [no-demo, number-first]
-facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174. Your dog is Luna. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
+facts: "A browser test call. You are Carmen Ortiz; the number on file is 720 555 0174. Your dog is Luna. Give your name when asked. You only want to check Luna is on file: once she is found, say thanks, you will call back to book, goodbye."
 turns:
   - caller: It's for Luna, the number is 720 555 0175.
     reply: "That's 720-555-0175?"
@@ -18,11 +18,16 @@ turns:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
   - assistant: "That's 720-555-0174?"
   - caller: Yes, that's it.
-    reply: "I found Luna, your dog."
+    reply: "And your name?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0174" }
+  - assistant: "And your name?"
+  - caller: Carmen Ortiz.
+    reply: "I found Luna, your dog."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "720 555 0174" }
 expect:
   outcome: abandoned
   verified: true
-  refusals: [confirm_number, confirm_number]
-  returned: ["That's 720-555-0175?", "That's 720-555-0174?", "I found Luna, your dog."]
+  refusals: [confirm_number, confirm_number, owner_check]
+  returned: ["And your name?", "That's 720-555-0175?", "That's 720-555-0174?", "I found Luna, your dog."]

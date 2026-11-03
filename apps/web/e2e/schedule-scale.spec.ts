@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { type Browser, expect, type Page, test } from '@playwright/test';
 import { E2E_PROVISIONING_TOKEN } from './auth-state';
 import { newContext, signInPatiently } from './session';
+import { testDate } from './clock';
 
 /*
  * The Schedule at a clinic of two hundred veterinarians (a group practice that imported its whole
@@ -43,7 +44,7 @@ const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"
  * week the Agenda shows, whatever day and hour the suite runs (seven days from tomorrow straddled two weeks).
  */
 const addDaysTo = (date: string, n: number) => new Date(Date.parse(`${date}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-const TODAY = localDate(new Date());
+const TODAY = localDate(testDate());
 const NEXT_MONDAY = addDaysTo(TODAY, ((8 - new Date(`${TODAY}T12:00:00Z`).getUTCDay()) % 7) || 7);
 const WEEKDAYS = Array.from({ length: 5 }, (_, i) => addDaysTo(NEXT_MONDAY, i));
 /**
@@ -63,8 +64,8 @@ let clinicId = '';
 let state: Awaited<ReturnType<ReturnType<Page['context']>['storageState']>> | undefined;
 
 /** A page signed in as the owner, watching for the first lane or agenda row so a test can read when it appeared. */
-async function openPage(browser: Browser) {
-  const context = await newContext(browser, { storageState: state });
+async function openPage(browser: Browser, { realClock = false } = {}) {
+  const context = await newContext(browser, { storageState: state }, { realClock });
   const page = await context.newPage();
   await page.addInitScript(() => {
     const w = window as unknown as { __firstGrid?: number };
@@ -355,7 +356,8 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
 
   test('the Day view and the Agenda each show their first row within a second of the navigation', async ({ browser }) => {
     test.setTimeout(120_000);
-    const page = await openPage(browser);
+    // the page's own performance.now() times it: the real clock, since E2E_CLOCK's fake one counts from its install
+    const page = await openPage(browser, { realClock: true });
     // once, so the dev server has compiled the page and the browser has its scripts: what a second visit costs
     await page.goto(`/c/${clinicId}/schedule?view=day&date=${DAY}`);
     await expect(page.getByTestId('lane').first()).toBeVisible({ timeout: 30_000 });

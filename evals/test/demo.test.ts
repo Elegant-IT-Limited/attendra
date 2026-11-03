@@ -50,7 +50,7 @@ describe('demo calls', () => {
     const booking = results.find((r) => r.id === 'booking-happy-path')!;
     const call = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, booking.callId, 'test');
     expect(call!.transcript[0]).toMatchObject({ speaker: 'agent', text: DEMO_CLINIC.greeting });
-    expect(call!.transcript.map((s) => s.text).join(' ')).toMatch(/Maria Delgado.*You're all set for (today|tomorrow|\w+day(, \w+ \d+)?) at/);
+    expect(call!.transcript.map((s) => s.text).join(' ')).toMatch(/Maria Delgado.*You're all set for \w+day, \w+ \d+, at/);
     expect(call!.actions.map((a) => a.tool)).toEqual(['verify_caller', 'find_slots', 'propose_booking', 'commit_pending']);
     const hedge = await new FrontDeskRepository(t.db, cipher).getCall(DEMO_CLINIC.id, results.find((r) => r.id === 'hedge-is-not-yes')!.callId, 'test');
     expect(hedge!.transcript.map((s) => s.text).join(' ')).toContain('for an annual physical');

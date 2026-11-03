@@ -4,9 +4,11 @@ clinic: riverbend
 local_time: "11:00"
 tags: [new-pet]
 caller_number: "+17205550176"
-facts: "You are Sol and you speak only Spanish. You are calling from your own mobile, the number you are calling from. You go by one name only, Sol, and have no last name to give: if you are asked for one (apellido), say you only go by Sol (solo Sol), a little annoyed. Bolt is your male dog (perro), about two years old (como dos años), and he has never been to this clinic. You already said he is new and a dog. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
+facts: "You are Sol and you speak only Spanish. You are calling from your own mobile, the number you are calling from. You go by one name only, Sol, and have no last name to give: if you are asked for one (apellido), say you only go by Sol (solo Sol), a little annoyed. Bolt is your male dog (perro, macho: you already said so), about two years old (como dos años), and he has never been to this clinic. You already said he is new and a dog. Any vet and any time are fine (cualquier hora). Say sí to the first time offered and to the read-back."
 turns:
-  - caller: Hola, quiero traer a mi perro por primera vez. Soy Sol, solo Sol, y se llama Bolt. Es nuevo, nunca ha venido a su clínica.
+  # the twin of the English line, which gives the sex ("his name", "he's new"): "perro" and "es nuevo" are said of either sex,
+  # so the Spanish caller says it, and the sex is then never asked (2026-11-14)
+  - caller: Hola, quiero traer a mi perro por primera vez. Soy Sol, solo Sol, y se llama Bolt, es macho. Es nuevo, nunca ha venido a su clínica.
     reply: "Bienvenido, Sol. Puedo registrar a Bolt. ¿Qué edad tiene?"
     delegate:
       - verify_caller: { owner_name: Sol, pet_name: Bolt }

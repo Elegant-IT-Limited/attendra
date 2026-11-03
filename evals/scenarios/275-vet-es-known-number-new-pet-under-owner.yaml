@@ -1,0 +1,37 @@
+id: vet-es-known-number-new-pet-under-owner
+title: "Spanish: caller ID on a known number, and \"una nueva\": the puppy is added under the owner on file, with no question about the owner's name"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, record, new-pet, jordan-household, language, es]
+facts: "Eres Jordan Avery y hablas español; llamas desde el número de la ficha. Tu cachorro nuevo Milo, macho, de tres meses, necesita una primera consulta. Cualquier veterinario y cualquier hora te sirven; acepta la primera hora y di sí a la confirmación."
+turns:
+  - caller: Hola, necesito una cita, por favor.
+    reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
+  - caller: Sí.
+    reply: "Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: null, phone: null }
+  - caller: Una nueva. Un cachorro, Milo, es macho y tiene tres meses.
+    reply: "Milo ya está registrado. Para una primera consulta tengo {offered.0}, o {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Milo, owner_name: null, species: dog, sex: male, birthday_or_age: tres meses, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera, por favor.
+    reply: "Tengo {readback}. ¿Es correcto?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita de Milo queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  bookings_created: 1
+  sms_sent: 1
+  spoken_contains: ["Gracias, Jordan. ¿Es para Biscuit o para Pepper, o para una mascota nueva?"]
+  returned: ["Milo is now registered"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Milo] }
+forbid_spoken: ["su nombre", "your name", "no tengo su nombre"]

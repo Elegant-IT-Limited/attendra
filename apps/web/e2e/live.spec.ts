@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { openAs } from './session';
+import { testDate } from './clock';
 
 // A simulated call: scripted, through the real assistant and the demo database, with
 // no audio and no OpenAI. The demo server runs with ATTENDRA_SIMULATED_CALLS=on.
@@ -80,7 +81,7 @@ test('a live page whose stream closes for good, for a call no longer live, becom
   const page = await openAs(browser, 'frontdesk');
   const clinic = new URL(page.url()).pathname.split('/')[2];
   const callId = '00000000-0000-4000-8000-00000000c0de';
-  const snapshot = { callId, channel: 'phone', startedAt: new Date(Date.now() - 60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false, pending: null };
+  const snapshot = { callId, channel: 'phone', startedAt: testDate(-60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false, pending: null };
   let streams = 0;
   // the stream answers once, then refuses, so EventSource gives up; the call is not in the live list
   await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/calls/${callId}/live`, (route) => (streams++ === 0
@@ -95,7 +96,7 @@ test('your own number for take-overs can be changed and cleared from the take-ov
   const page = await openAs(browser, 'frontdesk');
   const clinic = new URL(page.url()).pathname.split('/')[2];
   const callId = '00000000-0000-4000-8000-00000000beef';
-  const summary = { callId, channel: 'phone', startedAt: new Date(Date.now() - 60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false };
+  const summary = { callId, channel: 'phone', startedAt: testDate(-60_000).toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false };
   // a phone call, live: a browser test call cannot be taken over, so this one is stubbed
   await page.route((url) => url.pathname === `/api/v1/clinics/${clinic}/calls/${callId}/live`, (route) => route.fulfill({
     status: 200, contentType: 'text/event-stream', body: `retry: 60000\nid: 0\nevent: snapshot\ndata: ${JSON.stringify({ state: { ...summary, pending: null } })}\n\n`,

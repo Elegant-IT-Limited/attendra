@@ -1,0 +1,32 @@
+id: vet-memory-correction
+title: "Call memory: \"my dog... no, sorry, it's a cat\" is corrected in the same breath; the new pet is added as a cat"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, memory, new-pet, jordan-household]
+facts: "You are Jordan Avery, calling from the number on file. Your new cat Olive, a girl, four months old, needs a first visit; she is new to the clinic. Any vet and any time are fine; take the first time and say yes to the read-back."
+turns:
+  - caller: Hi, I need a first visit for my dog. No, sorry, it's a cat. She's a new pet.
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes. She's called Olive, four months old.
+    reply: "Olive is added. For a new patient exam I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - register_patient: { pet_name: Olive, owner_name: null, species: null, sex: null, birthday_or_age: null, phone: null }
+      - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one, please.
+    reply: "Just to confirm: {readback}. Is that right?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Olive is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  returned: ["Olive is now registered"]
+  household: { phone: "+13035550142", names: [Biscuit, Pepper, Olive] }
+  pet_on_file: { phone: "+13035550142", name: Olive, species: cat }
+forbid_spoken: ["what kind of animal", "is she a dog", "your name"]

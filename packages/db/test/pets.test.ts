@@ -1,7 +1,7 @@
 import { RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, createPhiCipher, PostgresPatientDirectory, seedRiverbend, withClinic, schema } from '../src';
+import { CallRepository, createPhiCipher, PostgresPatientDirectory, sameOwnerName, seedRiverbend, withClinic, schema } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -112,5 +112,43 @@ describe('the animals list for vet clinics opened before it came with sign-up', 
     const [row] = (await t.db.execute(sql`select config -> 'lists' -> 'categories' as list, config_version as v from clinics where id = 'clinic_old_vets'`)).rows as { list: string[]; v: number }[];
     expect(row).toEqual({ list: ['Dogs', 'Cats', 'Rabbits', 'Birds', 'Reptiles', 'Small mammals', 'Exotic pets'], v: 2 });
     expect(await seedAnimalLists(t.db, { apply: true })).toMatchObject({ empty: 0, filled: 0 });
+  });
+});
+
+// a number the caller says is checked by their name before its records are used; the name on file never leaves (2026-11-14)
+describe('the owner check on a spoken number', () => {
+  it('compares by sound, with accents and case aside, and the same first two letters', () => {
+    expect(sameOwnerName('Lính', 'Linh Nguyen')).toBe(true);
+    expect(sameOwnerName('linh nguyen', 'Linh')).toBe(true);
+    expect(sameOwnerName('Jordon', 'Jordan')).toBe(true);
+    expect(sameOwnerName('José', 'Jose Ortiz')).toBe(true);
+    expect(sameOwnerName('Carmen', 'Linh Nguyen')).toBe(false);
+    expect(sameOwnerName('Ali', 'Al')).toBe(true);
+    expect(sameOwnerName('Al', 'El')).toBe(false);
+    expect(sameOwnerName('', 'Linh')).toBe(false);
+  });
+
+  it('answers with the result only, audits only the result, and asks for a name the number needs', async () => {
+    const dir = new PostgresPatientDirectory(t.db, cipher);
+    const callId = await new CallRepository(t.db, cipher).open(C, 'sess_owner_check', null);
+    expect(await dir.ownerMatches(C, '+17205550172', 'LINH', callId)).toBe('match');
+    expect(await dir.ownerMatches(C, '+17205550172', 'Alex', callId)).toBe('no_match');
+    expect(await dir.ownerMatches(C, '+17205550172', null, callId)).toBe('name_needed');
+    expect(await dir.ownerMatches(C, '+17205550199', 'Alex', callId)).toBe('no_owner');
+    const audit = (await t.db.execute(sql`select action, entity, entity_id from audit_logs where clinic_id = ${C} and call_id = ${callId} and action like 'patient.owner_check%' order by id`)).rows;
+    expect(audit).toEqual([
+      { action: 'patient.owner_check.match', entity: 'call', entity_id: callId },
+      { action: 'patient.owner_check.no_match', entity: 'call', entity_id: callId },
+    ]);
+    expect(JSON.stringify(audit)).not.toMatch(/linh|nguyen|alex/i);
+  });
+
+  it('gives a known caller the household: the owner\'s first name and the pets, audited', async () => {
+    const dir = new PostgresPatientDirectory(t.db, cipher);
+    const callId = await new CallRepository(t.db, cipher).open(C, 'sess_household', null);
+    expect(await dir.householdOnNumber(C, '+17205550172', callId)).toEqual({ owner: 'Linh', names: expect.arrayContaining(['Biscuit', 'Mochi']), more: false });
+    expect(await dir.householdOnNumber(C, '+17205550199', callId)).toEqual({ owner: null, names: [], more: false });
+    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where call_id = ${callId} and action = 'patient.household.read.call'`)).rows[0] as { n: number };
+    expect(audit.n).toBe(1);
   });
 });

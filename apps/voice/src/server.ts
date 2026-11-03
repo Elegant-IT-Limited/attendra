@@ -19,8 +19,11 @@ export interface VoiceDeps {
   claimDelivery(id: string): Promise<boolean>;
   clinicForNumber(e164: string): Promise<unknown | null>;
   clinicById(clinicId: string): Promise<unknown | null>;
-  /** `startedBy` (a staff user id) marks a browser test call and is audited with the call row. */
-  openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string): Promise<string>;
+  /**
+   * `startedBy` (a staff user id) marks a browser test call and is audited with the call row.
+   * `calledAsLast4`: a browser test call started as a number ("Call as") keeps only its last four digits.
+   */
+  openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string, calledAsLast4?: string): Promise<string>;
   /** Where alerts go (Slack): a call turned away or failed. */
   alerts?: Alerter;
   /** This number's last calls to the clinic, as lines for the backend; null when there are none. */
@@ -73,7 +76,15 @@ export const TEST_CALL_TIME_UP = 'The browser test call has reached its time lim
 /** How long the goodbye may take before the line is closed. */
 const TEST_CALL_GOODBYE_MS = 8000;
 
-const WebCall = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024), maxSeconds: z.number().int().positive().optional() });
+/**
+ * `callAs`: the number a browser test call is started as ("Call as"), checked by the API (staff of the
+ * clinic; a record's number needs patients:read). It becomes that call's caller ID and nothing else's:
+ * only this internal route reads it, and a phone call's caller ID only ever comes from the carrier.
+ */
+const WebCall = z.object({
+  clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), sdp: z.string().min(1).max(64 * 1024), maxSeconds: z.number().int().positive().optional(),
+  callAs: z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),
+});
 const WebCallEnd = z.object({ clinicId: z.string().min(1).max(64) });
 const LiveAction = z.object({ clinicId: z.string().min(1).max(64), userId: z.string().min(1).max(64), byName: z.string().trim().max(100).optional(), key: z.string().min(8).max(100) });
 const Coach = LiveAction.extend({ note: z.string().trim().min(1).max(300) });
@@ -244,7 +255,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         let started: { sessionId: string; sdpAnswer: string };
         try {
           marks.mark('accept_sent');
-          started = await deps.engine.startBrowserCall(clinic, body.sdp, now());
+          // with a number to call as, the voice has caller ID: its number line, not "there is no caller ID"
+          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null });
           marks.mark('accepted');
         } catch (err) {
           hold(clinic.id, -1);
@@ -254,7 +266,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         const { sessionId } = started;
         let callId: string;
         try {
-          callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId);
+          // the call row never holds the number: a client's calls from it must not fill with tests
+          callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId, body.callAs?.slice(-4));
         } catch (err) {
           deps.log.error({ session_id: sessionId, err }, 'browser call setup failed');
           await deps.engine.hangup(sessionId).catch(() => {});
@@ -266,11 +279,17 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         webCalls.set(callId, { clinicId: clinic.id, sessionId });
         // the API may ask for less than the usual limit: the clinic's test time left
         const limit = Math.min(body.maxSeconds ?? maxSeconds, maxSeconds);
-        track(runCall(clinic, sessionId, callId, null, 'web', { maxSeconds: limit, marks }).finally(() => {
+        track(runCall(clinic, sessionId, callId, body.callAs ?? null, 'web', { maxSeconds: limit, marks }).finally(() => {
           webCalls.delete(callId);
           hold(clinic.id, -1);
         }));
-        return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit });
+        return reply.code(201).send({ callId, sdp: started.sdpAnswer, maxSeconds: limit, calledAsLast4: body.callAs ? body.callAs.slice(-4) : null });
+      });
+
+      // The usual time limit for one test call, so the dashboard can say it before the call. This config is its one source.
+      internal.get('/internal/web-calls/limits', async (req, reply) => {
+        if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
+        return { maxSeconds };
       });
 
       // The dashboard's way out when the browser cannot send session.close itself:
@@ -390,8 +409,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         return parsed.success ? parsed.data : null;
       };
       // a caller ringing back is helped from where they left off; a failed read never holds up the call, and neither
-      // does a slow one: the sideband attaches and the greeting goes out while the records are read
-      const historyRead: Promise<string | null> = from && !web && deps.historyFor ? deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
+      // does a slow one: the sideband attaches and the greeting goes out while the records are read. A browser test
+      // call has a number only when staff started it as one ("Call as"), and is then read the same way.
+      const historyRead: Promise<string | null> = from && deps.historyFor ? deps.historyFor(clinic.id, from, callId).catch((err: unknown) => {
         deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'could not read the caller\'s earlier calls');
         return null;
       }) : Promise.resolve(null);
@@ -510,10 +530,10 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const paused = front ? { uri: front.ok ? front.uri : null } : undefined;
       const vip = paused ? null : vipRoute(clinic, from, now());
       const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
-      const vipArgs = opening ? [opening] as const : [] as const;
       marks.mark('accept_sent');
-      if (router) await router.acceptWith(via, sessionId, clinic, now(), ...vipArgs);
-      else await deps.engine.accept(sessionId, clinic, now(), ...vipArgs);
+      // the caller ID goes in from the start: the voice asks the number question itself, for a visit only (2026-11-14)
+      if (router) await router.acceptWith(via, sessionId, clinic, now(), opening, { callerNumber: from });
+      else await deps.engine.accept(sessionId, clinic, now(), opening, { callerNumber: from });
       accepted = true;
       marks.mark('accepted');
       const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');

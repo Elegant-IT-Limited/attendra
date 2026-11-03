@@ -71,7 +71,7 @@ function exampleVars(c: ClinicConfig): Record<string, string> {
   return {
     ...templateVars(c), clinicPhone: callUsNumber(c),
     name: pets ? 'Alex' : 'Sam', ...(pets ? { pet: 'Max', visit: (c.visitTypes[0]?.name ?? 'check-up').toLowerCase() } : {}),
-    provider: vet?.name ?? 'Dr. Lee', when: 'Wednesday, October 28 at 10:00 AM', pharmacy: 'CVS on Main St', details: 'sees dogs and cats',
+    provider: vet?.name ?? 'Dr. Lee', when: 'Wednesday, October 28, at 10:00 AM', pharmacy: 'CVS on Main St', details: 'sees dogs and cats',
     answer: 'We are open until 6 PM today.', hours: 'Mon-Fri 8 AM-6 PM, Sat 9 AM-1 PM', mapUrl: 'https://maps.google.com/?q=clinic',
     label: c.texting?.links[0]?.label ?? 'New client form', url: c.texting?.links[0]?.url ?? 'https://example.com/form',
     address: c.address?.trim() || '214 Main Street',

@@ -32,7 +32,8 @@ export const Scenario = z.object({
   clinic: z.enum(['maple', 'cedar_park', 'riverbend']).default('maple'),
   // defaults to the clinic's first demo patient: Maria at Maple Street, Ruth at Cedar Park, Biscuit's owner at Riverbend
   caller_number: z.string().nullable().optional(),
-  // a browser test call from the dashboard: no caller ID (set caller_number to null too), and no transfers
+  // a browser test call from the dashboard, with no transfers: no caller ID when caller_number is null, or "called as"
+  // that number when it is set (the test-call page's Call as), which the call treats as its caller ID
   channel: z.enum(['phone', 'web']).default('phone'),
   // the caller speaks over the greeting ("Hello?"): the call has only its first words, and must never start it again
   greeting_interrupted: z.boolean().default(false),
@@ -72,6 +73,18 @@ export const Scenario = z.object({
     offered_from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), // every offered time is at or after this local time of day
     booked_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // every booking made on the call is on this local date
     hung_up: z.boolean().optional(),
+    // the team's note on the appointments made on the call (decrypted), each phrase in one of them ("booked by caller: Alex"),
+    // or no note on any of them
+    appointment_note_contains: z.array(z.string()).default([]),
+    appointment_note_empty: z.boolean().default(false),
+    // live only: what the planner model read the caller wanting from the call, into the call memory (2026-11-14); scripted
+    // runs have no model to read it, so the check is skipped there
+    intent: z.enum(['book', 'move', 'cancel', 'question']).optional(),
+    // the first thing the assistant says after the caller's first line contains this (the number question at once, or not)
+    first_reply_contains: z.string().optional(),
+    // a pet on file on that number when the call ends, with the kind of animal its record says (a pet added on the call
+    // as the caller described it, never asked twice)
+    pet_on_file: z.object({ phone: z.string(), name: z.string(), species: z.string() }).optional(),
     // the first names on file for this number when the call ends, in any order, read the way the pet page reads a
     // household (everyone on the same phone): a pet added on the call joins its owner's number, and nobody else's
     household: z.object({ phone: z.string(), names: z.array(z.string()).min(1) }).optional(), // the assistant ended the call itself (an abusive caller after the warning, or a finished call)

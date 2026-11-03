@@ -58,13 +58,13 @@ const SAMPLE = {
 describe('speaking dates and numbers', () => {
   it('Spanish uses the article with the hour', () => {
     const denver = DEMO_CLINIC.timezone;
-    expect(speakSlot(zonedInstant('2026-09-29', '13:00', denver), denver, 'es')).toMatch(/^martes, 29 de septiembre a la 1:00/);
-    expect(speakSlot(zonedInstant('2026-09-29', '15:00', denver), denver, 'es')).toMatch(/^martes, 29 de septiembre a las 3:00/);
+    expect(speakSlot(zonedInstant('2026-09-29', '13:00', denver), denver, 'es')).toBe('el martes 29 de septiembre a la 1:00 de la tarde');
+    expect(speakSlot(zonedInstant('2026-09-29', '15:00', denver), denver, 'es')).toBe('el martes 29 de septiembre a las 3:00 de la tarde');
   });
 
-  it('English is unchanged', () => {
+  it('English says the weekday, the date and the time', () => {
     const denver = DEMO_CLINIC.timezone;
-    expect(speakSlot(zonedInstant('2026-09-29', '08:00', denver), denver)).toBe('Tuesday, September 29 at 8:00 AM');
+    expect(speakSlot(zonedInstant('2026-09-29', '08:00', denver), denver)).toBe('Tuesday, September 29, at 8:00 AM');
   });
 
   it('phone numbers are read digit by digit', () => {

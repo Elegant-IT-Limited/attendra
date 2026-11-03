@@ -77,6 +77,16 @@ export interface PatientDirectory {
    * so a second family on the same number is never named. Nothing found gives no names.
    */
   petsOnNumber?(clinicId: string, phone: string, callId: string): Promise<{ names: string[]; more: boolean }>;
+  /**
+   * The household on a number, for a caller who is known (caller ID, or a spoken number whose owner matched the name they
+   * gave): the owner's first name on file and the pets' first names (at most three, `more` for the rest).
+   */
+  householdOnNumber?(clinicId: string, phone: string, callId: string): Promise<{ owner: string | null; names: string[]; more: boolean }>;
+  /**
+   * Whether the name a caller gave on a number they said is the owner's on file, compared by sound. The name on file never
+   * comes back: only the result. 'name_needed' when no name was given and the number has an owner.
+   */
+  ownerMatches?(clinicId: string, phone: string, saidName: string | null, callId: string): Promise<'match' | 'no_match' | 'no_owner' | 'name_needed'>;
 }
 
 export interface AppointmentSummary {
@@ -96,7 +106,8 @@ export type BookingResult =
 export interface SchedulerAdapter {
   busy(clinicId: string, providerIds: string[], from: Date, to: Date): Promise<{ providerId: string; start: Date; end: Date; visitTypeId?: string }[]>;
   /** `replacesAppointmentId`: the visit this booking moves, which does not count as a clash. */
-  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null }): Promise<BookingResult>;
+  /** `note`: a line for the team on the appointment ("booked by caller: Alex"), kept encrypted like a staff note. */
+  book(clinicId: string, input: { patientId: string; slot: Slot; callId: string; idempotencyKey: string; replacesAppointmentId?: string | null; note?: string | null }): Promise<BookingResult>;
   cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }): Promise<{ status: 'cancelled' | 'already_done' | 'not_found' }>;
   upcoming(clinicId: string, patientId: string, now: Date): Promise<AppointmentSummary[]>;
   /** Past visits, for the patient's usual provider. Without it, nobody counts as usual. */

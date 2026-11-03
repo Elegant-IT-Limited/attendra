@@ -44,7 +44,9 @@ describe('booking over the phone', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     expect(c.state.verifiedPatient?.firstName).toBe('Maria');
-    expect(spoken(verify)).toContain('tomorrow at 8:00 AM');
+    expect(spoken(verify)).toContain('Tuesday, September 29, at 8:00 AM');
+    // the times as they are said: the date once
+    expect(spoken(verify)).toContain('On Tuesday, September 29, I have 8:00, 8:20 or 8:40 AM with Dr. Nkem Okafor.');
 
     c.assistant('I have Tuesday at 8, 8:20 or 8:40 with Dr. Okafor.');
     c.caller('The first one please.');
@@ -434,7 +436,7 @@ describe('safety', () => {
     const hidden = await w.call(null);
     const out = await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: null, topic: null } }]);
     expect(out.errors).toEqual(['no_callback_number']);
-    expect(spoken(out)).toContain('ask for the best number');
+    expect(spoken(out)).toContain('ask, in these words: "What\'s the best number to reach you?"');
     await hidden.delegate([{ tool: 'create_callback', args: { reason: 'billing question', callback_number: '303 555 0199', topic: null } }]);
     // a number said any way is kept in the one form, E.164
     expect(create.mock.calls.at(-1)![1].details.callback_number).toBe('+13035550199');

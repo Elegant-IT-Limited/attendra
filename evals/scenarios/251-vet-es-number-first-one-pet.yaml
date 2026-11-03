@@ -9,7 +9,7 @@ turns:
   - caller: Hola, quiero reservar una revisión.
     reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0174?"
   - caller: Sí, ese.
-    reply: "Veo a Luna con este número. ¿Es para Luna, o para una mascota nueva?"
+    reply: "Gracias, Carmen. ¿Es para Luna, o para una mascota nueva?"
     delegate:
       - verify_caller: { owner_name: null, pet_name: null, phone: null }
   - caller: Sí, Luna.
@@ -31,4 +31,4 @@ expect:
   bookings_created: 1
   sms_sent: 1
   language: es
-  returned: ["Veo a Luna con este número. ¿Es para Luna, o para una mascota nueva?", "Encontré a Luna, su perro."]
+  returned: ["Gracias, Carmen. ¿Es para Luna, o para una mascota nueva?", "Encontré a Luna, su perro."]

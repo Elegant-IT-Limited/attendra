@@ -8,7 +8,7 @@ channel: web
 facts: "This is a test call from the browser, so there is no caller ID. You are Linh Nguyen. Your dog Biscuit needs a check-up. The phone number on his file is 720 555 0172."
 turns:
   - caller: Hi, this is Linh Nguyen. I'd like to book a check-up.
-    reply: "Thanks, Linh. What's the best number to reach you?"
+    reply: "Thanks, Linh. What phone number is your pet's profile under?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: null }
   - caller: It's 720 555 0172.
@@ -17,7 +17,7 @@ turns:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
   - assistant: "That's 720-555-0172?"
   - caller: Yes, that's right.
-    reply: "Thanks. I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"
+    reply: "Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"
     delegate:
       - verify_caller: { owner_name: Linh Nguyen, pet_name: null, phone: "720 555 0172" }
   - caller: For Biscuit.
@@ -29,4 +29,4 @@ expect:
   outcome: abandoned
   verified: true
   refusals: [phone_required, confirm_number]
-  returned: ["I see Biscuit and Mochi under this number. Which one is it for, or is it a new pet?"]
+  returned: ["Thanks, Linh. Is this for Biscuit or Mochi, or a new pet?"]
