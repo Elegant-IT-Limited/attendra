@@ -76,6 +76,11 @@ export interface LanguagePack {
   textOffer: (v: { target: 'this' | 'file' }) => string;
   /** Said once the text has gone. */
   textSent: string;
+  /**
+   * Settings' warning for a visit type nobody can be booked for (2026-11-15): the dashboard shows the clinic's language,
+   * the Spanish twin is here so the words live in one place. `pets` names a vet, else a doctor.
+   */
+  noProviderForVisit: (v: { visit: string; pets: boolean }) => string;
   /** Said instead of texting. */
   textRefused: (v: { reason: 'opted_out' | 'off' }) => string;
   /** Monday first: "Mon" … "Sun", for a short hours text. */

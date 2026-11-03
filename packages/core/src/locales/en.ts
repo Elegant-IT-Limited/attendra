@@ -107,6 +107,7 @@ export const en: LanguagePack = {
   },
   textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
   textSent: "Done, I've just sent it.",
+  noProviderForVisit: ({ visit, pets }) => `No ${pets ? 'vet' : 'doctor'} does ${visit}: callers can't book it`,
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',

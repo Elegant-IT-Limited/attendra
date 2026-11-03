@@ -28,3 +28,4 @@ export * from './tools';
 export * from './voices';
 export * from './security';
 export * from './texts';
+export * from './visit-coverage';
