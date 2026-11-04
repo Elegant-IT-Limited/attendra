@@ -10,11 +10,14 @@ export const packFor = (code: Language | undefined): LanguagePack => PACKS[code 
 
 /**
  * Which of the clinic's languages the caller is speaking, from what they have said
- * so far: the one whose marker words it used most. Ties and silence go to the
- * clinic's primary language.
+ * so far: the one whose marker words it used most. Ties go to the clinic's primary
+ * language. Words with no marker in any language ("No.", "0172, Biscuit.") keep the
+ * language the call is in (`current`): a Spanish call was answered in English on a
+ * short "No" (a live eval, 2026-11-15). Silence, with no current one, is the primary.
  */
-export function detectLanguage(callerText: string, offered: readonly Language[], primary: Language): Language {
+export function detectLanguage(callerText: string, offered: readonly Language[], primary: Language, current?: Language): Language {
   const text = normalise(callerText);
+  if (current && offered.includes(current) && offered.every((code) => !(text.match(PACKS[code].markers) ?? []).length)) return current;
   let best: { code: Language; score: number } = { code: primary, score: 0 };
   for (const code of offered) {
     const matches = text.match(PACKS[code].markers) ?? [];

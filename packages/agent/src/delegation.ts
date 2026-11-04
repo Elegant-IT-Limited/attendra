@@ -162,7 +162,7 @@ export class CallAgent {
     this.state.addTranscript('caller', delta, startMs, endMs);
     this.emit({ type: 'caption', speaker: 'caller', text: redactSensitive(delta), atMs: startMs });
     const { clinic } = this.ctx;
-    if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage);
+    if (clinic.languages.length > 1) this.state.language = detectLanguage(this.state.recentCallerText(600), clinic.languages, clinic.primaryLanguage, this.state.language);
     // what the caller says is kept in the call memory, from the whole turn so far: a fact said once is never asked again
     const turn = this.state.turns.at(-1);
     if (turn?.speaker === 'caller') this.state.memory.fromCaller(turn.text, this.state.language, clinic, localDateOf(this.ctx.now(), clinic.timezone), this.state.turns.length - 1);
@@ -218,6 +218,7 @@ export class CallAgent {
     const out: Outbound[] = [{ type: 'instructions', delegationId: null, content: script }];
     // what the caller must hear before anyone may end the call: the hospital's name, or the number
     this.state.emergencyScriptSaid = false;
+    this.state.emergencyScriptSaidAtTurn = null;
     this.emergencyScript = { content: script, number: forTrade && hospital ? hospital.name : number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
     // once per call, the first time a kind serious enough is heard: "this is an emergency"
     // on its own does not ring anyone, and must not stop the chest pain after it from doing so
@@ -249,6 +250,15 @@ export class CallAgent {
     const text = normalise(this.sinceLock);
     if (!this.ctx.clinic.languages.some((l) => saidSafe(text, safe[l]))) return [];
     return this.clearEmergency();
+  }
+
+  /** An animal's emergency holds the call, its script has been said, and the caller has said nothing since. */
+  private justHeardAnimalScript(): boolean {
+    const s = this.state;
+    const at = s.emergencyScriptSaidAtTurn;
+    if (!s.emergencyLocked || at === null || !industryPack(this.ctx.clinic.industry).emergency) return false;
+    if (![...s.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) return false;
+    return !s.turns.slice(at + 1).some((t) => t.speaker === 'caller');
   }
 
   /** The pets this call has named: the ones on the number, the one being talked about, the one found. */
@@ -325,7 +335,7 @@ export class CallAgent {
       // a number ("9-1-1") or a hospital's name ("City Pet ER"), however it was spaced or punctuated
       const plain = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
       s.said = plain(s.heard).includes(plain(s.number));
-      if (s.said) this.state.emergencyScriptSaid = true;
+      if (s.said) { this.state.emergencyScriptSaid = true; this.state.emergencyScriptSaidAtTurn = this.state.turns.length - 1; }
     }
   }
 
@@ -596,6 +606,9 @@ export class CallAgent {
   async onDelegation(delegationId: string, emit?: (o: Outbound) => void): Promise<Outbound[]> {
     // once the goodbye has been said (staff ended the call, or an abusive caller), nothing more is planned or spoken
     if (this.state.ending) return [{ type: 'thinking', delegationId, content: 'The call is being ended. Say nothing more.' }];
+    // an animal's emergency script has just been said and the caller has not spoken since: nothing to plan. A live run
+    // planned on the red flag itself and put the caller through to the on-call line unasked (2026-11-15)
+    if (this.justHeardAnimalScript()) return [{ type: 'thinking', delegationId, content: 'The caller has just heard where to take the animal. Say nothing more now; wait for them to speak.' }];
     const revision = ++this.state.revision;
     const out: Outbound[] = [];
     // a note for the voice, not words for the caller: most answers come back within a second or

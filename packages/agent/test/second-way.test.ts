@@ -128,4 +128,19 @@ describe('a number with no profile', () => {
     const out = await c.delegate([verify('720 555 0191')]);
     expect(said(out)).not.toContain('last four digits');
   });
+
+  it('a second no counts even when the planner asks for the last four digits itself, before another number (a live run)', async () => {
+    const c = await w.call(null, { clinic, channel: 'web' });
+    await c.delegate([verify('720 555 0177', 'Luna')]);
+    c.assistant("That's 720-555-0177?");
+    c.caller('No, ese no es.');
+    await c.delegate([verify('720 555 0178', 'Luna')]);
+    c.assistant("That's 720-555-0178?");
+    c.caller('No, ese tampoco.');
+    c.assistant('¿Cuáles son los últimos cuatro dígitos del número de la ficha?');
+    c.caller('0174; Luna.');
+    const found = await c.delegate([verify(null, 'Luna', '0174')]);
+    expect(found.errors).toEqual([null]);
+    expect(c.state.verifiedPatient?.firstName).toBe('Luna');
+  });
 });

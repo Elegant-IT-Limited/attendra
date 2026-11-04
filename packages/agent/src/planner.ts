@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, agesLine, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
+import { addDays, agesLine, isOpen, resolveTransfer, asE164, providerName, audienceLine, type ClinicConfig, industryPack, localDateOf, MEDICAL_REFUSAL, NO_INFORMATION, normalise, PACKS, PROPOSE_IF_EXACT, speakSlot, textableNumber, textingOf, toolArgsFor, type ToolName, TOOL_NAMES, weekdayOf } from '@attendra/core';
 import type OpenAI from 'openai';
 import type { Response, ResponseCreateParams, ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses';
 import type { ReasoningEffort } from 'openai/resources/shared';
@@ -490,6 +490,17 @@ export function emptyPromise(say: string, state: CallState, doneBefore = state.d
   return !state.pending && state.done.length === doneBefore && PROMISE.test(t) && !WAITS_FOR.test(t);
 }
 
+/**
+ * After an animal's emergency script: nothing the caller has not asked for, and for a visit for that pet the next step in
+ * the backend's words at once, never the number question first or the hospital again (a live run asked for the profile
+ * number, then repeated the hospital, 2026-11-15). Another pet is helped as usual.
+ */
+function animalEmergencyLine(state: CallState, clinic: ClinicConfig, now: Date): string {
+  const pet = state.emergencyPet?.name ?? null;
+  const transfer = resolveTransfer(clinic, 'front_desk', now).ok && isOpen(clinic, now);
+  return `an animal emergency: the caller has heard where to take ${pet ?? 'the pet'}; do nothing they have not asked for (no transfer, no request). If they ask for a visit for ${pet ?? 'that pet'}, do not ask for its number or details: say, in these words, "${PACKS[state.language].petEmergencyNext({ pet, transfer })}" and on a yes ${transfer ? 'call transfer_call with front_desk' : 'call create_callback (callback_number null unless they give one): the team gets it as urgent'}. Say the hospital again only if they ask. Another pet is helped as usual`;
+}
+
 export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): string {
   const pets = clinic?.industry === 'vet';
   const saidNew = !state.verifiedPatient && pets && state.saidNew() === 'new';
@@ -506,6 +517,8 @@ export function stateLine(state: CallState, clinic?: ClinicConfig, now?: Date): 
     ...(state.known.size ? [`details the caller gave: ${[...state.known].map(([k, v]) => `${k} ${v}`).join(', ')} (never ask for these again; a correction replaces one)`] : []),
     ...(clinic && memoryLine(state.memory, clinic, state.language) ? [memoryLine(state.memory, clinic, state.language)!] : []),
     ...(chosen ? [`the caller chose ${speakSlot(chosen.start, clinic!.timezone, state.language, now)}${provider ? ` with ${providerName(provider, state.language)}` : ''} before being found: keep it, and once found or added, look for that time again and read it back for their yes`] : []),
+    // after an animal's script: answer what the caller asks next, never act on the red flag itself (a live run transferred unasked)
+    ...(pets && state.emergencyLocked && state.emergencyScriptSaid && clinic ? [animalEmergencyLine(state, clinic, now ?? new Date())] : []),
     state.pending ? `waiting for a yes to: ${state.pending.readback}` : 'nothing pending',
     state.offered.size ? `${state.offered.size} slots offered` : 'no slots offered yet',
     ...(state.callerNotTextable ? ['texts: the number they are calling from cannot get texts; do not offer one again, never ask for another number'] : []),

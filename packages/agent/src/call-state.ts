@@ -105,6 +105,8 @@ export class CallState {
   emergencyCleared = false;
   /** The assistant has said the emergency script (its hospital or number is in the captions): it is never said again unasked. */
   emergencyScriptSaid = false;
+  /** The turn that said it: the caller's turns after it are what the backend answers next. */
+  emergencyScriptSaidAtTurn: number | null = null;
   /**
    * At a clinic for animals, the bare word "emergency" gets one short question: "Is Ginger in danger right now?". The
    * caller's next words answer it: a yes holds the call as an emergency, a no lets it go on. Asked once per call. (A

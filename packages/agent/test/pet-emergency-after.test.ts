@@ -99,4 +99,26 @@ describe('after the pet script', () => {
     c.caller("Biscuit's tongue is swelling up");
     expect(c.state.emergencyPet).toEqual({ name: 'Biscuit', species: 'dog' });
   });
+
+  it('plans nothing on the red flag itself once the script is said: no unasked transfer (a live run, 2026-11-15)', async () => {
+    const c = await w.call('+17205550172', { clinic: openLate });
+    c.caller("Biscuit can't breathe properly.");
+    c.assistant(SCRIPT);
+    const out = await c.delegate([{ tool: 'transfer_call', args: { target: 'on_call' } }]);
+    expect(out.results).toEqual([]);
+    expect(out.some((o) => o.type === 'transfer')).toBe(false);
+    expect(JSON.stringify(out)).toContain('wait for them to speak');
+  });
+
+  it('never sends the caller to the on-call line itself in an animal emergency: the next step instead', async () => {
+    const c = await w.call('+17205550172', { clinic: openLate });
+    c.caller("Biscuit can't breathe properly.");
+    c.assistant(SCRIPT);
+    c.caller('Can I talk to someone?');
+    const out = await c.delegate([{ tool: 'transfer_call', args: { target: 'on_call' } }]);
+    expect(out.errors).toEqual(['emergency_in_progress']);
+    expect(JSON.stringify(out.results[0]!.data)).toContain('I can put you through to our team right now');
+    const desk = await c.delegate([{ tool: 'transfer_call', args: { target: 'front_desk' } }]);
+    expect(desk.errors).toEqual([null]);
+  });
 });

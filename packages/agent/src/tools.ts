@@ -2,7 +2,7 @@
 import {
   bookableProviders,
   addDays, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
-  fold, industryPack, isOpen, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
+  fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
   bookableWindows, hospitalFor, hoursSummary, type NearDirection, type Provider, type SmsTemplate, textableNumber, textingOf, bookingOf, seesAnimal, soundsLike, usualProviderOf, awayOn, specialDayOf, weekdayOf, windowsOnDate,
@@ -69,6 +69,18 @@ const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'p
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
 /**
  * Whether a tool, after an animal's emergency script, is about the pet in danger: its routine visit stays refused. Finding
+/**
+ * After an animal's emergency script: no routine visit for the pet in danger, and the next step instead, the team now
+ * (a front-desk line that takes calls while the clinic is open) or an urgent request. The hospital only if asked.
+ */
+function petEmergencyNextStep(state: CallState, ctx: CallContext): ToolResult {
+  const pet = state.emergencyPet?.name ?? null;
+  const transfer = resolveTransfer(ctx.clinic, 'front_desk', ctx.now()).ok && isOpen(ctx.clinic, ctx.now());
+  return refuse('emergency_in_progress', `The caller already heard where to take the animal: do not say it again unless they ask where to go. No routine visit for ${pet ?? 'this pet'} can be booked on this call. Say, in these words: "${PACKS[state.language].petEmergencyNext({ pet, transfer })}" `
+    + (transfer ? 'On a yes, call transfer_call with front_desk. ' : 'On a yes, call create_callback with what they want and the best number: the team gets it as urgent. ')
+    + 'A question about another pet is answered as usual.');
+}
+
  * a pet is never refused (it may be another one, or the one a request is for); the rest is about the pet found or being
  * talked about, which counts as another pet only when its name, or else its kind, differs from the one in danger. When the
  * call cannot tell, it is the same pet.
@@ -121,11 +133,7 @@ function readBackFirst(said: unknown, phone: string, state: CallState, ctx: Call
   // a read-back the caller said was wrong: another number after it, or a no to it. After two, the second way (2026-11-15:
   // a number said with its country prefix was read back three times and the call gave up)
   // (each read-back counts once: a no to it starts a fresh one, even of the same digits)
-  const last = state.phoneReadback;
-  if (last && last.askedAtMs !== null) {
-    const answer = normalise(state.latestCallerWordsAfter(last.askedAtMs));
-    if (last.digits !== digits ? answer !== '' && !isClearYes(answer, LANGUAGES) : SAID_NO.test(answer)) { state.readbacksWrong++; state.phoneReadback = null; }
-  }
+  countWrongReadback(state, digits);
   if (state.readbacksWrong >= WRONG_READBACKS && !state.lastFourAsked && industryPack(ctx.clinic.industry).identity === 'pet') return askLastFour(state, lang, 'wrong_readbacks');
   const asked = state.phoneReadback?.digits === digits && state.phoneReadback.askedAtMs !== null;
   if (!asked) state.phoneReadback = { digits, atMs: state.lastMs(), askedAtMs: null };
@@ -137,6 +145,17 @@ export const WRONG_READBACKS = 2;
 const SAID_NO = /^(?:no|nope|nah|wrong|that'?s (?:not (?:it|right)|wrong)|incorrect|incorrecto|esta mal|ese no)\b/;
 /** The second way to find a pet's profile, asked once: the last four digits of the number on file and the pet's name. */
 function askLastFour(state: CallState, lang: CallState['language'], after: 'wrong_readbacks' | 'no_profile'): ToolResult {
+/**
+ * Counts the read-back waiting for an answer as wrong when the caller's answer says so: a no to it, or (when `digits`, a
+ * number given since, differs from it) anything but a clear yes. Each read-back counts once: a no starts a fresh one.
+ */
+function countWrongReadback(state: CallState, digits: string | null) {
+  const last = state.phoneReadback;
+  if (!last || last.askedAtMs === null) return;
+  // the caller's first words after it are the answer to it ("No, that one neither.", then "0174, Luna.")
+  const answer = normalise(state.turns.find((t) => t.speaker === 'caller' && t.startMs > last.askedAtMs!)?.text ?? '');
+  if (digits !== null && last.digits !== digits ? answer !== '' && !isClearYes(answer, LANGUAGES) : SAID_NO.test(answer)) { state.readbacksWrong++; state.phoneReadback = null; }
+}
   state.lastFourAsked = after;
   state.phoneReadback = null;
   return refuse('ask_last_four', `Ask, in these words: "${PACKS[lang].lastFourQuestion({ after })}" When they answer, call verify_caller with phone_last4 (the four digits as they said them), pet_name, and phone null. Never say a number or a name from the records.`);
@@ -281,13 +300,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     // After the pet warning has been said once, never a loop (a tester clinic, 2026-11-03): finding who they are and another pet's
     // needs go on as usual; a routine visit for the pet in danger stays refused, with the next step, the team now or an
     // urgent request for them. The hospital again only when the caller asks for it.
-    if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) {
-      const pet = state.emergencyPet?.name ?? null;
-      const transfer = resolveTransfer(ctx.clinic, 'front_desk', ctx.now()).ok && isOpen(ctx.clinic, ctx.now());
-      return refuse('emergency_in_progress', `The caller already heard where to take the animal: do not say it again unless they ask where to go. No routine visit for ${pet ?? 'this pet'} can be booked on this call. Say, in these words: "${PACKS[state.language].petEmergencyNext({ pet, transfer })}" `
-        + (transfer ? 'On a yes, call transfer_call with front_desk. ' : 'On a yes, call create_callback with what they want and the best number: the team gets it as urgent. ')
-        + 'A question about another pet is answered as usual.');
-    }
+    if (aboutPetInDanger(name, parsed.data as Record<string, unknown>, state)) return petEmergencyNextStep(state, ctx);
+  }
+  // in an animal's emergency the on-call line is the clinic's own setting (emergencyTransferEnabled rings it once, by
+  // itself): the planner never sends the caller there. A live run put a caller through to it unasked (2026-11-15)
+  if (name === 'transfer_call' && (parsed.data as { target?: unknown }).target === 'on_call' && state.emergencyLocked && trade.identity === 'pet'
+    && [...state.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general')) {
+    return state.emergencyScriptSaid ? petEmergencyNextStep(state, ctx)
+      : refuse('emergency_in_progress', 'Do not transfer. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
   }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
@@ -1150,6 +1170,10 @@ async function byLastFour(said: string, args: Record<string, unknown>, state: Ca
 /**
  * The number is known but no pet is named yet: the pets on that number, the household, to pick from, at most
  * three ("Is this for Biscuit or Max, or a new pet?"). With caller ID or with a number the caller says alike:
+  // the planner may ask for the last four digits itself after the second no, before calling with another number: that
+  // no counts too (a live eval, 2026-11-15)
+  countWrongReadback(state, null);
+  if (!state.lastFourAsked && state.readbacksWrong >= WRONG_READBACKS) state.lastFourAsked = 'wrong_readbacks';
  * the number is the household, and the confirmation text to the number on file is the safety net. A number
  * with no pets gets the plain question, with no name from the records.
  */
