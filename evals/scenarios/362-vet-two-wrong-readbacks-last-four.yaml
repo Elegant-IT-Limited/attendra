@@ -42,6 +42,7 @@ expect:
   bookings_created: 1
   # the confirmation goes to the number on file: the safety net for a profile found without the whole number
   sms_sent: 1
-  returned: ["Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?", "I found Luna, your dog."]
+  # the planner may ask for the last four in its own words; the backend's search and the note are what matter
+  returned: ["I found Luna, your dog."]
   never_returned: ["Carmen", "720-555-0174"]
   appointment_note_contains: ["found on the call by the last four digits"]

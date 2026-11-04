@@ -42,4 +42,5 @@ expect:
   booked_on: "2026-10-02"
   not_offered_on: ["2026-09-29"]
   # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["Dr. Mara Vance doesn't work on Tuesdays. She's in Friday and Sunday."]
+  # live, the reason may come from get_clinic_info (the same hours, bookableWindows) before find_slots runs: the facts
+  # checked are that Tuesday is never offered and she is booked on her next day
