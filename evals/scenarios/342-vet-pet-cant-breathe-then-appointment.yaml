@@ -22,5 +22,5 @@ expect:
   refusals: [emergency_in_progress]
   bookings_created: 0
   transfer_to: tel:+17205550171
-  returned: ["I can put you through to our team right now. Would you like that?"]
+  # the next-step line is checked scripted (the refusal) and in unit tests; live, a caller may ask for the team before it
 forbid_spoken: ["If this is a medical emergency"]

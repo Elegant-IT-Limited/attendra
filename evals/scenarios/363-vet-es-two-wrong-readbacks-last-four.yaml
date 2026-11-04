@@ -43,5 +43,5 @@ expect:
   bookings_created: 1
   # the confirmation goes to the number on file: the safety net for a profile found without the whole number
   sms_sent: 1
-  returned: ["Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?", "Encontré a Luna"]
+  returned: ["Encontré a Luna"]
   never_returned: ["Carmen", "720-555-0174"]

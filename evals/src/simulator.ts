@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -282,7 +282,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   // whatever the real planner asks next, in the order it asks, up to ten caller lines
   const followUp = livePlanner && scenario.facts ? opts.followUp : undefined;
   const lines: Scenario['turns'] = followUp ? scenario.turns.slice(0, 1) : [...scenario.turns];
-  const over = () => state.emergencyLocked || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
+  // a person in danger ends the call (they call 911); after an animal's script the caller may still ask for something
+  const animal = () => [...state.emergencyKinds].every((k) => isPetEmergency(k) || k === 'general');
+  const over = () => (state.emergencyLocked && !(state.emergencyScriptSaid && animal())) || outbound.some((o) => o.type === 'transfer' || o.type === 'hangup');
   let hungUp = false;
   let callerSilent = false;
   // the call was ended by a rule of the code (the abusive caller), not by end_call after a goodbye
