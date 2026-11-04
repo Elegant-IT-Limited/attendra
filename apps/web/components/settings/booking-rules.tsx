@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { bookingOf, type BookingRules, type ClinicConfig, type Terms, providerName } from '@attendra/core';
+import { bookingOf, type BookingRules, type ClinicConfig, providerName, START_EVERY_CHOICES, type StartEvery, type Terms } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { RadioGroup, Switch } from '@/components/ui/controls';
-import { Input } from '@/components/ui/input';
+import { Input, Select } from '@/components/ui/input';
 import { moved, Sortable } from '@/components/ui/sortable';
 import { useEffect, useState } from 'react';
 
@@ -65,6 +65,12 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
             )}
           </fieldset>
 
+          <Field label="Appointment start times every…" hint={`Any free start on this grid can be booked, by the assistant and at the desk, when the whole visit fits. The assistant offers times a visit apart (8:00, 8:20, 8:40 for a 20-minute visit) and finds the nearest to a time the caller asks for.`}>
+            <Select id="start-every" className="w-40" disabled={disabled} value={String(r.startEvery)} onChange={(e) => upd({ startEvery: Number(e.target.value) as StartEvery })}>
+              {START_EVERY_CHOICES.map((n) => <option key={n} value={n}>{n} minutes</option>)}
+            </Select>
+          </Field>
+
           {pet && (
             <Switch id="match-animal" label="Match the kind of animal" checked={r.matchAnimal} disabled={disabled} onCheckedChange={(matchAnimal) => upd({ matchAnimal })}
               hint="A rabbit is offered only vets who list rabbits or exotics under what they see. A vet who lists no animals sees every animal." />
@@ -81,8 +87,9 @@ export function BookingRulesSection({ c, set, disabled, terms }: { c: ClinicConf
               ? `${who}’s usual ${vet} first, if free within ${r.usualWithinDays} ${r.usualWithinDays === 1 ? 'day' : 'days'}; a sooner time with someone else is mentioned only if none suits. Otherwise the caller hears that their ${vet} is not free soon, and gets the earliest times.`
               : 'the earliest times with anyone.'}</li>
             <li>Three different times at most, never the same time three times. {r.tieBreak === 'fewest_visits' ? `With several ${vets} free at once, the one with the fewest visits that day.` : `With several ${vets} free at once, the first in your order.`}</li>
-            <li>Never a {vet} who does not do that visit, is off or away then, does not see that age, or {pet ? 'takes no new pets' : 'takes no new patients'} when {pet ? 'the pet is' : 'they are'} new. Never outside the hours or on a day you are closed.</li>
+            <li>Never a {vet} who does not do that visit, is off or away then, does not see that age, or {pet ? 'takes no new pets' : 'takes no new patients'} when {pet ? 'the pet is' : 'they are'} new. Never outside their hours: a {vet} with their own hours can be booked outside the clinic’s, and the caller hears that the front desk is closed then.</li>
             <li>Asked which {vet} is best, or to choose: it never ranks or compares your {vets}. It says it will find the right one, and follows these rules.</li>
+            <li>Start times every {r.startEvery} minutes. Asked for a time, it says first whether that time is free, then the nearest times before and after it.</li>
             <li>It reads back the {vet}, the day and the time, and books only after a clear yes.</li>
           </ol>
         </div>

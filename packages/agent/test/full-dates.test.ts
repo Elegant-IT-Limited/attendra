@@ -24,7 +24,9 @@ describe('a booking, then "make it 4" on the same call', () => {
     expect(data(found, 1).filled_from_memory).toEqual(['from_date', 'from_time']);
     const first = (data(found, 1).slots as { slot_id: string; when: string }[])[0]!;
     expect(first.when).toBe('Wednesday, September 30, at 5:00 PM');
-    expect(String(data(found, 1).say_as)).toMatch(/^On Wednesday, September 30, I have /);
+    // the time asked for is free and the pet is found: it is staged at once and read back, so a yes books it
+    expect(data(found, 1).proposed_slot_id).toBe(first.slot_id);
+    expect(String(data(found, 1).spoken)).toMatch(/^I have Wednesday, September 30, at 5:00 PM with Dr\. /);
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: first.slot_id, replaces_appointment_id: null } }]);
     c.assistant('Shall I book it?');
     c.caller('Yes.');
@@ -37,7 +39,10 @@ describe('a booking, then "make it 4" on the same call', () => {
     expect(four.when).toBe('Wednesday, September 30, at 4:00 PM');
     const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: four.slot_id, replaces_appointment_id: null } }]);
     expect(data(proposed).filled_from_memory).toEqual(['replaces_appointment_id']);
-    expect(c.state.pending?.readback).toBe("move Biscuit's wellness exam from Wednesday, September 30, at 5:00 PM to Wednesday, September 30, at 4:00 PM with Dr. Marcus Bell");
+    // with the same vet as the 5:00 when they are free at 4 (a move keeps its vet ahead of the clinic's tie-break)
+    const vet = (data(found, 1).slots as { provider: string }[])[0]!.provider;
+    expect(vet).toBe('Dr. Elena Ruiz');
+    expect(c.state.pending?.readback).toBe(`move Biscuit's wellness exam from Wednesday, September 30, at 5:00 PM to Wednesday, September 30, at 4:00 PM with ${vet}`);
     expect(String(data(proposed).spoken)).toMatch(/^So I'd move Biscuit's wellness exam from .* Shall I go ahead\?$/);
     c.assistant('Shall I go ahead?');
     c.caller('Yes please.');

@@ -1,4 +1,4 @@
-import { ClinicConfig, DEMO_CLINIC, zonedInstant } from '@attendra/core';
+import { allVisitTypeIds, ClinicConfig, DEMO_CLINIC, noProviderWarnings, zonedInstant } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startApi } from './helpers';
@@ -62,6 +62,34 @@ describe('doctors', () => {
     expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, visitTypeIds: ['vt_nope'] } })).statusCode).toBe(422);
     expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, ages: { min: 18, max: 2 } } })).statusCode).toBe(422);
     expect((await api.request('PUT', `${C}/prov_nobody`, { cookie: as.owner, body: kim })).statusCode).toBe(404);
+  });
+
+  it('gives a new doctor every visit type when none are sent, and a change without them keeps theirs', async () => {
+    const unsent: Partial<typeof kim> = { ...kim };
+    delete unsent.visitTypeIds;
+    const added = await api.request('POST', C, { cookie: as.owner, body: { ...unsent, name: 'Dr. Mira Sol' } });
+    expect(added.statusCode).toBe(201);
+    const sol = added.json().providers.find((p: { name: string }) => p.name === 'Mira Sol');
+    expect(sol.visitTypeIds).toEqual(allVisitTypeIds(await stored()));
+    expect((await api.request('PUT', `${C}/${sol.id}`, { cookie: as.owner, body: { ...unsent, name: 'Dr. Mira Sol', visitTypeIds: ['vt_sick'] } })).statusCode).toBe(200);
+    expect((await api.request('PUT', `${C}/${sol.id}`, { cookie: as.owner, body: { ...unsent, name: 'Dr. Mira Sol', acceptingNewPatients: false } })).statusCode).toBe(200);
+    expect((await stored()).providers.find((p) => p.id === sol.id)!.visitTypeIds).toEqual(['vt_sick']);
+    // none ticked is refused in a plain sentence: nobody could book them
+    const none = await api.request('PUT', `${C}/${sol.id}`, { cookie: as.owner, body: { ...unsent, name: 'Dr. Mira Sol', visitTypeIds: [] } });
+    expect(none.statusCode).toBe(422);
+    expect(JSON.stringify(none.json().issues)).toContain('choose at least one visit type they do');
+    expect((await api.request('DELETE', `${C}/${sol.id}`, { cookie: as.owner })).statusCode).toBe(200);
+  });
+
+  it('sends a warning for each visit type nobody does, in the same words Settings shows', async () => {
+    const before = await stored();
+    expect((await api.request('GET', C, { cookie: as.staff })).json().noProvider).toEqual([]);
+    const put = async (config: unknown) => api.t.db.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
+    await put({ ...before, providers: before.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((v) => v !== 'vt_new') })) });
+    const list = (await api.request('GET', C, { cookie: as.staff })).json();
+    expect(list.noProvider).toEqual([{ visitTypeId: 'vt_new', message: 'No doctor does new patient visit: callers can\'t book it' }]);
+    expect(list.noProvider).toEqual(noProviderWarnings(await stored()));
+    await put(before);
   });
 
   it('saves how the assistant says a doctor\'s name in another language, and keeps it on the next save', async () => {
@@ -158,6 +186,27 @@ describe('doctors', () => {
     expect(refused.json().message).toMatch(/1 booked visit still to come/);
     expect((await api.request('DELETE', `${C}/${id}`, { cookie: as.owner })).statusCode).toBe(200);
     expect((await stored()).providers.some((p) => p.id === id)).toBe(false);
+  });
+
+  it('removes the right one of two vets with the same name, and says why one with visits to come stays', async () => {
+    const add = async (phone: string) => (await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'John Doe', phone } })).json().providers
+      .find((p: { name: string; phone?: string }) => p.name === 'John Doe' && p.phone === phone).id as string;
+    const one = await add('+13035550141');
+    const two = await add('+13035550142');
+    expect(one).not.toBe(two);
+    const at = zonedInstant('2026-10-05', '09:00', DEMO_CLINIC.timezone).toISOString();
+    const booking = await api.request('POST', `/api/v1/clinics/${DEMO_CLINIC.id}/appointments`, {
+      cookie: as.staff, body: { patientId: api.patientIds.maria, providerId: one, visitTypeId: 'vt_sick', startsAt: at, idempotencyKey: 'doctors-test-john-doe' },
+    });
+    expect(booking.statusCode, booking.body).toBe(201);
+    // the hosted setup page labels its DELETE as JSON with no body: that once failed with a 400 and no words
+    const json = { 'content-type': 'application/json' };
+    const refused = await api.request('DELETE', `${C}/${one}`, { cookie: as.owner, headers: json });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: 'has_upcoming_visits', message: 'They have 1 booked visit still to come. Move or cancel it on the Schedule first.' });
+    const res = await api.request('DELETE', `${C}/${two}`, { cookie: as.owner, headers: json });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await stored()).providers.filter((p) => p.name === 'John Doe').map((p) => p.id)).toEqual([one]);
   });
 
   it('imports doctors from a CSV: checks first, then adds new ones and updates the ones on file', async () => {

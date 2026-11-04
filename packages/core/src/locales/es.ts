@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { clock12, dateParts, wallClock } from './dates';
-import { type LanguagePack, type OfferDay, words } from './types';
+import { type Clock, type LanguagePack, type OfferDay, words } from './types';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -31,6 +31,28 @@ const horas = (day: OfferDay) => {
   // "u" only when the time itself follows ("8:00 u 8:40"), not before "a las"
   return said.length > 1 ? `${said.slice(0, -1).join(', ')} ${withVets ? 'o' : oBefore(day.times.at(-1)!.hour)} ${said.at(-1)}` : said[0] ?? '';
 };
+
+/** "a, b y c". */
+const yList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} y ${items.at(-1)}` : items[0] ?? '');
+/** "9", "9:30", como se dice una hora al hablar de horarios ("de 9 a 1"). */
+const horaCorta = (t: Clock) => { const c = clock12(t.hour, t.minute); return t.minute ? `${c.hour}:${c.minutes}` : String(c.hour); };
+/** "a las 9", "a la 1". */
+const aLas = (t: Clock) => `${clock12(t.hour, t.minute).hour === 1 ? 'a la' : 'a las'} ${horaCorta(t)}`;
+/** "los viernes", "los sábados". */
+const losDias = (weekday: number) => `los ${DIAS[weekday]}${weekday === 0 || weekday === 6 ? 's' : ''}`;
+/** Días de lunes a domingo, tres o más seguidos como un rango: "de miércoles a viernes y los domingos". */
+const diasPalabras = (days: number[]) => {
+  const orden = [1, 2, 3, 4, 5, 6, 0];
+  const runs: number[][] = [];
+  for (const d of orden.filter((x) => days.includes(x))) {
+    const last = runs.at(-1);
+    const prev = last?.at(-1);
+    if (last && prev !== undefined && orden.indexOf(d) === orden.indexOf(prev) + 1) last.push(d); else runs.push([d]);
+  }
+  return yList(runs.flatMap((r) => (r.length >= 3 ? [`de ${DIAS[r[0]!]} a ${DIAS[r.at(-1)!]}`] : r.map((d) => losDias(d)))));
+};
+const avisoTexto = (hours: number) => (hours % 24 === 0 ? `${hours / 24} ${hours === 24 ? 'día' : 'días'}` : `${hours} horas`);
+const mayuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const NUMEROS = ['cero', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez', 'once', 'doce'];
 
 // Spanish as spoken in the United States: usted, clear and short. Accents are
@@ -89,6 +111,7 @@ export const es: LanguagePack = {
   },
   textOffer: ({ target }) => (target === 'file' ? '¿Quiere que se lo envíe por mensaje de texto al número que tenemos en su ficha?' : '¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?'),
   textSent: 'Listo, se lo acabo de enviar.',
+  noProviderForVisit: ({ visit, pets }) => `Ningún ${pets ? 'veterinario' : 'médico'} ofrece ${visit}: quienes llaman no pueden reservarlo`,
   textRefused: ({ reason }) => (reason === 'opted_out' ? 'Ese número pidió no recibir mensajes nuestros, así que se lo leo.' : 'No puedo enviar mensajes de texto, así que se lo digo despacio.'),
   reminderOffer: '¿Quiere un recordatorio por mensaje de texto el día antes de la cita? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
   refillTextOffer: '¿Quiere un mensaje de texto a ese número cuando el equipo lo haya decidido? Pueden aplicarse tarifas de mensajes y datos, y puede responder STOP cuando quiera.',
@@ -104,6 +127,7 @@ export const es: LanguagePack = {
   },
   whichWeek: ({ first, second }) => `¿Este ${fullDay(first)}, o el ${fullDay(second)}?`,
   bookedByCallerNote: ({ name }) => `reservada por quien llamó: ${name}`,
+  foundByLastFourNote: 'encontrada en la llamada por los últimos cuatro dígitos del número y el nombre de la mascota',
   // written without accents: the text is normalised before it is matched
   memory: {
     species: {
@@ -133,8 +157,10 @@ export const es: LanguagePack = {
     nextWord: 'proximo',
     anyVet: /\b(cualquier (?:doctor|doctora|veterinari[oa])|cualquiera|me da igual (?:quien|cual)|no importa (?:quien|cual))\b/g,
     anyDay: /\b(cualquier dia|lo (?:antes|mas pronto) posible|la primera (?:cita|hora) (?:disponible|libre)|lo primero que tenga)\b/g,
-    time: /\b(?:(a las|a la|como a las|despues de las|tipo)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(de la (?:manana|tarde|noche)|a\.?m\b\.?|p\.?m\b\.?))?(?!\s*(?:anos?|meses|semanas?|dias?|horas?|minutos?|mascotas?|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))\b)(?![\d:-])/g,
+    time: /\b(?:(a las|a la|como a las|alrededor de las|despues de las|antes de las|antes de la|tipo)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(de la (?:manana|tarde|noche)|a\.?m\b\.?|p\.?m\b\.?))?(?!\s*(?:anos?|meses|semanas?|dias?|horas?|minutos?|mascotas?|de (?:enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre))\b)(?![\d:-])/g,
     after: /^despues de las$/,
+    before: /^antes de las?$/,
+    around: /^(?:como a las|alrededor de las|tipo)$/,
     pm: /tarde|noche|p\.?m/,
     am: /manana|a\.?m/,
   },
@@ -158,6 +184,10 @@ export const es: LanguagePack = {
   },
   notSeenPet: ({ pet }) => `No veo a ${pet} con ese número.`,
   noPetsOnNumber: 'No veo ninguna ficha con ese número.',
+  lastFourQuestion: ({ after }) => (after === 'no_profile'
+    ? '¿Cuáles son los últimos cuatro dígitos del número con el que podría estar la ficha, y el nombre de su mascota? Si es nueva para nosotros, la puedo registrar.'
+    : 'Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?'),
+  lastFourNoMatch: 'No encontré una sola ficha con esos datos.',
   teamBooks: ({ visit, notice, related }) => `Nuestro equipo reserva ${visit.toLowerCase()} directamente${notice ? `, con al menos ${notice.replace(/days?/, 'días').replace(/hours?/, 'horas')} de anticipación` : ''}. Puedo dejarle una solicitud al equipo${related ? `, o reservarle primero ${related.toLowerCase()}` : ''}. ¿Qué prefiere?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? 'le enviaré una confirmación por mensaje de texto al número desde el que llama, si le parece bien' : 'le enviaré una confirmación por mensaje de texto al número de su ficha, si le parece bien'),
   smsConfirmed: ({ clinic, when }) => `${clinic}: gracias, su cita del ${sinEl(when)} está confirmada.`,
@@ -167,6 +197,29 @@ export const es: LanguagePack = {
   abuseGoodbye: 'Voy a terminar la llamada ahora. Puede volver a llamar cuando quiera. Adiós.',
   takeOver: 'Le comunico con una persona de nuestro equipo ahora mismo.',
   returnedCallLine: ({ clinic }) => `Le habla el asistente telefónico de ${clinic}. La clínica no suele llamar desde esta línea, así que la llamada que recibió puede no haber sido nuestra. ¿Es usted cliente de ${clinic}, o quiere dejar un mensaje para el equipo?`,
+  slots: {
+    exactFree: ({ date, time, provider }) => { const h = hora(time.hour, time.minute); return `Sí, el ${fullDay(date)} ${h.at} ${h.time} ${partOfDay(time.hour, time.minute)} está libre${provider ? ` con ${provider}` : ''}. ¿Se la reservo?`; },
+    notAt: ({ time, day }) => { const h = hora(time.hour, time.minute); return `${mayuscula(h.at)} ${h.time} no, pero el ${fullDay(day.date)} tengo ${horas(day)}.`; },
+    nearest: ({ day }) => `Lo más cercano es el ${fullDay(day.date)} ${horas(day)}.`,
+    vetHours: ({ provider, weekday, starts, ends }) => (starts
+      ? `${provider} empieza ${aLas(starts)} ${losDias(weekday)}.`
+      : `${provider} termina ${aLas(ends!)} ${losDias(weekday)}.`),
+    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses, oneDay }) => (oneDay
+      ? `La recepción de la clínica está cerrada el ${fullDay(oneDay)}, pero ${provider} atiende ese día de ${horaCorta(from)} a ${horaCorta(to)}.`
+      : clinicOpens && clinicCloses
+      ? from.hour * 60 + from.minute < clinicOpens.hour * 60 + clinicOpens.minute
+        ? `La recepción de la clínica abre ${aLas(clinicOpens)} ${losDias(weekday)}, pero ${provider} atiende desde ${aLas(from).replace(/^a /, '')}.`
+        : `La recepción de la clínica cierra ${aLas(clinicCloses)} ${losDias(weekday)}, pero ${provider} atiende hasta ${aLas(to).replace(/^a /, '')}.`
+      : `La recepción de la clínica está cerrada ${losDias(weekday)}, pero ${provider} atiende el ${DIAS[weekday]} de ${horaCorta(from)} a ${horaCorta(to)}.`),
+    doesntDoType: ({ provider, visit, theirVisits, others }) => `${provider} no hace ${visit}; sus consultas son ${yList(theirVisits)}. `
+      + (others.length ? `${yList(others)} ${others.length > 1 ? 'hacen' : 'hace'} ${visit}. ¿Busco con ${others.length > 1 ? 'ellos' : others[0]}?` : `Ahora mismo nadie aquí hace ${visit}. ¿Dejo una solicitud para el equipo?`),
+    notWorkingThatDay: ({ provider, weekday, days }) => `${provider} no trabaja ${losDias(weekday)}. ${days.length ? `Atiende ${diasPalabras(days)}.` : 'No tiene horario esta semana.'}`,
+    fullyBooked: ({ provider, date }) => (provider ? `${provider} no tiene horas libres el ${fullDay(date)}.` : `No tenemos horas libres el ${fullDay(date)}.`),
+    nothingThrough: ({ provider, date }) => `No encuentro horas libres${provider ? ` con ${provider}` : ''} hasta el ${fullDay(date)}.`,
+    tooFarAhead: ({ visit, days, lastDate }) => `${mayuscula(visit)} se reserva con hasta ${days} días de anticipación, así que el último día que puedo reservarla es el ${fullDay(lastDate)}.`,
+    notice: ({ visit, hours, firstDate }) => `${mayuscula(visit)} necesita al menos ${avisoTexto(hours)} de anticipación, así que el primer día que puedo reservar es el ${fullDay(firstDate)}.`,
+    clinicClosed: ({ date, note }) => `La clínica está cerrada el ${fullDay(date)}${note ? ` (${note})` : ''}.`,
+  },
   tooSlow: 'Disculpe, esto está tardando más de lo debido. Si quiere, puedo pedir que alguien de la clínica le llame para eso.',
   couldNotFinish: 'Disculpe, no pude completar eso ahora. Puedo pedir que alguien de la clínica le llame.',
   spoken: {
@@ -179,6 +232,7 @@ export const es: LanguagePack = {
     goodbye: 'Que le vaya bien. ¡Adiós!',
     callbackTaken: ({ sameNumber }) => `De acuerdo, se lo paso al equipo y alguien le llamará ${sameNumber ? 'a este número' : 'al número que me dio'}. ¿Hay algo más en lo que le pueda ayudar?`,
     refillTaken: 'He enviado la solicitud de la receta al equipo; la revisarán y se pondrán en contacto con usted. ¿Hay algo más en lo que le pueda ayudar?',
+    urgentRequestTaken: 'Le envié esto al equipo como urgente, y alguien le llamará lo antes posible.',
     textSent: 'Listo, se lo acabo de enviar. ¿Hay algo más en lo que le pueda ayudar?',
     reminders: ({ agreed }) => `${agreed ? 'Perfecto, recibirá un recordatorio por mensaje de texto el día antes de la cita.' : 'De acuerdo, sin recordatorios por mensaje de texto.'} ¿Hay algo más en lo que le pueda ayudar?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} solo atiende ${animals}` : 'Ninguno de nuestros veterinarios atiende ese tipo de animal'}, así que no puedo agendar eso aquí. ¿Quiere que deje una solicitud para que el equipo agende a ${pet}?`,
@@ -205,6 +259,9 @@ export const es: LanguagePack = {
       return `es ${phrase}, el ${day}`;
     },
   },
+  petEmergencyNext: ({ pet, transfer }) => `Ahora mismo no puedo reservar una visita de rutina para ${pet ?? 'su mascota'}, con lo que está pasando. ${transfer
+    ? 'Le puedo pasar con nuestro equipo ahora mismo. ¿Quiere?'
+    : 'Puedo enviarle a nuestro equipo un mensaje urgente para que le llamen lo antes posible. ¿Quiere?'}`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, in Spanish, calmly and clearly: ' +
     `"Si es una emergencia médica, por favor cuelgue y llame al ${n} ahora mismo." ` +
@@ -225,7 +282,7 @@ export const es: LanguagePack = {
     ['self_harm', words('suicid(io|arme|arse|a)|matarme|quitarme la vida|no quiero (vivir|seguir viviendo)|hacerme dano|mejor (estaria )?muert[oa]')],
     // "se tomó" only with what was taken: "se tomó el día libre" is not an emergency
     ['overdose', words('sobredosis|veneno|envenenad[oa]|(me tome|tome|se tomo) (demasiad[oa]s?|tod[oa]s?|todas las pastillas|las pastillas|el frasco|un frasco|una botella|veneno|lejia|cloro|algo)')],
-    ['allergic', words('se me (esta )?cerrando la garganta|(se me )?cierra la garganta|anafilaxia|lengua hinchada')],
+    ['allergic', words('se (me|le) (esta )?(cerrando|hinchando) la garganta|(se (me|le) )?cierra la garganta|garganta hinchada|anafilaxia|lengua hinchada')],
     ['general', words('emergencia|(llame|llamen|necesito) una ambulancia|ambulancia')],
   ],
   notAnEmergency: words('no es (una )?emergencia|no es urgente'),

@@ -161,6 +161,39 @@ export function spokenDigits(said: string): string {
   return out.join('').replace(/\s+/g, ' ').trim();
 }
 
+// how many digits a national number has where that is fixed (its home 0 apart), by calling code: what is left after a
+// spoken prefix must be exactly one whole number
+const NATIONAL_DIGITS: Record<string, number> = { '1': 10, '44': 10, '61': 9, '353': 9 };
+/** A North American number: an area code and an exchange that do not start with 0 or 1. */
+const NANP = /^[2-9]\d{2}[2-9]\d{6}$/;
+const isCallingCode = (digits: string) => digits.length >= 1 && digits.length <= 3 && digits[0] !== '0' && callingCode(`+${digits}0000000`) === digits;
+
+/**
+ * A number the caller said, with a country prefix they said aloud dropped: "52 303 555 0130" is (303) 555-0130 at a
+ * clinic in the United States, and so is "1 303 555 0130" (a test call, 2026-11-03, was read back with its prefix three
+ * times). Only when the digits after the prefix are one whole national number for the clinic's country and the prefix is
+ * a country calling code (or 011, dialled out of North America); otherwise, or with a + or 00 said, as it was given.
+ * The read-back that follows lets the caller correct it.
+ */
+export function withoutSpokenPrefix(clinic: PhoneCountry, said: string): string {
+  const t = said.trim();
+  if (/^(\+|00)/.test(t.replace(/[\s().-]/g, ''))) return t;
+  const digits = t.replace(/\D/g, '');
+  const code = clinicCallingCode(clinic);
+  const length = NATIONAL_DIGITS[code];
+  if (!length || digits.length <= length) return t;
+  const national = digits.slice(-length);
+  if (code === '1' ? !NANP.test(national) : national.startsWith('0')) return t;
+  // the prefix as said, without the home 0 a caller may say before the national number ("52 020 7946 0123")
+  const prefix = digits.slice(0, -length);
+  const trunk = TRUNK[code];
+  const plain = trunk && prefix.length > trunk.length && prefix.endsWith(trunk) ? prefix.slice(0, -trunk.length) : null;
+  return isCallingCode(prefix) || (plain !== null && isCallingCode(plain)) || (code === '1' && prefix === '011') ? national : t;
+}
+
+/** A number as the caller said it (words or digits, a spoken prefix and all), as E.164 the way every number on file is. */
+export const heardNumber = (clinic: PhoneCountry, said: string) => asE164(clinic, withoutSpokenPrefix(clinic, spokenDigits(said)));
+
 /** A number read back in groups, as people say it: 303-555-0130 in North America, the national digits in threes and the rest elsewhere. */
 export function groupedNumber(clinic: PhoneCountry, number: string): string {
   const e164 = asE164(clinic, number);

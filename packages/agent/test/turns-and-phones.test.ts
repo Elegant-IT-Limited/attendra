@@ -189,13 +189,14 @@ describe('the planner, timed, and faster on simple turns when set up', () => {
     const planner = new ResponsesPlanner({ responses: { create } } as never, 'gpt-main', 8, undefined, {}, { firstToken: true });
     const c = await w.call('+17205550172', { clinic });
     c.caller('What time do you open?');
-    const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => { await new Promise((r) => setTimeout(r, 20)); return { ok: true, data: { hours: '9 to 5' } }; });
+    const out = await planner.plan({ clinic, state: c.state, nowLine: '' }, async () => { await new Promise((r) => setTimeout(r, 25)); return { ok: true, data: { hours: '9 to 5' } }; });
     expect(out.say).toBe('We open at nine.');
     const [body, options] = create.mock.calls[0]! as unknown as [Record<string, unknown>, Record<string, unknown>];
     expect(body).toMatchObject({ model: 'gpt-main', stream: true, store: false });
     expect(options).toMatchObject({ timeout: 15_000, maxRetries: 1, signal: expect.any(AbortSignal) });
     expect(out.timing).toMatchObject({ rounds: 2, requests: [{ calls: ['get_clinic_info'], inputTokens: 100 }, { calls: [], inputTokens: 120 }] });
     for (const r of out.timing!.requests) { expect(r.firstTokenMs).toBeGreaterThanOrEqual(3); expect(r.firstTokenMs).toBeLessThanOrEqual(r.ms); }
+    // a timer may fire a millisecond early (CI measured 19 for a 20 ms wait): the tool waits 25, and at least 20 is timed apart
     expect(out.timing!.toolMs).toBeGreaterThanOrEqual(20);
   });
 });

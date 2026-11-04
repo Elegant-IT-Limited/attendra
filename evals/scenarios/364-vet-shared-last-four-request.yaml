@@ -1,0 +1,40 @@
+id: vet-shared-last-four-request
+title: 'Two households share the last four digits and both have a Biscuit: no match, nothing from the records is said, and a request for the team'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way, last-four-twin]
+facts: "A browser test call. You are Linh Nguyen; you give 720 555 0182 and then 720 555 0183 and say no to both read-backs. Asked for the last four digits and the pet's name, say 0172 and Biscuit. Say yes to a request for the team, at 720 555 0172."
+turns:
+  - caller: I need to book Biscuit in. My number is 720 555 0182.
+    reply: "That's 720-555-0182?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0182" }
+  - assistant: "That's 720-555-0182?"
+  - caller: No, 720 555 0183.
+    reply: "That's 720-555-0183?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0183" }
+  - assistant: "That's 720-555-0183?"
+  - caller: No, hmm, 720 555 0184?
+    reply: "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: "720 555 0184" }
+  - assistant: "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"
+  - caller: It ends 0172, and it's Biscuit.
+    reply: "I couldn't find one profile with those details. I can take a request for the team to find it and call you back. What's the best number?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null, phone_last4: "0172" }
+  - caller: Yes please, 720 555 0172.
+    reply: "Okay, I've passed that on to the team, and someone will call you back at the number you gave me."
+    delegate:
+      - create_callback: { reason: "Wants to book Biscuit; the profile could not be found on the call", callback_number: "720 555 0172" }
+expect:
+  outcome: task_created
+  verified: false
+  refusals: [confirm_number, confirm_number, ask_last_four, last_four_no_match]
+  bookings_created: 0
+  urgent_requests: 0
+  returned: ["I couldn't find one profile with those details."]
+  never_returned: ["Robin", "Linh", "303-555-0172"]

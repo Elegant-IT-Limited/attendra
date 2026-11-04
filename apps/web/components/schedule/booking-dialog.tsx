@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/controls';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, newKey } from '@/lib/api';
+import { vetChoices } from '@/lib/booking';
 import { dayTitle, timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -63,6 +64,8 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
 
   // never the stand-in a new clinic starts with once anyone else is listed, as on a call
   const providers = shownProviders(clinic.providers).filter((p) => p.visitTypeIds.includes(visitTypeId));
+  // the vet list: everyone, those who do not do this visit greyed out with why
+  const choices = vetChoices(clinic, visitTypeId);
   // a squeezed-in visit goes to someone who does this visit type: the one the dropdown shows
   const overrideProvider = providers.some((p) => p.id === override.providerId) ? override.providerId : providers[0]?.id ?? '';
   useEffect(() => {
@@ -123,10 +126,11 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               <Label htmlFor="provider">{pets ? 'Veterinarian' : 'Provider'}</Label>
               <Select id="provider" value={providerId ?? ''} onChange={(e) => { setProviderId(e.target.value || null); setSlot(null); }}>
                 <option value="">{pets ? 'Any veterinarian' : 'Any provider'}</option>
-                {providers.map((p) => <option key={p.id} value={p.id}>{providerName(p)}</option>)}
+                {choices.map((p) => <option key={p.id} value={p.id} disabled={p.disabled}>{p.label}</option>)}
               </Select>
             </div>
           </div>
+          {!providers.length && <p className="text-sm text-danger">No {pets ? 'vet' : 'provider'} does {visit?.name.toLowerCase() ?? 'this visit'}: it can't be booked until one is given that visit type.</p>}
           {!override.on && <SlotPicker clinicId={clinicId} clinic={clinic} visitTypeId={visitTypeId} providerId={providerId} from={from} onFrom={setFrom} value={slot} onChange={setSlot} patientId={patient?.id} />}
           <Checkbox id="override" label="Squeeze in outside the hours (override)" checked={override.on}
             hint={`For a time no slot offers: before opening, on a closed day, or while the ${pets ? 'vet' : 'provider'} is away. Still refused if it clashes with another visit.`}

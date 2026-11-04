@@ -31,6 +31,9 @@ export const ToolArgs = {
     part_of_day: z.enum(['morning', 'afternoon', 'any']),
     // the earliest time of day the caller wants, 24-hour local: "after 3" or "at 3:30" is 15:00 or 15:30; null when they said none
     from_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
+    // how the caller said that time: "at 4" or "is 4 free?" (at), "around 5", "earlier than 6" (before), "after 3" (after);
+    // earliest: the first times from from_time on. Null: as the call memory heard it
+    time_mode: z.enum(['at', 'around', 'before', 'after', 'earliest']).nullable().default(null),
     // the caller asked for one exact day and time and is already found: a free exact time is staged at once and read back
     propose_if_exact: z.boolean().nullable().default(null),
   }),

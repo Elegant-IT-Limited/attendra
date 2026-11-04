@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { z } from 'zod';
-import type { EmergencyPhrases } from '../emergency';
+import type { EmergencyPhrases, SubjectWords } from '../emergency';
 import type { Language } from '../locales/types';
 import type { ToolName } from '../tools';
 
@@ -76,6 +76,11 @@ export interface IndustryPack {
    */
   emergency?: {
     phrases: EmergencyPhrases;
+    /**
+     * Who a red flag is about, when the patient is not the caller: the person list's words fire the emergency number's
+     * script only when a person is their subject; about the animal, or nobody named, they are the trade's (bySubject).
+     */
+    subjects?: Partial<Record<Language, SubjectWords>>;
     /** The fixed instruction for the trade's emergencies, in the caller's language. */
     script: (language: Language, to: EmergencyDestination) => string;
     /**

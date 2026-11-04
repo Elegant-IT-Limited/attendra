@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { clock12, dateParts, wallClock } from './dates';
-import { type LanguagePack, type OfferDay } from './types';
+import { type Clock, type LanguagePack, type OfferDay, type Pronoun } from './types';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -27,6 +27,29 @@ const dayTimes = (day: OfferDay) => {
   }));
 };
 
+/** "a, b and c". */
+const andList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items.at(-1)}` : items[0] ?? '');
+/** "9", "9:30", the way a front desk says an hour in a sentence about hours ("from 9 to 1"). */
+const hourWords = (t: Clock) => { const c = clock12(t.hour, t.minute); return t.minute ? `${c.hour}:${c.minutes}` : String(c.hour); };
+/** "4:00 PM". */
+const timeWords = (t: Clock) => { const c = clock12(t.hour, t.minute); return `${c.hour}:${c.minutes} ${period(t.hour)}`; };
+/** Weekdays Monday first, runs of three or more as a range: "Wednesday to Friday and Sunday". */
+const daysWords = (days: number[]) => {
+  const order = [1, 2, 3, 4, 5, 6, 0].filter((d) => days.includes(d));
+  const runs: number[][] = [];
+  for (const d of order) {
+    const last = runs.at(-1);
+    const prev = last?.at(-1);
+    if (last && prev !== undefined && [1, 2, 3, 4, 5, 6, 0].indexOf(d) === [1, 2, 3, 4, 5, 6, 0].indexOf(prev) + 1) last.push(d); else runs.push([d]);
+  }
+  return andList(runs.flatMap((r) => (r.length >= 3 ? [`${WEEKDAYS[r[0]!]} to ${WEEKDAYS[r.at(-1)!]}`] : r.map((d) => WEEKDAYS[d]!))));
+};
+const subject = (provider: string, p: Pronoun) => (p === 'female' ? 'She\'s' : p === 'male' ? 'He\'s' : `${provider} is`);
+const possessive = (provider: string, p: Pronoun) => (p === 'female' ? 'her' : p === 'male' ? 'his' : `${provider}'s`);
+const noticeText = (hours: number) => (hours % 24 === 0 ? `${hours / 24} ${hours === 24 ? 'day' : 'days'}'` : `${hours} hours'`);
+const capitalFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** "a sick visit", "an exam". */
+const withArticle = (s: string) => `${/^[aeiou]/i.test(s) ? 'an' : 'a'} ${s}`;
 
 const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 /** A note written to follow a comma, said as a sentence of its own. */
@@ -84,6 +107,7 @@ export const en: LanguagePack = {
   },
   textOffer: ({ target }) => (target === 'file' ? 'Would you like me to text that to the number on your file?' : "Would you like me to text that to the number you're calling from?"),
   textSent: "Done, I've just sent it.",
+  noProviderForVisit: ({ visit, pets }) => `No ${pets ? 'vet' : 'doctor'} does ${visit}: callers can't book it`,
   textRefused: ({ reason }) => (reason === 'opted_out' ? "That number has asked not to get texts from us, so I'll read it out instead." : "I can't send texts, so I'll say it slowly."),
   reminderOffer: 'Would you like a reminder text the day before the visit? Message and data rates may apply, and you can reply STOP anytime.',
   refillTextOffer: 'Would you like a text at that number when the team has decided? Message and data rates may apply, and you can reply STOP anytime.',
@@ -94,6 +118,7 @@ export const en: LanguagePack = {
   whichPetVerified: ({ owner, names, more, offerNew }) => `Thanks, ${owner}. Is this for ${orList(names)}${more ? ', or another one' : offerNew ? ', or a new pet' : ''}?`,
   whichWeek: ({ first, second }) => `This ${fullDay(first)}, or ${fullDay(second)}?`,
   bookedByCallerNote: ({ name }) => `booked by caller: ${name}`,
+  foundByLastFourNote: 'found on the call by the last four digits of the number and the pet\'s name',
   memory: {
     species: {
       dog: 'dog', puppy: 'dog', pup: 'dog', doggy: 'dog', cat: 'cat', kitten: 'cat', kitty: 'cat', rabbit: 'rabbit', bunny: 'rabbit',
@@ -121,8 +146,10 @@ export const en: LanguagePack = {
     nextWord: 'next',
     anyVet: /\b(any (?:family )?(?:doctor|vet|veterinarian|one)|anyone|anybody|whoever|no preference|(?:it )?doesn'?t matter (?:who|which))\b/g,
     anyDay: /\b(any ?day|first (?:available|opening|time)|earliest|soonest|whenever)\b/g,
-    time: /\b(?:(at|around|about|after|make it|move it to|change it to|how about|what about)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
+    time: /\b(?:(at|around|about|after|before|earlier than|no later than|make it|move it to|change it to|how about|what about)\s+)?(\d{1,2})(?::(\d{2}))?(?:\s*(a\.?m\b\.?|p\.?m\b\.?|in the (?:morning|afternoon|evening)|o'?clock))?(?!\s*(?:years?|months?|weeks?|days?|hours?|minutes?|pets?|dogs?|cats?|of)\b)(?![\d:-])/g,
     after: /^after$/,
+    before: /^(?:before|earlier than|no later than)$/,
+    around: /^(?:around|about)$/,
     pm: /p\.?m|afternoon|evening/,
     am: /a\.?m|morning/,
   },
@@ -138,6 +165,10 @@ export const en: LanguagePack = {
   foundPet: ({ pet, species }) => (species ? `I found ${pet}, your ${species.toLowerCase()}.` : `I found ${pet}.`),
   notSeenPet: ({ pet }) => `I don't see ${pet} under that number.`,
   noPetsOnNumber: "I don't see a profile under that number.",
+  lastFourQuestion: ({ after }) => (after === 'no_profile'
+    ? "What are the last four digits of the number the profile might be under, and your pet's name? Or if your pet is new to us, I can add them."
+    : "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"),
+  lastFourNoMatch: "I couldn't find one profile with those details.",
   teamBooks: ({ visit, notice, related }) => `Our team books ${visit.toLowerCase()} themselves${notice ? `, with at least ${notice}' notice` : ''}. I can take a request for the team${related ? `, or book ${/^[aeiou]/i.test(related) ? 'an' : 'a'} ${related.toLowerCase()} first` : ''}. Which would you like?`,
   confirmTextNote: ({ target }) => (target === 'calling' ? "I'll text you a confirmation at the number you're calling from, unless you'd rather not" : "I'll text you a confirmation at the number on file, unless you'd rather not"),
   smsConfirmed: ({ clinic, when }) => `${clinic}: thank you, your visit on ${when} is confirmed.`,
@@ -147,6 +178,29 @@ export const en: LanguagePack = {
   abuseGoodbye: 'I\'m going to end the call now. You\'re welcome to call back any time. Goodbye.',
   takeOver: 'I\'m connecting you with a member of our team now.',
   returnedCallLine: ({ clinic }) => `This is ${clinic}'s phone assistant. The clinic doesn't usually call out from this line, so the call you got may not have come from us. Are you a client of ${clinic}, or can I take a message for the team?`,
+  slots: {
+    exactFree: ({ date, time, provider }) => `Yes, ${timeWords(time)} on ${fullDay(date)} is free${provider ? ` with ${provider}` : ''}. Shall I book it?`,
+    notAt: ({ time, day }) => `Not at ${clock12(time.hour, time.minute).hour}:${clock12(time.hour, time.minute).minutes}, but ${dayTimes(day)} on ${fullDay(day.date)}.`,
+    nearest: ({ day }) => `The nearest ${day.times.length > 1 ? 'are' : 'is'} ${dayTimes(day)} on ${fullDay(day.date)}.`,
+    vetHours: ({ provider, weekday, starts, ends }) => (starts
+      ? `${provider} starts at ${hourWords(starts)} on ${WEEKDAYS[weekday]}s.`
+      : `${provider} finishes at ${hourWords(ends!)} on ${WEEKDAYS[weekday]}s.`),
+    frontDesk: ({ weekday, provider, from, to, clinicOpens, clinicCloses, oneDay }) => (oneDay
+      ? `The clinic's front desk is closed on ${fullDay(oneDay)}, but ${provider} sees patients that day from ${hourWords(from)} to ${hourWords(to)}.`
+      : clinicOpens && clinicCloses
+      ? from.hour * 60 + from.minute < clinicOpens.hour * 60 + clinicOpens.minute
+        ? `The clinic's front desk opens at ${hourWords(clinicOpens)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients from ${hourWords(from)}.`
+        : `The clinic's front desk closes at ${hourWords(clinicCloses)} on ${WEEKDAYS[weekday]}s, but ${provider} sees patients until ${hourWords(to)}.`
+      : `The clinic's front desk is closed on ${WEEKDAYS[weekday]}s, but ${provider} sees patients ${WEEKDAYS[weekday]} from ${hourWords(from)} to ${hourWords(to)}.`),
+    doesntDoType: ({ provider, pronoun, visit, theirVisits, others }) => `${provider} doesn't do ${visit}; ${possessive(provider, pronoun)} visits are ${andList(theirVisits)}. `
+      + (others.length ? `${andList(others)} ${others.length > 1 ? 'do' : 'does'} ${visit}. Shall I look with ${others.length > 1 ? 'them' : others[0]}?` : `Nobody here does ${visit} at the moment. Shall I take a request for the team?`),
+    notWorkingThatDay: ({ provider, pronoun, weekday, days }) => `${provider} doesn't work on ${WEEKDAYS[weekday]}s. ${days.length ? `${subject(provider, pronoun)} in ${daysWords(days)}.` : `${subject(provider, pronoun)} not on the schedule this week.`}`,
+    fullyBooked: ({ provider, date }) => `${provider ? `${provider} is` : 'We\'re'} fully booked on ${fullDay(date)}.`,
+    nothingThrough: ({ provider, date }) => `I can't find a free time${provider ? ` with ${provider}` : ''} through ${fullDay(date)}.`,
+    tooFarAhead: ({ visit, days, lastDate }) => `${capitalFirst(withArticle(visit))} can be booked up to ${days} days ahead, so the last day I can book it is ${fullDay(lastDate)}.`,
+    notice: ({ visit, hours, firstDate }) => `${capitalFirst(withArticle(visit))} needs ${noticeText(hours)} notice, so the first day I can book it is ${fullDay(firstDate)}.`,
+    clinicClosed: ({ date, note }) => `The clinic is closed on ${fullDay(date)}${note ? ` (${note})` : ''}.`,
+  },
   tooSlow: 'I\'m sorry, that\'s taking longer than it should. I can have someone from the clinic call you back about it, if you\'d like.',
   couldNotFinish: 'I\'m sorry, I couldn\'t complete that just now. I can have someone from the clinic call you back.',
   spoken: {
@@ -159,6 +213,7 @@ export const en: LanguagePack = {
     goodbye: 'Take care, goodbye!',
     callbackTaken: ({ sameNumber }) => `Okay, I've passed that on to the team, and someone will call you back at ${sameNumber ? 'this number' : 'the number you gave me'}. Is there anything else I can help you with?`,
     refillTaken: 'I\'ve sent the refill request to the team; they\'ll review it and get back to you. Is there anything else I can help you with?',
+    urgentRequestTaken: 'I\'ve sent that to the team as urgent, and someone will call you back as soon as they can.',
     textSent: 'Done, I\'ve just sent it. Is there anything else I can help you with?',
     reminders: ({ agreed }) => `${agreed ? 'Great, you\'ll get a reminder text the day before the visit.' : 'No problem, no reminder texts.'} Is there anything else I can help you with?`,
     noVetForAnimal: ({ vet, animals, pet }) => `${vet && animals ? `${vet} sees ${animals} only` : 'None of our vets is listed for that kind of animal'}, so I can't book that here myself. Shall I take a request so the team can book ${pet}?`,
@@ -185,6 +240,9 @@ export const en: LanguagePack = {
       return `that's ${phrase}, ${day}`;
     },
   },
+  petEmergencyNext: ({ pet, transfer }) => `I can't book a routine visit for ${pet ?? 'your pet'} while this is going on. ${transfer
+    ? 'I can put you through to our team right now. Would you like that?'
+    : 'I can send our team an urgent message to call you back as soon as they can. Would you like that?'}`,
   emergencyScript: (n) =>
     'The caller may be describing a medical emergency. Stop the current task now. Say, calmly and clearly: ' +
     `"If this is a medical emergency, please hang up and call ${n} right away." ` +
@@ -203,7 +261,7 @@ export const en: LanguagePack = {
     ['unresponsive', /\b(unconscious|passed out|not (waking|responding)|unresponsive|seizure|fitting)\b/],
     ['self_harm', /\b(kill (myself|me)|end (it all|my life)|suicid(e|al)|hurt myself|(don'?t|do not) (really |even )?want to (live|be alive|be here)( anymore)?|better off dead)\b/],
     ['overdose', /\b(overdos(e|ed|es|ing)|took too (many|much)|took a (whole|full) bottle|swallowed (a bottle|the whole|bleach|poison)|poison(ed|ing|ous)?|drank (bleach|poison))\b/],
-    ['allergic', /\b(throat (is )?(closing|swelling)|anaphyla(xis|ctic)|tongue (is )?swelling)\b/],
+    ['allergic', /\b(throat (is )?(closing|swelling|swollen)|anaphyla(xis|ctic)|tongue (is )?(swelling|swollen))\b/],
     ['general', /\b(emergency|call (an )?ambulance|911)\b/],
   ],
   // also a question about emergencies, not a report of one: "is this an emergency?", "what counts as an emergency?"

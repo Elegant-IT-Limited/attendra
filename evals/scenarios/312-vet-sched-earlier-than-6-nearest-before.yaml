@@ -1,0 +1,47 @@
+id: vet-sched-earlier-than-6-nearest-before
+title: "\"Earlier than 6\" on Thursday with Dr. Khan: the latest times before 6 that day (5:40, 5:20), never the morning (a tester call, made-up data)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, scheduling-1115, jordan-household]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental care, names: { es: cuidado dental }, minutes: 30 }
+    - { id: vt_consult, name: surgery consultation, names: { es: consulta de cirugía }, minutes: 30 }
+  providers:
+    - { id: prov_morgan, name: Dr. Mara Vance, gender: female, specialty: Surgery, visitTypeIds: [vt_sick, vt_consult, vt_new], hours: { "0": [{ open: "09:00", close: "13:00" }], "5": [{ open: "09:00", close: "13:00" }, { open: "14:00", close: "18:00" }] } }
+    - { id: prov_rahman, name: Dr. Omar Rahman, gender: male, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental], hours: { "1": [{ open: "08:00", close: "19:00" }], "2": [{ open: "08:00", close: "19:00" }], "3": [{ open: "08:00", close: "19:00" }], "4": [{ open: "08:00", close: "19:00" }], "5": [{ open: "08:00", close: "19:00" }] }, timeOff: [{ from: "2026-10-01", to: "2026-10-01", start: "16:10", end: "16:20", note: team huddle }] }
+    - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
+facts: "You are Jordan Avery, calling from the number on file. Biscuit, your dog, needs a sick visit with Dr. Khan on Thursday, any time before 6. Take the latest offered. Say yes to the read-back."
+turns:
+  - caller: "Can Biscuit see Dr. Khan on Thursday, earlier than 6? Biscuit is sick."
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit. The nearest are {offered.1} or {offered.0}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_khan, from_date: "2026-10-01", part_of_day: any, from_time: "18:00", time_mode: before }
+  - caller: "5:40 works."
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_khan
+  booked_on: "2026-10-01"
+  # the backend's own words to the planner (say_as), in the caller's language
+  returned: ["PM on Thursday, October 1"]
+  # the latest times before 6 that day: never the morning
+  offered_from_time: "16:00"
+forbid_spoken: ["9:00 AM", "9:30 AM"]

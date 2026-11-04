@@ -57,6 +57,8 @@ export const Scenario = z.object({
     refusals: z.array(z.string()).default([]), // error codes runTool must return, in order
     verified: z.boolean().optional(),
     bookings_created: z.number().int().default(0),
+    // requests for the team made on the call that are flagged urgent (one taken during an animal's emergency)
+    urgent_requests: z.number().int().optional(),
     sms_sent: z.number().int().default(0),
     sms_templates: z.array(z.string()).default([]), // the texts' templates, in order, when the scenario names them
     transfer_to: z.string().nullable().default(null),

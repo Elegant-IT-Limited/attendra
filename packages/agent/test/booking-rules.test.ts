@@ -56,15 +56,18 @@ describe('a time of day the caller names', () => {
   it('"after 3" offers nothing before 3, and "at 10:30" says when that exact time is taken', async () => {
     const c = await w.call('+17205550172', { clinic: { ...RIVERBEND_CLINIC, afterHours: 'book' } });
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: 'Linh Nguyen', pet_name: 'Biscuit', phone: null } }]);
-    const after = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '15:00' } }]);
+    const after = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '15:00', time_mode: 'after' } }]);
     const slots = after.results[0]!.data.slots as { when: string }[];
-    expect(slots.length).toBe(3);
+    // the nearest two after 3
+    expect(slots.length).toBe(2);
     expect(slots.every((s) => /Thursday, October 1, at (3|4|5):\d\d PM/.test(s.when))).toBe(true);
     expect(String(after.results[0]!.data.note)).not.toContain('exactly');
-    // 10:35 is not on the 30-minute grid, so the nearest after it is offered and the result says so
-    const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35' } }]);
+    // 10:35 is not on the clinic's 10-minute grid: the nearest either side are offered, and the answer leads with that
+    const odd = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-10-01', part_of_day: 'any', from_time: '10:35', time_mode: 'at' } }]);
     expect(String(odd.results[0]!.data.note)).toContain('Nothing is free at exactly 10:35');
-    expect((odd.results[0]!.data.slots as { when: string }[])[0]!.when).toContain('11:00 AM');
+    expect((odd.results[0]!.data.slots as { when: string }[])[0]!.when).toContain('10:30 AM');
+    expect(odd.results[0]!.data.say_as).toBe('Not at 10:35, but 10:30 or 10:40 AM on Thursday, October 1.');
+    expect(odd.results[0]!.data.exact).toEqual({ time: '10:35', free: false });
   });
 });
 
@@ -101,7 +104,8 @@ describe('why a day or a provider is not possible as asked', () => {
     expect(whyNot(shut, { date: '2026-09-29', now, today })).toContain('closed on Tuesday 2026-09-29 (staff day)');
     expect(whyNot(clinic, { date: '2026-09-30', provider: ruiz, now, today })).toContain('away from 2026-09-28 to 2026-10-04 (vacation), back on 2026-10-05');
     expect(whyNot(clinic, { date: null, provider: ruiz, now, today })).toContain('away until 2026-10-04');
-    expect(whyNot(clinic, { date: '2026-09-30', provider: sato, now, today })).toContain('not in on Wednesdays; their days are Tuesday, Thursday');
+    // a vet's own days are find_slots' reason now (dayReason), from the hours the search used
+    expect(whyNot(clinic, { date: '2026-09-30', provider: sato, now, today })).toBeNull();
   });
 
   it('says how much notice a visit needs when the day asked for is too soon', () => {

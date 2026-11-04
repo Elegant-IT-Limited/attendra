@@ -5,7 +5,7 @@ import { type ClinicConfig, localParts, providerName, toMinutes } from '@attendr
 import { Bot, Check, User } from 'lucide-react';
 import { Empty } from '@/components/ui/feedback';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
-import { blockHeight, closedDay, hoursFor, initials, placeBlocks, PX } from '@/lib/schedule-lanes';
+import { blockHeight, clinicHoursFor, closedDay, hoursFor, initials, outsideDesk, placeBlocks, PX } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
 /** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
@@ -111,12 +111,16 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
 }) {
   const tz = clinic.timezone;
   const holiday = closedDay(clinic, date);
-  const open = holiday ? [] : hoursFor(clinic, provider, date).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
+  // the vet's bookable hours, by the rule every booking follows: their own decide, even while the clinic is closed
+  const open = hoursFor(clinic, provider, date).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
+  const desk = clinicHoursFor(clinic, provider, date).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
   // closed stretches between the opening windows, shaded
   const closed: [number, number][] = [];
   let cursor = start;
   for (const [o, c] of open) { if (o > cursor) closed.push([cursor, o]); cursor = Math.max(cursor, c); }
   if (cursor < end) closed.push([cursor, end]);
+  // bookable time while the front desk is closed: drawn open, with a band that says so
+  const deskClosed = outsideDesk(open, desk);
 
   return (
     <div className={cn('relative', !divided ? 'border-l border-border' : 'border-l border-border/40 first:border-l-0')} data-testid="lane" role="group" aria-label={`${providerName(provider)}, ${dayTitle(date)}`}>
@@ -124,7 +128,11 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
         <div key={s} className="absolute inset-x-0 bg-[repeating-linear-gradient(135deg,var(--muted),var(--muted)_6px,transparent_6px,transparent_12px)] opacity-80"
           style={{ top: (s - start) * PX, height: (e - s) * PX }} aria-hidden />
       ))}
-      {holiday && <p className="absolute inset-x-0 top-3 text-center text-xs font-medium text-text-muted">{holiday}</p>}
+      {deskClosed.map(([s, e]) => (
+        <div key={`desk-${s}`} data-testid="desk-closed" title="Front desk closed: bookable by this vet's own hours"
+          className="absolute inset-x-0 border-l-2 border-dashed border-border-strong bg-surface-sunken/60" style={{ top: (s - start) * PX, height: (e - s) * PX }} aria-hidden />
+      ))}
+      {holiday && !open.length && <p className="absolute inset-x-0 top-3 text-center text-xs font-medium text-text-muted">{holiday}</p>}
       {nowMin !== null && nowMin >= start && nowMin <= end && (
         <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-danger" style={{ top: (nowMin - start) * PX }} aria-hidden />
       )}

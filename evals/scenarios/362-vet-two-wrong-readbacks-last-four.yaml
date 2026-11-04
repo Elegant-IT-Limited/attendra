@@ -1,0 +1,48 @@
+id: vet-two-wrong-readbacks-last-four
+title: 'Two read-backs the caller says are wrong, then the last four digits and the pet''s name find the one pet, and it is booked; nothing from the record is said first'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way]
+facts: "A browser test call. You are Carmen Ortiz. You don't remember the number the profile is under: you say 720 555 0177, then 720 555 0178, and say no to both read-backs. Asked for the last four digits and the pet's name, say 0174 and Luna. Any time works; say yes to the first time and to the read-back."
+turns:
+  - caller: I'd like to book a check-up for Luna. The number is 720 555 0177.
+    reply: "That's 720-555-0177?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0177" }
+  - assistant: "That's 720-555-0177?"
+  - caller: No, sorry, it's 720 555 0178.
+    reply: "That's 720-555-0178?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0178" }
+  - assistant: "That's 720-555-0178?"
+  - caller: No, that's not right either, maybe 720 555 0179.
+    reply: "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0179" }
+  - assistant: "Let's try another way. What are the last four digits of the number the profile is under, and your pet's name?"
+  - caller: Zero one seven four, and her name is Luna.
+    reply: "I found Luna, your dog. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null, phone_last4: "zero one seven four" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  refusals: [confirm_number, confirm_number, ask_last_four]
+  bookings_created: 1
+  # the confirmation goes to the number on file: the safety net for a profile found without the whole number
+  sms_sent: 1
+  # the planner may ask for the last four in its own words; the backend's search and the note are what matter
+  returned: ["I found Luna, your dog."]
+  never_returned: ["Carmen", "720-555-0174"]
+  appointment_note_contains: ["found on the call by the last four digits"]

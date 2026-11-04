@@ -67,7 +67,7 @@ describe('waiting requests', () => {
   it('lists open unclaimed requests oldest first, with type and age only, not audited', async () => {
     const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/tasks/waiting`, { cookie: staff });
-    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, number: expect.any(Number), type: 'refill', createdAt: expect.any(String), callId: api.callId }], total: 1, byType: { refill: 1 } });
+    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, number: expect.any(Number), type: 'refill', createdAt: expect.any(String), callId: api.callId, urgent: false }], total: 1, byType: { refill: 1 } });
     // the caller's number (+13035550147), not any "555": a random id can contain those digits
     expect(res.body).not.toMatch(/Maria|lisinopril|5550147/);
     const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
@@ -89,5 +89,14 @@ describe('waiting requests', () => {
     const res = (await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json();
     expect(res.tasks).toHaveLength(20);
     expect(res.total).toBe(23);
+  });
+
+  it('puts an urgent request (taken during an emergency) first, older or not', async () => {
+    const queue = new PostgresTaskQueue(api.t.db, createPhiCipher(TEST_DATA_KEY));
+    const urgent = await queue.create(DEMO_CLINIC.id, { type: 'callback', callId: api.callId, patientId: null, idempotencyKey: 'waiting-urgent', details: { reason: 'emergency', callback_number: '+13035550163' }, urgent: true });
+    await queue.create(DEMO_CLINIC.id, { type: 'callback', callId: api.callId, patientId: null, idempotencyKey: 'waiting-after-urgent', details: { reason: 'question', callback_number: '+13035550163' } });
+    const res = (await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json();
+    expect(res.tasks[0]).toMatchObject({ id: urgent.id, urgent: true });
+    expect(res.tasks.slice(1).every((t: { urgent: boolean }) => !t.urgent)).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { blockHeight, initials, laneProviders, MANY_PROVIDERS, MAX_CHOSEN, MIN_B
 
 const weekdays = { open: '08:00', close: '17:00' };
 type Hours = Partial<Record<'0' | '1' | '2' | '3' | '4' | '5' | '6', { open: string; close: string }[]>>;
-const clinic = { hours: { '1': [weekdays], '2': [weekdays], '3': [weekdays], '4': [weekdays], '5': [weekdays] } as Hours, holidays: ['2026-11-26'], specialDays: [{ date: '2026-11-27', windows: [], note: 'Staff day' }] };
+const clinic = { timezone: 'America/Chicago', hours: { '1': [weekdays], '2': [weekdays], '3': [weekdays], '4': [weekdays], '5': [weekdays] } as Hours, holidays: ['2026-11-26'], specialDays: [{ date: '2026-11-27', windows: [], note: 'Staff day' }] };
 const vet = (n: number, extra: Partial<{ hours: Hours; timeOff: { from: string; to: string }[] }> = {}) =>
   ({ id: `prov_${n}`, name: `Dr. Vet ${String(n).padStart(3, '0')}`, timeOff: [], ...extra });
 const many = Array.from({ length: 12 }, (_, i) => vet(i + 1));

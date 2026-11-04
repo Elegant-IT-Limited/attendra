@@ -86,7 +86,7 @@ describe('the word "emergency" alone at a vet clinic', () => {
 });
 
 describe('after the emergency script', () => {
-  it('says the hospital once, then asks about danger instead of repeating it, and a no lets the call go on', async () => {
+  it('says the hospital once, then offers the team instead of repeating it, and "he\'s fine" lets the call go on', async () => {
     const c = await w.call('+17205550172', { clinic: open });
     c.caller('My dog ate chocolate.');
     // before the script is said: the refusal asks for it once
@@ -97,9 +97,10 @@ describe('after the emergency script', () => {
     const [refused] = (await c.delegate([FIND])).results;
     expect(refused!.data.error).toBe('emergency_in_progress');
     expect(JSON.stringify(refused!.data)).toContain('do not say it again');
-    expect(JSON.stringify(refused!.data)).toContain('in danger right now');
-    c.assistant('Is your dog in danger right now, like trouble breathing, bleeding or a collapse?');
-    c.caller('No.');
+    // the next step, never a loop: at 8 pm nobody can take a transfer, so an urgent request for the team
+    expect(JSON.stringify(refused!.data)).toContain('I can send our team an urgent message');
+    c.assistant('I can\'t book a routine visit for your pet while this is going on. I can send our team an urgent message to call you back as soon as they can. Would you like that?');
+    c.caller("No, he's fine now, it's not an emergency. He only had a tiny bit.");
     expect(c.state.emergencyLocked).toBe(false);
     expect(c.state.emergency?.kind).toBe('pet_toxin'); // still on the record
     expect((await c.delegate([FIND])).results[0]!.ok).toBe(true);

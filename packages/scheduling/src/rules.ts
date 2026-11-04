@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { awayOn, awayWindows, bookableProviders, type BusyInterval, clashes, type ClinicConfig, findSlots, localDateOf, localParts, seesAge, type Slot, specialDayOf } from '@attendra/core';
+import { awayOn, awayWindows, bookableProviders, bookableWindows, type BusyInterval, DESK_LEAD_MINUTES, clashes, type ClinicConfig, findSlots, localDateOf, localParts, seesAge, type Slot, specialDayOf } from '@attendra/core';
 
 /** Why a time cannot be booked, in the words the API and the dashboard use. */
 export type SlotProblem =
@@ -8,11 +8,12 @@ export type SlotProblem =
   | 'not_offered' // the provider does not do this visit type
   | 'holiday' // a holiday, or a special day the clinic is closed
   | 'away' // the provider is away then, all day or part of it
-  | 'closed' // outside the provider's hours, or not on the visit's time grid
+  | 'closed' // outside the provider's hours, or not on the clinic's start-time grid
   | 'past'
+  | 'too_soon' // starts within the desk's lead time (DESK_LEAD_MINUTES): a walk-in that soon is the desk's Override
   | 'taken';
 
-type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'providers' | 'visitTypes' | 'specialDays'>;
+type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone' | 'providers' | 'visitTypes' | 'specialDays' | 'booking'>;
 
 export interface OpenSlotQuery {
   visitTypeId: string;
@@ -27,20 +28,17 @@ export interface OpenSlotQuery {
 }
 
 /**
- * Open slots for the front desk. The same search the assistant runs in find_slots,
- * without its two-hour lead time: someone standing at the desk can take the 2:40.
- * Only a time starting in the next few minutes is left out: by the time it is picked and
- * confirmed it has begun, and booking it is refused as past.
+ * Open slots for the front desk: the same search the assistant runs in find_slots, with the desk's own lead time
+ * (DESK_LEAD_MINUTES, beside the assistant's two hours), and every start on the clinic's grid, not only times a visit
+ * apart: the desk sees and can book them all. A time sooner than that is squeezed in with Override.
  */
-export const DESK_LEAD_MINUTES = 5;
-
 export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery): Slot[] {
   const visitType = clinic.visitTypes.find((v) => v.id === q.visitTypeId);
   if (!visitType) return [];
   const patient = q.patient;
   const providers = q.providerId ? clinic.providers.filter((p) => p.id === q.providerId)
     : bookableProviders(clinic.providers).filter((p) => !patient || (seesAge(p, patient.age) && (!patient.isNew || p.acceptingNewPatients)));
-  return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: DESK_LEAD_MINUTES, limit: q.limit ?? 200 });
+  return findSlots(clinic, busy, { visitType, providers, from: q.from, days: q.days, partOfDay: q.partOfDay, now: q.now, leadMinutes: DESK_LEAD_MINUTES, allStarts: true, limit: q.limit ?? 200 });
 }
 
 /**
@@ -50,7 +48,7 @@ export function openSlots(clinic: Clinic, busy: BusyInterval[], q: OpenSlotQuery
  * checks before that only name the reason.
  *
  * With `override` (the front desk squeezing someone in, with a reason) the clinic's
- * hours, holidays, special days, the provider's absences and the time grid are not
+ * hours, holidays, special days, the provider's absences, the lead time and the grid are not
  * checked; who, which visit, the past and a clash still are. The assistant never
  * overrides.
  */
@@ -64,9 +62,11 @@ export function slotProblem(clinic: Clinic, busy: BusyInterval[], req: { provide
   const end = new Date(req.start.getTime() + visitType.minutes * 60_000);
   if (!opts.override) {
     const special = specialDayOf(clinic, date);
-    if (special ? !special.windows.length : clinic.holidays.includes(date)) return 'holiday';
+    // closed for everyone that day, except a vet the special day lists
+    if ((special ? !special.windows.length : clinic.holidays.includes(date)) && !bookableWindows(clinic, provider, date).windows.length) return 'holiday';
   }
   if (req.start.getTime() <= now.getTime()) return 'past';
+  if (!opts.override && req.start.getTime() < now.getTime() + DESK_LEAD_MINUTES * 60_000) return 'too_soon';
   if (!opts.override) {
     const m = localParts(req.start, clinic.timezone).minutes;
     if (awayOn(provider, date) || awayWindows(provider, date).some((a) => m < a.end && m + visitType.minutes > a.start)) return 'away';

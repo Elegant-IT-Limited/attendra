@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { openAs } from './session';
-import { testDate } from './clock';
+import { testDate, testNow } from './clock';
 
 const clinicOf = (page: Page) => new URL(page.url()).pathname.split('/')[2];
 
@@ -105,6 +105,23 @@ test.describe.serial('the schedule', () => {
     const block = page.locator('[data-testid=appointment][aria-label*="sick visit"]').first();
     const [time, name] = (await block.getAttribute('aria-label'))!.split(', ');
     await expect(block).toContainText(`${name} · ${time}`);
+  });
+
+  test('New booking never offers a time sooner than the desk\'s lead, and says the grid and the lead the server sent', async ({ browser }) => {
+    const page = await openAs(browser, 'frontdesk');
+    await page.goto(`/c/${clinicOf(page)}/schedule`);
+    await page.getByRole('button', { name: 'New booking' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New booking' });
+    await dialog.getByLabel('Find a patient').fill('whit');
+    // the open times this week, as the server sent them
+    const loaded = page.waitForResponse((r) => /\/appointments\/slots\?/.test(r.url()) && r.ok());
+    await dialog.getByRole('button', { name: /James Whitaker/ }).click();
+    const server = await (await loaded).json() as { slots: { startsAt: string }[]; startEvery: number; leadMinutes: number };
+    await expect(dialog.getByTestId('slot-grid')).toHaveText(`Start times every ${server.startEvery} minutes. Times starting in the next ${server.leadMinutes} minutes are not shown; for one sooner, use Override.`);
+    // every time shown starts at least the lead time from now, on the suite's clock (E2E_CLOCK)
+    const shown = await dialog.getByRole('radio').evaluateAll((els) => els.map((e) => e.getAttribute('data-starts-at')!));
+    const earliest = testNow() + server.leadMinutes * 60_000;
+    expect(shown.filter((t) => new Date(t).getTime() < earliest)).toEqual([]);
   });
 
   test('N opens New booking on the Schedule itself, again after the dialog is closed', async ({ browser }) => {

@@ -27,13 +27,13 @@ turns:
     delegate:
       - commit_pending: {}
   - caller: En realidad, ¿me la puede cambiar? Mejor a las 4:40.
-    reply: "Tengo {offered.3}."
+    reply: "Tengo {offered.2}."
     delegate:
       - find_slots: { visit_type_id: vt_new, provider_id: null, from_date: null, from_time: null, part_of_day: any }
   - caller: Sí, esa.
     reply: "{readback}"
     delegate:
-      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+      - propose_booking: { slot_id: "$offered[2]", replaces_appointment_id: null }
   - caller: Sí.
     reply: "Listo, la cita queda cambiada."
     delegate:

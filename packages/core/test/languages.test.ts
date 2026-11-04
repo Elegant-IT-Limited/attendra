@@ -227,6 +227,14 @@ describe('choosing the reply language', () => {
     expect(detectLanguage('I want an appointment for tomorrow', ['en', 'es'], 'en')).toBe('en');
   });
 
+  it('keeps the language the call is in when the words say nothing either way ("No.", "0172, Biscuit.")', () => {
+    expect(detectLanguage('No. 720 555 0183. No.', ['en', 'es'], 'en', 'es')).toBe('es');
+    expect(detectLanguage('0172, Biscuit.', ['en', 'es'], 'en', 'es')).toBe('es');
+    // words that do say it still switch
+    expect(detectLanguage('I want an appointment for tomorrow', ['en', 'es'], 'en', 'es')).toBe('en');
+    expect(detectLanguage('', ['en', 'es'], 'en')).toBe('en');
+  });
+
   it('never picks a language the clinic does not offer', () => {
     expect(detectLanguage('Hola, quiero una cita', ['en'], 'en')).toBe('en');
   });

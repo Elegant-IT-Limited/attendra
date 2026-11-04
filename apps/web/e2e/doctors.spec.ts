@@ -109,3 +109,60 @@ test('a specialty a doctor already has that is not on the list is kept, marked, 
   await panel.getByRole('combobox', { name: 'Specialty' }).click();
   await expect(manager.getByRole('listbox', { name: 'Choices for specialty' }).getByRole('option', { name: 'Pediatrics' })).toHaveAttribute('aria-selected', 'true');
 });
+
+test('a doctor\'s visit types: ticked one by one or all in one click, and a warning for a type nobody does', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  const clinic = manager.url().split('/c/')[1]!;
+  await manager.getByRole('link', { name: 'Doctors' }).click();
+  const card = manager.getByTestId('doctor').filter({ hasText: 'Dr. Ann Lindqvist' });
+  await expect(card).toContainText('Visit types they do');
+  await expect(card).toContainText('sick visit, annual physical');
+
+  // "All visit types" ticks every one, and the card says so
+  await card.getByRole('button', { name: 'Edit hours and details' }).click();
+  let panel = manager.getByRole('dialog', { name: 'Edit Dr. Ann Lindqvist' });
+  const all = panel.getByRole('checkbox', { name: 'All visit types' });
+  await expect(all).not.toBeChecked();
+  await all.check();
+  for (const name of ['sick visit', 'annual physical', 'new patient visit']) await expect(panel.getByRole('checkbox', { name, exact: true })).toBeChecked();
+  await panel.getByRole('button', { name: 'Save' }).click();
+  await expect(panel).toBeHidden();
+  await expect(card).toContainText('All visit types');
+
+  // one click back to choosing; none ticked is refused in plain words, then back to what she did
+  await card.getByRole('button', { name: 'Edit hours and details' }).click();
+  panel = manager.getByRole('dialog', { name: 'Edit Dr. Ann Lindqvist' });
+  await panel.getByRole('checkbox', { name: 'All visit types' }).uncheck();
+  await expect(panel.getByRole('checkbox', { name: 'sick visit', exact: true })).not.toBeChecked();
+  await panel.getByRole('button', { name: 'Save' }).click();
+  const problem = manager.getByRole('dialog', { name: 'Not saved' });
+  await expect(problem).toContainText('Choose at least one visit type they do.');
+  await problem.getByRole('button', { name: 'OK' }).click();
+  await panel.getByRole('checkbox', { name: 'sick visit', exact: true }).check();
+  await panel.getByRole('checkbox', { name: 'annual physical', exact: true }).check();
+  await expect(panel.getByRole('checkbox', { name: 'All visit types' })).not.toBeChecked();
+  await panel.getByRole('button', { name: 'Save' }).click();
+  await expect(panel).toBeHidden();
+  await expect(card).toContainText('sick visit, annual physical');
+
+  // a visit type nobody does: Settings and the Doctors page say it in the same words
+  const warning = 'No doctor does ear check: callers can\'t book it';
+  const saveVisitTypes = (add: boolean) => manager.evaluate(async ({ id, add }) => {
+    const settings = await (await fetch(`/api/v1/clinics/${id}/settings`)).json();
+    const visitTypes = add ? [...settings.visitTypes, { id: 'vt_ear_e2e', name: 'ear check', minutes: 20, audience: 'all' }] : settings.visitTypes.filter((v: { id: string }) => v.id !== 'vt_ear_e2e');
+    return (await fetch(`/api/v1/clinics/${id}/settings`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...settings, visitTypes }) })).status;
+  }, { id: clinic, add });
+  expect(await saveVisitTypes(true)).toBe(200);
+  await manager.goto(`/c/${clinic}/settings`);
+  await expect(manager.locator('#visits').getByText(warning)).toBeVisible();
+  await manager.goto(`/c/${clinic}/doctors`);
+  await expect(manager.getByTestId('no-provider-warnings')).toHaveText(warning);
+  // ticked for one doctor, the warning goes
+  await card.getByRole('button', { name: 'Edit hours and details' }).click();
+  panel = manager.getByRole('dialog', { name: 'Edit Dr. Ann Lindqvist' });
+  await panel.getByRole('checkbox', { name: 'ear check', exact: true }).check();
+  await panel.getByRole('button', { name: 'Save' }).click();
+  await expect(panel).toBeHidden();
+  await expect(manager.getByTestId('no-provider-warnings')).toHaveCount(0);
+  expect(await saveVisitTypes(false)).toBe(200);
+});

@@ -69,6 +69,12 @@ export interface PatientDirectory {
    */
   /** A pet by the number it is on (the household) and its name as the caller says it, matched by sound; the owner's name plays no part. */
   findPet(clinicId: string, petName: string, phone: string, callId?: string): Promise<PatientLookup>;
+  /**
+   * The second way to find a pet, when its number could not be (2026-11-15): the last four digits of the number on file
+   * and the pet's name, by the keyed lookup of the last four digits (migration 0042). Found only when exactly one pet in
+   * exactly one household matches; 'ambiguous' when more do, 'not_found' when none.
+   */
+  findPetByLastFour?(clinicId: string, lastFour: string, petName: string, callId: string): Promise<PatientLookup>;
   /** Records that they said yes to reminder texts on a call. */
   setTextConsent?(clinicId: string, patientId: string, callId: string): Promise<void>;
   /**
@@ -98,7 +104,8 @@ export interface AppointmentSummary {
 }
 
 export type BookingResult =
-  | { status: 'booked'; appointment: AppointmentSummary }
+  // replaced: the visit it replaces was cancelled with it, in one step (a move to an overlapping time with the same provider)
+  | { status: 'booked'; appointment: AppointmentSummary; replaced?: boolean }
   | { status: 'already_done'; appointment: AppointmentSummary } // same idempotency key seen before
   | { status: 'slot_taken' }
   | { status: 'patient_busy' }; // the patient already has a visit that overlaps it
@@ -121,6 +128,8 @@ export interface TaskQueue {
   create(clinicId: string, input: {
     type: TaskType; callId: string; patientId: string | null; idempotencyKey: string;
     details: Record<string, string>; // stored encrypted; shown to staff, never logged
+    /** Leads the Requests page and Today: a request taken while an emergency holds the call. */
+    urgent?: boolean;
   }): Promise<{ id: string; /** The request's own number at the clinic, shown as R-1042. */ number: number; created: boolean }>;
 }
 

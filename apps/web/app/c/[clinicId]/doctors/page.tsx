@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
-import { agesLine, bareName, doctorGuide, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine } from '@attendra/core';
+import { agesLine, bareName, doctorGuide, OWN_HOURS_NOTE, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine, allVisitTypeIds, doesEveryVisitType } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -30,13 +30,13 @@ import { providerTerms, useTerms } from '@/lib/terms';
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
 type Hours = NonNullable<Provider['hours']>;
-type Draft = Omit<DoctorInput, 'gender' | 'otherPhones'> & { gender: Gender | ''; ownHours: boolean; /** As typed, separated by commas. */ otherPhones: string };
+type Draft = Omit<DoctorInput, 'gender' | 'otherPhones' | 'visitTypeIds'> & { gender: Gender | ''; ownHours: boolean; /** As typed, separated by commas. */ otherPhones: string; visitTypeIds: string[] };
 
 // a new vet can be booked for every visit type, as the stand-in a clinic starts with could: with only the first,
 // a sick visit had nobody to book it with once the stand-in stepped aside, at the desk and on calls
 const blank = (visitTypes: VisitType[]): Draft => ({
   name: '', kind: 'person', gender: '', phone: '', otherPhones: '', specialty: '', categories: [], acceptingNewPatients: true, timeOff: [],
-  visitTypeIds: visitTypes.map((v) => v.id), ownHours: false,
+  visitTypeIds: allVisitTypeIds({ visitTypes }), ownHours: false,
 });
 const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', phone: p.phone ?? '', otherPhones: (p.otherPhones ?? []).join(', '), specialty: p.specialty ?? '', ownHours: !!p.hours });
 
@@ -93,7 +93,7 @@ export default function DoctorsPage() {
 
   if (isPending || doctors.isPending) return <><PageHeader title={terms.title('providers')} /><Skeleton className="h-64" /></>;
   if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of {terms.providers} did not load. Refresh to try again.</Alert></>;
-  const { visitTypes } = doctors.data;
+  const { visitTypes, noProvider } = doctors.data;
   const visitName = (id: string) => visitTypes.find((v) => v.id === id)?.name ?? id;
 
   return (
@@ -107,6 +107,8 @@ export default function DoctorsPage() {
           </>
         )} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
+      {/* the server's words, the same as Settings shows: a visit type nobody does can't be booked */}
+      {noProvider.length > 0 && <div className="mb-4 space-y-2" data-testid="no-provider-warnings">{noProvider.map((w) => <Alert key={w.visitTypeId} tone="warn">{w.message}</Alert>)}</div>}
       {/* the same filter bar as Pets and Requests: a card, search first, then the dropdowns */}
       <Card className="mb-4"><CardContent className="py-4">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
@@ -155,7 +157,7 @@ export default function DoctorsPage() {
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">{providerTerms(terms.patient === 'pet').sees}</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
-                  <dt className="text-text-muted">Books</dt><dd>{p.visitTypeIds.map(visitName).join(', ')}</dd>
+                  <dt className="text-text-muted">Visit types they do</dt><dd>{doesEveryVisitType(p, { visitTypes }) ? 'All visit types' : p.visitTypeIds.map(visitName).join(', ')}</dd>
                   <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
                   {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t, i) => <span key={`${t.from}-${i}`} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start ? `, ${t.start} to ${t.end}` : ''}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
                 </dl>
@@ -232,6 +234,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
     e.preventDefault();
     const { ownHours, gender, otherPhones, ...rest } = d;
     if (!gender) { setProblem(`Choose their gender, so callers who ask for a female or a male ${terms.provider} are offered the right one.`); return; }
+    if (!d.visitTypeIds.length) { setProblem(`Choose at least one visit type they do. Callers are offered a ${terms.provider} only for the visit types ticked here.`); return; }
     save.mutate({
       ...rest,
       gender,
@@ -351,8 +354,15 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={d.acceptingNewPatients} onChange={(e) => set({ acceptingNewPatients: e.target.checked })} />
           Takes new {terms.patients}
         </label>
-        <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium">Visit types they can be booked for</legend>
+        <fieldset className="space-y-1.5" aria-describedby="doc-visit-types-hint">
+          <legend className="text-sm font-medium">Visit types they do</legend>
+          <p id="doc-visit-types-hint" className="text-xs text-text-muted">Callers and the desk can book them only for these. A visit type ticked for nobody can&apos;t be booked.</p>
+          {/* one click for everything, and one click back to choosing */}
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={doesEveryVisitType(d, { visitTypes })}
+              onChange={(e) => set({ visitTypeIds: e.target.checked ? allVisitTypeIds({ visitTypes }) : [] })} />
+            All visit types
+          </label>
           <div className="flex flex-wrap gap-x-4 gap-y-2">
             {visitTypes.map((v) => (
               <label key={v.id} className="flex items-center gap-2 text-sm">
@@ -371,6 +381,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
               onChange={(e) => set({ ownHours: e.target.checked, hours: e.target.checked ? (d.hours ?? clinicHours) : d.hours })} />
             Their own hours, not the clinic&apos;s
           </label>
+          {d.ownHours && <p className="text-xs text-text-muted" data-testid="own-hours-note">{OWN_HOURS_NOTE.en}</p>}
           {d.ownHours && (
             <div className="space-y-2 rounded-md border border-border p-3">
               {DAYS.map(([day, label]) => {

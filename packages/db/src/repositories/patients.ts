@@ -119,6 +119,33 @@ export class PostgresPatientDirectory implements PatientDirectory {
   }
 
   /**
+   * A pet by the last four digits of its number and its name, for a caller whose number could not be found
+   * (2026-11-15). Narrows by the keyed hash of the last four digits (migration 0042, never a scan of every record),
+   * then decrypts only those rows' first names to compare the pet's, as findPet does. Found only when exactly one pet
+   * in exactly one household (one number) matches: two households sharing the last four digits with a pet of that name
+   * are 'ambiguous', and the caller goes to the team. Audited like findPet.
+   */
+  async findPetByLastFour(clinicId: string, lastFour: string, petName: string, callId: string): Promise<PatientLookup> {
+    const digits = lastFour.replace(/\D/g, '');
+    if (digits.length !== PHONE_SUFFIX_DIGITS) return { status: 'not_found' };
+    return withClinic(this.db, clinicId, async (tx) => {
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const rows = await tx.select().from(patients)
+        .where(and(eq(patients.clinicId, clinicId), eq(patients.phoneSuffixHash, this.cipher.hash(phoneSuffixKey(clinicId, digits))))).orderBy(patients.createdAt).limit(200);
+      const pet = firstName(petName);
+      const named = rows.map((r) => ({ r, name: firstName(this.cipher.decrypt(r.firstNameEnc, ctx('first_name'))) }));
+      const exact = named.filter((x) => x.name === pet);
+      const matches = (exact.length ? exact : named.filter((x) => soundsLike(pet, x.name))).map((x) => x.r);
+      if (!matches.length) return { status: 'not_found' } as const;
+      const households = new Set(matches.map((r) => r.phoneHash ?? r.id));
+      if (matches.length > 1 || households.size > 1) return { status: 'ambiguous' } as const;
+      const match = matches[0]!;
+      await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'patient.identified.by_last_four', entity: 'patient', entityId: match.id, callId });
+      return { status: 'found', patient: this.callPatient(clinicId, match) } as const;
+    });
+  }
+
+  /**
    * The one first name on file for this number (the owner for a pet, else the patient),
    * so the assistant can ask "Am I speaking with Sam?" as a front desk does when caller
    * ID shows a client. Only when there is exactly one: two families on one phone give

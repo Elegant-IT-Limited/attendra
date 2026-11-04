@@ -17,9 +17,13 @@ export async function insertAppointment(
   clinicId: string,
   values: Omit<typeof appointments.$inferInsert, 'clinicId'>,
   audit: { actor: string; action: string; callId?: string | null },
+  // run first, in the same transaction: a move cancels the visit it replaces, so the new one may overlap it, and a
+  // failed insert keeps the old one
+  before?: (tx: Parameters<Parameters<typeof withClinic>[2]>[0]) => Promise<void>,
 ): Promise<{ status: 'booked'; row: AppointmentRow } | { status: 'slot_taken' } | { status: 'already_done'; row: AppointmentRow }> {
   try {
     return await withClinic(db, clinicId, async (tx) => {
+      await before?.(tx);
       const [row] = await tx.insert(appointments).values({ ...values, clinicId }).returning();
       await tx.insert(auditLogs).values({ clinicId, actor: audit.actor, action: audit.action, entity: 'appointment', entityId: row!.id, callId: audit.callId ?? null });
       return { status: 'booked', row: row! } as const;

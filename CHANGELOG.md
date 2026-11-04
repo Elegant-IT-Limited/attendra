@@ -4,6 +4,24 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (scheduling that works like a front desk)
+
+- **A vet's own hours decide.** `bookableWindows(clinic, provider, date)` (`packages/core/src/hours.ts`) is the one rule for the assistant, the desk's checks, New booking, the schedule grid and the hours the assistant states: a vet with their own hours can be booked in them even when the clinic's front desk is closed, weekends included; the clinic's hours apply only to vets with none. Holidays and special days close for everyone except the vets a special day lists (`SpecialDay.providerIds`). The assistant says it plainly: "The clinic's front desk is closed on Sundays, but Dr. Morgan sees patients Sunday from 9 to 1." The grid shows that time as bookable with a "desk closed" band.
+- **Start times on a clinic grid.** Settings, Booking rules, "Appointment start times every…" (5, 10, 15, 20 or 30 minutes; default 10): any start where the whole visit and its buffer fit and clash with nothing, so 8:30 exists for a 20-minute visit. Offered times stay a visit apart.
+- **The nearest times to the one asked for.** `find_slots` takes `time_mode` (at, around, before, after, earliest) and answers the question first: "Yes, 4:00 PM on Tuesday, November 11 is free with Dr. Rahman. Shall I book it?" or "Not at 4:00, but 3:50 or 4:20 PM on Tuesday, November 11." None that day: the same time on the vet's next working days; a named date looks 60 days ahead.
+- **The true reason.** With nothing found the assistant says why: the vet doesn't do that visit (and who does), doesn't work that day, is fully booked that day (and the nearest), the clinic is closed, notice, or the booking window. "In the next two weeks" is gone, and so is "I can't check any more times on this call": there is no limit on searches.
+- **One lead time.** New booking hides times sooner than `BOOKING_LEAD_MINUTES` (2 hours, the assistant's); the desk books a walk-in sooner with Override.
+- **Visit types per vet.** The vet's card and edit panel show "Visit types they do" with "All visit types"; a new vet and an import with no types column get every type; Settings and the vets page warn "No vet does Dental care: callers can't book it"; New booking greys out a vet who doesn't do the chosen visit, with why. `pnpm db:visit-type-coverage` (dry run, counts only).
+
+### Changed (calls: pet emergencies and finding the profile)
+
+- **Who a red flag is about.** "Can't breathe", "throat swelling" and the other person-in-danger words give the 911 line only when a person is the subject; about a pet they give the pet emergency line with the clinic's emergency hospital. After it, no loop: the assistant offers the team now (a transfer when the clinic is open and has a route) or an urgent request, which leads Today and Requests. A routine visit for that pet stays refused; another pet is helped as usual. One urgent item per call.
+- **A second way to the profile.** A spoken country prefix is dropped when the rest is a whole national number ("52 303 555 0130" is (303) 555-0130). After two wrong read-backs, or a number with no profile, the assistant asks for the last four digits and the pet's name, and accepts only one pet in one household; otherwise a request for the team. Nothing from the record is said first.
+
+### Fixed (setup and dashboard)
+
+- Removing a vet or a document from the setup page failed for everyone ("That vet could not be removed"): a DELETE sent with a JSON content type and no body was refused. A vet with visits still to come says why. A failed document removal is titled "Not removed" (setup and Settings, Knowledge). "Read my website" on a page with no clinic details says "That page has no clinic details (hours, prices, services). Try your clinic's own website address." The setup test call's "Open in the dashboard" opens the clinic's Today.
+
 ### Changed (smart calls: the call remembers, the record is used, every date in full)
 
 - **Never asked twice.** One call memory (`packages/agent/src/call-memory.ts`) keeps what the caller said ("my dog", "she's two", "Thursday at 5", "with Dr. Ruiz"), read by closed word lists in each language pack, and what the tools were given and found. A later value replaces an earlier one ("no, it's a cat"). The planner reads it every turn, and a tool fills an argument the planner left null from it (`filled_from_memory` in the call's actions, names only). A new pet's kind, sex and age are nullable in `register_patient`; the tool asks only for what is still missing.

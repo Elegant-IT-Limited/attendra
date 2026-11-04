@@ -76,6 +76,12 @@ export default function Knowledge() {
   const remove = useMutation({
     mutationFn: (d: KnowledgeDocument) => api<void>(`/clinics/${clinicId}/knowledge/documents/${d.id}`, { method: 'DELETE' }),
     onSuccess: () => { setRemoving(null); void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] }); toast({ tone: 'success', message: 'Deleted. The assistant no longer answers from it.' }); },
+    // gone already (someone else deleted it) is what was asked for; anything else says so, under its own title
+    onError: (e) => {
+      if (e instanceof ApiFailure && e.status === 404) { setRemoving(null); void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] }); return; }
+      setRemoving(null);
+      showProblem({ title: 'Not removed', message: e instanceof ApiFailure && e.status === 403 ? 'Your role at this clinic cannot delete documents. Ask the clinic\'s owner.' : 'That document could not be removed. Try again.' });
+    },
   });
   const ask = useMutation({
     mutationFn: (q: string) => api<KnowledgeAnswer>(`/clinics/${clinicId}/knowledge/ask`, { method: 'POST', body: JSON.stringify({ question: q }) }),

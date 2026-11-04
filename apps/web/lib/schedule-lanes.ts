@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { awayOn, type ClinicConfig, specialDayOf, weekdayOf, windowsOn } from '@attendra/core';
+import { awayOn, bookableWindows, type ClinicConfig, specialDayOf } from '@attendra/core';
 
 type Provider = ClinicConfig['providers'][number];
-type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'specialDays'>;
+type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'specialDays' | 'timezone'>;
 
 /** Past this many bookable providers the day grid shows only the lanes in use, and the Vets picker appears. */
 export const MANY_PROVIDERS = 8;
@@ -10,9 +10,26 @@ export const MANY_PROVIDERS = 8;
 /** How many lanes the picker lets one person pin: more than this no longer fits a screen. */
 export const MAX_CHOSEN = 8;
 
-/** A provider's hours on a date: a special day's own stand in for the week's. */
-export const hoursFor = (clinic: Clinic, p: Pick<Provider, 'hours'>, date: string) =>
-  specialDayOf(clinic, date)?.windows ?? windowsOn(p.hours ?? clinic.hours, weekdayOf(date));
+/** A provider's bookable hours on a date, by the same rule every booking follows (bookableWindows): their own decide. */
+export const hoursFor = (clinic: Clinic, p: Pick<Provider, 'id' | 'hours'>, date: string) => bookableWindows(clinic, p, date).windows;
+
+/** The clinic's own hours on a date: the front desk's. Time a vet keeps outside them is drawn bookable, marked "front desk closed". */
+export const clinicHoursFor = (clinic: Clinic, p: Pick<Provider, 'id' | 'hours'>, date: string) => bookableWindows(clinic, p, date).clinicWindows;
+
+/** The parts of a vet's open windows outside the front desk's, in minutes: open to book, with the desk closed. */
+export function outsideDesk(open: readonly (readonly [number, number])[], desk: readonly (readonly [number, number])[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [o, c] of open) {
+    let cursor = o;
+    for (const [d0, d1] of [...desk].sort((a, b) => a[0] - b[0])) {
+      if (d1 <= cursor || d0 >= c) continue;
+      if (d0 > cursor) out.push([cursor, d0]);
+      cursor = Math.max(cursor, d1);
+    }
+    if (cursor < c) out.push([cursor, c]);
+  }
+  return out;
+}
 
 /** Closed all day: a holiday, or a special day with no hours. What the calendar says instead of hours. */
 export const closedDay = (clinic: Clinic, date: string) => {
@@ -22,8 +39,8 @@ export const closedDay = (clinic: Clinic, date: string) => {
 };
 
 /** Working on a date: the clinic is open, they have hours that day, and they are not away. */
-export const worksOn = (clinic: Clinic, p: Pick<Provider, 'hours' | 'timeOff'>, date: string) =>
-  !closedDay(clinic, date) && !awayOn(p, date) && hoursFor(clinic, p, date).length > 0;
+export const worksOn = (clinic: Clinic, p: Pick<Provider, 'id' | 'hours' | 'timeOff'>, date: string) =>
+  !awayOn(p, date) && hoursFor(clinic, p, date).length > 0;
 
 /**
  * The lanes the grid draws. A clinic of a few providers shows them all, as it always has.

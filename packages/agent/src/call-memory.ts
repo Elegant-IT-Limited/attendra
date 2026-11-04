@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, spokenDigits, asE164, normalise } from '@attendra/core';
+import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise } from '@attendra/core';
 
 /** Where a fact came from: the caller's own words, a tool's arguments, the clinic's records, or the planner model's reading of the call (the intent). */
 export type FactSource = 'caller' | 'tool' | 'record' | 'model';
@@ -109,7 +109,7 @@ export class CallMemory {
       if (age) this.set('age', age, 'tool', atTurn);
       const phone = text('phone');
       if (phone) {
-        const digits = asE164(clinic, spokenDigits(phone)).replace(/\D/g, '');
+        const digits = heardNumber(clinic, phone).replace(/\D/g, '');
         const current = this.get('number');
         if (current?.digits !== digits) this.set('number', { digits, readBack: false, callerId: !!callerNumber && callerNumber.replace(/\D/g, '') === digits }, 'tool', atTurn);
       } else if (callerNumber && !this.has('number')) {
@@ -127,8 +127,9 @@ export class CallMemory {
       const unasked = either?.source === 'caller' && !!either.value && 'either' in either.value && !this.whichWeekAsked;
       if (day && !unasked) this.set('day', { date: day }, 'tool', atTurn);
       const time = text('from_time');
-      // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3")
-      if (time && this.get('time')?.time !== time) this.set('time', { time, mode: 'after' }, 'tool', atTurn);
+      const mode = text('time_mode');
+      // a time the planner passed keeps the caller's own reading of it ("after 3" or "at 3"), or the planner's (after, with none)
+      if (time && this.get('time')?.time !== time) this.set('time', { time, mode: mode === 'before' || mode === 'around' || mode === 'at' ? mode : 'after' }, 'tool', atTurn);
     }
   }
 
@@ -224,7 +225,7 @@ export function memoryLine(memory: CallMemory, clinic: ClinicConfig, lang: Langu
   const vet = clinic.providers.find((p) => p.id === memory.get('vet'));
   const when = [
     day === null ? 'any day' : day && 'date' in day ? PACKS.en.fullDay(day.date) : day ? `either ${PACKS.en.fullDay(day.either[0])} or ${PACKS.en.fullDay(day.either[1])} (ask which, once)` : null,
-    time ? `${time.mode === 'after' ? 'after' : 'around'} ${time.time}` : null,
+    time ? `${time.mode === 'after' ? 'after' : time.mode === 'before' ? 'before' : 'around'} ${time.time}` : null,
     vet ? `with ${providerName(vet, lang)}` : null,
   ].filter(Boolean).join(', ');
   if (want || when) parts.push(`wants: ${[want, when].filter(Boolean).join(', ')}`);

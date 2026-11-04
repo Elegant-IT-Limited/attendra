@@ -30,12 +30,14 @@ const AUDIT: Record<string, Way> = {
   'booking.usualWithinDays': 'code',
   'booking.tieBreak': 'code',
   'booking.matchAnimal': 'code',
+  'booking.startEvery': 'code',
   voiceEngine: 'code', // set by the operator
   answeringPaused: 'code', // set by the hosting layer
   'specialDays[].date': 'clinic_info',
   'specialDays[].windows[].open': 'clinic_info',
   'specialDays[].windows[].close': 'clinic_info',
   'specialDays[].note': 'clinic_info',
+  'specialDays[].providerIds': 'code',
   greeting: 'prompt',
   greetings: 'prompt',
   'talk.pace': 'prompt',

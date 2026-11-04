@@ -38,13 +38,13 @@ turns:
     delegate:
       - commit_pending: {}
   - caller: Actually, can you make it 4:30 instead?
-    reply: "I have {offered.3}."
+    reply: "I have {offered.2}."
     delegate:
       - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, from_time: null, part_of_day: any }
   - caller: Yes, that one.
     reply: "{readback}"
     delegate:
-      - propose_booking: { slot_id: "$offered[3]", replaces_appointment_id: null }
+      - propose_booking: { slot_id: "$offered[2]", replaces_appointment_id: null }
   - caller: "Yes."
     reply: "Done, it's moved."
     delegate:

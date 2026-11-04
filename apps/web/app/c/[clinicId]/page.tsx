@@ -2,9 +2,9 @@
 'use client';
 import { useProblem } from '@/components/ui/toast';
 import type { CallList, Overview, Schedule, WaitingTasks, WebhookEndpoints } from '@attendra/api/contracts';
-import { type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, weekdayOf, windowsOn, providerName } from '@attendra/core';
+import { bookableWindows, type ClinicConfig, localDateOf, localParts, shownProviders, toMinutes, providerName } from '@attendra/core';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Flag, PhoneCall, PhoneOff, Pill, Siren, UserCheck, Voicemail, Webhook } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { type ReactNode, useEffect, useState } from 'react';
@@ -125,17 +125,21 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
   // a flagged call that became a follow-up request is listed once, as the request
   const followedUp = new Set(requests.flatMap((t) => (t.type === 'follow_up' && t.callId ? [t.callId] : [])));
+  const request = (t: (typeof requests)[number]) => ({
+    key: t.id, icon: t.urgent ? <AlertTriangle className="size-4 text-danger" /> : <RequestIcon type={t.type} />, ...(t.urgent ? { tone: 'danger' as const } : {}),
+    title: `${t.urgent ? 'Urgent · ' : ''}${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+    action: canWork
+      ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
+      : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
+  });
   const items: { key: string; icon: ReactNode; title: string; detail: ReactNode; action: ReactNode; tone?: 'danger' }[] = [
+    // an urgent request (taken during an emergency) is at the very top, before everything else
+    ...requests.filter((t) => t.urgent).map(request),
     ...emergencies.map((c) => ({
       key: c.id, icon: <Siren className="size-4 text-danger" />, tone: 'danger' as const, title: 'Emergency language on a call', detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} /></>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Review the call</Link> : null,
     })),
-    ...requests.map((t) => ({
-      key: t.id, icon: <RequestIcon type={t.type} />, title: `${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
-      action: canWork
-        ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
-        : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,
-    })),
+    ...requests.filter((t) => !t.urgent).map(request),
     ...flagged.filter((c) => !followedUp.has(c.id)).map((c) => ({
       key: c.id, icon: <Flag className="size-4 text-warning" />, title: 'A call flagged for review',
       detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. The summary says why.</>,
@@ -202,7 +206,7 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
               <div className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
                 {/* the stand-in a new clinic starts with steps aside once anyone else is listed, unless it has visits today */}
                 {shownProviders(clinic.providers, (schedule.data?.appointments ?? []).filter((a) => a.status === 'booked').map((a) => a.providerId)).map((p) => {
-                  const windows = windowsOn(p.hours ?? clinic.hours, weekdayOf(today)).map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
+                  const windows = bookableWindows(clinic, p, today).windows.map((w) => [toMinutes(w.open), toMinutes(w.close)] as const);
                   const mine = (schedule.data?.appointments ?? []).filter((a) => a.providerId === p.id && a.status === 'booked');
                   const span = mine.map((a) => ({ a, s: localParts(new Date(a.startsAt), tz).minutes, e: localParts(new Date(a.endsAt), tz).minutes }));
                   const next = span.find((x) => x.e > nowMin);

@@ -481,7 +481,12 @@ export const SlotQuery = z.object({
 export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
 export type ScheduleConflicts = z.infer<typeof ScheduleConflicts>;
 
-export const SlotList = z.object({ slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime() })) });
+export const SlotList = z.object({
+  slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), outsideClinicHours: z.boolean().optional() })),
+  // the clinic's start-time grid and the lead time (minutes) the times were found with: the dialog says these numbers
+  startEvery: z.number().int().optional(),
+  leadMinutes: z.number().int().optional(),
+});
 
 export const BookAppointment = z.object({
   patientId: z.uuid(),
@@ -608,8 +613,11 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
   // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
   phone: z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).optional(),
   otherPhones: z.array(z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY)).max(3).optional(),
+  // left out: a new doctor does every visit type, and a change keeps what they do
+  visitTypeIds: z.array(z.string()).min(1, 'choose at least one visit type they do').optional(),
 });
-export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType) });
+/** `noProvider`: each visit type nobody does, with Settings' warning for it ("No vet does Dental care: callers can't book it"). */
+export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType), noProvider: z.array(z.object({ visitTypeId: z.string(), message: z.string() })) });
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
 export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });
 export const ImportResult = z.object({
@@ -752,7 +760,8 @@ export const AssistantChoices = z.object({
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });
 
 // the oldest 20, and how many are waiting in all
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable() })), total: z.number().int(),
+// urgent ones first: they lead Today's list
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

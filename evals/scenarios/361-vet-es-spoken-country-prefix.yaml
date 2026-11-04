@@ -1,0 +1,30 @@
+id: vet-es-spoken-country-prefix
+title: 'In Spanish, a number said with a country prefix ("52 720 555 0174") is read back without it, and the pet is found'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way, language, es]
+facts: "Una llamada de prueba desde el navegador. Eres Carmen Ortiz; el número de la ficha es 720 555 0174, y lo dices con 52 delante, como 52 720 555 0174. Tu perra es Luna. Di que sí a la confirmación del número. Solo quieres saber si Luna está registrada: cuando la encuentren, da las gracias, di que llamarás para reservar, y despídete."
+turns:
+  - caller: Es para Luna. El número es 52 720 555 0174.
+    reply: "¿Es el 720-555-0174?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "52 720 555 0174" }
+  - assistant: "¿Es el 720-555-0174?"
+  - caller: Sí, ese es.
+    reply: "¿Y su nombre?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "52 720 555 0174" }
+  - assistant: "¿Y su nombre?"
+  - caller: Carmen Ortiz.
+    reply: "Encontré a Luna, su perra."
+    delegate:
+      - verify_caller: { owner_name: Carmen Ortiz, pet_name: Luna, phone: "52 720 555 0174" }
+expect:
+  outcome: abandoned
+  verified: true
+  language: es
+  refusals: [confirm_number, owner_check]
+  returned: ["¿Es el 720-555-0174?"]
+  never_returned: ["52-720", "527205550174"]

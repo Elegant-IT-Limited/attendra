@@ -76,6 +76,11 @@ export interface LanguagePack {
   textOffer: (v: { target: 'this' | 'file' }) => string;
   /** Said once the text has gone. */
   textSent: string;
+  /**
+   * Settings' warning for a visit type nobody can be booked for (2026-11-15): the dashboard shows the clinic's language,
+   * the Spanish twin is here so the words live in one place. `pets` names a vet, else a doctor.
+   */
+  noProviderForVisit: (v: { visit: string; pets: boolean }) => string;
   /** Said instead of texting. */
   textRefused: (v: { reason: 'opted_out' | 'off' }) => string;
   /** Monday first: "Mon" … "Sun", for a short hours text. */
@@ -105,6 +110,8 @@ export interface LanguagePack {
   whichWeek: (v: { first: string; second: string }) => string;
   /** The note the team sees on a booking made on a number whose owner on file did not match the name the caller gave. */
   bookedByCallerNote: (v: { name: string }) => string;
+  /** The team's note on a booking for a pet found by the last four digits of its number and its name, not the whole number. */
+  foundByLastFourNote: string;
   /** The words that pick facts out of what a caller says, for the call memory (memory-words.ts). Closed lists only. */
   memory: MemoryWords;
   /**
@@ -138,6 +145,14 @@ export interface LanguagePack {
   /** Said first when a number has no pets on file at all: then a new owner and pet the usual way. */
   noPetsOnNumber: string;
   /**
+   * The second way to find a pet's profile, asked once: after two read-backs the caller said were wrong
+   * ('wrong_readbacks'), or a number with no profile on it ('no_profile', which also offers to add a new pet). The
+   * last four digits of the number on file and the pet's name; never a number or a name from the records.
+   */
+  lastFourQuestion: (v: { after: 'wrong_readbacks' | 'no_profile' }) => string;
+  /** Said first when the last four digits and the pet's name do not find exactly one household: then a request for the team. */
+  lastFourNoMatch: string;
+  /**
    * A visit the team books itself, asked for directly: why, the notice when set (in English words, "25 hours", "3 days"),
    * then both next steps: a request for the team, or the related visit the caller can book now.
    */
@@ -153,6 +168,12 @@ export interface LanguagePack {
 
   /** The fixed emergency instruction, with the clinic's emergency number. */
   emergencyScript: (emergencyNumber: string) => string;
+  /**
+   * After an animal's emergency script, to a caller who still wants a visit for that pet or asks for something: no
+   * routine visit for it on this call, and the next step, the team now (`transfer`: a line takes calls and the clinic is
+   * open) or an urgent request. `pet`: its name, or null. The hospital is never said again unless they ask.
+   */
+  petEmergencyNext: (v: { pet: string | null; transfer: boolean }) => string;
   /** The one warning an insulting caller hears, and the goodbye when the call is ended for it: said word for word. */
   abuseWarning: string;
   abuseGoodbye: string;
@@ -182,6 +203,8 @@ export interface LanguagePack {
     callbackTaken: (v: { sameNumber: boolean }) => string;
     /** A refill request logged: with the team, never approved or timed. */
     refillTaken: string;
+    /** A request taken during an animal's emergency: with the team as urgent, at the top of their list. */
+    urgentRequestTaken: string;
     /** A text just sent. */
     textSent: string;
     /** The caller's answer to the reminder offer, acknowledged. */
@@ -210,6 +233,8 @@ export interface LanguagePack {
      */
     dayShift: (v: { days: number; day: string }) => string;
   };
+  /** find_slots' direct answers, reasons and the front-desk sentence. */
+  slots: SlotLines;
   /** Said when an answer takes too long (the deadline), and when a request fails: never a claim that it worked. */
   tooSlow: string;
   couldNotFinish: string;
@@ -244,6 +269,46 @@ export interface LanguagePack {
 }
 
 /** One day of offered times: the day (YYYY-MM-DD) and its times, each as hour and minutes on the 24-hour clock. */
+/** A time of day, 24-hour. */
+export interface Clock { hour: number; minute: number }
+/** How a provider is referred to again in a sentence: "she", "he", or their name when the clinic did not say. */
+export type Pronoun = 'female' | 'male' | null;
+
+/**
+ * find_slots' own lines (2026-11-15): the direct answer to "is 4 PM free?" first, the true reason when nothing fits,
+ * and the front-desk sentence for a vet who works outside the clinic's hours. `date` is clinic-local YYYY-MM-DD.
+ */
+export interface SlotLines {
+  /** "Yes, 4:00 PM on Tuesday, November 11 is free with Dr. Rahman. Shall I book it?" */
+  exactFree: (v: { date: string; time: Clock; provider: string | null }) => string;
+  /** "Not at 4:00, but 3:50 or 4:20 PM on Tuesday, November 11." */
+  notAt: (v: { time: Clock; day: OfferDay }) => string;
+  /** "The nearest is 9:00 AM on Friday, November 6." */
+  nearest: (v: { day: OfferDay }) => string;
+  /** The asked time is outside the vet's hours that day: "Dr. Vance starts at 9 on Fridays." (or "finishes at 6"). */
+  vetHours: (v: { provider: string; weekday: number; starts: Clock | null; ends: Clock | null }) => string;
+  /**
+   * A time the vet keeps while the clinic's front desk is closed: "The clinic's front desk is closed on Sundays, but Dr.
+   * Vance sees patients Sunday from 9 to 1." With the clinic open part of that day, its opening or closing time; with
+   * `oneDay` (a holiday or a special day the vet is listed for), that date instead of the weekday.
+   */
+  frontDesk: (v: { weekday: number; provider: string; from: Clock; to: Clock; clinicOpens: Clock | null; clinicCloses: Clock | null; oneDay?: string | null }) => string;
+  /** "Dr. Vance doesn't do dental care; her visits are surgery and new client exam. Dr. Bennett and Dr. Khan do dental care. Shall I look with them?" */
+  doesntDoType: (v: { provider: string; pronoun: Pronoun; visit: string; theirVisits: string[]; others: string[] }) => string;
+  /** "Dr. Vance doesn't work on Tuesdays. She's in Wednesday to Friday and Sunday." `days` 0 = Sunday. */
+  notWorkingThatDay: (v: { provider: string; pronoun: Pronoun; weekday: number; days: number[] }) => string;
+  /** "Dr. Vance is fully booked on Friday, November 6." */
+  fullyBooked: (v: { provider: string | null; date: string }) => string;
+  /** Nothing at all in the search: "I can't find a free time with Dr. Vance through Friday, December 4." */
+  nothingThrough: (v: { provider: string | null; date: string }) => string;
+  /** "We book dental cleanings up to 30 days ahead, so the last day I can book is Friday, December 4." */
+  tooFarAhead: (v: { visit: string; days: number; lastDate: string }) => string;
+  /** "A dental cleaning needs 48 hours' notice, so the first day I can book is Friday, November 6." */
+  notice: (v: { visit: string; hours: number; firstDate: string }) => string;
+  /** "The clinic is closed on Thursday, November 26 (Thanksgiving)." */
+  clinicClosed: (v: { date: string; note: string | null }) => string;
+}
+
 export interface OfferDay { date: string; times: { hour: number; minute: number; provider: string | null }[] }
 
 /**
@@ -285,6 +350,10 @@ export interface MemoryWords {
   time: RegExp;
   /** Words before a time that mean "no earlier than" rather than "at about". */
   after: RegExp;
+  /** Words before a time that mean "no later than": "earlier than 6", "before 6". */
+  before: RegExp;
+  /** Words before a time that mean either side of it: "around 5". */
+  around: RegExp;
   /** Parts of the day after a time that put it in the afternoon or evening. */
   pm: RegExp;
   am: RegExp;

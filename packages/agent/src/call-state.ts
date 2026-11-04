@@ -73,6 +73,15 @@ export class CallState {
    */
   phoneReadback: { digits: string; atMs: number; askedAtMs: number | null } | null = null;
   readonly phonesConfirmed = new Set<string>();
+  /** Read-backs of a said number that the caller said were wrong: after two, the second way to find the profile. */
+  readbacksWrong = 0;
+  /**
+   * The caller was asked for the last four digits of the number on file and the pet's name (2026-11-15), and why: two
+   * wrong read-backs, or a number with no profile. Asked once; only then may verify_caller search by them.
+   */
+  lastFourAsked: 'wrong_readbacks' | 'no_profile' | null = null;
+  /** The pet was found by the last four digits and its name: the booking tells the team so. */
+  foundByLastFour = false;
   /** The digits of a number the caller gave that is not a whole one for the clinic's country: read back once, then kept as given. */
   phoneAsGiven: string | null = null;
   /** A time the caller chose before the pet or patient was found: kept, then read back and booked on a yes once they are. */
@@ -96,14 +105,21 @@ export class CallState {
   emergencyCleared = false;
   /** The assistant has said the emergency script (its hospital or number is in the captions): it is never said again unasked. */
   emergencyScriptSaid = false;
+  /** The turn that said it: the caller's turns after it are what the backend answers next. */
+  emergencyScriptSaidAtTurn: number | null = null;
   /**
-   * At a clinic for animals, a doubt about danger (the bare word "emergency", or a caller still talking after the
-   * script) gets one short question: "Is Ginger in danger right now?". The caller's next words answer it: a yes holds
-   * the call as an emergency, a no lets it go on. Asked once per call.
+   * At a clinic for animals, the bare word "emergency" gets one short question: "Is Ginger in danger right now?". The
+   * caller's next words answer it: a yes holds the call as an emergency, a no lets it go on. Asked once per call. (A
+   * caller still asking for something after an animal's script gets the next step instead: the team, or an urgent request.)
    */
   dangerQuestion: { atMs: number; askedAtMs: number | null; answered: boolean } | null = null;
   /** An emergency is holding the call: only the script, a transfer, a callback or the end. */
   get emergencyLocked() { return !!this.emergency && !this.emergencyCleared; }
+  /**
+   * The animal an emergency is about, as far as the call knows it (its name, its kind): after the script, a routine
+   * visit for it is still refused, while another pet's needs are answered as usual (2026-11-15).
+   */
+  emergencyPet: { name: string | null; species: string | null } | null = null;
   /** The on-call transfer an emergency asks for has been queued: it rings once per call. */
   emergencyTransferSent = false;
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */

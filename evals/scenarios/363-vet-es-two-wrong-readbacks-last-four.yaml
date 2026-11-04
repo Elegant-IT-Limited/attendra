@@ -1,0 +1,47 @@
+id: vet-es-two-wrong-readbacks-last-four
+title: 'In Spanish, two read-backs the caller says are wrong, then the last four digits and the pet''s name find the one pet, and it is booked'
+clinic: riverbend
+local_time: "10:00"
+caller_number: null
+channel: web
+tags: [no-demo, number-first, second-way, language, es]
+facts: "Una llamada de prueba desde el navegador. Eres Carmen Ortiz. No recuerdas el número de la ficha: dices 720 555 0177, luego 720 555 0178, y dices que no a las dos confirmaciones. Cuando te pidan los últimos cuatro dígitos y el nombre de la mascota, di 0174 y Luna. Cualquier hora te sirve; di que sí a la primera hora y a la confirmación."
+turns:
+  - caller: Quiero reservar una revisión para Luna. El número es 720 555 0177.
+    reply: "¿Es el 720-555-0177?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0177" }
+  - assistant: "¿Es el 720-555-0177?"
+  - caller: No, perdón, es el 720 555 0178.
+    reply: "¿Es el 720-555-0178?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0178" }
+  - assistant: "¿Es el 720-555-0178?"
+  - caller: No, tampoco, quizás 720 555 0179.
+    reply: "Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?"
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: "720 555 0179" }
+  - assistant: "Probemos de otra forma. ¿Cuáles son los últimos cuatro dígitos del número con el que está la ficha, y el nombre de su mascota?"
+  - caller: Cero uno siete cuatro, y se llama Luna.
+    reply: "Encontré a Luna, su perra. Le puedo ofrecer {offered.0}, o {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Luna, phone: null, phone_last4: "cero uno siete cuatro" }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: La primera.
+    reply: "Tengo {readback}. ¿Le reservo la cita?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Sí.
+    reply: "Listo, la cita queda reservada."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  language: es
+  refusals: [confirm_number, confirm_number, ask_last_four]
+  bookings_created: 1
+  # the confirmation goes to the number on file: the safety net for a profile found without the whole number
+  sms_sent: 1
+  returned: ["Encontré a Luna"]
+  never_returned: ["Carmen", "720-555-0174"]

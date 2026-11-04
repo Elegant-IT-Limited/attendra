@@ -115,7 +115,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'follow_up', patientId: call.patientId, callId } });
       }
       // an emergency is a check on the caller, not a callback: always in the team's queue, urgent, even when they said no to a callback
-      if (saved === 'saved' && call.emergency) {
+      // one urgent item per call: an urgent request the assistant already took on the call is that check
+      if (saved === 'saved' && call.emergency && !call.tasks.some((t) => t.urgent)) {
         const task = await tasks.create(clinicId, {
           type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `emergency:${callId}`, urgent: true,
           details: {

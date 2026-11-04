@@ -40,6 +40,8 @@ export const SpecialDay = z.object({
   windows: z.array(OpeningWindow).max(4),
   // "Christmas Eve", "staff training"
   note: z.string().trim().max(60).optional(),
+  // vets who keep their own weekly hours that day all the same (the clinic closes, they still see patients)
+  providerIds: z.array(z.string()).max(200).optional(),
 });
 export type SpecialDay = z.infer<typeof SpecialDay>;
 
@@ -247,6 +249,10 @@ export const Texting = z.object({
 });
 export type Texting = z.infer<typeof Texting>;
 
+/** What a clinic can choose for "Appointment start times every…", in minutes. */
+export const START_EVERY_CHOICES = [5, 10, 15, 20, 30] as const;
+export type StartEvery = (typeof START_EVERY_CHOICES)[number];
+
 /**
  * Who the assistant books with when the caller does not name anyone. A caller who asks
  * for someone (a name, a kind of doctor, a female or male doctor) is always offered only
@@ -261,6 +267,8 @@ export const BookingRules = z.object({
   tieBreak: z.enum(['fewest_visits', 'list_order']).default('fewest_visits'),
   // a veterinary clinic: only vets who list the pet's kind of animal (a vet who lists no animals sees every animal)
   matchAnimal: z.boolean().default(true),
+  // appointment start times every this many minutes, on the clock (:00, :10, :20…): ezyVet and Provet book on 5 to 30
+  startEvery: z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(20), z.literal(30)]).default(10),
 });
 export type BookingRules = z.infer<typeof BookingRules>;
 

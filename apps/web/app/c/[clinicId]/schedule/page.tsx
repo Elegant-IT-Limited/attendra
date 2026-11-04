@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment, Schedule } from '@attendra/api/contracts';
-import { addDays, bookableProviders, type ClinicConfig, industryPack, localDateOf, shownProviders, weekdayOf, windowsOn, providerName } from '@attendra/core';
+import { addDays, bookableProviders, bookableWindows, type ClinicConfig, industryPack, localDateOf, shownProviders, weekdayOf, windowsOn, providerName } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, ChevronLeft, ChevronRight, Plus, User } from 'lucide-react';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -53,7 +53,7 @@ function weekDays(clinic: ClinicConfig, monday: string, appointments: Appointmen
   return all.filter((d) => {
     const wd = weekdayOf(d);
     if (wd >= 1 && wd <= 5) return true;
-    return windowsOn(clinic.hours, wd).length > 0 || clinic.providers.some((p) => p.hours && windowsOn(p.hours, wd).length > 0)
+    return windowsOn(clinic.hours, wd).length > 0 || clinic.providers.some((p) => bookableWindows(clinic, p, d).windows.length > 0)
       || appointments.some((a) => localDateOf(new Date(a.startsAt), clinic.timezone) === d);
   });
 }

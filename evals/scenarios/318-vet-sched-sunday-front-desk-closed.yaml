@@ -1,0 +1,45 @@
+id: vet-sched-sunday-front-desk-closed
+title: "Dr. Vance on Sunday morning: her own hours are booked though the clinic is closed, with the front-desk sentence (a tester clinic's call replayed, made-up data)"
+clinic: riverbend
+local_time: "10:00"
+caller_number: "+13035550142"
+tags: [no-demo, scheduling-1115, jordan-household]
+settings:
+  visitTypes:
+    - { id: vt_wellness, name: wellness exam, names: { es: chequeo general }, minutes: 30, audience: existing }
+    - { id: vt_sick, name: sick visit, names: { es: consulta por enfermedad }, minutes: 20 }
+    - { id: vt_vaccines, name: vaccine appointment, names: { es: cita de vacunas }, minutes: 15 }
+    - { id: vt_new, name: new patient exam, names: { es: primera consulta }, minutes: 40, audience: new }
+    - { id: vt_dental, name: dental care, names: { es: cuidado dental }, minutes: 30 }
+    - { id: vt_consult, name: surgery consultation, names: { es: consulta de cirugía }, minutes: 30 }
+  providers:
+    - { id: prov_morgan, name: Dr. Mara Vance, gender: female, specialty: Surgery, visitTypeIds: [vt_sick, vt_consult, vt_new], hours: { "0": [{ open: "09:00", close: "13:00" }], "5": [{ open: "09:00", close: "13:00" }, { open: "14:00", close: "18:00" }] } }
+    - { id: prov_rahman, name: Dr. Omar Rahman, gender: male, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental], hours: { "1": [{ open: "08:00", close: "19:00" }], "2": [{ open: "08:00", close: "19:00" }], "3": [{ open: "08:00", close: "19:00" }], "4": [{ open: "08:00", close: "19:00" }], "5": [{ open: "08:00", close: "19:00" }] }, timeOff: [{ from: "2026-10-01", to: "2026-10-01", start: "16:10", end: "16:20", note: team huddle }] }
+    - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
+facts: "You are Jordan Avery, calling from the number on file. Biscuit is sick; you want Dr. Vance on Sunday morning. Take the first time. Say yes."
+turns:
+  - caller: "I'd like to see Dr. Vance on Sunday morning. Biscuit is sick."
+    reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
+  - caller: Yes.
+    reply: "I found Biscuit. The clinic's front desk is closed on Sundays, but Dr. Vance sees patients Sunday from 9 to 1. I have {offered.0}, {offered.1} or {offered.2}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Biscuit, phone: null }
+      - find_slots: { visit_type_id: vt_sick, provider_id: prov_morgan, from_date: "2026-10-04", part_of_day: morning, from_time: null }
+  - caller: "The 9:00."
+    reply: "{readback}"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: "Yes."
+    reply: "Biscuit is booked for {booked}."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  bookings_created: 1
+  sms_sent: 1
+  booked_with: prov_morgan
+  booked_on: "2026-10-04"
+  # the backend's own words to the planner (say_as), in the caller's language
+  returned: ["The clinic's front desk is closed on Sundays, but Dr. Mara Vance sees patients Sunday from 9 to 1. On Sunday, October 4, I have 9:00, 9:20 or 9:40 AM with Dr. Mara Vance."]
+forbid_spoken: ["we're closed on Sunday", "clinic is closed on Sunday"]

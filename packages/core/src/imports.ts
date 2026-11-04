@@ -4,6 +4,7 @@ import { readCustomValues } from './custom-fields';
 import { parseDob, phoneDigits } from './identity';
 import { asE164, PHONE_NUMBERS_ONLY, phoneProblem, samePhone } from './phones';
 import { ageOn, bareName, providerName, providerPhoneIssues, providerPhones } from './providers';
+import { allVisitTypeIds } from './visit-coverage';
 
 /**
  * Bulk lists the managers keep in a spreadsheet: doctors and patients, as CSV (Excel,
@@ -83,7 +84,7 @@ export function doctorGuide(clinic: DoctorTemplateClinic): string[] {
     `gender: female, male, other or prefer not to say. Callers can ask for a female or a male ${who}.`,
     `specialty: one from your list${specialties.length ? ` (${specialties.join(', ')})` : ''}. A new one joins the list when you import.`,
     `categories: ${vet ? 'the animals and services they see' : 'what they see people for'}, several separated by semicolons${categories.length ? `, from your list (${categories.join(', ')})` : ', like Children; Vaccinations'}. A new one joins the list when you import.`,
-    'visit_types: several separated by semicolons, the names in Settings. Empty means every visit type.',
+    'visit_types: several separated by semicolons, the names in Settings, or "all". Empty, or no visit_types column: every visit type for someone new, and what they have for someone on file.',
     ...(vet ? [] : ['ages_min and ages_max: whole years. Leave ages_max empty for no upper limit; leave both empty for every age.']),
     `accepting_new_patients: yes or no${vet ? ' (takes new pets)' : ''}. Empty means yes.`,
     'mon to sun: working hours like 08:00-12:00; 13:00-17:00. Leave a day empty when they do not work it. Leave all seven empty to use the clinic hours.',
@@ -191,7 +192,9 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
     const custom = readCustomValues(fields, sent);
     if (!custom.ok) return fail(`${fields.find((f) => f.id === custom.field)?.label ?? custom.field}: ${custom.message}`);
     const visitTypeIds: string[] = [];
-    for (const v of split(r.get('visit_types'))) {
+    // "all" (or "All visit types") is every type, the same as an empty cell for a new doctor
+    const typesCell = r.get('visit_types');
+    for (const v of /^all( visit types)?$/i.test(typesCell) ? allVisitTypeIds(clinic) : split(typesCell)) {
       const match = clinic.visitTypes.find((t) => t.id === v || sameName(t.name, v));
       if (!match) return fail(`"${v}" is not a visit type in Settings (${clinic.visitTypes.map((t) => t.name).join(', ')})`);
       visitTypeIds.push(match.id);
@@ -231,7 +234,8 @@ export function readDoctors(text: string, clinic: Pick<ClinicConfig, 'providers'
       categories: keep(r.get('categories'), split(r.get('categories')).map((v) => spelled('categories', v)), existing?.categories) ?? [],
       ages: existing && min === '' && max === '' ? existing.ages : min === '' && max === '' ? undefined : { min: min === '' ? 0 : Number(min), max: max === '' ? null : Number(max) },
       acceptingNewPatients: keep(r.get('accepting_new_patients'), accepting, existing?.acceptingNewPatients) ?? true,
-      visitTypeIds: visitTypeIds.length ? visitTypeIds : existing?.visitTypeIds ?? clinic.visitTypes.map((v) => v.id),
+      // no visit types column, or an empty cell: a new doctor does every type, one on file keeps theirs
+      visitTypeIds: visitTypeIds.length ? visitTypeIds : existing?.visitTypeIds ?? allVisitTypeIds(clinic),
       hours: existing && allDaysEmpty ? existing.hours : Object.keys(hours).length ? hours : undefined,
       timeOff: keep(r.get('time_off'), timeOff, existing?.timeOff) ?? [],
       phone: phones.phone,

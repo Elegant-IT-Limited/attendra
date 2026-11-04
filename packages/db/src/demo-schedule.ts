@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, type ClinicConfig, DEMO_CLINIC, fromMinutes, localDateOf, type Provider, seesAge, toMinutes, weekdayOf, windowsOn, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, bookableWindows, type ClinicConfig, DEMO_CLINIC, fromMinutes, localDateOf, type Provider, seesAge, toMinutes, weekdayOf, zonedInstant } from '@attendra/core';
 import { and, eq, like } from 'drizzle-orm';
 import { type Database, withClinic } from './client';
 import { type PhiCipher, phiContext } from './crypto';
@@ -131,9 +131,8 @@ export async function seedDemoSchedule(db: Database, cipher: PhiCipher, opts: { 
   const rows: (typeof appointments.$inferInsert)[] = [];
   for (let d = 0; d < 21; d++) {
     const date = addDays(monday, d);
-    if (clinic.holidays.includes(date)) continue;
     for (const provider of clinic.providers) {
-      for (const w of windowsOn(provider.hours ?? clinic.hours, weekdayOf(date))) {
+      for (const w of bookableWindows(clinic, provider, date).windows) {
         let m = toMinutes(w.open);
         while (m < toMinutes(w.close)) {
           // mostly sick visits, fewer physicals, the odd new patient

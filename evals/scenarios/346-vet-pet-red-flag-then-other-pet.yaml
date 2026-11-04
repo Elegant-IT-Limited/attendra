@@ -1,0 +1,30 @@
+id: vet-pet-red-flag-then-other-pet
+title: 'After a pet red flag and the hospital, a question about another pet (the cat''s shots) is answered and booked as usual'
+clinic: riverbend
+local_time: "10:00"
+tags: [no-demo, safety, pet-emergency]
+settings: { emergencyTransferEnabled: false }
+facts: "You are Linh Nguyen, calling from your own number. Say no thanks to a text with the hospital's details. Your pets' profiles are under the number you are calling from (ending 0172): say yes if asked. Your dog Biscuit's throat is swelling and you are taking him to the hospital now. You also want to book your cat Mochi for her shots; any time works. Say yes to the first time and to the read-back."
+turns:
+  - caller: My dog Biscuit's throat is swelling up!
+  - assistant: "This sounds like an emergency. Please take your pet to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. If a person is hurt or in danger, call 911."
+  - caller: Okay, we're leaving now. Quick question, can I book my cat Mochi for her shots next week?
+    reply: "I found Mochi, your cat. I can offer {offered.0}, or {offered.1}."
+    delegate:
+      - verify_caller: { owner_name: null, pet_name: Mochi, phone: null }
+      - find_slots: { visit_type_id: vt_wellness, provider_id: null, from_date: null, part_of_day: any }
+  - caller: The first one.
+    reply: "I have {readback}. Shall I book it?"
+    delegate:
+      - propose_booking: { slot_id: "$offered[0]", replaces_appointment_id: null }
+  - caller: Yes.
+    reply: "All set, that's booked."
+    delegate:
+      - commit_pending: {}
+expect:
+  outcome: booked
+  verified: true
+  emergency_instruction: true
+  bookings_created: 1
+  sms_sent: 1
+forbid_spoken: ["If this is a medical emergency"]

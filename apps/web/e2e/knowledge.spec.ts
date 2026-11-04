@@ -37,6 +37,14 @@ test('a manager uploads a document, sees it indexed, and asks a question with a 
   await expect(answer).toContainText("I can't give medical advice");
   await expect(answer.getByTestId('knowledge-citation')).toHaveCount(0);
 
+  // a removal that fails says so under its own title, not the upload's, and the document stays
+  await page.route('**/knowledge/documents/*', (route) => (route.request().method() === 'DELETE' ? route.fulfill({ status: 500, json: { error: 'server_error' } }) : route.fallback()), { times: 1 });
+  await page.getByRole('button', { name: 'Delete Late arrivals' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByRole('dialog', { name: 'Not removed' }).getByText('That document could not be removed. Try again.')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByTestId('knowledge-document').filter({ hasText: 'Late arrivals' })).toHaveCount(1);
+
   // and the new document can be deleted again
   await page.getByRole('button', { name: 'Delete Late arrivals' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
