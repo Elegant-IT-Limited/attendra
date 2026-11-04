@@ -104,7 +104,8 @@ export interface AppointmentSummary {
 }
 
 export type BookingResult =
-  | { status: 'booked'; appointment: AppointmentSummary }
+  // replaced: the visit it replaces was cancelled with it, in one step (a move to an overlapping time with the same provider)
+  | { status: 'booked'; appointment: AppointmentSummary; replaced?: boolean }
   | { status: 'already_done'; appointment: AppointmentSummary } // same idempotency key seen before
   | { status: 'slot_taken' }
   | { status: 'patient_busy' }; // the patient already has a visit that overlaps it

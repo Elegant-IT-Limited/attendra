@@ -45,12 +45,23 @@ export class BuiltinScheduler implements SchedulerAdapter {
       input.replacesAppointmentId ? ne(appointments.id, input.replacesAppointmentId) : undefined,
     )).limit(1)).length > 0);
     if (busy) return { status: 'patient_busy' };
+    // a move cancels the visit it replaces in the same step, so a new visit that overlaps it with the same provider (the
+    // same time, another kind of visit) can be booked; if the new one fails, the old one stays
+    let replaced = false;
+    const replaces = input.replacesAppointmentId;
     const result = await insertAppointment(this.db, clinicId, {
       patientId: input.patientId, providerId: input.slot.providerId, visitTypeId: input.slot.visitTypeId,
       startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
       noteEnc: input.note?.trim() && this.cipher ? this.cipher.encrypt(input.note.trim(), phiContext(clinicId, 'appointments.note')) : null,
-    }, { actor: this.actor, action: 'appointment.booked', callId: input.callId });
-    return result.status === 'slot_taken' ? result : { status: result.status, appointment: summary(result.row) };
+    }, { actor: this.actor, action: 'appointment.booked', callId: input.callId }, replaces ? async (tx) => {
+      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date() })
+        .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, replaces), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked')))
+        .returning({ id: appointments.id });
+      if (done.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: replaces, callId: input.callId });
+      replaced = done.length > 0;
+    } : undefined);
+    if (result.status === 'slot_taken') return result;
+    return result.status === 'booked' ? { status: 'booked', appointment: summary(result.row), ...(replaced ? { replaced } : {}) } : { status: result.status, appointment: summary(result.row) };
   }
 
   async cancel(clinicId: string, input: { patientId: string; appointmentId: string; callId: string; idempotencyKey: string }) {

@@ -155,3 +155,52 @@ describe('the true reason (item 4)', () => {
     expect(prompt).not.toMatch(/cannot check more details on this call/);
   });
 });
+
+describe('a time asked for and free, with the pet found', () => {
+  const findPet = async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Could Biscuit see Dr. Khan around 5 on Thursday?');
+    await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } }]);
+    return c;
+  };
+  const at5 = (visit: string, extra: Record<string, unknown> = {}) => ({ tool: 'find_slots' as const, args: { visit_type_id: visit, provider_id: 'prov_khan', from_date: '2026-10-01', part_of_day: 'any', from_time: '17:00', time_mode: 'around', ...extra } });
+
+  it('is staged at once, so the caller\'s yes books it; the text note is said with the first read-back only', async () => {
+    const c = await findPet();
+    const first = (await c.delegate([at5('vt_wellness')])).results[0]!.data;
+    expect(first.proposed_slot_id).toBe('prov_khan@2026-10-01T23:00:00.000Z');
+    expect(String(first.spoken)).toMatch(/^I have Thursday, October 1, at 5:00 PM with Dr\. Leila Khan for a wellness exam\. I'll text you/);
+    // another time asked for on the same call: read back without the note again
+    c.caller('What about 5:30 instead?');
+    const second = (await c.delegate([{ tool: 'find_slots', args: { ...at5('vt_wellness').args, from_time: '17:30', time_mode: 'at' } }])).results[0]!.data;
+    expect(String(second.spoken)).toBe('I have Thursday, October 1, at 5:30 PM with Dr. Leila Khan for a wellness exam. Shall I book it?');
+    // and the planner can still only look
+    const looked = (await c.delegate([at5('vt_wellness', { propose_if_exact: false })])).results[0]!.data;
+    expect(looked.proposed_slot_id).toBeUndefined();
+  });
+
+  it('a booked visit changed to another kind keeps its time: its own 5:00 is not in its way', async () => {
+    const c = await findPet();
+    await c.delegate([at5('vt_wellness')]);
+    c.assistant('Shall I book it?');
+    c.caller('Yes.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!.data.booked).toBe(true);
+    c.caller('That should be a sick visit, not a wellness exam.');
+    c.state.memory.set('intent', 'move', 'model', c.state.turns.length);
+    const again = (await c.delegate([at5('vt_sick')])).results[0]!.data;
+    expect(again.exact).toEqual({ time: '17:00', free: true });
+    expect(String(again.spoken)).toMatch(/^So I'd move Biscuit's sick visit from Thursday, October 1, at 5:00 PM to Thursday, October 1, at 5:00 PM/);
+    c.assistant('Shall I go ahead?');
+    c.caller('Yes.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!.data.booked).toBe(true);
+    expect(c.state.outcome).toBe('rescheduled');
+    const left = await w.backend.scheduler.upcoming(clinic.id, c.state.verifiedPatient!.id, zonedInstant('2026-09-28', '20:00', clinic.timezone));
+    expect(left.filter((a) => a.providerId === 'prov_khan').map((a) => a.visitTypeId)).toEqual(['vt_sick']);
+  });
+
+  it('a vet who does not do a visit the planner chose: their own visits come back, to look again with', async () => {
+    const r = await find({ visit_type_id: 'vt_wellness', provider_id: 'prov_morgan', from_date: '2026-10-02' }) as unknown as { their_visit_type_ids: string[]; note: string };
+    expect(r.their_visit_type_ids).toEqual(['vt_sick', 'vt_new']);
+    expect(r.note).toContain('If you chose the visit yourself, do not say say_as');
+  });
+});
