@@ -17,9 +17,9 @@ settings:
     - { id: prov_rahman, name: Dr. Omar Rahman, gender: male, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental], hours: { "1": [{ open: "08:00", close: "19:00" }], "2": [{ open: "08:00", close: "19:00" }], "3": [{ open: "08:00", close: "19:00" }], "4": [{ open: "08:00", close: "19:00" }], "5": [{ open: "08:00", close: "19:00" }] }, timeOff: [{ from: "2026-10-01", to: "2026-10-01", start: "16:10", end: "16:20", note: team huddle }] }
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
   specialDays: [{ date: "2026-10-02", windows: [], note: staff training, providerIds: [prov_morgan] }]
-facts: "You are Jordan Avery, calling from the number on file. Biscuit is sick; you want Dr. Vance on Friday morning. Say yes."
+facts: "You are Jordan Avery, calling from the number on file. Biscuit is sick; you want Dr. Vance on Friday morning. Take the first time offered. Say yes."
 turns:
-  - caller: "Can Biscuit see Dr. Vance on Friday morning?"
+  - caller: "Can Biscuit see Dr. Vance on Friday morning? Biscuit is sick."
     reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
   - caller: Yes.
     reply: "I found Biscuit. The clinic's front desk is closed on Friday, October 2, but Dr. Vance sees patients that day from 9 to 1. I have {offered.0}."

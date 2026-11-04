@@ -18,7 +18,7 @@ settings:
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
 facts: "Eres Jordan Avery y hablas español. Llamas desde el número de la ficha. Biscuit está enfermo; quieres a la doctora Vance el viernes, o su siguiente día. Di sí."
 turns:
-  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes?"
+  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes? Biscuit está enfermo."
     reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
   - caller: Sí.
     reply: "Encontré a Biscuit. La doctora Vance no tiene horas libres el viernes 2 de octubre. El domingo atiende de 9 a 1: {offered.0}."

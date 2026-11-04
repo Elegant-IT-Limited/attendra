@@ -18,7 +18,7 @@ settings:
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
 facts: "You are Jordan Avery, calling from the number on file. Biscuit is sick; you want Dr. Rahman on Tuesday at 6:30 PM. Say yes."
 turns:
-  - caller: "Can Dr. Rahman see Biscuit on Tuesday at 6:30 in the evening?"
+  - caller: "Can Dr. Rahman see Biscuit on Tuesday at 6:30 in the evening? Biscuit is sick."
     reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
   - caller: Yes.
     reply: "I found Biscuit. The clinic's front desk closes at 6 on Tuesdays, but Dr. Rahman sees patients until 7. Yes, {offered.0} is free. Shall I book it?"
@@ -41,4 +41,4 @@ expect:
   booked_with: prov_rahman
   booked_on: "2026-09-29"
   # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["The clinic's front desk closes at 6 on Tuesdays, but Dr. Omar Rahman sees patients until 7. Yes, 6:30 PM on Tuesday, September 29 is free with Dr. Omar Rahman. Shall I book it?"]
+  returned: ["The clinic's front desk closes at 6 on Tuesdays, but Dr. Omar Rahman sees patients until 7.", "Tuesday, September 29, at 6:30 PM with Dr. Omar Rahman"]

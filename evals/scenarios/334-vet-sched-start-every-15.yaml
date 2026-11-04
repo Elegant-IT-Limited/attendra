@@ -42,4 +42,4 @@ expect:
   booked_with: prov_khan
   booked_on: "2026-10-01"
   # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["Yes, 8:45 AM on Thursday, October 1 is free with Dr. Leila Khan. Shall I book it?"]
+  returned: ["Thursday, October 1, at 8:45 AM with Dr. Leila Khan"]

@@ -17,9 +17,9 @@ settings:
     - { id: prov_rahman, name: Dr. Omar Rahman, gender: male, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental], hours: { "1": [{ open: "08:00", close: "19:00" }], "2": [{ open: "08:00", close: "19:00" }], "3": [{ open: "08:00", close: "19:00" }], "4": [{ open: "08:00", close: "19:00" }], "5": [{ open: "08:00", close: "19:00" }] }, timeOff: [{ from: "2026-10-01", to: "2026-10-01", start: "16:10", end: "16:20", note: team huddle }] }
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
   specialDays: [{ date: "2026-10-02", windows: [], note: staff training, providerIds: [prov_morgan] }]
-facts: "Eres Jordan Avery y hablas español. Llamas desde el número de la ficha. Biscuit está enfermo; quieres a la doctora Vance el viernes por la mañana. Di sí."
+facts: "Eres Jordan Avery y hablas español. Llamas desde el número de la ficha. Biscuit está enfermo; quieres a la doctora Vance el viernes por la mañana. Toma la primera hora que te ofrezcan. Di sí."
 turns:
-  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes por la mañana?"
+  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes por la mañana? Biscuit está enfermo."
     reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
   - caller: Sí.
     reply: "Encontré a Biscuit. La recepción está cerrada el viernes, pero la doctora Vance atiende ese día. Tengo {offered.0}."

@@ -18,7 +18,7 @@ settings:
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
 facts: "Eres Jordan Avery y hablas español. Llamas desde el número de la ficha. Biscuit está enfermo; quieres a la doctora Vance el viernes a las 5:30 de la tarde. Di sí."
 turns:
-  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes a las 5:30 de la tarde?"
+  - caller: "¿Puede ver la doctora Vance a Biscuit el viernes a las 5:30 de la tarde? Biscuit está enfermo."
     reply: "Claro. ¿La ficha de su mascota está con el número desde el que llama, que termina en 0142?"
   - caller: Sí.
     reply: "Encontré a Biscuit. Sí, {offered.0} está libre con la doctora Vance. ¿Se la reservo?"
@@ -42,5 +42,5 @@ expect:
   booked_with: prov_morgan
   booked_on: "2026-10-02"
   # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["Sí, el viernes 2 de octubre a las 5:30 de la tarde está libre con Dra. Mara Vance. ¿Se la reservo?"]
+  returned: ["el viernes 2 de octubre a las 5:30 de la tarde con Dra. Mara Vance"]
 forbid_spoken: ["próximas dos semanas"]

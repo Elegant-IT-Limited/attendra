@@ -18,7 +18,7 @@ settings:
     - { id: prov_khan, name: Dr. Leila Khan, gender: female, specialty: General practice, visitTypeIds: [vt_wellness, vt_sick, vt_vaccines, vt_dental, vt_new] }
 facts: "You are Jordan Avery, calling from the number on file. Biscuit is sick; you want Dr. Vance on Friday at 8, or as close as possible. Say yes."
 turns:
-  - caller: "Can Dr. Vance see Biscuit on Friday at 8 in the morning?"
+  - caller: "Can Dr. Vance see Biscuit on Friday at 8 in the morning? Biscuit is sick."
     reply: "Sure. Is your pet's profile under the number you're calling from, ending 0142?"
   - caller: Yes.
     reply: "I found Biscuit. Dr. Vance starts at 9 on Fridays. The nearest are {offered.0} or {offered.1}."
