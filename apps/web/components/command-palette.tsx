@@ -8,6 +8,7 @@ import { Dialog as D } from 'radix-ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ClinicTile } from '@/components/clinic-switcher';
+import { useSettled } from '@/components/patients/patient-search';
 import { Kbd } from '@/components/ui/bits';
 import { Highlight } from '@/components/ui/highlight';
 import { api, useClinic } from '@/lib/api';
@@ -46,10 +47,10 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
   const router = useRouter();
   const theme = useTheme();
   const [text, setText] = useState('');
-  const [query, setQuery] = useState('');
-  useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 250); return () => clearTimeout(t); }, [text]);
-  useEffect(() => { if (!open) { setText(''); setQuery(''); } }, [open]);
-  const typed = query.length >= 2;
+  // from the first character, like every search box, once the typing settles
+  const query = useSettled(text.trim());
+  useEffect(() => { if (!open) setText(''); }, [open]);
+  const typed = query.length >= 1;
   const searching = canSearchPatients && typed;
   const patients = useQuery({
     queryKey: ['patient-search', clinicId, query],
