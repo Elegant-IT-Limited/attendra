@@ -9,7 +9,12 @@ export type DocumentStatus = 'queued' | 'indexing' | 'ready' | 'failed';
 export interface KnowledgeDocument {
   id: string; title: string; sourceType: SourceType; sizeBytes: number; status: DocumentStatus; failure: string | null;
   chunkCount: number; embeddingModel: string | null; uploadedByUserId: string; createdAt: Date; updatedAt: Date;
+  /** Characters of text found when it was last indexed, and its pages (a PDF's); null before it was. */
+  extractedChars: number | null; pageCount: number | null;
 }
+
+/** What indexing found in a document: kept even when it fails, so a scan with no text can be told apart. */
+export interface DocumentStats { extractedChars: number; pageCount: number | null }
 
 export interface NewChunk { ordinal: number; heading: string | null; body: string; tokenCount: number; embedding: number[] }
 export interface FoundChunk { id: number; documentId: string; title: string; heading: string | null; body: string; distance?: number }
@@ -24,10 +29,12 @@ function toDocument(r: Record<string, unknown>): KnowledgeDocument {
     id: String(r.id), title: String(r.title), sourceType: r.source_type as SourceType, sizeBytes: Number(r.size_bytes), status: r.status as DocumentStatus,
     failure: (r.failure as string | null) ?? null, chunkCount: Number(r.chunk_count), embeddingModel: (r.embedding_model as string | null) ?? null,
     uploadedByUserId: String(r.uploaded_by_user_id), createdAt: new Date(r.created_at as string), updatedAt: new Date(r.updated_at as string),
+    extractedChars: r.extracted_chars === null || r.extracted_chars === undefined ? null : Number(r.extracted_chars),
+    pageCount: r.page_count === null || r.page_count === undefined ? null : Number(r.page_count),
   };
 }
 
-const COLUMNS = sql.raw('id, title, source_type, size_bytes, status, failure, chunk_count, embedding_model, uploaded_by_user_id, created_at, updated_at');
+const COLUMNS = sql.raw('id, title, source_type, size_bytes, status, failure, chunk_count, embedding_model, uploaded_by_user_id, created_at, updated_at, extracted_chars, page_count');
 
 /**
  * The clinic's documents and their chunks. Documents are clinic information, never
@@ -92,33 +99,40 @@ export class KnowledgeRepository {
     });
   }
 
-  /** What the indexer needs, and whether this content is already indexed with this model. */
+  /**
+   * What the indexer needs, and whether this content is already indexed with this
+   * model. A document indexed before its text was counted (no extracted_chars) was
+   * chunked by older rules, and is not current.
+   */
   async forIndexing(clinicId: string, id: string, model: string): Promise<{ content: Buffer; sourceType: SourceType; hash: string; current: boolean } | null> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [r] = rows<{ content: Uint8Array; source_type: SourceType; content_hash: string; indexed_hash: string | null; embedding_model: string | null; status: string }>(
-        await tx.execute(sql`select content, source_type, content_hash, indexed_hash, embedding_model, status from knowledge_documents where clinic_id = ${clinicId} and id = ${id}`));
+      const [r] = rows<{ content: Uint8Array; source_type: SourceType; content_hash: string; indexed_hash: string | null; embedding_model: string | null; status: string; extracted_chars: number | null }>(
+        await tx.execute(sql`select content, source_type, content_hash, indexed_hash, embedding_model, status, extracted_chars from knowledge_documents where clinic_id = ${clinicId} and id = ${id}`));
       if (!r) return null;
       // with the model it indexes with, and when it started, so a save can tell a live job from a dead one
       await tx.execute(sql`update knowledge_documents set status = 'indexing', embedding_model = ${model}, updated_at = now() where clinic_id = ${clinicId} and id = ${id} and status <> 'ready'`);
-      return { content: Buffer.from(r.content), sourceType: r.source_type, hash: r.content_hash, current: r.status === 'ready' && r.indexed_hash === r.content_hash && r.embedding_model === model };
+      return { content: Buffer.from(r.content), sourceType: r.source_type, hash: r.content_hash, current: r.status === 'ready' && r.indexed_hash === r.content_hash && r.embedding_model === model && r.extracted_chars !== null };
     });
   }
 
   /** Swaps a document's chunks for new ones in one transaction, unless the document changed again meanwhile. */
-  async replaceChunks(clinicId: string, id: string, hash: string, model: string, chunks: NewChunk[]): Promise<'replaced' | 'stale'> {
+  async replaceChunks(clinicId: string, id: string, hash: string, model: string, chunks: NewChunk[], stats?: DocumentStats): Promise<'replaced' | 'stale'> {
     return withClinic(this.db, clinicId, async (tx) => {
       const [doc] = rows<{ content_hash: string }>(await tx.execute(sql`select content_hash from knowledge_documents where clinic_id = ${clinicId} and id = ${id} for update`));
       if (!doc || doc.content_hash !== hash) return 'stale';
       await tx.execute(sql`delete from knowledge_chunks where clinic_id = ${clinicId} and document_id = ${id}`);
       for (const c of chunks) await insertChunk(tx, clinicId, id, model, c);
-      await tx.execute(sql`update knowledge_documents set status = 'ready', failure = null, chunk_count = ${chunks.length}, indexed_hash = ${hash}, embedding_model = ${model}, updated_at = now()
+      await tx.execute(sql`update knowledge_documents set status = 'ready', failure = null, chunk_count = ${chunks.length}, indexed_hash = ${hash}, embedding_model = ${model},
+        extracted_chars = ${stats?.extractedChars ?? null}, page_count = ${stats?.pageCount ?? null}, updated_at = now()
         where clinic_id = ${clinicId} and id = ${id}`);
       return 'replaced';
     });
   }
 
-  async markFailed(clinicId: string, id: string, code: string) {
-    await withClinic(this.db, clinicId, (tx) => tx.execute(sql`update knowledge_documents set status = 'failed', failure = ${code.slice(0, 60)}, updated_at = now() where clinic_id = ${clinicId} and id = ${id}`));
+  /** Marks a document failed with a code, and what its text came to when it was read at all. */
+  async markFailed(clinicId: string, id: string, code: string, stats?: DocumentStats) {
+    await withClinic(this.db, clinicId, (tx) => tx.execute(sql`update knowledge_documents set status = 'failed', failure = ${code.slice(0, 60)},
+      extracted_chars = ${stats?.extractedChars ?? null}, page_count = ${stats?.pageCount ?? null}, updated_at = now() where clinic_id = ${clinicId} and id = ${id}`));
   }
 
   /** The nearest chunks by cosine distance, among those embedded with this model. */
@@ -140,6 +154,24 @@ export class KnowledgeRepository {
       where c.clinic_id = ${clinicId} and d.status = 'ready' and c.tsv @@ to_tsquery('simple', ${query})
       order by ts_rank(c.tsv, to_tsquery('simple', ${query})) desc limit ${k}`)).map(toChunk));
   }
+}
+
+/**
+ * Documents chunked by older rules (indexed before their text was counted), and those
+ * that failed as empty then (a scan: indexing again says how many pages it has), in
+ * every clinic, for the re-index script: ids and hashes only, never their text. Each
+ * clinic is read under its own row-level security, like the other one-off scripts.
+ */
+export async function documentsToReindex(db: Database): Promise<{ clinicId: string; id: string; hash: string; status: DocumentStatus }[]> {
+  const clinics = rows<{ id: string }>(await db.execute(sql`select id from clinics order by id`));
+  const out: { clinicId: string; id: string; hash: string; status: DocumentStatus }[] = [];
+  for (const { id: clinicId } of clinics) {
+    const found = await withClinic(db, clinicId, async (tx) => rows<{ id: string; content_hash: string; status: DocumentStatus }>(await tx.execute(sql`
+      select id, content_hash, status from knowledge_documents
+      where clinic_id = ${clinicId} and extracted_chars is null and (status = 'ready' or (status = 'failed' and failure = 'empty')) order by id`)));
+    out.push(...found.map((r) => ({ clinicId, id: r.id, hash: r.content_hash, status: r.status })));
+  }
+  return out;
 }
 
 async function insertChunk(tx: Tx, clinicId: string, documentId: string, model: string, c: NewChunk) {

@@ -40,7 +40,7 @@ describe('the clinic\'s knowledge', () => {
     await upload(as.admin, 'Late arrivals', 'If you arrive more than 15 minutes late, we may ask you to rebook so the next patient is seen on time.');
     expect(queued).toHaveLength(1); // the same bytes again: nothing to index
     const list = (await api.request('GET', `${C}/knowledge/documents`, { cookie: as.staff })).json();
-    expect(list.documents).toEqual([expect.objectContaining({ title: 'Late arrivals', status: 'ready', chunkCount: 1 })]);
+    expect(list.documents).toEqual([expect.objectContaining({ title: 'Late arrivals', status: 'ready', chunkCount: 1, pageCount: null, extractedChars: 102 })]);
     expect((await api.t.db.execute(sql`select action from audit_logs where action = 'knowledge.document.uploaded'`)).rows).toHaveLength(1);
   });
 

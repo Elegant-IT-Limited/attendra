@@ -6,8 +6,12 @@ test('a manager uploads a document, sees it indexed, and asks a question with a 
   const clinic = new URL(page.url()).pathname.split('/')[2];
   await page.goto(`/c/${clinic}/settings/knowledge`);
   await expect(page.getByRole('link', { name: 'Knowledge' })).toHaveAttribute('aria-current', 'page');
-  // the demo's own documents are there
-  await expect(page.getByTestId('knowledge-document').filter({ hasText: 'Parking and directions' })).toContainText('Ready');
+  // the demo's own documents are there, with what was read from them, as the server counted it
+  const parking = page.getByTestId('knowledge-document').filter({ hasText: 'Parking and directions' });
+  await expect(parking).toContainText('Ready');
+  const docs = await (await page.request.get(`/api/v1/clinics/${clinic}/knowledge/documents`)).json() as { documents: { title: string; extractedChars: number; chunkCount: number }[] };
+  const served = docs.documents.find((d) => d.title === 'Parking and directions')!;
+  await expect(parking.getByTestId('knowledge-stats')).toHaveText(`${served.extractedChars.toLocaleString('en-US')} characters · ${served.chunkCount} part${served.chunkCount === 1 ? '' : 's'}`);
 
   // an empty file is refused, and the page says why
   await page.getByLabel('Title').fill('Nothing here');

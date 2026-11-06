@@ -109,7 +109,7 @@ export class KnowledgeController {
   private view(d: Awaited<ReturnType<KnowledgeRepository['list']>>[number], names: Map<string, string>): KnowledgeDocument {
     return {
       id: d.id, title: d.title, sourceType: d.sourceType, sizeBytes: d.sizeBytes, status: d.status, failure: d.failure, chunkCount: d.chunkCount,
-      uploadedBy: names.get(d.uploadedByUserId) ?? null, updatedAt: d.updatedAt.toISOString(),
+      uploadedBy: names.get(d.uploadedByUserId) ?? null, updatedAt: d.updatedAt.toISOString(), extractedChars: d.extractedChars, pageCount: d.pageCount,
     };
   }
 }

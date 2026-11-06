@@ -188,6 +188,8 @@ export const KnowledgeDocument = z.object({
   id: z.string(), title: z.string(), sourceType: z.enum(['text', 'markdown', 'pdf']), sizeBytes: z.number(),
   status: z.enum(['queued', 'indexing', 'ready', 'failed']), failure: z.string().nullable(), chunkCount: z.number(),
   uploadedBy: z.string().nullable(), updatedAt: z.iso.datetime(),
+  /** Characters of text found, and a PDF's pages; null until it is indexed (pages: always null for text and markdown). */
+  extractedChars: z.number().nullable(), pageCount: z.number().nullable(),
 });
 export const KnowledgeDocuments = z.object({ documents: z.array(KnowledgeDocument) });
 export const KnowledgeUpload = z.object({

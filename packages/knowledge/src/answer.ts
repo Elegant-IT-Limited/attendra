@@ -2,6 +2,7 @@
 import { isMedicalQuestion, type KnowledgeBase, type KnowledgePassage, MEDICAL_REFUSAL, NO_INFORMATION } from '@attendra/core';
 import type OpenAI from 'openai';
 import { isOffTopicLine, OFF_TOPIC_LINE, questionLanguage, questionScope } from './scope';
+import { topicWords } from './words';
 
 export { MEDICAL_REFUSAL, NO_INFORMATION };
 
@@ -31,14 +32,21 @@ export class ModelAnswerer implements Answerer {
   }
 }
 
-/** With no model, the answer is the best passage's opening, as the assistant would read from it. */
+/**
+ * With no model, the answer is read from the best passage: its opening sentences,
+ * past a heading, or the first sentence line about the question's topic when another
+ * comes first. A price list has no sentences: then the line that names the topic.
+ */
 export class LocalAnswerer implements Answerer {
   readonly model = 'local';
-  async answer(_question: string, passages: KnowledgePassage[]): Promise<string> {
-    const lines = passages[0]!.text.split('\n').filter((l) => l.trim());
-    // the opening sentence line, past a heading ("Parking"), which has no sentence end
-    const body = lines.find((l) => /[.!?]/.test(l)) ?? lines[0] ?? passages[0]!.text;
-    // the first two sentences; a linear split, and a bounded input, whatever the document holds
+  async answer(question: string, passages: KnowledgePassage[]): Promise<string> {
+    // a bounded input, whatever the document holds
+    const lines = passages[0]!.text.slice(0, 4000).split('\n').map((l) => l.trim()).filter(Boolean);
+    const topic = topicWords(question).filter((w) => w.length >= 3);
+    const about = (l: string) => { const words = topicWords(l); return topic.some((t) => words.some((w) => w.startsWith(t))); };
+    const sentences = lines.filter((l) => /[.!?]/.test(l));
+    const body = sentences.find(about) ?? sentences[0] ?? lines.find(about) ?? lines[0] ?? passages[0]!.text;
+    // the first two sentences; a linear split
     return body.slice(0, 2000).split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').trim();
   }
 }
