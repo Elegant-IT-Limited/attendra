@@ -70,7 +70,10 @@ const INIT = `(() => {
   // audio graph runs before the first line (a suspended graph sent no frames, and the call never started)
   const hum = ctx.createConstantSource(); const g = ctx.createGain(); g.gain.value = 0.0005; hum.connect(g); g.connect(mic); hum.start();
   window.__types = {};
-  navigator.mediaDevices.getUserMedia = async () => { await ctx.resume(); return mic.stream; };
+  // a fresh copy of the line on each request: a client that opens the microphone, stops it and opens it again (Vapi's
+  // transport does) would otherwise get a stopped track the second time and send silence
+  window.__mics = 0;
+  navigator.mediaDevices.getUserMedia = async () => { await ctx.resume(); window.__mics++; return new MediaStream(mic.stream.getAudioTracks().map((t) => t.clone())); };
   window.__say = async (b64) => {
     await ctx.resume();
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -135,19 +138,38 @@ const VAPI_SDK = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@3.0.0/+esm';
 // the assistant from vapi/setup.ts: --assistant <id>, else the id it kept in ~/.attendra-vapi-assistant
 const vapiAssistant = VAPI ? (flag('--assistant') ?? readFileSync(join(process.env.HOME ?? '', '.attendra-vapi-assistant'), 'utf8').trim()) : '';
 if (VAPI && !process.env.VAPI_PUBLIC_KEY) throw new Error('--vapi needs VAPI_PUBLIC_KEY (from ~/.attendra-vapi.env)');
+/** Each Vapi call ends on Vapi's side after this long, whatever happens (a capped bill on prepaid credit). */
+const VAPI_MAX_SECONDS = Number(flag('--max-seconds', '180'));
+/** Vapi refused or ended a call over credit: the run stops there, with no retry, and that call is not counted against Vapi. */
+const BILLING = /credit|wallet|balance|billing|subscription|payment|insufficient|frozen|purchase/i;
+const vapiProblem = (page: Page) => page.evaluate(() => (window as unknown as { __vapiError?: string }).__vapiError ?? null);
 const live = (page: Page) => (VAPI ? page.evaluate(() => !(window as unknown as { __vapiEnded?: boolean }).__vapiEnded) : page.getByRole('button', { name: 'End call' }).isVisible());
 
 async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Promise<CallResult> {
   if (VAPI) return runCall(page, s, async () => {
     await page.goto(`${base}/sign-in`);
-    await page.evaluate(async ([url, pk, id]) => {
-      const w = window as unknown as { __vapi: { on(e: string, f: (m: { type?: string; role?: string; transcriptType?: string; transcript?: string }) => void): void; start(id: string): Promise<unknown>; stop(): void }; __vapiEnded?: boolean; __captions: [string, string, number][] };
+    await page.evaluate(async ([url, pk, id, max]) => {
+      type Msg = { type?: string; role?: string; transcriptType?: string; transcript?: string; status?: string; endedReason?: string };
+      const w = window as unknown as { __vapi: { on(e: string, f: (m: Msg) => void): void; start(id: string, o?: unknown): Promise<unknown>; stop(): void }; __vapiEnded?: boolean; __vapiError?: string; __captions: [string, string, number][] };
       const { default: Vapi } = await import(url) as { default: new (k: string) => typeof w.__vapi };
       w.__vapi = new Vapi(pk);
-      w.__vapi.on('message', (m) => { if (m.type === 'transcript' && m.transcriptType === 'final' && m.transcript) w.__captions.push([m.role === 'user' ? 'caller' : 'agent', m.transcript, Date.now()]); });
+      w.__vapi.on('message', (m) => {
+        const types = (window as unknown as { __types: Record<string, number> }).__types; const t = m.type ?? '?'; types[t] = (types[t] ?? 0) + 1;
+        // a final transcript line: type "transcript" with transcriptType "final", or (newer Vapi) type 'transcript[transcriptType="final"]'
+        const final = m.type === 'transcript' ? m.transcriptType === 'final' : !!m.type?.startsWith('transcript[') && m.type.includes('final');
+        if (final && m.transcript) w.__captions.push([m.role === 'user' ? 'caller' : 'agent', `${m.transcript} `, Date.now()]);
+        // why Vapi ended the call; anything but a hang-up is kept as the call's error
+        if (m.type === 'status-update' && m.status === 'ended' && m.endedReason && !/hangup|hung-up|ended-call|max-duration/i.test(m.endedReason)) w.__vapiError ??= `ended: ${m.endedReason}`;
+      });
+      w.__vapi.on('error', (e) => {
+        const text = typeof e === 'string' ? e : JSON.stringify(e);
+        // Daily's "ejected: Meeting has ended" is Vapi hanging up at the end of a call, not a failure
+        if (!/Meeting has ended|"ejected"/.test(text)) w.__vapiError ??= text.slice(0, 300);
+      });
       w.__vapi.on('call-end', () => { w.__vapiEnded = true; });
-      await w.__vapi.start(id);
-    }, [VAPI_SDK, process.env.VAPI_PUBLIC_KEY!, vapiAssistant] as const);
+      const call = await w.__vapi.start(id, { maxDurationSeconds: max }).catch((e: unknown) => { w.__vapiError ??= String((e as Error)?.message ?? e).slice(0, 300); return null; });
+      if (!call) { w.__vapiError ??= 'the call did not start'; w.__vapiEnded = true; }
+    }, [VAPI_SDK, process.env.VAPI_PUBLIC_KEY!, vapiAssistant, VAPI_MAX_SECONDS] as const);
   }, async () => { await page.evaluate(() => (window as unknown as { __vapi?: { stop(): void } }).__vapi?.stop()); });
   return runCall(page, s, async () => {
     await page.goto(`${base}${clinicPath}/test-call`);
@@ -160,8 +182,9 @@ async function runCall(page: Page, s: RealAudioScenario, start: () => Promise<vo
   page.on('response', async (r) => { if (r.url().endsWith('/test-calls') && r.request().method() === 'POST') result.callId = ((await r.json().catch(() => ({}))) as { callId?: string }).callId ?? null; });
   const clicked = Date.now();
   await start();
+  if (VAPI && (await vapiProblem(page))) return { ...result, ended: 'failed', error: (await vapiProblem(page))! };
   const greeting = await awaitReply(page, clicked, 45_000);
-  if (greeting.heardAt === null) return { ...result, ended: 'failed', error: 'the assistant never spoke' };
+  if (greeting.heardAt === null) return { ...result, ended: 'failed', error: (VAPI && (await vapiProblem(page))) || 'the assistant never spoke' };
   result.firstAudioMs = greeting.heardAt - clicked;
   const said: { who: 'caller' | 'assistant'; text: string }[] = [{ who: 'assistant', text: await agentSince(page, clicked) }];
   let line: string | null = s.opening;
@@ -172,7 +195,7 @@ async function runCall(page: Page, s: RealAudioScenario, start: () => Promise<vo
     // the assistant talking over the caller: its audio during their line, after the first half second
     const overlapped = (await levels(page, started + 500)).some((l) => l[0] < ended && l[1] > SILENCE_LEVEL);
     said.push({ who: 'caller', text });
-    if (args.includes('--debug')) console.log('debug', await page.evaluate(async () => { const w = window as unknown as { __pcs: { getStats(): Promise<{ forEach(f: (r: never) => void): void }>; connectionState: string }[] }; const out: string[] = []; for (const pc of w.__pcs ?? []) { (await pc.getStats()).forEach((r: { type: string; kind?: string; bytesSent?: number; packetsSent?: number }) => { if (r.type === 'outbound-rtp') out.push(`${r.kind} bytes=${r.bytesSent} packets=${r.packetsSent}`); if (r.type === 'media-source') out.push(`source ${JSON.stringify(r)}`); }); out.push(`state=${pc.connectionState}`); } out.push(JSON.stringify((window as unknown as { __types: unknown }).__types)); return out.join(' | '); }));
+    if (args.includes('--debug')) console.log('debug', await page.evaluate(async () => { const w = window as unknown as { __pcs: { getStats(): Promise<{ forEach(f: (r: never) => void): void }>; connectionState: string }[] }; const out: string[] = []; for (const pc of w.__pcs ?? []) { (await pc.getStats()).forEach((r: { type: string; kind?: string; bytesSent?: number; packetsSent?: number }) => { if (r.type === 'outbound-rtp') out.push(`${r.kind} bytes=${r.bytesSent} packets=${r.packetsSent}`); if (r.type === 'media-source') out.push(`source ${JSON.stringify(r)}`); }); out.push(`state=${pc.connectionState}`); } out.push(JSON.stringify((window as unknown as { __types: unknown }).__types)); out.push(`mics=${(window as unknown as { __mics: number }).__mics}`); return out.join(' | '); }));
     if (done) { result.ended = 'caller'; break; }
     const reply = await awaitReply(page, ended);
     if (reply.stalled) result.stalls++;
@@ -184,13 +207,15 @@ async function runCall(page: Page, s: RealAudioScenario, start: () => Promise<vo
   }
   if (await live(page)) await end();
   await page.waitForTimeout(2000);
+  if (VAPI) { const problem = await vapiProblem(page); if (problem) { result.error = problem; if (BILLING.test(problem)) result.ended = 'failed'; } }
   Object.assign(result, judgeWords(s, said.filter((l) => l.who === 'assistant').map((l) => l.text)));
   return result;
 }
 
 const startedAt = new Date();
 const browser = await chromium.launch({ headless: !args.includes('--headed'), args: ['--autoplay-policy=no-user-gesture-required', '--use-fake-ui-for-media-stream'] });
-const context = await browser.newContext({ permissions: ['microphone'] });
+// path C loads Vapi's SDK into a page of the dashboard, whose content security policy would refuse it
+const context = await browser.newContext({ permissions: ['microphone'], bypassCSP: VAPI });
 await context.addInitScript(INIT);
 const page = await context.newPage();
 let clinicPath = '(vapi)';
@@ -201,16 +226,25 @@ if (!VAPI) {
   clinicPath = new URL(page.url()).pathname;
 }
 const results: CallResult[] = [];
+let billingStop: string | null = null;
 for (const s of scenarios) {
   const p = await context.newPage();
   try { results.push(await runOne(p, s, clinicPath)); } catch (err) { results.push({ scenario: s.id, engine: null, callId: null, firstAudioMs: null, turns: [], stalls: 0, fillerLines: 0, repeatedQuestions: 0, missing: [], forbidden: [], ended: 'failed', error: (err as Error).message.slice(0, 120) }); }
   await p.close();
-  console.log(`${s.id}: ${results.at(-1)!.ended}`);
+  const last = results.at(-1)!;
+  console.log(`${s.id}: ${last.ended}${last.error ? ` (${last.error.slice(0, 160)})` : ''}`);
+  if (VAPI && last.error && BILLING.test(last.error)) {
+    results.pop();
+    billingStop = `${s.id}: ${last.error.slice(0, 200)}`;
+    console.log(`STOPPED on a Vapi billing error, no retry. Calls finished before it: ${results.length}. That call is left out of the numbers.`);
+    break;
+  }
 }
 await browser.close();
 const out = join(here, '..', 'reports');
 mkdirSync(out, { recursive: true });
 const stamp = startedAt.toISOString().replace(/[:.]/g, '-');
-writeFileSync(join(out, `real-audio-${stamp}.md`), `${report(results, { startedAt, base, clinic: clinicPath, engine: flag('--engine') ?? null })}\n`);
+const stopNote = billingStop ? `\n**Stopped on a Vapi billing error** (${billingStop}); ${results.length} calls finished before it; that call is not counted.\n` : '';
+writeFileSync(join(out, `real-audio-${stamp}.md`), `${report(results, { startedAt, base, clinic: clinicPath, engine: flag('--engine') ?? null })}\n${stopNote}`);
 writeFileSync(join(out, `real-audio-${stamp}.json`), `${JSON.stringify({ startedAt, base, results: results.map((r) => ({ ...r, turns: r.turns.map((t) => ({ ...t, caller: undefined, agent: undefined })) })) }, null, 2)}\n`);
 console.log(`report: evals/reports/real-audio-${stamp}.md`);

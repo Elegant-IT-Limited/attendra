@@ -56,18 +56,18 @@ describe('path C: Vapi calling our tools', () => {
     expect(r!.toolCallId).toBe('tc_1');
     expect(JSON.parse(r!.result)).toMatchObject({ ok: true, outcome: 'ok', data: { zone: clinic.timezone } });
 
-    // the number read back, and a yes split from a "hello?", from Vapi's own conversation
-    await post({ type: 'conversation-update', call, messages: [
-      { role: 'bot', message: clinic.greeting, secondsFromStart: 0 },
-      { role: 'user', message: 'I need a checkup for my dog. The number is 720 555 0172.', secondsFromStart: 4 },
-    ] });
+    // the number read back, and a yes split from a "hello?", from Vapi's own conversation, in Vapi's units
+    // (secondsFromStart in seconds, duration in ms, a system line and tool entries in between, as a real call sends)
+    const greeting = { role: 'bot', message: clinic.greeting, secondsFromStart: 1.12, duration: 3360 };
+    const number = { role: 'user', message: 'I need a checkup for my dog. The number is 720 555 0172.', secondsFromStart: 5.2, duration: 3920.0009765625 };
+    await post({ type: 'conversation-update', call, messages: [{ role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, number] });
     const asked = await post({ type: 'tool-calls', call, toolCallList: [{ id: 'tc_2', function: { name: 'verify_caller', arguments: JSON.stringify({ owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' }) } }] });
     expect(JSON.parse((asked.json() as { results: { result: string }[] }).results[0]!.result)).toMatchObject({ outcome: 'confirm_number' });
     await post({ type: 'conversation-update', call, messages: [
-      { role: 'bot', message: clinic.greeting, secondsFromStart: 0 },
-      { role: 'user', message: 'I need a checkup for my dog. The number is 720 555 0172.', secondsFromStart: 4 },
-      { role: 'bot', message: "That's 720-555-0172?", secondsFromStart: 8 },
-      { role: 'user', message: 'Yes. Hello?', secondsFromStart: 11 },
+      { role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, number,
+      { role: 'tool_calls', secondsFromStart: 9.4 }, { role: 'tool_call_result', secondsFromStart: 9.8 },
+      { role: 'bot', message: "That's 720-555-0172?", secondsFromStart: 10.3, duration: 2560 },
+      { role: 'user', message: 'Yes. Hello?', secondsFromStart: 14.1, duration: 959.9990234375 },
     ] });
     const named = await post({ type: 'tool-calls', call, toolCallList: [{ id: 'tc_3', function: { name: 'verify_caller', arguments: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } } }] });
     expect(JSON.parse((named.json() as { results: { result: string }[] }).results[0]!.result).outcome).toBe('owner_check');
