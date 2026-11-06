@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, KnowledgeRepository, pgChangeFeed } from '@attendra/db';
+import { connect, createPhiCipher, KnowledgeRepository, LISTEN_DOWN_ALERT_MS, pgChangeFeed } from '@attendra/db';
 import { HybridKnowledgeBase, LocalAnswerer, ModelAnswerer } from '@attendra/knowledge';
-import { createLogger } from '@attendra/observability';
+import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
 import { embedderFromEnv } from '@attendra/worker/runtime';
 import OpenAI from 'openai';
@@ -14,6 +14,7 @@ import { openAiVoiceSampler } from './voice-samples/samplers';
 
 const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
+const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'api', log });
 if (env.ATTENDRA_DEMO_MODE) log.warn({}, 'demo mode: two-factor is not required. Do not use with real patient data.');
 
 const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
@@ -37,7 +38,12 @@ const app = await createApi({
   trustProxy: env.TRUST_PROXY,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
-  changes: pgChangeFeed(env.DATABASE_URL, (code) => log.warn({ code }, 'change notices: connection error')),
+  changes: pgChangeFeed(env.DATABASE_URL, {
+    onError: (code) => log.warn({ code }, 'change notices: connection error'),
+    // no screen hears of a change until it is back; then every open screen reads again
+    onDown: () => alerts.alert('change_notices_down', `the API has not heard database change notices for over ${LISTEN_DOWN_ALERT_MS / 1000} s; open screens refresh only on their slow safety check until it is back.`),
+    onUp: (ms) => alerts.note(`change notices back after ${Math.round(ms / 1000)} s; every open screen was told to read again.`),
+  }),
   knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
   voiceSamples,
   mail,

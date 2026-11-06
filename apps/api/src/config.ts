@@ -51,6 +51,8 @@ const Env = z.object({
   ATTENDRA_MCP_URL: optional(z.url().refine((u) => /^https:\/\//.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(u), 'ATTENDRA_MCP_URL must be https (or http on this machine)')),
   ATTENDRA_ACCOUNT_LINKS: z.preprocess((v) => (v === '' || v === undefined ? [] : typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return v; } })() : v),
     z.array(z.object({ label: z.string().trim().min(1).max(30), href: z.string().max(300).refine((h) => /^(https:\/\/|\/)/.test(h), 'an account link is an https:// address or a path') })).max(5)),
+  // Where the API says it has lost the change notices (LISTEN down for more than 10 s), like the voice service and the worker.
+  ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
   LOG_LEVEL: z.preprocess(blank, z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
 });
 export type ApiEnv = z.infer<typeof Env>;
