@@ -116,6 +116,12 @@ export const calls = pgTable('calls', {
   patientId: uuid('patient_id'),
   /** A browser test call started "as" a number: its last four digits only (migration 0043). Null on every phone call. */
   calledAsLast4: text('called_as_last4'),
+  /** How long after the answer the caller first heard the assistant; null when they never did (migration 0044). */
+  firstAudioMs: integer('first_audio_ms'),
+  /** Caller turns met by 5 s of silence with nothing coming back (migration 0044). */
+  stalls: integer('stalls'),
+  /** Answers past the 60 s limit, apologised for (migration 0044). */
+  answerTimeouts: integer('answer_timeouts'),
 });
 
 export const callSegments = pgTable('call_segments', {

@@ -502,3 +502,25 @@ describe('team invitations nobody answered', () => {
     expect(await h.lapseInvitations()).toBe(0);
   });
 });
+
+describe('the daily digest', () => {
+  it('sends one Slack line with the last day\'s calls and their trouble, by clinic id, from the call rows', async () => {
+    const empty = await calls.open(OTHER.id, `live_worker_${++n}`, '+13035550147');
+    await calls.close(OTHER.id, empty, { reason: 'remote_hangup', voiceSeconds: 9, outcome: 'no_audio', emergency: false, quality: { firstAudioMs: null, stalls: 0, answerTimeouts: 0 } });
+    const stalled = await calls.open(OTHER.id, `live_worker_${++n}`, '+13035550147');
+    await calls.close(OTHER.id, stalled, { reason: 'remote_hangup', voiceSeconds: 40, outcome: 'booked', emergency: false, quality: { firstAudioMs: 700, stalls: 2, answerTimeouts: 1 } });
+    const notes: string[] = [];
+    const alerts = { alert: () => {}, note: (text: string) => { notes.push(text); }, flush: async () => {} };
+    const text = await handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, alerts }).dailyDigest();
+    expect(notes).toEqual([text]);
+    expect(text).toMatch(/^Daily digest, last 24 h: \d+ calls/);
+    expect(text).toMatch(/No audio \(the caller heard nothing\): \d+ \([^)]*clinic_other 1/);
+    expect(text).toMatch(/Stalls \(5 s of silence after the caller spoke\): \d+ in \d+ calls? \([^)]*clinic_other 1/);
+    expect(text).toMatch(/Answers past the 60 s limit: \d+ in \d+ calls? \([^)]*clinic_other 1/);
+    // the row keeps the numbers, so the digest never depends on logs
+    const [row] = (await t.db.execute(sql`select first_audio_ms, stalls, answer_timeouts from calls where id = ${stalled}`)).rows;
+    expect(row).toEqual({ first_audio_ms: 700, stalls: 2, answer_timeouts: 1 });
+    expect(text).not.toContain('5550147');
+  });
+});
+

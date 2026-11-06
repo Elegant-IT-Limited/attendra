@@ -124,7 +124,7 @@ grant attendra_app to <your_service_user>;
 
 ## 4. Check it
 
-- `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`.
+- `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
 - A call to the number is answered with the demo greeting. The service logs `call accepted` with the session id; no caller details appear in the log.
 - After the call, it is at the top of **Calls** in the dashboard with its transcript, outcome and length, and within a few seconds its summary. If the summary never comes, check the worker's log: a job that failed every retry is logged with its ids as `dead-lettered`.
 

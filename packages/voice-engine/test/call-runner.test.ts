@@ -8,7 +8,7 @@ import { CallMarks, CallRunner, conversationPrompt, type Sideband, type Sideband
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
 
-function harness(planner: Planner, logger = log, marks?: CallMarks) {
+function harness(planner: Planner, logger = log, marks?: CallMarks, alerts?: { alert: (kind: 'stalled_turn' | 'empty_call', text: string) => void; where?: string }) {
   const sent: unknown[] = [];
   const engine = { name: 'fake', accept: vi.fn(), startBrowserCall: vi.fn(), reject: vi.fn(), attach: vi.fn(), transfer: vi.fn(async () => {}), hangup: vi.fn(async () => {}) } satisfies VoiceEngine;
   const sideband: Sideband = { send: (e) => sent.push(e), onEvent: () => {}, onError: () => {}, onClose: () => {}, close: vi.fn() };
@@ -22,8 +22,8 @@ function harness(planner: Planner, logger = log, marks?: CallMarks) {
   const runner = new CallRunner('live_1', engine, sideband, agent, {
     appendSegment: async (s) => { segments.push({ speaker: s.speaker, text: s.text }); },
     close: async (c) => { closes.push(c); },
-  }, logger, marks);
-  return { runner, sent, engine, segments, closes, sideband };
+  }, logger, marks, alerts);
+  return { runner, sent, engine, segments, closes, sideband, agent };
 }
 
 const delta = (type: 'in' | 'out', id: string, text: string, at: number): SidebandEvent => ({
@@ -271,8 +271,80 @@ describe('the GPT-Live call runner', () => {
       { speaker: 'agent', text: 'Thanks for calling Maple Street.' },
       { speaker: 'caller', text: 'What are your hours?' },
     ]);
-    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, language: 'en' }]);
+    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 } }]);
     expect(h.sideband.close).toHaveBeenCalled();
+  });
+});
+
+describe('how the call sounded to the caller (batch 0: the safety net)', () => {
+  it('records when the caller first heard the assistant, from its audio or, on an engine with no audio events, its words', async () => {
+    vi.useFakeTimers();
+    const audio = harness(new ScriptedPlanner([]));
+    void audio.runner.start();
+    await vi.advanceTimersByTimeAsync(1200);
+    await audio.runner.handle({ type: 'session.output_audio.delta', event_id: 'a1', delta: 'AAAA' });
+    await vi.advanceTimersByTimeAsync(500);
+    await audio.runner.handle(delta('out', 'o1', 'Thanks for calling.', 1200));
+    await audio.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 10 } });
+    expect(audio.closes.at(-1)).toMatchObject({ outcome: 'abandoned', quality: { firstAudioMs: 1200, stalls: 0, answerTimeouts: 0 } });
+    const words = harness(new ScriptedPlanner([]));
+    void words.runner.start();
+    await vi.advanceTimersByTimeAsync(900);
+    await words.runner.handle(delta('out', 'o1', 'Thanks for calling.', 900));
+    await words.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 10 } });
+    expect(words.closes.at(-1)).toMatchObject({ quality: { firstAudioMs: 900 } });
+    vi.useRealTimers();
+  });
+
+  it('records a call the caller never heard the assistant on as no_audio, and says it in an empty_call alert once the line was up 4 s', async () => {
+    vi.useFakeTimers();
+    const alerts: [string, string][] = [];
+    const h = harness(new ScriptedPlanner([]), log, undefined, { alert: (kind, text) => alerts.push([kind, text]), where: 'Clinic clinic_demo, call call_1' });
+    void h.runner.start();
+    await vi.advanceTimersByTimeAsync(9000);
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 9 } });
+    expect(h.closes.at(-1)).toMatchObject({ outcome: 'no_audio', quality: { firstAudioMs: null, stalls: 0, answerTimeouts: 0 } });
+    expect(alerts).toEqual([['empty_call', 'A caller was on the line 9 s and never heard the assistant (remote_hangup). Clinic clinic_demo, call call_1.']]);
+    // a caller who hung up before a greeting could reach them: still no_audio, but no alert
+    const quick: [string, string][] = [];
+    const q = harness(new ScriptedPlanner([]), log, undefined, { alert: (kind, text) => quick.push([kind, text]) });
+    void q.runner.start();
+    await vi.advanceTimersByTimeAsync(1500);
+    await q.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 1 } });
+    expect(q.closes.at(-1)).toMatchObject({ outcome: 'no_audio' });
+    expect(quick).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('counts a caller left 5 s in silence as one stall per turn, says it in a stalled_turn alert, and never names the caller', async () => {
+    vi.useFakeTimers();
+    const alerts: [string, string][] = [];
+    const h = harness(new ScriptedPlanner([]), log, undefined, { alert: (kind, text) => alerts.push([kind, text]), where: 'Clinic clinic_demo, call call_1' });
+    void h.runner.start();
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling.', 0));
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.runner.handle(delta('in', 'i1', 'This is Maria Delgado, can I book a visit?', 3000));
+    // both nudges of the same turn are one stall
+    await vi.advanceTimersByTimeAsync(13_000);
+    expect(alerts).toEqual([['stalled_turn', 'A caller waited 5 s in silence after speaking, with nothing being looked up. Clinic clinic_demo, call call_1.']]);
+    // the assistant answers; the next turn stalls too
+    await h.runner.handle(delta('out', 'o2', 'Sure, which day?', 16_000));
+    await vi.advanceTimersByTimeAsync(3000);
+    await h.runner.handle(delta('in', 'i2', 'Friday.', 19_000));
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(alerts).toHaveLength(2);
+    for (const [, text] of alerts) expect(text).not.toMatch(/Maria|Delgado/);
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 30 } });
+    expect(h.closes.at(-1)).toMatchObject({ outcome: 'abandoned', quality: { stalls: 2, answerTimeouts: 0 } });
+    vi.useRealTimers();
+  });
+
+  it('carries the answers that ran past the 60 s limit onto the call row', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    h.agent.state.answerTimeouts = 2;
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling.', 0));
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 30 } });
+    expect(h.closes.at(-1)).toMatchObject({ quality: { answerTimeouts: 2 } });
   });
 });
 

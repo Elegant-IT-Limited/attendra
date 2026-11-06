@@ -41,6 +41,8 @@ export interface CallContext {
   channel?: 'phone' | 'web';
   /** Told when a caller waited this many milliseconds for an answer (the voice service alerts on it). */
   onSlow?: (ms: number) => void;
+  /** Told when an answer ran past the 60 s limit and the caller was offered a callback instead (the voice service alerts on it). */
+  onTimeout?: (ms: number) => void;
 }
 
 /** What a tool hands back: data for the planner, and optionally a call-control action. */

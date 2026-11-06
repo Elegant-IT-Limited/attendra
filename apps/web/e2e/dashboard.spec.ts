@@ -16,6 +16,20 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
+  test('the Calls outcome filter finds the calls where the caller heard nothing (no_audio)', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
+    await expect(page.locator('tbody tr')).toHaveCount(44);
+    const asked = page.waitForRequest((r) => r.url().includes('/calls?') && r.url().includes('outcome=no_audio'));
+    await page.getByLabel('Outcome').selectOption({ label: 'Caller heard nothing' });
+    await asked;
+    await expect(page.getByLabel('Outcome')).toHaveValue('no_audio');
+    // the demo has no silent call: the list says so instead of showing the week
+    await expect(page.getByText('Nothing matches these filters.')).toBeVisible();
+    await page.getByLabel('Outcome').selectOption({ label: 'Any outcome' });
+    await expect(page.locator('tbody tr')).toHaveCount(44);
+  });
+
   test('the call list says what the assistant did in call order, and how each confirmation ended', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Calls', exact: true }).click();

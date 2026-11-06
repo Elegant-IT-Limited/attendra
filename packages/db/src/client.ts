@@ -37,3 +37,14 @@ export async function withClinic<T>(db: Database, clinicId: string, fn: (tx: Tx)
     return fn(tx);
   });
 }
+
+/**
+ * Whether the database answers a query within `timeoutMs`: for the health check, so a
+ * service whose Postgres is down says so instead of "ok". Never throws.
+ */
+export async function databaseAnswers(db: Database, timeoutMs = 1000): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); });
+  const asked = db.execute(sql`select 1`).then(() => true, () => false);
+  return Promise.race([asked, late]).finally(() => clearTimeout(timer));
+}
