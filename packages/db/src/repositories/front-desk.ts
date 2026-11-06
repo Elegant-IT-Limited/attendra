@@ -457,7 +457,7 @@ export class FrontDeskRepository {
     const notes = rows.length
       ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
       : [];
-    // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
+    // the Requests page reads again on every change to a request (and every 2 minutes): one row per person and request per five minutes
     for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
