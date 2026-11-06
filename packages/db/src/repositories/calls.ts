@@ -71,7 +71,7 @@ export class CallRepository {
    * `usage`: the tokens each text model used on the call, for its cost row. The cost is worked out here, from the call's
    * own engine, channel and texts, with the rates table in core (`callCost`), so every engine's calls are counted alike.
    */
-  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean } }) {
+  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }) {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
@@ -85,7 +85,7 @@ export class CallRepository {
       // what it cost: texts that went out (any kind; not the ones refused before the carrier), the engine's minutes, the tokens
       const [row] = await tx.select({ engine: calls.engine, channel: calls.channel }).from(calls).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
       const [texts] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.callId, callId), sql`${smsMessages.status} <> 'not_sent'`));
-      const cost = callCost({ engine: row?.engine ?? 'gpt-live', channel: row?.channel ?? 'phone', voiceSeconds: c.voiceSeconds, models: c.usage?.models ?? {}, fastTier: c.usage?.fastTier, texts: texts?.n ?? 0 });
+      const cost = callCost({ engine: row?.engine ?? 'gpt-live', channel: row?.channel ?? 'phone', voiceSeconds: c.voiceSeconds, models: c.usage?.models ?? {}, fastTier: c.usage?.fastTier, texts: texts?.n ?? 0, engineUsd: c.usage?.engineUsd });
       const values = {
         engine: cost.engine, voiceSeconds: cost.voiceSeconds === null ? null : cost.voiceSeconds.toFixed(2), voiceUsd: String(cost.voiceUsd), modelTokens: cost.modelTokens,
         modelUsd: String(cost.modelUsd), texts: cost.texts, textsUsd: String(cost.textsUsd), telephonyUsd: String(cost.telephonyUsd), totalUsd: String(cost.totalUsd), ratesVersion: cost.ratesVersion,

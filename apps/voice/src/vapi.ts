@@ -8,7 +8,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 /**
  * Path C of the bake-off (batch 1a, round 2): a Vapi assistant (its transcriber, model and voice) whose function tools
- * are our tools API. Vapi posts every tool call and call event to one route, `POST /vapi/v1/events?clinic=<id>`, with
+ * are our tools API. Vapi posts every tool call and call event to one route, `POST /webhooks/vapi/v1/events?clinic=<id>` (under the
+ * webhooks path the proxy already sends to this service), with
  * our shared secret; each Vapi call gets the same CallAgent, booking flow and safety rules as a call on our own engines,
  * recorded as engine `vapi`, flow `tools`. The conversation is kept from Vapi's own messages (conversation-update, and
  * the end-of-call report), so a read-back and the caller's yes are checked exactly as on our calls.
@@ -35,10 +36,15 @@ interface VapiMessage {
   messages?: VapiLine[];
   endedReason?: string;
   durationSeconds?: number;
+  /** What Vapi charged for the call, all parts, in dollars. */
+  cost?: number;
 }
 interface VapiLine { role?: string; message?: string; secondsFromStart?: number; duration?: number }
 
 interface Session { agent: CallAgent; clinicId: string; callId: string; synced: number; startedAt: number; notes: string[] }
+
+/** Where Vapi posts: under /webhooks, which the proxy in front of the voice service already routes to it. */
+export const VAPI_EVENTS_PATH = '/webhooks/vapi/v1/events';
 
 /** A Vapi call is forgotten after this long without a word from Vapi (its end-of-call report never came). */
 const SESSION_TTL_MS = 2 * 3_600_000;
@@ -65,7 +71,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     const from = web ? null : m.call?.customer?.number ?? null;
     const callId = await deps.openCall(clinic.id, `vapi_${vapiId}`, from, web ? 'web' : 'phone', undefined, undefined, { engine: 'vapi', voiceFlow: 'tools' });
     const cache = new CallCache();
-    const backend = cachedBackend(deps.backend, cache);
+    // a bake-off call texts nobody: what would have gone is recorded as not sent, as on a browser test call
+    const quiet = { ...deps.backend, messenger: { sendTemplate: (id: string, input: Parameters<Backend['messenger']['sendTemplate']>[1]) => deps.backend.messenger.sendTemplate(id, { ...input, testCall: true }) } };
+    const backend = cachedBackend(quiet, cache);
     cache.warmSchedule(deps.backend.scheduler, clinic.id, clinic.providers.map((p) => p.id), deps.now());
     const agent = new CallAgent(new CallState(), { clinic, callId, callerNumber: from, now: deps.now, log: deps.log, channel: web ? 'web' : 'phone', history: null }, backend, deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
     agent.state.answersAcrossPieces = true;
@@ -91,7 +99,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     s.synced = lines.length;
   }
 
-  app.post('/vapi/v1/events', async (req, reply) => {
+  app.post(VAPI_EVENTS_PATH, async (req, reply) => {
     if (!authorised(req.headers)) return reply.code(401).send({ error: 'unauthorized' });
     const clinicId = (req.query as { clinic?: string }).clinic;
     let m: VapiMessage;
@@ -119,7 +127,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       sync(s, m.artifact?.messages);
       const recorder = deps.recorderFor(s.clinicId, s.callId);
       for (const t of s.agent.state.turns) await recorder.appendSegment({ speaker: t.speaker, text: t.text, startMs: t.startMs, endMs: t.endMs });
-      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, language: s.agent.state.language, usage: { models: s.agent.state.modelTokens } });
+      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, language: s.agent.state.language, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
       sessions.delete(m.call!.id!);
       deps.log.info({ call_id: s.callId, engine: 'vapi', reason: m.endedReason ?? 'ended' }, 'vapi call closed');
     }

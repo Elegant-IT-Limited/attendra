@@ -26,6 +26,8 @@ export interface CallStatsRow {
   voiceOnlyMs: number[]; lookupMs: number[]; lookupEstimated: boolean;
   fillerLines: number; repeatedQuestions: number; interruptions: number; longGaps: number; actions: number;
   stalls: number | null; answerTimeouts: number | null; costUsd: number | null; closeReason: string | null;
+  /** The engine's billed seconds for the call, when it reported them. */
+  voiceSeconds: number | null;
 }
 
 export interface CallStatsQuery { clinicIds: string[]; since: Date; until?: Date }
@@ -37,7 +39,7 @@ export async function callStats(db: Database, cipher: PhiCipher, q: CallStatsQue
     const rows = await withClinic(db, clinicId, async (tx) => {
       const list = await tx.select({
         id: calls.id, channel: calls.channel, engine: calls.engine, voiceFlow: calls.voiceFlow, startedAt: calls.startedAt, endedAt: calls.endedAt,
-        outcome: calls.outcome, firstAudioMs: calls.firstAudioMs, stalls: calls.stalls, answerTimeouts: calls.answerTimeouts, closeReason: calls.closeReason,
+        outcome: calls.outcome, firstAudioMs: calls.firstAudioMs, stalls: calls.stalls, answerTimeouts: calls.answerTimeouts, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds,
       }).from(calls).where(and(eq(calls.clinicId, clinicId), gte(calls.startedAt, q.since), ...(q.until ? [lt(calls.startedAt, q.until)] : []))).orderBy(calls.startedAt);
       if (!list.length) return [];
       const ids = list.map((c) => c.id);
@@ -62,7 +64,7 @@ export async function callStats(db: Database, cipher: PhiCipher, q: CallStatsQue
 
 type Line = { speaker: 'caller' | 'agent'; startMs: number; endMs: number; text: string };
 
-function measure(c: { id: string; channel: string; engine: string | null; voiceFlow: string | null; startedAt: Date; endedAt: Date | null; outcome: string | null; firstAudioMs: number | null; stalls: number | null; answerTimeouts: number | null; closeReason: string | null },
+function measure(c: { id: string; channel: string; engine: string | null; voiceFlow: string | null; startedAt: Date; endedAt: Date | null; outcome: string | null; firstAudioMs: number | null; stalls: number | null; answerTimeouts: number | null; closeReason: string | null; voiceSeconds: string | null },
   clinicId: string, segs: Line[], actionMs: number[], timings: number[], cost: string | null): CallStatsRow {
   // consecutive lines of one speaker are one turn, as the call state joins them
   const turns: Line[] = [];
@@ -77,6 +79,7 @@ function measure(c: { id: string; channel: string; engine: string | null; voiceF
     voiceOnlyMs: [], lookupMs: [...timings], lookupEstimated: !timings.length,
     fillerLines: 0, repeatedQuestions: 0, interruptions: 0, longGaps: 0, actions: actionMs.length,
     stalls: c.stalls, answerTimeouts: c.answerTimeouts, costUsd: cost === null ? null : Number(cost), closeReason: c.closeReason,
+    voiceSeconds: c.voiceSeconds === null ? null : Number(c.voiceSeconds),
   };
   const asked = new Set<string>();
   for (let i = 0; i < turns.length; i++) {
@@ -117,7 +120,15 @@ export interface CallStatsGroup {
   key: string; calls: number; empty: number; noAudio: number; firstAudioMs: number[];
   voiceOnlyMs: number[]; lookupMs: number[]; lookupEstimated: boolean; fillerCalls: number; fillerLines: number;
   repeatedQuestions: number; repeatedCalls: number; interruptions: number; longGaps: number; costUsd: number;
+  /** Cost per minute of the calls with both a cost and a length; null with none. */
+  costPerMinute: number | null;
 }
+
+const perMinute = (rs: CallStatsRow[]) => {
+  const priced = rs.filter((r) => r.costUsd !== null && r.voiceSeconds);
+  const minutes = priced.reduce((n, r) => n + r.voiceSeconds! / 60, 0);
+  return minutes ? Math.round((priced.reduce((n, r) => n + r.costUsd!, 0) / minutes) * 1e4) / 1e4 : null;
+};
 
 /** The calls summed by clinic, channel, engine and flow: the lines a batch's before/after table compares. */
 export function groupCallStats(rows: CallStatsRow[]): CallStatsGroup[] {
@@ -134,6 +145,7 @@ export function groupCallStats(rows: CallStatsRow[]): CallStatsGroup[] {
     repeatedQuestions: rs.reduce((n, r) => n + r.repeatedQuestions, 0), repeatedCalls: rs.filter((r) => r.repeatedQuestions).length,
     interruptions: rs.reduce((n, r) => n + r.interruptions, 0), longGaps: rs.reduce((n, r) => n + r.longGaps, 0),
     costUsd: Math.round(rs.reduce((n, r) => n + (r.costUsd ?? 0), 0) * 1e4) / 1e4,
+    costPerMinute: perMinute(rs),
   }));
 }
 
@@ -147,7 +159,7 @@ export function formatCallStats(rows: CallStatsRow[], opts: { perCall?: boolean 
     lines.push(`voice-only turn ms: ${fmt(g.voiceOnlyMs)}`);
     lines.push(`lookup answer ms${g.lookupEstimated ? ' (est. for calls before 1a)' : ''}: ${fmt(g.lookupMs)}`);
     lines.push(`filler lines: ${g.fillerLines} in ${g.fillerCalls} calls; repeated questions: ${g.repeatedQuestions} in ${g.repeatedCalls} calls`);
-    lines.push(`interruptions: ${g.interruptions}; gaps over 8 s: ${g.longGaps}; cost: $${g.costUsd.toFixed(4)}`);
+    lines.push(`interruptions: ${g.interruptions}; gaps over 8 s: ${g.longGaps}; cost: $${g.costUsd.toFixed(4)}${g.costPerMinute === null ? '' : ` ($${g.costPerMinute.toFixed(4)} a minute)`}`);
     if (opts.perCall) {
       lines.push('call  started_utc       dur_s segs acts voice_med lookup_med filler repQ gaps>8s first_audio empty outcome close');
       for (const r of rows.filter((x) => `${x.clinicId} · ${x.channel} · ${x.engine ?? 'engine?'} · ${x.voiceFlow ?? 'planner'}` === g.key)) {

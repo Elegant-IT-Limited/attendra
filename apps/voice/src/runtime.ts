@@ -46,7 +46,7 @@ export interface VoiceRuntime {
   simulatedCalls?: boolean;
   /** The clinic's own documents, searched by the assistant. */
   knowledge?: KnowledgeBase;
-  /** Path C of the bake-off (Vapi): the shared secret of /vapi/v1/events; unset, the route does not exist. */
+  /** Path C of the bake-off (Vapi): the shared secret of /webhooks/vapi/v1/events; unset, the route does not exist. */
   vapiSecret?: string;
   /** gpt-realtime on the tools path: run a likely lookup before the reply. Defaults to off. */
   lookupAhead?: boolean;

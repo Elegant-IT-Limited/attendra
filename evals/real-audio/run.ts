@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The real-audio harness (batch 1a): real browser test calls with a voiced caller, on a running Attendra dashboard.
 //   pnpm --filter @attendra/evals real-audio -- [--base http://localhost:3000] [--login "Vet clinic manager"] [--only id,id]
-//   path C (Vapi): add --vapi, with VAPI_PUBLIC_KEY set and the assistant from vapi/setup.ts (~/.attendra-vapi-assistant)
+//   path C (Vapi): add --vapi [--assistant <id>] with VAPI_PUBLIC_KEY set; --base is then any https page of the dashboard
+//   (a secure origin for the microphone), e.g. https://app.getattendra.com
 //     [--engine gpt-realtime] [--scenarios real-audio/scenarios.yaml] [--headed]
 // Needs OPENAI_API_KEY (the caller's voice and, without fixed lines, the model playing the caller) and a dashboard whose
 // voice service has its own key. Places real, billed test calls: about a minute each. Writes
@@ -131,7 +132,8 @@ async function awaitReply(page: Page, from: number, maxMs = 25_000): Promise<{ h
 /** Path C: the call goes through Vapi's web SDK (pinned), on a page of the local dashboard (a secure origin for the microphone). */
 const VAPI = args.includes('--vapi');
 const VAPI_SDK = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@3.0.0/+esm';
-const vapiAssistant = VAPI ? readFileSync(join(process.env.HOME ?? '', '.attendra-vapi-assistant'), 'utf8').trim() : '';
+// the assistant from vapi/setup.ts: --assistant <id>, else the id it kept in ~/.attendra-vapi-assistant
+const vapiAssistant = VAPI ? (flag('--assistant') ?? readFileSync(join(process.env.HOME ?? '', '.attendra-vapi-assistant'), 'utf8').trim()) : '';
 if (VAPI && !process.env.VAPI_PUBLIC_KEY) throw new Error('--vapi needs VAPI_PUBLIC_KEY (from ~/.attendra-vapi.env)');
 const live = (page: Page) => (VAPI ? page.evaluate(() => !(window as unknown as { __vapiEnded?: boolean }).__vapiEnded) : page.getByRole('button', { name: 'End call' }).isVisible());
 
