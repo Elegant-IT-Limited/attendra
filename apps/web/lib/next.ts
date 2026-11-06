@@ -8,6 +8,7 @@
 const KEY = 'attendra.next';
 const OUT = 'attendra.signedOut';
 const ASKED = 'attendra.askedName';
+const USER = 'attendra.user';
 
 // a browser drops tabs and line breaks from an address ("/\t/x" opens "//x", another site): none anywhere, and no backslash
 const plain = (value: string) => [...value].every((c) => c.charCodeAt(0) > 0x1f && c.charCodeAt(0) !== 0x7f && c !== '\\');
@@ -17,21 +18,37 @@ export function safeNext(value: string | null | undefined): string | null {
     && !/^\/(sign-in|two-factor|setup-two-factor|change-password|forgot-password|reset-password)\b/.test(value) ? value : null;
 }
 
-export function rememberNext(value: string | null | undefined) {
+/** Who is signed in, in this tab, as /me last said: a page remembered when their session ended is theirs only. */
+export function noteUser(userId: string) {
+  try { sessionStorage.setItem(USER, userId); } catch { /* storage off */ }
+}
+
+/**
+ * Remembers where to go after signing in. A page remembered because a session ended is
+ * bound to the person whose session it was: someone else signing in at that computer
+ * goes to their own clinic, not to a page of a clinic they cannot open ("Clinic not
+ * found"). A link someone followed while signed out (an invitation) is for whoever signs in.
+ */
+export function rememberNext(value: string | null | undefined, opts: { fromEndedSession?: boolean } = {}) {
   try {
     sessionStorage.removeItem(OUT);
     const next = safeNext(value);
-    if (next) sessionStorage.setItem(KEY, next);
+    const user = opts.fromEndedSession ? sessionStorage.getItem(USER) : null;
+    if (next) sessionStorage.setItem(KEY, JSON.stringify({ path: next, user }));
     else sessionStorage.removeItem(KEY);
   } catch { /* storage off: they land on their clinic */ }
 }
 
-/** The page to open now, once: it is forgotten as it is used. */
-export function takeNext(): string | null {
+/** The page to open now for this person, once: it is forgotten as it is used, and dropped when it was someone else's. */
+export function takeNext(userId?: string): string | null {
   try {
-    const next = safeNext(sessionStorage.getItem(KEY));
+    const raw = sessionStorage.getItem(KEY);
     sessionStorage.removeItem(KEY);
-    return next;
+    if (!raw) return null;
+    let kept: { path?: string; user?: string | null };
+    try { kept = JSON.parse(raw) as typeof kept; } catch { kept = { path: raw, user: null }; }
+    if (kept.user && userId && kept.user !== userId) return null;
+    return safeNext(kept.path);
   } catch {
     return null;
   }

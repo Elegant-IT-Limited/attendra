@@ -33,7 +33,7 @@ test('a manager invites several people at once; someone with a login accepts, ge
   // Robin, at the vet clinic, sees the invitation in their own dashboard and accepts it
   const robin = await signInAgain(browser, 'Vet clinic manager');
   const banner = robin.getByTestId('invitation');
-  await expect(banner).toContainText('Maple Street Family Medicine invited you to its team as Front desk.');
+  await expect(banner).toContainText('Maple Street Family Medicine invited you as Front desk.');
   await banner.getByRole('button', { name: 'Accept' }).click();
   await expect(robin.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   // the clinic switcher: the one open now first, then the vet clinic
@@ -57,7 +57,7 @@ test('a manager invites several people at once; someone with a login accepts, ge
   await manager.reload();
   await manager.getByRole('row', { name: /Robin \(practice manager\)/ }).getByRole('button', { name: 'Remove' }).click();
   await manager.getByRole('dialog', { name: /Remove Robin/ }).getByRole('button', { name: 'Remove' }).click();
-  await expect(manager.getByText('Robin (practice manager) is off the team')).toBeVisible();
+  await expect(manager.getByText('Robin (practice manager) can no longer open Maple Street Family Medicine.')).toBeVisible();
   await robin.goto('/');
   await expect(robin).toHaveURL(/\/c\/[^/]+$/);
   await expect(robin.getByText('Riverbend Animal Hospital').first()).toBeVisible();

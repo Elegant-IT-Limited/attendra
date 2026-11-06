@@ -487,7 +487,7 @@ describe('team invitations nobody answered', () => {
   it('are closed by the worker after 7 days, with an audit row dated when each lapsed; reading them changes nothing', async () => {
     await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_inviter', 'Inviter', 'inviter@maple.example', true)`);
     const sent = new Date('2026-11-06T15:00:00Z');
-    const invited = await inviteToTeam(t.db, 'org_demo', DEMO_CLINIC.id, { userId: 'u_inviter', role: 'owner' }, { email: 'late@elsewhere.example', role: 'staff' }, sent);
+    const invited = await inviteToTeam(t.db, DEMO_CLINIC.id, { userId: 'u_inviter', role: 'owner' }, { email: 'late@elsewhere.example', role: 'staff' }, sent);
     if (invited.result !== 'done') throw new Error(invited.result);
     const later = new Date(sent.getTime() + 8 * 86_400_000);
     const status = async () => ((await t.db.execute(sql`select status from invitations where id = ${invited.id}`)).rows[0] as { status: string }).status;
