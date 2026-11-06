@@ -193,6 +193,23 @@ export const EmergencyHospital = z.object({
 });
 export type EmergencyHospital = z.infer<typeof EmergencyHospital>;
 
+/**
+ * How a location handles emergencies (Settings > Emergencies), one of three, each with what it needs to be saved:
+ * - refer: emergencies go to a hospital (its name, address and phone);
+ * - handle: the team takes them at any time (an emergency line: the clinic's or an on-call mobile; a backup hospital optional);
+ * - hours: the team takes them in its emergency hours (the opening hours unless set), a hospital after (name, address, phone).
+ * Holidays and special days count as closed for `hours`. What callers hear follows from it (emergencyRoute), and the
+ * public emergency number for a person in danger (`emergencyNumber`, 911) is said whatever the mode.
+ */
+export const EMERGENCY_MODES = ['refer', 'handle', 'hours'] as const;
+export type EmergencyMode = (typeof EMERGENCY_MODES)[number];
+export const EmergencySettings = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('refer'), hospital: EmergencyHospital }),
+  z.object({ mode: z.literal('handle'), number: e164, backupHospital: EmergencyHospital.optional() }),
+  z.object({ mode: z.literal('hours'), number: e164, hours: WeeklyHours.optional(), afterHoursHospital: EmergencyHospital }),
+]);
+export type EmergencySettings = z.infer<typeof EmergencySettings>;
+
 /** What the assistant may text a caller during a call, after a spoken yes; and the automatic change confirmations. */
 export const TEXT_KINDS = ['change_confirmed', 'directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] as const;
 export type TextKind = (typeof TEXT_KINDS)[number];
@@ -364,6 +381,9 @@ const ClinicConfigShape = z.object({
   // numbers that go straight to the front desk while it takes transfers
   vipCallers: z.array(VipCaller).max(50).optional(),
   emergencyTransferEnabled: z.boolean().default(false),
+  // how this location handles emergencies: refer to a hospital, handle them any time, or handle them in hours and refer
+  // after (batch 1b). Absent on a clinic saved before it: read from the fields below (emergencySettingsOf)
+  emergencies: EmergencySettings.optional(),
   // where the veterinary pack sends an animal in danger: the clinic's first choice of emergency hospital
   emergencyHospital: EmergencyHospital.optional(),
   // and its next choices, in order, for the hours the first one is closed or too far
