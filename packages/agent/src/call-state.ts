@@ -124,6 +124,8 @@ export class CallState {
   emergencyTransferSent = false;
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
+  /** Answers that ran past the 60 s limit and were apologised for: counted on the call row (migration 0044). */
+  answerTimeouts = 0;
   /** The call is being ended for the caller's language: the goodbye has been said and nothing is planned after it. */
   endedForAbuse = false;
   /** The clinic's assistant is paused (its plan): the caller hears a short line and goes to the team, or the call ends. */

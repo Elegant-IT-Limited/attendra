@@ -43,6 +43,7 @@ jobs:
           checks=(
             "GET https://getattendra.com/ 200 website"
             "GET https://app.getattendra.com/sign-in 200 dashboard"
+            # 503 when the API is up but its database is not: still down
             "GET https://app.getattendra.com/api/v1/health 200 api"
             "GET https://app.getattendra.com/account/signup 200 account-pages"
             "POST https://app.getattendra.com/webhooks/openai 400,401 voice-service"

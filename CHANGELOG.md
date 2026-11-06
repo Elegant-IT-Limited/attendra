@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (the safety net: the system says when a call goes wrong)
+
+- **How each call sounded, on the call row.** Migration 0044 adds `first_audio_ms` (how long after the answer the caller first heard the assistant), `stalls` (caller turns met by 5 s of silence with nothing at work) and `answer_timeouts` (answers past the 60 s limit) to `calls`. Counts only; null on older calls.
+- **"Caller heard nothing".** A call on which the caller never heard the assistant is recorded as `no_audio` instead of "No action". The Calls outcome filter lists it, and Today's Needs attention says "A caller heard nothing" so someone calls them back.
+- **Three new alerts to Slack**, codes and ids only: `stalled_turn` (a caller waited 5 s in silence after speaking, with nothing being looked up), `empty_call` (a caller was on the line 4 s or more and never heard the assistant) and `answer_timeout` (an answer ran past the 60 s limit and the caller was offered a callback; no longer also counted as `slow_answer`).
+- **A daily digest** at 03:10 UTC from the worker: the last day's calls (phone and browser test), the first-audio median and p90, and the empty lines, stalls, timeouts and dropped calls with the clinics they happened at. Read from the call rows, so it never depends on logs.
+- **The health check asks the database.** `GET /api/v1/health` answers 503 with `{ ok: false, database: 'down' }` when Postgres does not answer `select 1` within a second, so the outside uptime check reports an outage that left the API process running.
+
 ### Changed (scheduling that works like a front desk)
 
 - **A vet's own hours decide.** `bookableWindows(clinic, provider, date)` (`packages/core/src/hours.ts`) is the one rule for the assistant, the desk's checks, New booking, the schedule grid and the hours the assistant states: a vet with their own hours can be booked in them even when the clinic's front desk is closed, weekends included; the clinic's hours apply only to vets with none. Holidays and special days close for everyone except the vets a special day lists (`SpecialDay.providerIds`). The assistant says it plainly: "The clinic's front desk is closed on Sundays, but Dr. Morgan sees patients Sunday from 9 to 1." The grid shows that time as bookable with a "desk closed" band.

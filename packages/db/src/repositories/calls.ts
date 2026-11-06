@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import type { CallQuality, DigestCall } from '@attendra/core';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
@@ -64,11 +65,12 @@ export class CallRepository {
     });
   }
 
-  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string }) {
+  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality }) {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
         outcome: c.outcome, emergencyFlag: c.emergency, ...(c.language ? { language: c.language } : {}),
+        ...(c.quality ? { firstAudioMs: c.quality.firstAudioMs, stalls: c.quality.stalls, answerTimeouts: c.quality.answerTimeouts } : {}),
       }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
       // what the call wrote, as counts on one row: a row per line or step would bury staff access in the log
       const [lines] = await tx.select({ n: sql<number>`count(*)::int` }).from(callSegments).where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId)));
@@ -190,4 +192,17 @@ export function formatCallTimeline(callId: string, t: { clinicId: string; channe
     lastEnd = lastEnd === null ? s.endMs : Math.max(lastEnd, s.endMs);
   }
   return lines;
+}
+
+/**
+ * The calls started since `since`, across every clinic, as the daily digest counts them.
+ * Owner connection, like the worker's other cross-clinic jobs; codes and counts only, no
+ * caller, no words.
+ */
+export async function callsForDigest(db: Database, since: Date): Promise<DigestCall[]> {
+  const rows = await db.select({
+    clinicId: calls.clinicId, channel: calls.channel, outcome: calls.outcome, closeReason: calls.closeReason,
+    firstAudioMs: calls.firstAudioMs, stalls: calls.stalls, answerTimeouts: calls.answerTimeouts, endedAt: calls.endedAt,
+  }).from(calls).where(gte(calls.startedAt, since));
+  return rows.map(({ endedAt, ...r }) => ({ ...r, ended: endedAt !== null }));
 }

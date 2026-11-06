@@ -53,6 +53,8 @@ export const OUTCOMES: Record<string, { label: string; tone: 'ok' | 'warn' | 'da
   info: { label: 'Answered', tone: 'neutral' },
   emergency: { label: 'Emergency', tone: 'danger' },
   abandoned: { label: 'No action', tone: 'neutral' },
+  // the caller never heard the assistant (a silent line): someone to call back
+  no_audio: { label: 'Caller heard nothing', tone: 'danger' },
 };
 
 export const TOOLS: Record<string, string> = {

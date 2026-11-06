@@ -110,7 +110,7 @@ const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
 const CallFilters = z.object({
   from: day().optional(),
   to: day().optional(),
-  outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned']).optional(),
+  outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned', 'no_audio']).optional(),
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
   review: z.literal('needed').optional(),

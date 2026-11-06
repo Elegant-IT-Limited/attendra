@@ -415,11 +415,14 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         deps.log.warn({ session_id: sessionId, err: { message: (err as Error).message } }, 'could not read the caller\'s earlier calls');
         return null;
       }) : Promise.resolve(null);
-      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history: null, now, log: deps.log, channel, onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history: null, now, log: deps.log, channel,
+        onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`),
+        onTimeout: (ms) => deps.alerts?.alert('answer_timeout', `An answer took ${Math.round(ms / 1000)} s, past the limit: the caller was offered a callback. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
       const sideband = engine.attach(sessionId);
       marks.mark('attached');
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
-      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks);
+      const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks,
+        deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text), where: `Clinic ${clinic.id}, call ${callId}` } : undefined);
       if (web) {
         const limit = opts.maxSeconds ?? maxSeconds;
         // a minute before the end the caller hears so, and at the end the assistant says why it

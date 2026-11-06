@@ -16,6 +16,20 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.locator('tbody tr')).toHaveCount(9); // 6 requests for staff, 3 emergencies
   });
 
+  test('the Calls outcome filter finds the calls where the caller heard nothing (no_audio)', async ({ browser }) => {
+    const page = await openAs(browser, 'manager');
+    await page.getByRole('link', { name: 'Calls', exact: true }).click();
+    await expect(page.locator('tbody tr')).toHaveCount(44);
+    const asked = page.waitForRequest((r) => r.url().includes('/calls?') && r.url().includes('outcome=no_audio'));
+    await page.getByLabel('Outcome').selectOption({ label: 'Caller heard nothing' });
+    await asked;
+    await expect(page.getByLabel('Outcome')).toHaveValue('no_audio');
+    // the demo has no silent call: the list says so instead of showing the week
+    await expect(page.getByText('Nothing matches these filters.')).toBeVisible();
+    await page.getByLabel('Outcome').selectOption({ label: 'Any outcome' });
+    await expect(page.locator('tbody tr')).toHaveCount(44);
+  });
+
   test('the call list says what the assistant did in call order, and how each confirmation ended', async ({ browser }) => {
     const page = await openAs(browser, 'manager');
     await page.getByRole('link', { name: 'Calls', exact: true }).click();
@@ -103,19 +117,23 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(header).toBeVisible();
     expect((await header.boundingBox())!.y).toBeLessThan(80);
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Today' })).toBeVisible();
-    // the audit log's table is wider than the screen: a named region the keyboard reaches, with an edge that says there is more
     const axe = async (where: string) => {
       const result = await new AxeBuilder({ page }).withRules(['scrollable-region-focusable', 'document-title']).exclude('nextjs-portal').analyze();
       expect(result.violations.map((v) => v.id), where).toEqual([]);
     };
-    const region = page.getByRole('region', { name: 'Audit log' });
+    await axe('Audit log');
+    // the call list's table is wider than the screen whatever the day's data (the audit log's fits a phone on some days):
+    // a named region the keyboard reaches, with an edge that says there is more
+    await page.goto(`/c/${clinic}/calls`);
+    await expect(page.getByRole('heading', { name: 'Calls', exact: true })).toBeVisible();
+    const region = page.getByRole('region', { name: 'Calls' });
     await expect(region).toHaveAttribute('tabindex', '0');
     await expect(region.locator('..').getByTestId('scroll-edge-right')).toHaveCSS('opacity', '1');
     await region.focus();
     for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
     await expect.poll(() => region.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
     await expect(region.locator('..').getByTestId('scroll-edge-left')).toHaveCSS('opacity', '1');
-    await axe('Audit log');
+    await axe('Calls, scrolled');
     for (const [path, name] of [['/team', 'Team'], ['/calls', 'Calls']] as const) {
       await page.goto(`/c/${clinic}${path}`);
       await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();

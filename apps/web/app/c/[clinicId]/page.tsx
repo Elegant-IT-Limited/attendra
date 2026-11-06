@@ -121,7 +121,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   // flagged by the summary and not yet looked at, from the last week; emergencies are already listed above them
   const flagged = (calls.data?.calls ?? []).filter((c) => c.needsReview && !c.emergency && Date.parse(c.startedAt) >= now - 7 * 86_400_000);
   // only calls that are over: one still going has no outcome yet, and is under Live now
-  const unresolved = recent.filter((c) => c.endedAt && !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === null));
+  const unresolved = recent.filter((c) => c.endedAt && !c.emergency && !c.needsReview && (c.outcome === 'transferred' || c.outcome === 'abandoned' || c.outcome === 'no_audio' || c.outcome === null));
   const requests = canTasks ? waiting.data?.tasks ?? [] : [];
   // a flagged call that became a follow-up request is listed once, as the request
   const followedUp = new Set(requests.flatMap((t) => (t.type === 'follow_up' && t.callId ? [t.callId] : [])));
@@ -151,7 +151,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
       action: <Link href={`/c/${clinicId}/settings/integrations`} className={LINK}>Open Integrations</Link>,
     })),
     ...unresolved.map((c) => ({
-      key: c.id, icon: <PhoneOff className="size-4 text-text-muted" />, title: c.outcome === 'transferred' ? 'A call went to a person' : 'A call ended with nothing done',
+      key: c.id, icon: <PhoneOff className="size-4 text-text-muted" />, title: c.outcome === 'transferred' ? 'A call went to a person' : c.outcome === 'no_audio' ? 'A caller heard nothing' : 'A call ended with nothing done',
       detail: <>{timeOf(c.startedAt, tz)}, <RelativeTime iso={c.startedAt} exact={clinicTime(c.startedAt, tz, 'long')} now={now} />. Check whether the caller needs a call back.</>,
       action: canOpenCalls ? <Link href={`/c/${clinicId}/calls/${c.id}`} className={LINK}>Open the call</Link> : null,
     })),

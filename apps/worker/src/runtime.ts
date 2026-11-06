@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { callUsNumber, ClinicConfig, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
+import { callUsNumber, ClinicConfig, dailyDigest, localName, localParts, speakSlot, textingOf, toMinutes } from '@attendra/core';
 import type { EventSink } from '@attendra/core';
-import { activeNumbers, allClinics, CallSummaryRepository, callFacts, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
+import { activeNumbers, allClinics, CallSummaryRepository, callFacts, callsForDigest, type Database, ensureWorkerJobsView, KnowledgeRepository, lapseInvitations, type PhiCipher, phiContext, PostgresTaskQueue, purgeCallRecords, purgeWebhookRecords, schema, WebhookRepository, withClinic } from '@attendra/db';
 import { type Embedder, indexDocument, LocalEmbedder, OpenAIEmbedder } from '@attendra/knowledge';
 import type { Alerter, Logger } from '@attendra/observability';
 import { deliver, type GuardOptions, payloadOf, type Resolver } from '@attendra/webhooks';
@@ -168,6 +168,17 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
       const done = await d.fallback.client.sync(entries);
       if (done.written || done.removed) d.log.info({ numbers: entries.size, ...done }, 'backup route updated');
       return done;
+    },
+
+    /**
+     * The last day's calls in one Slack message, every morning: how many, how soon callers heard the assistant, and
+     * the empty lines, stalls, answers past the limit and drops, with the clinics they happened at. Counts and ids only.
+     */
+    async dailyDigest() {
+      const text = dailyDigest(await callsForDigest(d.db, new Date(now().getTime() - 86_400_000)));
+      d.alerts?.note(text);
+      d.log.info({}, 'daily digest sent');
+      return text;
     },
 
     /** Team invitations nobody answered in 7 days: closed, with an audit row in the inviting team's clinics. Reading them never writes. */
@@ -377,6 +388,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
   await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
   await d.boss.work(QUEUES.lapseInvitations, each(async () => { await h.lapseInvitations(); }));
+  await d.boss.work(QUEUES.dailyDigest, each(async () => { await h.dailyDigest(); }));
   await d.boss.work(QUEUES.fallbackSync, each(async () => { await h.fallbackSync(); }));
   // the backup route in place before anything else needs it; a failure is said, and tried again at the next start
   if (d.fallback) {
@@ -408,6 +420,8 @@ export async function startWorker(d: WorkerDeps) {
     await d.boss.schedule(QUEUES.purgeRetention, '0 3 * * *');
     await d.boss.schedule(QUEUES.appointmentReminders, '*/10 * * * *');
     await d.boss.schedule(QUEUES.lapseInvitations, '7 * * * *');
+    // 03:10 UTC: the morning in the team's time zone, after the night's calls in the clinics' (and before the 03:30 backup)
+    await d.boss.schedule(QUEUES.dailyDigest, '10 3 * * *');
     if (d.fallback) await d.boss.schedule(QUEUES.fallbackSync, '*/10 * * * *');
   }
   d.log.info({ summariser: d.summariser.model, texts: !!d.texts }, 'worker started');

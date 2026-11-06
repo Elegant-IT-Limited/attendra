@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { CallAgent, Outbound } from '@attendra/agent';
-import { askedToHangUp, saidGoodbye } from '@attendra/core';
+import { askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, recordedOutcome, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
@@ -9,7 +9,15 @@ import { openingIfNotStarted } from './prompt';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
-  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string }): Promise<void>;
+  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality }): Promise<void>;
+}
+
+/**
+ * Where the runner says something is wrong with a call the caller is on, for the people who
+ * run Attendra (Slack): a caller left in silence, a line they heard nothing on. Codes and ids only.
+ */
+export interface CallAlerts {
+  alert(kind: 'stalled_turn' | 'empty_call', text: string): void;
 }
 
 /**
@@ -95,6 +103,13 @@ export class CallRunner {
   private reconnects = 0;
   /** Whether the assistant is speaking now, as far as its words show, for the logs. */
   private speaking = false;
+  /**
+   * When the caller could first have heard the assistant: its first audio, or its first words on an engine whose
+   * sideband carries no audio (gpt-realtime). Zero until then; still zero at the end, the call is `no_audio`.
+   */
+  private heardAt = 0;
+  /** Caller turns met by 5 s of silence with nothing coming back: the first nudge of a turn is one stall. */
+  private stalls = 0;
 
   constructor(
     private readonly sessionId: string,
@@ -104,8 +119,17 @@ export class CallRunner {
     private readonly recorder: CallRecorder,
     private readonly log: Logger,
     marks?: CallMarks,
+    /** Where trouble on this call is said; `where` names the call in it (clinic and call ids, never the caller). */
+    private readonly alerts?: CallAlerts & { where?: string },
   ) {
     this.marks = marks ?? new CallMarks();
+    // start() sets it again; a runner driven without it still times from when it was made
+    this.startedAt = Date.now();
+  }
+
+  /** The call as the caller heard it so far, for the call row and the daily digest. */
+  quality(): CallQuality {
+    return { firstAudioMs: this.heardAt ? this.heardAt - this.startedAt : null, stalls: this.stalls, answerTimeouts: this.agent.state.answerTimeouts };
   }
 
   start(): Promise<void> {
@@ -138,6 +162,7 @@ export class CallRunner {
     if (event.type === 'session.output_audio.delta') {
       if (!this.audioStartedAt) {
         this.audioStartedAt = Date.now();
+        if (!this.heardAt) this.heardAt = this.audioStartedAt;
         this.marks.mark('first_audio', this.audioStartedAt);
         this.log.info({ session_id: this.sessionId, ms: this.audioStartedAt - this.startedAt, opening_nudged: this.openingNudged }, 'first audio from the assistant');
       }
@@ -168,6 +193,7 @@ export class CallRunner {
         if (!this.speaking) {
           this.speaking = true;
           if (!this.agentSpokeAt) {
+            if (!this.heardAt) this.heardAt = now;
             this.marks.mark('first_words', now);
             this.log.info({ session_id: this.sessionId, ms: now - this.startedAt, opening_nudged: this.openingNudged }, 'first words from the assistant');
             this.timing();
@@ -390,6 +416,11 @@ export class CallRunner {
     if (this.callerSaidAt > this.speakingUntil && !this.pending && !leaving && this.nudged < SILENCE_NUDGE_MS.length && now - this.callerSaidAt >= SILENCE_NUDGE_MS[this.nudged]!) {
       this.nudged++;
       this.log.info({ session_id: this.sessionId, nudge: this.nudged, waited_ms: now - this.callerSaidAt }, 'the caller is waiting in silence: giving the assistant their words to answer');
+      // the first nudge of a turn is a stall: the caller spoke and heard nothing back for 5 s, and nothing was at work
+      if (this.nudged === 1) {
+        this.stalls++;
+        this.alerts?.alert('stalled_turn', `A caller waited ${Math.round((now - this.callerSaidAt) / 1000)} s in silence after speaking, with nothing being looked up. ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
+      }
       return this.dispatch(this.agent.onSilence(this.nudged));
     }
   }
@@ -434,8 +465,15 @@ export class CallRunner {
     const state = this.agent.state;
     // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
     if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';
-    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome: state.outcome, emergency: !!state.emergency, language: state.language });
-    this.log.info({ session_id: this.sessionId, reason, outcome: state.outcome, voice_seconds: voiceSeconds }, 'call finished');
+    const quality = this.quality();
+    // the caller never heard the assistant: recorded as such, and said when the line was up long enough to matter
+    const outcome = recordedOutcome(state.outcome, quality);
+    const lasted = Date.now() - this.startedAt;
+    if (quality.firstAudioMs === null && lasted >= EMPTY_CALL_MIN_MS) {
+      this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}). ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
+    }
+    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, language: state.language, quality });
+    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts }, 'call finished');
     this.sideband.close();
   }
 }

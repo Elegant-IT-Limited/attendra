@@ -699,7 +699,9 @@ export class CallAgent {
       if (plan === 'late') {
         // the answer is too slow to keep the caller waiting: anything it would still write is refused (the revision moves on)
         if (revision === this.state.revision) this.state.revision++;
+        this.state.answerTimeouts++;
         this.log.warn({ call_id: this.ctx.callId, revision, ms: Date.now() - startedAt, tools: toolCalls }, 'answer took too long: apologised and offered a callback');
+        this.ctx.onTimeout?.(Date.now() - startedAt);
         out.push({ type: 'commentary', delegationId, content: PACKS[this.state.language].tooSlow });
         return out;
       }
@@ -733,7 +735,8 @@ export class CallAgent {
           })),
         } : {}),
       }, 'request answered');
-      if (ms >= SLOW_MS) this.ctx.onSlow?.(ms);
+      // past the limit it is an answer_timeout, said on its own: not a slow answer as well
+      if (ms >= SLOW_MS && ms < ANSWER_DEADLINE_MS) this.ctx.onSlow?.(ms);
       this.doing = this.state.pending ? 'waiting for a yes' : null;
       this.emitState();
     }
