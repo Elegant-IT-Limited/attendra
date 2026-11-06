@@ -4,8 +4,12 @@ import type { Backend } from '../tools';
 
 /** How long what was read stays good on a call: a booking by the desk meanwhile shows up within this, and `book` re-checks anyway. */
 export const CACHE_TTL_MS = 60_000;
-/** How far ahead the schedule is read at the start of the call: the window "is 4 PM free?" answers from. */
-export const PRELOAD_DAYS = 14;
+/**
+ * How far ahead the schedule is read at the start of the call: the window lookups answer from. find_slots looks up to 60
+ * days past a day the caller names (14 with none), so 90 covers a named day up to a month out; a lookup past it reads the
+ * database as before. One query at the start of the call, for every provider.
+ */
+export const PRELOAD_DAYS = 90;
 
 type Busy = Awaited<ReturnType<SchedulerAdapter['busy']>>;
 interface Held<T> { value: Promise<T>; at: number }

@@ -64,7 +64,11 @@ const INIT = `(() => {
   const ctx = new AudioContext();
   const mic = ctx.createMediaStreamDestination();
   window.__levels = []; window.__captions = []; window.__playing = false;
-  navigator.mediaDevices.getUserMedia = async () => mic.stream;
+  // a quiet hum under the caller's lines, as a real line has: the stream carries audio from the first moment, and the
+  // audio graph runs before the first line (a suspended graph sent no frames, and the call never started)
+  const hum = ctx.createConstantSource(); const g = ctx.createGain(); g.gain.value = 0.0005; hum.connect(g); g.connect(mic); hum.start();
+  window.__types = {};
+  navigator.mediaDevices.getUserMedia = async () => { await ctx.resume(); return mic.stream; };
   window.__say = async (b64) => {
     await ctx.resume();
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -79,6 +83,7 @@ const INIT = `(() => {
   const Peer = window.RTCPeerConnection;
   window.RTCPeerConnection = function (...a) {
     const pc = new Peer(...a);
+    (window.__pcs = window.__pcs || []).push(pc);
     pc.addEventListener('track', (e) => {
       const stream = e.streams[0]; if (!stream) return;
       const an = ctx.createAnalyser(); an.fftSize = 1024; ctx.createMediaStreamSource(stream).connect(an);
@@ -88,7 +93,7 @@ const INIT = `(() => {
     const make = pc.createDataChannel.bind(pc);
     pc.createDataChannel = (...c) => {
       const ch = make(...c);
-      ch.addEventListener('message', (m) => { try { const e = JSON.parse(m.data); const t = e.type || '';
+      ch.addEventListener('message', (m) => { try { const e = JSON.parse(m.data); const t = e.type || ''; window.__types[t] = (window.__types[t] || 0) + 1;
         if ((t === 'session.output_transcript.delta' || t === 'response.output_audio_transcript.delta') && e.delta) window.__captions.push(['agent', e.delta, Date.now()]);
         if ((t === 'session.input_transcript.delta' || t === 'conversation.item.input_audio_transcription.completed') && (e.delta || e.transcript)) window.__captions.push(['caller', e.delta || e.transcript, Date.now()]);
       } catch {} });
@@ -101,7 +106,7 @@ const INIT = `(() => {
 
 type Level = [number, number];
 /** The page's global object, as the init script fills it (this file runs in Node; the callbacks below run in the page). */
-declare const window: { __levels: Level[]; __captions: [string, string, number][]; __say(b64: string): Promise<{ started: number; ended: number }> };
+declare const window: { __pcs?: unknown[]; __levels: Level[]; __captions: [string, string, number][]; __say(b64: string): Promise<{ started: number; ended: number }> };
 const levels = (page: Page, since: number) => page.evaluate((t) => window.__levels.filter((l) => l[0] >= t), since);
 const agentSince = (page: Page, since: number, until = Number.POSITIVE_INFINITY) => page.evaluate(([a, b]) => window.__captions
   .filter((c) => c[0] === 'agent' && c[2] >= a && c[2] < b).map((c) => c[1]).join(''), [since, until] as const);
@@ -128,7 +133,7 @@ async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Pro
   await page.goto(`${base}${clinicPath}/test-call`);
   const clicked = Date.now();
   await page.getByRole('button', { name: 'Start test call' }).click();
-  const greeting = await awaitReply(page, clicked, 20_000);
+  const greeting = await awaitReply(page, clicked, 45_000);
   if (greeting.heardAt === null) return { ...result, ended: 'failed', error: 'the assistant never spoke' };
   result.firstAudioMs = greeting.heardAt - clicked;
   const said: { who: 'caller' | 'assistant'; text: string }[] = [{ who: 'assistant', text: await agentSince(page, clicked) }];
@@ -140,6 +145,7 @@ async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Pro
     // the assistant talking over the caller: its audio during their line, after the first half second
     const overlapped = (await levels(page, started + 500)).some((l) => l[0] < ended && l[1] > SILENCE_LEVEL);
     said.push({ who: 'caller', text });
+    if (args.includes('--debug')) console.log('debug', await page.evaluate(async () => { const w = window as unknown as { __pcs: { getStats(): Promise<{ forEach(f: (r: never) => void): void }>; connectionState: string }[] }; const out: string[] = []; for (const pc of w.__pcs ?? []) { (await pc.getStats()).forEach((r: { type: string; kind?: string; bytesSent?: number; packetsSent?: number }) => { if (r.type === 'outbound-rtp') out.push(`${r.kind} bytes=${r.bytesSent} packets=${r.packetsSent}`); if (r.type === 'media-source') out.push(`source ${JSON.stringify(r)}`); }); out.push(`state=${pc.connectionState}`); } out.push(JSON.stringify((window as unknown as { __types: unknown }).__types)); return out.join(' | '); }));
     if (done) { result.ended = 'caller'; break; }
     const reply = await awaitReply(page, ended);
     if (reply.stalled) result.stalls++;

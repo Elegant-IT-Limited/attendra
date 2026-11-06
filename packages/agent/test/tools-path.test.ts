@@ -165,7 +165,7 @@ describe('the call cache (the preload)', () => {
     expect(a.every((r) => r.providerId === 'prov_ruiz')).toBe(true);
     expect(Array.isArray(b)).toBe(true);
     // outside the window, or a provider it never read: the database
-    await cached.scheduler.busy(clinic.id, ['prov_ruiz'], from, new Date(from.getTime() + 20 * 86_400_000));
+    await cached.scheduler.busy(clinic.id, ['prov_ruiz'], from, new Date(from.getTime() + 100 * 86_400_000));
     expect(reads).toBe(2);
     cache.dropSchedule();
     await cached.scheduler.busy(clinic.id, ['prov_ruiz'], from, new Date(from.getTime() + 86_400_000));

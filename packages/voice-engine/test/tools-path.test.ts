@@ -94,6 +94,23 @@ function liveSocket() {
   return { ws, sent, play: (e: Record<string, unknown>) => handlers.event?.forEach((h) => h(e as never)) };
 }
 
+describe('path A: what waits for the caller\'s words', () => {
+  it('runs a lookup at once, and holds a write until the caller\'s words before it are transcribed', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_1', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_1');
+    const seen: string[] = [];
+    sideband.onEvent((ev) => seen.push(ev.type === 'session.tool_call' ? (ev as { name: string }).name : ev.type));
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'a', name: 'find_slots', call_id: 'fc_1', arguments: '{}' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'b', name: 'commit_pending', call_id: 'fc_2', arguments: '{}' });
+    expect(seen).toEqual(['find_slots']);
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'd', item_id: 'item_1', transcript: 'Yes, book it.' });
+    expect(seen).toEqual(['find_slots', 'session.input_transcript.delta', 'commit_pending']);
+  });
+});
+
 describe('path B: GPT-Live with a Responses backend running our tools', () => {
   it('starts the session with Responses delegation: the backend model, its instructions and our tools', async () => {
     const sessions = { accept: vi.fn(async () => {}) };

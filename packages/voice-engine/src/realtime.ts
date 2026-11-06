@@ -31,6 +31,13 @@ const REALTIME_TOOLS_LINES = [
   'Your tools are part of you, not someone else: never mention a tool, a backend or a system, and never say you are asking or checking with anyone.',
 ];
 
+/**
+ * The tools that only read (times, the clinic's facts and documents, a pet's visits, the clock): on the tools path they
+ * run the moment the model calls them, without waiting for the caller's words to be transcribed (up to 3 s), since
+ * nothing in them depends on those words. Everything else waits, so a yes or an emergency is heard before any write.
+ */
+const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'list_appointments', 'visit_summary', 'clinic_now']);
+
 /** Our tools as the Realtime API takes them: function tools without `strict`, which it does not use. */
 export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description, parameters }));
 
@@ -83,7 +90,9 @@ export class RealtimeEngine implements VoiceEngine {
       model: this.model,
       instructions: tools ? [toolsVoicePrompt(clinic, { callerNumber: opts.callerNumber }), ...REALTIME_TOOLS_LINES].join('\n') : [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
       audio: {
-        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: { type: 'semantic_vad' as const } },
+        // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
+        // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
+        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? { type: 'semantic_vad' as const, eagerness: 'high' as const } : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
@@ -204,14 +213,28 @@ export class RealtimeEngine implements VoiceEngine {
       if (!awaiting.size) release();
     };
 
+    // when each caller turn was spoken, by our clock: its line is placed and timed by that, not by when its transcript
+    // arrived (often after the reply had started, which put the caller's words a turn late in the record and made the
+    // wait for an answer look shorter than it was)
+    const spokenAt = new Map<string, { start: number; end: number | null }>();
     ws.on('event', (e) => {
       switch (e.type) {
+        case 'input_audio_buffer.speech_started':
+          if (typeof e.item_id === 'string') spokenAt.set(e.item_id, { start: ms(), end: null });
+          return;
+        case 'input_audio_buffer.speech_stopped':
+          if (typeof e.item_id === 'string') { const at = spokenAt.get(e.item_id); spokenAt.set(e.item_id, { start: at?.start ?? ms(), end: ms() }); }
+          return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
-          if (typeof e.transcript === 'string' && e.transcript.trim()) emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: ms(), end_ms: ms() });
+          if (typeof e.transcript === 'string' && e.transcript.trim()) {
+            const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
+            if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
+            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
+          }
           return heard(e.item_id);
         case 'conversation.item.input_audio_transcription.failed':
           return heard(e.item_id);
@@ -238,7 +261,10 @@ export class RealtimeEngine implements VoiceEngine {
           // the tools path: one of our tools, answered by the tools API; held like a hand-off until the caller's words are in
           else if (toolsPath && typeof e.name === 'string') {
             outstanding.add(e.call_id);
-            reply({ type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' });
+            const call: SidebandEvent = { type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' };
+            // a lookup reads nothing the caller just said, so it runs at once; anything that may act on their words (a
+            // yes to a read-back, a booking, a text, a transfer) waits for their words to be transcribed, as before
+            if (READS.has(e.name)) emit(call); else reply(call);
           }
           return;
         case 'error':
