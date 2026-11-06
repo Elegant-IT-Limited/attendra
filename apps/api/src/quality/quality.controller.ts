@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { addDays, ClinicConfig, localDateOf, zonedInstant } from '@attendra/core';
-import { type Database, type FrontDeskRepository, qualityRows } from '@attendra/db';
+import { clinicSince, type Database, type FrontDeskRepository, qualityRows, testCallStarts } from '@attendra/db';
 import { Controller, Get, Inject, NotFoundException, Param, Query } from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
@@ -10,7 +10,7 @@ import { Requires } from '../http/staff.guard';
 import { CLOCK, DB, FRONT_DESK } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
-import { qualityWeeks, weekStart } from './metrics';
+import { qualityWeeks, weeksSince, weekStart } from './metrics';
 
 @ApiTags('quality')
 @ApiCookieAuth()
@@ -19,7 +19,12 @@ import { qualityWeeks, weekStart } from './metrics';
 export class QualityController {
   constructor(@Inject(DB) private readonly db: Database, @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(CLOCK) private readonly now: () => Date) {}
 
-  /** How the assistant did, week by week: containment, bookings, refusals, handovers, reviews, after-hours calls and cost. No patient data. */
+  /**
+   * How the assistant did, week by week: containment, bookings, refusals, handovers,
+   * reviews, after-hours calls and cost. No patient data. Real phone calls only, with
+   * each week's browser test calls counted as left out. The weeks go back to the
+   * clinic's sign-up week, `weeks` at most.
+   */
   @Get()
   @Requires('quality:read')
   @ApiOperation({ summary: 'Weekly quality metrics, counted in the database. Codes and counts only.' })
@@ -29,8 +34,10 @@ export class QualityController {
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     const clinic = ClinicConfig.parse(stored);
     const now = this.now();
-    const first = addDays(weekStart(localDateOf(now, clinic.timezone)), -7 * (q.weeks - 1));
-    const rows = await qualityRows(this.db, clinicId, zonedInstant(first, '00:00', clinic.timezone), new Date(now.getTime() + 86_400_000));
-    return { weeks: qualityWeeks(rows, clinic, now, q.weeks, COST_PER_MINUTE), costPerMinute: COST_PER_MINUTE };
+    const weeks = weeksSince(await clinicSince(this.db, clinicId), now, clinic.timezone, q.weeks);
+    const from = zonedInstant(addDays(weekStart(localDateOf(now, clinic.timezone)), -7 * (weeks - 1)), '00:00', clinic.timezone);
+    const to = new Date(now.getTime() + 86_400_000);
+    const [rows, tests] = await Promise.all([qualityRows(this.db, clinicId, from, to), testCallStarts(this.db, clinicId, from, to)]);
+    return { weeks: qualityWeeks(rows, clinic, now, weeks, COST_PER_MINUTE, tests), costPerMinute: COST_PER_MINUTE };
   }
 }

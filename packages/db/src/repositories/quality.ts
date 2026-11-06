@@ -40,3 +40,22 @@ export async function qualityRows(db: Database, clinicId: string, from: Date, to
     };
   }));
 }
+
+/**
+ * When each browser test call in a period started. The quality page counts real phone
+ * calls only; it counts these to say how many it left out, so a week of test calls is
+ * never shown as "no calls" without a word.
+ */
+export async function testCallStarts(db: Database, clinicId: string, from: Date, to: Date): Promise<Date[]> {
+  return withClinic(db, clinicId, async (tx) => (await tx.execute(sql`
+    select started_at from calls where clinic_id = ${clinicId} and channel = 'web' and started_at >= ${from} and started_at < ${to} order by started_at`))
+    .rows.map((r: unknown) => new Date((r as { started_at: string }).started_at)));
+}
+
+/** When the clinic was set up: the quality page's weeks start from the week it signed up. */
+export async function clinicSince(db: Database, clinicId: string): Promise<Date | null> {
+  return withClinic(db, clinicId, async (tx) => {
+    const [r] = (await tx.execute(sql`select created_at from clinics where id = ${clinicId}`)).rows as { created_at: string }[];
+    return r ? new Date(r.created_at) : null;
+  });
+}

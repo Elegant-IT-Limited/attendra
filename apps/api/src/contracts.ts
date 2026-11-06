@@ -248,6 +248,8 @@ export const QualityWeek = z.object({
   afterHoursRequests: z.number(),
   emergencies: z.number(), refillRequests: z.number(),
   voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
+  /** Browser test calls that week: not in any number above, which count real phone calls only. */
+  testCallsLeftOut: z.number(),
 });
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });

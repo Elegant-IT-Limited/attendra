@@ -2,7 +2,7 @@
 import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, topUpTestCalls,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls,
 } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
@@ -384,9 +384,10 @@ export class ProvisioningController {
     const clinic = ClinicConfig.parse(stored);
     const now = this.now();
     const first = addDays(weekStart(localDateOf(now, clinic.timezone)), -7 * q.weeks);
-    const rows = await qualityRows(this.db, clinicId, zonedInstant(first, '00:00', clinic.timezone), now);
+    const from = zonedInstant(first, '00:00', clinic.timezone);
+    const [rows, tests] = await Promise.all([qualityRows(this.db, clinicId, from, now), testCallStarts(this.db, clinicId, from, now)]);
     // the weeks that have ended, newest first: a report on Monday is about last week
-    const weeks = qualityWeeks(rows, clinic, now, q.weeks + 1, COST_PER_MINUTE).slice(1);
+    const weeks = qualityWeeks(rows, clinic, now, q.weeks + 1, COST_PER_MINUTE, tests).slice(1);
     return {
       clinic: { id: clinic.id, name: clinic.name, timezone: clinic.timezone, industry: clinic.industry, afterHours: clinic.afterHours, currency: countryCopy(clinic).currency },
       owners: (await clinicOwners(this.db, clinicId)).filter((o) => o.emailVerified).map(({ name, email }) => ({ name, email })),

@@ -5,7 +5,7 @@ import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
 import { LocalSummariser } from '@attendra/worker/summarise';
-import { isNotNull } from 'drizzle-orm';
+import { isNotNull, sql } from 'drizzle-orm';
 import { Writable } from 'node:stream';
 import { recordDemoCalls } from '@attendra/evals/demo';
 import type { Auth } from '../src/auth';
@@ -40,6 +40,8 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   const results = await recordDemoCalls(db, cipher, maple.patientIds, now, { bookedBy: staff.org_demo![0] });
   results.push(...await recordDemoCalls(db, cipher, riverbend.patientIds, now, { clinic: RIVERBEND_CLINIC }));
   await seedDemoSchedule(db, cipher, { patientIds: maple.patientIds, staffUserIds: staff.org_demo!, now });
+  // each demo clinic signed up before its first recorded call: Quality starts at the sign-up week, and shows the weeks those calls are in
+  await db.execute(sql`update clinics set created_at = least(created_at, coalesce((select min(c.started_at) from calls c where c.clinic_id = clinics.id), created_at))`);
   // the same one-off an upgraded deployment runs (pnpm db:rehash-lookups): on a fresh demo it changes nothing
   await rehashPatientLookups(db, cipher);
   await summariseDemoCalls(db, cipher);

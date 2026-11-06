@@ -11,6 +11,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, REFUSALS, usd } from '@/lib/format';
+import { testCallsLeftOut } from '@/lib/quality';
 
 const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`);
 const money = (n: number | null) => (n === null ? '—' : usd(n));
@@ -31,7 +32,8 @@ export default function QualityPage() {
   // a clinic that books in the morning counts what it kept after hours as requests, not bookings
   const takesRequests = useClinicConfig(clinicId).data?.afterHours === 'requests';
   const allowed = can('quality:read');
-  const q = useQuery({ queryKey: ['quality', clinicId], queryFn: () => api<Quality>(`/clinics/${clinicId}/quality?weeks=8`), enabled: allowed, refetchInterval: 60_000 });
+  // the weeks since the clinic signed up, half a year at most: the server trims them to its sign-up week
+  const q = useQuery({ queryKey: ['quality', clinicId], queryFn: () => api<Quality>(`/clinics/${clinicId}/quality?weeks=26`), enabled: allowed, refetchInterval: 60_000 });
   const calls = (params: Record<string, string>) => `/c/${clinicId}/calls?${new URLSearchParams(params)}`;
   const week = (w: QualityWeek, extra: Record<string, string> = {}) => calls({ from: w.start, to: w.end, ...extra });
 
@@ -56,6 +58,9 @@ export default function QualityPage() {
   const weeks = q.data?.weeks ?? [];
   const [now] = weeks;
   const oldestFirst = [...weeks].reverse();
+  // a tester saw "No calls this week yet" beside a Calls page full of test calls: say what was left out, and where it is
+  const leftOut = now ? testCallsLeftOut(now.testCallsLeftOut) : null;
+  const seeTests = now ? <Link href={week(now, { channel: 'web' })} className="font-medium underline" data-testid="quality-test-calls-link">See {now.testCallsLeftOut === 1 ? 'it' : 'them'} in Calls</Link> : null;
 
   return (
     <>
@@ -63,7 +68,9 @@ export default function QualityPage() {
       {q.isError && <Alert tone="danger">The numbers did not load. They try again every minute.</Alert>}
       {q.isPending || !now ? <Skeleton className="h-96" /> : (
         <div className="space-y-6">
-          {now.calls === 0 && <Alert>No calls this week yet. The numbers fill in as calls come in; a dash means there is nothing to count.</Alert>}
+          {now.calls === 0 && !leftOut && <Alert>No calls this week yet. The numbers fill in as calls come in; a dash means there is nothing to count.</Alert>}
+          {now.calls === 0 && leftOut && <div data-testid="quality-test-calls"><Alert>No phone calls this week yet. {leftOut} {seeTests}.</Alert></div>}
+          {now.calls > 0 && leftOut && <p className="text-sm text-text-muted" data-testid="quality-test-calls">{leftOut} {seeTests}.</p>}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="This week">
             {METRICS.map((m) => (
               <Link key={m.key} href={m.href(now)} className="focus-ring block rounded-lg border border-border bg-surface p-4 shadow-xs hover:border-border-strong" data-testid={`quality-${m.key}`}>
@@ -71,7 +78,7 @@ export default function QualityPage() {
                 <p className="mt-1 text-xl font-semibold tabular-nums">{m.value(now)}</p>
                 <div className="mt-2 flex items-end justify-between gap-2">
                   <p className="text-xs text-text-muted">This week, {now.calls} call{now.calls === 1 ? '' : 's'}</p>
-                  <Sparkline points={oldestFirst.map((w) => m.trend(w) ?? 0)} label={`${m.label}, last ${weeks.length} weeks`} className="h-6 w-20" />
+                  <Sparkline points={oldestFirst.map((w) => m.trend(w) ?? 0)} label={`${m.label}, ${weeks.length === 1 ? 'this week' : `last ${weeks.length} weeks`}`} className="h-6 w-20" />
                 </div>
               </Link>
             ))}

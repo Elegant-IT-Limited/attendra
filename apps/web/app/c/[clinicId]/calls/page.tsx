@@ -42,14 +42,14 @@ function Calls() {
   const pets = usePets(clinicId);
   const router = useRouter();
   const { clinic, can } = useClinic(clinicId);
-  // the quality page links here with its filters in the address: dates, outcome, a refusal code, the review flag
+  // the quality page links here with its filters in the address: dates, outcome, a refusal code, the review flag, the channel
   const params = useSearchParams();
   const [filter, setFilter] = useState<keyof typeof FILTERS>(params.get('review') === 'needed' ? 'review' : 'all');
   const [from, setFrom] = useState(params.get('from') ?? '');
   const [to, setTo] = useState(params.get('to') ?? '');
   const [outcome, setOutcome] = useState(params.get('outcome') ?? '');
   const [refusal, setRefusal] = useState(params.get('refusal') ?? '');
-  const [channel, setChannel] = useState('');
+  const [channel, setChannel] = useState(['phone', 'web'].includes(params.get('channel') ?? '') ? params.get('channel')! : '');
   // the emergency log is this page with ?emergency=true
   const [emergencyOnly, setEmergencyOnly] = useState(params.get('emergency') === 'true');
   const [text, setText] = useState('');

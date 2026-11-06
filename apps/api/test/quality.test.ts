@@ -29,6 +29,8 @@ beforeAll(async () => {
   as = { admin: await api.signIn('olga@maple.example', true), staff: await api.signIn('ana@maple.example', true), viewer: await api.signIn('vic@maple.example', true) };
   // the helper's own call is in some other week; start from a clean slate
   await api.t.db.execute(sql`update calls set started_at = '2026-01-05T15:00:00Z'`);
+  // a clinic that signed up in June: its weeks go back further than any test asks
+  await api.t.db.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
   const monday9 = zonedInstant('2026-09-28', '09:00', tz);
   await call(monday9, 'booked', { seconds: 120, turns: 4, tools: [['propose_booking', { ok: true }], ['commit_pending', { ok: true, booked: true }]] });
   await call(monday9, 'booked', { seconds: 180, turns: 6, tools: [['propose_booking', { ok: true }], ['commit_pending', { ok: false, error: 'no_clear_yes' }], ['commit_pending', { ok: true, booked: true }]] });
@@ -52,7 +54,9 @@ describe('the quality page', () => {
       transferred: 1, transferredShare: 0.2, flagged: 1, flaggedShare: 0.2, afterHours: 1,
       voiceMinutes: 8, cost: 0.4, costPerCall: 0.08, costPerBooking: 0.2,
     });
-    expect(last).toMatchObject({ start: '2026-09-21', calls: 1, contained: 0, containmentRate: 0, bookingSuccess: null, avgTurnsToBooking: null });
+    expect(last).toMatchObject({ start: '2026-09-21', calls: 1, contained: 0, containmentRate: 0, bookingSuccess: null, avgTurnsToBooking: null, testCallsLeftOut: 0 });
+    // the browser test call is in no number, and is counted as left out
+    expect(week.testCallsLeftOut).toBe(1);
     expect(res.body).not.toMatch(/Maria|Delgado|lisinopril/);
   });
 
@@ -65,6 +69,39 @@ describe('the quality page', () => {
     const weeks = (await api.request('GET', `${C}/quality?weeks=3`, { cookie: as.admin })).json().weeks;
     expect(weeks[2]).toMatchObject({ start: '2026-09-14', calls: 3, afterHours: 1, afterHoursBookings: 1, emergencies: 1, refillRequests: 1 });
     expect(weeks[0]).toMatchObject({ afterHoursBookings: 0, emergencies: 0, refillRequests: 0 });
+  });
+
+  it('counts a week in the clinic\'s time: Sunday night is last week, Monday just after midnight is this one', async () => {
+    const before = (await api.request('GET', `${C}/quality?weeks=2`, { cookie: as.admin })).json().weeks;
+    // 23:30 on Sunday in Denver is already Monday in UTC, and still last week at the clinic; 00:30 on Monday is this week
+    await call(zonedInstant('2026-09-27', '23:30', tz), 'info');
+    await call(zonedInstant('2026-09-28', '00:30', tz), 'info');
+    await call(zonedInstant('2026-09-27', '23:45', tz), 'info', { channel: 'web' });
+    const after = (await api.request('GET', `${C}/quality?weeks=2`, { cookie: as.admin })).json().weeks;
+    expect(after[0].calls - before[0].calls).toBe(1);
+    expect(after[1].calls - before[1].calls).toBe(1);
+    expect(after[1].testCallsLeftOut - before[1].testCallsLeftOut).toBe(1);
+    expect(after[0].testCallsLeftOut).toBe(before[0].testCallsLeftOut);
+  });
+
+  it('starts at the clinic\'s sign-up week, half a year at most', async () => {
+    const weeksAfter = async (signedUp: string) => {
+      await api.t.db.execute(sql`update clinics set created_at = ${signedUp}::timestamptz where id = ${DEMO_CLINIC.id}`);
+      return (await api.request('GET', `${C}/quality?weeks=26`, { cookie: as.admin })).json().weeks.map((w: { start: string }) => w.start);
+    };
+    // signed up on a Tuesday two weeks ago: that week, last week and this one
+    expect(await weeksAfter(zonedInstant('2026-09-15', '10:00', tz).toISOString())).toEqual(['2026-09-28', '2026-09-21', '2026-09-14']);
+    // late on Sunday in Denver, which is Monday in UTC: still the week it was in Denver
+    expect(await weeksAfter(zonedInstant('2026-09-20', '22:00', tz).toISOString())).toEqual(['2026-09-28', '2026-09-21', '2026-09-14']);
+    // signed up today: this week only
+    expect(await weeksAfter(NOW.toISOString())).toEqual(['2026-09-28']);
+    // a year ago: 26 weeks, the most there are
+    const year = await weeksAfter('2025-09-30T12:00:00Z');
+    expect(year).toHaveLength(26);
+    expect(year.at(-1)).toBe('2026-04-06');
+    // and the default for a client that does not ask is still 8
+    expect((await api.request('GET', `${C}/quality`, { cookie: as.admin })).json().weeks).toHaveLength(8);
+    await api.t.db.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
   });
 
   it('is for owners and managers', async () => {
