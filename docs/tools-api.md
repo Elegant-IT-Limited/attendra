@@ -41,3 +41,16 @@ A tools-path call reads the clinic's schedule for 14 days as it starts, and a pe
 - `pnpm db:call-stats <clinic ids> --since <ISO> --calls`: per clinic, channel, engine and flow: empty calls, first audio, voice-only turns, the lookup answer time (from `answer_timing` rows), filler lines, repeated questions, cost.
 - `pnpm --filter @attendra/evals real-audio`: real browser test calls with a voiced caller (see `evals/real-audio/`).
 - `call_costs`: what each call cost, by the rates table in `packages/core/src/call-costs.ts`.
+
+## Round 2 (path A)
+
+- **The visit type comes from the clinic.** On the tools path `find_slots` takes only the clinic's own visit type ids (an enum in its schema, with their names); a refusal hands the list back.
+- **A likely lookup runs before the reply** (`flow/speculate.ts`): once times are on the table and the visit is known, the voice waits for the caller's words (gpt-realtime only transcribes a turn after it ends); when they ask about a day or a time the lookup runs, and its result goes into the conversation with them, so the voice answers in one reply instead of a tool call and a second reply. It never guesses a visit. The engine replies by itself if no go comes within 1.2 s. **Off by default**: on real audio it saved no time, since waiting for the caller's words costs about as much as the round it saves. `ATTENDRA_LOOKUP_AHEAD=on` (the local demo and the evals read it) turns it on to compare.
+- **No narration before a tool**; at most one short phrase when a second tool is needed. A caller who switches language is answered in it, without a second introduction.
+
+## Path C (Vapi), for the bake-off only
+
+A Vapi assistant (Vapi's transcriber, model and voice) whose function tools are ours. Vapi posts its tool calls and call events to `POST /vapi/v1/events?clinic=<id>` on the voice service, with the shared secret in `x-vapi-secret` (or as a bearer). Each Vapi call gets the same `CallAgent`, booking flow and safety rules as our own calls; the conversation comes from Vapi's `conversation-update` messages; the end-of-call report closes the call row (`engine: vapi`, `voice_flow: tools`) with its transcript and cost. The route exists only when `VAPI_SERVER_SECRET` is set. No clinic is switched to Vapi; batch 6 builds the real adapter (number re-pointing, back-office switch, concurrency).
+
+- Assistant: `pnpm --filter @attendra/evals vapi-setup -- --url https://<public address of the voice service>` with `VAPI_API_KEY` and `VAPI_SERVER_SECRET` in the environment (creates or updates "Attendra bake-off (demo clinic)").
+- Calls: `pnpm --filter @attendra/evals real-audio -- --vapi` with `VAPI_PUBLIC_KEY`: the same voiced calls, through Vapi's web SDK.

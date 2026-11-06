@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, industryPack, PACKS } from '@attendra/core';
+import { type ClinicConfig, industryPack, localName, PACKS } from '@attendra/core';
 import type { CallState } from '../call-state';
 
 /**
@@ -53,7 +53,7 @@ export function nextStep(stage: FlowStage, state: CallState, clinic: ClinicConfi
         ? 'The number is confirmed. Ask which pet the visit is for (the tool result has the words), then call verify_caller with pet_name.'
         : 'The number is confirmed. Ask the pet\'s name, then call verify_caller with it; a pet not on the number is new: register_patient.';
     case 'pet_chosen':
-      return 'Offer times now: call find_slots with the most likely visit type (a check-up for a well animal, a sick visit when they describe a problem) and the day and time they asked for; say which visit the times are for. Do not ask about preferences first.';
+      return `Offer times now: call find_slots with the visit they asked for, or else the most likely one for what they described (a check-up for a well animal, a sick visit for a problem), from these only: ${clinic.visitTypes.map((v) => `${v.id} (${localName(v, 'en')})`).join(', ')}; and the day and time they asked for. Say which visit the times are for. Do not ask about preferences first.`;
     case 'times_offered':
       return 'Offer at most three of the times returned, with the weekday and date. When the caller picks one, call propose_booking with its slot_id; when they want another day or time, call find_slots again.';
     case 'readback_pending':

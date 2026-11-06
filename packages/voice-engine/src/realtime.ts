@@ -41,6 +41,19 @@ const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'lis
 /** Our tools as the Realtime API takes them: function tools without `strict`, which it does not use. */
 export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description, parameters }));
 
+/**
+ * Manual replies (the tools path, once a pet is found): after a caller's turn the model waits for our go, so a lookup
+ * their words ask for is run first and handed to it. If no go comes this long after the turn ended (the transcript
+ * failed, say), it replies by itself: a caller is never left waiting on us.
+ */
+export const GO_WAIT_MS = 1200;
+/**
+ * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
+ * itself (at once, or after our go once replies are manual), so nothing about the session changes mid-call. The caller
+ * talking over a reply still stops it.
+ */
+const TOOLS_TURNS = { type: 'semantic_vad' as const, eagerness: 'high' as const, create_response: false, interrupt_response: true };
+
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
 export const TRANSCRIPT_WAIT_MS = 3000;
 
@@ -92,7 +105,7 @@ export class RealtimeEngine implements VoiceEngine {
       audio: {
         // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
         // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
-        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? { type: 'semantic_vad' as const, eagerness: 'high' as const } : { type: 'semantic_vad' as const } },
+        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
@@ -148,6 +161,11 @@ export class RealtimeEngine implements VoiceEngine {
     const toolsPath = this.flows.get(callId) === 'tools';
     // the tool calls of a response still waiting for their results: the model goes on once all of them are back
     const outstanding = new Set<string>();
+    // manual replies: whether the model waits for our go, and whether a turn that ended is waiting for it now
+    let manual = false;
+    let goDue = false;
+    let goTimer: NodeJS.Timeout | null = null;
+    const go = () => { if (goTimer) clearTimeout(goTimer); goTimer = null; if (!goDue) return; goDue = false; respond(); };
     const started = Date.now();
     const ms = () => Date.now() - started;
     let n = 0;
@@ -227,6 +245,9 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
+          // the tools path starts its own replies: at once, or (manual) after the go, or by itself in a moment without one
+          if (toolsPath && !manual) respond();
+          else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
@@ -275,6 +296,21 @@ export class RealtimeEngine implements VoiceEngine {
     });
 
     const send = (event: SidebandCommand) => {
+      if (event.type === 'turns.manual') {
+        if (!toolsPath || event.on === manual) return;
+        manual = event.on;
+        if (!manual) go();
+        return;
+      }
+      if (event.type === 'tool.inject') {
+        // the lookup the caller's words asked for, as if the model had called it: it answers from it in one reply.
+        // Only while the turn waits for the go; once it has replied by itself, the model asks for what it needs
+        if (!goDue) return;
+        raw({ type: 'conversation.item.create', item: { type: 'function_call', call_id: event.call_id, name: event.name, arguments: event.arguments } });
+        raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
+        return;
+      }
+      if (event.type === 'reply.go') return go();
       if (event.type === 'tool.result') {
         // a tool's result: the function call's output, and once every call of the response has its result, the model goes on
         raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
@@ -309,6 +345,7 @@ export class RealtimeEngine implements VoiceEngine {
       // of the call; any other close is a dropped connection, and the runner records it so
       onClose: (handler) => {
         ws.socket.on('close', (code: number) => {
+          if (goTimer) clearTimeout(goTimer);
           release();
           if (code === 1000) emit({ type: 'session.closed', event_id: `rt_${callId}_closed`, reason: 'call_ended', usage: { seconds: Math.round(ms() / 1000) } });
           handler(code);

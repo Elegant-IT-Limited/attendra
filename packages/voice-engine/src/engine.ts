@@ -63,8 +63,16 @@ export interface Sideband {
  * The three append commands the agent uses, typed by the SDK, and on the tools path a tool's result for the engine to
  * hand back to whichever model called it (a Realtime function call, a GPT-Live delegated Responses call).
  */
-export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent | ToolResultCommand;
+export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent | ToolResultCommand | ManualTurnsCommand | ToolInjectCommand | ReplyCommand;
 export interface ToolResultCommand { type: 'tool.result'; event_id: string; call_id: string; output: string }
+/**
+ * The tools path, on an engine that can (gpt-realtime): whether the voice waits for our go before it replies to the
+ * caller, so a lookup their words ask for can be run first and handed to it (`tool.inject`, then `reply.go`). The engine
+ * replies by itself if no go comes in time. Other engines ignore these.
+ */
+export interface ManualTurnsCommand { type: 'turns.manual'; event_id: string; on: boolean }
+export interface ToolInjectCommand { type: 'tool.inject'; event_id: string; call_id: string; name: string; arguments: string; output: string }
+export interface ReplyCommand { type: 'reply.go'; event_id: string }
 
 /** The subset of server events the call runner reads. Everything else is ignored. */
 export type SidebandEvent =

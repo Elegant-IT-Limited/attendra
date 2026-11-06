@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { afterTool, type CallState, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, type ToolResult, voiceToolDefinitions } from '@attendra/agent';
+import { afterTool, type CallState, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, visitTypeChoices, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
 import { realtimeTools, toolsBackendInstructions, toolsVoicePrompt } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
@@ -56,7 +56,7 @@ export class ToolsPathPlanner implements Planner {
         const r = await execute(name as ToolName, args);
         afterTool(s.flow, name, r.ok && !r.data.error, state.turns.length);
         const stage = flowStage(state, s.flow);
-        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.callerNumber ?? null)));
+        return JSON.stringify(shapeForVoice(name, r, stage, nextStep(stage, state, clinic, input.callerNumber ?? null), { visitTypes: visitTypeChoices(clinic) }));
       } finally {
         toolMs += performance.now() - t0;
       }
@@ -112,6 +112,16 @@ export class ToolsPathPlanner implements Planner {
         : { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: t.text }] } } as never);
     }
     s.sent = input.state.turns.length;
+    // round 2: the lookup the caller's words ask for, run before the reply and handed to it, as the voice service does
+    // off by default, as on calls; ATTENDRA_LOOKUP_AHEAD=on to compare
+    const spec = process.env.ATTENDRA_LOOKUP_AHEAD === 'on' ? speculativeLookup(input.state, input.clinic) : null;
+    if (spec) {
+      const callId = `spec_${s.sent}`;
+      const args = JSON.stringify(spec.args);
+      const output = await run(spec.name, args);
+      ws.send({ type: 'conversation.item.create', item: { type: 'function_call', call_id: callId, name: spec.name, arguments: args } } as never);
+      ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: callId, output } } as never);
+    }
     for (let round = 0; round < 8; round++) {
       const t0 = performance.now();
       const { text, calls, usage } = await new Promise<{ text: string; calls: { name: string; call_id: string; arguments: string }[]; usage: { input_tokens?: number; output_tokens?: number; input_token_details?: { cached_tokens?: number } } | undefined }>((resolve, reject) => {
