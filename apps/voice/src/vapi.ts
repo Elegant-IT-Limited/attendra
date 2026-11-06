@@ -39,6 +39,7 @@ interface VapiMessage {
   /** What Vapi charged for the call, all parts, in dollars. */
   cost?: number;
 }
+/** A line of Vapi's conversation: `secondsFromStart` in seconds, `duration` in milliseconds (as Vapi sends them). */
 interface VapiLine { role?: string; message?: string; secondsFromStart?: number; duration?: number }
 
 interface Session { agent: CallAgent; clinicId: string; callId: string; synced: number; startedAt: number; notes: string[] }
@@ -89,7 +90,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     for (const l of lines.slice(s.synced)) {
       const text = (l.message ?? '').trim();
       const at = Math.round((l.secondsFromStart ?? 0) * 1000);
-      const end = at + Math.round((l.duration ?? 0) * 1000 || 500);
+      // duration is already in ms: read as seconds, every line ended ~1000x too late, so a caller's yes always fell
+      // before the read-back's end and the number was never confirmed (bake-off call, 2026-11-07: verify_caller looped)
+      const end = at + (Math.round(l.duration ?? 0) || 500);
       if (!text) continue;
       if (l.role === 'user') {
         // what the guardrails say on the caller's words (an emergency script, an abuse warning) goes with the next result

@@ -29,6 +29,26 @@ if (!clinic.id.startsWith('clinic_bakeoff') && !clinic.id.startsWith('clinic_dem
 const NAME = `Attendra bake-off (${clinic.id})`;
 const server = { url: `${base}/webhooks/vapi/v1/events?clinic=${clinic.id}`, headers: { 'x-vapi-secret': secret } };
 
+/**
+ * Our tool parameters, as Vapi's validator takes them (it answers 400 otherwise): no "$schema" line, and every property
+ * with a "type", so an optional field written as anyOf [{type: string, ...}, {type: null}] becomes
+ * {type: [string, null], ...}, the same schema in the form Vapi reads.
+ */
+type Schema = { [k: string]: unknown };
+const forVapi = (v: unknown): unknown => {
+  if (Array.isArray(v)) return v.map(forVapi);
+  if (!v || typeof v !== 'object') return v;
+  const o: Schema = Object.fromEntries(Object.entries(v).filter(([k]) => k !== '$schema').map(([k, x]) => [k, forVapi(x)]));
+  const branches = o.anyOf as Schema[] | undefined;
+  if (!('type' in o) && Array.isArray(branches) && branches.every((b) => typeof b.type === 'string')) {
+    const real = branches.filter((b) => b.type !== 'null');
+    const nullable = real.length < branches.length;
+    if (real.length === 1) { const rest = { ...o }; delete rest.anyOf; return { ...rest, ...real[0], type: nullable ? [real[0]!.type, 'null'] : real[0]!.type }; }
+    o.type = [...new Set(branches.map((b) => b.type))];
+  }
+  return o;
+};
+
 const assistant = {
   name: NAME,
   firstMessage: clinic.greeting,
@@ -36,7 +56,7 @@ const assistant = {
   model: {
     provider: 'openai', model: flag('--model') ?? 'gpt-4.1', temperature: 0.3,
     messages: [{ role: 'system', content: toolsVoicePrompt(clinic, { callerNumber: null }) }],
-    tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters }, server })),
+    tools: voiceToolDefinitions(clinic).map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: forVapi(t.parameters) }, server })),
   },
   voice: { provider: 'vapi', voiceId: flag('--voice') ?? 'Elliot' },
   transcriber: { provider: 'deepgram', model: 'nova-3', language: 'multi' },
