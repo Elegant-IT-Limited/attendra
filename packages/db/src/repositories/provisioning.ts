@@ -4,7 +4,7 @@
 // none of it reads patient data.
 import { ClinicConfig, DEFAULT_ANIMALS, managedList, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { authAccounts, authSessions, authTwoFactors, authUsers, invitations, memberships } from '../auth-schema';
+import { authAccounts, authSessions, authTwoFactors, authUsers, clinicAccess, clinicMemberships, invitations, memberships } from '../auth-schema';
 import type { Database } from '../client';
 import type { PhiCipher } from '../crypto';
 import { auditLogs, calls, clinics, organizations } from '../schema';
@@ -23,10 +23,12 @@ export async function createOrganizationWithClinic(db: Database, org: { id: stri
 }
 
 /**
- * A second, separate business for someone who already owns one: a new organization and
- * its first clinic, with this login as its owner. Nothing is copied from their other
- * clinics. Only an owner, checked here: staff sign up with another email, because a work
- * email belongs to the clinic. Audited in the new clinic as `organization.created.by_owner`.
+ * A separate business on a login that already exists: a new organization and its first
+ * clinic, with this login as its owner. Nothing is copied from their other clinics. For an
+ * owner opening another business, and for a login that can open no clinic at all (invited
+ * once and removed, or whose clinic was deleted), so it is never a dead end. Someone who
+ * works at a clinic without owning one is refused, checked here: a work email belongs to the
+ * clinic, so they sign up with another. Audited in the new clinic as `organization.created.by_owner`.
  */
 export async function openOrganizationForOwner(db: Database, userId: string, org: { id: string; name: string; plan: string }, config: ClinicConfig): Promise<'not_found' | 'not_confirmed' | 'not_an_owner' | 'opened'> {
   const c = ClinicConfig.parse(config);
@@ -35,7 +37,8 @@ export async function openOrganizationForOwner(db: Database, userId: string, org
     if (!user) return 'not_found';
     if (!user.verified) return 'not_confirmed';
     const [owns] = await tx.select({ id: memberships.id }).from(memberships).where(and(eq(memberships.userId, userId), eq(memberships.role, 'owner'))).limit(1);
-    if (!owns) return 'not_an_owner';
+    const [worksSomewhere] = await tx.select({ id: clinicAccess.clinicId }).from(clinicAccess).where(eq(clinicAccess.userId, userId)).limit(1);
+    if (!owns && worksSomewhere) return 'not_an_owner';
     await tx.insert(organizations).values({ id: org.id, name: org.name, slug: org.id, plan: org.plan });
     await tx.insert(clinics).values({ id: c.id, orgId: org.id, name: c.name, timezone: c.timezone, config: c });
     await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: org.id, userId, role: 'owner' });
@@ -177,25 +180,34 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from phone_numbers where clinic_id = ${clinicId}`,
     ];
     for (const step of steps) await tx.execute(step);
+    // the people who worked only here: their logins go with the business if it goes, as an owner's do
+    const team = (await tx.select({ userId: clinicMemberships.userId }).from(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId))).map((m) => m.userId);
+    await tx.delete(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId));
     // the worker's jobs carry the clinic's id in their data (pg-boss, in its own schema, once the worker has run here)
     const [jobs] = (await tx.execute(sql`select to_regclass('pgboss.job') is not null as ok`)).rows as [{ ok: boolean }];
     if (jobs.ok) await tx.execute(sql`delete from pgboss.job where data->>'clinicId' = ${clinicId}`);
     await tx.delete(clinics).where(eq(clinics.id, clinicId));
     const [left] = await tx.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, c.orgId)).limit(1);
-    if (!left) await removeOrganization(tx, c.orgId);
+    if (!left) await removeOrganization(tx, c.orgId, team);
+    else await removeLoginsWithNoTeam(tx, team);
     return 'purged';
   });
 }
 
-/** An organization with no clinic left: its team, its invitations, and the logins that belonged to no other team. */
-async function removeOrganization(tx: Pick<Database, 'select' | 'delete' | 'update'>, orgId: string) {
-  const team = (await tx.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.organizationId, orgId))).map((m) => m.userId);
+/** An organization with no clinic left: its owners, its invitations, and the logins that belonged to no other team. */
+async function removeOrganization(tx: Pick<Database, 'select' | 'delete' | 'update'>, orgId: string, staff: string[] = []) {
+  const owners = (await tx.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.organizationId, orgId))).map((m) => m.userId);
   await tx.delete(invitations).where(eq(invitations.organizationId, orgId));
   await tx.delete(memberships).where(eq(memberships.organizationId, orgId));
   await tx.update(authSessions).set({ activeOrganizationId: null }).where(eq(authSessions.activeOrganizationId, orgId));
   await tx.delete(organizations).where(eq(organizations.id, orgId));
+  await removeLoginsWithNoTeam(tx, [...new Set([...owners, ...staff])]);
+}
+
+/** Of these people, the ones who can open no location any more lose their login, with what hangs on it. */
+async function removeLoginsWithNoTeam(tx: Pick<Database, 'select' | 'delete'>, team: string[]) {
   if (!team.length) return;
-  const staying = new Set((await tx.select({ userId: memberships.userId }).from(memberships).where(inArray(memberships.userId, team))).map((m) => m.userId));
+  const staying = new Set((await tx.select({ userId: clinicAccess.userId }).from(clinicAccess).where(inArray(clinicAccess.userId, team))).map((m) => m.userId));
   const gone = team.filter((u) => !staying.has(u));
   if (!gone.length) return;
   // invitations they sent to other teams go with them, as their sign-in does
@@ -286,6 +298,7 @@ export async function removeUnconfirmedAccount(db: Database, email: string, opts
     }
     if (clinicIds.length) await tx.delete(clinics).where(inArray(clinics.id, clinicIds));
     await tx.delete(memberships).where(eq(memberships.userId, user.id));
+    await tx.delete(clinicMemberships).where(eq(clinicMemberships.userId, user.id));
     if (alone.length) await tx.delete(organizations).where(inArray(organizations.id, alone));
     await tx.delete(authSessions).where(eq(authSessions.userId, user.id));
     await tx.delete(authTwoFactors).where(eq(authTwoFactors.userId, user.id));

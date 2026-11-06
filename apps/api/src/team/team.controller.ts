@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { changeTeam, type Database, inviteToTeam, listMembers, membershipCount, orgOfClinic, type StaffRole, type TeamChange, type TeamResult, TEMPORARY_PASSWORD_HOURS } from '@attendra/db';
+import { changeTeam, type Database, inviteToTeam, listMembers, membershipCount, type StaffRole, type TeamChange, type TeamResult, TEMPORARY_PASSWORD_HOURS } from '@attendra/db';
 import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
@@ -11,10 +11,13 @@ import { API_OPTIONS, type ApiOptions, AUTH, CLOCK, DB, MAIL } from '../http/tok
 import { ZodPipe } from '../http/zod.pipe';
 import type { Mailer } from '../mail-hook';
 import { avatarUrl } from '../me/avatar';
-import { createAccount, createInvitedAccount, deleteNewAccount, findAccount, hashPassword, hasPassword, ROLE_LABEL, setPasswordLink, temporaryPassword } from '../members';
+import { ROLE_LABEL } from '../access';
+import { createAccount, createInvitedAccount, deleteNewAccount, findAccount, hashPassword, hasPassword, setPasswordLink, temporaryPassword } from '../members';
 
 // neither "with another practice" nor anything else about the account: it is not ours to tell
 const NOT_HERE = { error: 'account_exists', message: 'This email address cannot be added here. Ask the person for another address, or write to Attendra support.' };
+
+const ALL_LOCATIONS_OWNER_ONLY = () => new ForbiddenException({ error: 'forbidden', message: 'Only an owner can invite someone to every location.' });
 
 export const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Error> = {
   account_exists: () => new ConflictException(NOT_HERE),
@@ -28,8 +31,9 @@ export const REFUSED: Record<Exclude<TeamResult, 'done' | 'unchanged'>, () => Er
 };
 
 /**
- * The people who can sign in to this clinic's organization. Owners and managers
- * add, change, reset and remove them. Each change and its audit rows happen in one
+ * The people who can open this location: its owners (account-wide) and the people
+ * invited to it, each with their role here. Owners and managers add, change, reset and
+ * remove them; a change to anyone but an owner holds at this location only. Each change and its audit rows happen in one
  * transaction with the team locked (changeTeam), so the rules hold under races: a
  * manager cannot touch an owner or make one, nobody changes, resets or removes
  * themselves here, and the last owner stays.
@@ -53,10 +57,10 @@ export class TeamController {
 
   @Get()
   @Requires('members:manage')
-  @ApiOperation({ summary: 'Everyone in the clinic\'s organization, with their role and two-step sign-in' })
+  @ApiOperation({ summary: 'Everyone who can open this location: its owners (every location) and the people invited to it, with their role here and two-step sign-in' })
   @ApiOkResponse({ schema: schemaOf(MemberList) })
   async list(@Param('clinicId') clinicId: string, @CurrentStaff() staff: Staff): Promise<MemberList> {
-    const members = await listMembers(this.db, await this.org(clinicId));
+    const members = await listMembers(this.db, clinicId);
     return { members: members.map(({ avatarAt, ...m }) => ({ ...m, you: m.userId === staff.userId, addedAt: m.addedAt.toISOString(), avatarUrl: avatarUrl(m.userId, avatarAt) })) };
   }
 
@@ -68,26 +72,26 @@ export class TeamController {
   @ApiCreatedResponse({ schema: schemaOf(AddResult) })
   @ApiConflictResponse({ description: 'Already on the team (already_member)' })
   async add(@Param('clinicId') clinicId: string, @Body(new ZodPipe(AddMember)) body: z.infer<typeof AddMember>, @CurrentStaff() staff: Staff): Promise<AddResult> {
-    const orgId = await this.org(clinicId);
     if (body.role === 'owner' && staff.role !== 'owner') throw REFUSED.owner_grant();
+    if (body.allLocations && staff.role !== 'owner') throw ALL_LOCATIONS_OWNER_ONLY();
     const email = body.email.trim().toLowerCase();
     // only a name that was typed: a person added by email alone writes their own, from Your profile
     const name = body.name ?? '';
     const existing = await findAccount(this.auth, email);
-    if (existing && (await listMembers(this.db, orgId)).some((m) => m.userId === existing.id)) throw REFUSED.already_member();
+    if (existing && !body.allLocations && (await listMembers(this.db, clinicId)).some((m) => m.userId === existing.id)) throw REFUSED.already_member();
     if (!this.mail) {
-      // nothing can be emailed: a new person gets a temporary password to pass on in person, as before
-      if (!existing) return { status: 'invite_sent', email, ...(await this.addNew(orgId, staff, { ...body, email, name })) };
+      // nothing can be emailed: a new person gets a temporary password to pass on in person, as before (this location only)
+      if (!existing) return { status: 'invite_sent', email, ...(await this.addNew(clinicId, staff, { ...body, email, name })) };
       // someone this practice removed earlier, who belongs to no team now: added back, with a new temporary password
       if (existing.emailVerified && (await membershipCount(this.db, existing.id)) === 0) {
         const password = temporaryPassword();
-        const result = await this.change(orgId, staff, { type: 'add', userId: existing.id, role: body.role, temporary: true, approvesRefills: body.approvesRefills, passwordHash: await hashPassword(this.auth, password) });
+        const result = await this.change(clinicId, staff, { type: 'add', userId: existing.id, role: body.role, temporary: true, approvesRefills: body.approvesRefills, passwordHash: await hashPassword(this.auth, password) });
         if (result === 'done') return { status: 'invite_sent', email, userId: existing.id, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
         // removed by another practice: invited, like anyone else with a login
         if (result !== 'account_exists' && result !== 'other_organizations') this.check(result);
       }
     }
-    return this.invite(orgId, clinicId, staff, { ...body, email, name }, existing, body.name);
+    return this.invite(clinicId, staff, { ...body, email, name }, existing, body.name);
   }
 
   /**
@@ -95,38 +99,40 @@ export class TeamController {
    * address is invited too, on an account with no password, and its email carries the link
    * to set one: the same work and the same answer for every address.
    */
-  private async invite(orgId: string, clinicId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean }, existing: { id: string; name: string } | null, typedName?: string): Promise<AddResult> {
+  private async invite(clinicId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean; allLocations: boolean }, existing: { id: string; name: string } | null, typedName?: string): Promise<AddResult> {
     const userId = existing?.id ?? await createInvitedAccount(this.auth, body);
     let sent: Awaited<ReturnType<typeof inviteToTeam>>;
     try {
-      sent = await inviteToTeam(this.db, orgId, clinicId, { userId: staff.userId, role: staff.role! }, body, this.now());
+      sent = await inviteToTeam(this.db, clinicId, { userId: staff.userId, role: staff.role! }, body, this.now());
     } catch (err) {
       if (!existing) await deleteNewAccount(this.auth, userId);
       throw err;
     }
     if (sent.result !== 'done') {
       if (!existing) await deleteNewAccount(this.auth, userId);
-      throw REFUSED[sent.result]();
+      throw sent.result === 'all_locations_owner_only' ? ALL_LOCATIONS_OWNER_ONLY() : REFUSED[sent.result]();
     }
     if (this.mail) {
-      const setPasswordUrl = (await hasPassword(this.auth, userId)) ? undefined : await setPasswordLink(this.auth, this.options.publicUrl, userId, sent.expiresAt);
+      // the link opens this invitation's own page: accept or decline there, after signing in (or setting a password) if needed
+      const url = `${this.options.publicUrl}/invite/${encodeURIComponent(sent.id)}`;
+      const setPasswordUrl = (await hasPassword(this.auth, userId)) ? undefined : await setPasswordLink(this.auth, this.options.publicUrl, userId, sent.expiresAt, `/invite/${sent.id}`);
       // not awaited: an answer that waited for the email would take longer for some addresses than others
       // greeted by their own name, or by the name typed in Add people as it was typed; with neither, the
       // email says "Hi," and not the start of their address
-      void this.mail({ type: 'team_invitation', email: body.email, name: existing?.name ?? typedName ?? '', clinicName: sent.clinicName, role: ROLE_LABEL[body.role], expiresAt: sent.expiresAt.toISOString(), url: `${this.options.publicUrl}/`, ...(setPasswordUrl ? { setPasswordUrl } : {}) });
+      void this.mail({ type: 'team_invitation', email: body.email, name: existing?.name ?? typedName ?? '', clinicName: sent.locations.length > 1 ? `${sent.organizationName} (${sent.locations.length} locations)` : body.role === 'owner' ? `${sent.organizationName} (every location)` : sent.clinicName, role: ROLE_LABEL[body.role], expiresAt: sent.expiresAt.toISOString(), url, ...(setPasswordUrl ? { setPasswordUrl } : {}) });
     }
     return { status: 'invite_sent', email: body.email };
   }
 
   /** A new account and its membership, with a temporary password returned once. */
-  private async addNew(orgId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean }) {
+  private async addNew(clinicId: string, staff: Staff, body: { email: string; name: string; role: StaffRole; approvesRefills: boolean }) {
     const password = temporaryPassword();
     const userId = await createAccount(this.auth, { email: body.email, name: body.name, password });
     // the account and the membership are not one transaction: an account left with no
     // membership would be invited rather than added on every later try, so it is removed
     let result: TeamResult;
     try {
-      result = await this.change(orgId, staff, { type: 'add', userId, role: body.role, temporary: true, approvesRefills: body.approvesRefills });
+      result = await this.change(clinicId, staff, { type: 'add', userId, role: body.role, temporary: true, approvesRefills: body.approvesRefills });
     } catch (err) {
       await deleteNewAccount(this.auth, userId);
       throw err;
@@ -143,9 +149,8 @@ export class TeamController {
   @ApiOkResponse({ schema: schemaOf(AddedMember) })
   @ApiForbiddenResponse({ description: 'Your own account, or a manager resetting an owner' })
   async reset(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @CurrentStaff() staff: Staff): Promise<AddedMember> {
-    const orgId = await this.org(clinicId);
     const password = temporaryPassword();
-    this.check(await this.change(orgId, staff, { type: 'reset', userId, passwordHash: await hashPassword(this.auth, password) }));
+    this.check(await this.change(clinicId, staff, { type: 'reset', userId, passwordHash: await hashPassword(this.auth, password) }));
     return { userId, temporaryPassword: password, expiresInHours: TEMPORARY_PASSWORD_HOURS };
   }
 
@@ -156,43 +161,36 @@ export class TeamController {
   @ApiNoContentResponse()
   @ApiForbiddenResponse({ description: 'Your own account, or a manager resetting an owner' })
   async resetTwoFactor(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @CurrentStaff() staff: Staff) {
-    this.check(await this.change(await this.org(clinicId), staff, { type: 'two_factor', userId }));
+    this.check(await this.change(clinicId, staff, { type: 'two_factor', userId }));
   }
 
   @Patch(':userId')
   @HttpCode(204)
   @Requires('members:manage')
-  @ApiOperation({ summary: 'Change someone\'s role, or whether they may approve refills. Audited.' })
+  @ApiOperation({ summary: 'Change someone\'s role at this location, or whether they may approve refills. Making someone an owner opens every location of the business; an owner made something else keeps that role at every location. Audited.' })
   @ApiBody({ schema: schemaOf(ChangeMember) })
   @ApiNoContentResponse()
   @ApiForbiddenResponse({ description: 'A manager changing an owner, or anyone changing their own role (an owner may mark themselves as approving refills)' })
   async changeMember(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @Body(new ZodPipe(ChangeMember)) body: z.infer<typeof ChangeMember>, @CurrentStaff() staff: Staff) {
-    const orgId = await this.org(clinicId);
-    if (body.role !== undefined) this.check(await this.change(orgId, staff, { type: 'role', userId, role: body.role }));
-    if (body.approvesRefills !== undefined) this.check(await this.change(orgId, staff, { type: 'refills', userId, approves: body.approvesRefills }));
+    if (body.role !== undefined) this.check(await this.change(clinicId, staff, { type: 'role', userId, role: body.role }));
+    if (body.approvesRefills !== undefined) this.check(await this.change(clinicId, staff, { type: 'refills', userId, approves: body.approvesRefills }));
   }
 
   @Delete(':userId')
   @HttpCode(204)
   @Requires('members:manage')
-  @ApiOperation({ summary: 'Remove someone from the organization. Their requests go back to the queue; they are signed out if they belong nowhere else. Audited.' })
+  @ApiOperation({ summary: 'Remove someone from this location (an owner: from the business). Their requests here go back to the queue; their other locations stay; they are signed out if they belong nowhere else. Audited.' })
   @ApiNoContentResponse()
   @ApiForbiddenResponse({ description: 'Removing yourself, or a manager removing an owner' })
   async remove(@Param('clinicId') clinicId: string, @Param('userId') userId: string, @CurrentStaff() staff: Staff) {
-    this.check(await this.change(await this.org(clinicId), staff, { type: 'remove', userId }));
+    this.check(await this.change(clinicId, staff, { type: 'remove', userId }));
   }
 
-  private change(orgId: string, staff: Staff, change: TeamChange) {
-    return changeTeam(this.db, orgId, { userId: staff.userId, role: staff.role! }, change, this.now());
+  private change(clinicId: string, staff: Staff, change: TeamChange) {
+    return changeTeam(this.db, clinicId, { userId: staff.userId, role: staff.role! }, change, this.now());
   }
 
   private check(r: TeamResult) {
     if (r !== 'done' && r !== 'unchanged') throw REFUSED[r]();
-  }
-
-  private async org(clinicId: string) {
-    const orgId = await orgOfClinic(this.db, clinicId);
-    if (!orgId) throw new NotFoundException({ error: 'not_found' });
-    return orgId;
   }
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useProblem, useToast } from '@/components/ui/toast';
-import type { AddedMember, AddResult, Health, Member, MemberList, TeamInvitationList } from '@attendra/api/contracts';
+import type { AddedMember, AddResult, Health, Me, Member, MemberList, TeamInvitationList } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, MailCheck, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -19,18 +19,15 @@ import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
 import { clinicTime, personName } from '@/lib/format';
 
-const ROLES: { id: Member['role']; label: string; detail: string }[] = [
-  { id: 'owner', label: 'Owner', detail: 'Everything, including other owners.' },
-  { id: 'admin', label: 'Practice manager', detail: 'Settings, the audit log, the team, and handing out requests.' },
-  { id: 'staff', label: 'Front desk', detail: 'Calls, the schedule, the records and requests.' },
-  { id: 'viewer', label: 'Viewer', detail: 'The call list and settings, with no names or records.' },
-];
-const label = (role: string) => ROLES.find((r) => r.id === role)?.label ?? role;
+// the roles, their names and what each can do come from /me: one source with the permissions the API checks
+type RoleInfo = Me['roles'][number];
 const message = (e: unknown) => (e instanceof ApiFailure ? (e.body.message ?? e.body.issues?.[0]?.message ?? 'That did not save.') : 'That did not save. Check your connection and try again.');
 
 export default function Team() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { data: me, clinic, can, isPending } = useClinic(clinicId);
+  const roles = me?.roles ?? [];
+  const label = (role: string) => roles.find((r) => r.id === role)?.label ?? role;
   const queries = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Member | null>(null);
@@ -47,7 +44,9 @@ export default function Team() {
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
-    onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: `${personName(m.name)} is now ${label(role).toLowerCase()}. It applies to their next click.` }),
+    onSuccess: (_r, { m, role }) => setNotice({ tone: 'info', text: role === 'owner' ? `${personName(m.name)} is now an owner, at every location. It applies to their next click.`
+      : m.role === 'owner' ? `${personName(m.name)} is now ${label(role).toLowerCase()} at every location. It applies to their next click.`
+        : `${personName(m.name)} is now ${label(role).toLowerCase()} at ${clinic?.name ?? 'this location'}. It applies to their next click.` }),
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
@@ -84,7 +83,7 @@ export default function Team() {
   });
   const remove = useMutation({
     mutationFn: (m: Member) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'DELETE' }),
-    onSuccess: (_r, m) => { setNotice({ tone: 'info', text: `${personName(m.name)} is off the team and signed out.` }); setRemoving(null); },
+    onSuccess: (_r, m) => { setNotice({ tone: 'info', text: m.role === 'owner' ? `${personName(m.name)} is no longer an owner and cannot open any location of the business.` : `${personName(m.name)} can no longer open ${clinic?.name ?? 'this location'}. Their other locations stay as they are.` }); setRemoving(null); },
     onError: (e) => { setNotice({ tone: 'warn', text: message(e) }); setRemoving(null); },
     onSettled: refresh,
   });
@@ -92,11 +91,12 @@ export default function Team() {
   if (isPending) return <><PageHeader title="Team" /><Skeleton className="h-64" /></>;
   if (!can('members:manage')) return <><PageHeader title="Team" /><Card><Empty title="The team is for owners and practice managers">Ask one of them to add someone or change a role.</Empty></Card></>;
   const myRole = clinic?.role;
-  const grantable = ROLES.filter((r) => r.id !== 'owner' || myRole === 'owner');
+  const grantable = roles.filter((r) => r.id !== 'owner' || myRole === 'owner');
+  const locations = me?.clinics.filter((c) => c.organizationId === clinic?.organizationId) ?? [];
 
   return (
     <>
-      <PageHeader title="Team" description={`Who can sign in to this clinic, and what each person can do.${(me?.clinics.length ?? 0) > 1 ? ' Everyone on the team sees all your locations.' : ''}`}
+      <PageHeader title="Team" description={`Who can open ${clinic?.name ?? 'this location'}, and what each person can do here.${locations.length > 1 ? ' Owners open every location; everyone else only the locations they were invited to, each with its own role.' : ''}`}
         actions={<Button onClick={() => setAdding(true)}><UserPlus /> Add people</Button>} />
       <Card>
         {members.isPending ? <div className="space-y-3 p-5">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-8" />)}</div>
@@ -113,7 +113,7 @@ export default function Team() {
                           <Avatar name={m.name || '?'} src={m.avatarUrl} />
                           <div className="min-w-0">
                             <p className="font-medium">{personName(m.name)}{m.you && <span className="ml-2 text-xs font-normal text-text-muted">You</span>}</p>
-                            <p className="text-xs text-text-muted">{m.email}</p>
+                            <p className="text-xs text-text-muted">{m.email}{m.allLocations && locations.length > 1 ? ' · every location' : ''}</p>
                           </div>
                         </div>
                       </TD>
@@ -162,7 +162,7 @@ export default function Team() {
             <tbody>
               {invitations.data.invitations.map((i) => (
                 <TRow key={i.id}>
-                  <TD><p className="font-medium">{i.email}</p><p className="text-xs text-text-muted">Invite sent, waiting for an answer</p></TD>
+                  <TD><p className="font-medium">{i.email}</p><p className="text-xs text-text-muted">Invite sent, waiting for an answer{i.allLocations || i.role === 'owner' ? ' · every location' : ''}</p></TD>
                   <TD><Badge>{label(i.role)}</Badge></TD>
                   <TD className="hidden md:table-cell">{personName(i.invitedBy)}</TD>
                   <TD className="hidden md:table-cell">{clinic ? clinicTime(i.expiresAt, clinic.timezone) : ''}</TD>
@@ -175,9 +175,10 @@ export default function Team() {
           </Table>
         </Card>
       )}
-      <p className="mt-3 text-xs text-text-muted">You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
+      <RoleGuide roles={roles} />
+      <p className="mt-3 text-xs text-text-muted">A role holds at this location only; an owner holds at every location. You cannot change your own role or remove yourself, and there is always at least one owner. Approves refills: only these people can close a refill as sent to the pharmacy, ready to pick up (which texts the caller) or not approved; tick it for your veterinarians. Every change is in the audit log.</p>
 
-      <AddPeople clinicId={clinicId} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
+      <AddPeople clinicId={clinicId} clinicName={clinic?.name ?? 'this location'} locations={locations.length} canAllLocations={myRole === 'owner' && locations.length > 1} open={adding} onOpenChange={setAdding} roles={grantable} onAdded={refresh} />
       <Panel open={!!resetting} onOpenChange={(o) => !o && setResetting(null)} title={`Reset ${personName(resetting?.name ?? '')}'s password?`}
         description="They are signed out everywhere, their password stops working, and you get a temporary one to pass on in person."
         footer={<><Button variant="ghost" onClick={() => setResetting(null)}>Keep it</Button><Button variant="danger" loading={reset.isPending} onClick={() => resetting && reset.mutate(resetting)}>Reset password</Button></>}>
@@ -193,7 +194,8 @@ export default function Team() {
         {issued && <OneTimePassword email={issued.email} password={issued.password} />}
       </Panel>
       <Panel open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title={`Remove ${removing?.name ?? ''}?`}
-        description="They are signed out straight away and can no longer open this clinic. Their past actions stay in the audit log."
+        description={removing?.role === 'owner' ? 'They are no longer an owner and can no longer open any location of the business. Their past actions stay in the audit log.'
+          : `They can no longer open ${clinic?.name ?? 'this location'}; their other locations stay as they are. Their past actions stay in the audit log.`}
         footer={<><Button variant="ghost" onClick={() => setRemoving(null)}>Keep them</Button><Button variant="danger" disabled={remove.isPending} onClick={() => removing && remove.mutate(removing)}>{remove.isPending ? 'Removing…' : 'Remove'}</Button></>}>
         <p className="text-sm">{removing?.email}</p>
       </Panel>
@@ -222,7 +224,10 @@ function parsePeople(text: string): { rows: Row[]; invalid: string[] } {
  * so the team never learns who already uses Attendra. Where the deployment cannot send
  * email, someone new gets a temporary password, shown once, to pass on in person.
  */
-function AddPeople({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId: string; open: boolean; onOpenChange: (o: boolean) => void; roles: typeof ROLES; onAdded: () => void }) {
+function AddPeople({ clinicId, clinicName, locations, canAllLocations, open, onOpenChange, roles, onAdded }: {
+  clinicId: string; clinicName: string; locations: number; canAllLocations: boolean; open: boolean; onOpenChange: (o: boolean) => void; roles: RoleInfo[]; onAdded: () => void;
+}) {
+  const [everywhere, setEverywhere] = useState(false);
   const emailed = useQuery({ queryKey: ['health'], queryFn: () => api<Health>('/health') }).data?.passwordReset ?? false;
   const [text, setText] = useState('');
   const [roleOf, setRoleOf] = useState<Record<string, { role: Member['role']; approvesRefills: boolean }>>({});
@@ -237,7 +242,7 @@ function AddPeople({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
         const { role, approvesRefills } = settings(r.email);
         const name = r.name ?? r.email.split('@')[0]!;
         try {
-          done.push({ email: r.email, name, result: await api<AddResult>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ email: r.email, name: r.name, role, approvesRefills: role !== 'viewer' && approvesRefills }) }) });
+          done.push({ email: r.email, name, result: await api<AddResult>(`/clinics/${clinicId}/members`, { method: 'POST', body: JSON.stringify({ email: r.email, name: r.name, role, approvesRefills: role !== 'viewer' && approvesRefills, allLocations: canAllLocations && everywhere && role !== 'owner' }) }) });
         } catch (e) {
           done.push({ email: r.email, name, error: message(e) });
         }
@@ -246,14 +251,13 @@ function AddPeople({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
     },
     onSuccess: (done) => { setOutcomes(done); onAdded(); },
   });
-  const close = (o: boolean) => { if (!o) { setOutcomes(null); setText(''); setRoleOf({}); add.reset(); } onOpenChange(o); };
+  const close = (o: boolean) => { if (!o) { setOutcomes(null); setText(''); setRoleOf({}); setEverywhere(false); add.reset(); } onOpenChange(o); };
   const submit = (e: FormEvent) => { e.preventDefault(); if (rows.length && !invalid.length) add.mutate(); };
   const failed = outcomes?.filter((o) => o.error).length ?? 0;
 
   return (
     <Panel open={open} onOpenChange={close} title={outcomes ? (failed ? 'Some were not added' : 'Invites sent') : 'Add people'}
-      description={outcomes ? undefined : emailed ? 'Each person gets an email invitation to join, with the role you pick.'
-        : 'Each person is invited with the role you pick. Someone new to Attendra gets a temporary password, shown once, to pass on in person.'}
+      description={outcomes ? undefined : `${emailed ? 'Each person gets an email invitation to join' : 'Each person is invited'} ${clinicName}, with the role you pick.${emailed ? '' : ' Someone new to Attendra gets a temporary password, shown once, to pass on in person.'}`}
       footer={outcomes ? <Button onClick={() => close(false)}>Done</Button> : undefined}>
       {outcomes ? (
         <ul className="space-y-4" data-testid="add-results">
@@ -293,7 +297,10 @@ function AddPeople({ clinicId, open, onOpenChange, roles, onAdded }: { clinicId:
                 </div>
               );
             })}
-            {rows.length > 0 && <p className="text-xs text-text-muted">{ROLES.map((r) => `${r.label}: ${r.detail}`).join(' ')}</p>}
+            {canAllLocations && rows.length > 0 && (
+              <Checkbox id="all-locations" label={`Invite to all ${locations} locations of the business, with the same role (one Accept)`} checked={everywhere} onCheckedChange={setEverywhere} />
+            )}
+            {rows.length > 0 && <p className="text-xs text-text-muted">{roles.map((r) => `${r.label}: ${r.summary}`).join(' ')}</p>}
           </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => close(false)}>Cancel</Button>
@@ -320,5 +327,28 @@ function OneTimePassword({ email, password }: { email: string; password: string 
       </div>
       {twoStepRequired && <p className="text-text-muted">After their own password, they set up two-step sign-in with an authenticator app.</p>}
     </div>
+  );
+}
+
+/** What each role can do here, generated from the permission table the API checks (/me). */
+function RoleGuide({ roles }: { roles: RoleInfo[] }) {
+  if (!roles.length) return null;
+  return (
+    <Card className="mt-4" data-testid="role-guide">
+      <details className="p-4">
+        <summary className="cursor-pointer text-sm font-medium">What each role can do</summary>
+        <dl className="mt-3 grid gap-4 md:grid-cols-2">
+          {roles.map((r) => (
+            <div key={r.id} data-testid={`role-${r.id}`}>
+              <dt className="font-medium">{r.label}</dt>
+              <dd className="text-sm text-text-muted">
+                <p>{r.summary}</p>
+                <ul className="mt-1 list-disc pl-5">{r.can.map((c) => <li key={c}>{c}</li>)}{r.limits.map((l) => <li key={l}>{l}</li>)}</ul>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </Card>
   );
 }

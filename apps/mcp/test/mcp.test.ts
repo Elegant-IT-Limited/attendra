@@ -83,10 +83,10 @@ describe('API keys', () => {
     const client = await clientFor(mia.key);
     expect(await authenticateApiKey(t.db, mia.key)).not.toBeNull();
     const owner = { userId: 'u_owen', role: 'owner' as const };
-    expect(await changeTeam(t.db, 'org_demo', owner, { type: 'role', userId: 'u_mia', role: 'staff' })).toBe('done');
+    expect(await changeTeam(t.db, DEMO_CLINIC.id, owner, { type: 'role', userId: 'u_mia', role: 'staff' })).toBe('done');
     expect(await authenticateApiKey(t.db, mia.key)).toBeNull();
     expect(await call(client, 'find_open_slots', { visitTypeId: 'vt_sick' })).toMatchObject({ error: true, text: expect.stringContaining('revoked') });
-    expect(await changeTeam(t.db, 'org_demo', owner, { type: 'remove', userId: 'u_max' })).toBe('done');
+    expect(await changeTeam(t.db, DEMO_CLINIC.id, owner, { type: 'remove', userId: 'u_max' })).toBe('done');
     expect(await authenticateApiKey(t.db, max.key)).toBeNull();
     const revoked = (await t.db.execute(sql`select entity_id, actor from audit_logs where action = 'api_key.revoked' and entity_id in (${mia.id}, ${max.id}) order by id`)).rows;
     expect(revoked).toEqual([{ entity_id: mia.id, actor: 'user:u_owen' }, { entity_id: max.id, actor: 'user:u_owen' }]);
