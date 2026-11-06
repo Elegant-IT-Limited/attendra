@@ -156,3 +156,21 @@ describe('the Realtime engine', () => {
     expect(calls.refer).toHaveBeenCalledWith('rtc_phone', { target_uri: 'tel:+13035550199' });
   });
 });
+
+describe('the Realtime engine\'s timeline (batch 1a)', () => {
+  it('times a caller\'s line by when they spoke, not by when its transcript arrived', () => {
+    vi.useFakeTimers();
+    const { e, s } = engine();
+    const sideband = e.attach('rtc_1');
+    const seen: SidebandEvent[] = [];
+    sideband.onEvent((ev) => seen.push(ev));
+    s.play({ type: 'input_audio_buffer.speech_started', event_id: 'a', item_id: 'item_1' });
+    vi.advanceTimersByTime(1500);
+    s.play({ type: 'input_audio_buffer.speech_stopped', event_id: 'b', item_id: 'item_1' });
+    vi.advanceTimersByTime(2000);
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 'c', item_id: 'item_1', transcript: 'Is Friday free?' });
+    const line = seen.find((x) => x.type === 'session.input_transcript.delta') as { start_ms: number; end_ms: number };
+    expect(line.end_ms - line.start_ms).toBe(1500);
+    vi.useRealTimers();
+  });
+});

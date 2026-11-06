@@ -1,0 +1,53 @@
+# Real-audio harness v1 (batch 1a): 10 calls, English and Spanish, on the demo clinic Riverbend Animal Hospital.
+# Made-up owners and pets from the demo seed only. A model plays the caller from `facts`, in the voice below; each call
+# is a real browser test call (no caller ID, so the number question comes first).
+clinic: riverbend
+voice: ash
+scenarios:
+  - id: book-known-pet
+    title: Linh books a wellness exam for her dog Biscuit, any vet, the first time that works.
+    opening: Hi, I'd like to book a checkup for my dog.
+    facts: Your name is Linh. The pet is Biscuit, a dog. The number his profile is under is 720-555-0172. Any vet, the earliest time is fine.
+    expect: { said: [Biscuit] }
+  - id: is-4pm-free
+    title: Linh asks whether 4 PM is free tomorrow for Mochi, her cat, and books it if it is.
+    opening: Hi, is 4 PM free tomorrow? It's for my cat.
+    facts: Your name is Linh. The pet is Mochi, a cat. Her profile is under 720-555-0172. If 4 PM is not free, the nearest time that afternoon is fine.
+    expect: { said: [Mochi] }
+  - id: new-pet
+    title: Linh adds a new puppy, Waffles, to her number and books a first visit.
+    opening: Hi, I just got a puppy and I'd like to bring him in for a first visit.
+    facts: Your name is Linh. Your number is 720-555-0172. The puppy is Waffles, a dog, about 10 weeks old, male. He is new to the clinic. Any time this week.
+  - id: move-visit
+    title: Daniel moves his rabbit Pepper's visit to another day. If there is no visit to move, he books one for Thursday.
+    opening: Hi, I need to change my rabbit's appointment.
+    facts: Your name is Daniel. The pet is Pepper, a rabbit. Her profile is under 720-555-0173. Thursday afternoon suits you.
+  - id: question-hours
+    title: A caller asks what time the clinic closes today and whether there is parking. No visit.
+    opening: Hi, what time do you close today?
+    facts: You only want the closing time and whether there is parking. You do not want to book.
+    expect: { said: [park] }
+  - id: callback
+    title: Carmen wants the team to call her back about Luna's diet. No visit.
+    opening: Hi, can someone call me back about my dog's food? I have a question for the vet.
+    facts: Your name is Carmen. The dog is Luna. Your number is 720-555-0174 and that is the number to call back.
+  - id: emergency-clear-no
+    title: Carmen says her dog ate chocolate last week but is fine now, and books a routine checkup.
+    opening: Hi, my dog ate some chocolate last week, she's totally fine now, I just want a checkup.
+    facts: Your name is Carmen. The dog is Luna, her profile is under 720-555-0174. She is fine now, no symptoms at all. Any time next week.
+  - id: es-book
+    title: Linh books a vaccine appointment for Biscuit, in Spanish.
+    language: es
+    opening: Hola, quisiera una cita de vacunas para mi perro.
+    facts: Te llamas Linh. El perro es Biscuit. Su perfil está con el número 720-555-0172. Cualquier día de la semana que viene por la mañana.
+    expect: { said: [Biscuit] }
+  - id: es-question
+    title: A caller asks, in Spanish, where the clinic is and whether it takes pet insurance. No visit.
+    language: es
+    opening: Hola, ¿dónde están ubicados?
+    facts: Solo quieres saber la dirección y si aceptan seguro para mascotas. No quieres una cita.
+  - id: side-talk-and-pause
+    title: Linh books for Biscuit but pauses mid-call ("hold on one second") and then carries on. The assistant must wait, not hang up or restart.
+    opening: Hi, I want to book Biscuit in... hold on one second.
+    facts: Your name is Linh. Biscuit is a dog, profile under 720-555-0172. After the pause, say sorry, you're back. Any vet, Friday morning.
+    expect: { said: [Biscuit] }

@@ -21,6 +21,24 @@ export function isClearYes(callerTextSinceReadback: string, languages: readonly 
   return yes && !hedge;
 }
 
+/**
+ * The caller's answer to a question, from everything they said since it was asked, in pieces: the latest piece with
+ * something in it besides checking the line is still up ("hello?", "are you there?", "um"), with those checks taken
+ * out. "Yes." then "Hello, are you there?" is a yes, and so is "Yes, hello, are you there?" (a test call heard its
+ * number question five times, 2026-11-03); "yes" then "wait, no", or "yes, is that Thursday?", is not. With nothing
+ * left in any piece, the latest piece, as before.
+ */
+export function answerAcrossPieces(pieces: readonly string[], languages: readonly Language[]): string {
+  void languages;
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const rest = normalise(pieces[i]!).replace(CHECK_INS, ' ').replace(/^[\s,.!?¿¡]+|[\s,]+$/g, '').replace(/\s+/g, ' ').trim();
+    if (rest) return rest;
+  }
+  return pieces.at(-1) ?? '';
+}
+/** Checking the line is still up, in a piece of an answer (after `normalise`). Never "hmm": that is a doubt. */
+const CHECK_INS = /[¿¡]?\b(?:hello|hey|hola|oiga|alo|are you (?:still )?there|you there|still there|can you hear me|sigue ahi|esta ahi|me escucha|me oye|um+|uh+|erm)\b[\s,.!?]*/g;
+
 // "no text, thanks", "don't text me", "sin mensajes": the caller turns down the confirmation text, not the change
 const NO_TEXT = /\b(no|not|don'?t|do not|without|sin)\b[^.?!]{0,25}\b(texts?|texting|messages?|sms|mensajes?|textos?)\b/g;
 /** Whether the caller's answer to a read-back turns down the confirmation text ("yes, but no text"). */

@@ -320,6 +320,9 @@ const ClinicConfigShape = z.object({
   booking: BookingRules.optional(),
   // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default
   voiceEngine: z.enum(['gpt-live', 'gpt-realtime']).optional(),
+  // how the voice answers each turn: 'planner' (one hand-off per turn to the planner, today's way) or 'tools' (the voice
+  // calls the tools API itself: batch 1a, one clinic at a time). Set by the operator (provisioning), never in Settings; absent is 'planner'
+  voiceFlow: z.enum(['planner', 'tools']).optional(),
   // the hosting layer pauses the assistant (a plan's free minutes used up, a payment missing): calls go to the
   // front desk while it takes transfers, or hear a short message. Set by provisioning, never in Settings
   answeringPaused: z.boolean().optional(),

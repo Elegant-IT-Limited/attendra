@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ActionRecorder, type Backend, CallAgent, CallState, type Planner } from '@attendra/agent';
-import { ClinicConfig, resolveTransfer, vipRoute } from '@attendra/core';
+import { type ActionRecorder, type Backend, CallAgent, CallCache, cachedBackend, CallState, type Planner, warmPatient } from '@attendra/agent';
+import { ClinicConfig, resolveTransfer, VOICE_ENGINES, type VoiceEngineName, type VoiceFlow, vipRoute } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { callerNumber, dialledCandidates, maskedHeaders, SPEND_ALERT_PATH, spendAlertText, trimEnd, twilioSignatureValid, twiml } from '@attendra/telephony';
 import { callerContext, CallMarks, CallRunner, EngineRouter, type CallRecorder, type SimulatedEngine, type SimulatedScript, type VoiceEngine, pausedOpening, vipOpening } from '@attendra/voice-engine';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
+import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
 
 /** An incoming phone call: GPT-Live sends a session id, the Realtime API a call id. */
 export interface IncomingCall { id: string; type: string; data: { session_id?: string; call_id?: string; sip_headers?: { name: string; value: string }[] } }
@@ -23,7 +24,7 @@ export interface VoiceDeps {
    * `startedBy` (a staff user id) marks a browser test call and is audited with the call row.
    * `calledAsLast4`: a browser test call started as a number ("Call as") keeps only its last four digits.
    */
-  openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string, calledAsLast4?: string): Promise<string>;
+  openCall(clinicId: string, sessionId: string, fromNumber: string | null, channel: 'phone' | 'web', startedBy?: string, calledAsLast4?: string, how?: { engine?: VoiceEngineName; voiceFlow?: VoiceFlow }): Promise<string>;
   /** Where alerts go (Slack): a call turned away or failed. */
   alerts?: Alerter;
   /** This number's last calls to the clinic, as lines for the backend; null when there are none. */
@@ -101,6 +102,12 @@ const testCallTexts = (messenger: Backend['messenger']): Backend['messenger'] =>
 
 const digest = (s: string) => createHash('sha256').update(s).digest();
 
+/** How a clinic's calls are answered: its operator's choice, else the planner (batch 1a switches clinics one at a time). */
+const flowOf = (clinic: ClinicConfig): VoiceFlow => clinic.voiceFlow ?? 'planner';
+/** The engine's name as the call row keeps it; none for an engine the row does not know (the simulator). */
+const engineName = (engine: VoiceEngine | null | undefined): VoiceEngineName | undefined =>
+  engine && (VOICE_ENGINES as readonly string[]).includes(engine.name) ? engine.name as VoiceEngineName : undefined;
+
 // GPT-Live's calls (the second name is deprecated but still delivered during migration), and the Realtime API's
 const INCOMING = new Set(['live.transport.incoming', 'live.call.incoming', 'realtime.call.incoming']);
 const sessionOf = (e: IncomingCall) => e.data.session_id ?? e.data.call_id ?? '';
@@ -121,6 +128,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
   /** Front desk numbers of the calls running now, for a take-over. */
   const frontDesk = new Map<string, string | null>();
   const streams = new Set<{ end(): void }>();
+  /** The tools-path calls running now, by call id: the tools API's HTTP surface answers their tool calls (batch 1a). */
+  const toolLines = new Map<string, { clinicId: string; runner: CallRunner; token: string }>();
 
   // keep the exact bytes: the signature is computed over the raw body
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => done(null, body));
@@ -232,6 +241,24 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       // a backstop only: every request comes from the API, so this is one bucket for all clinics
       await internal.register(rateLimit, { max: 600, timeWindow: 60_000 });
 
+      // The tools API's HTTP surface (batch 1a): the same tools the voice calls on the sideband, for an engine that runs
+      // outside this process (Vapi's tool server, batch 6). The bearer is the call's own token, minted at its start; the
+      // call must still be live. The result is the same JSON a sideband tool call gets back.
+      internal.post('/tools/v1/:tool', async (req, reply) => {
+        const key = deps.internalToken!;
+        const bearer = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined;
+        const t = readToolToken(key, bearer);
+        const line = t ? toolLines.get(t.callId) : undefined;
+        if (!t || !line || line.clinicId !== t.clinicId || line.token !== bearer) return reply.code(401).send({ error: 'unauthorized' });
+        const body = jsonBody(req.body) as { call_id?: unknown; arguments?: unknown } | null;
+        const tool = (req.params as { tool: string }).tool;
+        if (!body || typeof body !== 'object' || !/^[a-z_]{2,40}$/.test(tool)) return reply.code(400).send({ error: 'invalid body' });
+        const callId = typeof body.call_id === 'string' && body.call_id.length <= 100 ? body.call_id : `http_${randomUUID()}`;
+        const output = await line.runner.callTool(callId, tool, JSON.stringify(body.arguments ?? {}));
+        if (output === null) return reply.code(409).send({ error: 'already_answered' });
+        return reply.code(200).header('content-type', 'application/json').send(output);
+      });
+
       internal.post('/internal/web-calls', async (req, reply) => {
         if (!authorised(req.headers.authorization)) return reply.code(401).send({ error: 'unauthorized' });
         let body: z.infer<typeof WebCall>;
@@ -256,7 +283,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         try {
           marks.mark('accept_sent');
           // with a number to call as, the voice has caller ID: its number line, not "there is no caller ID"
-          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null });
+          started = await deps.engine.startBrowserCall(clinic, body.sdp, now(), { callerNumber: body.callAs ?? null, flow: flowOf(clinic) });
           marks.mark('accepted');
         } catch (err) {
           hold(clinic.id, -1);
@@ -267,7 +294,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         let callId: string;
         try {
           // the call row never holds the number: a client's calls from it must not fill with tests
-          callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId, body.callAs?.slice(-4));
+          const engine = deps.engine instanceof EngineRouter ? deps.engine.engineFor(clinic) : deps.engine;
+          callId = await deps.openCall(clinic.id, sessionId, null, 'web', body.userId, body.callAs?.slice(-4), { engine: engineName(engine), voiceFlow: flowOf(clinic) });
         } catch (err) {
           deps.log.error({ session_id: sessionId, err }, 'browser call setup failed');
           await deps.engine.hangup(sessionId).catch(() => {});
@@ -400,9 +428,17 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     let closed = false;
     let hungUp = false;
     let agent: CallAgent | null = null;
+    let cacheStats: CallCache | null = null;
     const hangup = () => { hungUp = true; return engine.hangup(sessionId).catch(() => {}); };
     try {
-      const backend = web ? { ...deps.backend, messenger: testCallTexts(deps.backend.messenger) } : deps.backend;
+      const plain = web ? { ...deps.backend, messenger: testCallTexts(deps.backend.messenger) } : deps.backend;
+      // the tools path reads through one cache per call: the schedule read as the call starts, the household's visits
+      // once the pet is found, so a lookup answers from memory (the preload). The simulator keeps the planner's way
+      const tools = flowOf(clinic) === 'tools' && !opts.planner;
+      const cache = tools ? new CallCache() : null;
+      const backend = cache ? cachedBackend(plain, cache) : plain;
+      cacheStats = cache;
+      if (cache) cache.warmSchedule(plain.scheduler, clinic.id, clinic.providers.map((p) => p.id), now());
       // before each request the agent reads the clinic again, so the doctors and their hours are the ones in the dashboard now
       const reloadClinic = async () => {
         const parsed = ClinicConfig.safeParse(await deps.clinicById(clinic.id));
@@ -418,6 +454,11 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       agent = new CallAgent(new CallState(), { clinic, reloadClinic, callId, callerNumber: from, history: null, now, log: deps.log, channel,
         onSlow: (ms) => deps.alerts?.alert('slow_answer', `A caller waited ${Math.round(ms / 1000)} s for an answer. Clinic ${clinic.id}, call ${callId}.`),
         onTimeout: (ms) => deps.alerts?.alert('answer_timeout', `An answer took ${Math.round(ms / 1000)} s, past the limit: the caller was offered a callback. Clinic ${clinic.id}, call ${callId}.`) }, backend, opts.planner ?? deps.planner, deps.log, deps.actionsFor(clinic.id, callId));
+      if (tools) {
+        // a yes is read across the caller's pieces ("Yes." "Hello, are you there?"), and the pet's visits are read ahead
+        agent.state.answersAcrossPieces = true;
+        agent.onPatientFound = (patientId) => warmPatient(backend, clinic.id, patientId, now());
+      }
       const sideband = engine.attach(sessionId);
       marks.mark('attached');
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
@@ -444,6 +485,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
         timers.push(setTimeout(() => sideband.close(), (limit + 30) * 1000));
       }
       const a = agent;
+      // a tools-path call can be answered over HTTP too, with its own token (the tools API's second surface)
+      if (tools && deps.internalToken) toolLines.set(callId, { clinicId: clinic.id, runner, token: mintToolToken(deps.internalToken, { callId, clinicId: clinic.id, expiresAt: Date.now() + TOOL_TOKEN_MAX_MS }) });
       // staff watching live see every event; their actions go through the runner like the agent's own
       frontDesk.set(callId, clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null);
       live.open(callId, { clinicId: clinic.id, channel, startedAt: now() }, {
@@ -455,7 +498,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       a.observer = (e) => live.publish(callId, e);
       // the engine and the voice the session was created with: set once, never changed in the call
       const created = engine.sessionInfo?.(sessionId);
-      deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel, engine: created?.engine ?? engine.name, voice: created?.voice ?? null }, 'call accepted');
+      deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, channel, engine: created?.engine ?? engine.name, voice: created?.voice ?? null, flow: tools ? 'tools' : 'planner' }, 'call accepted');
       const done = runner.start();
       const history = await historyRead;
       marks.mark('history');
@@ -476,6 +519,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       await Promise.resolve().then(hangup);
     } finally {
       timers.forEach(clearTimeout);
+      toolLines.delete(callId);
       live.end(callId, agent?.state.outcome ?? 'abandoned');
       frontDesk.delete(callId);
       // A phone call ends with the line. A browser keeps talking after our sideband drops,
@@ -483,6 +527,7 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       if (web && !closed && !hungUp) await hangup();
       // phone calls too: the engine and the router keep a little per call until released
       engine.release?.(sessionId);
+      if (cacheStats) deps.log.info({ session_id: sessionId, call_id: callId, hits: cacheStats.hits, misses: cacheStats.misses }, 'call cache');
     }
   }
 
@@ -535,11 +580,12 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       const opening = paused ? pausedOpening(clinic, !!paused.uri) : vip ? vipOpening(clinic, vip.name) : undefined;
       marks.mark('accept_sent');
       // the caller ID goes in from the start: the voice asks the number question itself, for a visit only (2026-11-14)
-      if (router) await router.acceptWith(via, sessionId, clinic, now(), opening, { callerNumber: from });
-      else await deps.engine.accept(sessionId, clinic, now(), opening, { callerNumber: from });
+      // how its turns are answered is set with the session: the planner, or the tools API (the clinic's switch, batch 1a)
+      if (router) await router.acceptWith(via, sessionId, clinic, now(), opening, { callerNumber: from, flow: flowOf(clinic) });
+      else await deps.engine.accept(sessionId, clinic, now(), opening, { callerNumber: from, flow: flowOf(clinic) });
       accepted = true;
       marks.mark('accepted');
-      const callId = await deps.openCall(clinic.id, sessionId, from, 'phone');
+      const callId = await deps.openCall(clinic.id, sessionId, from, 'phone', undefined, undefined, { engine: engineName(via), voiceFlow: flowOf(clinic) });
       marks.mark('call_opened');
       if (paused) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId, transfer: !!paused.uri }, 'the assistant is paused: the caller goes to the front desk or hears when to call back');
       else if (vip) deps.log.info({ session_id: sessionId, clinic_id: clinic.id, call_id: callId }, 'VIP caller: transferring to the front desk');
@@ -552,6 +598,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     }
   }
 
+  // tests read a live tools-path call's token here; nothing else does, and it is never logged
+  app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);
   app.addHook('onClose', async () => {
     for (const s of streams) s.end();
     await Promise.allSettled(running);

@@ -7,4 +7,5 @@ export * from './prompt';
 export * from './realtime';
 export * from './router';
 export * from './simulated';
+export * from './tools-prompt';
 export * from './voices';

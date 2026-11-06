@@ -12,6 +12,7 @@ import { modelFollowUp } from './follow-up';
 import { Judge, judgeReport, type Verdict } from './judge';
 import { loadScenarios, type Scenario } from './scenario';
 import { runScenario, type ScenarioResult } from './simulator';
+import { ToolsPathPlanner, type ToolsPath } from './tools-voice';
 
 const live = process.argv.includes('--live');
 const judging = process.argv.includes('--judge');
@@ -36,7 +37,12 @@ const speed: PlannerSpeed = {
 const perRequest = process.argv.includes('--timings');
 /** This run's name for its files: its start time in UTC, safe in a file name. */
 const RUN = new Date().toISOString().slice(0, 19).replace(/:/g, '-') + 'Z';
-const planner = live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', undefined, undefined, speed, { firstToken: perRequest }, { intent: true }) : undefined;
+// `--path=a` or `--path=b` (with --live): the tools path, batch 1a. a: gpt-realtime with our tools, in text; b: the Responses
+// model GPT-Live delegates to on that path. Without it, the planner path as before
+const toolsPath = process.argv.find((a) => a.startsWith('--path='))?.slice(7) as ToolsPath | undefined;
+if (toolsPath && (!live || !['a', 'b'].includes(toolsPath))) { console.error('--path=a or --path=b runs live: pnpm eval --live --path=a'); process.exit(2); }
+const toolsModel = toolsPath === 'a' ? process.env.ATTENDRA_REALTIME_MODEL ?? 'gpt-realtime-2.1' : process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna';
+const planner = toolsPath ? new ToolsPathPlanner(new OpenAI(), toolsPath, toolsModel) : live ? new ResponsesPlanner(new OpenAI(), process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', undefined, undefined, speed, { firstToken: perRequest }, { intent: true }) : undefined;
 // live, a model answers the planner's follow-up questions for a scenario that lists its facts
 const followUp = live ? modelFollowUp(new OpenAI(), process.env.ATTENDRA_SIM_MODEL ?? 'gpt-6-luna') : undefined;
 // `--tag=hardcore` keeps the scenarios with that tag; `--transcripts` puts every call's transcript in the report, not only the failed ones
@@ -47,7 +53,7 @@ const scenarios = loadScenarios().filter((s) => (!only || only.split(',').some((
 const c = (n: number) => (s: string) => (process.stdout.isTTY || process.env.FORCE_COLOR ? `\x1b[${n}m${s}\x1b[0m` : s);
 const [green, red, dim, bold] = [c(32), c(31), c(2), c(1)];
 
-console.log(bold(`attendra evals`) + dim(`  ${scenarios.length} scenarios · planner: ${live ? `live (${process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna'})` : 'scripted'} · Postgres in-process\n`));
+console.log(bold(`attendra evals`) + dim(`  ${scenarios.length} scenarios · planner: ${toolsPath ? `tools path ${toolsPath.toUpperCase()} (${toolsModel})` : live ? `live (${process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna'})` : 'scripted'} · Postgres in-process\n`));
 let failed = 0;
 const timings: (PlannerTiming & { scenario: string })[] = [];
 const runs: { scenario: Scenario; result: ScenarioResult; verdict: Verdict | null; error?: string }[] = [];
@@ -122,7 +128,7 @@ if (judge) {
   const dir = join(import.meta.dirname, '../reports');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${RUN}.md`);
-  writeFileSync(file, judgeReport(runs, { date, planner: process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', judge: judge.model, transcripts }));
+  writeFileSync(file, judgeReport(runs, { date, planner: toolsPath ? `${toolsModel} (tools path ${toolsPath.toUpperCase()})` : process.env.ATTENDRA_BACKEND_MODEL ?? 'gpt-6-luna', judge: judge.model, transcripts }));
   console.log(dim(`report: ${file}`));
 }
 process.exit(failed ? 1 : 0);
