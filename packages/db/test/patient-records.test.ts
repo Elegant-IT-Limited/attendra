@@ -73,14 +73,15 @@ describe('search across clinics', () => {
   });
 });
 
-describe('the scan cap', () => {
+describe('the old scan, behind ATTENDRA_SEARCH_SCAN for one release', () => {
   it('reads patients in a fixed order and says when it stopped at the cap', async () => {
-    const capped = new PatientRecords(t.db, cipher, 2);
-    const ids = ((await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} order by id limit 2`)).rows as { id: string }[]).map((r) => r.id);
+    const capped = new PatientRecords(t.db, cipher, { scanWindow: 2 });
     const runs = await Promise.all([capped.search(DEMO_CLINIC.id, '1985-03-04', 'u_ana'), capped.search(DEMO_CLINIC.id, '1985-03-04', 'u_ana')]);
     expect(runs.map((r) => r!.truncated)).toEqual([true, true]);
     expect(runs[0]).toEqual(runs[1]);
-    expect(runs[0]!.patients.every((p) => ids.includes(p.id))).toBe(true); // only the first two by id were read
-    expect((await new PatientRecords(t.db, cipher).search(DEMO_CLINIC.id, '1985-03-04', 'u_ana'))!.truncated).toBe(false);
+    // without it nothing is scanned, so nothing is cut short, and the keys find the same patients
+    const keyed = (await new PatientRecords(t.db, cipher).search(DEMO_CLINIC.id, '1985-03-04', 'u_ana'))!;
+    expect(keyed.truncated).toBe(false);
+    expect(keyed.patients.map((p) => p.id)).toEqual(runs[0]!.patients.map((p) => p.id));
   });
 });

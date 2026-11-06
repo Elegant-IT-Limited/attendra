@@ -2,7 +2,7 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, calls, callSegments, callSummaries, clinics, tasks } from '../schema';
+import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, tasks } from '../schema';
 import { callerKey } from './calls';
 
 export const INTENTS = ['book', 'reschedule', 'cancel', 'refill', 'question', 'callback', 'emergency', 'other'] as const;
@@ -191,7 +191,8 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
         these.transcriptLines = (await tx.delete(callSegments).where(and(eq(callSegments.clinicId, clinicId), inArray(callSegments.callId, old))).returning({ id: callSegments.id })).length;
         these.summaries = (await tx.delete(callSummaries).where(and(eq(callSummaries.clinicId, clinicId), inArray(callSummaries.callId, old))).returning({ id: callSummaries.callId })).length;
         these.callActions = (await tx.delete(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, old))).returning({ id: callActions.id })).length;
-        // the caller's number goes with the transcript; the hash for limits stays
+        // the caller's number goes with the transcript, and the keys it is searched by with it; the hash for limits stays
+        await tx.delete(callSearchKeys).where(and(eq(callSearchKeys.clinicId, clinicId), inArray(callSearchKeys.callId, old)));
         await tx.update(calls).set({ fromEnc: null }).where(and(eq(calls.clinicId, clinicId), inArray(calls.id, old)));
       }
       await tx.insert(auditLogs).values({ clinicId, actor: WORKER, action: 'retention.purged', entity: 'clinic', entityId: clinicId, counts: these });

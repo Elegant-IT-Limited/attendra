@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { RIVERBEND_CLINIC } from '@attendra/core';
-import { type Database, type PhiCipher, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend } from '@attendra/db';
+import { type Database, type PhiCipher, rehashCallLookups, rehashPatientLookups, schema, seedCedarPark, seedDemo, seedDemoSchedule, seedRiverbend } from '@attendra/db';
 import { LocalEmbedder, seedDemoKnowledge } from '@attendra/knowledge';
 import { createLogger } from '@attendra/observability';
 import { handlers } from '@attendra/worker/runtime';
@@ -43,7 +43,8 @@ export async function seedDemoWorkspace(db: Database, cipher: PhiCipher, auth: A
   // each demo clinic signed up before its first recorded call: Quality starts at the sign-up week, and shows the weeks those calls are in
   await db.execute(sql`update clinics set created_at = least(created_at, coalesce((select min(c.started_at) from calls c where c.clinic_id = clinics.id), created_at))`);
   // the same one-off an upgraded deployment runs (pnpm db:rehash-lookups): on a fresh demo it changes nothing
-  await rehashPatientLookups(db, cipher);
+  await rehashPatientLookups(db, cipher, { apply: true });
+  await rehashCallLookups(db, cipher, { apply: true });
   await summariseDemoCalls(db, cipher);
   return results;
 }

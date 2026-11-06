@@ -53,6 +53,9 @@ const Env = z.object({
     z.array(z.object({ label: z.string().trim().min(1).max(30), href: z.string().max(300).refine((h) => /^(https:\/\/|\/)/.test(h), 'an account link is an https:// address or a path') })).max(5)),
   // Where the API says it has lost the change notices (LISTEN down for more than 10 s), like the voice service and the worker.
   ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
+  // The way back for one release (v0.10): searches also read and match the newest 20,000 patients and the newest 5,000
+  // calls' numbers on every keystroke, as before the search keys. Off by default; turn it on only if a search misses records.
+  ATTENDRA_SEARCH_SCAN: flag,
   LOG_LEVEL: z.preprocess(blank, z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
 });
 export type ApiEnv = z.infer<typeof Env>;

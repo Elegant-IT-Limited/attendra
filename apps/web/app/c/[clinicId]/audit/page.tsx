@@ -51,6 +51,7 @@ const ACTIONS: Record<string, string> = {
   'patient.updated': 'Changed a patient\'s details',
   'calls.listed': 'Looked at the call list with names',
   'calls.searched': 'Searched calls by patient',
+  'tasks.searched': 'Searched the requests',
   'member.removed': 'Removed a person from the team',
   'member.invite.canceled': 'Cancelled an invitation to the team',
   'member.invite.accepted': 'Accepted an invitation and joined the team',
@@ -79,6 +80,7 @@ const ACTIONS: Record<string, string> = {
   'call.summary.written': 'Wrote a call summary',
   'patient.busy.shown': 'Saw that a patient was already booked then',
   'patient.lookups.rehashed': 'Updated how patient names are matched',
+  'call.lookups.rehashed': 'Updated how calls are found by their number',
   'knowledge.document.uploaded': 'Uploaded a document for the assistant',
   'knowledge.document.deleted': 'Deleted a document',
   'webhook.endpoint.created': 'Added a webhook endpoint',
@@ -178,7 +180,7 @@ const ENTITIES: Record<string, string> = {
   call: 'Call', patient: 'Patient', task: 'Request', appointment: 'Appointment', clinic: 'Clinic', member: 'Team member',
   api_key: 'API key', webhook_endpoint: 'Webhook endpoint', schedule: 'Schedule', knowledge_document: 'Document', sms: 'Text',
 };
-const LISTS: Record<string, string> = { 'calls.listed': 'Call list', 'calls.live.listed': 'Live calls', 'patient.recent.viewed': 'Recent patients', 'calls.searched': 'Call search', 'patient.searched': 'Patient search' };
+const LISTS: Record<string, string> = { 'calls.listed': 'Call list', 'calls.live.listed': 'Live calls', 'patient.recent.viewed': 'Recent patients', 'calls.searched': 'Call search', 'patient.searched': 'Patient search', 'tasks.searched': 'Request search' };
 // "29 Sep", the dashboard's own day-first format, whatever the browser's locale
 const day = (iso: string) => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? dayTitle(iso, 'short').replace(/^\w+ /, '') : iso);
 

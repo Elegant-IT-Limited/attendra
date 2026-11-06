@@ -78,6 +78,8 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   const [call] = await q<{ id: string }>(`insert into calls (clinic_id, openai_session_id, patient_id) values ($1, $2, $3) returning id`, [clinicId, `sess_${clinicId}`, patient!.id]);
   await q(`update patients set created_by_call_id = $1 where id = $2`, [call!.id, patient!.id]);
   await q(`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values ($1, $2, 'caller', 'x', 0, 1)`, [clinicId, call!.id]);
+  await q(`insert into patient_search_keys (clinic_id, key, patient_id) values ($1, 'k', $2)`, [clinicId, patient!.id]);
+  await q(`insert into call_search_keys (clinic_id, key, call_id) values ($1, 'k', $2)`, [clinicId, call!.id]);
   await q(`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values ($1, $2, 'find_slots', '{}', '{}', 0)`, [clinicId, call!.id]);
   await q(`insert into call_costs (call_id, clinic_id, engine, rates_version) values ($1, $2, 'gpt-live', 'test')`, [call!.id, clinicId]);
   await q(`insert into call_summaries (call_id, clinic_id, body_enc, intent, sentiment, needs_review, model, reviewed_by_user_id) values ($1, $2, 'x', 'book', 'calm', false, 'm', $3)`, [call!.id, clinicId, owner]);

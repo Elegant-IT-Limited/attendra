@@ -79,7 +79,7 @@ export class TasksController {
   @Post('search')
   @HttpCode(200)
   @Requires('tasks:read')
-  @ApiOperation({ summary: 'The request queue with words to find in the patient\'s name, the details or the type, from the first character. Audited per request shown, never by what was typed.' })
+  @ApiOperation({ summary: 'The request queue with words to find in the patient\'s name, the details or the type, from the first character. Audited once per search with the number of matches, and per request shown, never by what was typed.' })
   @ApiBody({ schema: schemaOf(TaskSearch) })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async search(@Param('clinicId') clinicId: string, @Body(new ZodPipe(TaskSearch)) q: z.infer<typeof TaskSearch>, @CurrentStaff() staff: Staff): Promise<TaskList> {

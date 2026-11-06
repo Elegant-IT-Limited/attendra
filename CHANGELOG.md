@@ -4,6 +4,15 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (search from the first letter, by keys: batch 3)
+
+- **Every search box searches from the first character**, 150 ms after the last key (`SEARCH_SETTLE_MS`, one hook for every box): Pets, Requests, Calls, ⌘K and "Call as". `POST /calls/search` takes one character too.
+- **Searches read keys, not the newest thousands of records.** Migration 0049 adds `patient_search_keys` and `call_search_keys`: keyed hashes (shortened to 12 characters) of the first one, two and three letters and the whole of every word of the pet's and the owner's name, the start of each word's sound (so "Danial" still finds Daniel), the date of birth, and the phone's start and every run of three to nine digits in it; for a call, the same digit runs of its number. One to three typed letters find their records by the keys alone; a longer word finds its candidates by its first three letters and is decided on the decrypted name, as before. Each kind of key has its own form, so the start of a word never equals a whole word. They are looked up by equality because under Row Level Security Postgres uses an index only for leakproof operators, and the array overlap of migration 0042's `owner_words_hash` is not one: its GIN index was never used, and every search read the clinic's whole table. The scan of the newest 20,000 patients, and of the numbers of the newest 5,000 calls, on every keystroke is gone; `ATTENDRA_SEARCH_SCAN=true` turns it back on for this release only. On 20,000 patients (in-process Postgres), one and two letters answer in about 85 ms, the old scan in about 670.
+- **Calls by any digits of the number** through those keys. One or two digits find numbers that start with them.
+- **Requests by name, phone digits, type or number at any age**: through the patient's keys and the request number. Words in a request's details and notes have no keys, so those are still looked for in the newest 2,000 requests a search reads (`TASK_SEARCH_SCAN`).
+- **One audit row per search**: `patient.searched`, `calls.searched` and the new `tasks.searched`, each with the number of matches. `patient.search.result` stays (who saw which patient), but a patient already shown to the same person in the last 5 minutes is not written again, so typing "m", "ma", "mar" records each patient once. Opening a record is audited every time, as before.
+- **`pnpm db:rehash-lookups` is a dry run by default**: it prints the counts of patients and calls it would change; `--apply` writes. Run it with `--apply` once after this upgrade: until then, records stored before it are found by whole words and last four digits only.
+
 ### Added (round 2 on the tools path, and path C for the bake-off)
 
 - **The visit type always comes from the clinic** on the tools path: `find_slots` takes only its own visit type ids, listed with their names; a refusal hands them back.
