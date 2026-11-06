@@ -122,6 +122,27 @@ export const calls = pgTable('calls', {
   stalls: integer('stalls'),
   /** Answers past the 60 s limit, apologised for (migration 0044). */
   answerTimeouts: integer('answer_timeouts'),
+  /** Which engine answered, its own id for the call, and how the turns were answered (migration 0045). */
+  engine: text('engine', { enum: ['gpt-live', 'gpt-realtime', 'vapi'] }),
+  engineSessionId: text('engine_session_id'),
+  voiceFlow: text('voice_flow', { enum: ['planner', 'tools'] }),
+});
+
+/** What one call cost us, from the rates table in core (call-costs.ts): numbers only (migration 0045). */
+export const callCosts = pgTable('call_costs', {
+  callId: uuid('call_id').primaryKey(),
+  clinicId: text('clinic_id').notNull(),
+  engine: text('engine', { enum: ['gpt-live', 'gpt-realtime', 'vapi'] }).notNull(),
+  voiceSeconds: numeric('voice_seconds', { precision: 10, scale: 2 }),
+  voiceUsd: numeric('voice_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  modelTokens: jsonb('model_tokens').notNull().default({}),
+  modelUsd: numeric('model_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  texts: integer('texts').notNull().default(0),
+  textsUsd: numeric('texts_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  telephonyUsd: numeric('telephony_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  totalUsd: numeric('total_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  ratesVersion: text('rates_version').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const callSegments = pgTable('call_segments', {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { CallAgent, Outbound } from '@attendra/agent';
-import { askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, recordedOutcome, saidGoodbye } from '@attendra/core';
+import { addTokens, askedToHangUp, type CallQuality, EMPTY_CALL_MIN_MS, type ModelTokens, recordedOutcome, saidGoodbye } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import { randomUUID } from 'node:crypto';
 import type { Sideband, SidebandConnection, SidebandEvent, VoiceEngine } from './engine';
@@ -9,7 +9,7 @@ import { openingIfNotStarted } from './prompt';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
-  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality }): Promise<void>;
+  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean } }): Promise<void>;
 }
 
 /**
@@ -110,6 +110,16 @@ export class CallRunner {
   private heardAt = 0;
   /** Caller turns met by 5 s of silence with nothing coming back: the first nudge of a turn is one stall. */
   private stalls = 0;
+  /**
+   * The answer to a turn that needed a lookup, timed on the engine's session timeline: when the caller's last words
+   * ended, how many tools (or hand-offs) ran for it, and whether a result has gone back to the voice. The first words
+   * after a result are the answer (a "let me check" said before it is not).
+   */
+  private callerEndMs = 0;
+  private turnTools = 0;
+  private answerDue = false;
+  /** Tool calls on the tools path, by call id: each is answered once, whatever a sideband replay sends again. */
+  private readonly toolCalls = new Set<string>();
 
   constructor(
     private readonly sessionId: string,
@@ -181,12 +191,21 @@ export class CallRunner {
         this.callerSaidAt = Date.now();
         this.marks.callerWords(e.start_ms, this.callerSaidAt);
         this.nudged = 0;
+        // a new caller turn: a lookup it needs is timed from the end of these words
+        this.callerEndMs = e.end_ms;
+        this.turnTools = 0;
+        this.answerDue = false;
         await this.dispatch(this.agent.onCallerTranscript(e.delta, e.start_ms, e.end_ms));
         return this.flushFinishedTurns();
       }
       case 'session.output_transcript.delta': {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
         this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        // the first words after a lookup's result: how long the caller waited for the answer
+        if (this.answerDue) {
+          this.answerDue = false;
+          this.agent.recordAnswerTiming({ waitMs: e.start_ms - this.callerEndMs, tools: this.turnTools, flow: this.toolCalls.size ? 'tools' : 'planner' });
+        }
         const now = Date.now();
         this.marks.greetingWords(e.end_ms, now);
         // the start of a reply, for the logs (no words): the first one is the greeting, timed from the start of the call
@@ -226,6 +245,7 @@ export class CallRunner {
         }
         this.log.info({ session_id: this.sessionId, delegation_id: id, at: new Date().toISOString(), ms: Date.now() - this.startedAt }, 'delegation created');
         this.marks.delegation();
+        this.turnTools++;
         const entry: { answer: Outbound[]; sentAt: number | null } = { answer: [], sentAt: null };
         this.delegations.set(id, entry);
         // the progress note goes out immediately; the result follows when the tools finish
@@ -234,10 +254,24 @@ export class CallRunner {
           const out = await this.agent.onDelegation(id, (o) => void this.dispatch([o]));
           entry.answer = out.filter((o) => o.type === 'commentary');
           entry.sentAt = Date.now();
+          if (entry.answer.length) this.answerDue = true;
           return await this.dispatch(out);
         } finally {
           this.pending--;
         }
+      }
+      case 'session.tool_call': {
+        // the tools path: the voice (or GPT-Live's delegated model) called one of our tools itself
+        const e = event as Extract<SidebandEvent, { call_id: string; name: string; arguments: string }>;
+        const output = await this.callTool(e.call_id, e.name, e.arguments);
+        if (output === null || this.closed) return;
+        this.sideband.send({ type: 'tool.result', event_id: `tool_${e.call_id}`, call_id: e.call_id, output });
+        return;
+      }
+      case 'session.model_usage': {
+        const e = event as Extract<SidebandEvent, { model: string; input: number }>;
+        addTokens(this.agent.state.modelTokens, e.model, { input: e.input, cached: e.cached, output: e.output });
+        return;
       }
       case 'session.started': {
         this.marks.mark('session_started');
@@ -252,6 +286,18 @@ export class CallRunner {
           this.sideband.send({ type: 'session.commentary.append', event_id: `opening_${this.sessionId}`, delegation_id: null, content: openingIfNotStarted(opening) });
         }
         return;
+      }
+      // the phone leg itself: answered, or failed to connect. A failed leg is a call the caller never heard: it ends now,
+      // with the carrier's code as its reason, instead of a session left to expire in silence
+      case 'transport.answered': {
+        this.marks.mark('transport_answered');
+        this.log.info({ session_id: this.sessionId, ms: Date.now() - this.startedAt }, 'phone leg answered');
+        return;
+      }
+      case 'transport.failed': {
+        const code = (event as { error?: { code?: string } }).error?.code ?? 'unknown';
+        this.log.warn({ session_id: this.sessionId, code, ms: Date.now() - this.startedAt }, 'phone leg failed to connect');
+        return this.finish('transport_failed', null, `transport failed: ${code}`);
       }
       case 'session.instructions.appended': {
         // a staff note reached the voice model
@@ -296,6 +342,30 @@ export class CallRunner {
     d.sentAt = Date.now();
     this.log.info({ session_id: this.sessionId, delegation_id: id }, 'answer sent again after the sideband came back');
     return this.dispatch(d.answer);
+  }
+
+  /**
+   * One tool call on the tools path, by its id (each runs once, whatever a replay sends again), from an engine's event
+   * or from the tools API's HTTP surface: the agent runs it, any call control it returns is carried out, and the next
+   * words the voice says are timed as the answer. Returns the result as JSON text, or null for a call already handled.
+   */
+  async callTool(callId: string, name: string, argsText: string): Promise<string | null> {
+    if (this.toolCalls.has(callId)) return null;
+    this.toolCalls.add(callId);
+    this.turnTools++;
+    let args: unknown;
+    try { args = JSON.parse(argsText || '{}'); } catch { args = null; }
+    this.pending++;
+    try {
+      const { output, controls } = args === null
+        ? { output: { ok: false, outcome: 'invalid_arguments', say: 'Those arguments were not valid JSON. Call the tool again.', data: {} }, controls: [] }
+        : await this.agent.onToolCall(name, args);
+      this.answerDue = true;
+      if (!this.closed) await this.dispatch(controls);
+      return JSON.stringify(output);
+    } finally {
+      this.pending--;
+    }
   }
 
   /** Carries out what staff asked for on a live call (a note, a take-over, a goodbye) the same way as the agent's own outbound. */
@@ -472,7 +542,7 @@ export class CallRunner {
     if (quality.firstAudioMs === null && lasted >= EMPTY_CALL_MIN_MS) {
       this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}). ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
     }
-    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, language: state.language, quality });
+    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
     this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts }, 'call finished');
     this.sideband.close();
   }

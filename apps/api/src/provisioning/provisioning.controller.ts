@@ -71,6 +71,7 @@ const AnsweringSwitch = z.object({ paused: z.boolean() });
 const PlanBody = z.object({ plan: HostingPlan.nullable() });
 const Closed = z.object({ closed: z.boolean() });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
+const FlowChoice = z.object({ flow: z.enum(['planner', 'tools']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
 // a POST body, so a caller's number is never in an address: since when, and optionally the number a check call comes from
@@ -300,6 +301,21 @@ export class ProvisioningController {
       const c = ClinicConfig.parse(current);
       if ((c.voiceEngine ?? null) === body.engine) return { result: true };
       return { save: { ...c, voiceEngine: body.engine ?? undefined }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * How the voice answers this clinic's calls: 'tools' has the voice call the tools API itself (batch 1a, one clinic at a
+   * time for the bake-off), 'planner' or null the planner hand-off every other clinic has. Not something the clinic sets.
+   */
+  @Put('clinics/:clinicId/voice-flow')
+  @HttpCode(204)
+  async voiceFlow(@Param('clinicId') clinicId: string, @Body(new ZodPipe(FlowChoice)) body: z.infer<typeof FlowChoice>) {
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.voice_flow.${body.flow ?? 'default'}`, clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if ((c.voiceFlow ?? null) === body.flow) return { result: true };
+      return { save: { ...c, voiceFlow: body.flow ?? undefined }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
   }

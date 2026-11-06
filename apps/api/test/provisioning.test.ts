@@ -49,6 +49,7 @@ describe('provisioning', () => {
       ['PUT', `${P}/clinics/${c}/plan`, {}],
       ['PUT', `${P}/clinics/${c}/closed`, {}],
       ['PUT', `${P}/clinics/${c}/voice-engine`, { engine: 'grok' }],
+      ['PUT', `${P}/clinics/${c}/voice-flow`, { flow: 'direct' }],
       ['PUT', `${P}/clinics/${c}/numbers/12345`, undefined],
       ['GET', `${P}/clinics/${c}/usage?from=yesterday`, undefined],
       ['POST', `${P}/clinics/${c}/calls-check`, {}],
@@ -160,6 +161,17 @@ describe('provisioning', () => {
     expect((await api.request('PUT', S, { cookie, body: { ...settings, voiceEngine: 'gpt-live' } })).json().voiceEngine).toBe('gpt-realtime');
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-engine`, { body: { engine: null }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('GET', S, { cookie })).json().voiceEngine).toBeUndefined();
+    // and how its turns are answered (the tools API or the planner, batch 1a): the operator's too, with one step back
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: 'tools' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: 'direct' }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/voice-flow`, { body: { flow: null }, authorization: auth })).statusCode).toBe(404);
+    const now = (await api.request('GET', S, { cookie })).json();
+    expect(now.voiceFlow).toBe('tools');
+    expect((await api.request('PUT', S, { cookie, body: { ...now, voiceFlow: 'planner' } })).json().voiceFlow).toBe('tools');
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: 'planner' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().voiceFlow).toBe('planner');
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice-flow`, { body: { flow: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().voiceFlow).toBeUndefined();
   });
 
   it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {

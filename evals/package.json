@@ -8,7 +8,8 @@
     "eval": "tsx src/run.ts",
     "typecheck": "tsc --noEmit -p .",
     "sim": "tsx sim/run.ts",
-    "draft-from-call": "tsx src/draft-from-call.ts"
+    "draft-from-call": "tsx src/draft-from-call.ts",
+    "real-audio": "tsx real-audio/run.ts"
   },
   "dependencies": {
     "@attendra/agent": "workspace:*",
@@ -26,5 +27,8 @@
   },
   "exports": {
     "./demo": "./src/demo.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
   }
 }
