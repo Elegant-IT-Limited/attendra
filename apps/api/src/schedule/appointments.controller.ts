@@ -57,14 +57,16 @@ export class AppointmentsController {
   ) {}
 
   @Get()
-  @Requires('schedule:read')
-  @ApiOperation({ summary: 'Appointments that start on the given clinic-time days: booked, cancelled, or both. Audited as one view of the range.' })
+  @Requires('schedule:list')
+  @ApiOperation({ summary: 'Appointments that start on the given clinic-time days: booked, cancelled, or both. Audited as one view of the range. A viewer gets them with no patient (empty patientId and patientName), not audited.' })
   @ApiOkResponse({ schema: schemaOf(Schedule) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(ScheduleQuery)) q: z.infer<typeof ScheduleQuery>, @CurrentStaff() staff: Staff): Promise<Schedule> {
     const clinic = await this.clinic(clinicId);
     const from = zonedInstant(q.from, '00:00', clinic.timezone);
     const to = zonedInstant(addDays(q.from, q.days), '00:00', clinic.timezone);
-    const rows = await this.schedule.range(clinicId, { from, to, providerId: q.providerId, status: q.status, label: `${q.from}+${q.days}` }, staff.userId);
+    const rows = can(staff.role!, 'schedule:read')
+      ? await this.schedule.range(clinicId, { from, to, providerId: q.providerId, status: q.status, label: `${q.from}+${q.days}` }, staff.userId)
+      : await this.schedule.rangeWithoutNames(clinicId, { from, to, providerId: q.providerId, status: q.status });
     return { from: q.from, days: q.days, appointments: rows.map(toAppointment) };
   }
 
@@ -117,7 +119,7 @@ export class AppointmentsController {
    * provider only, so no patient data and no audit row.
    */
   @Get('conflicts')
-  @Requires('schedule:read')
+  @Requires('schedule:list')
   @ApiOperation({ summary: 'Booked visits on a provider\'s days off or a holiday, from today: counts by day and provider. No patient data.' })
   @ApiOkResponse({ schema: schemaOf(ScheduleConflicts) })
   async conflicts(@Param('clinicId') clinicId: string): Promise<ScheduleConflicts> {

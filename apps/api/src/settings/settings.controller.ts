@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { applyListChange, ClinicConfig, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { can } from '../access';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
@@ -20,15 +21,16 @@ export class SettingsController {
   constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database) {}
 
   @Get()
-  @Requires('settings:read')
-  @ApiOperation({ summary: 'The clinic configuration the voice agent runs with. The ETag is its version: send it back as If-Match when saving.' })
+  @Requires('clinic:read')
+  @ApiOperation({ summary: 'The clinic configuration the voice agent runs with. The ETag is its version: send it back as If-Match when saving. A viewer gets it without vets\' private numbers, transfer numbers and the callers put straight through.' })
   @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
-  async get(@Param('clinicId') clinicId: string, @Res({ passthrough: true }) reply: FastifyReply): Promise<ClinicConfig> {
+  async get(@Param('clinicId') clinicId: string, @Res({ passthrough: true }) reply: FastifyReply, @CurrentStaff() staff: Staff): Promise<ClinicConfig> {
     const stored = await this.desk.settingsVersioned(clinicId);
     if (!stored) throw new NotFoundException({ error: 'not_found' });
     reply.header('etag', etag(stored.version)).header('cache-control', 'no-store');
     if (stored.updatedAt) reply.header('last-modified', stored.updatedAt.toUTCString());
-    return ClinicConfig.parse(stored.config);
+    const config = ClinicConfig.parse(stored.config);
+    return can(staff.role!, 'settings:read') ? config : viewerConfig(config);
   }
 
   @Get('meta')

@@ -24,6 +24,9 @@ import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
 import { laneProviders, MANY_PROVIDERS, MAX_CHOSEN, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
+/** How a visit shows to a role that sees the schedule without names (a viewer). */
+const NAMELESS_VISIT = 'Booked visit';
+
 type View = 'day' | 'week' | 'month' | 'agenda';
 // plain labels, each with a one-line hint (ezyVet and Provet Cloud name their views the same way)
 const VIEWS: { value: View; label: string; hint: string }[] = [
@@ -110,18 +113,21 @@ function ScheduleScreen() {
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
-    enabled: !!clinic && can('schedule:read') && show !== 'cancelled',
+    enabled: !!clinic && can('schedule:list') && show !== 'cancelled',
     placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
 
   const showCancelled = show === 'all';
   // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
-  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open), [schedule.data, showCancelled, open]);
+  // a viewer's schedule carries no patient: each visit shows as a booked visit, and does not open
+  const named = can('schedule:read');
+  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open)
+    .map((a) => (a.patientName ? a : { ...a, patientName: NAMELESS_VISIT })), [schedule.data, showCancelled, open]);
   const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
-  if (!meLoading && !can('schedule:read')) {
-    return <><PageHeader title="Schedule" /><Card><Empty title="The schedule is for the front desk">Your role can see calls and settings, not patient records. Ask a practice manager if you need more.</Empty></Card></>;
+  if (!meLoading && !can('schedule:list')) {
+    return <><PageHeader title="Schedule" /><Card><Empty title="The schedule is for the front desk">Your role cannot see the schedule. Ask a practice manager if you need it.</Empty></Card></>;
   }
   if (!clinic) return <><PageHeader title="Schedule" /><Skeleton className="h-96" /></>;
   // the stand-in a new clinic starts with is shown only while it is the only one, or has visits on screen
@@ -145,7 +151,7 @@ function ScheduleScreen() {
 
   return (
     <>
-      <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.</>}
+      <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.{named ? '' : ' Your role sees when visits are and with whom, without names.'}</>}
         actions={writable && <Button onClick={() => setBooking(true)}><Plus /> New booking</Button>} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -204,7 +210,7 @@ function ScheduleScreen() {
             <h2 className="font-semibold">Cancelled visits</h2>
             <p className="text-xs text-text-muted">The history of cancellations: who cancelled, why and when. Open one to see the visit.</p>
           </div>
-          <CancelledHistory clinicId={clinicId} clinic={clinic} providerId={providerId} onOpen={(id) => set({ appointment: id })} />
+          <CancelledHistory clinicId={clinicId} clinic={clinic} providerId={providerId} onOpen={(id) => named && set({ appointment: id })} />
         </Card>
       ) : (
       // busy while the grid still shows the previous range: screen readers and tests wait for it
@@ -223,13 +229,13 @@ function ScheduleScreen() {
           <>
             <div className="hidden md:block">
               {view === 'month'
-                ? <MonthGrid clinic={clinic} month={date.slice(0, 7)} dates={dates} appointments={appointments} today={today} onOpen={(id) => set({ appointment: id })} onDay={(d) => set({ view: 'day', date: d })} />
+                ? <MonthGrid clinic={clinic} month={date.slice(0, 7)} dates={dates} appointments={appointments} today={today} onOpen={(id) => named && set({ appointment: id })} onDay={(d) => set({ view: 'day', date: d })} />
                 : view === 'agenda'
-                  ? <Agenda clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} word={pets ? 'veterinarian' : 'provider'} />
-                  : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => set({ appointment: id })} />}
+                  ? <Agenda clinic={clinic} dates={dates} appointments={appointments} onOpen={(id) => named && set({ appointment: id })} word={pets ? 'veterinarian' : 'provider'} />
+                  : <Calendar clinic={clinic} dates={dates} providers={providers} appointments={appointments} today={today} now={new Date()} onOpen={(id) => named && set({ appointment: id })} />}
             </div>
             <div className="md:hidden">
-              <ScheduleList clinic={clinic} dates={view === 'month' ? dates.filter((d) => d.startsWith(date.slice(0, 7))) : dates} appointments={appointments} onOpen={(id) => set({ appointment: id })} />
+              <ScheduleList clinic={clinic} dates={view === 'month' ? dates.filter((d) => d.startsWith(date.slice(0, 7))) : dates} appointments={appointments} onOpen={(id) => named && set({ appointment: id })} />
             </div>
             {appointments.length === 0 && view !== 'month' && view !== 'agenda' && (hidden > 0 ? (
               <div className="hidden md:block"><Empty title="Nothing booked here">{hidden === 1 ? 'A cancelled visit is' : `${hidden} cancelled visits are`} hidden. Choose Booked and cancelled to see {hidden === 1 ? 'it' : 'them'}.</Empty></div>
@@ -241,7 +247,7 @@ function ScheduleScreen() {
       </Card>
       )}
 
-      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={open} onClose={() => set({ appointment: null })} canWrite={writable}
+      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={named ? open : null} onClose={() => set({ appointment: null })} canWrite={writable}
         patientHref={can('patients:read') ? (id) => `/c/${clinicId}/patients/${id}` : undefined} />
       {writable && (
         <BookingDialog clinicId={clinicId} clinic={clinic} open={booking} onOpenChange={setBooking}

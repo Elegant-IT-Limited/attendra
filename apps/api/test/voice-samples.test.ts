@@ -6,13 +6,13 @@ import { OTHER, startApi } from './helpers';
 const C = `/api/v1/clinics/${DEMO_CLINIC.id}/voice-sample`;
 let api: Awaited<ReturnType<typeof startApi>>;
 let owner: string;
-let viewer: string;
+let staff: string;
 const sample = vi.fn(async (voice: string, text: string) => Buffer.from(`${voice}:${text.slice(0, 10)}`));
 
 beforeAll(async () => {
   api = await startApi({ demoMode: false, voiceSamples: { sample } });
   owner = await api.signIn('omar@maple.example', true);
-  viewer = await api.signIn('vic@maple.example', true);
+  staff = await api.signIn('ana@maple.example', true);
 });
 afterAll(() => api.close());
 
@@ -24,7 +24,7 @@ describe('hearing a voice before choosing it', () => {
     expect(res.headers['content-type']).toBe('audio/mpeg');
     expect(res.headers['cache-control']).toBe('no-store'); // a changed greeting is never heard from an old copy
     expect(sample).toHaveBeenCalledWith('cedar', DEMO_CLINIC.greeting.slice(0, 300));
-    await api.request('GET', `${C}?voice=cedar`, { cookie: viewer }); // anyone who can read Settings
+    await api.request('GET', `${C}?voice=cedar`, { cookie: staff }); // anyone who can read Settings
     expect(sample).toHaveBeenCalledTimes(1); // the second one came from the cache
     const after = ((await api.t.db.execute(sql`select count(*)::int as n from audit_logs where action not like 'auth%'`)).rows[0] as { n: number }).n;
     expect(after).toBeLessThanOrEqual(before + 2); // sign-ins at most, no sample rows
@@ -69,7 +69,7 @@ describe('naming the assistant from a setup page', () => {
   const A = `/api/v1/clinics/${DEMO_CLINIC.id}/settings/assistant`;
   const S = `/api/v1/clinics/${DEMO_CLINIC.id}/settings`;
   it('offers the voices with a sample, and the greeting for a name, which a stock greeting follows', async () => {
-    const res = await api.request('GET', `${A}?assistantName=Nora`, { cookie: viewer });
+    const res = await api.request('GET', `${A}?assistantName=Nora`, { cookie: staff });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { voices: { id: string; label: string }[]; suggested: Record<string, string>; savedIsSuggested: boolean };
     expect(body.voices.map((v) => v.id)).toEqual([...PREVIEW_VOICES]);
@@ -78,7 +78,7 @@ describe('naming the assistant from a setup page', () => {
     expect(body.suggested.es).toContain('Soy Nora');
     // the demo clinic's greeting is the one suggested for its name
     expect(body.savedIsSuggested).toBe(true);
-    expect((await api.request('GET', A, { cookie: viewer })).json().suggested.en).toBe(DEMO_CLINIC.greeting);
+    expect((await api.request('GET', A, { cookie: staff })).json().suggested.en).toBe(DEMO_CLINIC.greeting);
   });
 
   it('a greeting the clinic wrote is kept; a name that is not one word and another clinic are refused', async () => {

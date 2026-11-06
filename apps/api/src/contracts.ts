@@ -46,7 +46,13 @@ export const Me = z.object({
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */
   simulatedCalls: z.boolean(),
+  /** Where a login can open a clinic of its own (the hosted service's page, which asks for an invite code); null where the deployment has none. */
+  newClinicUrl: z.string().nullable(),
+  /** Every role: its name, a one-line summary, and what it can and cannot do, generated from the permission table. One source for every screen. */
+  roles: z.array(z.object({ id: Role, label: z.string(), summary: z.string(), can: z.array(z.string()), limits: z.array(z.string()) })),
   clinics: z.array(z.object({ id: z.string(), name: z.string(), timezone: z.string(), role: Role, permissions: z.array(z.string()),
+    /** An owner's access: every location of the business. Every other role holds at this location only. */
+    accountWide: z.boolean(),
     /** The business the clinic belongs to: its locations are grouped under it in the clinic switcher. */
     organizationId: z.string(), organizationName: z.string(),
     /** May approve or decline refills: marked on the Team page. */
@@ -643,10 +649,14 @@ export const Member = z.object({
   /** May approve or decline refills. */
   approvesRefills: z.boolean(),
   avatarUrl: AvatarUrl,
+  /** An owner: at every location of the business. Anyone else is on this location's team only. */
+  allLocations: z.boolean(),
 });
 export const MemberList = z.object({ members: z.array(Member) });
 /** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
-export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false) });
+export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false),
+  /** Owners only: invite to every open location of the business, one Accept for all. An owner invitation is account-wide by itself. */
+  allLocations: z.boolean().default(false) });
 /** Your own name, as it shows to your team. */
 export const ProfileName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(80, 'at most 80 characters') });
 export const AvatarSaved = z.object({ avatarUrl: z.string() });
@@ -663,12 +673,26 @@ export const AddResult = z.object({
 });
 /** The invitations a team is waiting on. */
 export const TeamInvitationList = z.object({
-  invitations: z.array(z.object({ id: z.string(), email: z.string(), role: Role, approvesRefills: z.boolean(), invitedBy: z.string(), createdAt: z.iso.datetime(), expiresAt: z.iso.datetime() })),
+  invitations: z.array(z.object({ id: z.string(), email: z.string(), role: Role, approvesRefills: z.boolean(), invitedBy: z.string(), createdAt: z.iso.datetime(), expiresAt: z.iso.datetime(),
+    /** Sent to every location of the business at once. */
+    allLocations: z.boolean() })),
 });
-/** The invitations waiting for the signed-in person, from any clinic. */
+const InvitedLocation = z.object({ id: z.string(), name: z.string() });
+/** The invitations waiting for the signed-in person, from any clinic: one per invitation, or per "every location" invitation. */
 export const MyInvitationList = z.object({
-  invitations: z.array(z.object({ id: z.string(), clinicId: z.string(), clinicName: z.string(), role: Role, approvesRefills: z.boolean(), expiresAt: z.iso.datetime() })),
+  invitations: z.array(z.object({ id: z.string(), clinicId: z.string(), clinicName: z.string(), organizationName: z.string(), role: Role, approvesRefills: z.boolean(), expiresAt: z.iso.datetime(),
+    /** The locations accepting opens: one, or every location of the business. */
+    locations: z.array(InvitedLocation), allLocations: z.boolean() })),
 });
+/**
+ * One invitation as its link (/invite/<id>) shows it to the signed-in person. For their own
+ * address: the clinic, role and state. For another address, only that: nothing about the clinic.
+ */
+export const InvitationView = z.discriminatedUnion('state', [
+  z.object({ state: z.enum(['other_address', 'not_found']) }),
+  z.object({ state: z.enum(['pending', 'accepted', 'declined', 'canceled', 'expired']), id: z.string(), clinicId: z.string(), clinicName: z.string(), organizationName: z.string(),
+    role: Role, approvesRefills: z.boolean(), expiresAt: z.iso.datetime(), locations: z.array(InvitedLocation), allLocations: z.boolean() }),
+]);
 /** Accepted: the clinic to open. */
 export const AcceptedInvitation = z.object({ clinicId: z.string() });
 /** A new role, whether they may approve refills, or both. */
@@ -840,6 +864,7 @@ export type AddResult = z.infer<typeof AddResult>;
 export type TeamInvitationList = z.infer<typeof TeamInvitationList>;
 export type MyInvitationList = z.infer<typeof MyInvitationList>;
 export type AcceptedInvitation = z.infer<typeof AcceptedInvitation>;
+export type InvitationView = z.infer<typeof InvitationView>;
 export type DoctorInput = z.infer<typeof DoctorInput>;
 export type DoctorList = z.infer<typeof DoctorList>;
 export type ImportResult = z.infer<typeof ImportResult>;

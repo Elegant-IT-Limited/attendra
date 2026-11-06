@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 export * from './abuse';
 export * from './returning-call';
+export * from './roles';
 export * from './api-scopes';
 export * from './clinic';
 export * from './confirmation';

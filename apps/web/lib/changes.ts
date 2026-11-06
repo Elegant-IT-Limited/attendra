@@ -14,6 +14,8 @@ const STALE: Record<string, string[]> = {
   patients: ['patients', 'tasks'],
   calls: ['calls', 'call', 'overview', 'live'],
   settings: ['settings', 'doctors', 'slots'],
+  // a role changed here: who you are (the menu and every button), the team list and "Assign to"
+  team: ['me', 'members', 'assignees'],
 };
 
 /** At most one refetch of a screen per this many milliseconds, however many changes arrive. */

@@ -39,7 +39,7 @@ describe('the clinic\'s knowledge', () => {
     expect(queued).toHaveLength(1);
     await upload(as.admin, 'Late arrivals', 'If you arrive more than 15 minutes late, we may ask you to rebook so the next patient is seen on time.');
     expect(queued).toHaveLength(1); // the same bytes again: nothing to index
-    const list = (await api.request('GET', `${C}/knowledge/documents`, { cookie: as.viewer })).json();
+    const list = (await api.request('GET', `${C}/knowledge/documents`, { cookie: as.staff })).json();
     expect(list.documents).toEqual([expect.objectContaining({ title: 'Late arrivals', status: 'ready', chunkCount: 1 })]);
     expect((await api.t.db.execute(sql`select action from audit_logs where action = 'knowledge.document.uploaded'`)).rows).toHaveLength(1);
   });
@@ -50,10 +50,11 @@ describe('the clinic\'s knowledge', () => {
     expect((await upload(as.admin, 'Empty', Buffer.alloc(0))).statusCode).toBe(400);
   });
 
-  it('only managers upload and delete; front desk and viewers can see and ask', async () => {
+  it('only managers upload and delete; the front desk can see and ask; a viewer cannot', async () => {
     expect((await upload(as.staff, 'Mine', 'text')).statusCode).toBe(403);
     expect((await upload(as.viewer, 'Mine', 'text')).statusCode).toBe(403);
-    expect((await api.request('POST', `${C}/knowledge/ask`, { cookie: as.viewer, body: { question: 'what if I arrive late' } })).statusCode).toBe(200);
+    expect((await api.request('POST', `${C}/knowledge/ask`, { cookie: as.staff, body: { question: 'what if I arrive late' } })).statusCode).toBe(200);
+    expect((await api.request('POST', `${C}/knowledge/ask`, { cookie: as.viewer, body: { question: 'what if I arrive late' } })).statusCode).toBe(403);
     expect((await api.request('GET', `${C}/knowledge/documents`, { cookie: as.outsider })).statusCode).toBe(404);
     expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/knowledge/documents`, { cookie: as.outsider })).json()).toEqual({ documents: [] });
   });

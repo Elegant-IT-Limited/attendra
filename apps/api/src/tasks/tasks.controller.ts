@@ -54,11 +54,25 @@ export class TasksController {
   }
 
   @Get()
-  @Requires('tasks:read')
-  @ApiOperation({ summary: 'The request queue (refills, callbacks, new patients to check), newest first, filtered by type, by who has them, by the day they came in, and by words in them. Audited per request shown.' })
+  @Requires('tasks:list')
+  @ApiOperation({ summary: 'The request queue (refills, callbacks, new patients to check), newest first, filtered by type, by who has them, by the day they came in, and by words in them. Audited per request shown. A viewer gets number, type, state, age and who has it, with no patient, details or notes, not audited.' })
   @ApiOkResponse({ schema: schemaOf(TaskList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(TaskQuery)) q: z.infer<typeof TaskQuery>, @CurrentStaff() staff: Staff): Promise<TaskList> {
+    if (!can(staff.role!, 'tasks:read')) return this.withoutNames(clinicId, q);
     return this.find(clinicId, { ...q, q: '' }, staff);
+  }
+
+  /** The queue for a viewer: the request itself, never the patient, the details or the notes. */
+  private async withoutNames(clinicId: string, q: z.infer<typeof TaskQuery>): Promise<TaskList> {
+    const tasks = await this.desk.listTasksWithoutNames(clinicId, { status: q.status, type: q.type, limit: 100 });
+    const people = await staffPeople(this.db, clinicId, tasks.flatMap((t) => [t.assigneeUserId, t.doneByUserId].filter((x): x is string => !!x)));
+    const nameOf = (id: string | null) => (id ? people.get(id)?.name ?? null : null);
+    return {
+      tasks: tasks.map(({ assignedByUserId: _by, createdByUserId: _created, notes: _notes, ...t }) => ({
+        ...t, createdAt: t.createdAt.toISOString(), claimedAt: iso(t.claimedAt), doneAt: iso(t.doneAt),
+        assigneeName: nameOf(t.assigneeUserId), doneByName: nameOf(t.doneByUserId), createdBy: null, notes: [],
+      })),
+    };
   }
 
   /** A POST, not a GET: what is typed can be a name, a medication or a phone number, and URLs end up in logs. */
@@ -97,7 +111,7 @@ export class TasksController {
   }
 
   @Get('count')
-  @Requires('tasks:read')
+  @Requires('tasks:list')
   @ApiOperation({ summary: 'How many tasks are open. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(TaskCount) })
   async count(@Param('clinicId') clinicId: string): Promise<TaskCount> {
@@ -105,7 +119,7 @@ export class TasksController {
   }
 
   @Get('waiting')
-  @Requires('tasks:read')
+  @Requires('tasks:list')
   @ApiOperation({ summary: 'Open tasks nobody has claimed, newest first: type and age only, for the home screen. No patient data, not audited.' })
   @ApiOkResponse({ schema: schemaOf(WaitingTasks) })
   async waiting(@Param('clinicId') clinicId: string): Promise<WaitingTasks> {

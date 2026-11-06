@@ -40,6 +40,20 @@ const CANCELLED_SCAN = 5000;
 export class ScheduleRepository {
   constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
 
+  /**
+   * The same range with no patient in it, for a viewer: when, with which vet, what kind of
+   * visit and its state. Nothing is decrypted, so nothing is audited; patientId and
+   * patientName are empty.
+   */
+  async rangeWithoutNames(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; status?: 'booked' | 'cancelled' | 'all' }): Promise<ScheduleEntry[]> {
+    const rows = await withClinic(this.db, clinicId, (tx) => tx.select({ a: appointments }).from(appointments)
+      .where(and(eq(appointments.clinicId, clinicId), lt(appointments.startsAt, q.to), gt(appointments.endsAt, q.from),
+        q.providerId ? eq(appointments.providerId, q.providerId) : undefined,
+        q.status && q.status !== 'all' ? eq(appointments.status, q.status) : undefined))
+      .orderBy(asc(appointments.startsAt), asc(appointments.id)));
+    return (await this.entries(clinicId, rows.map((r) => ({ a: r.a, firstNameEnc: null, lastNameEnc: null })))).map((e) => ({ ...e, patientId: '' }));
+  }
+
   /** Booked and cancelled appointments that overlap [from, to), so a visit already under way at `from` is shown too, earliest first. */
   async range(clinicId: string, q: { from: Date; to: Date; providerId?: string | null; status?: 'booked' | 'cancelled' | 'all'; label: string }, userId: string): Promise<ScheduleEntry[]> {
     const rows = await withClinic(this.db, clinicId, async (tx) => {
@@ -106,14 +120,14 @@ export class ScheduleRepository {
     };
   }
 
-  private async entries(clinicId: string, rows: { a: typeof appointments.$inferSelect; firstNameEnc: string; lastNameEnc: string }[]): Promise<ScheduleEntry[]> {
+  private async entries(clinicId: string, rows: { a: typeof appointments.$inferSelect; firstNameEnc: string | null; lastNameEnc: string | null }[]): Promise<ScheduleEntry[]> {
     const names = await staffNames(this.db, clinicId, rows.flatMap(({ a }) => [a.createdByUserId, a.cancelledByUserId].filter((x): x is string => !!x)));
     const by = (callId: string | null, userId: string | null): BookedBy | null =>
       callId ? { kind: 'assistant', callId } : userId ? { kind: 'staff', userId, name: names.get(userId) ?? null } : null;
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ a, firstNameEnc, lastNameEnc }) => ({
       id: a.id, patientId: a.patientId,
-      patientName: `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`,
+      patientName: firstNameEnc && lastNameEnc ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}` : '',
       providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, status: a.status,
       cancelReason: a.cancelReason, createdAt: a.createdAt,
       overrideReason: a.overrideReason, confirmedAt: a.confirmedAt, confirmedVia: a.confirmedVia, reminderSentAt: a.reminderSentAt,
