@@ -563,7 +563,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     const other = await signIn(browser, watch, 'the other owner', OTHER.email, OTHER.password);
     await expect(other).toHaveURL(/\/c\/[^/]+$/, { timeout: 30_000 });
     const banner = other.getByTestId('invitation');
-    await expect(banner).toContainText('Willow Bend Animal Clinic invited you to its team as Practice manager.');
+    await expect(banner).toContainText('Willow Bend Animal Clinic invited you as Practice manager.');
     await banner.getByRole('button', { name: 'Accept' }).click();
     await expect(other.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
 
@@ -581,7 +581,7 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await expect(page.getByRole('row', { name: new RegExp(OTHER.name) })).toBeVisible();
     await page.getByRole('row', { name: new RegExp(NEWCOMER.name) }).getByRole('button', { name: 'Remove' }).click();
     await page.getByRole('dialog', { name: `Remove ${NEWCOMER.name}?` }).getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByText(`${NEWCOMER.name} is off the team`)).toBeVisible();
+    await expect(page.getByText(`${NEWCOMER.name} can no longer open Willow Bend Animal Clinic.`)).toBeVisible();
     await expect(page.getByRole('row', { name: new RegExp(NEWCOMER.name) })).toHaveCount(0);
 
     // and the newcomer, signed out with it, signs in again and is told they are on no team now
@@ -591,6 +591,8 @@ test('first day: a new owner sets up an empty clinic, through the screens only',
     await newcomer.getByLabel('Password').fill('riley picks a long one');
     await signInPatiently(newcomer, () => newcomer.getByRole('button', { name: 'Sign in', exact: true }).click());
     await expect(newcomer.getByText('No clinic yet')).toBeVisible();
+    // never a dead end: what to ask for, and where an invitation will show
+    await expect(newcomer.getByText('invite this email address', { exact: false })).toBeVisible();
     await watch.axe(newcomer, 'No clinic yet');
   });
 

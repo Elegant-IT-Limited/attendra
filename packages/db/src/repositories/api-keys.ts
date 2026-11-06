@@ -12,8 +12,8 @@ export interface ApiCaller { keyId: string; clinicId: string; scopes: ApiScope[]
 
 /** The roles that may hold a key: a key works only while the person who made it is still one of these at the clinic. */
 export const KEY_HOLDER_ROLES = ['owner', 'admin'] as const;
-const holder = sql`exists (select 1 from memberships m join clinics c on c.org_id = m.organization_id
-  where c.id = api_keys.clinic_id and m.user_id = api_keys.created_by_user_id and m.role in ('owner', 'admin'))`;
+const holder = sql`exists (select 1 from clinic_access a
+  where a.clinic_id = api_keys.clinic_id and a.user_id = api_keys.created_by_user_id and a.role in ('owner', 'admin'))`;
 
 const hashOf = (key: string) => createHash('sha256').update(key).digest('hex');
 const rows = <T>(r: { rows: unknown[] }) => r.rows as T[];

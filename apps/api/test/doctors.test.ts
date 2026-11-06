@@ -39,8 +39,9 @@ describe('doctors', () => {
     expect(saved.json().issues).toEqual([{ path: 'vipCallers.0.phone', message: 'Use numbers only, for example (555) 555-0123.' }]);
   });
 
-  it('everyone on the team can see them; only managers change them', async () => {
-    for (const role of ['owner', 'admin', 'staff', 'viewer'] as const) expect((await api.request('GET', C, { cookie: as[role] })).statusCode, role).toBe(200);
+  it('the front desk and up see them (a viewer only by name, on the schedule); only managers change them', async () => {
+    for (const role of ['owner', 'admin', 'staff'] as const) expect((await api.request('GET', C, { cookie: as[role] })).statusCode, role).toBe(200);
+    expect((await api.request('GET', C, { cookie: as.viewer })).statusCode).toBe(403);
     expect((await api.request('POST', C, { cookie: as.staff, body: kim })).statusCode).toBe(403);
   });
 

@@ -4,7 +4,6 @@ import { randomBytes } from 'node:crypto';
 import type { Auth } from './auth';
 
 /** The roles in the words the dashboard uses, for emails. */
-export const ROLE_LABEL: Record<StaffRole, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
 /** 16 characters from 12 random bytes: over Better Auth's 12-character minimum, and short enough to read out. */
 export const temporaryPassword = () => randomBytes(12).toString('base64url');
@@ -42,11 +41,12 @@ export async function hasPassword(auth: Auth, userId: string) {
 }
 
 /** A link to /reset-password that sets the account's password, working until `expiresAt`: the same kind "Forgot password" emails. */
-export async function setPasswordLink(auth: Auth, publicUrl: string, userId: string, expiresAt: Date) {
+export async function setPasswordLink(auth: Auth, publicUrl: string, userId: string, expiresAt: Date, next?: string) {
   const ctx = await auth.$context;
   const token = randomBytes(24).toString('base64url');
   await ctx.internalAdapter.createVerificationValue({ identifier: `reset-password:${token}`, value: userId, expiresAt });
-  return `${publicUrl}/reset-password?token=${encodeURIComponent(token)}`;
+  // where to go once the password is set and they have signed in: the invitation they came for
+  return `${publicUrl}/reset-password?token=${encodeURIComponent(token)}${next ? `&next=${encodeURIComponent(next)}` : ''}`;
 }
 
 export async function findAccount(auth: Auth, email: string) {

@@ -35,6 +35,28 @@ jobs:
         run: pnpm --filter @attendra/web build
         env: { NEXT_TELEMETRY_DISABLED: '1' }
 
+  # The team, invitation, profile and role tests again on the Postgres image production runs
+  # (with its roles and row-level security), not the in-process one: tester finding 2
+  # (2026-11-04), a profile save that failed on production and never in tests.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg18-trixie
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version: 24.22.1, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: your profile, the team, invitations and every role, on a real Postgres
+        run: pnpm exec vitest run packages/db/test/clinic-access.test.ts packages/db/test/invitations.test.ts apps/api/test/profile.test.ts apps/api/test/invitations.test.ts apps/api/test/roles.test.ts apps/api/test/password.test.ts
+        env: { ATTENDRA_TEST_DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/postgres' }
+
   e2e:
     runs-on: ubuntu-latest
     steps:

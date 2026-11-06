@@ -2,8 +2,9 @@
 import { Client } from 'pg';
 
 /** What changed in a clinic: the dashboard asks for that page again. Never a row, never patient data. */
-export type ChangeTopic = 'requests' | 'schedule' | 'patients' | 'calls' | 'settings';
-export const CHANGE_TOPICS: readonly ChangeTopic[] = ['requests', 'schedule', 'patients', 'calls', 'settings'];
+export type ChangeTopic = 'requests' | 'schedule' | 'patients' | 'calls' | 'settings' | 'team';
+/** 'team': someone's role, a removal or an invitation at this location changed (migration 0046). */
+export const CHANGE_TOPICS: readonly ChangeTopic[] = ['requests', 'schedule', 'patients', 'calls', 'settings', 'team'];
 export const CHANGE_CHANNEL = 'attendra_changes';
 
 /** One clinic's change notices, for as long as someone is subscribed. */

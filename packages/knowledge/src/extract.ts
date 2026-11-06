@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { SourceType } from '@attendra/db';
 import { Worker } from 'node:worker_threads';
+import { PAGE_BREAK } from './chunk';
 
 export const MAX_BYTES = 5 * 1024 * 1024;
 /** Documents per clinic: each one is embedded and stored, so the count is bounded. */
@@ -22,13 +23,22 @@ export function sourceTypeOf(name: string, mediaType?: string): SourceType | nul
   return null;
 }
 
+/** A document's text, and its pages: null for text and markdown, which have none. */
+export interface Extracted { text: string; pageCount: number | null }
+
 /** The document's text: as it is for text and markdown, page by page for a PDF. */
 export async function extractText(content: Buffer, type: SourceType): Promise<string> {
+  return (await extractDocument(content, type)).text;
+}
+
+/** The document's text and page count. A PDF's pages are separated by PAGE_BREAK. */
+export async function extractDocument(content: Buffer, type: SourceType): Promise<Extracted> {
   if (content.length > MAX_BYTES) throw new KnowledgeError('too_large');
   if (type !== 'pdf') {
     const text = new TextDecoder('utf-8', { fatal: false }).decode(content);
     if (text.includes('\u0000')) throw new KnowledgeError('not_text');
-    return text;
+    // a form feed in a text file is not a page of ours
+    return { text: text.replaceAll(PAGE_BREAK, '\n'), pageCount: null };
   }
   if (content.subarray(0, 5).toString('latin1') !== '%PDF-') throw new KnowledgeError('not_a_pdf');
   return pdfInWorker(content, PDF_LIMITS);
@@ -39,7 +49,7 @@ export async function extractText(content: Buffer, type: SourceType): Promise<st
  * most `maxPages` pages and `maxChars` characters of text. A PDF over a limit, one
  * that takes too long, or one that crashes the thread fails with a code.
  */
-export function pdfInWorker(content: Buffer, limits: typeof PDF_LIMITS): Promise<string> {
+export function pdfInWorker(content: Buffer, limits: typeof PDF_LIMITS): Promise<Extracted> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./pdf-worker.mjs', import.meta.url), {
       workerData: { bytes: content, maxPages: limits.maxPages, maxChars: limits.maxChars },
@@ -51,7 +61,7 @@ export function pdfInWorker(content: Buffer, limits: typeof PDF_LIMITS): Promise
     let settled = false;
     const finish = (fn: () => void) => { if (settled) return; settled = true; clearTimeout(timer); void worker.terminate(); fn(); };
     const timer = setTimeout(() => finish(() => reject(new KnowledgeError('pdf_timeout'))), limits.timeoutMs);
-    worker.once('message', (m: { text?: string; error?: string }) => finish(() => (typeof m.text === 'string' ? resolve(m.text) : reject(new KnowledgeError(m.error ?? 'pdf_unreadable')))));
+    worker.once('message', (m: { text?: string; pages?: number; error?: string }) => finish(() => (typeof m.text === 'string' ? resolve({ text: m.text, pageCount: m.pages ?? null }) : reject(new KnowledgeError(m.error ?? 'pdf_unreadable')))));
     worker.once('error', (err: Error & { code?: string }) => finish(() => reject(new KnowledgeError(err.code === 'ERR_WORKER_OUT_OF_MEMORY' ? 'pdf_too_complex' : 'pdf_unreadable'))));
     worker.once('exit', () => finish(() => reject(new KnowledgeError('pdf_unreadable'))));
   });

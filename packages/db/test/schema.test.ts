@@ -14,10 +14,10 @@ it('describes every table and column the migrations create, so no query needs ra
   for (const v of [...Object.values(schema), ...Object.values(auth)]) {
     if (is(v, PgTable)) { const c = getTableConfig(v); defined.set(c.name, c.columns.map((x) => x.name).sort()); }
   }
-  // the migrator's own bookkeeping, not an Attendra table
+  // the migrator's own bookkeeping, and rollback copies a migration keeps for one release, are not Attendra tables
   const rows = (await t.db.execute(sql`select c.table_name, c.column_name from information_schema.columns c
     join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
-    where c.table_schema = 'public' and t.table_type = 'BASE TABLE' and c.table_name <> 'schema_migrations'`)).rows as { table_name: string; column_name: string }[];
+    where c.table_schema = 'public' and t.table_type = 'BASE TABLE' and c.table_name <> 'schema_migrations' and c.table_name !~ '_before_[0-9]{4}$'`)).rows as { table_name: string; column_name: string }[];
   const live = new Map<string, string[]>();
   for (const r of rows) live.set(r.table_name, [...(live.get(r.table_name) ?? []), r.column_name]);
   for (const [table, columns] of live) expect(defined.get(table), table).toEqual(columns.sort());

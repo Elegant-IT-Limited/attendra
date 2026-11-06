@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { KnowledgeBase } from '@attendra/core';
-import { type Database, KnowledgeRepository, staffNames } from '@attendra/db';
-import { type Answerer, answerQuestion, MAX_BYTES, MAX_DOCUMENTS, sourceTypeOf } from '@attendra/knowledge';
+import { type Database, KnowledgeRepository, type SourceType, staffNames } from '@attendra/db';
+import { type Answerer, answerQuestion, assessDocument, extractText, MAX_BYTES, MAX_DOCUMENTS, sourceTypeOf } from '@attendra/knowledge';
 import type { JobQueue } from '@attendra/worker/queue';
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, NotFoundException, Param, Post, Query, Req, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiCookieAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
@@ -47,6 +47,11 @@ export class KnowledgeController {
    * Upload a document as the raw body (PDF, plain text or markdown, up to 5 MB), with
    * its title in the query. The same title replaces the document; the same bytes
    * again change nothing. At most 50 documents per clinic. Indexing happens in the worker.
+   *
+   * Whatever is kept may be read to a caller. A document whose text does not read like
+   * clinic information (a software manual, someone's notes) is not kept: the answer is
+   * 409 not_clinic_information, and the dashboard asks before sending it again with
+   * confirm=true.
    */
   @Post('documents')
   @HttpCode(201)
@@ -67,6 +72,9 @@ export class KnowledgeController {
     if (docs.length >= MAX_DOCUMENTS && !docs.some((d) => d.title === q.title)) {
       throw new HttpException({ error: 'too_many_documents', message: `A clinic can keep ${MAX_DOCUMENTS} documents. Delete one, or upload with the same title to replace it.` }, 409);
     }
+    if (q.confirm !== 'true' && (await clinicInformation(content, type)) === false) {
+      throw new HttpException({ error: 'not_clinic_information', message: 'This doesn\'t look like clinic information: callers may hear it. Upload anyway?' }, 409);
+    }
     const saved = await this.repo.save(clinicId, { title: q.title, sourceType: type, content, userId: staff.userId, embeddingModel: this.knowledge?.embeddingModel });
     if (saved.changed) await this.jobs.indexDocument({ clinicId, documentId: saved.id, hash: saved.hash, version: saved.version });
     const doc = await this.repo.get(clinicId, saved.id);
@@ -82,9 +90,10 @@ export class KnowledgeController {
   }
 
   /**
-   * What the assistant would answer, and the passages it would answer from. A medical
-   * question is refused before anything is searched. Do not type patient details: the
-   * question is embedded like a caller's.
+   * What the assistant would answer, and the passages it answered from. A medical
+   * question is refused before anything is searched, and so is one that is not about
+   * the clinic (its software, its AI, the weather): one polite line. Do not type
+   * patient details: the question is embedded like a caller's.
    */
   @Post('ask')
   @HttpCode(200)
@@ -100,7 +109,20 @@ export class KnowledgeController {
   private view(d: Awaited<ReturnType<KnowledgeRepository['list']>>[number], names: Map<string, string>): KnowledgeDocument {
     return {
       id: d.id, title: d.title, sourceType: d.sourceType, sizeBytes: d.sizeBytes, status: d.status, failure: d.failure, chunkCount: d.chunkCount,
-      uploadedBy: names.get(d.uploadedByUserId) ?? null, updatedAt: d.updatedAt.toISOString(),
+      uploadedBy: names.get(d.uploadedByUserId) ?? null, updatedAt: d.updatedAt.toISOString(), extractedChars: d.extractedChars, pageCount: d.pageCount,
     };
+  }
+}
+
+/**
+ * Whether an upload's text reads like clinic information, or null when its text cannot
+ * be read here: the indexer then reports why, as it does for any upload. The PDF is
+ * read in its own thread with its limits, as the indexer reads it.
+ */
+async function clinicInformation(content: Buffer, type: SourceType): Promise<boolean | null> {
+  try {
+    return assessDocument(await extractText(content, type)).clinicInformation;
+  } catch {
+    return null;
   }
 }

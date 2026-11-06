@@ -33,6 +33,8 @@ async function columns(): Promise<Column[]> {
     select c.table_schema as schema, c.table_name as table, c.column_name as column
     from information_schema.columns c join information_schema.tables t using (table_schema, table_name)
     where t.table_type = 'BASE TABLE' and c.table_schema not in ('pg_catalog', 'information_schema')
+      -- a migration's rollback copy, kept for one release (memberships_before_0046), is not live data
+      and c.table_name !~ '_before_[0-9]{4}$'
       and (c.column_name in ('clinic_id', 'user_id', 'inviter_id') or c.column_name like '%organization_id' or c.column_name like '%\\_user\\_id')
     order by 1, 2, 3`);
   return rows.map((r) => ({ ...r, kind: r.column === 'clinic_id' ? 'clinic' : r.column.endsWith('organization_id') ? 'organization' : 'user' }));
@@ -67,6 +69,9 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into auth_two_factors (id, user_id, secret, backup_codes) values ($1, $2, 'x', 'x')`, [`tf_${owner}`, owner]);
   await q(`insert into user_avatars (user_id, bytes, content_type) values ($1, '\\x52494646', 'image/webp')`, [owner]);
   await q(`insert into memberships (id, organization_id, user_id, role) values ($1, $2, $3, 'owner')`, [`mem_${owner}`, orgId, owner]);
+  // and someone on the front desk of this location only
+  await q(`insert into auth_users (id, name, email) values ($1, 'Dana Example', $2)`, [`${owner}_desk`, `${owner}.desk@example.com`]);
+  await q(`insert into clinic_memberships (id, clinic_id, user_id, role) values ($1, $2, $3, 'staff')`, [`cm_${owner}`, clinicId, `${owner}_desk`]);
   await q(`insert into invitations (id, organization_id, email, role, inviter_id, expires_at, clinic_id) values ($1, $2, 'new.hire@example.com', 'staff', $3, now() + interval '7 days', $4)`, [`inv_${owner}`, orgId, owner, clinicId]);
   await q(`select set_config('app.clinic_id', $1, false)`, [clinicId]);
   const [patient] = await q<{ id: string }>(`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash) values ($1, 'h', 'x', 'x', 'x', 'x', 'h') returning id`, [clinicId]);
@@ -104,19 +109,19 @@ describe('deleting a removed clinic leaves nothing of it', () => {
     await q(`update clinics set closed_at = null where id = 'clinic_kept'`);
     // someone on both teams keeps their login and the other team
     await q(`insert into auth_users (id, name, email) values ('user_both', 'Sam Example', 'sam@example.com')`);
-    await q(`insert into memberships (id, organization_id, user_id, role) values ('mem_both_1', 'org_gone', 'user_both', 'staff'), ('mem_both_2', 'org_kept', 'user_both', 'staff')`);
+    await q(`insert into clinic_memberships (id, clinic_id, user_id, role) values ('mem_both_1', 'clinic_gone', 'user_both', 'staff'), ('mem_both_2', 'clinic_kept', 'user_both', 'staff')`);
 
-    const before = await scan('clinic_gone', 'org_gone', ['user_gone']);
+    const before = await scan('clinic_gone', 'org_gone', ['user_gone', 'user_gone_desk']);
     const empty = Object.entries(before).filter(([, n]) => n === 0).map(([k]) => k);
     expect(empty, 'tables with no row of the clinic before the purge: seed one').toEqual([]);
     expect(Object.keys(before)).toEqual(expect.arrayContaining(['public.call_actions.clinic_id', 'public.call_segments.clinic_id', 'public.knowledge_chunks.clinic_id', 'public.invitations.clinic_id', 'pgboss.job.data.clinicId']));
-    const kept = await scan('clinic_kept', 'org_kept', ['user_kept', 'user_both']);
+    const kept = await scan('clinic_kept', 'org_kept', ['user_kept', 'user_kept_desk', 'user_both']);
 
     expect(await purgeClosedClinic(t.db, 'clinic_gone', NOW)).toBe('purged');
-    const after = await scan('clinic_gone', 'org_gone', ['user_gone']);
+    const after = await scan('clinic_gone', 'org_gone', ['user_gone', 'user_gone_desk']);
     expect(Object.entries(after).filter(([, n]) => n > 0)).toEqual([]);
-    expect(await scan('clinic_kept', 'org_kept', ['user_kept', 'user_both'])).toEqual({ ...kept, 'public.memberships.user_id': kept['public.memberships.user_id']! - 1 });
-    expect(await q(`select organization_id from memberships where user_id = 'user_both'`)).toEqual([{ organization_id: 'org_kept' }]);
+    expect(await scan('clinic_kept', 'org_kept', ['user_kept', 'user_kept_desk', 'user_both'])).toEqual({ ...kept, 'public.clinic_memberships.user_id': kept['public.clinic_memberships.user_id']! - 1 });
+    expect(await q(`select clinic_id from clinic_memberships where user_id = 'user_both'`)).toEqual([{ clinic_id: 'clinic_kept' }]);
   });
 
   it('a location: its own rows go, and the organization, its team and its other clinic stay', async () => {

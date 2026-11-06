@@ -1,7 +1,7 @@
 import { DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, createPhiCipher, FrontDeskRepository, PostgresPatientDirectory, PostgresTaskQueue, saveClinic, seedDemo, seedRiverbend } from '../src';
+import { addMembership, CallRepository, createPhiCipher, FrontDeskRepository, PostgresPatientDirectory, PostgresTaskQueue, saveClinic, seedDemo, seedRiverbend } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 import { phoneKey } from '../src/repositories/patients';
 
@@ -16,7 +16,7 @@ beforeAll(async () => {
   ({ patientIds: pets } = await seedRiverbend(t.db, cipher));
   await saveClinic(t.db, 'org_other', { ...DEMO_CLINIC, id: 'clinic_numbers_other', name: 'Other', phoneNumbers: ['+13035550120'] });
   await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_num', 'Nia Desk', 'nia@example.test')`);
-  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_num', 'org_riverbend', 'u_num', 'staff')`);
+  await addMembership(t.db, 'org_riverbend', 'u_num', 'staff');
 });
 afterAll(() => t.close());
 

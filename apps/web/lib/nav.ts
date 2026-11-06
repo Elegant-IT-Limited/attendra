@@ -10,10 +10,10 @@ export const NAV: { group: string | null; items: NavItem[] }[] = [
   {
     group: 'Front desk',
     items: [
-      { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:read', shortcut: 's' },
+      { href: 'schedule', label: 'Schedule', icon: CalendarDays, permission: 'schedule:list', shortcut: 's' },
       { href: 'patients', label: 'Patients', icon: Users, permission: 'patients:read', shortcut: 'p', term: 'patients' },
       { href: 'doctors', label: 'Doctors', icon: Stethoscope, permission: 'settings:read', shortcut: 'd', term: 'providers' },
-      { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:read', shortcut: 'r' },
+      { href: 'requests', label: 'Requests', icon: ListChecks, permission: 'tasks:list', shortcut: 'r' },
       { href: 'calls', label: 'Calls', icon: Phone, permission: 'calls:list', shortcut: 'c' },
     ],
   },

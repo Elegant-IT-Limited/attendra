@@ -41,7 +41,8 @@ const blank = (visitTypes: VisitType[]): Draft => ({
 const draftOf = (p: Provider): Draft => ({ ...p, gender: p.gender ?? '', phone: p.phone ?? '', otherPhones: (p.otherPhones ?? []).join(', '), specialty: p.specialty ?? '', ownHours: !!p.hours });
 
 /**
- * The clinic's doctors, and rooms booked like one. Everyone on the team can look;
+ * The clinic's doctors, and rooms booked like one. The front desk and up can look (a viewer
+ * sees their names on the schedule only);
  * managers add, change and remove them, set each one's weekly hours and days off, or
  * import a list. The assistant uses the list as it is now from the next thing a
  * caller asks, and every open screen shows a change without a refresh.

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { newContext, openAs, signInPatiently } from './session';
 
-test('a manager adds a staff member and changes their role; as a viewer they cannot open Patients', async ({ browser }) => {
+test('a manager adds a staff member and changes their role; as a viewer they see calls, the schedule and requests without names, and cannot open Patients', async ({ browser }) => {
   // one long journey through two people and a dozen pages, each compiled on first use by next dev
   test.slow();
   const page = await openAs(browser, 'manager');
@@ -25,7 +25,7 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   const row = page.getByRole('row', { name: /Riley Stone/ });
   await expect(row.getByLabel('Role for Riley Stone')).toHaveValue('staff');
   await row.getByLabel('Role for Riley Stone').selectOption({ label: 'Viewer' });
-  await expect(page.getByText('Riley Stone is now viewer.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Riley Stone is now viewer at Maple Street Family Medicine.', { exact: false })).toBeVisible();
   await page.getByRole('link', { name: 'Audit log' }).click();
   await expect(page.getByText('Changed someone\'s role to viewer').first()).toBeVisible();
   await expect(page.getByText('Added a person to the team, as front desk').first()).toBeVisible();
@@ -49,7 +49,9 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.keyboard.press('?');
   const keys = riley.getByRole('dialog', { name: 'Keyboard shortcuts' });
   await expect(keys.getByText('Go to Calls')).toBeVisible();
-  for (const label of ['Go to Schedule', 'Go to Patients', 'Go to Requests', 'New booking']) await expect(keys.getByText(label)).toHaveCount(0);
+  // a viewer (approved 2026-11-06): the call list, the schedule and requests, read-only, with no names
+  for (const label of ['Go to Schedule', 'Go to Requests']) await expect(keys.getByText(label)).toBeVisible();
+  for (const label of ['Go to Patients', 'New booking']) await expect(keys.getByText(label)).toHaveCount(0);
   await riley.keyboard.press('Escape');
   // and a clinic with no calls yet does not offer a viewer a test call
   await riley.route((url) => url.pathname.endsWith('/calls') && url.searchParams.get('limit') === '50', (route) => route.fulfill({ json: { calls: [], next: null } }));
@@ -67,11 +69,20 @@ test('a manager adds a staff member and changes their role; as a viewer they can
   await riley.goto(`${home}/calls/${someone}/live`);
   await expect(riley.getByText('Your role cannot watch live calls', { exact: false })).toBeVisible({ timeout: 20_000 });
   expect(streams).toBe(0);
-  for (const [path, title] of [['/audit', 'Not available'], ['/schedule', 'The schedule is for the front desk'],
+  for (const [path, title] of [['/audit', 'Not available'],
     [`/patients/${someone}`, 'Patients are for the front desk'], [`/calls/${someone}`, 'Call records are for the front desk']] as const) {
     await riley.goto(`${home}${path}`);
     await expect(riley.getByText(title, { exact: true }), path).toBeVisible({ timeout: 20_000 }); // next dev compiles each page on first use
   }
+  // the schedule and requests are there, without a name, a phone number or a request's details, and nothing opens
+  await riley.goto(`${home}/schedule`);
+  await expect(riley.getByText('Your role sees when visits are and with whom, without names.', { exact: false })).toBeVisible({ timeout: 20_000 });
+  await expect(riley.getByRole('button', { name: 'New booking' })).toHaveCount(0);
+  await riley.goto(`${home}/requests`);
+  await expect(riley.getByText('Your role sees each request without names, phone numbers or details.', { exact: false })).toBeVisible({ timeout: 20_000 });
+  await expect(riley.getByTestId('viewer-requests')).toBeVisible();
+  await expect(riley.getByTestId('viewer-requests')).not.toContainText(/Maria|Delgado|lisinopril|555/);
+  await expect(riley.getByRole('button', { name: 'New request' })).toHaveCount(0);
 });
 
 test('someone added by email alone reads "New team member" until they write their name, which the dashboard asks for once', async ({ browser }) => {

@@ -2,6 +2,7 @@
 import type { KnowledgeBase, KnowledgePassage } from '@attendra/core';
 import type { FoundChunk, KnowledgeRepository } from '@attendra/db';
 import type { Embedder } from './embed';
+import { isTechnicalPassage, questionScope } from './scope';
 import { topicWords } from './words';
 
 /**
@@ -30,16 +31,24 @@ export function fuse(lists: FoundChunk[][], keep = 4, k = 60): FoundChunk[] {
  * A caller is waiting on the line, so the question's embedding gets `embedTimeoutMs`
  * (4 seconds). If it is not back by then, or it fails, the answer comes from the
  * full-text search alone.
+ *
+ * Only clinic questions are searched, and only clinic passages come back: a question
+ * about the system or about something else entirely finds nothing, and a passage
+ * that is mostly about software or vendors is never returned. This is the one place
+ * both the dashboard's Ask and the assistant's tools (search_knowledge,
+ * get_clinic_info) search through, so a call gets the same rule as the dashboard.
  */
 export class HybridKnowledgeBase implements KnowledgeBase {
   constructor(private readonly repo: KnowledgeRepository, private readonly embedder: Embedder, private readonly keep = 4, private readonly embedTimeoutMs = 4_000) {}
 
   async search(clinicId: string, question: string): Promise<KnowledgePassage[]> {
+    if (questionScope(question) !== 'clinic') return [];
     const [vector, words] = await Promise.all([this.embedQuestion(question), this.repo.matching(clinicId, topicWords(question), 20)]);
     const near = vector ? await this.repo.nearest(clinicId, vector, this.embedder.model, 20) : [];
     // the vector search always has a nearest chunk; past the model's distance it is not about the question
     const close = near.filter((c) => (c.distance ?? 0) <= this.embedder.maxDistance);
-    return fuse([close, words], this.keep).map((c) => ({ documentId: c.documentId, title: c.title, text: c.heading ? `${c.heading}\n${c.body}` : c.body }));
+    const clinic = (c: FoundChunk) => !isTechnicalPassage(c.body);
+    return fuse([close.filter(clinic), words.filter(clinic)], this.keep).map((c) => ({ documentId: c.documentId, title: c.title, text: c.heading ? `${c.heading}\n${c.body}` : c.body }));
   }
 
   /** The question's vector, or null when the embedding is late or failed. */

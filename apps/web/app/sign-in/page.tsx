@@ -32,6 +32,7 @@ function SignIn() {
   const params = useSearchParams();
   const idle = params.get('idle');
   const expired = params.get('expired');
+  const invited = params.get('invited');
   const next = params.get('next');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -60,7 +61,7 @@ function SignIn() {
     setDemo(demoLogin);
     setError(null);
     // every step after this one (a code, a new password, two-step setup) ends where they were going
-    rememberNext(next);
+    rememberNext(next, { fromEndedSession: !!expired });
     try {
       const res = await authClient.signIn.email({ email: withEmail.trim(), password: withPassword });
       if (res.error) {
@@ -84,6 +85,7 @@ function SignIn() {
       footer={health.data?.signupUrl ? <>New to Attendra? <a className={LINK} href={health.data.signupUrl}>Start your free trial</a></> : undefined}>
       {idle && <Alert>You were signed out after a while without activity.</Alert>}
       {expired && !idle && <Alert>You were signed out. Sign in again to carry on where you were.</Alert>}
+      {invited && <Alert title="Sign in to answer your invitation">New to Attendra? Choose your password with the link in the invitation email first, then sign in here.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">
           <p>Click a login to sign in with it. The password, for the form below, is <code className="font-mono">{health.data.demoSignIn.password}</code>.</p>

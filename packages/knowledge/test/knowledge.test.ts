@@ -245,4 +245,15 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await repo.remove(OTHER.id, doc!.id, 'u_ana')).toBe(false);
     expect((await t.db.execute(sql`select action from audit_logs where action = 'knowledge.document.deleted'`)).rows).toHaveLength(1);
   });
+
+  it('the search behind the assistant\'s tools finds nothing for a question that is not the clinic\'s, and never returns a technical passage', async () => {
+    const text = 'Our booking app is built with TypeScript on a Postgres database, and the AI model comes from OpenAI through its API. The server and its backups are in the cloud.';
+    const notes = await repo.save(DEMO_CLINIC.id, { title: 'Vendor notes', sourceType: 'text', content: Buffer.from(text), userId: 'u_ana' });
+    expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, notes.id)).toBe('indexed');
+    expect(await kb.search(DEMO_CLINIC.id, 'what stack is used to build this app?')).toEqual([]);
+    expect(await kb.search(DEMO_CLINIC.id, 'tell me a joke')).toEqual([]);
+    // a clinic word in it ("booking") does not let it out
+    expect((await kb.search(DEMO_CLINIC.id, 'booking app')).map((p) => p.title)).not.toContain('Vendor notes');
+    await t.db.execute(sql`delete from knowledge_documents where id = ${notes.id}`);
+  });
 });

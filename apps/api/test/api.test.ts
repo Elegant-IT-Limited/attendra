@@ -70,7 +70,10 @@ describe('the auth surface', () => {
 describe('me', () => {
   it('lists the clinics and the permissions of the role', async () => {
     const me = (await api.request('GET', '/api/v1/me', { cookie: viewer })).json();
-    expect(me.clinics).toEqual([expect.objectContaining({ id: DEMO_CLINIC.id, role: 'viewer', permissions: ['calls:list', 'settings:read'] })]);
+    expect(me.clinics).toEqual([expect.objectContaining({ id: DEMO_CLINIC.id, role: 'viewer', permissions: ['calls:list', 'schedule:list', 'tasks:list', 'clinic:read'], accountWide: false })]);
+    // the role names and what each can do, from the one table, for every screen that says them
+    expect(me.roles.map((r: { id: string; label: string }) => `${r.id}:${r.label}`)).toEqual(['owner:Owner', 'admin:Practice manager', 'staff:Front desk', 'viewer:Viewer']);
+    expect(me.newClinicUrl).toBeNull();
     expect(me.demoMode).toBe(false);
     expect(me.twoFactorRequired).toBe(true);
   });
@@ -115,10 +118,11 @@ describe('tenancy', () => {
 });
 
 describe('roles', () => {
-  it('a viewer sees the call list and settings, never a transcript, the queue or the audit trail', async () => {
-    expect((await api.request('GET', `${C}/calls`, { cookie: viewer })).statusCode).toBe(200);
-    expect((await api.request('GET', `${C}/settings`, { cookie: viewer })).statusCode).toBe(200);
-    for (const path of [`calls/${api.callId}`, 'tasks', 'audit']) {
+  it('a viewer sees the call list, the schedule and requests without names, never a transcript or the audit trail (roles.test.ts walks every page)', async () => {
+    for (const path of ['calls', 'tasks', 'appointments?from=2026-09-29', 'settings']) {
+      expect((await api.request('GET', `${C}/${path}`, { cookie: viewer })).statusCode, path).toBe(200);
+    }
+    for (const path of [`calls/${api.callId}`, 'audit', 'doctors']) {
       expect((await api.request('GET', `${C}/${path}`, { cookie: viewer })).statusCode, path).toBe(403);
     }
   });

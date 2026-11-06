@@ -3,7 +3,7 @@ import { AVATAR_MAX_BYTES, avatarStamps, clinicsForUser, type Database, removeAv
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, Patch, Put } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { permissionsFor } from '../access';
+import { permissionsFor, ROLES } from '../access';
 import { AvatarSaved, Me, ProfileName } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { BeforeTwoFactor, CurrentStaff, type Staff } from '../http/staff.guard';
@@ -36,8 +36,11 @@ export class MeController {
       idleMinutes: this.options.idleMinutes ?? 15,
       testCalls: !!this.voice?.browserCalls,
       simulatedCalls: !!this.voice?.simulatedCalls,
+      roles: ROLES,
+      // the hosted service's own page (behind /account), for a login with no clinic yet or an owner opening another
+      newClinicUrl: this.options.accountLinks?.length ? '/account/new-clinic' : null,
       clinics: clinics.map((c) => ({
-        id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role), approvesRefills: c.approvesRefills,
+        id: c.clinicId, name: c.clinicName, timezone: c.timezone, role: c.role, permissions: permissionsFor(c.role), approvesRefills: c.approvesRefills, accountWide: c.accountWide,
         organizationId: c.orgId, organizationName: c.orgName,
         accountLinks: c.role === 'owner' ? (this.options.accountLinks ?? []).map((l) => ({ label: l.label, href: l.href.replaceAll('{clinicId}', encodeURIComponent(c.clinicId)) })) : [],
       })),

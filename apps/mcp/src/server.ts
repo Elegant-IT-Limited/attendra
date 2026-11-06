@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, zonedInstant } from '@attendra/core';
+import { addDays, ClinicConfig, isOpen, localDateOf, qualityOf, ROLE_LABEL, zonedInstant } from '@attendra/core';
 import { apiKeyIsLive, approvesRefills, type ApiCaller, type ApiScope, auditKeyUse, auditKeyUseIn, type Database, FrontDeskRepository, type PhiCipher, phiContext, qualityRows, schema, staffPeople, taskFacts, withClinic } from '@attendra/db';
 import type { Logger } from '@attendra/observability';
 import { openSlots } from '@attendra/scheduling';
@@ -18,7 +18,6 @@ export interface McpDeps {
 }
 
 /** A role as the clinic says it. */
-const ROLE_LABEL = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' } as const;
 /** Voice minutes at the list price: the same estimate as the dashboard. */
 const COST_PER_MINUTE = 0.05;
 const text = (data: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }], structuredContent: data as Record<string, unknown> });

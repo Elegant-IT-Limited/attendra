@@ -35,13 +35,16 @@ beforeAll(async () => {
 afterAll(() => api.close());
 
 describe('who can use the schedule', () => {
-  it('owners, managers and front desk read it; a viewer never does', async () => {
+  it('owners, managers and front desk read it; a viewer sees the visits with no patient and never opens one', async () => {
     for (const role of ['owner', 'admin', 'staff'] as const) {
       expect((await api.request('GET', `${C}?from=2026-09-29`, { cookie: as[role] })).statusCode, role).toBe(200);
       expect((await api.request('GET', `${C}/${booked}`, { cookie: as[role] })).statusCode, role).toBe(200);
       expect((await api.request('GET', `${C}/slots?visitTypeId=vt_sick&from=2026-09-29&days=1`, { cookie: as[role] })).statusCode, role).toBe(200);
     }
-    for (const path of ['?from=2026-09-29', `/${booked}`, '/slots?visitTypeId=vt_sick']) {
+    const seen = (await api.request('GET', `${C}?from=2026-09-29`, { cookie: as.viewer })).json();
+    expect(seen.appointments.length).toBeGreaterThan(0);
+    for (const a of seen.appointments) expect(a).toMatchObject({ patientId: '', patientName: '' });
+    for (const path of [`/${booked}`, '/slots?visitTypeId=vt_sick']) {
       expect((await api.request('GET', `${C}${path}`, { cookie: as.viewer })).statusCode, path).toBe(403);
     }
   });
