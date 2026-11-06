@@ -95,9 +95,17 @@ class Watch {
   async axe(page: Page, where: string) {
     // a panel sliding in is half transparent: judged once it has arrived (endless ones, like a pulse, never end)
     await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity));
-    // a soft navigation (a filter that writes the address) swaps the page's <title>: judged once it is back
-    await page.waitForFunction(() => document.title.trim() !== '');
-    const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).exclude('nextjs-portal').analyze();
+    // a soft navigation (a filter that writes the address) swaps the page's <title>: judged once it is back. The swap
+    // can land between the wait and the scan, so a missing title is looked at again, up to three times, before it counts
+    const scan = async () => {
+      await page.waitForFunction(() => document.title.trim() !== '');
+      return new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).exclude('nextjs-portal').analyze();
+    };
+    let result = await scan();
+    for (let i = 0; i < 2 && result.violations.some((v) => v.id === 'document-title'); i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      result = await scan();
+    }
     for (const v of result.violations.filter((x) => x.impact === 'serious' || x.impact === 'critical')) {
       this.problems.push(`axe on ${where}: ${v.id}: ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
     }
