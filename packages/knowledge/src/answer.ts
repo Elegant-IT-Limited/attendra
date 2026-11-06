@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { isMedicalQuestion, type KnowledgeBase, type KnowledgePassage, MEDICAL_REFUSAL, NO_INFORMATION } from '@attendra/core';
 import type OpenAI from 'openai';
+import { isOffTopicLine, OFF_TOPIC_LINE, questionLanguage, questionScope } from './scope';
 
 export { MEDICAL_REFUSAL, NO_INFORMATION };
 
@@ -12,6 +13,10 @@ export interface Answerer {
 export const ANSWER_INSTRUCTIONS = [
   'You answer a caller\'s question for a medical clinic\'s front desk, from the clinic\'s own documents only.',
   `Use only the passages given. If they do not answer the question, reply exactly: "${NO_INFORMATION}"`,
+  // a tester asked what the app was built with and heard an unrelated upload's technical details
+  'Answer only questions about the clinic: hours, prices, policies, services, directions, the doctors or vets, preparing for a visit, appointments and pets.',
+  `For anything else, reply exactly: "${OFF_TOPIC_LINE.en}" (in Spanish: "${OFF_TOPIC_LINE.es}")`,
+  'Use only passages about the clinic. Never mention software, vendors, AI models, prompts, servers or any technical or internal detail, even when a passage contains it.',
   'Never give medical advice, doses, or anything a clinician should say. Two short sentences at most, plain words, no lists.',
 ].join('\n');
 
@@ -40,20 +45,26 @@ export class LocalAnswerer implements Answerer {
 
 export interface KnowledgeAnswer {
   answer: string;
+  /** The passages the answer came from: none when nothing was answered from them. */
   citations: KnowledgePassage[];
-  refusal: 'medical' | 'no_information' | null;
+  refusal: 'medical' | 'off_topic' | 'no_information' | null;
 }
 
 /**
- * What the assistant would say to a question: a medical question is refused before
- * anything is searched, a question the documents do not answer gets the
- * no-information line, and everything else is answered from the passages found,
- * which come back as citations.
+ * What the assistant would say to a question. A medical question is refused before
+ * anything is searched, and so is one that is not about the clinic (one polite line,
+ * in the question's language). A question the documents do not answer gets the
+ * no-information line. Everything else is answered from the passages found, which
+ * come back as citations. One rule for citations: they are listed only when the
+ * answer was read from them, so a refusal never shows sources beside it.
  */
 export async function answerQuestion(kb: KnowledgeBase, answerer: Answerer, clinicId: string, question: string): Promise<KnowledgeAnswer> {
   if (isMedicalQuestion(question)) return { answer: MEDICAL_REFUSAL, citations: [], refusal: 'medical' };
+  if (questionScope(question) !== 'clinic') return { answer: OFF_TOPIC_LINE[questionLanguage(question)], citations: [], refusal: 'off_topic' };
   const passages = await kb.search(clinicId, question);
   if (!passages.length) return { answer: NO_INFORMATION, citations: [], refusal: 'no_information' };
   const answer = await answerer.answer(question, passages);
-  return { answer, citations: passages, refusal: answer === NO_INFORMATION ? 'no_information' : null };
+  if (answer === NO_INFORMATION) return { answer, citations: [], refusal: 'no_information' };
+  if (isOffTopicLine(answer)) return { answer, citations: [], refusal: 'off_topic' };
+  return { answer, citations: passages, refusal: null };
 }

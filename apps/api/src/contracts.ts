@@ -190,12 +190,17 @@ export const KnowledgeDocument = z.object({
   uploadedBy: z.string().nullable(), updatedAt: z.iso.datetime(),
 });
 export const KnowledgeDocuments = z.object({ documents: z.array(KnowledgeDocument) });
-export const KnowledgeUpload = z.object({ title: z.string().trim().min(1, 'give the document a title').max(200), name: z.string().max(200).default('') });
+export const KnowledgeUpload = z.object({
+  title: z.string().trim().min(1, 'give the document a title').max(200), name: z.string().max(200).default(''),
+  /** Keep it even though it does not read like clinic information: the manager was asked and said yes. */
+  confirm: z.enum(['true', 'false']).optional(),
+});
 export const KnowledgeAsk = z.object({ question: z.string().trim().min(2, 'ask a question').max(300) });
 export const KnowledgeAnswer = z.object({
   answer: z.string(),
   citations: z.array(z.object({ documentId: z.string(), title: z.string(), text: z.string() })),
-  refusal: z.enum(['medical', 'no_information']).nullable(),
+  /** Citations are listed only when the answer was read from them: never beside a refusal. */
+  refusal: z.enum(['medical', 'off_topic', 'no_information']).nullable(),
 });
 
 export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'request.created', 'request.done'] as const;

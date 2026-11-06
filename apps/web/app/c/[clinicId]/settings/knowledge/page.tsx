@@ -31,6 +31,7 @@ const FAILURES: Record<string, string> = {
   pdf_timeout: 'The PDF took too long to read. Try saving it again as a simpler PDF, or upload the text.', pdf_too_complex: 'The PDF is too complex to read. Upload the text instead.',
 };
 const mediaType = (f: File) => f.type || (f.name.endsWith('.md') ? 'text/markdown' : f.name.endsWith('.pdf') ? 'application/pdf' : 'text/plain');
+const NOT_CLINIC = 'This doesn\'t look like clinic information: callers may hear it. Upload anyway?';
 const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 /**
@@ -58,18 +59,20 @@ export default function Knowledge() {
   const showProblem = useProblem();
   const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not uploaded', message }); };
   const [removing, setRemoving] = useState<KnowledgeDocument | null>(null);
+  // an upload that does not read like clinic information waits here for a yes or a no
+  const [unsure, setUnsure] = useState<File | null>(null);
   const [question, setQuestion] = useState('');
 
   const upload = useMutation({
-    mutationFn: (f: File) => api<KnowledgeDocument>(`/clinics/${clinicId}/knowledge/documents?${new URLSearchParams({ title: title.trim() || f.name.replace(/\.[^.]+$/, ''), name: f.name })}`, {
+    mutationFn: ({ f, confirm }: { f: File; confirm?: boolean }) => api<KnowledgeDocument>(`/clinics/${clinicId}/knowledge/documents?${new URLSearchParams({ title: title.trim() || f.name.replace(/\.[^.]+$/, ''), name: f.name, ...(confirm ? { confirm: 'true' } : {}) })}`, {
       method: 'POST', body: f, headers: { 'content-type': mediaType(f) },
     }),
     onSuccess: () => {
-      setTitle(''); setChosen(null); if (file.current) file.current.value = '';
+      setTitle(''); setChosen(null); setUnsure(null); if (file.current) file.current.value = '';
       void queries.invalidateQueries({ queryKey: ['knowledge', clinicId] });
       toast({ tone: 'success', message: 'Uploaded. It is being indexed.' });
     },
-    onError: (e) => setProblem(e instanceof ApiFailure && e.status === 415 ? 'Upload a PDF, a text file or a markdown file.' : e instanceof ApiFailure && e.status === 413 ? 'The file is over 5 MB.'
+    onError: (e, { f }) => e instanceof ApiFailure && e.status === 409 && e.body.error === 'not_clinic_information' ? setUnsure(f) : setProblem(e instanceof ApiFailure && e.status === 415 ? 'Upload a PDF, a text file or a markdown file.' : e instanceof ApiFailure && e.status === 413 ? 'The file is over 5 MB.'
       : e instanceof ApiFailure && e.body.error === 'empty_file' ? 'The file is empty. Choose one with the text in it.'
       : e instanceof ApiFailure && e.body.error === 'too_many_documents' ? 'You have 50 documents, the most a clinic can keep. Delete one, or upload with the same title to replace it.' : 'The upload did not work. Try again.'),
   });
@@ -107,7 +110,7 @@ export default function Knowledge() {
               <CardHeader><CardTitle>Add a document</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <Alert tone="warn">{pets ? 'Clinic information only: policies, prices, visit preparation, vet bios, directions. Never upload anything about a client or a pet.' : 'Clinic information only: policies, insurance, visit preparation, provider bios, directions. Never upload anything about a patient.'}</Alert>
-                <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); if (chosen) upload.mutate(chosen); }}>
+                <form className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(e) => { e.preventDefault(); if (chosen) upload.mutate({ f: chosen }); }}>
                   <div className="space-y-1.5"><Label htmlFor="doc-title">Title</Label><Input id="doc-title" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} placeholder="Parking and directions" /></div>
                   <div className="space-y-1.5">
                     <Label htmlFor="doc-file">File</Label>
@@ -159,8 +162,10 @@ export default function Knowledge() {
                   <p className="mt-1 text-base">{ask.data.answer}</p>
                 </div>
                 {ask.data.refusal === 'medical' && <p className="text-xs text-text-muted">A medical question is refused before any document is searched.</p>}
+                {ask.data.refusal === 'off_topic' && <p className="text-xs text-text-muted">The assistant answers questions about the clinic only, and never says how it is built. Nothing was searched.</p>}
                 {ask.data.refusal === 'no_information' && <p className="text-xs text-text-muted">No document answers this. Add one, or an FAQ entry, if callers ask it.</p>}
-                {ask.data.citations.length > 0 && (
+                {/* sources only beside an answer read from them: never beside a refusal */}
+                {ask.data.refusal === null && ask.data.citations.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-text-muted">From</p>
                     <ol className="space-y-2">
@@ -178,6 +183,11 @@ export default function Knowledge() {
           </CardContent>
         </Card>
       </div>
+      <Panel open={!!unsure} onOpenChange={(o) => !o && setUnsure(null)} title="Upload anyway?"
+        description={NOT_CLINIC}
+        footer={<><Button variant="outline" onClick={() => setUnsure(null)}>Cancel</Button><Button loading={upload.isPending} onClick={() => unsure && upload.mutate({ f: unsure, confirm: true })}>Upload anyway</Button></>}>
+        <p className="text-sm text-text-muted">Whatever is uploaded here, the assistant may read to a caller. Keep to clinic information: hours, prices, policies, services, directions, the {pets ? 'vets' : 'doctors'}, visit preparation.</p>
+      </Panel>
       <Panel open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title={`Delete ${removing?.title ?? 'this document'}?`}
         description="The assistant stops answering from it at once. This is recorded in the audit log."
         footer={<><Button variant="outline" onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" loading={remove.isPending} onClick={() => removing && remove.mutate(removing)}>Delete</Button></>}>
