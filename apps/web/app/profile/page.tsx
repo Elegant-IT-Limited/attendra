@@ -6,15 +6,15 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { type FormEvent, Suspense, useEffect, useRef, useState } from 'react';
 import { AuthCard } from '@/components/auth/auth-card';
+import { InvitationsBanner } from '@/components/invitations-banner';
 import { Avatar } from '@/components/ui/bits';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { Field, Input, Label, PasswordInput } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
-import { api, ApiFailure, useMe } from '@/lib/api';
+import { api, saveProblem, useMe } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { avatarFrom, PICTURE_TYPES, pictureProblem } from '@/lib/avatar';
-import { ROLE_LABEL } from '@/lib/format';
 import { signOutAndLeave } from '@/lib/next';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
@@ -71,7 +71,9 @@ function Profile() {
 
   return (
     <AuthCard title="Your profile" subtitle="How your team sees you, and how you sign in." pending={me.isPending}
-      footer={first ? <a className={LINK} href={`/c/${first.id}`}>Back to the dashboard</a> : undefined}>
+      footer={first ? <a className={LINK} href={`/c/${first.id}`}>Back to the dashboard</a> : <a className={LINK} href="/">Your invitations and clinics</a>}>
+      {/* an invitation can be answered from here too: accepting opens the clinic */}
+      {me.data && !me.data.user.mustChangePassword && <InvitationsBanner inline />}
       {changed && <Alert tone="ok">Your password is changed. You were signed out everywhere else.</Alert>}
       {me.data && <AboutYou me={me.data} />}
       <section className="space-y-2">
@@ -135,7 +137,6 @@ function AboutYou({ me }: { me: Me }) {
   const [saving, setSaving] = useState<'name' | 'picture' | 'remove' | null>(null);
   // the name and the picture show everywhere at once: the sidebar, Team, Assign to and the requests
   const refresh = () => Promise.all([['me'], ['members'], ['assignees'], ['tasks']].map((queryKey) => queries.invalidateQueries({ queryKey })));
-  const failed = (e: unknown) => (e instanceof ApiFailure ? e.body.message ?? e.body.issues?.[0]?.message : null);
 
   async function saveName(e: FormEvent) {
     e.preventDefault();
@@ -149,7 +150,7 @@ function AboutYou({ me }: { me: Me }) {
       await refresh();
       toast({ tone: 'success', message: 'Saved.' });
     } catch (err) {
-      setNameError(failed(err) ? `Not saved: ${failed(err)}.` : 'Not saved. Check your connection and try again.');
+      setNameError(saveProblem(err));
     } finally {
       setSaving(null);
     }
@@ -169,7 +170,7 @@ function AboutYou({ me }: { me: Me }) {
       await refresh();
       toast({ tone: 'success', message: 'Saved.' });
     } catch (err) {
-      setPictureError(failed(err) ?? 'Not saved. Check your connection and try again.');
+      setPictureError(saveProblem(err));
     } finally {
       setSaving(null);
     }
@@ -182,8 +183,8 @@ function AboutYou({ me }: { me: Me }) {
       await api<void>('/me/avatar', { method: 'DELETE' });
       await refresh();
       toast({ tone: 'success', message: 'Picture removed. Your initials show instead.' });
-    } catch {
-      setPictureError('Not removed. Check your connection and try again.');
+    } catch (err) {
+      setPictureError(saveProblem(err).replace(/^Not saved/, 'Not removed'));
     } finally {
       setSaving(null);
     }
@@ -222,7 +223,7 @@ function AboutYou({ me }: { me: Me }) {
         <section className="space-y-1" aria-labelledby="role-heading">
           <h2 id="role-heading" className="text-base font-semibold">{me.clinics.length > 1 ? 'Your roles' : 'Your role'}</h2>
           <ul className="space-y-0.5 text-sm">
-            {me.clinics.map((c) => <li key={c.id}>{ROLE_LABEL[c.role] ?? c.role} at {c.name}</li>)}
+            {me.clinics.map((c) => <li key={c.id}>{me.roles.find((r) => r.id === c.role)?.label ?? c.role} at {c.name}</li>)}
           </ul>
         </section>
       )}

@@ -173,7 +173,8 @@ export function zoneLabel(timeZone: string) {
 }
 
 /** A role as the clinic says it. */
-export const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
+/** A role's name: one source with the permissions (@attendra/core roles.ts). */
+export { ROLE_LABEL } from '@attendra/core';
 
 /** What a team member reads as until they write their name (someone added by email alone). */
 export const NEW_MEMBER = 'New team member';

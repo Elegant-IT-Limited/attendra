@@ -40,13 +40,13 @@ export default function Today() {
 
   const overview = useQuery({ queryKey: ['overview', clinicId], queryFn: () => api<Overview>(`/clinics/${clinicId}/overview?days=7`), ...live });
   const calls = useQuery({ queryKey: ['calls', clinicId, 'recent'], queryFn: () => api<CallList>(`/clinics/${clinicId}/calls?limit=50`), ...live });
-  const waiting = useQuery({ queryKey: ['tasks', clinicId, 'waiting'], queryFn: () => api<WaitingTasks>(`/clinics/${clinicId}/tasks/waiting`), enabled: can('tasks:read'), ...live });
+  const waiting = useQuery({ queryKey: ['tasks', clinicId, 'waiting'], queryFn: () => api<WaitingTasks>(`/clinics/${clinicId}/tasks/waiting`), enabled: can('tasks:list'), ...live });
   // managers hear here when Attendra turned a webhook endpoint off
   const hooks = useQuery({ queryKey: ['webhooks', clinicId], queryFn: () => api<WebhookEndpoints>(`/clinics/${clinicId}/webhooks`), enabled: can('integrations:manage'), ...live });
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, today, 1, ''],
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?from=${today}&days=1`),
-    enabled: !!clinic && can('schedule:read'), ...live,
+    enabled: !!clinic && can('schedule:list'), ...live,
   });
 
   if (!clinic) return <><PageHeader title="Today" /><Skeleton className="h-96" /></>;
@@ -65,12 +65,12 @@ export default function Today() {
         {clinic.industry === 'vet' ? (
           // a vet clinic's two queues: refills waiting for a vet, and the animals sent to the emergency hospital
           <>
-            <StatCard label="Refills waiting" value={can('tasks:read') ? (waiting.data?.byType.refill ?? (waiting.data ? 0 : null)) : null} hint="Open the refill queue" href={`/c/${clinicId}/requests?type=refill`} />
+            <StatCard label="Refills waiting" value={can('tasks:list') ? (waiting.data?.byType.refill ?? (waiting.data ? 0 : null)) : null} hint="Open the refill queue" href={`/c/${clinicId}/requests?type=refill`} />
             <StatCard label="Emergencies, last 7 days" value={overview.data ? overview.data.period.emergencies : null} tone="danger" hint="Open the emergency log" href={`/c/${clinicId}/calls?emergency=true`} />
           </>
         ) : (
           <>
-            <StatCard label="Requests waiting" value={can('tasks:read') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
+            <StatCard label="Requests waiting" value={can('tasks:list') ? (waiting.data?.total ?? null) : null} hint="Nobody has them yet" />
             <StatCard label="After-hours calls" value={overview.data ? overview.data.period.afterHours : null} hint="Answered in the last 7 days" />
           </>
         )}
@@ -79,7 +79,7 @@ export default function Today() {
         <div className="space-y-6 lg:col-span-2">
           <NeedsAttention clinicId={clinicId} tz={tz} now={now} calls={phoneCalls} waiting={waiting} canTasks={can('tasks:read')} canWork={can('tasks:work')} canOpenCalls={can('calls:read')}
             turnedOff={(hooks.data?.endpoints ?? []).filter((e) => e.disabledReason === 'repeated_failures')} />
-          <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:read')} />
+          <TodaysSchedule clinicId={clinicId} clinic={clinic} now={now} today={today} schedule={schedule} allowed={can('schedule:list')} />
         </div>
         <div className="space-y-6">
           <GoLiveCard clinicId={clinicId} />
@@ -238,7 +238,7 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
                               <Link href={`/c/${clinicId}/schedule?appointment=${r.a!.id}`}
                                 className={cn('flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm hover:bg-surface-sunken', r.e <= nowMin && 'text-text-muted', next?.a.id === r.a!.id && 'bg-primary-soft font-medium ring-1 ring-primary/40')}>
                                 <span className="w-[4.5rem] shrink-0 whitespace-nowrap tabular-nums text-text-muted">{clock(r.s)}</span>
-                                <span className="min-w-0 flex-1 truncate">{r.a!.patientName}</span>
+                                <span className="min-w-0 flex-1 truncate">{r.a!.patientName || 'Booked visit'}</span>
                                 <span className="shrink-0 text-xs text-text-muted">{next?.a.id === r.a!.id ? (r.s <= nowMin ? 'Now' : 'Next') : visit(r.a!.visitTypeId)}</span>
                               </Link>
                             </li>

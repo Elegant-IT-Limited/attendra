@@ -32,8 +32,8 @@ import { useTerms } from '@/lib/terms';
 import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { type ThemeChoice, useTheme } from '@/lib/theme';
 import { cn } from '@/lib/utils';
+import { roleLabel } from '@attendra/core';
 
-const ROLE_LABEL: Record<string, string> = { owner: 'Owner', admin: 'Practice manager', staff: 'Front desk', viewer: 'Viewer' };
 
 // A workstation left open at the front desk signs itself out.
 
@@ -64,7 +64,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const openTasks = useQuery({
     queryKey: ['tasks', clinicId, 'count'],
     queryFn: () => api<TaskCount>(`/clinics/${clinicId}/tasks/count`),
-    enabled: can('tasks:read'),
+    enabled: can('tasks:list'),
     refetchInterval: 30_000,
   });
 
@@ -125,14 +125,14 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const accountLinks: NavItem[] = clinic.accountLinks.map((l) => ({ href: l.href, label: l.label, icon: ExternalLink, permission: '' }));
   // the clinic's own links, from Settings, for everyone on the team
   const clinicLinks: NavItem[] = (config.data?.menuLinks ?? []).map((l) => ({ href: l.url, label: l.label, icon: Link2, permission: '' }));
-  const user = { name: me?.user.name ?? '', role: ROLE_LABEL[clinic.role] ?? clinic.role, avatarUrl: me?.user.avatarUrl ?? null };
+  const user = { name: me?.user.name ?? '', role: roleLabel(clinic.role), avatarUrl: me?.user.avatarUrl ?? null };
   // a hosted plan's links, for owners only: another location of this business, or a separate business on this login
   const grow: GrowLink[] = clinic.role !== 'owner' || !plan.data?.plan ? [] : [
     { href: plan.data.plan.addLocationUrl, label: 'Add a location', hint: 'Same business, one bill' },
     { href: plan.data.plan.newClinicUrl, label: 'Create a new clinic', hint: 'A separate business with its own plan' },
   ].filter((l): l is GrowLink => !!l.href);
   // the person's clinics, each with their role there; another one opens the same page there, without a record id that belongs to this one
-  const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: ROLE_LABEL[c.role] ?? c.role, organizationId: c.organizationId, organizationName: c.organizationName }));
+  const clinics = (me?.clinics ?? []).map((c) => ({ id: c.id, name: c.name, role: roleLabel(c.role), organizationId: c.organizationId, organizationName: c.organizationName }));
   const here = clinics.find((c) => c.id === clinicId) ?? { id: clinic.id, name: clinic.name, role: user.role };
   const toClinic = (id: string) => {
     if (!confirmLeave()) return; // another clinic ends this one's test call, and its unsaved recording with it

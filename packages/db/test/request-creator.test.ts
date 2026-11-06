@@ -1,7 +1,7 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createPhiCipher, FrontDeskRepository, PostgresTaskQueue, saveClinic, schema, seedDemo, staffPeople, withClinic } from '../src';
+import { addMembership, createPhiCipher, FrontDeskRepository, PostgresTaskQueue, saveClinic, schema, seedDemo, staffPeople, withClinic } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -16,7 +16,7 @@ beforeAll(async () => {
   await saveClinic(t.db, 'org_other', OTHER);
   for (const [id, name, org] of [['u_ana', 'Ana Front', 'org_demo'], ['u_otto', 'Otto Other', 'org_other']] as const) {
     await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${name}, ${`${id}@example.test`}, true)`);
-    await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values (${`m_${id}`}, ${org}, ${id}, 'staff')`);
+    await addMembership(t.db, org, id, 'staff');
   }
   // a request written down by hand at each clinic, under the application role as the API does it
   ({ id: byAna } = await new PostgresTaskQueue(t.db, cipher, 'user:u_ana').create(DEMO_CLINIC.id, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'manual:ana', details: { reason: 'wants a call back' } }));

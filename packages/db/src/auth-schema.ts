@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { boolean, customType, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
-import { organizations } from './schema';
+import { boolean, customType, integer, pgTable, pgView, text, timestamp, unique } from 'drizzle-orm/pg-core';
+import { clinics, organizations } from './schema';
 
 // Better Auth's tables (migrations/0002_staff_access.sql). The property names are
 // the ones Better Auth expects; the column names follow the rest of the schema.
@@ -69,17 +69,46 @@ export const authTwoFactors = pgTable('auth_two_factors', {
   lockedUntil: ts('locked_until'),
 });
 
+/**
+ * An owner's account-wide link to a business (migration 0046: owners only). Every other
+ * role is per location, in clinicMemberships; read both through clinicAccess.
+ */
 export const memberships = pgTable('memberships', {
   id: text('id').primaryKey(),
   organizationId: text('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  role: text('role', { enum: ['owner', 'admin', 'staff', 'viewer'] }).notNull().default('viewer'),
+  role: text('role', { enum: ['owner', 'admin', 'staff', 'viewer'] }).notNull().default('owner'),
   createdAt: ts('created_at').notNull().defaultNow(),
   // a staff member's own number for taking over a live call, if they gave one
   transferNumber: text('transfer_number'),
   // may approve or decline a refill; set on the Team page
   approvesRefills: boolean('approves_refills').notNull().default(false),
 });
+
+/** A role at one location (migration 0046): admin, staff or viewer. Owners are account-wide, in memberships. */
+export const clinicMemberships = pgTable('clinic_memberships', {
+  id: text('id').primaryKey(),
+  clinicId: text('clinic_id').notNull().references(() => clinics.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  role: text('role', { enum: ['admin', 'staff', 'viewer'] }).notNull(),
+  approvesRefills: boolean('approves_refills').notNull().default(false),
+  transferNumber: text('transfer_number'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+}, (t) => [unique().on(t.clinicId, t.userId)]);
+
+/**
+ * Who may open which location, with which role: owners on every location of their
+ * business (accountWide), everyone else where they were invited. The one place access is read from.
+ */
+export const clinicAccess = pgView('clinic_access', {
+  clinicId: text('clinic_id').notNull(),
+  userId: text('user_id').notNull(),
+  role: text('role', { enum: ['owner', 'admin', 'staff', 'viewer'] }).notNull(),
+  approvesRefills: boolean('approves_refills').notNull(),
+  transferNumber: text('transfer_number'),
+  createdAt: ts('created_at').notNull(),
+  accountWide: boolean('account_wide').notNull(),
+}).existing();
 
 export const invitations = pgTable('invitations', {
   id: text('id').primaryKey(),
@@ -94,6 +123,8 @@ export const invitations = pgTable('invitations', {
   clinicId: text('clinic_id'),
   approvesRefills: boolean('approves_refills').notNull().default(false),
   decidedAt: ts('decided_at'),
+  // migration 0046: the invitations one "every location" invite sent, answered together
+  groupId: text('group_id'),
 });
 
 const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });

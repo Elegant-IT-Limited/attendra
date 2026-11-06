@@ -23,7 +23,8 @@ beforeAll(async () => {
   ({ patientIds: ids } = await seedDemo(t.db, cipher));
   await saveClinic(t.db, 'org_other', OTHER);
   await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_otto', 'Otto Other', 'otto@example.test')`);
-  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m1', 'org_demo', 'u_ana', 'staff'), ('m2', 'org_other', 'u_otto', 'owner')`);
+  await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff')`);
+  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m2', 'org_other', 'u_otto', 'owner')`);
   callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'live_sched_1', null);
   const insert = (values: Partial<typeof schema.appointments.$inferInsert>) => withClinic(t.db, DEMO_CLINIC.id, async (tx) => {
     const [row] = await tx.insert(schema.appointments).values({

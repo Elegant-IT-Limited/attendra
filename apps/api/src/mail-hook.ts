@@ -5,9 +5,10 @@ import type { Logger } from '@attendra/observability';
 export type MailRequest =
   | { type: 'password_reset'; email: string; name: string; emailVerified: boolean; url: string }
   /**
-   * "Maple Street invited you to its team as Front desk": `url` opens the dashboard, where
-   * the person accepts or declines. `setPasswordUrl` (a /reset-password link that works
-   * until the invitation lapses) is there only for an account with no password yet: one
+   * "Maple Street invited you to its team as Front desk": `url` opens the invitation's own
+   * page (/invite/<id>), where the person accepts or declines after signing in.
+   * `setPasswordUrl` (a /reset-password link that works until the invitation lapses, and
+   * returns to the invitation) is there only for an account with no password yet: one
    * made by this invitation. `name` is empty when nobody gave one: the email then greets with "Hi,"
    * only, never with the start of the address.
    */

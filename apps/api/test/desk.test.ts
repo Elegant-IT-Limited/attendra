@@ -289,12 +289,12 @@ describe('the team', () => {
 
   it('removes the new account when adding the membership fails, so adding the person again works', async () => {
     await api.t.db.execute(sql`create function refuse_membership() returns trigger language plpgsql as $$ begin raise exception 'membership refused'; end $$`);
-    await api.t.db.execute(sql`create trigger refuse_membership before insert on memberships for each row execute function refuse_membership()`);
+    await api.t.db.execute(sql`create trigger refuse_membership before insert on clinic_memberships for each row execute function refuse_membership()`);
     const body = { name: 'Rhea Retry', email: 'rhea@maple.example', role: 'staff' };
     try {
       expect((await api.request('POST', M, { cookie: as.admin, body })).statusCode).toBe(500);
     } finally {
-      await api.t.db.execute(sql`drop trigger refuse_membership on memberships`);
+      await api.t.db.execute(sql`drop trigger refuse_membership on clinic_memberships`);
       await api.t.db.execute(sql`drop function refuse_membership()`);
     }
     expect((await api.t.db.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
@@ -372,7 +372,7 @@ describe('the team', () => {
 
   it('removing someone who also works for another practice leaves that practice, and their sessions, alone', async () => {
     // Otto owns the other practice and is added here directly, as the CLI would
-    await api.t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_otto_demo', 'org_demo', ${api.users.outsider}, 'staff')`);
+    await api.t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m_otto_demo', ${DEMO_CLINIC.id}, ${api.users.outsider}, 'staff')`);
     const otto = await api.signIn('otto@other.example', true);
     expect((await api.request('GET', `${C}/calls`, { cookie: otto })).statusCode).toBe(200);
     expect((await api.request('DELETE', `${M}/${api.users.outsider}`, { cookie: as.admin })).statusCode).toBe(204);

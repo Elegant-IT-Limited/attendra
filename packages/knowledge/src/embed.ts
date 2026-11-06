@@ -18,7 +18,8 @@ export interface Embedder {
  * OpenAI embeddings, text-embedding-3-small by default. The model comes from
  * ATTENDRA_EMBEDDING_MODEL. Each request has a timeout, and the inputs are capped per
  * request and per document, which is the ceiling on what indexing one document can
- * cost. The embeddings endpoint keeps no conversation state and takes no `store`
+ * cost. Chunks are at most 2,000 characters, so each fits an input whole: one that
+ * does not fails the document with a code instead of being cut short in silence. The embeddings endpoint keeps no conversation state and takes no `store`
  * setting. pg-boss retries a failed indexing job, so the client does not.
  */
 export class OpenAIEmbedder implements Embedder {
@@ -31,9 +32,10 @@ export class OpenAIEmbedder implements Embedder {
 
   async embed(texts: string[]): Promise<number[][]> {
     if (texts.length > this.limits.maxInputs) throw new KnowledgeError('too_many_chunks');
+    if (texts.some((t) => t.length > this.limits.maxCharsPerInput)) throw new KnowledgeError('chunk_too_long');
     const out: number[][] = [];
     for (let i = 0; i < texts.length; i += this.limits.batch) {
-      const input = texts.slice(i, i + this.limits.batch).map((t) => t.slice(0, this.limits.maxCharsPerInput));
+      const input = texts.slice(i, i + this.limits.batch);
       let res;
       try {
         res = await this.openai.embeddings.create({ model: this.model, input, dimensions: DIMENSIONS }, { timeout: this.limits.timeoutMs, maxRetries: 0 });

@@ -15,7 +15,7 @@ import { dayTitle } from '@/lib/format';
 export function ConflictsAlert({ clinicId, className }: { clinicId: string; className?: string }) {
   const { can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
-  const q = useQuery({ queryKey: ['schedule-conflicts', clinicId], queryFn: () => api<ScheduleConflicts>(`/clinics/${clinicId}/appointments/conflicts`), enabled: can('schedule:read'), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['schedule-conflicts', clinicId], queryFn: () => api<ScheduleConflicts>(`/clinics/${clinicId}/appointments/conflicts`), enabled: can('schedule:list'), refetchInterval: 60_000 });
   const list = q.data?.conflicts ?? [];
   if (!list.length || !config.data) return null;
   const name = (id: string) => { const p = config.data!.providers.find((x) => x.id === id); return p ? providerName(p) : 'Someone no longer listed'; };

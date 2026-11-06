@@ -7,12 +7,17 @@ import { AuthCard } from '@/components/auth/auth-card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/feedback';
 import { Label, PasswordInput } from '@/components/ui/input';
+import { safeNext } from '@/lib/next';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
 /** The link from a "forgot password" email: a new password, then sign in with it. Every session ends. */
 function ResetPassword() {
-  const token = useSearchParams().get('token') ?? '';
+  const params = useSearchParams();
+  const token = params.get('token') ?? '';
+  // an invitation's set-password link carries the invitation to return to once signed in
+  const returnTo = safeNext(params.get('next'));
+  const signInUrl = returnTo ? `/sign-in?invited=1&next=${encodeURIComponent(returnTo)}` : '/sign-in';
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
   const [error, setError] = useState<ReactNode | null>(null);
@@ -49,7 +54,7 @@ function ResetPassword() {
   if (state === 'done') {
     return (
       <AuthCard title="Your password is changed" subtitle="You were signed out everywhere. Sign in with your new password.">
-        <Button className="w-full" onClick={() => window.location.assign('/sign-in')}>Sign in</Button>
+        <Button className="w-full" onClick={() => window.location.assign(signInUrl)}>Sign in</Button>
       </AuthCard>
     );
   }

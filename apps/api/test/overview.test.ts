@@ -74,10 +74,10 @@ describe('waiting requests', () => {
     expect(after.n).toBe(before.n);
   });
 
-  it('drops a request once someone claims it; a viewer cannot see the list; another clinic is 404', async () => {
+  it('drops a request once someone claims it; a viewer sees it too (no patient data in it); another clinic is 404', async () => {
     expect((await api.request('POST', `${C}/tasks/${api.taskId}/claim`, { cookie: staff })).statusCode).toBe(204);
     expect((await api.request('GET', `${C}/tasks/waiting`, { cookie: staff })).json().tasks).toEqual([]);
-    expect((await api.request('GET', `${C}/tasks/waiting`, { cookie: viewer })).statusCode).toBe(403);
+    expect((await api.request('GET', `${C}/tasks/waiting`, { cookie: viewer })).json().tasks).toEqual([]);
     expect((await api.request('GET', `/api/v1/clinics/${OTHER.id}/tasks/waiting`, { cookie: admin })).statusCode).toBe(404);
   });
 

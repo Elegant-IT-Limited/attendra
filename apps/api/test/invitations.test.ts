@@ -45,10 +45,15 @@ describe('an invitation never says whether the email has an Attendra login', () 
     expect(new Date(rows[0]!.expiresAt).getTime() - now.getTime()).toBe(7 * 86_400_000);
     // the emails: the clinic and the role in words; a link to set a password only for the account that has none
     const [toOtto, toNell] = mails.filter((m) => m.type === 'team_invitation');
-    expect(toOtto).toMatchObject({ type: 'team_invitation', email: 'otto@other.example', name: 'Otto Other', clinicName: DEMO_CLINIC.name, role: 'Front desk', url: 'http://localhost:3000/' });
+    expect(toOtto).toMatchObject({ type: 'team_invitation', email: 'otto@other.example', name: 'Otto Other', clinicName: DEMO_CLINIC.name, role: 'Front desk' });
+    // the link opens that invitation's own page, never the dashboard's home (tester finding 6)
+    expect((toOtto as { url: string }).url).toBe(`http://localhost:3000/invite/${rows.find((r) => r.email === 'otto@other.example')!.id}`);
     expect(toOtto).not.toHaveProperty('setPasswordUrl');
     expect(toNell).toMatchObject({ email: 'nell@maple.example', name: 'Nell New', clinicName: DEMO_CLINIC.name, role: 'Front desk' });
-    expect(new URL((toNell as { setPasswordUrl: string }).setPasswordUrl).pathname).toBe('/reset-password');
+    const setLink = new URL((toNell as { setPasswordUrl: string }).setPasswordUrl);
+    expect(setLink.pathname).toBe('/reset-password');
+    // once the password is set, signing in comes back to the invitation
+    expect(setLink.searchParams.get('next')).toBe(`/invite/${rows.find((r) => r.email === 'nell@maple.example')!.id}`);
   });
 
   it('someone already on the team is told so: that is the team\'s own list', async () => {
@@ -99,8 +104,13 @@ describe('accepting', () => {
     const res = await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'nell@maple.example', password: 'nell chose this password' } });
     const nell = ([] as string[]).concat(res.headers['set-cookie'] ?? []).map((c) => c.split(';')[0]).join('; ');
     const [inv] = await mine(nell);
+    expect((await api.request('GET', `${ME}/${inv!.id}`, { cookie: nell })).json()).toMatchObject({ state: 'pending', clinicName: DEMO_CLINIC.name, role: 'staff' });
     expect((await api.request('POST', `${ME}/${inv!.id}/accept`, { cookie: nell })).statusCode).toBe(200);
     expect(await clinicsOf(nell)).toEqual([`${DEMO_CLINIC.id}:staff`]);
+    expect((await api.request('GET', `${ME}/${inv!.id}`, { cookie: nell })).json().state).toBe('accepted');
+    // tester finding 2: the front desk person just invited writes their own name on Your profile
+    expect((await api.request('PATCH', '/api/v1/me', { cookie: nell, body: { name: 'Nell Newman' } })).statusCode).toBe(204);
+    expect((await api.request('GET', '/api/v1/me', { cookie: nell })).json().user).toMatchObject({ name: 'Nell Newman', nameMissing: false });
   });
 });
 

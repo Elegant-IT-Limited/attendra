@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
-import { memberships } from '../auth-schema';
+import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
@@ -14,27 +14,42 @@ export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'refi
 type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
 
 /**
- * Which clinics a signed-in person can open, and with which role. Runs as the owner
- * connection because it decides the tenant; everything after it runs inside
- * withClinic for the clinic it returns.
+ * Which clinics a signed-in person can open, and with which role: every location of a
+ * business they own, and each location they were invited to (clinic_access, migration
+ * 0046). Runs as the owner connection because it decides the tenant; everything after it
+ * runs inside withClinic for the clinic it returns.
  */
 export async function clinicsForUser(db: Database, userId: string) {
-  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, orgName: organizations.name, role: memberships.role, approvesRefills: memberships.approvesRefills })
-    .from(memberships).innerJoin(clinics, eq(clinics.orgId, memberships.organizationId)).innerJoin(organizations, eq(organizations.id, clinics.orgId))
-    .where(and(eq(memberships.userId, userId), isNull(clinics.closedAt))).orderBy(organizations.name, clinics.name);
+  return db.select({ clinicId: clinics.id, clinicName: clinics.name, timezone: clinics.timezone, orgId: clinics.orgId, orgName: organizations.name, role: clinicAccess.role, approvesRefills: clinicAccess.approvesRefills, accountWide: clinicAccess.accountWide })
+    .from(clinicAccess).innerJoin(clinics, eq(clinics.id, clinicAccess.clinicId)).innerJoin(organizations, eq(organizations.id, clinics.orgId))
+    .where(and(eq(clinicAccess.userId, userId), isNull(clinics.closedAt))).orderBy(organizations.name, clinics.name);
 }
 
 export async function staffRole(db: Database, userId: string, clinicId: string): Promise<StaffRole | null> {
-  const [row] = await db.select({ role: memberships.role }).from(memberships)
-    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId), isNull(clinics.closedAt)));
+  const [row] = await db.select({ role: clinicAccess.role }).from(clinicAccess)
+    .innerJoin(clinics, eq(clinics.id, clinicAccess.clinicId))
+    .where(and(eq(clinicAccess.userId, userId), eq(clinicAccess.clinicId, clinicId), isNull(clinics.closedAt)));
   return row?.role ?? null;
 }
 
-/** Adds or changes one person's role in one organization. Owner connection; used by the member CLI and the demo seed. */
-export async function addMembership(db: Database, orgId: string, userId: string, role: StaffRole, approvesRefills?: boolean) {
-  await db.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId, role, approvesRefills: !!approvesRefills })
-    .onConflictDoUpdate({ target: [memberships.organizationId, memberships.userId], set: { role, ...(approvesRefills === undefined ? {} : { approvesRefills }) } });
+/**
+ * Adds or changes one person's role, for the member CLI and the demo seed. Owner connection.
+ * An owner is account-wide (every location of the business); any other role is given at
+ * the locations named, or at every location of the business when none are.
+ */
+export async function addMembership(db: Database, orgId: string, userId: string, role: StaffRole, approvesRefills?: boolean, clinicIds?: string[]) {
+  if (role === 'owner') {
+    await db.insert(memberships).values({ id: crypto.randomUUID(), organizationId: orgId, userId, role, approvesRefills: !!approvesRefills })
+      .onConflictDoUpdate({ target: [memberships.organizationId, memberships.userId], set: { role, ...(approvesRefills === undefined ? {} : { approvesRefills }) } });
+    await db.delete(clinicMemberships).where(and(eq(clinicMemberships.userId, userId), inArray(clinicMemberships.clinicId, db.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, orgId)))));
+    return;
+  }
+  const where = clinicIds?.length ? and(eq(clinics.orgId, orgId), inArray(clinics.id, clinicIds)) : eq(clinics.orgId, orgId);
+  for (const { id: clinicId } of await db.select({ id: clinics.id }).from(clinics).where(where)) {
+    await db.insert(clinicMemberships).values({ id: crypto.randomUUID(), clinicId, userId, role, approvesRefills: !!approvesRefills })
+      .onConflictDoUpdate({ target: [clinicMemberships.clinicId, clinicMemberships.userId], set: { role, ...(approvesRefills === undefined ? {} : { approvesRefills }) } });
+  }
+  await db.delete(memberships).where(and(eq(memberships.organizationId, orgId), eq(memberships.userId, userId)));
 }
 
 /** The organization a clinic belongs to. Owner connection; no PHI. */
@@ -84,28 +99,33 @@ export async function auditResults(tx: Tx, clinicId: string, userId: string, pat
  * role inside one clinic's scope, and every read of patient data writes an audit
  * row in the same transaction, so a view that failed to audit also failed to show.
  */
-/** A staff member's own number at the clinic's practice, for a take-over. Owner connection: memberships are not clinic rows. */
+/** A staff member's own number at this location, for a take-over. Owner connection: memberships are not clinic rows. */
 export async function transferNumber(db: Database, userId: string, clinicId: string): Promise<string | null> {
-  const [row] = await db.select({ n: memberships.transferNumber }).from(memberships)
-    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+  const [row] = await db.select({ n: clinicAccess.transferNumber }).from(clinicAccess)
+    .where(and(eq(clinicAccess.userId, userId), eq(clinicAccess.clinicId, clinicId)));
   return row?.n ?? null;
 }
 
 /** Whether this person may approve or decline a refill at this clinic: marked on the Team page. Owner connection. */
 export async function approvesRefills(db: Database, userId: string, clinicId: string): Promise<boolean> {
-  const [row] = await db.select({ ok: memberships.approvesRefills }).from(memberships)
-    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(memberships.userId, userId), eq(clinics.id, clinicId)));
+  const [row] = await db.select({ ok: clinicAccess.approvesRefills }).from(clinicAccess)
+    .where(and(eq(clinicAccess.userId, userId), eq(clinicAccess.clinicId, clinicId)));
   return !!row?.ok;
 }
 
-/** Sets or clears it, audited in the clinic: a take-over rings this number, so a change to it is a change to where calls can go. */
+/**
+ * Sets or clears it, audited in the clinic: a take-over rings this number, so a change to it is a change to where calls can go.
+ * An owner's number is theirs at every location of the business; anyone else's is per location.
+ */
 export async function setTransferNumber(db: Database, userId: string, clinicId: string, number: string | null): Promise<boolean> {
   const org = await orgOfClinic(db, clinicId);
   if (!org) return false;
-  const rows = await db.update(memberships).set({ transferNumber: number })
+  let rows = await db.update(memberships).set({ transferNumber: number })
     .where(and(eq(memberships.userId, userId), eq(memberships.organizationId, org))).returning({ id: memberships.id });
+  if (!rows.length) {
+    rows = await db.update(clinicMemberships).set({ transferNumber: number })
+      .where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.clinicId, clinicId))).returning({ id: clinicMemberships.id });
+  }
   if (!rows.length) return false;
   await withClinic(db, clinicId, (tx) => tx.insert(auditLogs).values({
     clinicId, actor: actorOf(userId), action: number ? 'member.transfer_number.set' : 'member.transfer_number.cleared', entity: 'member', entityId: userId,
@@ -313,6 +333,25 @@ export class FrontDeskRepository {
           moved: a.createdByCallId === callId && a.status === 'booked' && a.updatedAt.getTime() - a.createdAt.getTime() > 1000,
         })),
       };
+    });
+  }
+
+  /**
+   * The queue with no patient in it, for a viewer: number, type, state, age, who has it and
+   * when it is due. Details, notes, names and numbers are never read, so nothing is audited.
+   */
+  async listTasksWithoutNames(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType }) {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const rows = await tx.select().from(tasks)
+        .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined))
+        .orderBy(...(opts.status === 'open' ? [desc(tasks.urgent), desc(tasks.createdAt)] : [desc(tasks.doneAt)]), desc(tasks.id))
+        .limit(opts.limit);
+      return rows.map((task) => ({
+        id: task.id, number: task.number, type: task.type, status: task.status, callId: null, patientId: null, createdAt: task.createdAt,
+        assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
+        urgent: task.urgent, dueOn: task.dueOn, patientName: null, details: {} as Record<string, string>, custom: {} as Record<string, string>, followUp: null,
+        notes: [] as { id: number; authorUserId: string; at: Date; body: string }[],
+      }));
     });
   }
 

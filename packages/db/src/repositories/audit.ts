@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
-import { authUsers, memberships, userAvatars } from '../auth-schema';
+import { authUsers, clinicAccess, userAvatars } from '../auth-schema';
 import type { Database, Tx } from '../client';
-import { auditLogs, clinics } from '../schema';
+import { auditLogs } from '../schema';
 
 export type AuditEntry = typeof auditLogs.$inferInsert;
 
@@ -41,16 +41,15 @@ export async function recordView(tx: Tx, entry: AuditEntry, window = 0) {
 
 /**
  * The names of a clinic's staff, for "booked by Jordan". Owner connection: the
- * application role has no grant on auth tables. Only people who are members of the
- * clinic's organization are returned, whatever ids are asked for.
+ * application role has no grant on auth tables. Only people who can open the clinic
+ * are returned, whatever ids are asked for.
  */
 export async function staffNames(db: Database, clinicId: string, userIds: string[]): Promise<Map<string, string>> {
   const ids = [...new Set(userIds)];
   if (!ids.length) return new Map();
   const rows = await db.select({ id: authUsers.id, name: authUsers.name }).from(authUsers)
-    .innerJoin(memberships, eq(memberships.userId, authUsers.id))
-    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
-    .where(and(eq(clinics.id, clinicId), inArray(authUsers.id, ids)));
+    .innerJoin(clinicAccess, eq(clinicAccess.userId, authUsers.id))
+    .where(and(eq(clinicAccess.clinicId, clinicId), inArray(authUsers.id, ids)));
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
@@ -61,11 +60,10 @@ export async function staffNames(db: Database, clinicId: string, userIds: string
  */
 export async function staffPeople(db: Database, clinicId: string, userIds: string[]) {
   const ids = [...new Set(userIds)];
-  if (!ids.length) return new Map<string, { name: string; role: (typeof memberships.$inferSelect)['role']; avatarAt: Date | null }>();
-  const rows = await db.select({ id: authUsers.id, name: authUsers.name, role: memberships.role, avatarAt: userAvatars.updatedAt }).from(authUsers)
-    .innerJoin(memberships, eq(memberships.userId, authUsers.id))
-    .innerJoin(clinics, eq(clinics.orgId, memberships.organizationId))
+  if (!ids.length) return new Map<string, { name: string; role: (typeof clinicAccess.$inferSelect)['role']; avatarAt: Date | null }>();
+  const rows = await db.select({ id: authUsers.id, name: authUsers.name, role: clinicAccess.role, avatarAt: userAvatars.updatedAt }).from(authUsers)
+    .innerJoin(clinicAccess, eq(clinicAccess.userId, authUsers.id))
     .leftJoin(userAvatars, eq(userAvatars.userId, authUsers.id))
-    .where(and(eq(clinics.id, clinicId), inArray(authUsers.id, ids)));
+    .where(and(eq(clinicAccess.clinicId, clinicId), inArray(authUsers.id, ids)));
   return new Map(rows.map(({ id, ...p }) => [id, p]));
 }

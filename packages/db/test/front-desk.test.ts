@@ -20,7 +20,7 @@ beforeAll(async () => {
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
   await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_ben', 'Ben Desk', 'ben@example.test')`);
-  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m1', 'org_demo', 'u_ana', 'staff'), ('m2', 'org_demo', 'u_ben', 'staff')`);
+  await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff'), ('m2', ${DEMO_CLINIC.id}, 'u_ben', 'staff')`);
 
   const repo = new CallRepository(t.db, cipher);
   callId = await repo.open(DEMO_CLINIC.id, 'live_fd_1', '+13035550147');

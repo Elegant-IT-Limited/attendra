@@ -159,7 +159,8 @@ function Requests() {
 
   if (isPending) return <><PageHeader title="Requests" /><Skeleton className="h-64" /></>;
   if (!can('tasks:read')) {
-    return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role can see calls and settings, not requests, because they name {terms.patients}.</Empty></Card></>;
+    if (can('tasks:list')) return <ViewerRequests clinicId={clinicId} tz={tz} patientWord={terms.patient} />;
+    return <><PageHeader title="Requests" /><Card><Empty title="Requests are for the front desk">Your role cannot see requests. Ask a practice manager if you need them.</Empty></Card></>;
   }
   const teammates = team.data?.people ?? [];
   // the clinic's own field, filtered here: the values are already on the cards
@@ -656,5 +657,46 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
         {error && <Alert tone="danger">{error}</Alert>}
       </div>
     </Panel>
+  );
+}
+
+/**
+ * Requests as a viewer sees them: the number, the kind, when it came in, who has it and
+ * whether it is urgent or due, read-only, with no names, numbers or details (the API sends
+ * none). Says so, so an empty column never looks like missing data.
+ */
+function ViewerRequests({ clinicId, tz, patientWord }: { clinicId: string; tz: string; patientWord: string }) {
+  const [status, setStatus] = useState<'open' | 'done'>('open');
+  const list = useQuery({ queryKey: ['tasks', clinicId, 'viewer', status], queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks?status=${status}`), refetchInterval: 30_000, placeholderData: keepPreviousData });
+  const rows = list.data?.tasks ?? [];
+  return (
+    <>
+      <PageHeader title="Requests" description={<>What callers asked the team for, the newest first, read-only. Your role sees each request without names, phone numbers or details. Times are {zoneLabel(tz)}.</>} />
+      <Card className="mb-4"><CardContent className="py-4">
+        <Segmented label="Status" value={status} onValueChange={setStatus} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />
+      </CardContent></Card>
+      {list.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
+      {list.isPending ? <Card className="space-y-2 p-4"><Skeleton className="h-10" /><Skeleton className="h-10" /></Card> : !rows.length ? (
+        <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>{status === 'open' ? 'Requests appear here as calls come in.' : 'Requests the team marks done appear here.'}</Empty></Card>
+      ) : (
+        <Card>
+          <ul className="divide-y divide-border" data-testid="viewer-requests">
+            {rows.map((t) => {
+              const Icon = ICONS[t.type] ?? Phone;
+              return (
+                <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+                  <Icon className="size-4 shrink-0 text-primary" aria-hidden />
+                  <span className="font-medium">{requestNumber(t.number)}</span>
+                  <span>{taskType(t.type, patientWord)}</span>
+                  {t.urgent && <Badge tone="danger">Urgent</Badge>}
+                  <span className="text-text-muted">came in {clinicTime(t.createdAt, tz)}</span>
+                  <span className="ml-auto text-text-muted">{t.status === 'done' ? `Done${t.doneByName ? ` by ${personName(t.doneByName)}` : ''}` : t.assigneeName ? `With ${personName(t.assigneeName)}` : 'Nobody has it yet'}{t.dueOn ? ` · due ${dayTitle(t.dueOn)}` : ''}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+    </>
   );
 }

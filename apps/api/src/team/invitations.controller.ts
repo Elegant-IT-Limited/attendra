@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerInvitation, cancelInvitation, type Database, invitationsFor, orgOfClinic, teamInvitations } from '@attendra/db';
+import { answerInvitation, cancelInvitation, type Database, invitationById, invitationsFor, teamInvitations } from '@attendra/db';
 import { Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post } from '@nestjs/common';
 import { ApiCookieAuth, ApiForbiddenResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
-import { AcceptedInvitation, MyInvitationList, TeamInvitationList } from '../contracts';
+import { AcceptedInvitation, InvitationView, MyInvitationList, TeamInvitationList } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, DB } from '../http/tokens';
@@ -25,7 +25,7 @@ export class TeamInvitationsController {
   @ApiOperation({ summary: 'Invitations not answered yet: the email, the role, who sent it and when it lapses (7 days after it was sent)' })
   @ApiOkResponse({ schema: schemaOf(TeamInvitationList) })
   async list(@Param('clinicId') clinicId: string): Promise<TeamInvitationList> {
-    const rows = await teamInvitations(this.db, await this.org(clinicId), this.now());
+    const rows = await teamInvitations(this.db, clinicId, this.now());
     return { invitations: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString(), expiresAt: r.expiresAt.toISOString() })) };
   }
 
@@ -37,14 +37,9 @@ export class TeamInvitationsController {
   @ApiForbiddenResponse({ description: 'A manager cancelling an invitation to be an owner' })
   @ApiNotFoundResponse({ description: 'Not this team\'s, or already answered, cancelled or lapsed' })
   async cancel(@Param('clinicId') clinicId: string, @Param('id') id: string, @CurrentStaff() staff: Staff) {
-    const result = await cancelInvitation(this.db, await this.org(clinicId), { userId: staff.userId, role: staff.role! }, id, this.now());
+    const result = await cancelInvitation(this.db, clinicId, { userId: staff.userId, role: staff.role! }, id, this.now());
+    if (result === 'all_locations_owner_only') throw new NotFoundException({ error: 'not_found' });
     if (result !== 'done') throw REFUSED[result]();
-  }
-
-  private async org(clinicId: string) {
-    const orgId = await orgOfClinic(this.db, clinicId);
-    if (!orgId) throw new NotFoundException({ error: 'not_found' });
-    return orgId;
   }
 }
 
@@ -65,6 +60,20 @@ export class MyInvitationsController {
   async list(@CurrentStaff() staff: Staff): Promise<MyInvitationList> {
     const rows = await invitationsFor(this.db, staff.email, this.now());
     return { invitations: rows.map((r) => ({ ...r, expiresAt: r.expiresAt.toISOString() })) };
+  }
+
+  /**
+   * The page an invitation email links to (/invite/<id>) asks here. Signed in as the invited
+   * address: the clinic, the role and whether it is still open. As anyone else: only that it
+   * is for another address, so a forwarded link tells nothing. Signed out: 401, and the page
+   * signs them in and comes back.
+   */
+  @Get(':id')
+  @ApiOperation({ summary: 'One invitation, for its own page: the clinic, role, locations and state for the invited address; only "other_address" for anyone else' })
+  @ApiOkResponse({ schema: schemaOf(InvitationView) })
+  async one(@Param('id') id: string, @CurrentStaff() staff: Staff): Promise<InvitationView> {
+    const found = await invitationById(this.db, staff, id, this.now());
+    return found.state === 'other_address' || found.state === 'not_found' ? { state: found.state } : { ...found, expiresAt: found.expiresAt.toISOString() };
   }
 
   @Post(':id/accept')

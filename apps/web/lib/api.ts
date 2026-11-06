@@ -2,6 +2,7 @@
 import type { ClinicConfig } from '@attendra/core';
 import type { ApiError, Me } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
+import { noteUser } from './next';
 
 export class ApiFailure extends Error {
   constructor(readonly status: number, readonly body: ApiError) {
@@ -13,6 +14,28 @@ export class ApiFailure extends Error {
 export const BUSY = 'Attendra is busy for a moment. Try again in a few seconds.';
 /** The browser event the problem dialog listens for, sent once a request has run out of retries on a 429. */
 export const BUSY_EVENT = 'attendra:busy';
+
+/**
+ * Why a save did not go through, in words a person can act on, with the server's code
+ * when it gave one: never "check your connection" for an answer the server did give.
+ */
+export function saveProblem(error: unknown): string {
+  if (!(error instanceof ApiFailure)) return 'Not saved: Attendra could not be reached. Check your connection and try again.';
+  const { status, body } = error;
+  const said = body.message ?? body.issues?.[0]?.message;
+  if (said) return `Not saved: ${said.replace(/\.$/, '')}.`;
+  switch (body.error) {
+    case 'signed_out': return 'Not saved: you were signed out. Sign in again, then try once more.';
+    case 'password_change_required': return 'Not saved: change your temporary password first.';
+    case 'two_factor_required': return 'Not saved: set up two-step sign-in first.';
+    case 'cross_origin_write': return `Not saved: this page was opened from another address. Open Attendra at ${window.location.origin} and try again.`;
+    case 'not_found': return 'Not saved: this was not found. Reload the page and try again.';
+    default: break;
+  }
+  if (status === 429) return BUSY;
+  if (status >= 500) return `Not saved: Attendra had a problem on its side (error ${status}). Try again in a minute; if it keeps happening, write to support with this time: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC.`;
+  return `Not saved (error ${status}${body.error ? `, ${body.error}` : ''}). Reload the page and try again.`;
+}
 
 /** True for a request the API turned away as too many: say BUSY rather than an empty list. */
 export const isBusy = (error: unknown) => error instanceof ApiFailure && error.status === 429;
@@ -69,7 +92,11 @@ export function redirectFor(error: unknown): string | null {
   return null;
 }
 
-export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me'), staleTime: 60_000 });
+export const useMe = () => useQuery({
+  queryKey: ['me'],
+  queryFn: async () => { const me = await api<Me>('/me'); noteUser(me.user.id); return me; },
+  staleTime: 60_000,
+});
 
 export function useClinic(clinicId: string) {
   const me = useMe();

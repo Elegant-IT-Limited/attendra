@@ -287,6 +287,8 @@ export const knowledgeDocuments = pgTable('knowledge_documents', {
   status: text('status', { enum: ['queued', 'indexing', 'ready', 'failed'] }).notNull().default('queued'),
   failure: text('failure'),
   chunkCount: integer('chunk_count').notNull().default(0),
+  extractedChars: integer('extracted_chars'),
+  pageCount: integer('page_count'),
   indexedHash: text('indexed_hash'),
   embeddingModel: text('embedding_model'),
   uploadedByUserId: text('uploaded_by_user_id').notNull(),
