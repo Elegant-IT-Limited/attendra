@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useProblem } from '@/components/ui/toast';
 import { api, ApiFailure, saveProblem, useMe } from '@/lib/api';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 import { invitationLine } from '@/lib/invitations';
 import { cn } from '@/lib/utils';
 
@@ -20,7 +21,7 @@ export function InvitationsBanner({ inline = false }: { inline?: boolean }) {
   const queries = useQueryClient();
   const problem = useProblem();
   const me = useMe();
-  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<MyInvitationList>('/me/invitations'), staleTime: 60_000, refetchInterval: 5 * 60_000 });
+  const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<MyInvitationList>('/me/invitations'), staleTime: 60_000, refetchInterval: SAFETY_POLL_MS });
   const answer = useMutation({
     mutationFn: ({ id, accept }: { id: string; accept: boolean }) => api<AcceptedInvitation | undefined>(`/me/invitations/${id}/${accept ? 'accept' : 'decline'}`, { method: 'POST' }),
     onSuccess: async (r) => {

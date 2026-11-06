@@ -150,7 +150,7 @@ export default function LiveCallPage() {
   const { can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const example = countryCopy({ phoneNumbers: config.data?.phoneNumbers ?? [] }).phone;
-  const list = useLiveCalls(clinicId, true, 10_000);
+  const list = useLiveCalls(clinicId, true);
   const listed = list.data?.calls.find((c) => c.callId === callId);
   // when the call ends the page becomes its record, without a reload
   // the record starts looking for its summary at once: nothing cached from before the end is kept

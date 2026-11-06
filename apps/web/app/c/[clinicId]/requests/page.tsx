@@ -26,6 +26,8 @@ import { useTerms } from '@/lib/terms';
 import { Avatar, RelativeTime } from '@/components/ui/bits';
 import { Segmented } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
+import { patchRequestElsewhere } from '@/lib/optimistic';
 
 const DETAIL_LABELS: Record<string, string> = {
   topic: 'Topic',
@@ -102,7 +104,7 @@ function Requests() {
     queryKey: ['tasks', clinicId, status, type, who, q, from, to],
     queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks/search`, { method: 'POST', body: JSON.stringify(filters) }),
     enabled: can('tasks:read'),
-    refetchInterval: 30_000,
+    refetchInterval: SAFETY_POLL_MS,
     placeholderData: keepPreviousData,
   });
   const openTask = (id: string) => { setHeld(tasks.data?.tasks.find((x) => x.id === id) ?? null); setOpenId(id); };
@@ -122,6 +124,8 @@ function Requests() {
     onMutate: async ({ task, action, body }: Act) => {
       await queries.cancelQueries({ queryKey: key });
       const before = queries.getQueryData<TaskList>(key);
+      // Today's "waiting for someone" and the menu's count change with it
+      const undoElsewhere = await patchRequestElsewhere(queries, clinicId, task.id, action);
       const heldBefore = held;
       const mine = { assigneeUserId: me?.user.id ?? null, assigneeName: me?.user.name ?? null };
       const change = (t: Task): Task | null => {
@@ -136,10 +140,11 @@ function Requests() {
       if (before) queries.setQueryData<TaskList>(key, { tasks: before.tasks.map(change).filter((t): t is Task => !!t) });
       // the request held open outside the list changes the same way
       if (held?.id === task.id) setHeld(change(held));
-      return { before, heldBefore };
+      return { before, heldBefore, undoElsewhere };
     },
     onError: (e, _v, ctx) => {
       if (ctx?.before) queries.setQueryData(key, ctx.before);
+      ctx?.undoElsewhere();
       if (ctx?.heldBefore) setHeld(ctx.heldBefore);
       const text = e instanceof ApiFailure && e.status === 409 ? (e.body.message ?? 'Someone else has this request.') : e instanceof ApiFailure && e.body.issues?.length ? e.body.issues[0]!.message : 'That did not save. Try again.';
       // said once, in the toast, which stays until it is read
@@ -252,7 +257,7 @@ function Requests() {
       </div>
       </CardContent></Card>
       <div aria-label={status === 'open' ? 'Open requests' : 'Done requests'} role="region">
-      {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
+      {tasks.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every {SAFETY_POLL_WORDS}; refresh if it keeps failing.</Alert>}
       {team.data && can('members:manage') && !team.data.people.some((m) => m.approvesRefills) && tasks.data?.tasks.some((t) => t.type === 'refill' && t.status === 'open') && (
         <Alert tone="warn" className="mb-5">
           Nobody can approve refills yet. On the <Link href={`/c/${clinicId}/team`} className="underline">Team page</Link>, tick Approves refills for your {terms.patient === 'pet' ? 'veterinarians' : 'prescribers'}.
@@ -667,7 +672,7 @@ function NewRequest({ clinicId, open, onOpenChange, topics, fields, patientWord 
  */
 function ViewerRequests({ clinicId, tz, patientWord }: { clinicId: string; tz: string; patientWord: string }) {
   const [status, setStatus] = useState<'open' | 'done'>('open');
-  const list = useQuery({ queryKey: ['tasks', clinicId, 'viewer', status], queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks?status=${status}`), refetchInterval: 30_000, placeholderData: keepPreviousData });
+  const list = useQuery({ queryKey: ['tasks', clinicId, 'viewer', status], queryFn: () => api<TaskList>(`/clinics/${clinicId}/tasks?status=${status}`), refetchInterval: SAFETY_POLL_MS, placeholderData: keepPreviousData });
   const rows = list.data?.tasks ?? [];
   return (
     <>
@@ -675,7 +680,7 @@ function ViewerRequests({ clinicId, tz, patientWord }: { clinicId: string; tz: s
       <Card className="mb-4"><CardContent className="py-4">
         <Segmented label="Status" value={status} onValueChange={setStatus} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />
       </CardContent></Card>
-      {list.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every 30 seconds; refresh if it keeps failing.</Alert>}
+      {list.isError && <Alert tone="danger" className="mb-4">Requests did not load. They try again every {SAFETY_POLL_WORDS}; refresh if it keeps failing.</Alert>}
       {list.isPending ? <Card className="space-y-2 p-4"><Skeleton className="h-10" /><Skeleton className="h-10" /></Card> : !rows.length ? (
         <Card><Empty title={status === 'open' ? 'Nothing waiting' : 'Nothing closed yet'}>{status === 'open' ? 'Requests appear here as calls come in.' : 'Requests the team marks done appear here.'}</Empty></Card>
       ) : (

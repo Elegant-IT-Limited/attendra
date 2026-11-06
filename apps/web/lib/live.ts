@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { LiveCalls } from '@attendra/api/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
-/** The clinic's live calls, every few seconds. Counts and codes; the caller's short name only for roles that may read calls. */
-export function useLiveCalls(clinicId: string, enabled = true, every = 5000) {
-  return useQuery({ queryKey: ['live', clinicId], queryFn: () => api<LiveCalls>(`/clinics/${clinicId}/live`), refetchInterval: every, enabled });
+/**
+ * The clinic's live calls, read again whenever one starts, ends or moves on (the 'live'
+ * notice on the change stream), with a slow safety check. Counts and codes; the caller's
+ * short name only for roles that may read calls.
+ */
+export function useLiveCalls(clinicId: string, enabled = true) {
+  return useQuery({ queryKey: ['live', clinicId], queryFn: () => api<LiveCalls>(`/clinics/${clinicId}/live`), refetchInterval: SAFETY_POLL_MS, placeholderData: keepPreviousData, enabled });
 }
 
 const ALERTS = 'attendra.emergencyAlerts';

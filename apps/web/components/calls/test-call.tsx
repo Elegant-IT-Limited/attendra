@@ -8,6 +8,7 @@ import { api, ApiFailure, newKey } from '@/lib/api';
 import { CALL_AS_FAILURES, type CallAs } from '@/lib/call-as';
 import { LEAVE_WARNING, mustWarnBeforeLeaving, type SavedRecording, saveRecording, startCallRecording } from '@/lib/call-recording';
 import { MIC_CONSTRAINTS, micCheck, micWarning } from '@/lib/mic';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 export type Phase = 'idle' | 'connecting' | 'live' | 'ending' | 'ended';
 /** `item`: the Realtime engine's id for a caller's turn, whose words arrive after the reply to it starts. */
@@ -342,7 +343,8 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     queryKey: ['live', clinicId, 'test-call-bar'],
     queryFn: () => api<LiveCalls>(`/clinics/${clinicId}/live`),
     enabled: !!simulated,
-    refetchInterval: 5_000,
+    // the call's end arrives on the change stream ('live'); this is the safety net
+    refetchInterval: SAFETY_POLL_MS,
   });
   useEffect(() => {
     if (!simulated || !live.data || live.dataUpdatedAt < simulated.startedAt) return;

@@ -8,6 +8,7 @@ import { InvitationsBanner } from '@/components/invitations-banner';
 import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/button';
 import { api, ApiFailure, useMe } from '@/lib/api';
+import { useChanges } from '@/lib/changes';
 import { authClient } from '@/lib/auth-client';
 import { clinicToOpen } from '@/lib/last-clinic';
 import { askForNameOnce, rememberNext, signOutAndLeave, takeNext } from '@/lib/next';
@@ -56,6 +57,8 @@ export default function Home() {
  * practice owner for. Never only "you have no clinic".
  */
 function NoClinicYet({ newClinicUrl }: { newClinicUrl: string | null }) {
+  // an invitation sent now appears here at once, and accepted in another tab, this one moves on
+  useChanges(null);
   const invitations = useQuery({ queryKey: ['me', 'invitations'], queryFn: () => api<MyInvitationList>('/me/invitations'), staleTime: 60_000 });
   const waiting = invitations.data?.invitations.length ?? 0;
   const signOut = <Button variant="ghost" onClick={() => signOutAndLeave(() => authClient.signOut())}>Sign out</Button>;

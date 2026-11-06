@@ -13,6 +13,7 @@ import { Alert } from '@/components/ui/feedback';
 import { Field, Input, Label, PasswordInput } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { api, saveProblem, useMe } from '@/lib/api';
+import { useChanges } from '@/lib/changes';
 import { authClient } from '@/lib/auth-client';
 import { avatarFrom, PICTURE_TYPES, pictureProblem } from '@/lib/avatar';
 import { signOutAndLeave } from '@/lib/next';
@@ -26,6 +27,8 @@ const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
  */
 function Profile() {
   const me = useMe();
+  // invitations and roles given or taken away elsewhere show here at once
+  useChanges(null);
   const queries = useQueryClient();
   const changed = useSearchParams().get('changed');
   // what the password is being asked for

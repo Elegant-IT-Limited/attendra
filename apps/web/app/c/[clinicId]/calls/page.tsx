@@ -22,6 +22,7 @@ import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } fro
 import { SPOOFED_SIGN, SPOOFING_DOC, shortFirstCalls } from '@/lib/spoofing';
 import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 const FILTERS = {
   all: { label: 'All calls', test: () => true },
@@ -65,7 +66,7 @@ function Calls() {
     queryFn: ({ pageParam }) => api<CallList>(`/clinics/${clinicId}/calls?${new URLSearchParams({ limit: '50', ...filters, ...(pageParam ? { before: pageParam } : {}) })}`),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next,
-    refetchInterval: 30_000,
+    refetchInterval: SAFETY_POLL_MS,
     placeholderData: keepPreviousData,
     enabled: !searching,
   });

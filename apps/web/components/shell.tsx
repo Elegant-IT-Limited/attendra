@@ -21,7 +21,7 @@ import { Empty, Skeleton } from '@/components/ui/feedback';
 import { Tooltip } from '@/components/ui/overlay';
 import { useToast } from '@/components/ui/toast';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { useClinicChanges } from '@/lib/changes';
+import { SAFETY_POLL_MS, useClinicChanges } from '@/lib/changes';
 import { personName, setClinicCountry } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { rememberClinic } from '@/lib/last-clinic';
@@ -65,7 +65,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     queryKey: ['tasks', clinicId, 'count'],
     queryFn: () => api<TaskCount>(`/clinics/${clinicId}/tasks/count`),
     enabled: can('tasks:list'),
-    refetchInterval: 30_000,
+    refetchInterval: SAFETY_POLL_MS,
   });
 
   // Drops every cached call, transcript and task before leaving, and reloads, so the
