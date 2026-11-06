@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { CallQuality, DigestCall } from '@attendra/core';
+import { callCost, type CallQuality, type DigestCall, type ModelTokens, type VoiceEngineName, type VoiceFlow } from '@attendra/core';
 import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, calls, callSegments, clinics, phoneNumbers, webhookDeliveries } from '../schema';
+import { auditLogs, callActions, callCosts, calls, callSegments, clinics, phoneNumbers, smsMessages, webhookDeliveries } from '../schema';
 
 /** What a caller's number is hashed as, per clinic: the last 10 digits, so +1 and spacing do not matter. */
 export const callerKey = (clinicId: string, number: string) => `${clinicId}|${number.replace(/\D/g, '').slice(-10)}`;
@@ -23,13 +23,15 @@ export class CallRepository {
    * started as ("Call as"): kept on the call and audited with it, never the number
    * itself, and refused on anything but a browser test call.
    */
-  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string, calledAsLast4?: string | null): Promise<string> {
+  /** `how`: the engine that took the call and how its turns are answered (migration 0045); the session id is the engine's own. */
+  async open(clinicId: string, openaiSessionId: string, fromNumber: string | null, channel: 'phone' | 'web' = 'phone', startedBy?: string, calledAsLast4?: string | null,
+    how: { engine?: VoiceEngineName; voiceFlow?: VoiceFlow } = {}): Promise<string> {
     if (calledAsLast4 && (channel !== 'web' || !startedBy || fromNumber)) throw new Error('only a browser test call is started as a number');
     if (calledAsLast4 && !/^\d{4}$/.test(calledAsLast4)) throw new Error('called as: the last four digits only');
     return withClinic(this.db, clinicId, async (tx) => {
       const fromHash = fromNumber ? this.cipher.hash(callerKey(clinicId, fromNumber)) : null;
       const fromEnc = fromNumber ? this.cipher.encrypt(fromNumber, phiContext(clinicId, 'calls.from')) : null;
-      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, fromHash, fromEnc, channel, calledAsLast4: calledAsLast4 || null }).onConflictDoNothing().returning({ id: calls.id });
+      const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, engineSessionId: openaiSessionId, engine: how.engine ?? null, voiceFlow: how.voiceFlow ?? null, fromHash, fromEnc, channel, calledAsLast4: calledAsLast4 || null }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
         await tx.insert(auditLogs).values(startedBy
           ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
@@ -65,7 +67,11 @@ export class CallRepository {
     });
   }
 
-  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality }) {
+  /**
+   * `usage`: the tokens each text model used on the call, for its cost row. The cost is worked out here, from the call's
+   * own engine, channel and texts, with the rates table in core (`callCost`), so every engine's calls are counted alike.
+   */
+  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean } }) {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
@@ -76,6 +82,15 @@ export class CallRepository {
       const [lines] = await tx.select({ n: sql<number>`count(*)::int` }).from(callSegments).where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId)));
       const [actions] = await tx.select({ n: sql<number>`count(*)::int` }).from(callActions).where(and(eq(callActions.clinicId, clinicId), eq(callActions.callId, callId)));
       await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.closed', entity: 'call', entityId: callId, callId, counts: { lines: lines!.n, actions: actions!.n } });
+      // what it cost: texts that went out (any kind; not the ones refused before the carrier), the engine's minutes, the tokens
+      const [row] = await tx.select({ engine: calls.engine, channel: calls.channel }).from(calls).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
+      const [texts] = await tx.select({ n: sql<number>`count(*)::int` }).from(smsMessages).where(and(eq(smsMessages.clinicId, clinicId), eq(smsMessages.callId, callId), sql`${smsMessages.status} <> 'not_sent'`));
+      const cost = callCost({ engine: row?.engine ?? 'gpt-live', channel: row?.channel ?? 'phone', voiceSeconds: c.voiceSeconds, models: c.usage?.models ?? {}, fastTier: c.usage?.fastTier, texts: texts?.n ?? 0 });
+      const values = {
+        engine: cost.engine, voiceSeconds: cost.voiceSeconds === null ? null : cost.voiceSeconds.toFixed(2), voiceUsd: String(cost.voiceUsd), modelTokens: cost.modelTokens,
+        modelUsd: String(cost.modelUsd), texts: cost.texts, textsUsd: String(cost.textsUsd), telephonyUsd: String(cost.telephonyUsd), totalUsd: String(cost.totalUsd), ratesVersion: cost.ratesVersion,
+      };
+      await tx.insert(callCosts).values({ callId, clinicId, ...values }).onConflictDoUpdate({ target: callCosts.callId, set: values });
     });
   }
 }

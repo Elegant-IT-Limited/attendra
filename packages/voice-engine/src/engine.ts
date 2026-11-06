@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig } from '@attendra/core';
+import type { ClinicConfig, VoiceFlow } from '@attendra/core';
 import type { CommentaryAppendEvent, InstructionsAppendEvent, ThinkingAppendEvent } from 'openai/resources/live/live';
 
 /**
@@ -13,14 +13,14 @@ export interface VoiceEngine {
    * `opening`: what to say first, when not the clinic's usual greeting (a VIP's hello). `callerNumber`: the caller ID, so
    * the voice knows from the start to ask the number question for a visit (callerIdLine).
    */
-  accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts?: { callerNumber?: string | null }): Promise<void>;
+  accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts?: CallOptions): Promise<void>;
   /**
    * Starts a conversation with a browser instead of a phone: takes the browser's
    * WebRTC offer, returns the session id and the answer for the browser to apply.
    * The session is then attached and run exactly like a phone call. `callerNumber`: staff
    * started it as a number ("Call as"), so it has caller ID like a phone call.
    */
-  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts?: { callerNumber?: string | null }): Promise<{ sessionId: string; sdpAnswer: string }>;
+  startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts?: CallOptions): Promise<{ sessionId: string; sdpAnswer: string }>;
   reject(sessionId: string, sipStatus: number): Promise<void>;
   attach(sessionId: string): Sideband;
   transfer(sessionId: string, targetUri: string): Promise<void>;
@@ -37,6 +37,13 @@ export interface VoiceEngine {
   opening?(sessionId: string): string | null;
 }
 
+/**
+ * How a call is set up. `callerNumber`: the caller ID. `flow`: how its turns are answered, 'planner' (one hand-off per
+ * turn to our planner, the default) or 'tools' (the voice calls the tools API itself: gpt-realtime with function tools,
+ * GPT-Live with Responses delegation running the same tools). An engine without a tools mode answers with the planner.
+ */
+export interface CallOptions { callerNumber?: string | null; flow?: VoiceFlow }
+
 /** The sideband's own connection: open, dropped and coming back (the attempt, and the close code that started it), back. */
 export type SidebandConnection = { state: 'open' } | { state: 'reconnecting'; attempt: number; code: number } | { state: 'reconnected' };
 
@@ -52,8 +59,12 @@ export interface Sideband {
   close(): void;
 }
 
-/** The three append commands the agent uses, typed by the SDK. */
-export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent;
+/**
+ * The three append commands the agent uses, typed by the SDK, and on the tools path a tool's result for the engine to
+ * hand back to whichever model called it (a Realtime function call, a GPT-Live delegated Responses call).
+ */
+export type SidebandCommand = ThinkingAppendEvent | CommentaryAppendEvent | InstructionsAppendEvent | ToolResultCommand;
+export interface ToolResultCommand { type: 'tool.result'; event_id: string; call_id: string; output: string }
 
 /** The subset of server events the call runner reads. Everything else is ignored. */
 export type SidebandEvent =
@@ -64,4 +75,7 @@ export type SidebandEvent =
   | { type: 'session.output_audio.delta'; event_id: string; delta: string }
   | { type: 'session.closed'; event_id: string; reason: string; usage?: { seconds?: number } }
   | { type: 'error'; event_id: string; error?: { code?: string; message?: string } }
+  // the tools path: a model called one of our tools (`arguments` as JSON text), and what a text model used, for the cost row
+  | { type: 'session.tool_call'; event_id: string; call_id: string; name: string; arguments: string }
+  | { type: 'session.model_usage'; event_id: string; model: string; input: number; cached: number; output: number }
   | { type: string; event_id: string };

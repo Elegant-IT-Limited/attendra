@@ -9,7 +9,7 @@ import type { Alerter, Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
 import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSender, TwilioMessenger } from '@attendra/telephony';
-import { EngineRouter, GptLiveEngine, RealtimeEngine, SimulatedEngine } from '@attendra/voice-engine';
+import { EngineRouter, GptLiveEngine, RealtimeEngine, SimulatedEngine, type ToolsBackend } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
 import { buildServer, type IncomingCall, type VoiceDeps } from './server';
@@ -48,12 +48,22 @@ export interface VoiceRuntime {
   knowledge?: KnowledgeBase;
 }
 
+/**
+ * GPT-Live's Responses backend on the tools path (path B): the deployment's backend model and tier, as the planner has
+ * them, with little reasoning (a tool call and a sentence). No setting of its own, so switching a clinic needs no .env change.
+ */
+const toolsBackend = (rt: VoiceRuntime): ToolsBackend => ({
+  model: rt.backendModel,
+  effort: 'low',
+  ...(rt.backendSpeed?.tier === 'fast' || rt.backendSpeed?.tier === 'priority' ? { tier: 'priority' as const } : rt.backendSpeed?.tier === 'flex' ? { tier: 'flex' as const } : {}),
+});
+
 /** The voice service wired to Postgres, OpenAI and Twilio. main.ts and the local demo both use it. */
 export function createVoiceApp(rt: VoiceRuntime) {
   const openai = new OpenAI({ apiKey: rt.openaiApiKey, webhookSecret: rt.webhookSecret ?? null });
   return buildServer(wire(rt, {
     verifyWebhook: async (raw, headers) => (await openai.webhooks.unwrap(raw, headers as Record<string, string>)) as unknown as IncomingCall,
-    engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
+    engine: new EngineRouter({ 'gpt-live': new GptLiveEngine(openai, rt.liveModel, undefined, toolsBackend(rt)), 'gpt-realtime': new RealtimeEngine(openai, rt.realtimeModel) }, rt.defaultEngine ?? 'gpt-live'),
     planner: new ResponsesPlanner(openai, rt.backendModel, undefined, undefined, rt.backendSpeed, {}, { intent: true }),
   }));
 }
@@ -89,7 +99,7 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     claimDelivery: (id) => claimDelivery(db, id, 'openai'),
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),
-    openCall: (clinicId, sessionId, from, channel, startedBy, calledAsLast4) => calls.open(clinicId, sessionId, from, channel, startedBy, calledAsLast4),
+    openCall: (clinicId, sessionId, from, channel, startedBy, calledAsLast4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, calledAsLast4, how),
     // the earlier calls from this number, and the one first name on file for it, as a front desk's caller ID shows
     historyFor: async (clinicId, from, callId) => {
       const [calls, name] = await Promise.all([summaries.historyFor(clinicId, from, callId), directory.nameOnFile(clinicId, from, callId)]);

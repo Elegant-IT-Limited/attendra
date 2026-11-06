@@ -179,7 +179,7 @@ export function conversationPrompt(clinic: ClinicConfig, now: Date): string {
  * Turn-taking, as OpenAI's Live prompting guide lays it out: callers pause to think, spell
  * names and read out numbers, and a reply that starts in those pauses cuts them off.
  */
-const LISTENING = [
+export const LISTENING = [
   'Backchannel policy: Use few backchannels: at most a short "mm-hmm" while the caller gives a long answer, such as spelling a name or reading out a number. Never use one to start your reply.',
   'Interruption policy: Never talk over the caller. Wait until they have finished what they are saying before you answer, even when you already know the answer. If the caller starts talking while you speak, stop at once and listen.',
   'Keep listening while the caller pauses to think, spells a name, or reads out a phone number or a date: a short pause is not the end of their turn. Do not treat a cough, background noise or a nearby conversation as something to answer.',

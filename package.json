@@ -28,6 +28,7 @@
     "db:shared-numbers": "pnpm --filter @attendra/db run shared-numbers",
     "db:visit-type-coverage": "pnpm --filter @attendra/db run visit-type-coverage",
     "db:call-timeline": "pnpm --filter @attendra/db run call-timeline",
+    "db:call-stats": "pnpm --filter @attendra/db run call-stats",
     "db:reindex-knowledge": "pnpm --filter @attendra/worker run reindex-knowledge",
     "add-member": "pnpm --filter @attendra/api add-member",
     "demo": "turbo run demo",

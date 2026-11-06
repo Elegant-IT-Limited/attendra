@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
+import { answerAcrossPieces, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
 import { CallMemory } from './call-memory';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
@@ -170,6 +170,16 @@ export class CallState {
   abuse = 0;
   abuseTurn = -1;
   outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
+  /**
+   * How an answer to a read-back or a number question is read: from the caller's latest piece (false, the planner path
+   * today), or from every piece since the question, the latest that decides (true: the tools path, batch 1a). A yes
+   * followed by "hello, are you there?" then counts.
+   */
+  answersAcrossPieces = false;
+  /** Tokens each text model used on this call (the planner's rounds, a delegated Responses model), for its cost row. */
+  readonly modelTokens: Record<string, { input: number; cached: number; output: number }> = {};
+  /** A text model ran with priority processing on this call: its tokens cost twice the list price. */
+  fastTier = false;
 
   /** Keeps what a caller said about who they are, from an identity check's or a registration's arguments. */
   remember(args: Record<string, unknown>) {
@@ -279,7 +289,7 @@ export class CallState {
       .filter((t) => t.speaker === 'caller' && t.startMs > at)
       .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())
       .filter(Boolean);
-    return said.at(-1) ?? '';
+    return this.answersAcrossPieces ? answerAcrossPieces(said, LANGUAGES) : said.at(-1) ?? '';
   }
 
   /** The caller's latest words since the text offer was asked, like answerToReadback. */
@@ -303,7 +313,7 @@ export class CallState {
       .filter((t) => t.speaker === 'caller' && t.startMs > at)
       .map((t) => t.text.replace(/\[[^\]]*(\]|$)/g, ' ').replace(/\s+/g, ' ').trim())
       .filter(Boolean);
-    return said.at(-1) ?? '';
+    return this.answersAcrossPieces ? answerAcrossPieces(said, LANGUAGES) : said.at(-1) ?? '';
   }
 
   /** What one side said in its last few turns. */
@@ -320,4 +330,49 @@ export class CallState {
   lastMs(): number {
     return this.turns.at(-1)?.endMs ?? 0;
   }
+
+  /**
+   * The whole state as one JSON document (batch 1a): every field, with its Maps, Sets and dates kept, so a call can be
+   * handed to another process, persisted per turn, or answered by a stateless engine (Vapi's tool calls) from the same
+   * object. `fromJSON` gives back an equal state.
+   */
+  toJSON(): CallStateDocument {
+    return { v: 1, state: encode(this) as Record<string, unknown> };
+  }
+
+  static fromJSON(doc: CallStateDocument): CallState {
+    if (doc?.v !== 1) throw new Error('unknown call state version');
+    const state = new CallState();
+    for (const [k, v] of Object.entries(doc.state)) (state as unknown as Record<string, unknown>)[k] = decode(v);
+    return state;
+  }
+}
+
+/** A call state as JSON: version 1. */
+export interface CallStateDocument { v: 1; state: Record<string, unknown> }
+
+/** Maps, Sets, dates and the call memory, as JSON that `decode` turns back into the same objects. */
+function encode(v: unknown): unknown {
+  if (v instanceof Date) return { $date: v.toISOString() };
+  if (v instanceof Map) return { $map: [...v].map(([k, x]) => [encode(k), encode(x)]) };
+  if (v instanceof Set) return { $set: [...v].map(encode) };
+  if (v instanceof CallMemory) return { $memory: encodeFields(v) };
+  if (Array.isArray(v)) return v.map(encode);
+  if (v && typeof v === 'object') return encodeFields(v);
+  return v;
+}
+const encodeFields = (o: object) => Object.fromEntries(Object.entries(o).map(([k, x]) => [k, encode(x)]));
+function decode(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(decode);
+  if (!v || typeof v !== 'object') return v;
+  const o = v as Record<string, unknown>;
+  if (typeof o.$date === 'string') return new Date(o.$date);
+  if (Array.isArray(o.$map)) return new Map((o.$map as [unknown, unknown][]).map(([k, x]) => [decode(k), decode(x)]));
+  if (Array.isArray(o.$set)) return new Set((o.$set as unknown[]).map(decode));
+  if (o.$memory && typeof o.$memory === 'object') {
+    const memory = new CallMemory();
+    for (const [k, x] of Object.entries(o.$memory as Record<string, unknown>)) (memory as unknown as Record<string, unknown>)[k] = decode(x);
+    return memory;
+  }
+  return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, decode(x)]));
 }

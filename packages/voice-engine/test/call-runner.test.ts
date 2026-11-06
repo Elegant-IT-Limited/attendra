@@ -271,8 +271,17 @@ describe('the GPT-Live call runner', () => {
       { speaker: 'agent', text: 'Thanks for calling Maple Street.' },
       { speaker: 'caller', text: 'What are your hours?' },
     ]);
-    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 } }]);
+    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 }, usage: { models: {}, fastTier: false } }]);
     expect(h.sideband.close).toHaveBeenCalled();
+  });
+});
+
+describe('the phone leg (batch 1a)', () => {
+  it('ends a call whose phone leg failed to connect at once, with the carrier\'s code as its reason', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle({ type: 'transport.answered', event_id: 't0' } as SidebandEvent);
+    await h.runner.handle({ type: 'transport.failed', event_id: 't1', error: { code: 'sip_timeout', message: 'no ACK', type: 'call_error' } } as SidebandEvent);
+    expect(h.closes).toEqual([expect.objectContaining({ reason: 'transport failed: sip_timeout', outcome: 'no_audio' })]);
   });
 });
 

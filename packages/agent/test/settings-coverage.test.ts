@@ -32,6 +32,7 @@ const AUDIT: Record<string, Way> = {
   'booking.matchAnimal': 'code',
   'booking.startEvery': 'code',
   voiceEngine: 'code', // set by the operator
+  voiceFlow: 'code', // set by the operator: planner hand-offs or the tools API
   answeringPaused: 'code', // set by the hosting layer
   'specialDays[].date': 'clinic_info',
   'specialDays[].windows[].open': 'clinic_info',

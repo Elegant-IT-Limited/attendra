@@ -4,6 +4,7 @@ export * from './client';
 export * from './crypto';
 export * from './migrate';
 export * from './repositories/calls';
+export * from './repositories/call-stats';
 export * from './repositories/phone-cleanup';
 export * from './repositories/title-cleanup';
 export * from './repositories/visit-type-coverage';

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { bySubject, claimsAuthority, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
+import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
+import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
 /** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"), in English and Spanish, after `normalise`. */
@@ -48,6 +50,8 @@ const HOLD_AGAIN_MS = [30_000, 45_000] as const;
 /** Said once per wait, at HOLD_AFTER_MS, and not again on the same call within HOLD_COOLDOWN_MS: a caller who heard it on the last request does not hear it twice in a minute (a test call, 2026-10-27). */
 const HOLD_NOTE = 'Still working on it. Tell the caller once, in a few words, that you are still checking.';
 const HOLD_COOLDOWN_MS = 60_000;
+/** On the tools path, the clinic's settings are read again at most this often (the planner path reads them before every request). */
+const CLINIC_FRESH_MS = 30_000;
 /** A wait past the budget while the line was said less than a minute ago: a thank-you instead, never "still checking" again. */
 const HOLD_QUIET_NOTE = 'Still working on it. Do not say again that you are still checking; if you say anything, thank the caller for waiting, in a few words.';
 /** An answer that opens with "still checking" again, after the caller already heard it in this wait: that opening is dropped. */
@@ -129,6 +133,12 @@ export class CallAgent {
   observer: ((e: LiveEvent) => void) | null = null;
   private verified: string | null = null;
   private doing: string | null = null;
+  /** Told when a pet or patient is found or added on the tools path: the voice service reads their visits ahead (the preload). */
+  onPatientFound: ((patientId: string) => void) | null = null;
+  /** Where a visit stands on the tools path, beside the call state (flow/booking.ts). */
+  readonly flow: FlowMemory = { committedAt: null };
+  /** When the clinic's settings were last read on the tools path: at most every CLINIC_FRESH_MS, not before every tool. */
+  private clinicReadAt = 0;
   /** The emergency script sent last, when it was sent, and whether the caller has heard the number yet. */
   private emergencyScript: { content: string; number: string; sentAt: number; said: boolean; heard: string } | null = null;
 
@@ -598,6 +608,107 @@ export class CallAgent {
   }
 
   /**
+   * One tool run for the call, whoever asked for it (the planner, or the voice itself on the tools path): the safety
+   * rules in runTool, the live view for staff, the call's record of the step, and any call control it returns.
+   */
+  private async execute(name: ToolName, args: unknown, revision: number, controls: Outbound[]): Promise<ToolResult> {
+    this.doing = DOING[name] ?? null;
+    this.emit({ type: 'tool', tool: name, status: 'started', code: null });
+    this.emitState();
+    const toolStarted = Date.now();
+    const result = await runTool(name, args, this.state, this.ctx, this.backend, revision);
+    this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - toolStarted }, 'tool done');
+    const code = typeof result.data.error === 'string' ? result.data.error : null;
+    this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
+    // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
+    if ((name === 'create_callback' || name === 'create_refill_request') && result.ok) this.state.requestMade = true;
+    if ((name === 'verify_caller' || name === 'register_patient') && result.data.verified !== false && (result.data.verified === true || result.data.registered === true)) {
+      const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown; pet_name?: unknown };
+      // a pet is shown by its own name
+      const spoken = a.pet_name ? '' : name === 'verify_caller' ? String(a.full_name ?? '') : `${String(a.first_name ?? '')} ${String(a.last_name ?? '')}`;
+      this.verified = a.pet_name ? String(result.data.pet_name ?? a.pet_name) : shortName(spoken) ?? String(result.data.first_name ?? 'Verified');
+    }
+    this.emitState();
+    // the step already happened (a booking is booked): a failed write of its record is
+    // logged, and never turned into "I couldn't do that" for the caller
+    try {
+      await this.actions?.record({
+        tool: name,
+        argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
+        result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory']) },
+        revision,
+        patientId: this.state.verifiedPatient?.id ?? null,
+      });
+    } catch (err) {
+      this.log.error({ call_id: this.ctx.callId, tool: name, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call action not recorded');
+    }
+    if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
+    return result;
+  }
+
+  /**
+   * The tools path (batch 1a): the voice called one tool itself, with its own arguments, and hears back a result shaped
+   * the same for every engine (flow/voice-tools.ts): the safety rules are runTool's, as on the planner path, and the
+   * booking flow adds where the visit stands and the next step. No planner round, no prose to re-speak. Writes carry the
+   * call's current revision: an interruption never throws a lookup away (V-2); a proposal replaced by a newer one is never
+   * the one a yes books, since only the pending change is ever committed.
+   */
+  async onToolCall(name: string, rawArgs: unknown): Promise<{ output: VoiceToolOutput; controls: Outbound[] }> {
+    const s = this.state;
+    const quiet = (outcome: string, say: string) => ({ output: { ok: false, outcome, say, data: {}, stage: flowStage(s, this.flow) }, controls: [] as Outbound[] });
+    if (s.ending) return quiet('call_ending', 'The call is being ended. Say nothing more.');
+    if (this.justHeardAnimalScript()) return quiet('emergency_script_just_said', 'The caller has just heard where to take the animal. Say nothing more now; wait for them to speak.');
+    if (!isVoiceTool(name)) return quiet('unknown_tool', `There is no tool called ${name}. Use only the tools you have.`);
+    await this.freshClinic();
+    const { clinic } = this.ctx;
+    const started = Date.now();
+    if (name === 'clinic_now') {
+      const now = clinicNow(clinic, this.ctx.now());
+      this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: 'ok' }, 'tool answered');
+      return { output: { ok: true, outcome: 'ok', spoken: clinicNowLine(clinic, now, s.language), data: { ...now }, stage: flowStage(s, this.flow) }, controls: [] };
+    }
+    const controls: Outbound[] = [];
+    let result: ToolResult;
+    try {
+      result = await this.execute(name, rawArgs, s.revision, controls);
+    } catch (err) {
+      // never a claim of success on a failure: the caller hears that it didn't work, and can be called back
+      this.log.error({ call_id: this.ctx.callId, tool: name, err }, 'tool failed');
+      result = { ok: false, data: { error: 'tool_failed', spoken: PACKS[s.language].couldNotFinish } };
+    }
+    afterTool(this.flow, name, result.ok && !result.data.error, s.turns.length);
+    if ((name === 'verify_caller' || name === 'register_patient') && s.verifiedPatient) {
+      try { this.onPatientFound?.(s.verifiedPatient.id); } catch { /* the preload is a speed-up, never a reason to fail */ }
+    }
+    const stage = flowStage(s, this.flow);
+    const output = shapeForVoice(name, result, stage, nextStep(stage, s, clinic, this.ctx.callerNumber));
+    this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: output.outcome, stage }, 'tool answered');
+    this.doing = s.pending ? 'waiting for a yes' : null;
+    this.emitState();
+    return { output, controls };
+  }
+
+  /** The clinic as it is now (a vet added in the dashboard counts), read at most every CLINIC_FRESH_MS on the tools path. */
+  private async freshClinic() {
+    if (!this.ctx.reloadClinic || Date.now() - this.clinicReadAt < CLINIC_FRESH_MS) return;
+    this.clinicReadAt = Date.now();
+    const fresh = await this.ctx.reloadClinic().catch((err: unknown) => {
+      this.log.warn({ call_id: this.ctx.callId, err: { message: (err as Error).message } }, 'could not reload the clinic settings; keeping the ones the call has');
+      return null;
+    });
+    if (fresh) this.ctx.clinic = fresh;
+  }
+
+  /**
+   * How long the caller waited for an answer that needed a lookup: from their last words to the first words said after
+   * the tools answered, on the engine's session timeline. One row per such turn, read by db:call-stats.
+   */
+  recordAnswerTiming(t: { waitMs: number; tools: number; flow: 'planner' | 'tools' }) {
+    void this.actions?.record({ tool: 'answer_timing', argsRedacted: [], result: { wait_ms: Math.max(0, Math.round(t.waitMs)), tools: t.tools, flow: t.flow }, revision: this.state.revision })
+      .catch((err: unknown) => this.log.warn({ call_id: this.ctx.callId, err }, 'answer timing not recorded'));
+  }
+
+  /**
    * One delegated request. `emit` sends the quiet progress note straight away, while
    * the tools run. Revisions guard against the caller changing their mind meanwhile
    * ("Thursday, not Friday"): a newer delegation or an emergency bumps the revision,
@@ -636,38 +747,8 @@ export class CallAgent {
 
     const controls: Outbound[] = [];
     const execute = async (name: ToolName, args: unknown): Promise<ToolResult> => {
-      this.doing = DOING[name] ?? null;
-      this.emit({ type: 'tool', tool: name, status: 'started', code: null });
-      this.emitState();
-      const toolStarted = Date.now();
-      const result = await runTool(name, args, this.state, this.ctx, this.backend, revision);
+      const result = await this.execute(name, args, revision, controls);
       toolCalls++;
-      this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - toolStarted }, 'tool done');
-      const code = typeof result.data.error === 'string' ? result.data.error : null;
-      this.emit({ type: 'tool', tool: name, status: code ? 'refused' : 'ok', code });
-      // the patient this call is about, as staff watching it see them: it changes when a parent moves on to the next child
-      if ((name === 'create_callback' || name === 'create_refill_request') && result.ok) this.state.requestMade = true;
-      if ((name === 'verify_caller' || name === 'register_patient') && result.data.verified !== false && (result.data.verified === true || result.data.registered === true)) {
-        const a = (args ?? {}) as { full_name?: unknown; first_name?: unknown; last_name?: unknown; pet_name?: unknown };
-        // a pet is shown by its own name
-        const spoken = a.pet_name ? '' : name === 'verify_caller' ? String(a.full_name ?? '') : `${String(a.first_name ?? '')} ${String(a.last_name ?? '')}`;
-        this.verified = a.pet_name ? String(result.data.pet_name ?? a.pet_name) : shortName(spoken) ?? String(result.data.first_name ?? 'Verified');
-      }
-      this.emitState();
-      // the step already happened (a booking is booked): a failed write of its record is
-      // logged, and never turned into "I couldn't do that" for the caller
-      try {
-        await this.actions?.record({
-          tool: name,
-          argsRedacted: Object.keys((args ?? {}) as object), // argument names only; values can be PHI
-          result: { ok: result.ok, ...pick(result.data, ['error', 'verified', 'booked', 'cancelled', 'transferring', 'texted', 'template', 'consent_at_ms', 'filled_from_memory']) },
-          revision,
-          patientId: this.state.verifiedPatient?.id ?? null,
-        });
-      } catch (err) {
-        this.log.error({ call_id: this.ctx.callId, tool: name, err: { name: (err as Error).name, code: (err as { code?: string }).code } }, 'call action not recorded');
-      }
-      if (result.action) controls.push({ ...result.action, afterMs: AFTER_SPEECH_MS });
       return result;
     };
 
@@ -735,6 +816,11 @@ export class CallAgent {
           })),
         } : {}),
       }, 'request answered');
+      // what the planner's rounds used, for the call's cost row
+      if (timing) {
+        for (const r of timing.requests) addTokens(this.state.modelTokens, timing.model, { input: r.inputTokens ?? 0, cached: r.cachedTokens ?? 0, output: r.outputTokens ?? 0 });
+        if (timing.tier === 'fast' || timing.tier === 'priority') this.state.fastTier = true;
+      }
       // past the limit it is an answer_timeout, said on its own: not a slow answer as well
       if (ms >= SLOW_MS && ms < ANSWER_DEADLINE_MS) this.ctx.onSlow?.(ms);
       this.doing = this.state.pending ? 'waiting for a yes' : null;

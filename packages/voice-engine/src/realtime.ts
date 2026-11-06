@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, PREVIEW_VOICES } from '@attendra/core';
+import { voiceToolDefinitions } from '@attendra/agent';
+import { type ClinicConfig, PREVIEW_VOICES, type VoiceFlow } from '@attendra/core';
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
-import type { Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
+import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
 import { conversationPrompt } from './prompt';
+import { toolsVoicePrompt } from './tools-prompt';
 
 /**
  * The one tool the Realtime model has: ask our backend. It is the same hand-off GPT-Live
@@ -23,6 +25,21 @@ const REALTIME_LINES = [
   'You know nothing about this clinic, its staff, its times or its callers except what these instructions say and what ask_backend returns. Never invent a time, a name, a price or a fact.',
   'ask_backend is part of you, not someone else: never mention a backend or a system, never say you are asking or checking with anyone, and never say someone could not hear the caller. Say "let me check", then give what it returns as your own words. A callback from the clinic\'s team is fine to offer.',
 ];
+
+/** On the tools path the model calls our tools itself: what it is told on top of the tools prompt. */
+const REALTIME_TOOLS_LINES = [
+  'Your tools are part of you, not someone else: never mention a tool, a backend or a system, and never say you are asking or checking with anyone.',
+];
+
+/**
+ * The tools that only read (times, the clinic's facts and documents, a pet's visits, the clock): on the tools path they
+ * run the moment the model calls them, without waiting for the caller's words to be transcribed (up to 3 s), since
+ * nothing in them depends on those words. Everything else waits, so a yes or an emergency is heard before any write.
+ */
+const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'list_appointments', 'visit_summary', 'clinic_now']);
+
+/** Our tools as the Realtime API takes them: function tools without `strict`, which it does not use. */
+export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description, parameters }));
 
 /** The longest a reply waits for the caller's words before it, when transcription is slow. */
 export const TRANSCRIPT_WAIT_MS = 3000;
@@ -59,23 +76,34 @@ export class RealtimeEngine implements VoiceEngine {
     private readonly openSocket: (callId: string) => RealtimeSocket = (id) => new OpenAIRealtimeWS({ callID: id }, client) as unknown as RealtimeSocket,
   ) {}
 
-  private session(clinic: ClinicConfig, now: Date) {
+  /** How each call's turns are answered: the planner behind ask_backend, or our tools called by the model itself. */
+  private readonly flows = new Map<string, VoiceFlow>();
+
+  /**
+   * The planner path: the conversation prompt and one tool, ask_backend. The tools path (batch 1a): the tools prompt
+   * (tone and how to work, no clinic policy) and our tools as the model's own function tools, answered by the tools API.
+   */
+  private session(clinic: ClinicConfig, now: Date, opts: CallOptions = {}) {
+    const tools = opts.flow === 'tools';
     return {
       type: 'realtime' as const,
       model: this.model,
-      instructions: [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
+      instructions: tools ? [toolsVoicePrompt(clinic, { callerNumber: opts.callerNumber }), ...REALTIME_TOOLS_LINES].join('\n') : [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
       audio: {
-        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: { type: 'semantic_vad' as const } },
+        // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
+        // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
+        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? { type: 'semantic_vad' as const, eagerness: 'high' as const } : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
-      tools: [ASK_BACKEND],
+      tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
       tool_choice: 'auto' as const,
     };
   }
 
-  async accept(callId: string, clinic: ClinicConfig, now: Date) {
-    await this.client.realtime.calls.accept(callId, this.session(clinic, now));
+  async accept(callId: string, clinic: ClinicConfig, now: Date, _opening?: string, opts: CallOptions = {}) {
+    await this.client.realtime.calls.accept(callId, this.session(clinic, now, opts));
     this.voices.set(callId, voiceFor(clinic.voice));
+    this.flows.set(callId, opts.flow ?? 'planner');
   }
 
   sessionInfo(callId: string) {
@@ -83,8 +111,8 @@ export class RealtimeEngine implements VoiceEngine {
     return voice ? { engine: this.name, voice } : null;
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date) {
-    const session = this.session(clinic, now);
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: CallOptions = {}) {
+    const session = this.session(clinic, now, opts);
     // no retries: a retried create would be a second, billed call
     const res = await this.client.realtime.calls.create({ sdp: sdpOffer, session }, { timeout: 10_000, maxRetries: 0 });
     // the call's id is the last part of the Location header: /v1/realtime/calls/{call_id}
@@ -92,6 +120,7 @@ export class RealtimeEngine implements VoiceEngine {
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
     this.voices.set(callId, voiceFor(clinic.voice));
+    this.flows.set(callId, opts.flow ?? 'planner');
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
 
@@ -111,10 +140,14 @@ export class RealtimeEngine implements VoiceEngine {
   release(callId: string) {
     this.browser.delete(callId);
     this.voices.delete(callId);
+    this.flows.delete(callId);
   }
 
   attach(callId: string): Sideband {
     const ws = this.openSocket(callId);
+    const toolsPath = this.flows.get(callId) === 'tools';
+    // the tool calls of a response still waiting for their results: the model goes on once all of them are back
+    const outstanding = new Set<string>();
     const started = Date.now();
     const ms = () => Date.now() - started;
     let n = 0;
@@ -180,14 +213,28 @@ export class RealtimeEngine implements VoiceEngine {
       if (!awaiting.size) release();
     };
 
+    // when each caller turn was spoken, by our clock: its line is placed and timed by that, not by when its transcript
+    // arrived (often after the reply had started, which put the caller's words a turn late in the record and made the
+    // wait for an answer look shorter than it was)
+    const spokenAt = new Map<string, { start: number; end: number | null }>();
     ws.on('event', (e) => {
       switch (e.type) {
+        case 'input_audio_buffer.speech_started':
+          if (typeof e.item_id === 'string') spokenAt.set(e.item_id, { start: ms(), end: null });
+          return;
+        case 'input_audio_buffer.speech_stopped':
+          if (typeof e.item_id === 'string') { const at = spokenAt.get(e.item_id); spokenAt.set(e.item_id, { start: at?.start ?? ms(), end: ms() }); }
+          return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
-          if (typeof e.transcript === 'string' && e.transcript.trim()) emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: ms(), end_ms: ms() });
+          if (typeof e.transcript === 'string' && e.transcript.trim()) {
+            const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
+            if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
+            emit({ type: 'session.input_transcript.delta', event_id: id(e), delta: e.transcript, start_ms: at?.start ?? ms(), end_ms: at?.end ?? ms() });
+          }
           return heard(e.item_id);
         case 'conversation.item.input_audio_transcription.failed':
           return heard(e.item_id);
@@ -209,7 +256,16 @@ export class RealtimeEngine implements VoiceEngine {
         }
         // the model hands the caller's request to the backend: the runner answers it like a GPT-Live delegation
         case 'response.function_call_arguments.done':
-          if (e.name === ASK_BACKEND.name && typeof e.call_id === 'string') reply({ type: 'session.delegation.created', event_id: id(e), delegation: { id: e.call_id, target: 'client' } });
+          if (typeof e.call_id !== 'string') return;
+          if (e.name === ASK_BACKEND.name) reply({ type: 'session.delegation.created', event_id: id(e), delegation: { id: e.call_id, target: 'client' } });
+          // the tools path: one of our tools, answered by the tools API; held like a hand-off until the caller's words are in
+          else if (toolsPath && typeof e.name === 'string') {
+            outstanding.add(e.call_id);
+            const call: SidebandEvent = { type: 'session.tool_call', event_id: id(e), call_id: e.call_id, name: e.name, arguments: typeof e.arguments === 'string' ? e.arguments : '{}' };
+            // a lookup reads nothing the caller just said, so it runs at once; anything that may act on their words (a
+            // yes to a read-back, a booking, a text, a transfer) waits for their words to be transcribed, as before
+            if (READS.has(e.name)) emit(call); else reply(call);
+          }
           return;
         case 'error':
           emit({ type: 'error', event_id: id(e), error: (e.error ?? undefined) as { code?: string; message?: string } | undefined });
@@ -219,6 +275,13 @@ export class RealtimeEngine implements VoiceEngine {
     });
 
     const send = (event: SidebandCommand) => {
+      if (event.type === 'tool.result') {
+        // a tool's result: the function call's output, and once every call of the response has its result, the model goes on
+        raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
+        outstanding.delete(event.call_id);
+        if (!outstanding.size) respond();
+        return;
+      }
       const c = event as { type: string; delegation_id: string | null; content: string };
       if (c.type === 'session.commentary.append' && c.delegation_id) {
         // the backend's answer to the hand-off: the tool's result, then the model says it

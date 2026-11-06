@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { ClinicConfig } from '@attendra/core';
-import type { Sideband, VoiceEngine } from './engine';
+import type { CallOptions, Sideband, VoiceEngine } from './engine';
 
 /**
  * The engines a deployment has (GPT-Live, and the Realtime models when set up), and which
@@ -30,16 +30,16 @@ export class EngineRouter implements VoiceEngine {
   }
 
   /** Takes a phone call with a given engine, whatever the clinic chose: the call came in on it. */
-  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: { callerNumber?: string | null } = {}) {
+  async acceptWith(engine: VoiceEngine, sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: CallOptions = {}) {
     this.bySession.set(sessionId, engine);
     await engine.accept(sessionId, clinic, now, opening, opts);
   }
 
-  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: { callerNumber?: string | null } = {}) {
+  async accept(sessionId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: CallOptions = {}) {
     return this.acceptWith(this.engineFor(clinic), sessionId, clinic, now, opening, opts);
   }
 
-  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: { callerNumber?: string | null } = {}) {
+  async startBrowserCall(clinic: ClinicConfig, sdpOffer: string, now: Date, opts: CallOptions = {}) {
     const engine = this.engineFor(clinic);
     const started = await engine.startBrowserCall(clinic, sdpOffer, now, opts);
     this.bySession.set(started.sessionId, engine);
