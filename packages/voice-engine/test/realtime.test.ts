@@ -124,6 +124,28 @@ describe('the Realtime engine', () => {
     expect(s.sent.at(-1)).toEqual({ type: 'response.create' });
   });
 
+  it('greets with a first reply of its own short instructions (the greeting, no tools), and marks the first audio', async () => {
+    const { e, s } = engine();
+    await e.accept('rtc_g', DEMO_CLINIC, NOW);
+    const events: SidebandEvent[] = [];
+    const sideband = e.attach('rtc_g');
+    sideband.onEvent((x) => events.push(x));
+    // not the whole session prompt: only what to say first, so the model starts speaking at once (path A, batch 1b)
+    expect(s.sent).toHaveLength(1);
+    expect(s.sent[0]).toMatchObject({ type: 'response.create', response: { tool_choice: 'none' } });
+    const instructions = (s.sent[0] as { response: { instructions: string } }).response.instructions;
+    expect(instructions).toContain(DEMO_CLINIC.greeting.slice(0, 30));
+    expect(instructions.length).toBeLessThan(1200);
+    // a VIP's opening instead of the greeting, when the call has one
+    const vip = engine();
+    await vip.e.accept('rtc_v', DEMO_CLINIC, NOW, 'Say exactly: "Hello, putting you through to the team."');
+    vip.e.attach('rtc_v');
+    expect(JSON.stringify(vip.s.sent[0])).toContain('putting you through');
+    // the line starts playing the assistant's audio: the runner's first audio
+    s.play({ type: 'output_audio_buffer.started', event_id: 'ob1' });
+    expect(events.map((x) => x.type)).toContain('session.output_audio.delta');
+  });
+
   it('keeps what is sent before the socket opens, then greets with it as context', () => {
     const { e, s } = engine(0);
     const sideband = e.attach('rtc_1');

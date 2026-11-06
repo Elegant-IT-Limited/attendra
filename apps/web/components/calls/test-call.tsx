@@ -22,8 +22,14 @@ export const FAILURES: Record<string, string> = {
   connection: 'The audio connection dropped.',
 };
 
-/** Resolves once the browser has all its network candidates, so the offer is complete in one request. */
-function gathered(pc: RTCPeerConnection, timeoutMs = 3000) {
+/**
+ * Resolves once the browser has its network candidates, or after a short wait: the voice service's side has public
+ * addresses the browser connects to itself, so the offer does not need all of ours. Waiting for "complete" took the
+ * full 3 s on most machines (Chrome reports it late), and the caller heard the greeting that much later (path A,
+ * 2026-11-07: 5.3 s from the click to the first word).
+ */
+export const ICE_WAIT_MS = 300;
+function gathered(pc: RTCPeerConnection, timeoutMs = ICE_WAIT_MS) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise<void>((resolve) => {
     pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') resolve(); });

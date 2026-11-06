@@ -167,21 +167,26 @@ async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Pro
         if (!/Meeting has ended|"ejected"/.test(text)) w.__vapiError ??= text.slice(0, 300);
       });
       w.__vapi.on('call-end', () => { w.__vapiEnded = true; });
+      (window as unknown as { __startedAt: number }).__startedAt = Date.now();
       const call = await w.__vapi.start(id, { maxDurationSeconds: max }).catch((e: unknown) => { w.__vapiError ??= String((e as Error)?.message ?? e).slice(0, 300); return null; });
       if (!call) { w.__vapiError ??= 'the call did not start'; w.__vapiEnded = true; }
     }, [VAPI_SDK, process.env.VAPI_PUBLIC_KEY!, vapiAssistant, VAPI_MAX_SECONDS] as const);
   }, async () => { await page.evaluate(() => (window as unknown as { __vapi?: { stop(): void } }).__vapi?.stop()); });
   return runCall(page, s, async () => {
     await page.goto(`${base}${clinicPath}/test-call`);
-    await page.getByRole('button', { name: 'Start test call' }).click();
+    const button = page.getByRole('button', { name: 'Start test call' });
+    await button.waitFor();
+    await page.evaluate(() => { (window as unknown as { __startedAt: number }).__startedAt = Date.now(); });
+    await button.click();
   }, async () => { if (await page.getByRole('button', { name: 'End call' }).isVisible()) await page.getByRole('button', { name: 'End call' }).click(); });
 }
 
 async function runCall(page: Page, s: RealAudioScenario, start: () => Promise<void>, end: () => Promise<void>): Promise<CallResult> {
   const result: CallResult = { scenario: s.id, engine: flag('--engine') ?? null, callId: null, firstAudioMs: null, turns: [], stalls: 0, fillerLines: 0, repeatedQuestions: 0, missing: [], forbidden: [], ended: 'harness' };
   page.on('response', async (r) => { if (r.url().endsWith('/test-calls') && r.request().method() === 'POST') result.callId = ((await r.json().catch(() => ({}))) as { callId?: string }).callId ?? null; });
-  const clicked = Date.now();
+  // the first audio is timed from the call's start (the click on Start, or the Vapi call placed), not from loading the page
   await start();
+  const clicked = await page.evaluate(() => (window as unknown as { __startedAt?: number }).__startedAt ?? 0) || Date.now();
   if (VAPI && (await vapiProblem(page))) return { ...result, ended: 'failed', error: (await vapiProblem(page))! };
   const greeting = await awaitReply(page, clicked, 45_000);
   if (greeting.heardAt === null) return { ...result, ended: 'failed', error: (VAPI && (await vapiProblem(page))) || 'the assistant never spoke' };

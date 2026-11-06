@@ -4,7 +4,7 @@ import { type ClinicConfig, PREVIEW_VOICES, type VoiceFlow } from '@attendra/cor
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt } from './prompt';
+import { conversationPrompt, openingInstruction } from './prompt';
 import { toolsVoicePrompt } from './tools-prompt';
 
 /**
@@ -46,6 +46,8 @@ export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clin
  * their words ask for is run first and handed to it. If no go comes this long after the turn ended (the transcript
  * failed, say), it replies by itself: a caller is never left waiting on us.
  */
+/** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
+const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
 /**
  * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
@@ -82,6 +84,8 @@ export class RealtimeEngine implements VoiceEngine {
   private readonly browser = new Set<string>();
   /** The voice each call was created with: set once, never changed in the call. */
   private readonly voices = new Map<string, string>();
+  /** What each call says first (the clinic's greeting, or a VIP's or a paused clinic's opening), for its first reply. */
+  private readonly openings = new Map<string, string>();
 
   constructor(
     private readonly client: OpenAI,
@@ -113,8 +117,9 @@ export class RealtimeEngine implements VoiceEngine {
     };
   }
 
-  async accept(callId: string, clinic: ClinicConfig, now: Date, _opening?: string, opts: CallOptions = {}) {
+  async accept(callId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: CallOptions = {}) {
     await this.client.realtime.calls.accept(callId, this.session(clinic, now, opts));
+    this.openings.set(callId, opening ?? openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
   }
@@ -132,6 +137,7 @@ export class RealtimeEngine implements VoiceEngine {
     const callId = res.headers.get('location')?.split('/').filter(Boolean).at(-1);
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
+    this.openings.set(callId, openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     return { sessionId: callId, sdpAnswer: await res.text() };
@@ -154,6 +160,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.browser.delete(callId);
     this.voices.delete(callId);
     this.flows.delete(callId);
+    this.openings.delete(callId);
   }
 
   attach(callId: string): Sideband {
@@ -187,14 +194,20 @@ export class RealtimeEngine implements VoiceEngine {
       if (active) wanted = e; else { active = true; ws.send(e); }
     };
     const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
+    // The greeting is the first reply, with its own short instructions: only what to say, and no tools. With the whole
+    // session prompt (the clinic, the tools and their rules) the model first read all of it, and the caller waited
+    // (path A, 2026-11-07: first audio 5.3 s on a browser call). Anything queued before the socket opened (a note for the
+    // first answer) is context the greeting must see: then the reply is the usual one.
+    const opening = this.openings.get(callId);
+    const greet = (queued: boolean) => respond(opening && !queued ? { type: 'response.create', response: { instructions: `${opening} ${GREETING_VOICE}`, tool_choice: 'none' } } : { type: 'response.create' });
     ws.socket.on('open', () => {
       open = true;
       const items = queue.filter((e) => e.type === 'conversation.item.create');
       queue = [];
       for (const e of items) ws.send(e);
-      respond();
+      greet(items.length > 0);
     });
-    if (open) respond();
+    if (open) greet(false);
 
     // the model's words come in pieces smaller than a word ("Bisc", "uit"): they are passed on
     // a word at a time, so the record and the live captions read as said
@@ -266,6 +279,10 @@ export class RealtimeEngine implements VoiceEngine {
           return spoken(e, true);
         case 'response.created':
           active = true;
+          return;
+        // the caller's line starts playing the assistant's audio (WebRTC and phone calls): the runner's first audio
+        case 'output_audio_buffer.started':
+          emit({ type: 'session.output_audio.delta', event_id: id(e), delta: '' });
           return;
         case 'response.done': {
           spoken(e, true);
