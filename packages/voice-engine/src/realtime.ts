@@ -46,6 +46,26 @@ export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clin
  * their words ask for is run first and handed to it. If no go comes this long after the turn ended (the transcript
  * failed, say), it replies by itself: a caller is never left waiting on us.
  */
+/** The model that writes down the caller's words on these calls. */
+const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
+
+/** A Realtime reply's usage, as response.done reports it. */
+interface RealtimeUsage {
+  input_token_details?: { audio_tokens?: number; text_tokens?: number; cached_tokens_details?: { audio_tokens?: number; text_tokens?: number } };
+  output_token_details?: { audio_tokens?: number; text_tokens?: number };
+}
+
+/** One reply's tokens, per modality (`<model>:audio`, `<model>:text`), for the call's cost. None when nothing was reported. */
+export function replyUsage(model: string, u: RealtimeUsage | undefined): { model: string; input: number; cached: number; output: number }[] {
+  if (!u) return [];
+  const i = u.input_token_details ?? {};
+  const c = i.cached_tokens_details ?? {};
+  const o = u.output_token_details ?? {};
+  return ([['audio', i.audio_tokens, c.audio_tokens, o.audio_tokens], ['text', i.text_tokens, c.text_tokens, o.text_tokens]] as const)
+    .filter(([, input, , output]) => (input ?? 0) + (output ?? 0) > 0)
+    .map(([kind, input, cached, output]) => ({ model: `${model}:${kind}`, input: input ?? 0, cached: cached ?? 0, output: output ?? 0 }));
+}
+
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
@@ -109,7 +129,7 @@ export class RealtimeEngine implements VoiceEngine {
       audio: {
         // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
         // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
-        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
+        input: { transcription: { model: TRANSCRIBE_MODEL }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
@@ -264,6 +284,10 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
+          if ((e.usage as { type?: string } | undefined)?.type === 'tokens') {
+            const u = e.usage as { input_tokens?: number; output_tokens?: number };
+            emit({ type: 'session.model_usage', event_id: id(e), model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
+          }
           if (typeof e.transcript === 'string' && e.transcript.trim()) {
             const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
             if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
@@ -286,6 +310,8 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'response.done': {
           spoken(e, true);
+          // what the reply cost: audio and text tokens, each with its cached part, priced per modality (call_costs)
+          for (const u of replyUsage(this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: id(e), ...u });
           active = false;
           const next = wanted;
           wanted = null;

@@ -146,6 +146,19 @@ describe('the Realtime engine', () => {
     expect(events.map((x) => x.type)).toContain('session.output_audio.delta');
   });
 
+  it('reports each reply\'s audio and text tokens, and the transcription\'s, for the call\'s cost', () => {
+    const { e, s } = engine();
+    const events: SidebandEvent[] = [];
+    e.attach('rtc_u').onEvent((x) => events.push(x));
+    s.play({ type: 'response.done', event_id: 'r1', response: { usage: { input_token_details: { audio_tokens: 900, text_tokens: 4000, cached_tokens_details: { audio_tokens: 100, text_tokens: 3500 } }, output_token_details: { audio_tokens: 300, text_tokens: 60 } } } });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't1', item_id: 'i1', transcript: 'hi', usage: { type: 'tokens', input_tokens: 40, output_tokens: 5 } });
+    expect(events.filter((x) => x.type === 'session.model_usage')).toEqual([
+      { type: 'session.model_usage', event_id: 'r1', model: 'gpt-realtime-2.1:audio', input: 900, cached: 100, output: 300 },
+      { type: 'session.model_usage', event_id: 'r1', model: 'gpt-realtime-2.1:text', input: 4000, cached: 3500, output: 60 },
+      { type: 'session.model_usage', event_id: 't1', model: 'gpt-4o-transcribe', input: 40, cached: 0, output: 5 },
+    ]);
+  });
+
   it('keeps what is sent before the socket opens, then greets with it as context', () => {
     const { e, s } = engine(0);
     const sideband = e.attach('rtc_1');
