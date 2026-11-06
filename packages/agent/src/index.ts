@@ -10,3 +10,4 @@ export * from './tools';
 export * from './flow/booking';
 export * from './flow/preload';
 export * from './flow/voice-tools';
+export * from './flow/speculate';

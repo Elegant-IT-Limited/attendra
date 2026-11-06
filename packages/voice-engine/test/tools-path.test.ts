@@ -4,7 +4,7 @@ import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  CallRunner, fromDelegatedResponse, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
+  CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
   type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine,
 } from '../src';
 
@@ -111,6 +111,39 @@ describe('path A: what waits for the caller\'s words', () => {
   });
 });
 
+describe('round 2: manual replies on gpt-realtime', () => {
+  it('waits for the go after a turn, takes the lookup handed to it, and replies once; by itself if no go comes', async () => {
+    vi.useFakeTimers();
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_1', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_1');
+    s.play({ type: 'response.done', event_id: 'r0' }); // the greeting's reply is over
+    // before a pet is found, a turn gets its reply at once
+    const start = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    expect(s.sent.slice(start).map((x) => x.type)).toEqual(['response.create']);
+    s.play({ type: 'response.done', event_id: 'r00' });
+    sideband.send({ type: 'turns.manual', event_id: 'm1', on: true });
+    const before = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
+    sideband.send({ type: 'tool.inject', event_id: 'i1', call_id: 'spec_1', name: 'find_slots', arguments: '{}', output: '{"ok":true}' });
+    sideband.send({ type: 'reply.go', event_id: 'g1' });
+    expect(s.sent.slice(before).map((x) => (x.item as { type?: string } | undefined)?.type ?? x.type)).toEqual(['function_call', 'function_call_output', 'response.create']);
+    // a second go for the same turn does nothing; a turn with no go replies by itself
+    sideband.send({ type: 'reply.go', event_id: 'g2' });
+    s.play({ type: 'response.done', event_id: 'r1' });
+    const mid = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c2', item_id: 'item_2' });
+    vi.advanceTimersByTime(GO_WAIT_MS);
+    expect(s.sent.slice(mid).map((x) => x.type)).toEqual(['response.create']);
+    // a lookup handed over after it already replied by itself is dropped
+    sideband.send({ type: 'tool.inject', event_id: 'i2', call_id: 'spec_2', name: 'find_slots', arguments: '{}', output: '{}' });
+    expect(s.sent.slice(mid)).toHaveLength(1);
+    vi.useRealTimers();
+  });
+});
+
 describe('path B: GPT-Live with a Responses backend running our tools', () => {
   it('starts the session with Responses delegation: the backend model, its instructions and our tools', async () => {
     const sessions = { accept: vi.fn(async () => {}) };
@@ -187,6 +220,26 @@ describe('the runner on the tools path', () => {
     const h = harness();
     await h.runner.handle({ type: 'session.tool_call', event_id: 'e1', call_id: 'fc_9', name: 'find_slots', arguments: '{oops' });
     expect(JSON.parse((h.sent[0] as { output: string }).output)).toMatchObject({ ok: false, outcome: 'invalid_arguments' });
+  });
+
+  it('once the pet is found, runs the lookup the caller asks for, hands it over, then says go', async () => {
+    const h = harness();
+    h.runner.manualTurns = true;
+    h.agent.state.verifiedPatient = { id: 'p1', firstName: 'Biscuit' } as never;
+    h.agent.state.memory.set('visitType', 'vt_annual', 'tool');
+    // times are on the table: the next turn may ask for another
+    h.agent.state.offered.set('prov_okafor@x', { id: 'prov_okafor@x', providerId: 'prov_okafor', start: new Date(), end: new Date(), visitTypeId: 'vt_annual' } as never);
+    await h.runner.handle({ type: 'session.tool_call', event_id: 't0', call_id: 'fc_0', name: 'clinic_now', arguments: '{}' });
+    expect(h.sent).toContainEqual(expect.objectContaining({ type: 'turns.manual', on: true }));
+    h.sent.length = 0;
+    await h.runner.handle(say('in', 'e1', 'What about Friday morning?', 5000));
+    expect(h.sent.map((x) => (x as { type: string }).type)).toEqual(['tool.inject', 'reply.go']);
+    expect(h.sent[0]).toMatchObject({ name: 'find_slots' });
+    h.sent.length = 0;
+    // nothing to look up: just the go
+    await h.runner.handle(say('out', 'e1b', 'Friday at 9 or 10?', 7000));
+    await h.runner.handle(say('in', 'e2', 'Thanks.', 9000));
+    expect(h.sent.map((x) => (x as { type: string }).type)).toEqual(['reply.go']);
   });
 
   it('counts the delegated model\'s tokens toward the call\'s cost row', async () => {

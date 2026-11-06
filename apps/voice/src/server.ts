@@ -10,6 +10,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { type ActionResult, LiveRegistry, type Numbered } from './live';
 import { mintToolToken, readToolToken, TOOL_TOKEN_MAX_MS } from './tool-tokens';
+import { registerVapi } from './vapi';
 
 /** An incoming phone call: GPT-Live sends a session id, the Realtime API a call id. */
 export interface IncomingCall { id: string; type: string; data: { session_id?: string; call_id?: string; sip_headers?: { name: string; value: string }[] } }
@@ -46,6 +47,16 @@ export interface VoiceDeps {
   webhookRouteLimit?: number;
   /** A browser test call is ended after this long. Defaults to 900 (15 minutes), still capped by the clinic's test minutes left. */
   browserCallMaxSeconds?: number;
+  /**
+   * Path C of the bake-off: the secret a Vapi assistant sends with its tool calls and call events to /vapi/v1/events.
+   * Without it the route does not exist. Never set for a real clinic (batch 1a, round 2).
+   */
+  vapiSecret?: string;
+  /**
+   * gpt-realtime on the tools path: run a likely lookup before the reply (round 2). Defaults to off: on real audio it
+   * saved no time (the wait for the caller's words costs about what it saves), so it stays behind this switch.
+   */
+  lookupAhead?: boolean;
   /** Browser test calls one clinic may have open at once. Defaults to 2. */
   browserCallsPerClinic?: number;
   /** Open calls and their events, for staff watching live. One is created when none is passed. */
@@ -464,6 +475,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       sideband.onEvent((e) => { if (e.type === 'session.closed') closed = true; });
       const runner = new CallRunner(sessionId, engine, sideband, agent, deps.recorderFor(clinic.id, callId), deps.log, marks,
         deps.alerts ? { alert: (kind, text) => deps.alerts!.alert(kind, text), where: `Clinic ${clinic.id}, call ${callId}` } : undefined);
+      // gpt-realtime on the tools path waits for our go once a pet is found, so a lookup runs before its reply (round 2)
+      runner.manualTurns = tools && (deps.lookupAhead ?? false) && engine.sessionInfo?.(sessionId)?.engine === 'gpt-realtime';
       if (web) {
         const limit = opts.maxSeconds ?? maxSeconds;
         // a minute before the end the caller hears so, and at the end the assistant says why it
@@ -598,6 +611,9 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
     }
   }
 
+  if (deps.vapiSecret) {
+    registerVapi(app, { secret: deps.vapiSecret, clinicById: deps.clinicById, openCall: deps.openCall, recorderFor: deps.recorderFor, actionsFor: deps.actionsFor, backend: deps.backend, planner: deps.planner, log: deps.log, now });
+  }
   // tests read a live tools-path call's token here; nothing else does, and it is never logged
   app.decorate('toolTokenFor', (callId: string) => toolLines.get(callId)?.token ?? null);
   app.addHook('onClose', async () => {

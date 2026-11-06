@@ -2,7 +2,7 @@
 import { answerAcrossPieces, isClearYes, LANGUAGES, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallCache, cachedBackend, CallState, CLINIC_NOW, flowStage, voiceToolDefinitions } from '../src';
+import { CallCache, cachedBackend, CallState, CLINIC_NOW, flowStage, speculativeLookup, voiceToolDefinitions } from '../src';
 import { world } from './support';
 
 // Batch 1a: the voice calls the tools itself. The same safety rules (runTool), the booking flow as code around them,
@@ -183,5 +183,41 @@ describe('the call cache (the preload)', () => {
     t = 61_000;
     await cache.read('k', load);
     expect(loads).toBe(2);
+  });
+});
+
+describe('round 2: the visit type from the clinic, and the lookup run ahead', () => {
+  it('find_slots takes only the clinic\'s own visit type ids on the tools path', () => {
+    const find = voiceToolDefinitions(clinic).find((t) => t.name === 'find_slots')!;
+    const visit = (find.parameters as { properties: { visit_type_id: { enum: string[]; description: string } } }).properties.visit_type_id;
+    expect(visit.enum).toEqual(clinic.visitTypes.map((v) => v.id));
+    expect(visit.description).toContain('vt_wellness (wellness exam)');
+  });
+
+  it('a made-up visit type is refused with the real ones, ids and names', async () => {
+    const c = await w.call(null, { clinic, channel: 'web' });
+    const out = (await c.agent.onToolCall('find_slots', { visit_type_id: 'vt_checkup', provider_id: null, from_date: null, part_of_day: 'any' })).output;
+    expect(out.outcome).toBe('unknown_visit_type');
+    expect(out.data.visit_types).toContainEqual({ id: 'vt_wellness', name: 'wellness exam' });
+  });
+
+  it('runs a lookup ahead only when the pet is found, the visit is known and the caller asks about a time', async () => {
+    const c = await w.call('+17205550172', { clinic });
+    c.caller('Is Thursday at 4 free?');
+    expect(speculativeLookup(c.state, clinic)).toBeNull(); // no pet found yet
+    c.state.verifiedPatient = { id: 'p1', firstName: 'Biscuit' } as never;
+    expect(speculativeLookup(c.state, clinic)).toBeNull(); // no visit known: never a guess
+    c.caller('Is Thursday at 4 free for his vaccine appointment?');
+    expect(speculativeLookup(c.state, clinic)).toEqual({ name: 'find_slots', args: { visit_type_id: 'vt_vaccines', provider_id: null, from_date: null, part_of_day: 'any' } });
+    c.state.memory.set('visitType', 'vt_wellness', 'tool');
+    c.assistant('Thursday at 4 is taken. I have 3:30.');
+    c.caller('What about Friday morning?');
+    expect(speculativeLookup(c.state, clinic)?.args).toMatchObject({ visit_type_id: 'vt_wellness', part_of_day: 'morning' });
+    c.assistant('Friday at 9 or 10?');
+    c.caller('Do you have an afternoon time instead?');
+    expect(speculativeLookup(c.state, clinic)?.args.part_of_day).toBe('afternoon');
+    c.assistant('Friday at 9?');
+    c.caller('Yes, that works.');
+    expect(speculativeLookup(c.state, clinic)).toBeNull(); // nothing about a time: a yes is not a lookup
   });
 });

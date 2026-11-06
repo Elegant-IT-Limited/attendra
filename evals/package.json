@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit -p .",
     "sim": "tsx sim/run.ts",
     "draft-from-call": "tsx src/draft-from-call.ts",
-    "real-audio": "tsx real-audio/run.ts"
+    "real-audio": "tsx real-audio/run.ts",
+    "vapi-setup": "tsx vapi/setup.ts"
   },
   "dependencies": {
     "@attendra/agent": "workspace:*",

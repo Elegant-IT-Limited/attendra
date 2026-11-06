@@ -120,6 +120,12 @@ export class CallRunner {
   private answerDue = false;
   /** Tool calls on the tools path, by call id: each is answered once, whatever a sideband replay sends again. */
   private readonly toolCalls = new Set<string>();
+  /**
+   * The tools path on an engine that can wait for our go (gpt-realtime): once a pet is found, after each caller turn the
+   * lookup their words ask for is run and handed to the voice before it replies (round 2). Set by the voice service.
+   */
+  manualTurns = false;
+  private manual = false;
 
   constructor(
     private readonly sessionId: string,
@@ -195,7 +201,11 @@ export class CallRunner {
         this.callerEndMs = e.end_ms;
         this.turnTools = 0;
         this.answerDue = false;
-        await this.dispatch(this.agent.onCallerTranscript(e.delta, e.start_ms, e.end_ms));
+        const heard = this.agent.onCallerTranscript(e.delta, e.start_ms, e.end_ms);
+        await this.dispatch(heard);
+        // replies are ours to start: the lookup their words ask for first, then the go. An instruction from the words
+        // themselves (an emergency script, an abuse warning) starts its own reply
+        if (this.manual && !heard.some((o) => o.type === 'instructions')) await this.replyAfterWords();
         return this.flushFinishedTurns();
       }
       case 'session.output_transcript.delta': {
@@ -361,10 +371,39 @@ export class CallRunner {
         ? { output: { ok: false, outcome: 'invalid_arguments', say: 'Those arguments were not valid JSON. Call the tool again.', data: {} }, controls: [] }
         : await this.agent.onToolCall(name, args);
       this.answerDue = true;
+      this.syncManual();
       if (!this.closed) await this.dispatch(controls);
       return JSON.stringify(output);
     } finally {
       this.pending--;
+    }
+  }
+
+  /** Manual replies on, once a pet or patient is found (and off again if the call is ending). */
+  private syncManual() {
+    if (!this.manualTurns || this.closed) return;
+    const want = this.agent.repliesAfterWords();
+    if (want === this.manual) return;
+    this.manual = want;
+    this.sideband.send({ type: 'turns.manual', event_id: `manual_${randomUUID()}`, on: want });
+  }
+
+  /** After the caller's words, with replies ours to start: the lookup they ask for, handed to the voice, then the go. */
+  private async replyAfterWords() {
+    try {
+      const spec = this.agent.speculate();
+      if (spec) {
+        const callId = `spec_${randomUUID()}`;
+        const args = JSON.stringify(spec.args);
+        const output = await this.callTool(callId, spec.name, args);
+        if (output !== null && !this.closed) {
+          this.log.info({ session_id: this.sessionId, tool: spec.name }, 'lookup run ahead of the reply');
+          this.sideband.send({ type: 'tool.inject', event_id: `inject_${callId}`, call_id: callId, name: spec.name, arguments: args, output });
+        }
+      }
+    } finally {
+      // whatever happened to the lookup, the voice replies now
+      if (!this.closed) this.sideband.send({ type: 'reply.go', event_id: `go_${randomUUID()}` });
     }
   }
 

@@ -29,7 +29,8 @@ export function toolWork(clinic: ClinicConfig): string[] {
     pets
       ? 'A visit always goes in this order: the number the pet\'s profile is under, then the pet, then times, then the read-back as a question, then the caller\'s clear yes, then commit_pending. The tools refuse a step out of order and say what to do instead.'
       : 'A visit always goes in this order: who the patient is, then times, then the read-back as a question, then the caller\'s clear yes, then commit_pending. The tools refuse a step out of order and say what to do instead.',
-    'Before a tool, say at most one or two words ("Sure.", "Okay."), or nothing: never that you are checking, looking, matching or pulling something up, and never what you are about to do. The answer comes in a moment; say it when it does.',
+    'Call a tool without saying anything first: results come back in well under a second, and a lookup the caller asked for is often already in the conversation as a result. Never say that you are checking, looking, matching or pulling something up, and never what you are about to do. Only when you must call a second tool before you can answer may you say one short phrase first ("One moment."), once in that turn.',
+    'When a find_slots result is already in the conversation right after the caller\'s words, it is the answer to them: say it, without calling find_slots again.',
     'A refusal (ok false) comes with its reason: say it kindly, in a few words, then what you can do instead, as the result says. If the caller asks why, give the reason from the result.',
     'Call one tool at a time and wait for its result, unless the second does not depend on the first.',
     'When the caller is done (they said no to "anything else?" or goodbye), say a short goodbye and call end_call.',
@@ -53,7 +54,9 @@ export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: st
     `Start with exactly this greeting: "${openingWords(clinic.greeting, recordingNotice(clinic))}" It is said once, at the very start of the call. Never say it again later in the call. If the caller speaks while you are greeting them ("Hello?"), stop and answer them; never start the greeting again.`,
     `You are ${clinic.assistantName ? `${clinic.assistantName}, ` : ''}the ${terms.business}'s AI assistant. If asked, say you are an AI assistant. Never claim to be a person.`,
     `Speak ${PACKS[clinic.primaryLanguage].name}${others.length ? `. You may also speak ${others.map((l) => PACKS[l].name).join(' and ')} if the caller does; answer in the language the caller uses, and switch back if they do` : ''}. Speak no other language. If the caller speaks one you do not, say in ${PACKS[clinic.primaryLanguage].name}, kindly and in one sentence, that you can only help in ${[clinic.primaryLanguage, ...others].map((l) => PACKS[l].name).join(' or ')}.`,
-    ...others.map((l) => `If the caller speaks ${PACKS[l].name}, switch to it and introduce yourself once with exactly: "${greetingFor(clinic, l)}"`),
+    // the greeting already said who is speaking (an AI assistant): a caller who switches language is answered in it at
+    // once, never greeted again (a second introduction ran into the next question, and callers heard it as starting over)
+    ...others.map((l) => `If the caller speaks ${PACKS[l].name}, answer in ${PACKS[l].name} from then on, straight away, without greeting or introducing yourself again. If they ask who you are, say: "${greetingFor(clinic, l)}"`),
     // the planner path's acknowledgement line invites "one moment while I check" before every lookup: on this path the
     // tools answer in well under a second, so the voice acknowledges in a word or not at all (toolWork says how)
     ...talkLines(clinic.talk, clinic.industry).filter((l) => !/^Acknowledge briefly|^Answer directly, without filler/.test(l)).map(viaTools),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, TOOL_NAMES, type ToolName } from '@attendra/core';
+import { type ClinicConfig, localName, TOOL_NAMES, type ToolName } from '@attendra/core';
 import { toolDefinitions } from '../planner';
 import type { ToolResult } from '../tools';
 import type { FlowStage } from './booking';
@@ -18,9 +18,24 @@ export const VOICE_TOOL_NAMES = [...TOOL_NAMES, 'clinic_now'] as const;
 export type VoiceToolName = ToolName | 'clinic_now';
 export const isVoiceTool = (name: string): name is VoiceToolName => (VOICE_TOOL_NAMES as readonly string[]).includes(name);
 
-/** The function tools for a clinic's voice on the tools path, engine-neutral (JSON schema, strict). */
+/** The clinic's visit types as the voice may name them: id and name, the only ids find_slots takes on the tools path. */
+export const visitTypeChoices = (clinic: ClinicConfig) => clinic.visitTypes.map((v) => ({ id: v.id, name: localName(v, 'en') }));
+
+/**
+ * The function tools for a clinic's voice on the tools path, engine-neutral (JSON schema, strict). A visit type is never
+ * a guess (a test call made one up and the call died on it): find_slots takes only the clinic's own visit type ids, listed
+ * in its schema with their names.
+ */
 export function voiceToolDefinitions(clinic: ClinicConfig) {
-  return [...toolDefinitions(clinic), CLINIC_NOW];
+  const choices = visitTypeChoices(clinic);
+  return [...toolDefinitions(clinic).map((t) => {
+    if (t.name !== 'find_slots') return t;
+    const params = t.parameters as { properties: Record<string, Record<string, unknown>> };
+    return {
+      ...t,
+      parameters: { ...params, properties: { ...params.properties, visit_type_id: { type: 'string', enum: choices.map((c) => c.id), description: `The visit, one of: ${choices.map((c) => `${c.id} (${c.name})`).join(', ')}. Take it from what the caller asked for; when they did not say, the most likely one for what they described.` } } },
+    };
+  }), CLINIC_NOW];
 }
 
 /**
@@ -36,9 +51,11 @@ export interface VoiceToolOutput {
 }
 
 /** The tool result shaped for the voice. */
-export function shapeForVoice(name: string, result: ToolResult, stage: FlowStage, next: string | null): VoiceToolOutput {
+export function shapeForVoice(name: string, result: ToolResult, stage: FlowStage, next: string | null, extras?: { visitTypes?: { id: string; name: string }[] }): VoiceToolOutput {
   // find_slots words its answer as say_as (the exact words) and note (how to use them): the same two parts as spoken and say
   const { error, say, spoken, say_as: sayAs, note, ...data } = result.data as Record<string, unknown> & { error?: unknown; say?: unknown; spoken?: unknown; say_as?: unknown; note?: unknown };
+  // a visit type the clinic does not have: the ones it does, with their ids, so the next call names a real one
+  if (error === 'unknown_visit_type' && extras?.visitTypes) data.visit_types = extras.visitTypes;
   const out: VoiceToolOutput = {
     ok: result.ok,
     outcome: typeof error === 'string' ? error : result.ok ? okOutcome(name, data) : 'refused',

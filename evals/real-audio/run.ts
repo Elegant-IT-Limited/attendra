@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // The real-audio harness (batch 1a): real browser test calls with a voiced caller, on a running Attendra dashboard.
 //   pnpm --filter @attendra/evals real-audio -- [--base http://localhost:3000] [--login "Vet clinic manager"] [--only id,id]
+//   path C (Vapi): add --vapi, with VAPI_PUBLIC_KEY set and the assistant from vapi/setup.ts (~/.attendra-vapi-assistant)
 //     [--engine gpt-realtime] [--scenarios real-audio/scenarios.yaml] [--headed]
 // Needs OPENAI_API_KEY (the caller's voice and, without fixed lines, the model playing the caller) and a dashboard whose
 // voice service has its own key. Places real, billed test calls: about a minute each. Writes
@@ -127,12 +128,36 @@ async function awaitReply(page: Page, from: number, maxMs = 25_000): Promise<{ h
   return { heardAt, stalled: true };
 }
 
+/** Path C: the call goes through Vapi's web SDK (pinned), on a page of the local dashboard (a secure origin for the microphone). */
+const VAPI = args.includes('--vapi');
+const VAPI_SDK = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@3.0.0/+esm';
+const vapiAssistant = VAPI ? readFileSync(join(process.env.HOME ?? '', '.attendra-vapi-assistant'), 'utf8').trim() : '';
+if (VAPI && !process.env.VAPI_PUBLIC_KEY) throw new Error('--vapi needs VAPI_PUBLIC_KEY (from ~/.attendra-vapi.env)');
+const live = (page: Page) => (VAPI ? page.evaluate(() => !(window as unknown as { __vapiEnded?: boolean }).__vapiEnded) : page.getByRole('button', { name: 'End call' }).isVisible());
+
 async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Promise<CallResult> {
+  if (VAPI) return runCall(page, s, async () => {
+    await page.goto(`${base}/sign-in`);
+    await page.evaluate(async ([url, pk, id]) => {
+      const w = window as unknown as { __vapi: { on(e: string, f: (m: { type?: string; role?: string; transcriptType?: string; transcript?: string }) => void): void; start(id: string): Promise<unknown>; stop(): void }; __vapiEnded?: boolean; __captions: [string, string, number][] };
+      const { default: Vapi } = await import(url) as { default: new (k: string) => typeof w.__vapi };
+      w.__vapi = new Vapi(pk);
+      w.__vapi.on('message', (m) => { if (m.type === 'transcript' && m.transcriptType === 'final' && m.transcript) w.__captions.push([m.role === 'user' ? 'caller' : 'agent', m.transcript, Date.now()]); });
+      w.__vapi.on('call-end', () => { w.__vapiEnded = true; });
+      await w.__vapi.start(id);
+    }, [VAPI_SDK, process.env.VAPI_PUBLIC_KEY!, vapiAssistant] as const);
+  }, async () => { await page.evaluate(() => (window as unknown as { __vapi?: { stop(): void } }).__vapi?.stop()); });
+  return runCall(page, s, async () => {
+    await page.goto(`${base}${clinicPath}/test-call`);
+    await page.getByRole('button', { name: 'Start test call' }).click();
+  }, async () => { if (await page.getByRole('button', { name: 'End call' }).isVisible()) await page.getByRole('button', { name: 'End call' }).click(); });
+}
+
+async function runCall(page: Page, s: RealAudioScenario, start: () => Promise<void>, end: () => Promise<void>): Promise<CallResult> {
   const result: CallResult = { scenario: s.id, engine: flag('--engine') ?? null, callId: null, firstAudioMs: null, turns: [], stalls: 0, fillerLines: 0, repeatedQuestions: 0, missing: [], forbidden: [], ended: 'harness' };
   page.on('response', async (r) => { if (r.url().endsWith('/test-calls') && r.request().method() === 'POST') result.callId = ((await r.json().catch(() => ({}))) as { callId?: string }).callId ?? null; });
-  await page.goto(`${base}${clinicPath}/test-call`);
   const clicked = Date.now();
-  await page.getByRole('button', { name: 'Start test call' }).click();
+  await start();
   const greeting = await awaitReply(page, clicked, 45_000);
   if (greeting.heardAt === null) return { ...result, ended: 'failed', error: 'the assistant never spoke' };
   result.firstAudioMs = greeting.heardAt - clicked;
@@ -152,10 +177,10 @@ async function runOne(page: Page, s: RealAudioScenario, clinicPath: string): Pro
     const agent = await agentSince(page, ended);
     result.turns.push({ caller: text, callerEndAt: ended, heardAt: reply.heardAt, overlapped, agent } satisfies Turn);
     said.push({ who: 'assistant', text: agent });
-    if (!(await page.getByRole('button', { name: 'End call' }).isVisible())) { result.ended = 'assistant'; break; }
+    if (!(await live(page))) { result.ended = 'assistant'; break; }
     line = s.lines ? (s.lines[i] ?? null) : await nextLine(s, said);
   }
-  if (await page.getByRole('button', { name: 'End call' }).isVisible()) await page.getByRole('button', { name: 'End call' }).click();
+  if (await live(page)) await end();
   await page.waitForTimeout(2000);
   Object.assign(result, judgeWords(s, said.filter((l) => l.who === 'assistant').map((l) => l.text)));
   return result;
@@ -166,10 +191,13 @@ const browser = await chromium.launch({ headless: !args.includes('--headed'), ar
 const context = await browser.newContext({ permissions: ['microphone'] });
 await context.addInitScript(INIT);
 const page = await context.newPage();
-await page.goto(`${base}/sign-in`);
-await page.getByRole('button', { name: login, exact: true }).click();
-await page.waitForURL(/\/c\/[^/]+$/);
-const clinicPath = new URL(page.url()).pathname;
+let clinicPath = '(vapi)';
+if (!VAPI) {
+  await page.goto(`${base}/sign-in`);
+  await page.getByRole('button', { name: login, exact: true }).click();
+  await page.waitForURL(/\/c\/[^/]+$/);
+  clinicPath = new URL(page.url()).pathname;
+}
 const results: CallResult[] = [];
 for (const s of scenarios) {
   const p = await context.newPage();

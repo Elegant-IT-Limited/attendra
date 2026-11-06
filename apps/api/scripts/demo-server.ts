@@ -96,6 +96,10 @@ if (realCalls || simulated) {
     ? createVoiceApp({
       ...common, openaiApiKey: process.env.OPENAI_API_KEY!, simulatedCalls: simulated,
       liveModel: process.env.GPT_LIVE_MODEL || 'gpt-live-1', backendModel: process.env.ATTENDRA_BACKEND_MODEL || 'gpt-6-luna',
+      // path C of the bake-off, tried locally: Vapi reaches /vapi/v1/events through a tunnel, with this secret (shell only)
+      vapiSecret: process.env.VAPI_SERVER_SECRET && process.env.VAPI_SERVER_SECRET.length >= 32 ? process.env.VAPI_SERVER_SECRET : undefined,
+      // the lookup run ahead (round 2), off unless ATTENDRA_LOOKUP_AHEAD=on, for comparing
+      lookupAhead: process.env.ATTENDRA_LOOKUP_AHEAD === 'on',
     })
     : createSimulatedVoiceApp(common);
   try {

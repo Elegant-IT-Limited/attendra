@@ -5,7 +5,8 @@ import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
-import { isVoiceTool, shapeForVoice, type VoiceToolOutput } from './flow/voice-tools';
+import { speculativeLookup } from './flow/speculate';
+import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
 /** The assistant's words that promise the team will be in touch ("I'll pass that along", "someone will call you back"), in English and Spanish, after `normalise`. */
@@ -681,11 +682,33 @@ export class CallAgent {
       try { this.onPatientFound?.(s.verifiedPatient.id); } catch { /* the preload is a speed-up, never a reason to fail */ }
     }
     const stage = flowStage(s, this.flow);
-    const output = shapeForVoice(name, result, stage, nextStep(stage, s, clinic, this.ctx.callerNumber));
+    const output = shapeForVoice(name, result, stage, nextStep(stage, s, clinic, this.ctx.callerNumber), { visitTypes: visitTypeChoices(clinic) });
     this.log.info({ call_id: this.ctx.callId, tool: name, ms: Date.now() - started, outcome: output.outcome, stage }, 'tool answered');
     this.doing = s.pending ? 'waiting for a yes' : null;
     this.emitState();
     return { output, controls };
+  }
+
+  /**
+   * The tools path, after the caller's turn and before the voice replies: the lookup their words ask for, when the call
+   * makes it plain (flow/speculate.ts), run now so the voice can answer in one reply. Null when nothing is plain.
+   */
+  speculate(): { name: string; args: Record<string, unknown> } | null {
+    return speculativeLookup(this.state, this.ctx.clinic);
+  }
+
+  /**
+   * Whether the voice should wait for the caller's words before it replies (the tools path): only when a lookup is a
+   * likely next turn and can be run ahead ("what about Thursday?"): the pet or patient is found, a visit is already
+   * known from a lookup on this call, and no read-back waits for a yes. Waiting costs about a second on every turn it
+   * is on (the transcript comes after the turn ends), so it is on only where it can save a model round (real-audio
+   * runs, round 2: on from the pet found, it slowed every reply and ran no lookup ahead).
+   */
+  repliesAfterWords(): boolean {
+    const s = this.state;
+    const visit = s.memory.get('visitType');
+    // times are on the table: the next turn is often "what about Thursday?" (never after a booking, never at a read-back)
+    return flowStage(s, this.flow) === 'times_offered' && !s.ending && !!visit && this.ctx.clinic.visitTypes.some((v) => v.id === visit);
   }
 
   /** The clinic as it is now (a vet added in the dashboard counts), read at most every CLINIC_FRESH_MS on the tools path. */

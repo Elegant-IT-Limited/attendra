@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (round 2 on the tools path, and path C for the bake-off)
+
+- **The visit type always comes from the clinic** on the tools path: `find_slots` takes only its own visit type ids, listed with their names; a refusal hands them back.
+- **A likely lookup runs before the reply** on gpt-realtime: once times are on the table and the visit is known, the caller's words are looked up before the voice replies, and the result handed to it, so "what about Thursday?" is answered in one reply. Off by default (on real audio it saved no time); `ATTENDRA_LOOKUP_AHEAD=on` to compare.
+- **No narration before a tool**, and no second introduction when a caller switches language.
+- **Path C, for the bake-off only**: `POST /vapi/v1/events` on the voice service (only with `VAPI_SERVER_SECRET`), so a Vapi assistant runs our tools with the same agent and rules, recorded as engine `vapi`; `pnpm --filter @attendra/evals vapi-setup` makes the assistant, and the real-audio harness places its calls with `--vapi`. No clinic is switched to Vapi.
+
 ### Added (the voice calls the tools itself: batch 1a, one clinic at a time)
 
 - **A tools path for calls, per clinic.** `PUT /provisioning/clinics/:clinicId/voice-flow` `{ flow: 'tools' | 'planner' | null }` (operator only; Settings cannot change it). With `tools` the voice calls the backend's tools directly instead of handing every turn to the planner: on gpt-realtime they are the model's own function tools (path A); on GPT-Live a Responses model of OpenAI's runs them through Responses delegation (path B). The safety rules are the same `runTool` rules; every other clinic keeps the planner path, and `{ flow: 'planner' }` is the way back.
