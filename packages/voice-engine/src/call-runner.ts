@@ -9,7 +9,7 @@ import { openingIfNotStarted } from './prompt';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
-  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean } }): Promise<void>;
+  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }): Promise<void>;
 }
 
 /**

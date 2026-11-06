@@ -48,7 +48,7 @@ export interface VoiceDeps {
   /** A browser test call is ended after this long. Defaults to 900 (15 minutes), still capped by the clinic's test minutes left. */
   browserCallMaxSeconds?: number;
   /**
-   * Path C of the bake-off: the secret a Vapi assistant sends with its tool calls and call events to /vapi/v1/events.
+   * Path C of the bake-off: the secret a Vapi assistant sends with its tool calls and call events to /webhooks/vapi/v1/events.
    * Without it the route does not exist. Never set for a real clinic (batch 1a, round 2).
    */
   vapiSecret?: string;

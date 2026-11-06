@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Path C of the bake-off (batch 1a, round 2): creates or updates one Vapi assistant for the demo clinic, with our tools
+// Path C of the bake-off (batch 1a, round 2): creates or updates one Vapi assistant for a test clinic, with our tools
 // as its function tools, pointed at a running Attendra voice service. Never for a real clinic.
-//   VAPI_API_KEY=... VAPI_SERVER_SECRET=... pnpm --filter @attendra/evals vapi-setup -- --url https://<public address of the voice service>
-// The public address is where Vapi reaches /vapi/v1/events (a tunnel to the local demo's voice service on :8080).
-// Prints the assistant id and keeps it in ~/.attendra-vapi-assistant (an id, not a secret).
+//   VAPI_API_KEY=... VAPI_SERVER_SECRET=... pnpm --filter @attendra/evals vapi-setup -- --url https://<public address> [--clinic clinic_bakeoff]
+// With --clinic (and DATABASE_URL), the clinic's settings come from the database (on a deployment: the bake-off clinic,
+// pnpm db:seed-bakeoff); without it, the demo clinic as the local demo seeds it. Vapi reaches /webhooks/vapi/v1/events
+// at the public address. Prints the assistant id (an id, not a secret) and keeps it in ~/.attendra-vapi-assistant.
 import { voiceToolDefinitions } from '@attendra/agent';
 import { ClinicConfig, RIVERBEND_CLINIC } from '@attendra/core';
+import { clinicById, connect } from '@attendra/db';
 import { toolsVoicePrompt } from '@attendra/voice-engine';
 import { writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -19,10 +21,13 @@ const base = flag('--url')?.replace(/\/+$/, '');
 if (!key || !secret || secret.length < 32 || !base?.startsWith('https://')) {
   throw new Error('needs VAPI_API_KEY, VAPI_SERVER_SECRET (32+ characters) and --url https://<public address of the voice service>');
 }
-// the demo clinic as the local demo seeds it, booking out of hours as in the other runs
-const clinic = ClinicConfig.parse({ ...RIVERBEND_CLINIC, afterHours: 'book' });
-const NAME = 'Attendra bake-off (demo clinic)';
-const server = { url: `${base}/vapi/v1/events?clinic=${clinic.id}`, headers: { 'x-vapi-secret': secret } };
+const clinicId = flag('--clinic');
+if (clinicId && !process.env.DATABASE_URL) throw new Error('--clinic reads the clinic from DATABASE_URL');
+// the test clinic as the database holds it, or the demo clinic as the local demo seeds it (booking out of hours)
+const clinic = clinicId ? ClinicConfig.parse(await clinicById(connect(process.env.DATABASE_URL!), clinicId)) : ClinicConfig.parse({ ...RIVERBEND_CLINIC, afterHours: 'book' });
+if (!clinic.id.startsWith('clinic_bakeoff') && !clinic.id.startsWith('clinic_demo')) throw new Error(`${clinic.id} is not a test clinic: path C is for the bake-off only`);
+const NAME = `Attendra bake-off (${clinic.id})`;
+const server = { url: `${base}/webhooks/vapi/v1/events?clinic=${clinic.id}`, headers: { 'x-vapi-secret': secret } };
 
 const assistant = {
   name: NAME,
@@ -48,4 +53,5 @@ const api = async (method: string, path: string, body?: unknown) => {
 const existing = ((await api('GET', '/assistant?limit=100')) as unknown as { id: string; name?: string }[]).find((a) => a.name === NAME);
 const saved = existing ? await api('PATCH', `/assistant/${existing.id}`, assistant) : await api('POST', '/assistant', assistant);
 writeFileSync(join(homedir(), '.attendra-vapi-assistant'), `${saved.id}\n`);
-console.log(`${existing ? 'updated' : 'created'} assistant ${saved.id} (${NAME}), tools at ${base}/vapi/v1/events`);
+console.log(`${existing ? 'updated' : 'created'} assistant ${saved.id} (${NAME}), tools at ${base}/webhooks/vapi/v1/events`);
+process.exit(0);

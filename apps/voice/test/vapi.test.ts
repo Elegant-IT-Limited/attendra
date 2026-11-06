@@ -40,7 +40,7 @@ describe('path C: Vapi calling our tools', () => {
   afterAll(async () => { await app.close(); await t.close(); });
 
   const post = (message: unknown, secret: string | null = SECRET, clinicId = clinic.id) => app.inject({
-    method: 'POST', url: `/vapi/v1/events?clinic=${clinicId}`, headers: { 'content-type': 'application/json', ...(secret ? { 'x-vapi-secret': secret } : {}) }, payload: JSON.stringify({ message }),
+    method: 'POST', url: `/webhooks/vapi/v1/events?clinic=${clinicId}`, headers: { 'content-type': 'application/json', ...(secret ? { 'x-vapi-secret': secret } : {}) }, payload: JSON.stringify({ message }),
   });
   const call = { id: 'vapi-call-1', type: 'webCall' };
 
@@ -72,10 +72,10 @@ describe('path C: Vapi calling our tools', () => {
     const named = await post({ type: 'tool-calls', call, toolCallList: [{ id: 'tc_3', function: { name: 'verify_caller', arguments: { owner_name: null, pet_name: 'Biscuit', phone: '720 555 0172' } } }] });
     expect(JSON.parse((named.json() as { results: { result: string }[] }).results[0]!.result).outcome).toBe('owner_check');
 
-    await post({ type: 'end-of-call-report', call, endedReason: 'customer-ended-call', durationSeconds: 42 });
+    await post({ type: 'end-of-call-report', call, endedReason: 'customer-ended-call', durationSeconds: 42, cost: 0.0912 });
     await t.client.query(`select set_config('app.clinic_id', $1, false)`, [clinic.id]);
-    const rows = (await t.client.query(`select c.engine, c.voice_flow, c.channel, c.voice_seconds, (select count(*)::int from call_segments s where s.call_id = c.id) as lines, (select engine from call_costs k where k.call_id = c.id) as cost_engine from calls c where c.openai_session_id = 'vapi_vapi-call-1'`)).rows;
-    expect(rows).toEqual([{ engine: 'vapi', voice_flow: 'tools', channel: 'web', voice_seconds: '42.00', lines: 4, cost_engine: 'vapi' }]);
+    const rows = (await t.client.query(`select c.engine, c.voice_flow, c.channel, c.voice_seconds, (select count(*)::int from call_segments s where s.call_id = c.id) as lines, (select engine from call_costs k where k.call_id = c.id) as cost_engine, (select voice_usd from call_costs k where k.call_id = c.id) as voice_usd from calls c where c.openai_session_id = 'vapi_vapi-call-1'`)).rows;
+    expect(rows).toEqual([{ engine: 'vapi', voice_flow: 'tools', channel: 'web', voice_seconds: '42.00', lines: 4, cost_engine: 'vapi', voice_usd: '0.091200' }]);
   });
 
   it('refuses a clinic it does not know, as a result Vapi can say', async () => {

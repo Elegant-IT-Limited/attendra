@@ -57,6 +57,8 @@ describe('db:call-stats', () => {
       `${DEMO_CLINIC.id} · phone · gpt-live · planner`, `${DEMO_CLINIC.id} · web · gpt-realtime · tools`, `${DEMO_CLINIC.id} · phone · gpt-live · tools`,
     ]);
     expect(groups.every((g) => g.costUsd >= 0)).toBe(true);
+    // a 20 s call on GPT-Live: its cost row over a third of a minute
+    expect(groups[0]!.costPerMinute).toBeGreaterThan(0);
   });
 
   it('prints numbers and id prefixes only, never a word of a transcript', async () => {

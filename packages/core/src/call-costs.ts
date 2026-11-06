@@ -39,6 +39,8 @@ export interface CallCostInput {
   models: Record<string, ModelTokens>;
   fastTier?: boolean;
   texts: number;
+  /** What the engine itself charged for the call (Vapi reports it), when known: used instead of minutes at the list rate. */
+  engineUsd?: number;
 }
 
 export interface CallCost {
@@ -55,7 +57,7 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 /** What one call cost, from the rates table. Every part rounds to a millionth of a dollar. */
 export function callCost(c: CallCostInput, rates = CALL_RATES): CallCost {
   const minutes = Math.max(0, c.voiceSeconds ?? 0) / 60;
-  const voiceUsd = minutes * rates.voicePerMinute[c.engine];
+  const voiceUsd = c.engineUsd !== undefined && c.engineUsd >= 0 ? c.engineUsd : minutes * rates.voicePerMinute[c.engine];
   const unpriced: string[] = [];
   let modelUsd = 0;
   for (const [model, t] of Object.entries(c.models)) {
