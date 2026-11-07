@@ -55,24 +55,31 @@ export function takeNext(userId?: string): string | null {
 }
 
 /**
- * Signed out on purpose (the Sign out button, or the idle timer): the next page simply asks
- * to sign in, without "your session ended" or a page to come back to.
+ * Signed out on purpose (the Sign out button, or the dashboard signing out by itself), and
+ * where to: plain sign-in after the button, sign-in with the reason after an idle or ended
+ * session. A request that answers "signed out" meanwhile goes to the same page, never to a
+ * different note.
  */
-export function markSignedOut() {
+export function markSignedOut(to = '/sign-in') {
   try {
-    sessionStorage.setItem(OUT, '1');
+    sessionStorage.setItem(OUT, to);
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(ASKED);
   } catch { /* storage off: they see the session-ended note, which is still true */ }
 }
 
-export function signedOutOnPurpose(): boolean {
+/** Where a sign-out on purpose was going; null when there was none. */
+export function signedOutTo(): string | null {
   try {
-    return sessionStorage.getItem(OUT) === '1';
+    const to = sessionStorage.getItem(OUT);
+    if (!to) return null;
+    return to.startsWith('/sign-in') ? to : '/sign-in';
   } catch {
-    return false;
+    return null;
   }
 }
+
+export const signedOutOnPurpose = () => signedOutTo() !== null;
 
 /**
  * Whether to open Your profile now for someone who has not written their name yet: once

@@ -59,7 +59,7 @@ People can still turn it on for themselves. Keep it required wherever the dashbo
 
 ## Signing out when idle
 
-The dashboard signs out after 15 minutes without activity in any of its tabs. A hosted service whose accounts hold no patient health information can choose longer, from 5 minutes to 12 hours (sessions last 12 hours at most either way):
+The dashboard signs out after 15 minutes without activity in any of its tabs. A hosted service whose accounts hold no patient health information can choose longer, from 5 minutes to 12 hours (either way, a session ends 12 hours after it was last used; ten minutes before the dashboard signs out it says when, and the sign-in page says why it did):
 
 ```bash
 ATTENDRA_IDLE_MINUTES=120

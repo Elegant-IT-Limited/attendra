@@ -22,10 +22,11 @@ import { Tooltip } from '@/components/ui/overlay';
 import { useToast } from '@/components/ui/toast';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { SAFETY_POLL_MS, useClinicChanges } from '@/lib/changes';
-import { personName, setClinicCountry } from '@/lib/format';
+import { personName, setClinicCountry, timeOf } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { rememberClinic } from '@/lib/last-clinic';
 import { markSignedOut } from '@/lib/next';
+import { ACTIVE_AT_KEY, type EndReason, IDLE_MINUTES_KEY, localEnd, type SessionEnd, sessionEnd, signedOutUrl, stageAt, warningText } from '@/lib/session-end';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
 import { useTerms } from '@/lib/terms';
@@ -47,7 +48,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const pathname = usePathname();
   const router = useRouter();
   const queries = useQueryClient();
-  const { data: me, clinic, can, isPending } = useClinic(clinicId);
+  const { data: me, dataUpdatedAt: meAt, clinic, can, isPending } = useClinic(clinicId);
   // the clock and money follow the clinic's country; set before the page below formats anything
   const config = useClinicConfig(clinicId);
   if (config.data) setClinicCountry(config.data.phoneNumbers);
@@ -71,35 +72,51 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // Drops every cached call, transcript and task before leaving, and reloads, so the
   // next person at this screen starts from nothing.
   const { hangUpNow, confirmLeave } = useTestCall();
-  const signOut = useCallback(async (reason?: 'idle') => {
-    // a test call recording not yet saved is lost on the way out: the person is asked (an idle sign-out cannot ask)
+  // the deployment's idle minutes (15 by default; the server's number) and the session's own end
+  const idleMinutes = me?.idleMinutes ?? 15;
+  const endsAt = localEnd(meAt, me?.expiresInSeconds);
+  const signOut = useCallback(async (reason?: EndReason) => {
+    // a test call recording not yet saved is lost on the way out: the person is asked (a sign-out by itself cannot ask)
     if (!reason && !confirmLeave()) return;
     hangUpNow(); // a test call ends while the session can still end it
-    markSignedOut();
+    const to = reason ? signedOutUrl(reason, { idleMinutes, here: window.location.pathname + window.location.search }) : '/sign-in';
+    markSignedOut(to);
     await authClient.signOut().catch(() => {});
     queries.clear();
-    window.location.assign(reason ? `/sign-in?${reason}=1` : '/sign-in');
-  }, [queries, hangUpNow, confirmLeave]);
+    window.location.assign(to);
+  }, [queries, hangUpNow, confirmLeave, idleMinutes]);
 
-  // the deployment's idle minutes (15 by default) sign out, counted across every tab of the
-  // dashboard: a tab left in the background never signs out the one being worked in (they share the session)
-  const idleMs = (me?.idleMinutes ?? 15) * 60_000;
+  // the idle minutes sign out, counted across every tab of the dashboard: a tab left in the background never signs
+  // out the one being worked in (they share the session). Ten minutes before an end, whichever comes first, a warning
+  // says when; any click or key keeps an idle session, and renews one near its own end (the next request does it)
+  const [warning, setWarning] = useState<SessionEnd | null>(null);
   useEffect(() => {
-    const KEY = 'attendra.activeAt';
     let local = 0;
-    const shared = () => { try { return Number(localStorage.getItem(KEY)) || 0; } catch { return 0; } };
+    let renewed = false;
+    const shared = () => { try { return Number(localStorage.getItem(ACTIVE_AT_KEY)) || 0; } catch { return 0; } };
+    const check = () => {
+      const end = sessionEnd({ lastActive: Math.max(local, shared()), idleMinutes, endsAt });
+      const stage = stageAt(end, Date.now());
+      if (stage === 'over') return void signOut(end.why);
+      setWarning((was) => (stage === 'warn' ? (was?.at === end.at && was.why === end.why ? was : end) : null));
+      return end;
+    };
     const touch = () => {
       const now = Date.now();
       if (now - local < 5_000) return; // at most every few seconds
       local = now;
-      try { localStorage.setItem(KEY, String(now)); } catch { /* this tab's own time still counts */ }
+      try { localStorage.setItem(ACTIVE_AT_KEY, String(now)); } catch { /* this tab's own time still counts */ }
+      const end = check();
+      // near the session's own end, a click is someone at work: ask the API again, which renews the session
+      if (end?.why === 'ended' && stageAt(end, now) === 'warn' && !renewed) { renewed = true; void queries.invalidateQueries({ queryKey: ['me'] }); }
     };
+    try { localStorage.setItem(IDLE_MINUTES_KEY, String(idleMinutes)); } catch { /* a 401 elsewhere then says "your session ended" */ }
     touch();
-    const check = setInterval(() => { if (Date.now() - Math.max(local, shared()) >= idleMs) void signOut('idle'); }, 15_000);
+    const timer = setInterval(check, 15_000);
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
     for (const e of events) window.addEventListener(e, touch, { passive: true });
-    return () => { clearInterval(check); for (const e of events) window.removeEventListener(e, touch); };
-  }, [signOut, idleMs]);
+    return () => { clearInterval(timer); for (const e of events) window.removeEventListener(e, touch); };
+  }, [signOut, idleMinutes, endsAt, queries]);
 
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);
@@ -199,6 +216,11 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
         {me?.demoMode && (
           <div className="border-b border-warning/30 bg-warning-soft px-6 py-2 text-sm" role="note">
             Demo mode. Every record and call here is made up, and two-step sign-in is switched off.
+          </div>
+        )}
+        {warning && (
+          <div className="border-b border-warning/30 bg-warning-soft px-6 py-2 text-sm" role="status" data-testid="sign-out-warning">
+            {warningText(timeOf(new Date(warning.at), clinic.timezone))}
           </div>
         )}
         <CallBar />

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { markSignedOut, rememberNext, safeNext, signedOutOnPurpose, takeNext } from '../lib/next';
+import { markSignedOut, rememberNext, safeNext, signedOutOnPurpose, signedOutTo, takeNext } from '../lib/next';
 
 describe('where sign-in goes next', () => {
   it('a page of the dashboard, with its query', () => {
@@ -26,6 +26,19 @@ describe('where sign-in goes next', () => {
     expect(takeNext()).toBeNull(); // nothing to come back to after signing out on purpose
     rememberNext(null); // the next sign-in
     expect(signedOutOnPurpose()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('a sign-out by the dashboard itself keeps its reason: a request told "signed out" meanwhile goes to the same note', () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('sessionStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) });
+    markSignedOut('/sign-in?idle=120');
+    expect(signedOutTo()).toBe('/sign-in?idle=120');
+    markSignedOut();
+    expect(signedOutTo()).toBe('/sign-in');
+    // never anywhere but the sign-in page
+    store.set('attendra.signedOut', 'https://elsewhere.example/');
+    expect(signedOutTo()).toBe('/sign-in');
     vi.unstubAllGlobals();
   });
 });
