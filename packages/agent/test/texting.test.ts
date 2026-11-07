@@ -134,6 +134,27 @@ describe('texting during a call', () => {
     expect((await c.delegate([{ tool: 'send_text', args: { kind: 'emergency_hospital', ref: null, to: null } }])).errors).toEqual(['already_sent']);
   });
 
+  it('in an animal emergency, the address the caller said yes to is the hospital\'s, whichever kind the voice picks; EN and ES (a live run)', async () => {
+    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencyTransferEnabled: false });
+    for (const [flag, yes, offer] of [
+      ['My dog Biscuit\'s throat is swelling up.', 'Yes, he still is.', 'Shall I text you the address, to the number ending in 0147?'],
+      ['A mi perro Biscuit se le está hinchando la garganta.', 'Sí, sigue pasando, por favor ayúdeme.', '¿Le envío la dirección por mensaje al número que termina en 0147?'],
+    ] as const) {
+      const c = await w.call('+13035550147', { clinic: vet });
+      c.caller(flag);
+      c.assistant(EMERGENCY_LINES.question(c.state.language));
+      expect(JSON.stringify(c.caller(yes))).toContain(offer);
+      c.assistant(offer);
+      c.caller(c.state.language === 'es' ? 'Sí, por favor.' : 'Yes, please.');
+      const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
+      expect(out.errors).toEqual([null]);
+      expect(w.sms.at(-1)).toMatchObject({ template: 'emergency_hospital' });
+      expect(c.state.emergencyResult).toBe('hospital_texted');
+      // still once a call, whichever kind is asked for again
+      expect((await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }])).errors).toEqual(['emergency_in_progress']);
+    }
+  });
+
   it('confirms a cancellation by text, like a booking', async () => {
     const c = await w.call('+13035550147', { clinic: TEXTING });
     c.caller('Maria Delgado, March 4th 1985. I want to see a doctor.');

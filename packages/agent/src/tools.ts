@@ -1029,7 +1029,11 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
 
     case 'send_text': {
       const texting = textingOf(clinic);
-      const kind = args.kind as 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link';
+      let kind = args.kind as 'directions' | 'hours' | 'emergency_hospital' | 'provider' | 'answer' | 'link';
+      // an animal sent to a hospital, its address offered by text and not yet sent: "directions" (an address) is the
+      // hospital's, not the clinic's (a live run sent 'directions', was refused, and the caller who said yes got no text)
+      const sentToHospital = state.emergencyCase?.stage === 'escalated' && state.emergencyCase.route?.action === 'refer' && !!state.emergencyCase.route.hospital;
+      if (state.emergencyLocked && sentToHospital && kind === 'directions' && !state.emergencyTextSent) kind = 'emergency_hospital';
       const ref = (args.ref as string | null) ?? null;
       if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
       // the clinic texts, just not this: never "texting isn't set up"
