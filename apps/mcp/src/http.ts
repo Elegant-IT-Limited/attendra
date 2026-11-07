@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // MCP over Streamable HTTP at POST /mcp. Put it behind HTTPS; each request carries an
 // Attendra API key as a bearer token.
-import { connect, createPhiCipher } from '@attendra/db';
+import { connect, createPhiCipher, logConnectionRole, serviceDatabaseUrl } from '@attendra/db';
 import { createLogger } from '@attendra/observability';
 import { bossQueue, createBoss, eventSink } from '@attendra/worker/queue';
 import { createServer } from 'node:http';
@@ -10,7 +10,9 @@ import { forwardedAddress, mcpHttpHandler } from './http-handler';
 
 const env = loadEnv();
 const log = createLogger({ name: 'mcp', level: env.LOG_LEVEL });
-const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
+// queries on the services' role when given (migration 0051); pg-boss on the owner's URL
+const db = connect(serviceDatabaseUrl(env), { onError: (code) => log.error({ code }, 'database connection error') });
+await logConnectionRole(db, log, !!env.ATTENDRA_SERVICE_DATABASE_URL);
 // sends events only (a request closed here reaches the clinic's webhooks); the worker delivers them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err: Error & { code?: string }) => log.error({ code: err.code ?? 'unknown' }, 'job queue error'));

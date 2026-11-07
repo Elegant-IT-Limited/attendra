@@ -7,6 +7,9 @@ const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blank, schema.
 /** Validated once at boot. Without an OpenAI key the worker summarises from the call's facts alone. */
 const Env = z.object({
   DATABASE_URL: z.string().url(),
+  // the services' own role (migration 0051, docs/self-hosting.md): its queries never get past row-level
+  // security. Unset, they run on DATABASE_URL, the owner's, as before. pg-boss stays on DATABASE_URL.
+  ATTENDRA_SERVICE_DATABASE_URL: optional(z.string().url()),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   OPENAI_API_KEY: optional(z.string().min(1)),
   ATTENDRA_SUMMARY_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
