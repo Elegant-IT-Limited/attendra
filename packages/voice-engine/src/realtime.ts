@@ -303,7 +303,7 @@ export class RealtimeEngine implements VoiceEngine {
         case 'conversation.item.input_audio_transcription.completed':
           if ((e.usage as { type?: string } | undefined)?.type === 'tokens') {
             const u = e.usage as { input_tokens?: number; output_tokens?: number };
-            emit({ type: 'session.model_usage', event_id: id(e), model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
+            emit({ type: 'session.model_usage', event_id: `${id(e)}_usage`, model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
           }
           if (typeof e.transcript === 'string' && e.transcript.trim()) {
             const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
@@ -328,7 +328,8 @@ export class RealtimeEngine implements VoiceEngine {
         case 'response.done': {
           spoken(e, true);
           // what the reply cost: audio and text tokens, each with its cached part, priced per modality (call_costs)
-          for (const u of replyUsage(this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: id(e), ...u });
+          // each with its own event id: the runner drops an event id it has seen (the reply's own words carry this one)
+          for (const u of replyUsage(this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: `${id(e)}_usage_${u.model}`, ...u });
           active = false;
           const next = wanted;
           wanted = null;

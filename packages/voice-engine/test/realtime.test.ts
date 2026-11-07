@@ -152,10 +152,13 @@ describe('the Realtime engine', () => {
     e.attach('rtc_u').onEvent((x) => events.push(x));
     s.play({ type: 'response.done', event_id: 'r1', response: { usage: { input_token_details: { audio_tokens: 900, text_tokens: 4000, cached_tokens_details: { audio_tokens: 100, text_tokens: 3500 } }, output_token_details: { audio_tokens: 300, text_tokens: 60 } } } });
     s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't1', item_id: 'i1', transcript: 'hi', usage: { type: 'tokens', input_tokens: 40, output_tokens: 5 } });
+    // the caller's words are never dropped as a repeat of the usage event's id (a live run lost every caller line to it)
+    expect(events.find((x) => x.type === 'session.input_transcript.delta')).toMatchObject({ event_id: 't1', delta: 'hi' });
+    expect(new Set(events.map((x) => x.event_id)).size).toBe(events.length);
     expect(events.filter((x) => x.type === 'session.model_usage')).toEqual([
-      { type: 'session.model_usage', event_id: 'r1', model: 'gpt-realtime-2.1:audio', input: 900, cached: 100, output: 300 },
-      { type: 'session.model_usage', event_id: 'r1', model: 'gpt-realtime-2.1:text', input: 4000, cached: 3500, output: 60 },
-      { type: 'session.model_usage', event_id: 't1', model: 'gpt-4o-transcribe', input: 40, cached: 0, output: 5 },
+      { type: 'session.model_usage', event_id: 'r1_usage_gpt-realtime-2.1:audio', model: 'gpt-realtime-2.1:audio', input: 900, cached: 100, output: 300 },
+      { type: 'session.model_usage', event_id: 'r1_usage_gpt-realtime-2.1:text', model: 'gpt-realtime-2.1:text', input: 4000, cached: 3500, output: 60 },
+      { type: 'session.model_usage', event_id: 't1_usage', model: 'gpt-4o-transcribe', input: 40, cached: 0, output: 5 },
     ]);
   });
 
