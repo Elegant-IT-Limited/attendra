@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type Database, passwordState, type StaffRole, staffRole } from '@attendra/db';
+import { ROLE_IDS, twoFactorRoles } from '@attendra/core';
+import { type Database, holdsRole, passwordState, type StaffRole, staffRole } from '@attendra/db';
 import {
   type CanActivate, createParamDecorator, type ExecutionContext, ForbiddenException, Inject, Injectable,
   NotFoundException, SetMetadata, UnauthorizedException,
@@ -25,6 +26,18 @@ export interface Staff {
 }
 
 type StaffRequest = FastifyRequest & { staff?: Staff };
+
+/**
+ * Whether this person must have two-step sign-in on (ATTENDRA_TWO_FACTOR): everyone, nobody, or
+ * whoever is an owner or practice manager at any of their locations. A promotion counts from the
+ * next request, so a new practice manager is sent to set it up before managing anything.
+ */
+export async function twoFactorNeeded(db: Database, options: Pick<ApiOptions, 'demoMode' | 'twoFactor'>, userId: string): Promise<boolean> {
+  if (options.demoMode) return false;
+  const roles = twoFactorRoles(options.twoFactor);
+  if (roles.length === ROLE_IDS.length) return true;
+  return holdsRole(db, userId, roles);
+}
 
 const PERMISSION = 'attendra:permission';
 const BEFORE_TWO_FACTOR = 'attendra:before-two-factor';
@@ -92,7 +105,7 @@ export class StaffGuard implements CanActivate {
     const beforeTwoFactor = meta<boolean>(BEFORE_TWO_FACTOR);
     // demo mode or not: the person who typed a temporary password must not be able to act as its owner
     if (!beforeTwoFactor && req.staff.mustChangePassword) throw new ForbiddenException({ error: 'password_change_required' });
-    if (!beforeTwoFactor && !this.options.demoMode && this.options.twoFactor !== 'optional' && !req.staff.twoFactorEnabled) {
+    if (!beforeTwoFactor && !req.staff.twoFactorEnabled && await twoFactorNeeded(this.db, this.options, user.id)) {
       throw new ForbiddenException({ error: 'two_factor_required' });
     }
 

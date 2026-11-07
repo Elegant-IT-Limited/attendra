@@ -53,6 +53,20 @@ export const PERMISSIONS = {
 
 export type Permission = keyof typeof PERMISSIONS;
 
+/**
+ * Who must sign in with a second step (ATTENDRA_TWO_FACTOR): everyone ('required', the default),
+ * nobody ('optional'), or the roles that manage the team, the keys and the webhooks ('managers':
+ * owners and practice managers; the others may turn it on). A person with one of these roles at
+ * any of their locations must have it on.
+ */
+export type TwoFactorMode = 'required' | 'optional' | 'managers';
+export const TWO_FACTOR_MODES = ['required', 'optional', 'managers'] as const satisfies readonly TwoFactorMode[];
+export function twoFactorRoles(mode: TwoFactorMode | undefined): StaffRoleId[] {
+  if (mode === 'optional') return [];
+  if (mode === 'managers') return [...MANAGERS()];
+  return [...ROLE_IDS];
+}
+
 export const can = (role: StaffRoleId, permission: Permission) => (PERMISSIONS[permission] as readonly StaffRoleId[]).includes(role);
 export const permissionsFor = (role: StaffRoleId) => (Object.keys(PERMISSIONS) as Permission[]).filter((p) => can(role, p));
 

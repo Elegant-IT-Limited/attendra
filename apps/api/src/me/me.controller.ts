@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { twoFactorRoles } from '@attendra/core';
 import { AVATAR_MAX_BYTES, avatarStamps, clinicsForUser, type Database, removeAvatar, renameUser, saveAvatar } from '@attendra/db';
 import { Body, Controller, Delete, Get, HttpCode, HttpException, Inject, Patch, Put } from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -10,6 +11,12 @@ import { BeforeTwoFactor, CurrentStaff, type Staff } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, CLOCK, DB, VOICE, type VoiceClient } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { AVATAR_TYPES, avatarUrl, imageTypeOf } from './avatar';
+
+/** Everyone must, or this person holds a role that must at one of their clinics. A login with no clinic yet follows the deployment's setting for everyone. */
+function clinicsOrDeployment(mode: ApiOptions['twoFactor'], roles: string[]) {
+  const must = twoFactorRoles(mode);
+  return must.length === ROLES.length || roles.some((r) => (must as string[]).includes(r));
+}
 
 @ApiTags('me')
 @ApiCookieAuth()
@@ -32,7 +39,9 @@ export class MeController {
     return {
       user: { id: staff.userId, name: staff.name, email: staff.email, twoFactorEnabled: staff.twoFactorEnabled, mustChangePassword: staff.mustChangePassword, avatarUrl: avatarUrl(staff.userId, avatarAt), nameMissing: !staff.name.trim() },
       demoMode: this.options.demoMode,
-      twoFactorRequired: !this.options.demoMode && this.options.twoFactor !== 'optional',
+      // the same rule as the guard's (twoFactorNeeded), from the clinics already read
+      twoFactorRequired: !this.options.demoMode && clinicsOrDeployment(this.options.twoFactor, clinics.map((c) => c.role)),
+      twoFactorRoles: this.options.demoMode ? [] : twoFactorRoles(this.options.twoFactor),
       idleMinutes: this.options.idleMinutes ?? 15,
       expiresAt: staff.sessionExpiresAt,
       // on the clock the session's end was set by (Better Auth's), not the injected one tests move

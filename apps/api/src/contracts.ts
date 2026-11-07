@@ -38,8 +38,10 @@ export const Me = z.object({
     /** They have not written their name yet (added by email alone): the dashboard asks for it once. */
     nameMissing: z.boolean() }),
   demoMode: z.boolean(),
-  /** Whether this deployment requires two-step sign-in before anything else. */
+  /** Whether this person must turn on two-step sign-in before anything else: on this deployment, or by their role in one of their clinics. */
   twoFactorRequired: z.boolean(),
+  /** The roles that must use two-step sign-in here (all, none, or owners and practice managers), for the words on the Team page. */
+  twoFactorRoles: z.array(Role),
   /** Minutes without activity, in every tab, before the dashboard signs out. */
   idleMinutes: z.number(),
   /** When this session ends unless it is used again (ISO): 12 hours after its last renewal, which a request more than an hour later makes. */
