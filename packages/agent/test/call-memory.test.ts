@@ -110,3 +110,21 @@ describe('on a call', () => {
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Rocket', species: 'rabbit' });
   });
 });
+
+
+describe('the caller\'s day, from the clinic clock (batch 1c)', () => {
+  it('"Thursday" on Monday, September 28 is October 1: a Thursday the model dated in another week is corrected; another day it chose is kept', () => {
+    const m = new CallMemory();
+    m.fromCaller('Could Biscuit see Dr. Khan around 5 on Thursday? Biscuit is sick.', 'en', clinic, '2026-09-28', 0);
+    const wrongWeek = fillFromMemory('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-11-12', part_of_day: 'any', from_time: '17:00' }, m, opts);
+    expect((wrongWeek.args as { from_date: string }).from_date).toBe('2026-10-01');
+    expect(wrongWeek.filled).toContain('from_date');
+    // Friday, a day the tool offered and the caller took without naming it: not the caller's Thursday, so kept
+    const otherDay = fillFromMemory('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-10-02', part_of_day: 'any', from_time: '17:00' }, m, opts);
+    expect((otherDay.args as { from_date: string }).from_date).toBe('2026-10-02');
+    // Spanish: "el viernes" on the same Monday is October 2
+    const es = new CallMemory();
+    es.fromCaller('¿Puede ver la doctora Vance a Biscuit el viernes a las 5:30 de la tarde?', 'es', clinic, '2026-09-28', 0);
+    expect((fillFromMemory('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-11-06', part_of_day: 'any', from_time: '17:30' }, es, opts).args as { from_date: string }).from_date).toBe('2026-10-02');
+  });
+});

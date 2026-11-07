@@ -1,11 +1,11 @@
 import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner } from '@attendra/agent';
-import { DEMO_CLINIC, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
+import { DEMO_CLINIC, localDateOf, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine, TURN_NOTE,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine, TURN_NOTE, turnNoteFor, sayToolQuestion, toolQuestion,
 } from '../src';
 
 // Batch 1a, the tools path: the voice calls our tools itself (gpt-realtime, path A), or GPT-Live hands each task to a
@@ -82,6 +82,22 @@ describe('path A: gpt-realtime with our tools as its own', () => {
     sideband.send({ type: 'tool.result', event_id: 't2', call_id: 'fc_2', output: '{"ok":true}' });
     expect(s.sent.slice(before).map((x) => x.type)).toEqual(['conversation.item.create', 'conversation.item.create', 'response.create']);
   });
+
+  it('says a tool\'s own question as written, with no tools in that reply (batch 1c: a live run dropped "Shall I look with them?")', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_q', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_q');
+    s.play({ type: 'response.created', event_id: 'r1' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'a', name: 'find_slots', call_id: 'fc_1', arguments: '{}' });
+    s.play({ type: 'response.done', event_id: 'r2' });
+    const line = 'Dr. Mara Vance doesn\'t do dental care. Dr. Omar Rahman and Dr. Leila Khan do dental care. Shall I look with them?';
+    const before = s.sent.length;
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'fc_1', output: JSON.stringify({ ok: true, outcome: 'no_times', spoken: line, data: {} }) });
+    expect(s.sent.slice(before).at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolQuestion(line), tool_choice: 'none' } });
+    expect(toolQuestion(JSON.stringify({ spoken: 'I have 9:00 or 9:20.' }))).toBeNull();
+    expect(toolQuestion('not json')).toBeNull();
+  });
 });
 
 /** GPT-Live's sideband socket: what it is sent, and events played back. */
@@ -124,10 +140,12 @@ describe('round 2: manual replies on gpt-realtime', () => {
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
     expect(s.sent.slice(start)).toEqual([
-      { type: 'conversation.item.create', item: { id: 'turn_note_1', type: 'message', role: 'system', content: [{ type: 'input_text', text: TURN_NOTE }] } },
+      { type: 'conversation.item.create', item: { id: 'turn_note_1', type: 'message', role: 'system', content: [{ type: 'input_text', text: turnNoteFor(vet, NOW) }] } },
       { type: 'response.create' },
     ]);
     expect(TURN_NOTE).toContain('with no words before it');
+    // the clinic's date, so "Thursday" is this week's (batch 1c)
+    expect(turnNoteFor(vet, NOW)).toContain(`Today at the clinic is ${PACKS.en.fullDay(localDateOf(NOW, vet.timezone))}`);
     s.play({ type: 'response.done', event_id: 'r1' });
     const next = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
