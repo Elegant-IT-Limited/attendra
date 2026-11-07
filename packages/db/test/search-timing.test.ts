@@ -49,13 +49,13 @@ describe.skipIf(!RUN)('search timing on 20,000 patients', () => {
         const phone = `+1${String(200 + (n % 800)).padStart(3, '0')}55501${String(Math.floor(n / 800) % 100).padStart(2, '0')}`;
         return { firstName: name(), lastName: owner.split(' ')[1]!, dob: `20${String(10 + (n % 15)).padStart(2, '0')}-0${1 + (n % 9)}-1${n % 10}`, phone, guardianName: owner };
       });
-      const ids = await t.db.insert(schema.patients).values(people.map((p) => ({ clinicId: C, ...sealPatient(cipher, C, p) }))).returning({ id: schema.patients.id });
+      const ids = await t.owner.insert(schema.patients).values(people.map((p) => ({ clinicId: C, ...sealPatient(cipher, C, p) }))).returning({ id: schema.patients.id });
       const keys = people.flatMap((p, i) => searchKeyHashes(cipher, C, p).map((key) => ({ clinicId: C, key, patientId: ids[i]!.id })));
-      for (let k = 0; k < keys.length; k += 15_000) await t.db.insert(schema.patientSearchKeys).values(keys.slice(k, k + 15_000));
+      for (let k = 0; k < keys.length; k += 15_000) await t.owner.insert(schema.patientSearchKeys).values(keys.slice(k, k + 15_000));
     }
     // what autovacuum does on a real server after a load like this: the planner needs the table's statistics to choose the keys' index
-    await t.db.execute(sql`analyze patients`);
-    await t.db.execute(sql`analyze patient_search_keys`);
+    await t.owner.execute(sql`analyze patients`);
+    await t.owner.execute(sql`analyze patient_search_keys`);
     console.warn(`seeded ${PATIENTS} patients in ${Math.round(performance.now() - at)} ms`);
   }, 600_000);
   afterAll(() => t?.close());

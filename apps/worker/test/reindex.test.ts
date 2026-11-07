@@ -25,7 +25,7 @@ afterAll(() => t.close());
 describe('re-indexing documents chunked by older rules', () => {
   it('a dry run counts them and queues nothing; --apply queues each once, with ids only; indexed again, they are current', async () => {
     // one document as it was before migration 0047: indexed, with no text counted
-    await t.db.execute(sql`update knowledge_documents set extracted_chars = null where title = 'Fees'`);
+    await t.owner.execute(sql`update knowledge_documents set extracted_chars = null where title = 'Fees'`);
     const jobs: DocumentJob[] = [];
     const queue = { ...noJobs, indexDocument: async (j: DocumentJob) => { jobs.push(j); } };
     expect(await queueReindex(t.db, queue, { apply: false, version: 'reindex-test' })).toEqual({ clinics: 1, documents: 1, ready: 1, failedEmpty: 0, queued: 0 });

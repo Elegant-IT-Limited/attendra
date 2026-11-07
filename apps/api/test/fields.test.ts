@@ -58,7 +58,7 @@ describe('fields and lists of the clinic\'s own', () => {
     expect((await api.request('PUT', `${C}/tasks/${api.taskId}/fields`, { cookie: staff, body: { values: { pharmacy: 'cvs' } } })).statusCode).toBe(204);
     const tasks = (await api.request('GET', `${C}/tasks`, { cookie: staff })).json().tasks as { id: string; custom: Record<string, string> }[];
     expect(tasks.find((t) => t.id === api.taskId)?.custom).toEqual({ pharmacy: 'CVS' });
-    const raw = await api.t.db.execute(`select custom_enc from tasks where id = '${api.taskId}'`);
+    const raw = await api.t.owner.execute(`select custom_enc from tasks where id = '${api.taskId}'`);
     expect(JSON.stringify(raw.rows)).not.toContain('CVS');
   });
 

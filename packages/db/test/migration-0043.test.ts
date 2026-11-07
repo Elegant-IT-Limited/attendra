@@ -39,15 +39,15 @@ describe('"Call as" in the call record and the records', () => {
       await saveClinic(t.db, 'org_demo', DEMO_CLINIC);
       const calls = new CallRepository(t.db, cipher);
       const id = await calls.open(DEMO_CLINIC.id, 'live_web_as', null, 'web', 'user_ana', '0123');
-      const [row] = (await t.db.execute(sql`select called_as_last4, from_hash, from_enc, channel from calls where id = ${id}`)).rows;
+      const [row] = (await t.owner.execute(sql`select called_as_last4, from_hash, from_enc, channel from calls where id = ${id}`)).rows;
       expect(row).toEqual({ called_as_last4: '0123', from_hash: null, from_enc: null, channel: 'web' });
-      const audit = (await t.db.execute(sql`select actor, action from audit_logs where call_id = ${id} order by id`)).rows;
+      const audit = (await t.owner.execute(sql`select actor, action from audit_logs where call_id = ${id} order by id`)).rows;
       expect(audit).toEqual([{ actor: 'user:user_ana', action: 'call.test.started' }, { actor: 'user:user_ana', action: 'call.test.called_as' }]);
       await expect(calls.open(DEMO_CLINIC.id, 'live_sip_as', '+13035550142', 'phone', undefined, '0142')).rejects.toThrow('browser test call');
       await expect(calls.open(DEMO_CLINIC.id, 'live_web_as2', null, 'web', 'user_ana', '303-555-0142')).rejects.toThrow('last four digits');
       // without it, nothing changes
       const plain = await calls.open(DEMO_CLINIC.id, 'live_web_plain', null, 'web', 'user_ana');
-      expect((await t.db.execute(sql`select called_as_last4 from calls where id = ${plain}`)).rows).toEqual([{ called_as_last4: null }]);
+      expect((await t.owner.execute(sql`select called_as_last4 from calls where id = ${plain}`)).rows).toEqual([{ called_as_last4: null }]);
     } finally {
       await t.close();
     }
@@ -70,12 +70,12 @@ describe('"Call as" in the call record and the records', () => {
       expect((await records.callAsNumbers(DEMO_CLINIC.id, '0163', 'user_ana')).map((n) => n.label)).toEqual(['James · …0163']);
       expect(await records.callAsNumbers(DEMO_CLINIC.id, 'Nobody', 'user_ana')).toEqual([]);
       // audited like a search: how many, never what was typed
-      const searched = (await t.db.execute(sql`select entity_id from audit_logs where action = 'patient.searched' order by id`)).rows as { entity_id: string }[];
+      const searched = (await t.owner.execute(sql`select entity_id from audit_logs where action = 'patient.searched' order by id`)).rows as { entity_id: string }[];
       expect(searched.map((r) => r.entity_id)).toEqual(['matches:1', 'matches:1', 'matches:0']);
 
       expect(await records.phoneOf(DEMO_CLINIC.id, patientIds.lucas!, 'user_ana')).toBe('+13035550147');
       expect(await records.phoneOf('clinic_other', patientIds.lucas!, 'user_otto')).toBeNull();
-      expect((await t.db.execute(sql`select actor, entity_id from audit_logs where action = 'patient.phone.called_as'`)).rows).toEqual([{ actor: 'user:user_ana', entity_id: patientIds.lucas }]);
+      expect((await t.owner.execute(sql`select actor, entity_id from audit_logs where action = 'patient.phone.called_as'`)).rows).toEqual([{ actor: 'user:user_ana', entity_id: patientIds.lucas }]);
     } finally {
       await t.close();
     }

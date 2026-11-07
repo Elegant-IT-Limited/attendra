@@ -41,7 +41,7 @@ const call = async (client: Client, name: string, args: Record<string, unknown> 
   const r = await client.callTool({ name, arguments: args }) as { isError?: boolean; content: { text: string }[]; structuredContent?: Record<string, unknown> };
   return { error: !!r.isError, text: r.content[0]!.text, data: r.structuredContent as Record<string, unknown> };
 };
-const audits = async (action: string) => (await t.db.execute(sql`select actor, entity_id, counts from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string; counts: Record<string, number> | null }[];
+const audits = async (action: string) => (await t.owner.execute(sql`select actor, entity_id, counts from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string; counts: Record<string, number> | null }[];
 
 beforeAll(async () => {
   t = await openTestDatabase();
@@ -54,7 +54,7 @@ beforeAll(async () => {
   }));
   // the people who make keys: a key works only while its maker is an owner or practice manager
   for (const [id, org, role] of [['u_olga', 'org_demo', 'admin'], ['u_olga', 'org_other', 'admin'], ['u_owen', 'org_demo', 'owner'], ['u_mia', 'org_demo', 'admin'], ['u_max', 'org_demo', 'admin']] as const) {
-    await t.db.execute(sql`insert into auth_users (id, name, email) values (${id}, ${id}, ${`${id}@example.test`}) on conflict do nothing`);
+    await t.owner.execute(sql`insert into auth_users (id, name, email) values (${id}, ${id}, ${`${id}@example.test`}) on conflict do nothing`);
     await addMembership(t.db, org, id, role);
   }
   keys = new ApiKeyRepository(t.db);
@@ -66,7 +66,7 @@ describe('API keys', () => {
   it('are shown once and stored only as a SHA-256 hash, and made and revoked with an audit row', async () => {
     const { id, key } = await make(['schedule:read']);
     expect(key).toMatch(/^atk_[A-Za-z0-9_-]{43}$/);
-    const stored = (await t.db.execute(sql`select key_hash, prefix from api_keys where id = ${id}`)).rows[0] as { key_hash: string; prefix: string };
+    const stored = (await t.owner.execute(sql`select key_hash, prefix from api_keys where id = ${id}`)).rows[0] as { key_hash: string; prefix: string };
     expect(stored.key_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(stored)).not.toContain(key.slice(12));
     expect(stored.prefix).toBe(key.slice(0, 12));
@@ -88,7 +88,7 @@ describe('API keys', () => {
     expect(await call(client, 'find_open_slots', { visitTypeId: 'vt_sick' })).toMatchObject({ error: true, text: expect.stringContaining('revoked') });
     expect(await changeTeam(t.db, DEMO_CLINIC.id, owner, { type: 'remove', userId: 'u_max' })).toBe('done');
     expect(await authenticateApiKey(t.db, max.key)).toBeNull();
-    const revoked = (await t.db.execute(sql`select entity_id, actor from audit_logs where action = 'api_key.revoked' and entity_id in (${mia.id}, ${max.id}) order by id`)).rows;
+    const revoked = (await t.owner.execute(sql`select entity_id, actor from audit_logs where action = 'api_key.revoked' and entity_id in (${mia.id}, ${max.id}) order by id`)).rows;
     expect(revoked).toEqual([{ entity_id: mia.id, actor: 'user:u_owen' }, { entity_id: max.id, actor: 'user:u_owen' }]);
     // a role changed some other way (the member CLI) stops the key too, even before it is revoked
     const olga = await make(['schedule:read']);
@@ -129,11 +129,11 @@ describe('the tools', () => {
     // one visit known to be today, at an hour the demo schedule never books, so it cannot collide with a seeded visit
     const tz = DEMO_CLINIC.timezone;
     const late = zonedInstant(localDateOf(new Date(), tz), '23:00', tz);
-    const [p] = (await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
-    const [row] = (await t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+    const [p] = (await t.owner.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
+    const [row] = (await t.owner.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
       values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_lindqvist', 'vt_sick', ${late.toISOString()}::timestamptz, ${new Date(late.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-today-fixed', 'u_olga') returning id`)).rows as { id: string }[];
     const named = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
-    await t.db.execute(sql`delete from appointments where id = ${row!.id}`);
+    await t.owner.execute(sql`delete from appointments where id = ${row!.id}`);
     const appts = named.data.appointments as { appointmentId: string; patient?: string }[];
     expect(appts.map((a) => a.appointmentId)).toContain(row!.id);
     expect(appts.every((a) => !!a.patient)).toBe(true);
@@ -148,14 +148,14 @@ describe('the tools', () => {
   it('list_todays_schedule includes a visit at midnight, the first minute of the day', async () => {
     const tz = DEMO_CLINIC.timezone;
     const midnight = zonedInstant(localDateOf(new Date(), tz), '00:00', tz);
-    const [p] = (await t.db.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
-    const [row] = (await t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+    const [p] = (await t.owner.execute(sql`select id from patients where clinic_id = ${DEMO_CLINIC.id} limit 1`)).rows as { id: string }[];
+    const [row] = (await t.owner.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
       values (${DEMO_CLINIC.id}, ${p!.id}, 'prov_okafor', 'vt_sick', ${midnight.toISOString()}::timestamptz, ${new Date(midnight.getTime() + 20 * 60_000).toISOString()}::timestamptz, 'mcp-midnight', 'u_olga') returning id`)).rows as { id: string }[];
     try {
       const r = await call(await clientFor((await make(['schedule:read'])).key), 'list_todays_schedule');
       expect((r.data.appointments as { appointmentId: string }[]).map((a) => a.appointmentId)).toContain(row!.id);
     } finally {
-      await t.db.execute(sql`delete from appointments where id = ${row!.id}`);
+      await t.owner.execute(sql`delete from appointments where id = ${row!.id}`);
     }
   });
 
@@ -242,7 +242,7 @@ describe('the tools', () => {
     const theirs = await clientFor(key);
     expect((await call(theirs, 'list_open_requests')).data.requests).toEqual([]);
     await call(theirs, 'find_open_slots', { visitTypeId: 'vt_sick' });
-    const rows = (await t.db.execute(sql`select clinic_id, action from audit_logs where entity_id = ${id} order by id`)).rows;
+    const rows = (await t.owner.execute(sql`select clinic_id, action from audit_logs where entity_id = ${id} order by id`)).rows;
     expect(rows).toEqual([
       { clinic_id: OTHER.id, action: 'api_key.created' }, { clinic_id: OTHER.id, action: 'mcp.list_open_requests' }, { clinic_id: OTHER.id, action: 'mcp.find_open_slots.refused' },
     ]);

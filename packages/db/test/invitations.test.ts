@@ -17,15 +17,15 @@ beforeAll(async () => {
   await saveClinic(t.db, 'org_demo', BRANCH);
   await saveClinic(t.db, 'org_demo', ANNEX);
   for (const [id, email] of [['u_owner', 'owner@maple.example'], ['u_manager', 'manager@maple.example'], ['u_kim', 'kim@elsewhere.example'], ['u_lee', 'lee@elsewhere.example']] as const) {
-    await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${email}, true)`);
+    await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${email}, true)`);
   }
-  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_owner', 'org_demo', 'u_owner', 'owner')`);
-  await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m_manager', ${DEMO_CLINIC.id}, 'u_manager', 'admin')`);
+  await t.owner.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_owner', 'org_demo', 'u_owner', 'owner')`);
+  await t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m_manager', ${DEMO_CLINIC.id}, 'u_manager', 'admin')`);
 });
 afterAll(() => t.close());
 
-const actions = async (id: string, clinicId = DEMO_CLINIC.id) => ((await t.db.execute(sql`select action from audit_logs where entity = 'invitation' and entity_id = ${id} and clinic_id = ${clinicId} order by id`)).rows as { action: string }[]).map((r) => r.action);
-const access = async (userId: string) => (await t.db.execute(sql`select clinic_id, role from clinic_access where user_id = ${userId} order by clinic_id`)).rows;
+const actions = async (id: string, clinicId = DEMO_CLINIC.id) => ((await t.owner.execute(sql`select action from audit_logs where entity = 'invitation' and entity_id = ${id} and clinic_id = ${clinicId} order by id`)).rows as { action: string }[]).map((r) => r.action);
+const access = async (userId: string) => (await t.owner.execute(sql`select clinic_id, role from clinic_access where user_id = ${userId} order by clinic_id`)).rows;
 
 describe('team invitations', () => {
   it('keeps one open invitation per address per location, normalised, and renews it when sent again', async () => {
@@ -82,7 +82,7 @@ describe('team invitations', () => {
   });
 
   it('an owner invitation opens the whole business on accept', async () => {
-    await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_olga', 'u_olga', 'olga@maple.example', true)`);
+    await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_olga', 'u_olga', 'olga@maple.example', true)`);
     const r = await inviteToTeam(t.db, BRANCH.id, owner, { email: 'olga@maple.example', role: 'owner' }, t0);
     if (r.result !== 'done') throw new Error(r.result);
     expect(await invitationById(t.db, { email: 'olga@maple.example' }, r.id, t0)).toMatchObject({ state: 'pending', role: 'owner', allLocations: true, clinicName: BRANCH.name });
@@ -111,7 +111,7 @@ describe('team invitations', () => {
   });
 
   it('the table takes only known roles and states', async () => {
-    await expect(t.db.execute(sql`update invitations set status = 'maybe'`)).rejects.toThrow();
-    await expect(t.db.execute(sql`update invitations set role = 'boss'`)).rejects.toThrow();
+    await expect(t.owner.execute(sql`update invitations set status = 'maybe'`)).rejects.toThrow();
+    await expect(t.owner.execute(sql`update invitations set role = 'boss'`)).rejects.toThrow();
   });
 });

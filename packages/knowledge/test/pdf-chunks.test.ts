@@ -122,7 +122,7 @@ describe('finding answers in long PDFs', () => {
     const [doc] = (await repo.list(DEMO_CLINIC.id)).filter((d) => d.title === 'Price list');
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, doc!.id)).toBe('current');
     // as a document indexed before migration 0047 looks
-    await t.db.execute(sql`update knowledge_documents set extracted_chars = null, page_count = null where id = ${doc!.id}`);
+    await t.owner.execute(sql`update knowledge_documents set extracted_chars = null, page_count = null where id = ${doc!.id}`);
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, doc!.id)).toBe('indexed');
     expect(await repo.get(DEMO_CLINIC.id, doc!.id)).toMatchObject({ status: 'ready', pageCount: 3 });
   });

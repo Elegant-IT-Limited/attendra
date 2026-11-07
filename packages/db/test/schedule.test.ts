@@ -16,15 +16,15 @@ let byCall: string;
 let byStaff: string;
 
 const audit = async (action: string) =>
-  ((await t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
+  ((await t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
 
 beforeAll(async () => {
   t = await openTestDatabase();
   ({ patientIds: ids } = await seedDemo(t.db, cipher));
   await saveClinic(t.db, 'org_other', OTHER);
-  await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_otto', 'Otto Other', 'otto@example.test')`);
-  await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff')`);
-  await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m2', 'org_other', 'u_otto', 'owner')`);
+  await t.owner.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_otto', 'Otto Other', 'otto@example.test')`);
+  await t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff')`);
+  await t.owner.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m2', 'org_other', 'u_otto', 'owner')`);
   callId = await new CallRepository(t.db, cipher).open(DEMO_CLINIC.id, 'live_sched_1', null);
   const insert = (values: Partial<typeof schema.appointments.$inferInsert>) => withClinic(t.db, DEMO_CLINIC.id, async (tx) => {
     const [row] = await tx.insert(schema.appointments).values({
@@ -61,7 +61,7 @@ describe('the schedule', () => {
     expect(await audit('schedule.viewed')).toEqual([{ actor: 'user:u_ana', entity_id: key }]);
     await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), label: '2026-09-29+1' }, 'u_ana'); // an identical refresh
     expect(await audit('schedule.viewed')).toHaveLength(1);
-    await t.db.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'schedule.viewed'`);
+    await t.owner.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'schedule.viewed'`);
     await schedule.range(DEMO_CLINIC.id, { ...day('2026-09-29'), label: '2026-09-29+1' }, 'u_ana');
     expect((await audit('schedule.viewed')).map((r) => r.entity_id)).toEqual([key, key]);
   });
@@ -99,7 +99,7 @@ describe('the schedule', () => {
   });
 
   it('keeps the note encrypted at rest', async () => {
-    const dump = JSON.stringify((await t.db.execute(sql`select note_enc from appointments`)).rows);
+    const dump = JSON.stringify((await t.owner.execute(sql`select note_enc from appointments`)).rows);
     expect(dump).not.toContain('knee brace');
   });
 });
@@ -109,7 +109,7 @@ describe('the demo schedule', () => {
     const now = zonedInstant('2026-09-29', '10:00', tz);
     const first = await seedDemoSchedule(t.db, cipher, { patientIds: ids, staffUserIds: ['u_ana'], now });
     expect(first.created).toBeGreaterThan(120);
-    const stats = (await t.db.execute(sql`select count(*) filter (where status = 'cancelled')::int as cancelled, count(*) filter (where created_by_user_id is null)::int as by_nobody
+    const stats = (await t.owner.execute(sql`select count(*) filter (where status = 'cancelled')::int as cancelled, count(*) filter (where created_by_user_id is null)::int as by_nobody
       from appointments where idempotency_key like 'seed:%'`)).rows[0] as { cancelled: number; by_nobody: number };
     expect(stats.by_nobody).toBe(0);
     expect(stats.cancelled).toBeGreaterThan(2);
@@ -118,10 +118,10 @@ describe('the demo schedule', () => {
 
   it('gives nobody more than two upcoming visits, the demo patients included', async () => {
     const now = zonedInstant('2026-09-29', '10:00', tz);
-    const most = (await t.db.execute(sql`select patient_id, count(*)::int as n from appointments
+    const most = (await t.owner.execute(sql`select patient_id, count(*)::int as n from appointments
       where clinic_id = ${DEMO_CLINIC.id} and status = 'booked' and starts_at > ${now.toISOString()}::timestamptz group by patient_id order by n desc limit 1`)).rows[0] as { n: number };
     expect(most.n).toBeLessThanOrEqual(2);
-    const upcoming = (await t.db.execute(sql`select count(*)::int as n from appointments where clinic_id = ${DEMO_CLINIC.id} and idempotency_key like 'seed:%' and starts_at > ${now.toISOString()}::timestamptz`)).rows[0] as { n: number };
+    const upcoming = (await t.owner.execute(sql`select count(*)::int as n from appointments where clinic_id = ${DEMO_CLINIC.id} and idempotency_key like 'seed:%' and starts_at > ${now.toISOString()}::timestamptz`)).rows[0] as { n: number };
     expect(upcoming.n).toBeGreaterThan(100); // still a busy calendar
   });
 });

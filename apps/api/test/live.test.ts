@@ -29,7 +29,7 @@ const voice = {
 const stream = (cookie: string, callId = api.callId, lastEventId?: string) => api.app.getHttpAdapter().getInstance().inject({
   method: 'GET', url: `${C}/calls/${callId}/live`, headers: { cookie, origin: ORIGIN, ...(lastEventId ? { 'last-event-id': lastEventId } : {}) },
 });
-const audits = async (action: string) => (await api.t.db.execute(sql`select actor, entity_id, counts from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string; counts: Record<string, number> | null }[];
+const audits = async (action: string) => (await api.t.owner.execute(sql`select actor, entity_id, counts from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string; counts: Record<string, number> | null }[];
 
 beforeAll(async () => {
   api = await startApi({ demoMode: false, voice });
@@ -82,7 +82,7 @@ describe('watching a live call', () => {
     await stream(as.admin, api.callId, '42');
     expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.callId, counts: null }]);
     // after five minutes, the same person watching again is a new row
-    await api.t.db.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'call.live.watched'`);
+    await api.t.owner.execute(sql`update audit_logs set at = at - interval '6 minutes' where action = 'call.live.watched'`);
     await stream(as.admin, api.callId, '43');
     expect((await audits('call.live.watched')).filter((a) => a.actor === `user:${api.users.admin}`)).toHaveLength(2);
   });
@@ -91,7 +91,7 @@ describe('watching a live call', () => {
     expect((await stream(as.viewer)).statusCode).toBe(403);
     expect((await stream(as.outsider)).statusCode).toBe(404);
     expect((await stream(as.staff, '00000000-0000-4000-8000-00000000ffff')).statusCode).toBe(404); // not this clinic's call
-    const other = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id) values (${DEMO_CLINIC.id}, 'live_not_live') returning id`)).rows[0] as { id: string };
+    const other = (await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id) values (${DEMO_CLINIC.id}, 'live_not_live') returning id`)).rows[0] as { id: string };
     const notLive = await stream(as.staff, other.id);
     expect(notLive.statusCode).toBe(404);
     expect(notLive.json()).toEqual({ error: 'not_live' });
@@ -111,7 +111,7 @@ describe('staff actions', () => {
     await act('coach', as.staff, { note: 'offer Thursday afternoon', key: 'coach-key-3' });
     const rows = await audits('call.coached');
     expect(rows).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.callId, counts: { characters: 24 } }]);
-    expect(JSON.stringify(await api.t.db.execute(sql`select * from audit_logs`))).not.toContain('Thursday');
+    expect(JSON.stringify(await api.t.owner.execute(sql`select * from audit_logs`))).not.toContain('Thursday');
   });
 
   it('taking over goes to the front desk, or to your own number once you have given one', async () => {
@@ -136,7 +136,7 @@ describe('staff actions', () => {
     expect(await audits('member.transfer_number.cleared')).toEqual([{ actor: `user:${api.users.admin}`, entity_id: api.users.admin, counts: null }]);
     const rows = await audits('call.taken_over');
     expect(rows.map((r) => r.counts)).toEqual([{ ownNumber: 0, destinationLast4: 101 }, { ownNumber: 1, destinationLast4: 123 }]);
-    expect(JSON.stringify(await api.t.db.execute(sql`select * from audit_logs where action like 'call.%' or action like 'member.transfer%'`))).not.toMatch(/3035550(123|987|101)/);
+    expect(JSON.stringify(await api.t.owner.execute(sql`select * from audit_logs where action like 'call.%' or action like 'member.transfer%'`))).not.toMatch(/3035550(123|987|101)/);
   });
 
   it('tells the second person who already has the call, and why a browser call cannot be transferred', async () => {
@@ -155,12 +155,12 @@ describe('staff actions', () => {
 
   it('writes the audit row before the action: when the row cannot be written, the assistant is never told', async () => {
     const calls = voice.coach.mock.calls.length;
-    await api.t.db.execute(sql`revoke insert on audit_logs from attendra_app`);
+    await api.t.owner.execute(sql`revoke insert on audit_logs from attendra_app`);
     try {
       const res = await act('coach', as.staff, { note: 'offer Friday', key: 'coach-key-9' });
       expect(res.statusCode).toBe(500);
     } finally {
-      await api.t.db.execute(sql`grant insert on audit_logs to attendra_app`);
+      await api.t.owner.execute(sql`grant insert on audit_logs to attendra_app`);
     }
     expect(voice.coach.mock.calls.length).toBe(calls);
   });

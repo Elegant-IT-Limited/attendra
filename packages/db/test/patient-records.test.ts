@@ -62,8 +62,8 @@ describe('search across clinics', () => {
   });
 
   it('audits every search in the clinic that ran it, with the count only', async () => {
-    const rows = (await t.db.execute(sql`select clinic_id, entity_id from audit_logs where action = 'patient.searched' order by id`)).rows;
-    const results = (await t.db.execute(sql`select clinic_id, actor, entity from audit_logs where action = 'patient.search.result'`)).rows;
+    const rows = (await t.owner.execute(sql`select clinic_id, entity_id from audit_logs where action = 'patient.searched' order by id`)).rows;
+    const results = (await t.owner.execute(sql`select clinic_id, actor, entity from audit_logs where action = 'patient.search.result'`)).rows;
     expect(results).toEqual(Array(3).fill({ clinic_id: DEMO_CLINIC.id, actor: 'user:u_ana', entity: 'patient' })); // one row per patient shown
     expect(rows).toEqual([
       { clinic_id: OTHER.id, entity_id: 'matches:0' },

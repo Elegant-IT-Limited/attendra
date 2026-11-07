@@ -36,13 +36,13 @@ describe('your name', () => {
     // the team sees it at once
     const team = (await api.request('GET', `${C}/members`, { cookie: as.owner })).json().members as { userId: string; name: string }[];
     expect(team.find((m) => m.userId === api.users.staff)?.name).toBe('Ana Rivera');
-    const rows = (await api.t.db.execute(sql`select clinic_id, actor, entity, entity_id, counts from audit_logs where action = 'user.name.changed'`)).rows as { clinic_id: string }[];
-    const clinics = ((await api.t.db.execute(sql`select id from clinics where org_id = 'org_demo' order by id`)).rows as { id: string }[]).map((r) => r.id);
+    const rows = (await api.t.owner.execute(sql`select clinic_id, actor, entity, entity_id, counts from audit_logs where action = 'user.name.changed'`)).rows as { clinic_id: string }[];
+    const clinics = ((await api.t.owner.execute(sql`select id from clinics where org_id = 'org_demo' order by id`)).rows as { id: string }[]).map((r) => r.id);
     expect(rows.map((r) => r.clinic_id).sort()).toEqual(clinics);
     expect(rows[0]).toMatchObject({ actor: `user:${api.users.staff}`, entity: 'member', entity_id: api.users.staff, counts: null });
     expect(JSON.stringify(rows)).not.toMatch(/Ana|Rivera|Front/);
     // another organization's log has nothing about it
-    expect((await api.t.db.execute(sql`select 1 from audit_logs where action = 'user.name.changed' and clinic_id = ${OTHER.id}`)).rows).toEqual([]);
+    expect((await api.t.owner.execute(sql`select 1 from audit_logs where action = 'user.name.changed' and clinic_id = ${OTHER.id}`)).rows).toEqual([]);
   });
 
   it('refuses a name under 2 or over 80 characters, and never renames anyone else', async () => {
@@ -97,7 +97,7 @@ describe('your picture', () => {
     expect((await api.request('DELETE', '/api/v1/me/avatar', { cookie: as.admin })).statusCode).toBe(204);
     expect((await me(as.admin)).avatarUrl).toBeNull();
     expect((await picture(as.admin, url)).statusCode).toBe(404);
-    expect((await api.t.db.execute(sql`select 1 from user_avatars where user_id = ${api.users.admin}`)).rows).toEqual([]);
+    expect((await api.t.owner.execute(sql`select 1 from user_avatars where user_id = ${api.users.admin}`)).rows).toEqual([]);
   });
 
   it('refuses what is not an image, whatever its content-type says, and anything over 200 KB', async () => {

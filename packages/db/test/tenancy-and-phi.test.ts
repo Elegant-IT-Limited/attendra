@@ -60,7 +60,7 @@ describe('seed', () => {
 
 describe('PHI at rest', () => {
   it('stores names, dates of birth and phone numbers only as ciphertext', async () => {
-    const dump = JSON.stringify((await t.db.execute(sql`select * from patients`)).rows);
+    const dump = JSON.stringify((await t.owner.execute(sql`select * from patients`)).rows);
     for (const plain of ['Maria', 'Delgado', '1985-03-04', '3035550147']) expect(dump).not.toContain(plain);
   });
 

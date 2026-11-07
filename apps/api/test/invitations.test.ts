@@ -25,7 +25,7 @@ const pending = async () => ((await api.request('GET', `${C}/invitations`, { coo
   .sort((a, b) => a.email.localeCompare(b.email));
 const mine = async (cookie: string) => (await api.request('GET', ME, { cookie })).json().invitations as { id: string; clinicId: string; clinicName: string; role: string }[];
 const clinicsOf = async (cookie: string) => (await api.request('GET', '/api/v1/me', { cookie })).json().clinics.map((c: { id: string; role: string }) => `${c.id}:${c.role}`);
-const audits = async (clinicId = DEMO_CLINIC.id) => (await api.t.db.execute(sql`select action, actor, entity_id, at from audit_logs
+const audits = async (clinicId = DEMO_CLINIC.id) => (await api.t.owner.execute(sql`select action, actor, entity_id, at from audit_logs
   where clinic_id = ${clinicId} and entity = 'invitation' order by id`)).rows as { action: string; actor: string; entity_id: string; at: string }[];
 
 describe('an invitation never says whether the email has an Attendra login', () => {
@@ -179,7 +179,7 @@ describe('declining, cancelling and lapsing', () => {
     now = new Date(now.getTime() + 2 * 60_000);
     // reading never writes: the lapsed invitation is left out by its date, still pending, with no audit row yet
     const state = async () => ({
-      status: ((await api.t.db.execute(sql`select status from invitations where id = ${inv!.id}`)).rows[0] as { status: string }).status,
+      status: ((await api.t.owner.execute(sql`select status from invitations where id = ${inv!.id}`)).rows[0] as { status: string }).status,
       audits: (await audits()).length,
     });
     const before = await state();
