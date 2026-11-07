@@ -128,9 +128,9 @@ export class ToolsPathPlanner implements Planner {
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call', call_id: callId, name: spec.name, arguments: args } } as never);
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: callId, output } } as never);
     }
-    for (let round = 0; round < 8; round++) {
+    for (let round = 0, retried = false; round < 8; round++) {
       const t0 = performance.now();
-      const { text, calls, usage } = await new Promise<{ text: string; calls: { name: string; call_id: string; arguments: string }[]; usage: { input_tokens?: number; output_tokens?: number; input_token_details?: { cached_tokens?: number } } | undefined }>((resolve, reject) => {
+      const answer = () => new Promise<{ text: string; calls: { name: string; call_id: string; arguments: string }[]; usage: { input_tokens?: number; output_tokens?: number; input_token_details?: { cached_tokens?: number } } | undefined }>((resolve, reject) => {
         let text = '';
         const calls: { name: string; call_id: string; arguments: string }[] = [];
         const timer = setTimeout(() => { ws.off('event', on as never); reject(new Error('realtime response timed out')); }, 30_000);
@@ -141,12 +141,26 @@ export class ToolsPathPlanner implements Planner {
           if (e.type === 'error') { clearTimeout(timer); ws.off('event', on as never); reject(new Error(`realtime error: ${JSON.stringify(e.error).slice(0, 200)}`)); }
           if (e.type === 'response.done') {
             clearTimeout(timer); ws.off('event', on as never);
-            resolve({ text, calls, usage: (e.response as { usage?: never } | undefined)?.usage });
+            const response = e.response as { usage?: never; status?: string; status_details?: unknown } | undefined;
+            // a response the service failed (rate limits, a server error) is said so, never taken for silence
+            if (response?.status === 'failed') { reject(new Error(`realtime response failed: ${JSON.stringify(response.status_details).slice(0, 200)}`)); return; }
+            resolve({ text, calls, usage: response?.usage });
           }
         };
         ws.on('event', on as never);
         ws.send({ type: 'response.create' });
       });
+      let reply: Awaited<ReturnType<typeof answer>>;
+      try { reply = await answer(); }
+      catch (err) {
+        // once, after a pause: one failed response is the service, not the planner
+        if (retried) throw err;
+        retried = true;
+        console.error(`  path A: ${(err as Error).message}; trying once more`);
+        await new Promise((r) => setTimeout(r, 2_000));
+        reply = await answer();
+      }
+      const { text, calls, usage } = reply;
       requests.push({ ms: Math.round(performance.now() - t0), firstTokenMs: null, served: null, inputTokens: usage?.input_tokens ?? null, cachedTokens: usage?.input_token_details?.cached_tokens ?? null, outputTokens: usage?.output_tokens ?? null, reasoningTokens: null, calls: calls.map((c) => c.name) });
       if (!calls.length) {
         // what it said is now in its own conversation; the simulator adds it to the call as the assistant's turn

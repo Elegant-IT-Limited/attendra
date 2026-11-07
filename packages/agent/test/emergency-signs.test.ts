@@ -77,6 +77,31 @@ describe('the word "emergency" alone at a vet clinic', () => {
     expect(team.state.emergencyResult).toBe('transferred');
   });
 
+  it('the voice model can never put the caller through to the on-call line itself: before the answer, after a clear no, or in refer mode', async () => {
+    const TRANSFER = { tool: 'transfer_call', args: { target: 'on_call' } } as const;
+    // asked, no answer yet
+    const asked = await w.call('+17205550172', { clinic: open });
+    asked.caller('My dog is choking, his throat is swelling.');
+    asked.assistant(QUESTION);
+    const [waiting] = (await asked.delegate([TRANSFER])).results;
+    expect(waiting).toMatchObject({ ok: false, data: { error: 'pet_flagged' } });
+    // a clear no
+    const cleared = await w.call('+17205550172', { clinic: open });
+    cleared.caller('My dog is choking, his throat is swelling.');
+    cleared.assistant(QUESTION);
+    cleared.caller("No, not now, he's fine. I just want a regular checkup.");
+    const [after] = (await cleared.delegate([TRANSFER])).results;
+    expect(after).toMatchObject({ ok: false, data: { error: 'emergency_cleared' } });
+    // refer mode, after a yes: the hospital, never the on-call line
+    const referred = await w.call('+17205550172', { clinic: refer });
+    referred.caller('My dog is choking, his throat is swelling.');
+    referred.assistant(QUESTION);
+    referred.caller('Yes, he still is.');
+    const done = await referred.delegate([TRANSFER]);
+    expect(done.results[0]!.ok).toBe(false);
+    expect(done.some((o) => o.type === 'transfer')).toBe(false);
+  });
+
   it('routes on a yes in Spanish, and on "not sure"', async () => {
     const c = await w.call('+17205550172', { clinic: { ...refer, languages: ['en', 'es'] } });
     c.caller('Es una emergencia.');

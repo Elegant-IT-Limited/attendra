@@ -340,6 +340,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     return state.emergencyScriptSaid ? petEmergencyNextStep(state, ctx)
       : refuse('emergency_in_progress', 'Do not transfer. Say where to take the animal now, once, and that a person in danger should call ' + emergencyNumberFor(ctx.clinic, state.language) + '.');
   }
+  // an animal's emergency goes where the emergency machine sends it (the clinic's mode, after the caller's answer), never
+  // through the voice model's own transfer: a live run on path A put callers through to the on-call line in refer mode and
+  // after a clear no (batch 1b matrix)
+  if (name === 'transfer_call' && (parsed.data as { target?: unknown }).target === 'on_call' && trade.identity === 'pet' && flagged) {
+    if (flagged.stage === 'cleared') return refuse('emergency_cleared', 'The caller said it is not an emergency now. Do not transfer. Carry on with what they want; if it comes back, the clinic\'s line was already said.');
+    if (flagged.stage === 'escalated') return state.emergencyScriptSaid ? petEmergencyNextStep(state, ctx) : refuse('emergency_in_progress', 'Do not transfer: the emergency is already being handled. Say only the line you were given.');
+    return refuse('pet_flagged', `The caller has not yet answered whether this is still an emergency. Do not transfer. If the question has not been asked, ask it now, word for word: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer.`);
+  }
   if (WRITE_TOOLS.has(name) && revision !== state.revision) {
     return refuse('superseded', 'The caller has asked for something else since; do not act on this request.');
   }
