@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise } from '@attendra/core';
+import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise, weekdayOf } from '@attendra/core';
 
 /** Where a fact came from: the caller's own words, a tool's arguments, the clinic's records, or the planner model's reading of the call (the intent). */
 export type FactSource = 'caller' | 'tool' | 'record' | 'model';
@@ -195,6 +195,13 @@ export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemor
     if (memory.get('intent') === 'move' && memory.visit && timeOnly && opts.timeZone) fill('from_date', localDateOf(memory.visit.start, opts.timeZone));
     const day = said('day');
     if (day && 'date' in day) fill('from_date', day.date);
+    // the caller's "Thursday" is the clinic clock's Thursday: a date on that weekday in another week is the model's own
+    // calendar, never the caller's (live runs booked Thursday, November 12 for "Thursday" on Monday, September 28)
+    const passed = typeof args.from_date === 'string' ? args.from_date : null;
+    if (day && 'date' in day && passed && /^\d{4}-\d{2}-\d{2}$/.test(passed) && passed !== day.date && weekdayOf(passed) === weekdayOf(day.date)) {
+      args.from_date = day.date;
+      filled.push('from_date');
+    }
     fill('from_time', said('time')?.time);
     fill('visit_type_id', memory.get('visitType'));
     fill('provider_id', said('vet'));
