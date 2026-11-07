@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (the services' own database role)
+
+- **Migration 0051 adds `attendra_service`**, a role for the API, the worker and MCP to connect as instead of the database's owner. It is no superuser, has no `BYPASSRLS` and owns no table, so row-level security holds every query it makes: one that forgets its clinic reads no patient, call, request or audit row. It may read and write the tenant registry (organizations, clinics, phone numbers; a policy on `clinics` for this role only), and finds an API key by its hash through one `security definer` function, `api_key_by_hash`. Nothing else gets past a policy.
+- **`ATTENDRA_SERVICE_DATABASE_URL`** (optional) on the API, worker and MCP: their queries, sign-in and change notices go to it; unset, they stay on `DATABASE_URL`, the owner's, as before. Migrations and pg-boss keep `DATABASE_URL`. Each service logs `database role` at start, and an error if that URL is a role that gets past row-level security. The role has no login until the deploy gives it one: docs/self-hosting.md, "The services' own role". The voice service stays on the owner for now.
+- **Work that ran across clinics on the owner now goes clinic by clinic**: the daily digest's calls, a clinic's phone minutes and calls since a moment (each in its clinic), and every audit row the provisioning calls write (a released number, a new location, an owner's new business, the animals list). A key's live check runs in its clinic's scope.
+- **Tests on the services' role**: `ATTENDRA_TEST_AS=service` runs any suite as `attendra_service` (fixtures a test writes itself go through the owner, `t.owner`), and CI's Postgres job runs the database package, the API, the worker and MCP that way. A new test checks every repository module as that role (its own clinic works, another clinic sees nothing, no row shows without a clinic) and fails when a new repository file has no case, a clinic table is not behind forced row-level security, or a new owner-run function is open to the role.
+
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.

@@ -131,6 +131,25 @@ Using your own Postgres instead of Compose? It needs the pgvector extension inst
 grant attendra_app to <your_service_user>;
 ```
 
+### The services' own role (migration 0051)
+
+By default every service connects as the database's owner, and the owner gets past row-level security: only `withClinic` (which switches to `attendra_app`) holds a query to one clinic. Migration 0051 adds `attendra_service`, a role for the services to connect as instead. It is no superuser, has no `BYPASSRLS` and owns no table, so a query that forgets its clinic reads no clinic's patients, calls, requests or audit log. What it may do before a clinic is known is narrow and written down in 0051: it reads and writes the tenant registry (organizations, clinics, phone numbers; no patient data), and finds an API key by its hash through one function. Every cross-clinic job goes clinic by clinic.
+
+The migration makes the role without a login, so no password is in the repository. Give it one once, as the owner, with a password from a new secret (`openssl rand -base64 32`):
+
+```bash
+docker compose -f infra/docker-compose.yml exec postgres psql -U attendra -d attendra \
+  -c "alter role attendra_service login password '<ATTENDRA_SERVICE_DB_PASSWORD>'"
+```
+
+Then give each service that may switch `ATTENDRA_SERVICE_DATABASE_URL`, the same URL as `DATABASE_URL` with that role and password (`postgres://attendra_service:<password>@postgres:5432/attendra`). Keep `DATABASE_URL` as it is: the `migrate` service runs on it, and so does pg-boss, which creates and upgrades its own schema. A service logs `database role` with the role it runs as at start, and an error if `ATTENDRA_SERVICE_DATABASE_URL` is a role that gets past row-level security.
+
+- **May switch now:** the API (`api`), the worker (`worker`) and MCP (`mcp`). CI runs their tests, and the database package's, as `attendra_service` on the production Postgres image.
+- **Stays on the owner for now:** the voice service. Its tests do not all pass as `attendra_service` yet.
+- **Scripts you run by hand** (`pnpm db:*`, `pnpm add-member`) keep using `DATABASE_URL`.
+
+To switch a service back, remove `ATTENDRA_SERVICE_DATABASE_URL` from it and restart it: it connects as the owner again. Nothing else changes, and the role can stay. To remove the role too, the rollback is at the end of `packages/db/migrations/0051_service_role.sql`.
+
 ## 4. Check it
 
 - `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
