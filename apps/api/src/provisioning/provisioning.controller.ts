@@ -2,7 +2,7 @@
 import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClosedClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls,
 } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
@@ -70,6 +70,8 @@ const TextingSwitch = z.object({ enabled: z.boolean() });
 const AnsweringSwitch = z.object({ paused: z.boolean() });
 const PlanBody = z.object({ plan: HostingPlan.nullable() });
 const Closed = z.object({ closed: z.boolean() });
+const Flag = z.enum(['0', '1']).default('0').transform((v) => v === '1');
+const PurgeQuery = z.object({ force: Flag, keepLogins: Flag });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const FlowChoice = z.object({ flow: z.enum(['planner', 'tools']).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
@@ -283,14 +285,35 @@ export class ProvisioningController {
     this.log.info({ clinic_id: clinicId, closed: body.closed }, 'provisioning: clinic closed or reopened');
   }
 
-  /** Deletes a clinic closed at least 30 days ago, with everything recorded for it. 409 for an open clinic or one closed more recently. */
+  /**
+   * What deleting a clinic would remove, table by table, with the same options as the delete,
+   * and what would refuse it: `{ counts, blockers }`. Nothing is changed.
+   */
+  @Get('clinics/:clinicId/purge-preview')
+  async purgePreview(@Param('clinicId') clinicId: string, @Query(new ZodPipe(PurgeQuery)) q: z.infer<typeof PurgeQuery>) {
+    const result = await purgeClinic(this.db, clinicId, { ...q, dryRun: true, now: this.now() });
+    if (result.status !== 'dry_run') throw new NotFoundException({ error: 'not_found' });
+    return { counts: result.counts, blockers: result.blockers };
+  }
+
+  /**
+   * Deletes a clinic closed at least 30 days ago, with everything recorded for it, and says
+   * how many rows went from each table: `{ deleted }`. `?force=1` takes an open clinic or one
+   * closed recently too (a tester's), `?keepLogins=1` keeps the logins. 409 with the first
+   * blocker: `not_closed`, `closed_recently`, `call_in_progress`, or `number_assigned` (the
+   * hosting layer releases its numbers first). The clinic's own audit log goes with it, so the
+   * hosting layer records who asked.
+   */
   @Delete('clinics/:clinicId')
-  @HttpCode(204)
-  async purge(@Param('clinicId') clinicId: string) {
-    const result = await purgeClosedClinic(this.db, clinicId, this.now());
-    if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
-    if (result !== 'purged') throw new HttpException({ error: result === 'open' ? 'not_closed' : 'closed_recently' }, 409);
-    this.log.info({ clinic_id: clinicId }, 'provisioning: closed clinic deleted');
+  @HttpCode(200)
+  async purge(@Param('clinicId') clinicId: string, @Query(new ZodPipe(PurgeQuery)) q: z.infer<typeof PurgeQuery>) {
+    const result = await purgeClinic(this.db, clinicId, { ...q, now: this.now() });
+    if (result.status === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    if (result.status === 'refused') throw new HttpException({ error: result.blockers[0], blockers: result.blockers }, 409);
+    if (result.status !== 'purged') throw new HttpException({ error: 'not_purged' }, 500);
+    const rows = Object.values(result.counts).reduce((a, b) => a + b, 0);
+    this.log.info({ clinic_id: clinicId, forced: q.force, kept_logins: q.keepLogins, rows }, 'provisioning: clinic deleted');
+    return { deleted: result.counts };
   }
 
   /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */

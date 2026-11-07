@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (wiping a test clinic: batch 5)
+
+- **A clinic can be deleted on purpose, not only 30 days after it closed.** `DELETE /provisioning/clinics/:clinicId` takes `?force=1` (an open clinic, or one closed recently) and `?keepLogins=1` (logins stay; only their memberships of the clinic and its organization go), and answers `200 { deleted }` with the rows deleted per table instead of `204`. `GET /provisioning/clinics/:clinicId/purge-preview` counts the same rows with the same options and changes nothing: it takes the very same steps in a transaction that is rolled back. One function, `purgeClinic`, does both; `purgeClosedClinic` is gone.
+- **Never while a call is going or a number still reaches the clinic**, forced or not: `409 call_in_progress` (a call with no end that started in the last 6 hours, `UNFINISHED_CALL_HOURS`) and `409 number_assigned`. The API logs one line with the clinic's id and the number of rows; the hosting layer records who asked.
+
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.
