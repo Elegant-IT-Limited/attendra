@@ -77,6 +77,22 @@ describe('the word "emergency" alone at a vet clinic', () => {
     expect(team.state.emergencyResult).toBe('transferred');
   });
 
+  it('a sign that may be mild: "not sure" is the soonest sick visit, never a transfer; heavy or nonstop still routes (a live run)', async () => {
+    const BORDERLINE_Q = EMERGENCY_LINES.borderlineQuestion('en');
+    const unsure = await w.call('+17205550172', { clinic: open });
+    expect(instructions(unsure.caller("I'd like to book a sick visit for Biscuit, he's been off his food."))).toContain(BORDERLINE_Q);
+    unsure.assistant(BORDERLINE_Q);
+    const out = unsure.caller("I'm not sure.");
+    expect(out.some((o) => o.type === 'transfer')).toBe(false);
+    expect(instructions(out)).toContain('soonest visit');
+    expect(unsure.state.emergencyLocked).toBe(false);
+    const heavy = await w.call('+17205550172', { clinic: open });
+    heavy.caller("Biscuit's been sick, can I bring him in now?");
+    heavy.assistant(BORDERLINE_Q);
+    const routed = heavy.caller("Yes, he's been vomiting nonstop all day.");
+    expect(routed.find((o) => o.type === 'transfer')).toMatchObject({ uri: 'tel:+17205550179' });
+  });
+
   it('the voice model can never put the caller through to the on-call line itself: before the answer, after a clear no, or in refer mode', async () => {
     const TRANSFER = { tool: 'transfer_call', args: { target: 'on_call' } } as const;
     // asked, no answer yet

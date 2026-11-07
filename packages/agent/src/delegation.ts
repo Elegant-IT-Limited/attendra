@@ -319,7 +319,9 @@ export class CallAgent {
     // before the route, only an answer to our question counts: the assistant may have asked something else since
     if (c.stage !== 'escalated' && !lastQuestionIsOurs([...s.turns].reverse().find((t) => t.speaker === 'agent')?.text ?? '')) return [];
     let a = answerTo(words, c.stage === 'escalated');
-    if (c.kind === 'borderline') a = SEVERE.test(normalise(words)) ? 'yes' : MILD.test(normalise(words)) ? 'clear_no' : a;
+    // a sign that may be mild routes only when the caller says it is heavy or nonstop (or a plain yes to that question);
+    // "not sure" about "off his food" is the soonest sick visit, not a transfer (a live run put two such callers through)
+    if (c.kind === 'borderline') a = SEVERE.test(normalise(words)) ? 'yes' : MILD.test(normalise(words)) || a === 'unsure' ? 'clear_no' : a;
     if (c.stage !== 'escalated' && (a === 'yes' || a === 'unsure')) return this.escalateEmergencyCase();
     // a clear no, then or later (the caller retracts after a yes): booked as usual, with a note for the team
     if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
