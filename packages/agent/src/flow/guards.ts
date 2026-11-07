@@ -43,11 +43,13 @@ export const askedWhy = (said: string) => WHY_ASKED.test(normalise(said));
  * Biscuit for Thursday" with no booking on the call is a claim; so is "I couldn't find a file under that number" when no
  * search ran (11-16, a tester clinic: verify_caller had only asked for the read-back).
  */
-export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found', RegExp> = {
+export const CLAIMS: Record<'booked' | 'moved' | 'cancelled' | 'not_found' | 'vet_day', RegExp> = {
   booked: /\b(?:i'?ve booked|i have booked|you'?re (?:all )?booked|you are (?:all )?booked|you'?re all set for|is (?:now )?booked|are (?:now )?booked|has been booked|booked (?:you|him|her|them|it) (?:in|for)|(?:le |lo |la )?he reservado|queda reservad[oa]|ya esta reservad[oa]|quedo reservad[oa])\b/,
   moved: /\b(?:i'?ve (?:moved|rescheduled)|i have (?:moved|rescheduled)|has been (?:moved|rescheduled)|is now (?:moved|on)|he cambiado|quedo cambiad[oa]|ya esta cambiad[oa])\b/,
   cancelled: /\b(?:i'?ve cancell?ed|i have cancell?ed|has been cancell?ed|is (?:now )?cancell?ed|he cancelado|queda cancelad[oa]|quedo cancelad[oa])\b/,
   not_found: /\b(?:(?:couldn'?t|could not|can'?t|cannot|didn'?t|did not) find|(?:don'?t|do not) see (?:a|any)|no (?:file|record|profile|pets?|account) (?:under|for|with|on)|not (?:on file|in our (?:system|records))|no (?:encontre|encuentro|aparece)|no tenemos (?:un |ningun )?(?:registro|expediente|perfil))\b/,
+  // a vet's day said before any lookup: "Dr. Vance isn't in on Tuesday", "no está disponible el viernes" (batch 1c, live runs)
+  vet_day: /\b(?:(?:isn'?t|is not|won'?t be|will not be|not) (?:in|available|working|there|here|free|seeing patients)|(?:doesn'?t|does not) (?:work|come in|see patients)|is (?:off|away|out))\b[^.?!]{0,30}?\b(?:on |this |next )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hoy|manana)\b|\bno (?:esta|trabaja|atiende|viene|tiene (?:horas|horario|citas))\b[^.?!]{0,30}?\b(?:el |este |los )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hoy|manana)\b/,
 };
 
 /** Which claims the assistant's words make. */
