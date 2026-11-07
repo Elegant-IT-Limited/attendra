@@ -44,9 +44,13 @@ export default function TestCallPage() {
   // the server's minimum, never a number here: below it the start is refused
   const noTime = left !== null && allowance.data !== undefined && left < allowance.data.minSeconds;
 
+  // where an emergency goes now, at a vet clinic: shown whether or not browser test calls are on (a simulated call follows it too)
+  const emergencyLine = config.data?.industry === 'vet'
+    ? <p className="-mt-2 mb-4 text-sm text-text-muted" data-testid="emergency-line">{emergencyCallLine(config.data, new Date())} A test call is never put through: you hear what happens when nobody answers.</p>
+    : null;
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
   // the page's own title above it: the menu leads here for a simulated call too
-  if (me && !me.testCalls) return <><PageHeader title="Test call" /><Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
+  if (me && !me.testCalls) return <><PageHeader title="Test call" />{emergencyLine}<Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
   const busy = phase === 'connecting' || phase === 'live' || phase === 'ending';
 
   return (
@@ -55,7 +59,7 @@ export default function TestCallPage() {
         title="Test call"
         description="Talk to the receptionist through your microphone, with this clinic's live settings. It is recorded like a phone call and marked as a browser test."
       />
-      {config.data?.industry === 'vet' && <p className="-mt-2 mb-4 text-sm text-text-muted" data-testid="emergency-line">{emergencyCallLine(config.data, new Date())} A test call is never put through: you hear what happens when nobody answers.</p>}
+      {emergencyLine}
       <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-8 text-center">
