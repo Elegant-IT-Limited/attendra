@@ -42,6 +42,8 @@ export const Me = z.object({
   twoFactorRequired: z.boolean(),
   /** Minutes without activity, in every tab, before the dashboard signs out. */
   idleMinutes: z.number(),
+  /** When this session ends unless it is used again (ISO): 12 hours after its last renewal, which a request more than an hour later makes. */
+  expiresAt: z.string(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */

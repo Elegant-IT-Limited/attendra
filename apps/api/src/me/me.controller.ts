@@ -34,6 +34,7 @@ export class MeController {
       demoMode: this.options.demoMode,
       twoFactorRequired: !this.options.demoMode && this.options.twoFactor !== 'optional',
       idleMinutes: this.options.idleMinutes ?? 15,
+      expiresAt: staff.sessionExpiresAt,
       testCalls: !!this.voice?.browserCalls,
       simulatedCalls: !!this.voice?.simulatedCalls,
       roles: ROLES,
