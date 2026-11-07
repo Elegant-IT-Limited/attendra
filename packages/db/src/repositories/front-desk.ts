@@ -27,6 +27,15 @@ export async function clinicsForUser(db: Database, userId: string) {
     .where(and(eq(clinicAccess.userId, userId), isNull(clinics.closedAt))).orderBy(organizations.name, clinics.name);
 }
 
+/** Whether the person holds one of these roles at any open location: for the two-step rule by role. Runs before a clinic is known, like clinicsForUser. */
+export async function holdsRole(db: Database, userId: string, roles: StaffRole[]): Promise<boolean> {
+  if (!roles.length) return false;
+  const [row] = await db.select({ clinicId: clinicAccess.clinicId }).from(clinicAccess)
+    .innerJoin(clinics, eq(clinics.id, clinicAccess.clinicId))
+    .where(and(eq(clinicAccess.userId, userId), inArray(clinicAccess.role, roles), isNull(clinics.closedAt))).limit(1);
+  return !!row;
+}
+
 export async function staffRole(db: Database, userId: string, clinicId: string): Promise<StaffRole | null> {
   const [row] = await db.select({ role: clinicAccess.role }).from(clinicAccess)
     .innerJoin(clinics, eq(clinics.id, clinicAccess.clinicId))

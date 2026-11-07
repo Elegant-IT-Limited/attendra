@@ -59,11 +59,11 @@ export default function Team() {
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
-  const [issued, setIssued] = useState<{ name: string; email: string; password: string } | null>(null);
+  const [issued, setIssued] = useState<{ name: string; email: string; password: string; role: Member['role'] } | null>(null);
   const [resetting, setResetting] = useState<Member | null>(null);
   const reset = useMutation({
     mutationFn: (m: Member) => api<AddedMember>(`/clinics/${clinicId}/members/${m.userId}/reset-password`, { method: 'POST' }),
-    onSuccess: (r, m) => { setResetting(null); setIssued({ name: personName(m.name), email: m.email, password: r.temporaryPassword }); },
+    onSuccess: (r, m) => { setResetting(null); setIssued({ name: personName(m.name), email: m.email, password: r.temporaryPassword, role: m.role }); },
     onError: (e) => setNotice({ tone: 'warn', text: message(e) }),
     onSettled: refresh,
   });
@@ -191,7 +191,7 @@ export default function Team() {
       </Panel>
       <Panel open={!!issued} onOpenChange={(o) => !o && setIssued(null)} title={`New temporary password for ${issued?.name ?? ''}`}
         description="They were signed out everywhere. The old password no longer works." footer={<Button onClick={() => setIssued(null)}>Done</Button>}>
-        {issued && <OneTimePassword email={issued.email} password={issued.password} />}
+        {issued && <OneTimePassword email={issued.email} password={issued.password} role={issued.role} />}
       </Panel>
       <Panel open={!!removing} onOpenChange={(o) => !o && setRemoving(null)} title={`Remove ${removing?.name ?? ''}?`}
         description={removing?.role === 'owner' ? 'They are no longer an owner and can no longer open any location of the business. Their past actions stay in the audit log.'
@@ -267,7 +267,7 @@ function AddPeople({ clinicId, clinicName, locations, canAllLocations, open, onO
                 {o.error ? <span className="text-danger">{o.email}: {o.error}</span>
                   : <><MailCheck className="size-4 text-primary" aria-hidden /><span><span className="font-medium">{o.email}</span>: invite sent</span></>}
               </p>
-              {o.result?.temporaryPassword && <OneTimePassword email={o.email} password={o.result.temporaryPassword} />}
+              {o.result?.temporaryPassword && <OneTimePassword email={o.email} password={o.result.temporaryPassword} role={settings(o.email).role} />}
             </li>
           ))}
         </ul>
@@ -313,8 +313,9 @@ function AddPeople({ clinicId, clinicName, locations, canAllLocations, open, onO
 }
 
 /** A temporary password, shown once. It must be changed at first sign-in and stops working after 72 hours. */
-function OneTimePassword({ email, password }: { email: string; password: string }) {
-  const twoStepRequired = useMe().data?.twoFactorRequired ?? true;
+function OneTimePassword({ email, password, role }: { email: string; password: string; role: Member['role'] }) {
+  // the new person's role decides, not yours: with ATTENDRA_TWO_FACTOR=managers only owners and practice managers must
+  const twoStepRequired = useMe().data?.twoFactorRoles.includes(role) ?? true;
   const [copied, setCopied] = useState(false);
   return (
     <div className="space-y-3 text-sm">

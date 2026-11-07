@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { TWO_FACTOR_MODES } from '@attendra/core';
 import { z } from 'zod';
 
 // an empty line in .env (VOICE_URL=) means not set
@@ -40,9 +41,10 @@ const Env = z.object({
   ATTENDRA_BACKEND_MODEL: z.preprocess(blank, z.string().default('gpt-6-luna')),
   // the text-to-speech model behind Settings' voice samples
   ATTENDRA_TTS_MODEL: z.preprocess(blank, z.string().default('gpt-4o-mini-tts')),
-  // Two-step sign-in: required for everyone (the default), or optional, for a hosted service whose
-  // accounts hold no patient health information (veterinary clinics). Demo mode skips it either way.
-  ATTENDRA_TWO_FACTOR: z.preprocess(blank, z.enum(['required', 'optional']).default('required')),
+  // Two-step sign-in: required for everyone (the default); managers, required for owners and practice
+  // managers and a choice for the other roles; or optional, for a hosted service whose accounts hold no
+  // patient health information (veterinary clinics). Demo mode skips it either way.
+  ATTENDRA_TWO_FACTOR: z.preprocess(blank, z.enum(TWO_FACTOR_MODES).default('required')),
   // Minutes without activity, in every tab, before the dashboard signs out: 15 where it holds
   // patient records; a hosted service for veterinary clinics can choose longer (up to 12 hours).
   ATTENDRA_IDLE_MINUTES: z.preprocess(blank, z.coerce.number().int().min(5).max(720).default(15)),

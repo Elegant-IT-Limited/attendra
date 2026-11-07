@@ -4,6 +4,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (two-step sign-in by role)
+
+- **`ATTENDRA_TWO_FACTOR=managers`:** two-step sign-in is required of owners and practice managers (the people who manage the team, API keys and webhooks) and a choice for front desk and viewers. A person with either role at any of their locations must have it on; a promotion counts from the next request. `/me` says whether this person must (`twoFactorRequired`) and which roles must (`twoFactorRoles`). `required` stays the default.
+
 ### Added (launch readiness: batch 5)
 
 - **Every POST takes an `Idempotency-Key`.** Sent again with the same key, a request is answered with its first answer (`Idempotent-Replayed: true`) and nothing is done twice; the same key with another body is refused (422), and one still being answered says so (409). Keys belong to the person (or the hosting layer) and the path, answers are kept 24 hours, encrypted (migration 0052). The dashboard sends a key with every POST.

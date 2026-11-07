@@ -75,6 +75,14 @@ ATTENDRA_TWO_FACTOR=optional
 
 People can still turn it on for themselves. Keep it required wherever the dashboard holds patient records.
 
+Between the two, `managers` requires it of owners and practice managers, the roles that manage the team, API keys and webhooks, and leaves it a choice for front desk and viewers:
+
+```bash
+ATTENDRA_TWO_FACTOR=managers
+```
+
+A person who is an owner or practice manager at any of their locations must have it on. Someone made a practice manager is sent to set it up at their next click, before they can manage anything; until then they see only who they are. Turning it off is offered only to people who don't need it.
+
 ## Signing out when idle
 
 The dashboard signs out after 15 minutes without activity in any of its tabs. A hosted service whose accounts hold no patient health information can choose longer, from 5 minutes to 12 hours (either way, a session ends 12 hours after it was last used; ten minutes before the dashboard signs out it says when, and the sign-in page says why it did):

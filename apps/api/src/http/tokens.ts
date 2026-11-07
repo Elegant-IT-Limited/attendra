@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Injection tokens. Every constructor names its token, so nothing depends on
 // emitted type metadata (tsx and Vitest do not emit it).
+import type { TwoFactorMode } from '@attendra/core';
+
 export const DB = Symbol('db');
 export const CIPHER = Symbol('cipher');
 export const AUTH = Symbol('auth');
@@ -65,8 +67,8 @@ export interface ApiOptions {
   accountLinks?: { label: string; href: string }[];
   /** This deployment's MCP address (ATTENDRA_MCP_URL), shown on Settings > API keys. */
   mcpUrl?: string;
-  /** 'optional' lets people use the dashboard without two-step sign-in. Default 'required'. */
-  twoFactor?: 'required' | 'optional';
+  /** Who must use two-step sign-in: everyone ('required', the default), nobody ('optional'), or owners and practice managers ('managers'). */
+  twoFactor?: TwoFactorMode;
   /** Minutes without activity before the dashboard signs out (default 15). */
   idleMinutes?: number;
   /** ATTENDRA_SEARCH_SCAN: searches also read the newest records, as before the search keys (v0.10). Off by default. */

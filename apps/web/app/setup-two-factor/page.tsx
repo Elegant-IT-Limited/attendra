@@ -38,6 +38,8 @@ export default function SetupTwoFactor() {
   const secret = setup ? new URL(setup.totpURI).searchParams.get('secret') : null;
   // turned on by choice, from Your account: a way back; when it is required, only signing out
   const optional = me.data?.twoFactorRequired === false;
+  // required of everyone here, or of owners and practice managers only (ATTENDRA_TWO_FACTOR=managers)
+  const byRole = !!me.data && me.data.twoFactorRoles.length > 0 && me.data.twoFactorRoles.length < me.data.roles.length;
   const footer = optional
     ? <a className="font-medium text-primary underline-offset-4 hover:underline" href="/profile">Back to your profile</a>
     : <button type="button" className="text-text-muted underline-offset-4 hover:underline" onClick={signOut}>Sign out</button>;
@@ -66,7 +68,7 @@ export default function SetupTwoFactor() {
 
   if (!setup) {
     return (
-      <AuthCard title="Turn on two-step sign-in" subtitle={optional ? 'A code from an authenticator app keeps your account safe even if someone learns your password.' : 'Everyone who can see patient calls signs in with a password and a code from an authenticator app.'}
+      <AuthCard title="Turn on two-step sign-in" subtitle={optional ? 'A code from an authenticator app keeps your account safe even if someone learns your password.' : byRole ? 'Owners and practice managers sign in with a password and a code from an authenticator app.' : 'Everyone who can see patient calls signs in with a password and a code from an authenticator app.'}
         footer={footer}>
         <form onSubmit={start} className="space-y-4">
           <div className="space-y-1.5">
