@@ -24,6 +24,7 @@ import { TestCallsController } from './calls/test-calls.controller';
 import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
+import { clientAddress } from './http/client-address';
 import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CHANGES, CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, JOBS, KNOWLEDGE, WEBHOOK_GUARD, LOGGER, MAIL, PATIENTS, SCHEDULE, STAFF_SCHEDULER, VOICE, VOICE_SAMPLES, type VoiceClient, type VoiceSampler } from './http/tokens';
@@ -64,6 +65,8 @@ export interface ApiDeps {
   rateLimit?: number;
   /** Proxy hops in front of the API whose X-Forwarded-For is trusted (1 behind the dashboard). */
   trustProxy?: number;
+  /** The edge proxy sits behind Cloudflare: a request that reached it from Cloudflare names its client in CF-Connecting-IP. */
+  trustCloudflare?: boolean;
   /** The clock for booking rules ("no past times"). Tests set it; the default is the real time. */
   now?: () => Date;
   /** Change notices from Postgres, so the dashboard updates without a refresh. Without it, screens refresh on a timer. */
@@ -133,6 +136,7 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   const hops = deps.trustProxy ?? 0;
   // trust exactly `hops` proxies (the dashboard), so a client-sent X-Forwarded-For entry never becomes the address
   const adapter = new FastifyAdapter({ trustProxy: (_address: string, hop: number) => hop < hops, bodyLimit: 512 * 1024 });
+  const addressOf = (req: { ip: string; headers: Record<string, string | string[] | undefined> }) => clientAddress(req, !!deps.trustCloudflare);
   const app = await NestFactory.create<NestFastifyApplication>(ApiModule.with(deps), adapter, { logger: false });
   app.setGlobalPrefix('api/v1');
   const fastify = app.getHttpAdapter().getInstance();
@@ -160,7 +164,7 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   const authContext = await deps.auth.$context;
   await fastify.register(rateLimit, {
     max: deps.rateLimit ?? 600, timeWindow: 60_000,
-    keyGenerator: rateLimitKey({ cookieName: authContext.authCookies.sessionToken.name, secret: authContext.secret }),
+    keyGenerator: rateLimitKey({ cookieName: authContext.authCookies.sessionToken.name, secret: authContext.secret }, addressOf),
   });
 
   // Method, route and status only. Bodies and query strings can carry PHI.
@@ -211,7 +215,7 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
       if (!AUTH_ROUTES.has(route)) return reply.status(404).send({ error: 'not_found' });
       let input = (req.body ?? {}) as Record<string, unknown>;
       const headers = toHeaders(req.headers);
-      headers.set('x-forwarded-for', req.ip);
+      headers.set('x-forwarded-for', addressOf(req));
       const now = deps.now?.() ?? new Date();
 
       // A temporary password works once, and only for 72 hours. Checked after the password

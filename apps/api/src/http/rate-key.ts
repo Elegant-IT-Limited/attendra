@@ -11,10 +11,10 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
  * fresh budget: it falls back to the address. The check is the signature alone, with no
  * database read, and the token is kept only as a hash.
  */
-export function rateLimitKey(auth: { cookieName: string; secret: string }) {
-  return (req: { ip: string; headers: { cookie?: string } }): string => {
+export function rateLimitKey<R extends { ip: string; headers: { cookie?: string } }>(auth: { cookieName: string; secret: string }, addressOf: (req: R) => string = (req) => req.ip) {
+  return (req: R): string => {
     const token = signedToken(req.headers.cookie, auth.cookieName, auth.secret);
-    return token ? `session:${createHash('sha256').update(token).digest('base64url').slice(0, 32)}` : `ip:${req.ip}`;
+    return token ? `session:${createHash('sha256').update(token).digest('base64url').slice(0, 32)}` : `ip:${addressOf(req)}`;
   };
 }
 
