@@ -5,9 +5,25 @@ A hosting layer (sign-up, billing, phone numbers) opens and runs accounts throug
 ```bash
 # the API's .env
 ATTENDRA_PROVISIONING_TOKEN=...   # 32 characters or more: openssl rand -base64 32
+ATTENDRA_PROVISIONING_SIGNATURES=accept   # or require: signed requests only (below)
 ```
 
-Without the token the routes answer 404. With it, every request needs `Authorization: Bearer <token>`. Call them from the server only, never from a browser. None of them reads patient data.
+Without the token the routes answer 404. With it, every request needs `Authorization: Bearer <token>`, or a signature made with it (below). Call them from the server only, never from a browser. None of them reads patient data.
+
+### Signed requests
+
+A request can prove it holds the token without sending it: it carries the time it was made and an HMAC-SHA256, keyed with the token, of that time, the method, the path with its query, and a SHA-256 of the body (`apps/api/src/http/signature.ts`):
+
+```
+attendra-timestamp: 1794052800
+attendra-signature: v1=<hex of HMAC-SHA256(token, "<timestamp>\n<METHOD>\n<path?query>\n<sha256 hex of the raw body, or of the empty string>")>
+```
+
+A signature is good for 5 minutes either way of the engine's clock, and for that request only: another path, method or body fails it. A signature that is there must be good, whatever else the request carries (`401 bad_signature`, or `signature_expired` when it is old). `ATTENDRA_PROVISIONING_SIGNATURES=require` makes it the only way in: the bearer token alone answers `401 signature_required`. Move a hosting layer over in two steps: sign every request while still sending the bearer token, then require signatures and stop sending it. The engine signs what it posts to the hosting layer's mail hook the same way.
+
+### Sending a POST again
+
+Every POST takes an `Idempotency-Key` header (8 to 128 letters, digits or `-_:.`; a UUID fits). A POST sent again with the same key, after a timeout or a lost answer, is answered with the first answer and `Idempotent-Replayed: true`, and nothing is done twice. The same key with another body answers `422 idempotency_key_reused`; while the first request is still being answered, `409 idempotency_in_progress`. A request that failed frees its key. Answers are kept 24 hours, encrypted. The same works on the dashboard's API, where a key belongs to the person who sent it; the dashboard sends one with every POST.
 
 | Route | What it does |
 |---|---|

@@ -41,6 +41,9 @@ const Env = z.object({
   ATTENDRA_IDLE_MINUTES: z.preprocess(blank, z.coerce.number().int().min(5).max(720).default(15)),
   // Turns on /api/v1/provisioning for a hosting layer: opening accounts, numbers, usage. Unset, the routes do not exist.
   ATTENDRA_PROVISIONING_TOKEN: optional(z.string().min(32, 'ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters: openssl rand -base64 32')),
+  // 'require': a provisioning request must be signed with the token (attendra-timestamp + attendra-signature), and the
+  // bearer token alone is refused, so the token itself never travels. 'accept' (default): either, while the hosting layer moves over.
+  ATTENDRA_PROVISIONING_SIGNATURES: z.preprocess(blank, z.enum(['accept', 'require']).default('accept')),
   // Where the hosting layer takes emails the engine cannot send itself ("forgot password"), signed with ATTENDRA_PROVISIONING_TOKEN.
   // Unset, the sign-in page tells people to ask their practice manager for a reset.
   ATTENDRA_MAIL_HOOK_URL: optional(z.url()),

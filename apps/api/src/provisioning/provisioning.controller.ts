@@ -8,9 +8,11 @@ import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
 import { Body, type CanActivate, Controller, Delete, type ExecutionContext, Get, HttpCode, HttpException, Inject, Injectable, NotFoundException, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
+import type { FastifyRequest } from 'fastify';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import type { Auth } from '../auth';
+import { checkSignature } from '../http/signature';
 import { Public } from '../http/staff.guard';
 import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
@@ -84,18 +86,35 @@ const newId = (prefix: string) => `${prefix}_${randomBytes(8).toString('hex')}`;
  * The shared token, checked before anything else, the body included: a request without it
  * is 401 whatever it carries (404 when the deployment has no token), never a 422 that would
  * say what a valid body looks like.
+ *
+ * A request may prove it holds the token by signing itself with it (http/signature.ts), so
+ * the token never travels. A signature that is present must be valid and recent, whatever
+ * else the request carries. With ATTENDRA_PROVISIONING_SIGNATURES=require, a signature is the
+ * only way in: the bearer token alone is refused.
  */
 @Injectable()
 export class ProvisioningToken implements CanActivate {
-  constructor(@Inject(API_OPTIONS) private readonly options: ApiOptions) {}
+  constructor(@Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(CLOCK) private readonly now: () => Date) {}
 
   canActivate(ctx: ExecutionContext): boolean {
     const token = this.options.provisioningToken;
     if (!token) throw new NotFoundException({ error: 'not_found' });
-    const authorization = ctx.switchToHttp().getRequest<{ headers: Record<string, string | string[] | undefined> }>().headers.authorization;
+    const req = ctx.switchToHttp().getRequest<FastifyRequest & { rawBody?: Buffer }>();
+    const signed = checkSignature(token, { method: req.method, path: req.url, body: rawBodyOf(req), headers: req.headers }, this.now());
+    if (signed === 'valid') return true;
+    if (signed !== 'missing') throw new HttpException({ error: signed === 'stale' ? 'signature_expired' : 'bad_signature' }, 401);
+    if (this.options.provisioningSignatures === 'require') throw new HttpException({ error: 'signature_required' }, 401);
+    const authorization = req.headers.authorization;
     if (typeof authorization !== 'string' || !timingSafeEqual(digest(authorization), digest(`Bearer ${token}`))) throw new HttpException({ error: 'unauthorized' }, 401);
     return true;
   }
+}
+
+/** The body as it arrived, for the signature: kept by the API's JSON parser (app.ts); a body-less request signs the empty string. */
+function rawBodyOf(req: FastifyRequest & { rawBody?: Buffer }): Uint8Array | undefined {
+  if (req.rawBody) return req.rawBody;
+  if (Buffer.isBuffer(req.body)) return req.body;
+  return undefined;
 }
 
 /**

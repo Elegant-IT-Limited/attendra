@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { Logger } from '@attendra/observability';
+import { signRequest } from './http/signature';
 
 /** What the engine asks the hosting layer to email: it has no mailer of its own. */
 export type MailRequest =
@@ -17,17 +18,21 @@ export type MailRequest =
 export type Mailer = (m: MailRequest) => Promise<void>;
 
 /**
- * Posts an email request to the hosting layer (ATTENDRA_MAIL_HOOK_URL), signed with the
- * same bearer token the hosting layer uses for provisioning. The address, the name and a
+ * Posts an email request to the hosting layer (ATTENDRA_MAIL_HOOK_URL), with the same bearer
+ * token the hosting layer uses for provisioning, and signed with it (http/signature.ts), so
+ * the hosting layer can stop taking the bearer alone. The address, the name and a
  * link (and for an invitation, the clinic's name and the role) only: nothing else about the person. A failure is logged, never shown, so
  * the answer to "forgot password" is the same whether the address has an account or not.
  */
 export function mailHook(url: string, token: string, log?: Logger): Mailer {
   return async (m: MailRequest) => {
     try {
+      const body = JSON.stringify(m);
+      const at = new URL(url);
       const res = await fetch(url, {
-        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(m), signal: AbortSignal.timeout(10_000),
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...signRequest(token, { method: 'POST', path: at.pathname + at.search, body }) },
+        body, signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) log?.warn({ status: res.status, type: m.type }, 'mail hook refused the request');
     } catch (err) {

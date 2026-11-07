@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (launch readiness: batch 5)
+
+- **Every POST takes an `Idempotency-Key`.** Sent again with the same key, a request is answered with its first answer (`Idempotent-Replayed: true`) and nothing is done twice; the same key with another body is refused (422), and one still being answered says so (409). Keys belong to the person (or the hosting layer) and the path, answers are kept 24 hours, encrypted (migration 0052). The dashboard sends a key with every POST.
+- **Signed provisioning requests.** The hosting layer can sign each request with the shared token (`attendra-timestamp`, `attendra-signature`: HMAC-SHA256 over the time, method, path and body hash, good for 5 minutes) instead of sending it; `ATTENDRA_PROVISIONING_SIGNATURES=require` refuses the bearer token alone. The engine signs its mail-hook calls the same way. See docs/provisioning.md.
+
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.
