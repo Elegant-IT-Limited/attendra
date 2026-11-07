@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 1c: scheduling on path A)
+
+- **A booking is read back before it is made, in the words themselves**: the assistant's words after a proposal must carry its day and time (EN/ES, digits or words) before a yes counts. Any speech after the proposal used to count, so a "yes" after "I found Biscuit" could book.
+- **Dates from the clinic's clock**: a bare "Thursday" is the clinic's next Thursday, whatever date the voice model guessed; the per-turn note on path A carries the clinic's date.
+- **Vets by name** in the slot search ("Dr. Khan", "la doctora Vance"); a "specialty" that is really the visit ("dental care") or none ("general practice") no longer refuses with "no doctor is listed".
+- **A tool's own question is said as written** ("Shall I look with them?"), and "Dr. Vance isn't in on Tuesday" needs a lookup behind it.
+- **Emergencies**: the question opens with "I'm sorry to hear that." ("Lo siento mucho."), never a rating of the sign; for a person in danger, the lines after the emergency number come from code.
+
 ### Added (launch readiness: batch 5)
 
 - **Every POST takes an `Idempotency-Key`.** Sent again with the same key, a request is answered with its first answer (`Idempotent-Replayed: true`) and nothing is done twice; the same key with another body is refused (422), and one still being answered says so (409). Keys belong to the person (or the hosting layer) and the path, answers are kept 24 hours, encrypted (migration 0052). The dashboard sends a key with every POST.

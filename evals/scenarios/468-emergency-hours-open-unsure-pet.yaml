@@ -19,7 +19,7 @@ settings:
       address: 88 Cedar Road, Denver
 turns:
   - caller: My dog Biscuit's throat is swelling up.
-  - assistant: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
+  - assistant: I'm sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?
   - caller: I'm not sure, I don't know.
 expect:
   outcome: emergency
