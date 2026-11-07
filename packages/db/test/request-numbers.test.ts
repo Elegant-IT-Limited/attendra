@@ -21,12 +21,15 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 const queue = () => new PostgresTaskQueue(t.db, cipher);
+// the number each key got when the twelve came in at once: on a real server they arrive in any order
+const firstNumbers = new Map<string, number>();
 const numbersOf = async (clinicId: string) => ((await t.owner.execute(sql`select number from tasks where clinic_id = ${clinicId} order by number`)).rows as { number: number }[]).map((r) => r.number);
 
 // every request has its own number (2026-11-01): R-1042, in the order they came in, never reused
 describe('request numbers', () => {
   it('numbers requests one after another, each clinic from R-1, even when many come in at once', async () => {
     const made = await Promise.all(Array.from({ length: 12 }, (_, i) => queue().create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: `n-${i}`, details: { reason: `call ${i}` } })));
+    made.forEach((m, i) => firstNumbers.set(`n-${i}`, m.number));
     expect(made.map((m) => m.number).sort((a, b) => a - b)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
     expect(new Set(made.map((m) => m.number)).size).toBe(12);
     // another clinic starts at R-1 too
@@ -37,7 +40,7 @@ describe('request numbers', () => {
 
   it('a retried request keeps its number and costs none; the next new one follows on', async () => {
     const again = await queue().create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'n-3', details: { reason: 'call 3' } });
-    expect(again).toMatchObject({ number: 4, created: false });
+    expect(again).toMatchObject({ number: firstNumbers.get('n-3'), created: false });
     const next = await queue().create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'n-13', details: { reason: 'the next' } });
     expect(next).toMatchObject({ number: 13, created: true });
     const audit = (await t.owner.execute(sql`select counts from audit_logs where clinic_id = ${V} and action = 'task.created.callback' and entity_id = ${next.id}`)).rows as { counts: { number: number } }[];

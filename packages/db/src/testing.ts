@@ -65,7 +65,22 @@ async function openServerTestDatabase(url: string, service: boolean): Promise<Te
   const admin = new Client({ connectionString: url });
   await admin.connect();
   await admin.query(`create database ${name}`);
-  await admin.end();
+  // Roles belong to the whole server, not one database: two test files migrating at once (0051 grants to
+  // attendra_service, then its password below) change the same role and Postgres refuses one ("tuple
+  // concurrently updated"). Each file's role work waits its turn on a lock taken in the server's base database.
+  await admin.query('select pg_advisory_lock($1)', [ROLE_SETUP_LOCK]);
+  try {
+    return await openMigrated(url, name, service);
+  } finally {
+    await admin.query('select pg_advisory_unlock($1)', [ROLE_SETUP_LOCK]).catch(() => {});
+    await admin.end();
+  }
+}
+
+/** The lock the test databases on one server take in turn while they change the shared roles. */
+const ROLE_SETUP_LOCK = 51_051;
+
+async function openMigrated(url: string, name: string, service: boolean): Promise<TestDatabase> {
   const at = new URL(url);
   at.pathname = `/${name}`;
   const ownerUrl = at.toString();
