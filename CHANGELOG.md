@@ -10,6 +10,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **A tool's refusal line is said word for word** on path A ("Dra. Mara Vance no trabaja los martes. Atiende los viernes y los domingos.", "fully booked on Friday", too far ahead, "the team books surgery"), with anything another tool asked to be said first before it. A tool's own question still comes first.
 - **A vet's day comes from the slot search**: asked "is Dr. Vance in on Friday?", the clinic's information tells the model to search instead of working it out from the weekly hours, and only a slot search backs "she isn't in on Friday" (live runs said "away" of a vet who was fully booked, and "the clinic is closed on Sundays" of a vet who works them).
 - **A caller who can't pick a time** is offered the first one alone, for a yes, never asked to choose again.
+- **"I'm not sure if it's severe or nonstop" is not a yes**: the emergency question's own words echoed or denied ("it's not severe", "no sé si es grave") no longer put a caller with a mild sign through to the team; "he keeps vomiting" still does.
 
 ### Changed (batch 1c: scheduling on path A)
 

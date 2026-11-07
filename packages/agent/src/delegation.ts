@@ -6,7 +6,7 @@ import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
 import { speculativeLookup } from './flow/speculate';
-import { answerTo, BORDERLINE, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, staffNote } from './flow/emergency';
+import { answerTo, BORDERLINE, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, saysSevere, staffNote } from './flow/emergency';
 import { askedAboutRecording, askedIfHuman, askedWhy, claimsIn, DISPUTE_NOTE, disputes, humanLine, notInTheClinicsLanguages, recordingLine, sideTalkLine, WHY } from './flow/guards';
 import { outOfScopeLine } from '@attendra/knowledge/scope';
 import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
@@ -344,7 +344,7 @@ export class CallAgent {
     let a = answerTo(words, c.stage === 'escalated');
     // a sign that may be mild routes only when the caller says it is heavy or nonstop (or a plain yes to that question);
     // "not sure" about "off his food" is the soonest sick visit, not a transfer (a live run put two such callers through)
-    if (c.kind === 'borderline') a = SEVERE.test(normalise(words)) ? 'yes' : MILD.test(normalise(words)) || a === 'unsure' ? 'clear_no' : a;
+    if (c.kind === 'borderline') a = saysSevere(normalise(words)) ? 'yes' : MILD.test(normalise(words)) || a === 'unsure' ? 'clear_no' : a;
     if (c.stage !== 'escalated' && (a === 'yes' || a === 'unsure')) return this.escalateEmergencyCase();
     // a clear no, then or later (the caller retracts after a yes): booked as usual, with a note for the team
     if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
