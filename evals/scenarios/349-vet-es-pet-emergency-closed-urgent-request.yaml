@@ -12,7 +12,7 @@ settings:
 facts: Eres Linh Nguyen y llamas desde tu número fuera de horario. Di que no, gracias, a un mensaje con los datos del hospital. Tu gata Mochi se está ahogando. Quieres que la vean mañana; di que sí a un mensaje urgente para el equipo.
 turns:
   - caller: ¡Mi gata Mochi se está ahogando con algo!
-  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - assistant: Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: Sí, por favor ayúdeme.
   - assistant: Por favor lleve a su mascota ahora mismo a Front Range Pet Emergency, en 1200 Larkspur Avenue, Denver. Su número es uno siete dos cero cinco cinco cinco cero uno ocho ocho. Si una persona está herida o en peligro, llame al 911.
   - caller: ¿Alguien la puede ver mañana por la mañana?

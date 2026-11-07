@@ -60,7 +60,7 @@ describe('what callers hear, and the test-call line', () => {
   it('says the lines in English and Spanish, by the route', () => {
     const hours = withMode({ mode: 'hours', number: TEAM, afterHoursHospital: AFTER });
     const en = emergencyPreview(hours, 'en', true, OPEN);
-    expect(en.question).toBe('I\'m sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?');
+    expect(en.question).toBe('I\'m sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?');
     expect(en.yes).toBe(EMERGENCY_LINES.transfer('en'));
     expect(en.transferFailed).toContain('our team will call you right away');
     expect(en.clearNo).toMatch(/^If it comes back, call us at .*or come straight in\.$/);

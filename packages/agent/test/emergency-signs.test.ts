@@ -193,6 +193,19 @@ describe('after the route', () => {
 });
 
 describe('the person-in-danger number', () => {
+  it('after the 911 line, what the caller says next gets a line from code, never the voice\'s own advice; twice: hang up and call (batch 1c)', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    const script = instructions(c.caller('My husband collapsed and he is not breathing.'));
+    expect(script).toContain('911');
+    c.assistant('Please call 911 now. If a person is hurt or in danger, call 911.');
+    expect(instructions(c.caller('Oh no, what should I do?'))).toContain('"Please call 911 now. They can help right away." Then say nothing more.');
+    c.assistant('Please call 911 now. They can help right away.');
+    expect(instructions(c.caller('Please, help me!'))).toContain('"Please hang up and call 911 now."');
+    const es = await w.call('+17205550172', { clinic: open });
+    es.caller('Mi esposo se desmayó y no respira.');
+    es.assistant('Por favor llame al 911 ahora.');
+    expect(instructions(es.caller('¿Qué hago?'))).toContain('"Por favor llame al 911 ahora. Ellos pueden ayudar de inmediato."');
+  });
   it('is never a guess for a clinic whose country is not known', async () => {
     const abroad = { ...refer, phoneNumbers: ['+9771234567'], emergencyNumber: undefined };
     const c = await w.call('+17205550172', { clinic: abroad });

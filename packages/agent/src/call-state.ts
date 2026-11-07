@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerAcrossPieces, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
+import { answerAcrossPieces, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot } from '@attendra/core';
 import { CallMemory } from './call-memory';
 import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
@@ -9,8 +9,12 @@ interface PendingBase {
   readback: string;
   seq: number; // one per proposal, so rebooking the same slot later in a call gets a fresh idempotency key
   proposedAtMs: number;
-  /** When the assistant first spoke after the proposal: the read-back itself. Null until it is spoken. */
+  /** When the read-back was said: the assistant's words after the proposal carried its day and time. Null until then. */
   readbackAtMs: number | null;
+  /** The slot as the read-back must say it (its start, in the clinic's time zone, "today" as of the proposal). */
+  when?: { start: Date; timeZone: string; now: Date };
+  /** What the assistant has said since the proposal, until the read-back is heard in it. */
+  heard?: string;
 }
 
 /** A text the assistant offered: what, and where, and when the question was spoken. */
@@ -239,11 +243,12 @@ export class CallState {
   /** Transcript deltas arrive in fragments; consecutive fragments from one speaker join into one turn. */
   addTranscript(speaker: Turn['speaker'], delta: string, startMs: number, endMs: number) {
     const last = this.turns.at(-1);
-    // The assistant often starts talking ("Sure, let me book that") before the proposal
-    // is back and reads it out in the same breath, so any assistant speech after the
-    // proposal counts as the read-back, not only a new turn.
+    // The read-back is said when the assistant's words since the proposal carry the slot's day and time, across
+    // fragments and turns (batch 1c): "I found Biscuit" after a proposal is not a read-back, and a yes to it books nothing
     if (speaker === 'agent' && this.pending && this.pending.readbackAtMs === null && endMs > this.pending.proposedAtMs) {
-      this.pending.readbackAtMs = Math.max(startMs, this.pending.proposedAtMs);
+      const p = this.pending;
+      p.heard = `${p.heard ?? ''} ${delta}`.slice(-800);
+      if (!p.when || saysSlot(p.heard, p.when.start, p.when.timeZone, p.when.now)) p.readbackAtMs = Math.max(startMs, p.proposedAtMs);
     }
     // an emergency line (the question, the route, the sign question): the caller's answer is what comes after it is said
     const c = this.emergencyCase;

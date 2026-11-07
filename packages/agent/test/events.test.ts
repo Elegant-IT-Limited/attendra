@@ -14,7 +14,7 @@ describe('events from calls', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null } }]);
-    c.assistant('Tuesday at 8 with Dr. Okafor. Shall I book it?');
+    c.readBack('Tuesday at 8 with Dr. Okafor. Shall I book it?');
     c.caller('Yes please.');
     await c.delegate([{ tool: 'commit_pending', args: {} }]);
     const booked = w.events.find((e) => e.type === 'appointment.booked')!;
@@ -47,7 +47,7 @@ describe('events from calls', () => {
         { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
       ]);
       await c.delegate([{ tool: 'propose_booking', args: { slot_id: [...c.state.offered.keys()][2]!, replaces_appointment_id: null } }]);
-      c.assistant('Shall I book it?');
+      c.readBack('Shall I book it?');
       c.caller('Yes.');
       await c.delegate([{ tool: 'commit_pending', args: {} }]);
       expect(c.state.outcome).toBe('booked');

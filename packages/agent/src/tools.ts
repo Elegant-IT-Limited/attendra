@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, EMERGENCY_LINES, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_LINES, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -293,6 +293,28 @@ export function whyNot(clinic: ClinicConfig, q: { date: string | null; provider?
     if (!date || date < first) reasons.push(`This visit needs ${q.noticeHours} hours' notice, so the first day it can be booked for is ${first}.`);
   }
   return reasons.length ? `${reasons.join(' ')} Say this in a few words before the times.` : null;
+}
+
+/** The one listed vet a name fits (titles and articles dropped, accents folded): "Dr. Khan", "Vance", "la doctora Mara Vance". Null when none or several fit. */
+export function providerNamed<P extends { id: string; name: string; placeholder?: boolean }>(providers: P[], said: string): P | null {
+  const words = (t: string) => normalise(t).replace(/[^a-z\s'-]/g, ' ').split(/\s+/).filter((w) => w && !TITLES.has(w));
+  const want = words(said);
+  if (!want.length) return null;
+  const fits = providers.filter((p) => !p.placeholder && want.every((w) => words(p.name).includes(w)));
+  return fits.length === 1 ? fits[0]! : null;
+}
+const TITLES = new Set(['dr', 'dra', 'doctor', 'doctora', 'doc', 'the', 'la', 'el', 'vet', 'veterinarian', 'veterinaria', 'veterinario']);
+
+/** A "specialty" the model passed that names a visit type (any language) or no specialty at all ("general practice"). */
+export function specialtyIsTheVisit(specialty: string, clinic: Pick<ClinicConfig, 'visitTypes'>): boolean {
+  const t = normalise(specialty).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t || /^(?:general|general practice|general medicine|primary care|any|medicina general|general practitioner|gp|consulta general)$/.test(t)) return true;
+  // an animal is who the pet is, not a vet's specialty (the pet's kind already picks the vets who see it)
+  if (/^(?:dogs?|cats?|puppy|puppies|kittens?|rabbits?|birds?|perros?|gatos?|conejos?|aves?|cachorros?)$/.test(t)) return true;
+  return clinic.visitTypes.some((v) => [v.name, ...Object.values(v.names ?? {})].some((n) => {
+    const name = normalise(n ?? '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    return !!name && (name === t || name.includes(t) || t.includes(name));
+  }));
 }
 
 export async function runTool(
@@ -610,8 +632,14 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (patient && !patient.isNew && visitType.audience === 'new') {
         return refuse('existing_patient_visit_type', `They are already a patient. Offer one of these: ${clinic.visitTypes.filter((v) => v.audience !== 'new').map((v) => localName(v, lang)).join(', ')}.`);
       }
+      // a vet named the way the caller says it ("Dr. Khan", "Vance", "la doctora Vance") is that vet when only one fits:
+      // a live run lost a model round on unknown_provider for "Dr. Khan" on almost every vet-specific request (batch 1c)
+      if (args.provider_id && !clinic.providers.some((p) => p.id === args.provider_id)) {
+        const named = providerNamed(clinic.providers, String(args.provider_id));
+        if (named) args.provider_id = named.id;
+      }
       let providers = args.provider_id ? clinic.providers.filter((p) => p.id === args.provider_id) : bookableProviders(clinic.providers);
-      if (args.provider_id && !providers.length) return refuse('unknown_provider', 'Use a provider_id from get_clinic_info.');
+      if (args.provider_id && !providers.length) return refuse('unknown_provider', `No vet here is called that. The vets: ${bookableProviders(clinic.providers).map((p) => `${providerName(p)} (${p.id})`).join(', ')}.`);
       // a vet named who does not do this visit: the true reason, and who does (a caller heard "fully booked for two weeks")
       if (args.provider_id && !providers[0]!.visitTypeIds.includes(visitType.id)) {
         const line = doesntDoType(clinic, providers[0]!, visitType, lang);
@@ -623,6 +651,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       }
       // the kind of doctor or department the caller asked for, matched to the clinic's own list only
       // a clinic that lists no specialties or categories for anyone: everyone sees everything
+      // a specialty that is really the visit ("dental care" with vt_dental) or no specialty at all ("general practice")
+      // narrows nothing: a live run told a caller "no doctor here is listed for dental care" while two vets did dental
+      // visits (batch 1c)
+      if (args.specialty && specialtyIsTheVisit(String(args.specialty), clinic)) args.specialty = null;
       if (args.specialty && providers.some((p) => p.specialty || p.categories.length)) {
         providers = providers.filter((p) => matchesSpecialty(p, String(args.specialty)));
         if (!providers.length) {
@@ -859,12 +891,23 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (same?.kind === 'book' && same.slot.id === slot.id && same.replacesAppointmentId === replaces && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
-      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, replacesStart, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.pending = { kind: 'book', slot, replacesAppointmentId: replaces, replacesStart, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null, when: { start: slot.start, timeZone: clinic.timezone, now: ctx.now() } };
       state.chosen = null; // the time they chose is the one being read back now
       // the confirmation text is said before the yes, so the yes covers it and the caller can turn it down
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
       // said once a call: the caller heard it, and five read-backs of five times each with it were judged robotic
       const textNote = target && !TEXT_NOTE_SAID.has(state) ? pack.confirmTextNote({ target }) : null;
+      // the voice already said this booking's day and time ("Monday at 3:30 with Dr. Ruiz, shall I book it?") and the
+      // caller said yes to it: that was the read-back, and asking again was judged robotic (batch 1c live runs). Not for
+      // a move (both times are read back), nor when a confirmation text still has to be mentioned and that line did not
+      const lastAgent = [...state.turns].reverse().find((t) => t.speaker === 'agent');
+      const after = lastAgent ? state.turns.filter((t) => t.speaker === 'caller' && t.startMs > lastAgent.startMs).map((t) => t.text).join(' ') : '';
+      if (!replaces && lastAgent && saysSlot(lastAgent.text, slot.start, clinic.timezone, ctx.now()) && (!textNote || /\b(?:text|mensaje)/i.test(lastAgent.text))
+        && after && isClearYes(after, clinic.languages)) {
+        state.pending.readbackAtMs = lastAgent.startMs;
+        if (textNote) TEXT_NOTE_SAID.add(state);
+        return { ok: true, data: { say: `The caller already heard this and said yes: ${readback}. Call commit_pending now; do not read it back again.` } };
+      }
       if (textNote) TEXT_NOTE_SAID.add(state);
       return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote, move: !!replaces }) } };
     }
@@ -878,7 +921,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       if (same?.kind === 'cancel' && same.appointmentId === appt.id && same.readbackAtMs !== null) {
         return { ok: true, data: { say: `This was already read back: ${readback}. If the caller said yes to it, call commit_pending now; otherwise ask for a clear yes.` } };
       }
-      state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null };
+      state.pending = { kind: 'cancel', appointmentId: appt.id, start: appt.start, readback, seq: ++state.proposals, proposedAtMs: state.lastMs(), readbackAtMs: null, when: { start: appt.start, timeZone: clinic.timezone, now: ctx.now() } };
       const target = confirmationTarget('cancel_confirmed');
       const textNote = target ? pack.confirmTextNote({ target }) : null;
       return { ok: true, data: { say: textNote ? `Ask them to confirm, with a clear yes, that you should ${readback}, and say "${textNote}".` : `Ask them to confirm, with a clear yes, that you should ${readback}.`, spoken: pack.spoken.cancelReadback({ readback, textNote }) } };

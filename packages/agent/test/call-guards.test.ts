@@ -70,6 +70,20 @@ describe('no result without a tool', () => {
     expect(claimsIn('Shall I book Biscuit for Thursday at 10?')).toEqual([]);
     expect(claimsIn('Ya está reservada su cita.')).toEqual(['booked']);
   });
+
+  it('a vet\'s day said before any lookup is a claim; after a slot search it is the schedule (batch 1c, live runs)', async () => {
+    expect(claimsIn('No, Dr. Vance isn\'t in on Tuesday.')).toEqual(['vet_day']);
+    expect(claimsIn('Lo siento, la doctora Vance no está disponible el viernes.')).toEqual(['vet_day']);
+    expect(claimsIn('No, la doctora Vance no está el martes.')).toEqual(['vet_day']);
+    expect(claimsIn('Dr. Vance sees patients on Fridays and Sundays.')).toEqual([]);
+    const c = await w.call('+17205550172', { clinic: open });
+    c.caller('Is Dr. Ruiz in on Tuesday?');
+    expect(instructions(c.agent.onAgentTranscript("No, Dr. Ruiz isn't in on Tuesday.", 5000, 7000))).toContain('no tool returned (vet day)');
+    const after = await w.call('+17205550172', { clinic: open });
+    after.caller('Is Dr. Ruiz in on Tuesday?');
+    await after.delegate([{ tool: 'get_clinic_info', args: { question: 'Is Dr. Ruiz in on Tuesday?' } }]);
+    expect(after.agent.onAgentTranscript("No, Dr. Ruiz isn't in on Tuesday.", 9000, 11000)).toEqual([]);
+  });
 });
 
 describe('helpful within the rules', () => {
