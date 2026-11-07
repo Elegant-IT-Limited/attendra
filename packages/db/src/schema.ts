@@ -57,7 +57,7 @@ export const patients = pgTable('patients', {
   genderEnc: text('gender_enc'),
   speciesEnc: text('species_enc'),
   customEnc: text('custom_enc'),
-  /** Keyed hashes of each word of the owner's and the patient's names, and of the phone's last four digits, for search (migration 0042). */
+  /** Keyed hashes of each word of the owner's and the patient's names, and of the phone's last four digits (migration 0042). Search reads patient_search_keys since 0049. */
   ownerWordsHash: text('owner_words_hash').array(),
   phoneSuffixHash: text('phone_suffix_hash'),
   /** They agreed to reminder texts: when, and how (on a call, at the desk, in an import). */
@@ -67,6 +67,20 @@ export const patients = pgTable('patients', {
   createdByCallId: uuid('created_by_call_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** A patient's search keys (migration 0049): shortened keyed hashes, looked up by equality so the index serves them under Row Level Security. */
+export const patientSearchKeys = pgTable('patient_search_keys', {
+  clinicId: text('clinic_id').notNull(),
+  key: text('key').notNull(),
+  patientId: uuid('patient_id').notNull(),
+}, (t) => [primaryKey({ columns: [t.clinicId, t.key, t.patientId] })]);
+
+/** A call's search keys (migration 0049): the digit runs of the number it came from. Deleted with the number. */
+export const callSearchKeys = pgTable('call_search_keys', {
+  clinicId: text('clinic_id').notNull(),
+  key: text('key').notNull(),
+  callId: uuid('call_id').notNull(),
+}, (t) => [primaryKey({ columns: [t.clinicId, t.key, t.callId] })]);
 
 export const appointments = pgTable('appointments', {
   id: uuid('id').primaryKey().defaultRandom(),

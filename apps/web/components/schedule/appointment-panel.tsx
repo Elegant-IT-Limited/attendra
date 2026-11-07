@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { AppointmentChange, AppointmentDetail, BookedBy } from '@attendra/api/contracts';
+import type { AppointmentChange, AppointmentDetail, BookedBy, CancelReason } from '@attendra/api/contracts';
 import { type ClinicConfig, industryPack, localDateOf, providerName } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
 import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf } from '@/lib/format';
 import { offersChanges } from '@/lib/visit';
+import { patchAppointment } from '@/lib/optimistic';
 
 type Mode = 'view' | 'reschedule' | 'cancel';
 
@@ -53,7 +54,13 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   });
   const change = useMutation({
     mutationFn: (req: { path: 'reschedule' | 'cancel'; body: object }) => api<AppointmentChange>(`/clinics/${clinicId}/appointments/${appointmentId}/${req.path}`, { method: 'POST', body: JSON.stringify(req.body) }),
-    onMutate: () => setMessage(null),
+    // the schedule shows the visit at its new time (or cancelled) at once, and puts it back if the server says no
+    onMutate: async (req) => {
+      setMessage(null);
+      const body = req.body as { startsAt?: string; providerId?: string; reason?: CancelReason };
+      const undo = appointmentId ? await patchAppointment(queries, clinicId, appointmentId, req.path === 'reschedule' ? { move: { startsAt: body.startsAt!, providerId: body.providerId! } } : { cancel: { reason: body.reason ?? null } }) : () => {};
+      return { undo };
+    },
     onSuccess: (_r, req) => {
       setMessage({ tone: 'info', text: req.path === 'cancel' ? 'Cancelled. The time is free again.' : 'Moved. The schedule shows the new time.' });
       setMode('view'); setSlot(null);
@@ -62,7 +69,8 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
       void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
       void queries.invalidateQueries({ queryKey: ['slots', clinicId] });
     },
-    onError: (e) => {
+    onError: (e, _req, ctx) => {
+      ctx?.undo();
       setMessage({ tone: 'warn', text: e instanceof ApiFailure && e.body.message ? e.body.message : 'That did not save. Try again.' });
       if (e instanceof ApiFailure && e.status === 409) { setSlot(null); void queries.invalidateQueries({ queryKey: ['slots', clinicId] }); }
     },

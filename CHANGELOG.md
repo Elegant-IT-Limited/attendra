@@ -4,6 +4,23 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (real time: batch 3)
+
+- **Invitations and role changes appear at once.** Migration 0048 adds triggers on `clinic_memberships`, `memberships` and `invitations` that send a notice to the person it is about (`{user, topic: "me"}`), and a per-person stream, `GET /api/v1/me/changes`, for pages outside a clinic. An invitation shows in the invited person's open tab within 3 seconds; a role change reaches their menu without a reload.
+- **Knowledge, texts and live calls are on the stream.** 0048 adds triggers on `knowledge_documents` (`knowledge`) and `sms_messages` (`texts`); the voice service sends `live` when a live call opens, changes state or ends (at most every 500 ms per clinic).
+- **A stream that dropped catches up.** Every message carries an id; the first message after a reconnect says which topics changed while it was away (the last 60 seconds), or that everything should be read again. If the API loses its LISTEN connection for more than 10 seconds it sends a `change_notices_down` alert, and when it is back every open stream reads everything again.
+- **Screens the stream covers no longer poll**: Today, Calls, Schedule, Requests, knowledge indexing, a call's summary, the menu's count, schedule conflicts, the test-call bar, live calls and invitations. A 2-minute safety poll stays (`SAFETY_POLL_MS`), and the error texts say so from the same number.
+- **A click shows its result at once.** Claiming, assigning or closing a request, and moving or cancelling a visit, update every screen holding a copy before the server answers, and are put back if it says no.
+
+### Changed (search from the first letter, by keys: batch 3)
+
+- **Every search box searches from the first character**, 150 ms after the last key (`SEARCH_SETTLE_MS`, one hook for every box): Pets, Requests, Calls, ⌘K and "Call as". `POST /calls/search` takes one character too.
+- **Searches read keys, not the newest thousands of records.** Migration 0049 adds `patient_search_keys` and `call_search_keys`: keyed hashes (shortened to 12 characters) of the first one, two and three letters and the whole of every word of the pet's and the owner's name, the start of each word's sound (so "Danial" still finds Daniel), the date of birth, and the phone's start and every run of three to nine digits in it; for a call, the same digit runs of its number. One to three typed letters find their records by the keys alone; a longer word finds its candidates by its first three letters and is decided on the decrypted name, as before. Each kind of key has its own form, so the start of a word never equals a whole word. They are looked up by equality because under Row Level Security Postgres uses an index only for leakproof operators, and the array overlap of migration 0042's `owner_words_hash` is not one: its GIN index was never used, and every search read the clinic's whole table. The scan of the newest 20,000 patients, and of the numbers of the newest 5,000 calls, on every keystroke is gone; `ATTENDRA_SEARCH_SCAN=true` turns it back on for this release only. On 20,000 patients (in-process Postgres), one and two letters answer in about 85 ms, the old scan in about 670.
+- **Calls by any digits of the number** through those keys. One or two digits find numbers that start with them.
+- **Requests by name, phone digits, type or number at any age**: through the patient's keys and the request number. Words in a request's details and notes have no keys, so those are still looked for in the newest 2,000 requests a search reads (`TASK_SEARCH_SCAN`).
+- **One audit row per search**: `patient.searched`, `calls.searched` and the new `tasks.searched`, each with the number of matches. `patient.search.result` stays (who saw which patient), but a patient already shown to the same person in the last 5 minutes is not written again, so typing "m", "ma", "mar" records each patient once. Opening a record is audited every time, as before.
+- **`pnpm db:rehash-lookups` is a dry run by default**: it prints the counts of patients and calls it would change; `--apply` writes. Run it with `--apply` once after this upgrade: until then, records stored before it are found by whole words and last four digits only.
+
 ### Fixed (path C, from the first bake-off calls on a deployment)
 
 - **A number read back on a Vapi call is confirmed by the caller's yes**: Vapi sends each line's length in milliseconds, which was read as seconds, so every line seemed to end long after it did and `verify_caller` asked for the read-back again and again.

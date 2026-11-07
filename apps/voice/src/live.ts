@@ -52,13 +52,15 @@ export type ActionResult = { ok: true; repeat: boolean } | { ok: false; error: '
 export class LiveRegistry {
   private readonly calls = new Map<string, Entry>();
 
-  constructor(private readonly buffer = 2000, private readonly lingerMs = 60_000) {}
+  /** `onChange`: a clinic's list of live calls changed (one started or ended, or what one is doing), for the dashboard's 'live' notice. */
+  constructor(private readonly buffer = 2000, private readonly lingerMs = 60_000, private readonly onChange: (clinicId: string) => void = () => {}) {}
 
   open(callId: string, meta: { clinicId: string; channel: 'phone' | 'web'; startedAt: Date }, control: LiveControl) {
     this.calls.set(callId, {
       clinicId: meta.clinicId, pending: null, events: [], next: 1, listeners: new Set(), control, claimed: null, coachKeys: new Set(), ended: false,
       summary: { callId, channel: meta.channel, startedAt: meta.startedAt.toISOString(), verified: null, doing: null, waitingForYes: false, emergency: false },
     });
+    this.onChange(meta.clinicId);
   }
 
   publish(callId: string, event: LiveEvent) {
@@ -76,6 +78,7 @@ export class LiveRegistry {
     e.events.push(numbered);
     if (e.events.length > this.buffer) e.events.splice(0, e.events.length - this.buffer);
     for (const l of e.listeners) l(numbered);
+    if (event.type === 'state' || event.type === 'emergency') this.onChange(e.clinicId);
   }
 
   /** The call is over: the last event, then the call is forgotten after a short while. */
@@ -84,6 +87,7 @@ export class LiveRegistry {
     if (!e || e.ended) return;
     this.publish(callId, { type: 'ended', outcome });
     e.ended = true;
+    this.onChange(e.clinicId);
     const t = setTimeout(() => this.calls.delete(callId), this.lingerMs);
     t.unref?.();
   }

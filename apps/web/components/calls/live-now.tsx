@@ -61,7 +61,7 @@ export function LiveNow({ clinicId, canWatch }: { clinicId: string; canWatch: bo
  */
 export function EmergencyAlerts({ clinicId }: { clinicId: string }) {
   const [on] = useEmergencyAlerts();
-  const live = useLiveCalls(clinicId, on, 10_000);
+  const live = useLiveCalls(clinicId, on);
   const known = useRef<Set<string> | null>(null);
   useEffect(() => {
     const flagged = (live.data?.calls ?? []).filter((c) => c.emergency).map((c) => c.callId);

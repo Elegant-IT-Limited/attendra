@@ -2,7 +2,7 @@
 'use client';
 import type { PatientList } from '@attendra/api/contracts';
 import { managedList, PATIENT_GUIDE, PET_GUIDE, patientTemplate, petTemplate } from '@attendra/core';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { FileUp, SlidersHorizontal, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -37,6 +37,8 @@ export default function Patients() {
     queryKey: ['patients', clinicId, onlyNew ? 'new' : 'all'],
     queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients${onlyNew ? '?status=new' : ''}`),
     enabled: allowed,
+    // switching between all and new keeps the list on screen until the other one is in
+    placeholderData: keepPreviousData,
   });
   // by kind of animal, or by one of the clinic's own dropdown or yes-or-no fields: read on the server, newest first
   const config = useClinicConfig(clinicId);
@@ -50,6 +52,7 @@ export default function Patients() {
     queryKey: ['patients', clinicId, 'filter', species, fieldFilter.id, fieldFilter.value],
     queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/filter`, { method: 'POST', body: JSON.stringify({ ...(species ? { species } : {}), ...(filterField && fieldFilter.value ? { field: fieldFilter } : {}) }) }),
     enabled: allowed && filtering,
+    placeholderData: keepPreviousData,
   });
   const recent = useQuery({
     queryKey: ['patient', clinicId, 'recent'],

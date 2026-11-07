@@ -52,6 +52,15 @@ docker compose -f infra/docker-compose.yml up -d --build
 
 The `migrate` service then creates the extension (`create extension if not exists vector`) in migration `0011_knowledge.sql`.
 
+**Upgrading to the search keys (after v0.9).** Start the new version: migration 0049 adds the tables of search keys. Then fill the search keys of the records already on file once, with the same `ATTENDRA_DATA_KEY` the services use:
+
+```bash
+docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups          # a dry run: counts only
+docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups --apply
+```
+
+Until it has run, records stored before the upgrade are found by whole words of a name and the last four digits of a phone only. If a search misses records after it, `ATTENDRA_SEARCH_SCAN=true` on the API turns the old read of the newest records back on, for this release only.
+
 **Upgrading to v0.5.1.** From v0.5.0, start the new version: migration 0022 adds each patient's gender, encrypted. Patients from before have none until the front desk adds it on their record, and their page says so.
 
 **Upgrading to v0.5.0.** Compose moves to Postgres 18 (with pgvector 0.8.7) on a new volume, `pgdata18`, so the data is moved across once with a dump. The old `pgdata` volume is left as it was until you remove it.
@@ -81,7 +90,7 @@ The `migrate` service then creates the extension (`create extension if not exist
 4. **Recompute the patient hashes once**, with the same `ATTENDRA_DATA_KEY` the services use. A patient is now verified by name, date of birth and phone together, and each gets an identity hash:
 
    ```bash
-   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups
+   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups --apply
    ```
 
    It prints how many patients have no phone number yet, and how many are on file twice. Until a patient has a phone on file, the front desk can find them but the assistant cannot verify them: add the number on their page (the list of patients shows them with a No phone badge). Someone on file twice keeps their first record's identity; merge the two by hand.
@@ -101,10 +110,10 @@ Outside Compose: Node 24 (the current LTS) and pnpm 12, then `pnpm install`, `pn
 3. **Recompute the patient lookups once.** Patient names are now compared with letters such as ø, ł, æ and ß spelled with their base letters, so each patient's lookup hash is recomputed, with the same `ATTENDRA_DATA_KEY` the services use:
 
    ```bash
-   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups
+   docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups --apply
    ```
 
-   Outside Compose, the same is `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups`. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
+   Outside Compose, the same is `DATABASE_URL=... ATTENDRA_DATA_KEY=... pnpm db:rehash-lookups --apply`. Without `--apply` it is a dry run that prints how many records it would change. It only rewrites hashes that change, and can be run again safely. Until it has run, patients whose names use those letters, or letters outside the Latin alphabet, cannot be verified on a call.
 
 **If migration 0017 stops with counts.** 0017 makes every link between clinic rows (an appointment's patient and calls, a request's patient and call, a transcript line's or call action's call, a webhook attempt's event) stay inside one clinic. Before it changes anything it counts the rows that would break that, and if there are any it stops with a line per kind, such as `3 requests whose patient is in another clinic`, and changes nothing. Such a row points at a record in a different clinic, or at one that no longer exists; it cannot be made by Attendra's own code, so it comes from a manual edit or an import. Find the rows with the same test the migration uses, for example for requests:
 

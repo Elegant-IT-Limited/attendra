@@ -35,12 +35,12 @@ describe('the search lookups of migration 0042', () => {
     const [{ id }] = (await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, identity_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash, guardian_name_enc)
       values (${C}, ${older.lookupHash}, ${older.identityHash}, ${older.firstNameEnc}, ${older.lastNameEnc}, ${older.dobEnc}, ${older.phoneEnc}, ${older.phoneHash}, ${older.guardianNameEnc}) returning id`)).rows as [{ id: string }];
     expect(await lookupsOf(id)).toEqual({ owner_words_hash: null, phone_suffix_hash: null });
-    const first = await rehashPatientLookups(t.db, cipher);
+    const first = await rehashPatientLookups(t.db, cipher, { apply: true });
     expect(first.searchable).toBe(1);
     expect(first.changed).toBe(1);
     expect((await lookupsOf(id)).owner_words_hash!.sort()).toEqual(['amara', 'okonkwo', 'pretzel'].map(wordHash).sort());
     expect((await lookupsOf(id)).phone_suffix_hash).toBe(cipher.hash(phoneSuffixKey(C, '+17205550181')));
-    expect(await rehashPatientLookups(t.db, cipher)).toMatchObject({ searchable: 0, changed: 0 });
+    expect(await rehashPatientLookups(t.db, cipher, { apply: true })).toMatchObject({ searchable: 0, changed: 0 });
   });
 });
 
@@ -66,9 +66,9 @@ describe('reading a search box for a request number', () => {
   });
 });
 
-describe('finding a record past the scan window', () => {
-  // a search that decrypts one row: everything else it finds, it found by a keyed lookup
-  const capped = () => new PatientRecords(t.db, cipher, 1);
+describe('finding a record by its keys alone', () => {
+  // no scan of the newest records (the default since migration 0049): everything a search finds, it found by a key
+  const capped = () => new PatientRecords(t.db, cipher);
 
   it('by the owner\'s name, through the word hashes', async () => {
     const found = (await capped().search(C, 'maria', 'u_ana'))!;

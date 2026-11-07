@@ -15,8 +15,11 @@ import { api, BUSY, isBusy, useClinicConfig } from '@/lib/api';
 import { age, dob, GENDER_LABEL, phone } from '@/lib/format';
 import { usePets } from '@/lib/terms';
 
+/** How long a search box waits after the last key before it searches: every search box uses it, through useSettled. */
+export const SEARCH_SETTLE_MS = 150;
+
 /** A short pause after each key, so a fast typist sends one request, not ten. Short enough to feel instant. */
-export function useSettled<T>(value: T, ms = 150) {
+export function useSettled<T>(value: T, ms = SEARCH_SETTLE_MS) {
   const [settled, setSettled] = useState(value);
   useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
   return settled;

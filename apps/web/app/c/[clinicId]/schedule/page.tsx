@@ -23,6 +23,7 @@ import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
 import { laneProviders, MANY_PROVIDERS, MAX_CHOSEN, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 /** How a visit shows to a role that sees the schedule without names (a viewer). */
 const NAMELESS_VISIT = 'Booked visit';
@@ -115,7 +116,7 @@ function ScheduleScreen() {
     queryFn: () => api<Schedule>(`/clinics/${clinicId}/appointments?${new URLSearchParams({ from, days: String(days), ...(providerId ? { providerId } : {}) })}`),
     enabled: !!clinic && can('schedule:list') && show !== 'cancelled',
     placeholderData: keepPreviousData,
-    refetchInterval: 30_000,
+    refetchInterval: SAFETY_POLL_MS,
   });
 
   const showCancelled = show === 'all';

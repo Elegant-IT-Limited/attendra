@@ -20,8 +20,8 @@ export function patientSetKey(patientIds: Iterable<string>) {
 /**
  * Records a view of patient data inside the transaction that read it.
  *
- * Screens that refresh on a timer (the schedule, the call list) would otherwise
- * write the same row every 30 seconds for as long as they stay open. With `window`,
+ * Screens that read again on every change, and on a slow timer (the schedule, the call list), would otherwise
+ * write the same row again and again for as long as they stay open. With `window`,
  * a repeat of exactly the same view by the same person within that many minutes is
  * covered by the row already there. "Exactly the same" is the entity id, which
  * callers build from every parameter of the view and patientSetKey of who it

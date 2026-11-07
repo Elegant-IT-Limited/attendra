@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { callCost, type CallQuality, type DigestCall, type ModelTokens, type VoiceEngineName, type VoiceFlow } from '@attendra/core';
-import { and, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
-import { auditLogs, callActions, callCosts, calls, callSegments, clinics, phoneNumbers, smsMessages, webhookDeliveries } from '../schema';
+import { auditLogs, callActions, callCosts, calls, callSearchKeys, callSegments, clinics, phoneNumbers, smsMessages, webhookDeliveries } from '../schema';
+import { phoneParts, searchHash } from './patients';
 
 /** What a caller's number is hashed as, per clinic: the last 10 digits, so +1 and spacing do not matter. */
 export const callerKey = (clinicId: string, number: string) => `${clinicId}|${number.replace(/\D/g, '').slice(-10)}`;
+/** One run of digits of a caller's number, for the Calls search (migration 0049). Its own form, so it never equals a patient's key. */
+export const callerPartKey = (clinicId: string, digits: string) => `${clinicId}|call-digits|${digits}`;
+/** The keyed digit runs a call is found by: the same runs as a patient's phone (phoneParts), each once and sorted. */
+export const callerSearchKeys = (cipher: PhiCipher, clinicId: string, number: string) =>
+  [...new Set(phoneParts(number).map((d) => searchHash(cipher, callerPartKey(clinicId, d))))].sort();
 
 /** Actor on the audit rows the call record writes: the voice service, not a person. */
 const SYSTEM = 'system';
@@ -33,6 +39,8 @@ export class CallRepository {
       const fromEnc = fromNumber ? this.cipher.encrypt(fromNumber, phiContext(clinicId, 'calls.from')) : null;
       const [row] = await tx.insert(calls).values({ clinicId, openaiSessionId, engineSessionId: openaiSessionId, engine: how.engine ?? null, voiceFlow: how.voiceFlow ?? null, fromHash, fromEnc, channel, calledAsLast4: calledAsLast4 || null }).onConflictDoNothing().returning({ id: calls.id });
       if (row) {
+        // so the Calls search finds it by any few digits of the number (migration 0049)
+        if (fromNumber) await tx.insert(callSearchKeys).values(callerSearchKeys(this.cipher, clinicId, fromNumber).map((key) => ({ clinicId, key, callId: row.id })));
         await tx.insert(auditLogs).values(startedBy
           ? { clinicId, actor: `user:${startedBy}`, action: 'call.test.started', entity: 'call', entityId: row.id, callId: row.id }
           : { clinicId, actor: SYSTEM, action: 'call.opened', entity: 'call', entityId: row.id, callId: row.id });
@@ -93,6 +101,49 @@ export class CallRepository {
       await tx.insert(callCosts).values({ callId, clinicId, ...values }).onConflictDoUpdate({ target: callCosts.callId, set: values });
     });
   }
+}
+
+/**
+ * Fills the digit keys of migration 0049 (call_search_keys) for calls that still have their number (from_enc) and no
+ * keys, or keys made another way. Safe to run more than once: only keys that differ are written. Owner connection, one
+ * clinic at a time, 1,000 calls per read, with one audit row per clinic that records how many changed. With `apply`
+ * false nothing is written: the counts say what a run with it would change.
+ */
+export async function rehashCallLookups(db: Database, cipher: PhiCipher, opts: { apply: boolean }): Promise<{ checked: number; changed: number }> {
+  let checked = 0;
+  let changed = 0;
+  const same = (a: string[] | undefined, b: string[]) => !!a && a.length === b.length && a.every((h, i) => h === b[i]);
+  const clinicIds = (await db.execute(sql`select id from clinics order by id`)).rows as { id: string }[];
+  for (const { id: clinicId } of clinicIds) {
+    await withClinic(db, clinicId, async (tx) => {
+      let n = 0;
+      let after = '00000000-0000-0000-0000-000000000000';
+      for (;;) {
+        const rows = await tx.select({ id: calls.id, fromEnc: calls.fromEnc }).from(calls)
+          .where(and(eq(calls.clinicId, clinicId), isNotNull(calls.fromEnc), gt(calls.id, after))).orderBy(asc(calls.id)).limit(1000);
+        if (!rows.length) break;
+        after = rows.at(-1)!.id;
+        const stored = new Map<string, string[]>();
+        for (const k of await tx.select({ id: callSearchKeys.callId, key: callSearchKeys.key }).from(callSearchKeys)
+          .where(and(eq(callSearchKeys.clinicId, clinicId), inArray(callSearchKeys.callId, rows.map((r) => r.id))))) {
+          stored.set(k.id, [...(stored.get(k.id) ?? []), k.key]);
+        }
+        for (const r of rows) {
+          checked++;
+          const keys = callerSearchKeys(cipher, clinicId, cipher.decrypt(r.fromEnc!, phiContext(clinicId, 'calls.from')));
+          if (same(stored.get(r.id)?.sort(), keys)) continue;
+          if (opts.apply) {
+            await tx.delete(callSearchKeys).where(and(eq(callSearchKeys.clinicId, clinicId), eq(callSearchKeys.callId, r.id)));
+            await tx.insert(callSearchKeys).values(keys.map((key) => ({ clinicId, key, callId: r.id })));
+          }
+          n++;
+        }
+      }
+      changed += n;
+      if (n && opts.apply) await tx.insert(auditLogs).values({ clinicId, actor: SYSTEM, action: 'call.lookups.rehashed', entity: 'clinic', entityId: clinicId, counts: { calls: n } });
+    });
+  }
+  return { checked, changed };
 }
 
 /**
