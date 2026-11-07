@@ -161,7 +161,7 @@ function Calls() {
                   </TD>
                   <TD>
                     <span className="inline-flex flex-wrap items-center gap-1.5">
-                      <Outcome outcome={c.outcome} emergency={c.emergency} />
+                      <Outcome outcome={c.outcome} emergency={c.emergency} emergencyResult={c.emergencyResult} />
                       {c.channel === 'web' && <Badge tone="accent">{testCallBadge(c.calledAsLast4)}</Badge>}
                       {c.needsReview && <Badge tone="warn">Needs review</Badge>}
                     </span>

@@ -192,7 +192,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       // without one, what the agent was fed
       const record = lines.some(spoken) ? vapiRecordLines(lines) : s.agent.state.turns.map((t) => ({ speaker: t.speaker, text: t.text, startMs: t.startMs, endMs: t.endMs }));
       for (const line of record) await recorder.appendSegment(line);
-      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0 }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
+      await recorder.close({ reason: m.endedReason ?? 'ended', voiceSeconds: typeof m.durationSeconds === 'number' ? m.durationSeconds : null, outcome: s.agent.state.outcome, emergency: !!s.agent.state.emergency, emergencyResult: s.agent.state.emergencyResult, language: s.agent.state.language, quality: { firstAudioMs: vapiFirstAudioMs(lines), stalls: 0, answerTimeouts: 0 }, usage: { models: s.agent.state.modelTokens, ...(typeof m.cost === 'number' && m.cost >= 0 ? { engineUsd: m.cost } : {}) } });
       sessions.delete(m.call!.id!);
       deps.log.info({ call_id: s.callId, engine: 'vapi', reason: m.endedReason ?? 'ended' }, 'vapi call closed');
     }

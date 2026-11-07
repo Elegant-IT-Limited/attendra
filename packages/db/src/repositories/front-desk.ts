@@ -163,7 +163,7 @@ export class FrontDeskRepository {
       }
       const rows = await tx.select({
         id: calls.id, startedAt: calls.startedAt, cursor: sql<string>`${calls.startedAt}::text`, endedAt: calls.endedAt, outcome: calls.outcome,
-        emergency: calls.emergencyFlag, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, channel: calls.channel, patientId: calls.patientId,
+        emergency: calls.emergencyFlag, emergencyResult: calls.emergencyResult, closeReason: calls.closeReason, voiceSeconds: calls.voiceSeconds, channel: calls.channel, patientId: calls.patientId,
         firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, fromEnc: calls.fromEnc, calledAsLast4: calls.calledAsLast4,
         // each step once, in the order the call took them; a confirmation says how it ended.
         // A confirm with nothing pending changed nothing and is left out here; the call page still shows it.
@@ -312,7 +312,7 @@ export class FrontDeskRepository {
         : [];
       const ctx = phiContext(clinicId, 'call_segments.text');
       return {
-        id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag,
+        id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag, emergencyResult: call.emergencyResult,
         closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds), channel: call.channel,
         callerNumber: call.fromEnc ? this.cipher.decrypt(call.fromEnc, phiContext(clinicId, 'calls.from')) : null,
         calledAsLast4: call.calledAsLast4,
@@ -349,7 +349,7 @@ export class FrontDeskRepository {
       return rows.map((task) => ({
         id: task.id, number: task.number, type: task.type, status: task.status, callId: null, patientId: null, createdAt: task.createdAt,
         assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
-        urgent: task.urgent, dueOn: task.dueOn, patientName: null, details: {} as Record<string, string>, custom: {} as Record<string, string>, followUp: null,
+        urgent: task.urgent, origin: task.origin, dueOn: task.dueOn, patientName: null, details: {} as Record<string, string>, custom: {} as Record<string, string>, followUp: null,
         notes: [] as { id: number; authorUserId: string; at: Date; body: string }[],
       }));
     });
@@ -402,7 +402,7 @@ export class FrontDeskRepository {
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({
       id: task.id, number: task.number, type: task.type, status: task.status, callId: task.callId, patientId: task.patientId, createdAt: task.createdAt,
       assigneeUserId: task.assigneeUserId, assignedByUserId: task.assignedByUserId, createdByUserId: task.createdByUserId, claimedAt: task.claimedAt, doneAt: task.doneAt, doneByUserId: task.doneByUserId, outcome: task.outcome,
-      urgent: task.urgent, dueOn: task.dueOn,
+      urgent: task.urgent, origin: task.origin, dueOn: task.dueOn,
       patientName: firstNameEnc && lastNameEnc
         ? `${this.cipher.decrypt(firstNameEnc, ctx('patients.first_name'))} ${this.cipher.decrypt(lastNameEnc, ctx('patients.last_name'))}`
         : null,
@@ -563,7 +563,7 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, async (tx) => {
       const waiting = and(eq(tasks.clinicId, clinicId), eq(tasks.status, 'open'), isNull(tasks.assigneeUserId));
       // urgent ones first (a request taken during an emergency), as on the Requests page
-      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId, urgent: tasks.urgent }).from(tasks)
+      const rows = await tx.select({ id: tasks.id, number: tasks.number, type: tasks.type, createdAt: tasks.createdAt, callId: tasks.callId, urgent: tasks.urgent, origin: tasks.origin }).from(tasks)
         .where(waiting).orderBy(desc(tasks.urgent), desc(tasks.createdAt), desc(tasks.id)).limit(limit);
       const counts = await tx.select({ type: tasks.type, n: sql<number>`count(*)::int` }).from(tasks).where(waiting).groupBy(tasks.type);
       const byType = Object.fromEntries(counts.map((c) => [c.type, Number(c.n)]));

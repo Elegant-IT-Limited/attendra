@@ -71,11 +71,12 @@ export class CallRepository {
    * `usage`: the tokens each text model used on the call, for its cost row. The cost is worked out here, from the call's
    * own engine, channel and texts, with the rates table in core (`callCost`), so every engine's calls are counted alike.
    */
-  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }) {
+  async close(clinicId: string, callId: string, c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; emergencyResult?: string | null; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }) {
     await withClinic(this.db, clinicId, async (tx) => {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
         outcome: c.outcome, emergencyFlag: c.emergency, ...(c.language ? { language: c.language } : {}),
+        ...(c.emergencyResult ? { emergencyResult: c.emergencyResult as 'transferred' | 'hospital_said' | 'hospital_texted' | 'urgent_request' | 'cleared' } : {}),
         ...(c.quality ? { firstAudioMs: c.quality.firstAudioMs, stalls: c.quality.stalls, answerTimeouts: c.quality.answerTimeouts } : {}),
       }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
       // what the call wrote, as counts on one row: a row per line or step would bury staff access in the log

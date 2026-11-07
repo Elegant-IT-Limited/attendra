@@ -92,6 +92,8 @@ export const CallSummary = z.object({
   endedAt: z.iso.datetime().nullable(),
   outcome: z.string().nullable(),
   emergency: z.boolean(),
+  /** How an animal's emergency on the call ended (batch 1b): put through, a hospital said or texted, an urgent request, or cleared by the caller. */
+  emergencyResult: z.enum(['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared']).nullable().optional(),
   closeReason: z.string().nullable(),
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
@@ -402,6 +404,8 @@ export const Task = z.object({
   outcome: TaskOutcome.nullable(),
   /** Set by staff: urgent requests come first in the open queue. */
   urgent: z.boolean(),
+  /** 'emergency' for the urgent request an emergency left when nobody could be put through. */
+  origin: z.enum(['emergency']).nullable().optional(),
   /** The clinic's day it is due, set by staff. */
   dueOn: z.iso.date().nullable(),
   assigneeName: z.string().nullable(),
@@ -794,7 +798,7 @@ export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: 
 
 // the oldest 20, and how many are waiting in all
 // urgent ones first: they lead Today's list
-export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean() })), total: z.number().int(),
+export const WaitingTasks = z.object({ tasks: z.array(z.object({ id: z.string(), number: z.number().int(), type: z.enum(['callback', 'refill', 'voicemail', 'review', 'follow_up']), createdAt: z.iso.datetime(), callId: z.string().nullable(), urgent: z.boolean(), origin: z.enum(['emergency']).nullable().optional() })), total: z.number().int(),
   /** How many are waiting, by type: a vet clinic's refill queue on the home screen. */
   byType: z.record(z.string(), z.number().int()) });
 

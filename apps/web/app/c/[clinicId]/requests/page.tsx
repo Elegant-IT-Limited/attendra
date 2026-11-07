@@ -372,7 +372,7 @@ function RequestRow({ task: t, patientWord, tz, today, meId, selected, onOpen }:
         <span className="block truncate text-xs text-text-muted"><span className="font-medium tabular-nums text-text" data-testid="request-number">{requestNumber(t.number)}</span> · {taskType(t.type, patientWord)}</span>
       </span>
       <span className="flex flex-wrap justify-end gap-1.5 md:order-5">
-        {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
+        {open && t.urgent && <Badge tone="danger"><AlertTriangle /> {t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
         {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue' : 'Due'} {t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
         {!open ? <Badge tone="ok">{t.outcome ? TASK_OUTCOMES[t.outcome] : 'Done'}</Badge>
           : t.assigneeUserId ? <Badge tone="accent"><Hand /> {t.assigneeUserId === meId ? 'You have it' : `${t.assigneeName === null ? 'Someone' : personName(t.assigneeName)} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
@@ -419,7 +419,7 @@ function RequestCard({ task: t, fields, patientWord, clinicId, tz, today, meId, 
           </div>
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
-          {open && t.urgent && <Badge tone="danger"><AlertTriangle /> Urgent</Badge>}
+          {open && t.urgent && <Badge tone="danger"><AlertTriangle /> {t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
           {open && t.dueOn && <Badge tone={t.dueOn <= today ? 'warn' : 'neutral'}>{t.dueOn < today ? 'Overdue, due ' : 'Due '}{t.dueOn === today ? 'today' : dayTitle(t.dueOn, 'short')}</Badge>}
           {!open ? <Badge tone="ok">Done</Badge>
             : t.assigneeUserId ? <Badge tone="accent"><Hand /> {mine ? 'You have it' : `${t.assigneeName === null ? 'Someone' : personName(t.assigneeName)} has it`}</Badge> : <Badge tone="warn">Unclaimed</Badge>}
@@ -688,7 +688,7 @@ function ViewerRequests({ clinicId, tz, patientWord }: { clinicId: string; tz: s
                   <Icon className="size-4 shrink-0 text-primary" aria-hidden />
                   <span className="font-medium">{requestNumber(t.number)}</span>
                   <span>{taskType(t.type, patientWord)}</span>
-                  {t.urgent && <Badge tone="danger">Urgent</Badge>}
+                  {t.urgent && <Badge tone="danger">{t.origin === 'emergency' ? 'Emergency' : 'Urgent'}</Badge>}
                   <span className="text-text-muted">came in {clinicTime(t.createdAt, tz)}</span>
                   <span className="ml-auto text-text-muted">{t.status === 'done' ? `Done${t.doneByName ? ` by ${personName(t.doneByName)}` : ''}` : t.assigneeName ? `With ${personName(t.assigneeName)}` : 'Nobody has it yet'}{t.dueOn ? ` · due ${dayTitle(t.dueOn)}` : ''}</span>
                 </li>

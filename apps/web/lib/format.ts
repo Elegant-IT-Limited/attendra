@@ -44,6 +44,18 @@ export function clock(ms: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/**
+ * How an animal's emergency on a call ended (batch 1b): the badge on Calls, and the line on the call page. The words a
+ * caller heard come from the engine (emergencyRoute); these are the team's.
+ */
+export const EMERGENCY_RESULTS: Record<string, { label: string; text: string }> = {
+  transferred: { label: 'Emergency · put through', text: 'The caller said it was still an emergency and was put through to your team\'s emergency line.' },
+  hospital_said: { label: 'Emergency · sent to hospital', text: 'The caller said it was still an emergency and was told to take their pet to your emergency hospital.' },
+  hospital_texted: { label: 'Emergency · hospital texted', text: 'The caller said it was still an emergency, was told to take their pet to your emergency hospital, and was texted its address.' },
+  urgent_request: { label: 'Emergency · urgent request', text: 'The caller said it was still an emergency, and nobody could be put through: an urgent request is at the top of Requests for your team.' },
+  cleared: { label: 'Emergency cleared', text: 'The caller reported a danger sign, then said it was not an emergency now. The call went on, with a note on what they reported for the team.' },
+};
+
 export const OUTCOMES: Record<string, { label: string; tone: 'ok' | 'warn' | 'danger' | 'neutral' | 'accent' }> = {
   booked: { label: 'Booked', tone: 'ok' },
   rescheduled: { label: 'Rescheduled', tone: 'ok' },
