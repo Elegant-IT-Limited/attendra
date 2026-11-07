@@ -31,7 +31,8 @@ async function rowsOf(clinicId: string, on = api) {
   });
 }
 const close = (closed: boolean, clinicId = C, on = api) => on.request('PUT', `${P}/clinics/${clinicId}/closed`, { body: { closed }, authorization: auth });
-const purge = (clinicId = C, on = api) => on.request('DELETE', `${P}/clinics/${clinicId}`, { authorization: auth });
+const purge = (clinicId = C, on = api, query = '') => on.request('DELETE', `${P}/clinics/${clinicId}${query}`, { authorization: auth });
+const preview = (clinicId = C, on = api, query = '') => on.request('GET', `${P}/clinics/${clinicId}/purge-preview${query}`, { authorization: auth });
 
 describe('closing a clinic, and deleting it 30 days later', () => {
   let key: string;
@@ -83,24 +84,69 @@ describe('closing a clinic, and deleting it 30 days later', () => {
       for (const t of TABLES.filter((t) => !['call_actions', 'call_summaries', 'knowledge_chunks'].includes(t))) expect(before[t], t).toBeGreaterThan(0);
       const otherBefore = await rowsOf(OTHER.id, c);
 
-      expect((await purge(C, c)).json()).toEqual({ error: 'not_closed' });
+      expect((await purge(C, c)).json()).toMatchObject({ error: 'not_closed' });
       expect((await close(true, C, c)).statusCode).toBe(204);
-      const closedAt = async () => ((await c.t.db.execute(sql`select closed_at from clinics where id = ${C}`)).rows[0] as { closed_at: unknown }).closed_at;
+      const closedAt = async () => ((await c.t.owner.execute(sql`select closed_at from clinics where id = ${C}`)).rows[0] as { closed_at: unknown }).closed_at;
       const first = await closedAt();
       // closing again keeps the first date
       expect((await close(true, C, c)).statusCode).toBe(204);
       expect(await closedAt()).toEqual(first);
       const recent = await purge(C, c);
-      expect([recent.statusCode, recent.json()]).toEqual([409, { error: 'closed_recently' }]);
+      expect([recent.statusCode, recent.json()]).toEqual([409, { error: 'closed_recently', blockers: ['closed_recently'] }]);
       expect((await rowsOf(C, c)).patients).toBe(before.patients);
 
-      await c.t.db.execute(sql`update clinics set closed_at = ${new Date(now.getTime() - 31 * 86_400_000)} where id = ${C}`);
-      expect((await purge(C, c)).statusCode).toBe(204);
+      await c.t.owner.execute(sql`update clinics set closed_at = ${new Date(now.getTime() - 31 * 86_400_000)} where id = ${C}`);
+      const counted = (await preview(C, c)).json();
+      expect(counted.blockers).toEqual([]);
+      const deleted = await purge(C, c);
+      expect(deleted.statusCode).toBe(200);
+      // what the preview counted is what went, and the clinic's own rows are among it
+      expect(deleted.json().deleted).toEqual(counted.counts);
+      // the audit log grew since (closing is audited), so at least what was there
+      for (const t of TABLES.filter((t) => before[t]! > 0)) expect(deleted.json().deleted[t], t).toBeGreaterThanOrEqual(before[t]!);
       expect(await rowsOf(C, c)).toEqual(Object.fromEntries(TABLES.map((t) => [t, 0])));
-      expect((await c.t.db.execute(sql`select id from clinics where id = ${C}`)).rows).toEqual([]);
+      expect((await c.t.owner.execute(sql`select id from clinics where id = ${C}`)).rows).toEqual([]);
       expect(await rowsOf(OTHER.id, c)).toEqual(otherBefore);
-      expect((await c.t.db.execute(sql`select id from clinics where id = ${OTHER.id}`)).rows).toHaveLength(1);
+      expect((await c.t.owner.execute(sql`select id from clinics where id = ${OTHER.id}`)).rows).toHaveLength(1);
       expect((await purge(C, c)).statusCode).toBe(404);
+      expect((await preview(C, c)).statusCode).toBe(404);
+    } finally {
+      await c.close();
+    }
+  });
+});
+
+describe('wiping a test clinic through provisioning', () => {
+  it('previews an open clinic\'s counts and blockers; deletes it only with force, never while its number still reaches it; keepLogins keeps the login', async () => {
+    const c = await startApi({ demoMode: false, twoFactor: 'optional', provisioningToken: TOKEN });
+    try {
+      expect((await c.request('PUT', `${P}/clinics/${C}/numbers/${encodeURIComponent('+13035550178')}`, { authorization: auth })).statusCode).toBe(204);
+      const look = await preview(C, c, '?force=1&keepLogins=1');
+      expect(look.statusCode).toBe(200);
+      expect(look.json().blockers).toEqual(['number_assigned']);
+      expect(look.json().counts).toMatchObject({ clinics: 1, patients: expect.any(Number) });
+      expect(look.json().counts.auth_users).toBeUndefined();
+      // without keepLogins the clinic's only owner would go too
+      expect((await preview(C, c, '?force=1')).json().counts.auth_users).toBeGreaterThan(0);
+      expect((await preview(C, c, '?force=yes')).statusCode).toBe(422);
+      expect((await preview(C, c)).json().blockers).toEqual(['not_closed', 'number_assigned']);
+
+      const refused = await purge(C, c, '?force=1&keepLogins=1');
+      expect([refused.statusCode, refused.json()]).toEqual([409, { error: 'number_assigned', blockers: ['number_assigned'] }]);
+      expect((await purge(C, c)).json()).toEqual({ error: 'not_closed', blockers: ['not_closed', 'number_assigned'] });
+      // the hosting layer releases every number first, the demo clinic's own included
+      const numbers = (await c.t.db.execute(sql`select e164 from phone_numbers where clinic_id = ${C} and status = 'active'`)).rows as { e164: string }[];
+      for (const n of numbers) expect((await c.request('DELETE', `${P}/numbers/${encodeURIComponent(n.e164)}`, { authorization: auth })).statusCode).toBe(204);
+
+      const otherBefore = await rowsOf(OTHER.id, c);
+      const counted = (await preview(C, c, '?force=1&keepLogins=1')).json();
+      const deleted = await purge(C, c, '?force=1&keepLogins=1');
+      expect(deleted.statusCode, deleted.body).toBe(200);
+      expect(deleted.json().deleted).toEqual(counted.counts);
+      expect((await c.t.db.execute(sql`select id from clinics where id = ${C}`)).rows).toEqual([]);
+      expect((await c.t.db.execute(sql`select id from auth_users where email = 'omar@maple.example'`)).rows).toHaveLength(1);
+      expect(await rowsOf(OTHER.id, c)).toEqual(otherBefore);
+      expect((await c.request('DELETE', `${P}/clinics/${C}?force=1`, {})).statusCode).toBe(401);
     } finally {
       await c.close();
     }

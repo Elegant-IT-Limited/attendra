@@ -41,7 +41,7 @@ describe('the clinic\'s knowledge', () => {
     expect(queued).toHaveLength(1); // the same bytes again: nothing to index
     const list = (await api.request('GET', `${C}/knowledge/documents`, { cookie: as.staff })).json();
     expect(list.documents).toEqual([expect.objectContaining({ title: 'Late arrivals', status: 'ready', chunkCount: 1, pageCount: null, extractedChars: 102 })]);
-    expect((await api.t.db.execute(sql`select action from audit_logs where action = 'knowledge.document.uploaded'`)).rows).toHaveLength(1);
+    expect((await api.t.owner.execute(sql`select action from audit_logs where action = 'knowledge.document.uploaded'`)).rows).toHaveLength(1);
   });
 
   it('refuses a file type it cannot read, one over 5 MB, and an empty one', async () => {
@@ -88,7 +88,7 @@ describe('the clinic\'s knowledge', () => {
     expect((await api.request('GET', `${C}/knowledge/documents`, { cookie: as.admin })).json().documents).toContainEqual(expect.objectContaining({ title: 'Setup notes', status: 'ready' }));
     const asked = (await api.request('POST', `${C}/knowledge/ask`, { cookie: as.staff, body: { question: 'How do I deploy it?' } })).json();
     expect(asked).toEqual({ answer: "I don't have that information, I can have someone call you back.", citations: [], refusal: 'no_information' });
-    await api.t.db.execute(sql`delete from knowledge_documents where id = ${kept.json().id}`);
+    await api.t.owner.execute(sql`delete from knowledge_documents where id = ${kept.json().id}`);
   });
 
   it('deletes a document, audited, and it is no longer an answer', async () => {
@@ -97,7 +97,7 @@ describe('the clinic\'s knowledge', () => {
     expect((await api.request('DELETE', `${C}/knowledge/documents/${doc.id}`, { cookie: as.admin })).statusCode).toBe(204);
     expect((await api.request('DELETE', `${C}/knowledge/documents/${doc.id}`, { cookie: as.admin })).statusCode).toBe(404);
     expect((await api.request('POST', `${C}/knowledge/ask`, { cookie: as.staff, body: { question: 'What happens if I arrive late?' } })).json().refusal).toBe('no_information');
-    expect((await api.t.db.execute(sql`select actor from audit_logs where action = 'knowledge.document.deleted'`)).rows).toEqual([{ actor: `user:${api.users.admin}` }]);
+    expect((await api.t.owner.execute(sql`select actor from audit_logs where action = 'knowledge.document.deleted'`)).rows).toEqual([{ actor: `user:${api.users.admin}` }]);
   });
 });
 
@@ -132,6 +132,6 @@ describe('how many documents', () => {
     expect(over.statusCode).toBe(409);
     expect(over.json().error).toBe('too_many_documents');
     expect((await upload(as.admin, 'Filler 49', 'filler 49, updated', 'text/plain', 'doc.txt', true)).statusCode).toBe(201);
-    await api.t.db.execute(sql`delete from knowledge_documents where clinic_id = ${DEMO_CLINIC.id} and title like 'Filler %'`);
+    await api.t.owner.execute(sql`delete from knowledge_documents where clinic_id = ${DEMO_CLINIC.id} and title like 'Filler %'`);
   });
 });

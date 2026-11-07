@@ -13,7 +13,7 @@ let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 let booked: string;
 
 const audit = async (action: string) =>
-  ((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
+  ((await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
 const bookBody = (time: string, key: string, extra: Record<string, unknown> = {}) =>
   ({ patientId: api.patientIds.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: at('2026-09-29', time), idempotencyKey: `test-key-${key}`, ...extra });
 
@@ -98,26 +98,26 @@ describe('reading', () => {
   it('with a patient and no provider picked, offers only providers who see their age, and writes no audit row', async () => {
     const providers = async (extra: string) => new Set((await api.request('GET', `${C}/slots?visitTypeId=vt_sick&from=2026-09-30&days=1${extra}`, { cookie: as.staff })).json().slots.map((s: { providerId: string }) => s.providerId));
     expect(await providers('')).toContain('prov_raman');
-    const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const before = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const adult = await providers(`&patientId=${api.patientIds.james}`);
     expect(adult).toContain('prov_okafor');
     expect(adult).not.toContain('prov_raman'); // a pediatrician, ages 0 to 17
     expect(await providers(`&patientId=${api.patientIds.lucas}`)).toContain('prov_raman');
     // a provider staff picked by name is still offered
     expect(await providers(`&providerId=prov_raman&patientId=${api.patientIds.james}`)).toEqual(new Set(['prov_raman']));
-    const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
     expect((await api.request('GET', `${C}/slots?visitTypeId=vt_sick&patientId=00000000-0000-4000-8000-000000000000`, { cookie: as.staff })).statusCode).toBe(422);
   });
 
   it('offers open slots with no patient data and without the booked time, and writes no audit row', async () => {
-    const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const before = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=2026-09-29&days=1`, { cookie: as.staff });
     const starts = res.json().slots.map((s: { startsAt: string }) => s.startsAt);
     expect(starts[0]).toBe(at('2026-09-29', '08:00'));
     expect(starts).not.toContain(at('2026-09-29', '09:00'));
     expect(res.body).not.toContain('James');
-    const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
     const moving = await api.request('GET', `${C}/slots?visitTypeId=vt_sick&providerId=prov_okafor&from=2026-09-29&days=1&excluding=${booked}`, { cookie: as.staff });
     expect(moving.json().slots.map((s: { startsAt: string }) => s.startsAt)).toContain(at('2026-09-29', '09:00'));

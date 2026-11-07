@@ -46,12 +46,12 @@ describe('call summaries', () => {
     const call = (await api.request('GET', `${C}/calls/${api.callId}`, { cookie: as.staff })).json();
     expect(call.summary.reviewedAt).not.toBeNull();
     expect((await api.request('GET', `${C}/calls?review=needed`, { cookie: as.staff })).json().calls).toEqual([]);
-    const rows = (await api.t.db.execute(sql`select actor from audit_logs where action = 'call.summary.reviewed' and entity_id = ${api.callId}`)).rows;
+    const rows = (await api.t.owner.execute(sql`select actor from audit_logs where action = 'call.summary.reviewed' and entity_id = ${api.callId}`)).rows;
     expect(rows).toEqual([{ actor: `user:${api.users.staff}` }]);
   });
 
   it('a call with no summary says so, with no job when the worker has never run', async () => {
-    const other = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, ended_at, outcome) values (${DEMO_CLINIC.id}, 'live_no_summary', now(), 'info') returning id`)).rows[0] as { id: string };
+    const other = (await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, ended_at, outcome) values (${DEMO_CLINIC.id}, 'live_no_summary', now(), 'info') returning id`)).rows[0] as { id: string };
     const res = (await api.request('GET', `${C}/calls/${other.id}`, { cookie: as.staff })).json();
     expect(res).toMatchObject({ summary: null, summaryJob: null });
     expect((await api.request('POST', `${C}/calls/${other.id}/review`, { cookie: as.staff })).statusCode).toBe(404);

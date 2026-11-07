@@ -14,7 +14,7 @@ describe('provisioning', () => {
     await createOrganizationWithClinic(t.db, { id: 'org_oak', name: 'Oak Hill Vets', plan: 'trial' }, config);
     expect(await clinicForNumber(t.db, '+13125550100')).toBeNull();
     await expect(createOrganizationWithClinic(t.db, { id: 'org_oak', name: 'Again', plan: 'trial' }, { ...config, id: 'clinic_oak_2' })).rejects.toThrow();
-    expect((await t.db.execute(sql`select count(*)::int as n from clinics where id = 'clinic_oak_2'`)).rows[0]).toEqual({ n: 0 });
+    expect((await t.owner.execute(sql`select count(*)::int as n from clinics where id = 'clinic_oak_2'`)).rows[0]).toEqual({ n: 0 });
   });
 
   it('points a number at a clinic, first in its numbers, moves it from another clinic, and releases it', async () => {
@@ -24,7 +24,7 @@ describe('provisioning', () => {
     await createOrganizationWithClinic(t.db, { id: 'org_elm', name: 'Elm Vets', plan: 'trial' }, config);
     expect(await assignNumber(t.db, 'clinic_elm', '+13125550199')).toBe(true);
     expect(await clinicForNumber(t.db, '+13125550199')).toMatchObject({ id: 'clinic_elm' });
-    const [oak] = (await t.db.execute(sql`select config->'phoneNumbers' as n from clinics where id = 'clinic_oak'`)).rows as [{ n: string[] }];
+    const [oak] = (await t.owner.execute(sql`select config->'phoneNumbers' as n from clinics where id = 'clinic_oak'`)).rows as [{ n: string[] }];
     expect(oak.n).toEqual(['+13125550100']);
     expect(await assignNumber(t.db, 'clinic_none', '+13125550198')).toBe(false);
     await expect(assignNumber(t.db, 'clinic_elm', '3125550198')).rejects.toThrow('E.164');
@@ -33,7 +33,7 @@ describe('provisioning', () => {
   });
 
   it('counts phone minutes start to end, leaving out browser tests and calls still going on', async () => {
-    const at = (iso: string, secs: number, channel = 'phone', ended = true) => t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, channel)
+    const at = (iso: string, secs: number, channel = 'phone', ended = true) => t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, channel)
       values ('clinic_oak', ${`s_${Math.random()}`}, ${iso}::timestamptz, ${ended ? new Date(Date.parse(iso) + secs * 1000).toISOString() : null}::timestamptz, ${channel})`);
     await at('2026-09-01T15:00:00Z', 90.4);
     await at('2026-09-02T15:00:00Z', 30);
@@ -42,14 +42,14 @@ describe('provisioning', () => {
     await at('2026-10-01T15:00:00Z', 60);
     expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121, texts: 0 });
     // a call taken while the assistant was paused (a short line, then the front desk) is not billed
-    const [paused] = (await t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, channel)
+    const [paused] = (await t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, channel)
       values ('clinic_oak', 's_paused', '2026-09-04T15:00:00Z'::timestamptz, '2026-09-04T15:00:20Z'::timestamptz, 'phone') returning id`)).rows as [{ id: string }];
-    await t.db.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values ('clinic_oak', ${paused.id}, 'answering_paused', '{}', '{"step":"transferred"}', 1)`);
+    await t.owner.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values ('clinic_oak', ${paused.id}, 'answering_paused', '{}', '{"step":"transferred"}', 1)`);
     expect(await phoneUsage(t.db, 'clinic_oak', new Date('2026-09-01T00:00:00Z'), new Date('2026-10-01T00:00:00Z'))).toEqual({ calls: 2, seconds: 121, texts: 0 });
   });
 
   it('counts the texts the carrier took in the period, never one refused before sending', async () => {
-    const text = (key: string, sid: string | null, sentAt: string | null) => t.db.execute(sql`insert into sms_messages (clinic_id, template, to_hash, status, idempotency_key, provider_sid, sent_at)
+    const text = (key: string, sid: string | null, sentAt: string | null) => t.owner.execute(sql`insert into sms_messages (clinic_id, template, to_hash, status, idempotency_key, provider_sid, sent_at)
       values ('clinic_oak', 'booking_confirmed', 'h', ${sid ? 'sent' : 'not_sent'}, ${key}, ${sid}, ${sentAt}::timestamptz)`);
     await text('a', 'SM1', '2026-09-05T15:00:00Z');
     await text('b', 'SM2', '2026-09-30T23:59:00Z');

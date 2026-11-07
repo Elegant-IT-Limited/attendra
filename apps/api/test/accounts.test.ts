@@ -71,14 +71,14 @@ describe('forgot password', () => {
 describe('an expired temporary password', () => {
   it('is only reported to someone who typed it right: a wrong password gets the ordinary answer', async () => {
     const added = await withTemporaryPassword('exp@maple.example', 'Exp Ired');
-    await api.t.db.execute(sql`update auth_users set temporary_password_expires_at = now() - interval '1 hour' where email = 'exp@maple.example'`);
+    await api.t.owner.execute(sql`update auth_users set temporary_password_expires_at = now() - interval '1 hour' where email = 'exp@maple.example'`);
     const wrong = await signIn('exp@maple.example', 'not the password at all');
     expect(wrong.statusCode).toBe(401);
     expect(wrong.body).not.toMatch(/temporary_password_expired/);
     const right = await signIn('exp@maple.example', added.temporaryPassword);
     expect([right.statusCode, right.json().error]).toEqual([401, 'temporary_password_expired']);
     // and no session is left open by it
-    const sessions = (await api.t.db.execute(sql`select count(*)::int as n from auth_sessions s join auth_users u on u.id = s.user_id where u.email = 'exp@maple.example'`)).rows[0] as { n: number };
+    const sessions = (await api.t.owner.execute(sql`select count(*)::int as n from auth_sessions s join auth_users u on u.id = s.user_id where u.email = 'exp@maple.example'`)).rows[0] as { n: number };
     expect(sessions.n).toBe(0);
   });
 });
@@ -92,7 +92,7 @@ describe('a lost phone', () => {
     const again = await signIn('vic@maple.example', PASSWORD);
     expect(again.statusCode).toBe(200);
     expect(again.json().twoFactorRedirect).toBeFalsy();
-    const audit = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs where action = 'member.two_factor.reset'`)).rows[0] as { n: number };
+    const audit = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs where action = 'member.two_factor.reset'`)).rows[0] as { n: number };
     expect(audit.n).toBeGreaterThan(0);
     // nobody resets their own, and a manager never resets an owner's
     expect((await api.request('POST', `${C}/members/${api.users.owner}/reset-two-factor`, { cookie: owner })).statusCode).toBe(403);
@@ -156,11 +156,11 @@ describe('a sign-up the hosting layer could not finish', () => {
     // while its link may still be opened, nobody else's sign-up replaces it
     expect((await open(account('pia@pine.example', { replaceUnconfirmed: true }))).json()).toEqual({ error: 'email_taken', confirmed: false });
     // once the link has run out, a new sign-up is opened in its place
-    await api.t.db.execute(sql`update auth_users set created_at = now() - interval '49 hours' where email = 'pia@pine.example'`);
+    await api.t.owner.execute(sql`update auth_users set created_at = now() - interval '49 hours' where email = 'pia@pine.example'`);
     const replaced = await open(account('pia@pine.example', { replaceUnconfirmed: true }));
     expect(replaced.statusCode).toBe(201);
     expect(replaced.json().organizationId).not.toBe(first.json().organizationId);
-    const orgs = (await api.t.db.execute(sql`select count(*)::int as n from organizations where id = ${first.json().organizationId}`)).rows[0] as { n: number };
+    const orgs = (await api.t.owner.execute(sql`select count(*)::int as n from organizations where id = ${first.json().organizationId}`)).rows[0] as { n: number };
     expect(orgs.n).toBe(0);
     // removed outright, after a failure on the hosting side
     expect((await api.request('DELETE', `${P}/accounts/unconfirmed`, { authorization: `Bearer ${TOKEN}`, body: { email: 'pia@pine.example' } })).statusCode).toBe(204);

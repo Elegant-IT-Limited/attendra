@@ -143,7 +143,7 @@ describe('calls', () => {
   it('shows the transcript to staff and records that they looked', async () => {
     const res = await api.request('GET', `${C}/calls/${api.callId}`, { cookie: staff });
     expect(res.json().transcript[0].text).toContain('lisinopril');
-    const rows = (await api.t.db.execute(sql`select actor from audit_logs where action = 'call.transcript.viewed'`)).rows;
+    const rows = (await api.t.owner.execute(sql`select actor from audit_logs where action = 'call.transcript.viewed'`)).rows;
     expect(rows).toEqual([{ actor: `user:${api.users.staff}` }]);
   });
 
@@ -153,7 +153,7 @@ describe('calls', () => {
   });
 
   it('pages through calls that started in the same instant without skipping or repeating any', async () => {
-    const ids = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at)
+    const ids = (await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, started_at)
       select ${DEMO_CLINIC.id}, 'live_same_' || g, '2026-01-01T00:00:00.123456Z' from generate_series(1, 3) g returning id`)).rows.map((r: unknown) => (r as { id: string }).id);
     const seen: string[] = [];
     let url = `${C}/calls?limit=2`;
@@ -180,9 +180,9 @@ describe('task queue', () => {
   });
 
   it('counts open tasks for the menu badge without reading or auditing any', async () => {
-    const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const before = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect((await api.request('GET', `${C}/tasks/count`, { cookie: staff })).json()).toEqual({ open: 1 });
-    const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
   });
 
@@ -220,7 +220,7 @@ describe('settings', () => {
     expect(stale.statusCode).toBe(409);
     expect(stale.json()).toMatchObject({ error: 'settings_changed', version: Number(String(mine.headers.etag).replace(/\D/g, '')), updatedBy: { name: 'Olga Admin' }, current: { greeting: `${DEMO_CLINIC.greeting} Mine.` } });
     expect((await api.request('GET', `${C}/settings/meta`, { cookie: admin })).json()).toMatchObject({ updatedBy: { name: 'Olga Admin' } });
-    const conflicts = await api.t.db.execute(sql`select count(*)::int as n from audit_logs where action = 'clinic.settings.conflict'`);
+    const conflicts = await api.t.owner.execute(sql`select count(*)::int as n from audit_logs where action = 'clinic.settings.conflict'`);
     expect((conflicts.rows[0] as { n: number }).n).toBe(1);
     // without If-Match it saves, as before
     expect((await api.request('PUT', `${C}/settings`, { cookie: admin, body: DEMO_CLINIC })).statusCode).toBe(200);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher } from '@attendra/db';
+import { connect, createPhiCipher, logConnectionRole, serviceDatabaseUrl } from '@attendra/db';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { loadEnv } from './config';
 import { SPEND_ALERT_PATH, spendTriggers, TwilioFallback, TwilioSpendAlerts, twilioSender } from '@attendra/telephony';
@@ -10,14 +10,17 @@ import { embedderFromEnv, startWorker, summariserFromEnv } from './runtime';
 const env = loadEnv();
 const log = createLogger({ name: 'worker', level: env.LOG_LEVEL });
 const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'worker', log });
+// pg-boss on the owner's URL: it creates and upgrades its own schema; the worker's queries on the services' role when given
 const boss = createBoss({ connectionString: env.DATABASE_URL });
+const db = connect(serviceDatabaseUrl(env), { onError: (code) => log.error({ code }, 'database connection error') });
+await logConnectionRole(db, log, !!env.ATTENDRA_SERVICE_DATABASE_URL);
 // pg-boss reports its own errors (a dropped connection, a failed maintenance run) here; ids only
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
 await boss.start();
 const summariser = summariserFromEnv(env);
 if (summariser.model === 'local') log.warn('no OPENAI_API_KEY: calls are summarised from their facts, without a model');
 await startWorker({
-  boss, db: connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') }), cipher: createPhiCipher(env.ATTENDRA_DATA_KEY), summariser, embedder: embedderFromEnv(env), log,
+  boss, db, cipher: createPhiCipher(env.ATTENDRA_DATA_KEY), summariser, embedder: embedderFromEnv(env), log,
   events: eventSink(bossQueue(boss)),
   texts: env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN ? twilioSender(twilio(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN, { timeout: 5000 })) : undefined,
   sms: { publicUrl: env.ATTENDRA_VOICE_PUBLIC_URL, dailyCap: env.ATTENDRA_SMS_DAILY_CAP, monthlyCap: env.ATTENDRA_SMS_MONTHLY_CAP },

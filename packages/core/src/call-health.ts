@@ -41,8 +41,8 @@ export interface DigestCall {
   ended: boolean;
 }
 
-/** A call that dropped instead of ending: the same test as the voice service's call_dropped alert. */
-const DROPPED = (r: string | null) => !!r && (r === 'connection_lost' || r === 'error' || r.startsWith('socket closed'));
+/** A call that dropped instead of ending: the same test as the voice service's call_dropped alert (and the load test's). */
+export const isDropped = (r: string | null) => !!r && (r === 'connection_lost' || r === 'error' || r.startsWith('socket closed'));
 
 function percentile(sorted: number[], p: number) {
   if (!sorted.length) return null;
@@ -65,7 +65,7 @@ export function dailyDigest(calls: DigestCall[], hours = 24): string {
   const stalls = stalled.reduce((n, c) => n + (c.stalls ?? 0), 0);
   const timedOut = ended.filter((c) => (c.answerTimeouts ?? 0) > 0);
   const timeouts = timedOut.reduce((n, c) => n + (c.answerTimeouts ?? 0), 0);
-  const dropped = ended.filter((c) => DROPPED(c.closeReason));
+  const dropped = ended.filter((c) => isDropped(c.closeReason));
   const firstAudio = ended.map((c) => c.firstAudioMs).filter((v): v is number => v !== null).sort((a, b) => a - b);
   const where = (list: DigestCall[]) => {
     const by = new Map<string, number>();

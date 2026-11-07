@@ -35,7 +35,7 @@ describe('request notes', () => {
   });
 
   it('stores the body only as ciphertext, and notes cannot be edited or removed', async () => {
-    expect(JSON.stringify((await t.db.execute(sql`select * from task_notes`)).rows)).not.toContain('no answer');
+    expect(JSON.stringify((await t.owner.execute(sql`select * from task_notes`)).rows)).not.toContain('no answer');
     expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`update task_notes set body_enc = 'x'`)))).toMatch(/permission denied/);
     expect(await failure(withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.execute(sql`delete from task_notes`)))).toMatch(/permission denied/);
   });

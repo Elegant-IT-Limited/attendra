@@ -409,6 +409,12 @@ importers:
       '@attendra/api':
         specifier: workspace:*
         version: link:../api
+      '@attendra/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@attendra/voice-engine':
+        specifier: workspace:*
+        version: link:../../packages/voice-engine
       '@axe-core/playwright':
         specifier: 4.13.0
         version: 4.13.0(playwright-core@1.64.1)

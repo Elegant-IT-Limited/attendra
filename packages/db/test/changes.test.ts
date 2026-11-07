@@ -87,9 +87,9 @@ describe('the notices Postgres sends (0048)', () => {
     t = await openTestDatabase();
     await seedDemo(t.db, createPhiCipher(TEST_DATA_KEY));
     for (const [id, email] of [['u_owner', 'owner@maple.example'], ['u_kim', 'Kim@Elsewhere.example']] as const) {
-      await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${email}, true)`);
+      await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${email}, true)`);
     }
-    await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_owner', 'org_demo', 'u_owner', 'owner')`);
+    await t.owner.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_owner', 'org_demo', 'u_owner', 'owner')`);
     await t.client.listen(CHANGE_CHANNEL, (p) => heard.push(JSON.parse(p)));
   });
   afterAll(() => t.close());
@@ -115,18 +115,18 @@ describe('the notices Postgres sends (0048)', () => {
   });
 
   it('a role given, changed or removed at a location tells the person', async () => {
-    expect(await after(() => t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('cm_kim', ${DEMO_CLINIC.id}, 'u_kim', 'staff')`))).toContainEqual({ user: 'u_kim', topic: 'me' });
-    expect(await after(() => t.db.execute(sql`update clinic_memberships set role = 'viewer' where id = 'cm_kim'`))).toContainEqual({ user: 'u_kim', topic: 'me' });
-    expect(await after(() => t.db.execute(sql`delete from clinic_memberships where id = 'cm_kim'`))).toContainEqual({ user: 'u_kim', topic: 'me' });
+    expect(await after(() => t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('cm_kim', ${DEMO_CLINIC.id}, 'u_kim', 'staff')`))).toContainEqual({ user: 'u_kim', topic: 'me' });
+    expect(await after(() => t.owner.execute(sql`update clinic_memberships set role = 'viewer' where id = 'cm_kim'`))).toContainEqual({ user: 'u_kim', topic: 'me' });
+    expect(await after(() => t.owner.execute(sql`delete from clinic_memberships where id = 'cm_kim'`))).toContainEqual({ user: 'u_kim', topic: 'me' });
     // an owner row too
-    expect(await after(() => t.db.execute(sql`update memberships set approves_refills = true where id = 'm_owner'`))).toContainEqual({ user: 'u_owner', topic: 'me' });
+    expect(await after(() => t.owner.execute(sql`update memberships set approves_refills = true where id = 'm_owner'`))).toContainEqual({ user: 'u_owner', topic: 'me' });
   });
 
   it('a knowledge document and a text say so, by clinic only', async () => {
-    const got = await after(() => t.db.execute(sql`insert into knowledge_documents (clinic_id, title, source_type, content, content_hash, size_bytes, uploaded_by_user_id)
+    const got = await after(() => t.owner.execute(sql`insert into knowledge_documents (clinic_id, title, source_type, content, content_hash, size_bytes, uploaded_by_user_id)
       values (${DEMO_CLINIC.id}, 'Price list', 'text', 'abc'::bytea, 'h', 3, 'u_owner')`));
     expect(got).toEqual([{ clinic: DEMO_CLINIC.id, topic: 'knowledge' }]);
-    const texts = await after(() => t.db.execute(sql`insert into sms_messages (clinic_id, template, to_hash, idempotency_key) values (${DEMO_CLINIC.id}, 'booked', 'h', 'k1')`));
+    const texts = await after(() => t.owner.execute(sql`insert into sms_messages (clinic_id, template, to_hash, idempotency_key) values (${DEMO_CLINIC.id}, 'booked', 'h', 'k1')`));
     expect(texts).toEqual([{ clinic: DEMO_CLINIC.id, topic: 'texts' }]);
   });
 

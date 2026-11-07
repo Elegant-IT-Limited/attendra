@@ -450,7 +450,7 @@ export function sealPatient(cipher: PhiCipher, clinicId: string, p: { firstName:
  * Recomputes every patient's lookup and identity hashes from the stored details, after
  * the name normaliser changes or an upgrade adds a hash: until then a patient whose
  * hashes were made the old way cannot be verified. Safe to run more than once, since it
- * only rewrites hashes that differ. Owner connection, one clinic at a time, with one
+ * only rewrites hashes that differ. One clinic at a time, each in its own scope, with one
  * audit row per clinic that records how many changed. Patients with no phone number
  * (added before v0.5 made it required) are counted, so the front desk can add theirs.
  * With `apply` false nothing is written: the counts say what a run with it would change.

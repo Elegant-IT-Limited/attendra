@@ -18,7 +18,7 @@ afterAll(() => api.close());
 
 describe('hearing a voice before choosing it', () => {
   it('speaks the clinic\'s own greeting in a built-in voice, once per voice and greeting, with nothing in the audit log', async () => {
-    const before = ((await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number }).n;
+    const before = ((await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number }).n;
     const res = await api.request('GET', `${C}?voice=cedar`, { cookie: owner });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('audio/mpeg');
@@ -26,7 +26,7 @@ describe('hearing a voice before choosing it', () => {
     expect(sample).toHaveBeenCalledWith('cedar', DEMO_CLINIC.greeting.slice(0, 300));
     await api.request('GET', `${C}?voice=cedar`, { cookie: staff }); // anyone who can read Settings
     expect(sample).toHaveBeenCalledTimes(1); // the second one came from the cache
-    const after = ((await api.t.db.execute(sql`select count(*)::int as n from audit_logs where action not like 'auth%'`)).rows[0] as { n: number }).n;
+    const after = ((await api.t.owner.execute(sql`select count(*)::int as n from audit_logs where action not like 'auth%'`)).rows[0] as { n: number }).n;
     expect(after).toBeLessThanOrEqual(before + 2); // sign-ins at most, no sample rows
   });
 

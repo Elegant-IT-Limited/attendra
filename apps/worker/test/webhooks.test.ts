@@ -25,7 +25,7 @@ const received: { path: string; headers: IncomingMessage['headers']; body: strin
 const hooks = () => new WebhookRepository(t.db, cipher);
 
 // every webhook job has run to an end: nothing more will be delivered for what was emitted so far
-const settled = () => until(async () => ((await t.db.execute(sql`select count(*)::int as n from pgboss.job
+const settled = () => until(async () => ((await t.owner.execute(sql`select count(*)::int as n from pgboss.job
   where name in ('webhook-event', 'deliver-webhook') and state in ('created', 'retry', 'active')`)).rows[0] as { n: number }).n === 0, 30_000);
 
 const until = async <T>(fn: () => Promise<T | null | undefined | false>, ms = 20_000): Promise<T> => {
@@ -102,7 +102,7 @@ describe('webhook deliveries', () => {
     expect(endpoint).toMatchObject({ enabled: false, disabledReason: 'repeated_failures', consecutiveFailures: 3 });
     const attempts = await hooks().attempts(DEMO_CLINIC.id, id);
     expect(attempts.every((a) => a.statusCode === 500 && a.error === 'http_500')).toBe(true);
-    expect((await t.db.execute(sql`select actor from audit_logs where action = 'webhook.endpoint.disabled' and entity_id = ${id}`)).rows).toEqual([{ actor: 'worker' }]);
+    expect((await t.owner.execute(sql`select actor from audit_logs where action = 'webhook.endpoint.disabled' and entity_id = ${id}`)).rows).toEqual([{ actor: 'worker' }]);
     // turned off, it gets nothing more
     const before = received.filter((r) => r.path === '/broken').length;
     await sink.emit(DEMO_CLINIC.id, { type: 'appointment.cancelled', key: 'appt_4', data: { appointmentId: 'appt_4', by: 'staff' } });

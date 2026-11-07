@@ -31,7 +31,7 @@ describe('a temporary password', () => {
     ({ userId, temporaryPassword: password } = res.json());
     issued.push(password);
     expect(res.json().expiresInHours).toBe(72);
-    const [row] = (await api.t.db.execute(sql`select must_change_password, temporary_password_expires_at from auth_users where id = ${userId}`)).rows as { must_change_password: boolean; temporary_password_expires_at: string }[];
+    const [row] = (await api.t.owner.execute(sql`select must_change_password, temporary_password_expires_at from auth_users where id = ${userId}`)).rows as { must_change_password: boolean; temporary_password_expires_at: string }[];
     expect(row!.must_change_password).toBe(true);
     expect(new Date(row!.temporary_password_expires_at).getTime() - now.getTime()).toBeGreaterThan(71.9 * 3_600_000);
   });
@@ -92,7 +92,7 @@ describe('a temporary password', () => {
     const again = await signIn('larry@maple.example', reset.json().temporaryPassword);
     expect(again.statusCode).toBe(200);
     expect((await api.request('GET', '/api/v1/me', { cookie: cookieFrom(again.headers['set-cookie']) })).json().user.mustChangePassword).toBe(true);
-    const audit = (await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = 'member.password.reset' and clinic_id = ${DEMO_CLINIC.id}`)).rows;
+    const audit = (await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = 'member.password.reset' and clinic_id = ${DEMO_CLINIC.id}`)).rows;
     expect(audit).toEqual([{ actor: `user:${api.users.admin}`, entity_id: res.json().userId }]);
   });
 
@@ -106,14 +106,14 @@ describe('a temporary password', () => {
   });
 
   it('refuses to reset someone who also works for another organization, and signs nobody out', async () => {
-    await api.t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_two_orgs', 'org_other', ${api.users.viewer}, 'owner')`);
+    await api.t.owner.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_two_orgs', 'org_other', ${api.users.viewer}, 'owner')`);
     const res = await api.request('POST', `${C}/members/${api.users.viewer}/reset-password`, { cookie: admin });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('other_organizations');
     expect(res.body).not.toMatch(/temporaryPassword/);
     // their own password still works
     expect((await api.request('POST', '/api/auth/sign-in/email', { body: { email: 'vic@maple.example', password: PASSWORD } })).statusCode).toBe(200);
-    await api.t.db.execute(sql`delete from memberships where id = 'm_two_orgs'`);
+    await api.t.owner.execute(sql`delete from memberships where id = 'm_two_orgs'`);
   });
 
   it('never reaches a log line', () => {

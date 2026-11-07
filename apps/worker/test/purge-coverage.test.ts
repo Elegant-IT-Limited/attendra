@@ -1,5 +1,5 @@
 import { DEMO_CLINIC } from '@attendra/core';
-import { ensureWorkerJobsView, purgeClosedClinic, saveClinic } from '@attendra/db';
+import { ensureWorkerJobsView, purgeClinic, saveClinic, UNFINISHED_CALL_HOURS } from '@attendra/db';
 import { openTestDatabase } from '@attendra/db/testing';
 import type { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,7 +18,7 @@ beforeAll(async () => {
   boss = createBoss({ pglite: t.client });
   await boss.start();
   await ensureQueues(boss);
-  await ensureWorkerJobsView(t.db);
+  await ensureWorkerJobsView((text) => t.client.exec(text));
 }, 60_000);
 afterAll(async () => { await boss.stop({ graceful: false }); await t.close(); });
 
@@ -75,7 +75,7 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into invitations (id, organization_id, email, role, inviter_id, expires_at, clinic_id) values ($1, $2, 'new.hire@example.com', 'staff', $3, now() + interval '7 days', $4)`, [`inv_${owner}`, orgId, owner, clinicId]);
   await q(`select set_config('app.clinic_id', $1, false)`, [clinicId]);
   const [patient] = await q<{ id: string }>(`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash) values ($1, 'h', 'x', 'x', 'x', 'x', 'h') returning id`, [clinicId]);
-  const [call] = await q<{ id: string }>(`insert into calls (clinic_id, openai_session_id, patient_id) values ($1, $2, $3) returning id`, [clinicId, `sess_${clinicId}`, patient!.id]);
+  const [call] = await q<{ id: string }>(`insert into calls (clinic_id, openai_session_id, patient_id, ended_at) values ($1, $2, $3, now()) returning id`, [clinicId, `sess_${clinicId}`, patient!.id]);
   await q(`update patients set created_by_call_id = $1 where id = $2`, [call!.id, patient!.id]);
   await q(`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values ($1, $2, 'caller', 'x', 0, 1)`, [clinicId, call!.id]);
   await q(`insert into patient_search_keys (clinic_id, key, patient_id) values ($1, 'k', $2)`, [clinicId, patient!.id]);
@@ -101,7 +101,9 @@ async function seed(clinicId: string, orgId: string, owner: string, phone: strin
   await q(`insert into audit_logs (clinic_id, actor, action, entity) values ($1, 'test', 'seeded', 'clinic')`, [clinicId]);
   await boss.send(QUEUES.summariseCall, { clinicId, callId: call!.id });
   await q(`select set_config('app.clinic_id', '', false)`);
+  // closed as the hosting layer closes it: its numbers no longer reach it
   await q(`update clinics set closed_at = $1 where id = $2`, [LONG_AGO, clinicId]);
+  await q(`update phone_numbers set status = 'released' where clinic_id = $1`, [clinicId]);
 }
 
 describe('deleting a removed clinic leaves nothing of it', () => {
@@ -119,7 +121,7 @@ describe('deleting a removed clinic leaves nothing of it', () => {
     expect(Object.keys(before)).toEqual(expect.arrayContaining(['public.call_actions.clinic_id', 'public.call_segments.clinic_id', 'public.knowledge_chunks.clinic_id', 'public.invitations.clinic_id', 'pgboss.job.data.clinicId']));
     const kept = await scan('clinic_kept', 'org_kept', ['user_kept', 'user_kept_desk', 'user_both']);
 
-    expect(await purgeClosedClinic(t.db, 'clinic_gone', NOW)).toBe('purged');
+    expect(await purgeClinic(t.db, 'clinic_gone', { now: NOW })).toMatchObject({ status: 'purged' });
     const after = await scan('clinic_gone', 'org_gone', ['user_gone', 'user_gone_desk']);
     expect(Object.entries(after).filter(([, n]) => n > 0)).toEqual([]);
     expect(await scan('clinic_kept', 'org_kept', ['user_kept', 'user_kept_desk', 'user_both'])).toEqual({ ...kept, 'public.clinic_memberships.user_id': kept['public.clinic_memberships.user_id']! - 1 });
@@ -130,15 +132,84 @@ describe('deleting a removed clinic leaves nothing of it', () => {
     await seed('clinic_main', 'org_two', 'user_two', '+13035550183');
     await q(`update clinics set closed_at = null where id = 'clinic_main'`);
     await saveClinic(t.db, 'org_two', { ...DEMO_CLINIC, id: 'clinic_branch', name: 'Branch', phoneNumbers: ['+13035550184'] });
+    await q(`update phone_numbers set status = 'released' where clinic_id = 'clinic_branch'`);
     // the team and the main clinic, before the branch's own invitation is sent
     const main = await scan('clinic_main', 'org_two', ['user_two']);
     await q(`insert into invitations (id, organization_id, email, role, inviter_id, expires_at, clinic_id) values ('inv_branch', 'org_two', 'branch.hire@example.com', 'staff', 'user_two', now() + interval '7 days', 'clinic_branch')`);
     await boss.send(QUEUES.summariseCall, { clinicId: 'clinic_branch', callId: '00000000-0000-4000-8000-000000000001' });
     await q(`update clinics set closed_at = $1 where id = 'clinic_branch'`, [LONG_AGO]);
 
-    expect(await purgeClosedClinic(t.db, 'clinic_branch', NOW)).toBe('purged');
+    expect(await purgeClinic(t.db, 'clinic_branch', { now: NOW })).toMatchObject({ status: 'purged' });
     const branch = await scan('clinic_branch', 'nothing', []);
     expect(Object.entries(branch).filter(([, n]) => n > 0)).toEqual([]);
     expect(await scan('clinic_main', 'org_two', ['user_two'])).toEqual(main);
+  });
+});
+
+const total = (counts: Record<string, number>) => Object.values(counts).reduce((a, b) => a + b, 0);
+const LOGIN_TABLES = ['public.auth_users.id', 'public.auth_accounts.user_id', 'public.auth_sessions.user_id', 'public.auth_two_factors.user_id', 'public.user_avatars.user_id'];
+
+describe('wiping a test clinic: force, keepLogins and a dry run', () => {
+  it('a dry run counts what a real run deletes, row for row, and changes nothing', async () => {
+    await seed('clinic_dry', 'org_dry', 'user_dry', '+13035550185');
+    const before = await scan('clinic_dry', 'org_dry', ['user_dry', 'user_dry_desk']);
+    const dry = await purgeClinic(t.db, 'clinic_dry', { now: NOW, dryRun: true });
+    expect(dry).toMatchObject({ status: 'dry_run', blockers: [] });
+    expect(await scan('clinic_dry', 'org_dry', ['user_dry', 'user_dry_desk'])).toEqual(before);
+    const done = await purgeClinic(t.db, 'clinic_dry', { now: NOW });
+    expect(done.status).toBe('purged');
+    expect(done.status === 'purged' && done.counts).toEqual(dry.status === 'dry_run' && dry.counts);
+    expect(dry.status === 'dry_run' && dry.counts).toMatchObject({ clinics: 1, organizations: 1, calls: 1, patients: 1, auth_users: 2, 'pgboss.job': 1, clinic_memberships: 1 });
+  });
+
+  it('force takes an open clinic; without it the clinic is refused and kept', async () => {
+    await seed('clinic_open', 'org_open', 'user_open', '+13035550186');
+    await q(`update clinics set closed_at = null where id = 'clinic_open'`);
+    expect(await purgeClinic(t.db, 'clinic_open')).toEqual({ status: 'refused', blockers: ['not_closed'] });
+    await q(`update clinics set closed_at = now() where id = 'clinic_open'`);
+    expect(await purgeClinic(t.db, 'clinic_open')).toEqual({ status: 'refused', blockers: ['closed_recently'] });
+    await q(`update clinics set closed_at = null where id = 'clinic_open'`);
+    expect(total((await scan('clinic_open', 'org_open', ['user_open'])))).toBeGreaterThan(0);
+    expect(await purgeClinic(t.db, 'clinic_open', { force: true })).toMatchObject({ status: 'purged' });
+    expect(Object.entries(await scan('clinic_open', 'org_open', ['user_open', 'user_open_desk'])).filter(([, n]) => n > 0)).toEqual([]);
+  });
+
+  it('keepLogins: the logins stay with their sign-in, the clinic\'s and organization\'s memberships go, and another team is untouched', async () => {
+    await seed('clinic_tester', 'org_tester', 'user_tester', '+13035550187');
+    await seed('clinic_other', 'org_other', 'user_other', '+13035550188');
+    const other = await scan('clinic_other', 'org_other', ['user_other', 'user_other_desk']);
+    const result = await purgeClinic(t.db, 'clinic_tester', { force: true, keepLogins: true });
+    expect(result.status).toBe('purged');
+    expect(result.status === 'purged' && result.counts.auth_users).toBeUndefined();
+    const after = await scan('clinic_tester', 'org_tester', ['user_tester', 'user_tester_desk']);
+    expect(Object.entries(after).filter(([k, n]) => n > 0 && !LOGIN_TABLES.includes(k)).map(([k]) => k)).toEqual([]);
+    expect(await q(`select id from auth_users where id in ('user_tester', 'user_tester_desk') order by id`)).toEqual([{ id: 'user_tester' }, { id: 'user_tester_desk' }]);
+    expect(await q(`select id from auth_accounts where user_id = 'user_tester'`)).toHaveLength(1);
+    expect(await q(`select active_organization_id from auth_sessions where user_id = 'user_tester'`)).toEqual([{ active_organization_id: null }]);
+    expect(await q(`select 1 from memberships where user_id = 'user_tester' union all select 1 from clinic_memberships where user_id = 'user_tester_desk'`)).toEqual([]);
+    expect(await scan('clinic_other', 'org_other', ['user_other', 'user_other_desk'])).toEqual(other);
+  });
+
+  it('refuses while a call is going or a number still reaches the clinic, even with force; a dry run says why and still counts', async () => {
+    await seed('clinic_busy', 'org_busy', 'user_busy', '+13035550189');
+    const before = await scan('clinic_busy', 'org_busy', ['user_busy']);
+    await q(`select set_config('app.clinic_id', 'clinic_busy', false)`);
+    await q(`insert into calls (clinic_id, openai_session_id) values ('clinic_busy', 'sess_live')`);
+    // a call a crash left open days ago is not going
+    await q(`insert into calls (clinic_id, openai_session_id, started_at) values ('clinic_busy', 'sess_stale', now() - interval '${UNFINISHED_CALL_HOURS + 1} hours')`);
+    await q(`select set_config('app.clinic_id', '', false)`);
+    await q(`update phone_numbers set status = 'active' where clinic_id = 'clinic_busy'`);
+    expect(await purgeClinic(t.db, 'clinic_busy', { force: true })).toEqual({ status: 'refused', blockers: ['call_in_progress', 'number_assigned'] });
+    const dry = await purgeClinic(t.db, 'clinic_busy', { force: true, dryRun: true });
+    expect(dry).toMatchObject({ status: 'dry_run', blockers: ['call_in_progress', 'number_assigned'], counts: { calls: 3, clinics: 1 } });
+
+    await q(`update phone_numbers set status = 'released' where clinic_id = 'clinic_busy'`);
+    expect(await purgeClinic(t.db, 'clinic_busy', { force: true })).toEqual({ status: 'refused', blockers: ['call_in_progress'] });
+    await q(`select set_config('app.clinic_id', 'clinic_busy', false)`);
+    await q(`update calls set ended_at = now() where openai_session_id = 'sess_live'`);
+    await q(`select set_config('app.clinic_id', '', false)`);
+    expect(await purgeClinic(t.db, 'clinic_busy', { force: true })).toMatchObject({ status: 'purged', blockers: [] });
+    expect(total(before)).toBeGreaterThan(0);
+    expect(await purgeClinic(t.db, 'clinic_busy', { force: true })).toEqual({ status: 'not_found' });
   });
 });

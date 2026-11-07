@@ -12,6 +12,9 @@ export const port = (fallback: number) => z.preprocess(blank, z.coerce.number().
 const Env = z.object({
   API_PORT: port(8081),
   DATABASE_URL: z.string().url(),
+  // the services' own role (migration 0051, docs/self-hosting.md): its queries never get past row-level
+  // security. Unset, they run on DATABASE_URL, the owner's, as before. pg-boss stays on DATABASE_URL.
+  ATTENDRA_SERVICE_DATABASE_URL: optional(z.string().url()),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters: openssl rand -base64 32'),
   // The address people open in the browser. The web app proxies /api to this service,
@@ -23,6 +26,10 @@ const Env = z.object({
   // Set when the API sits behind the web app's proxy (docker compose does), so the
   // rate limiter sees each browser's address instead of the proxy's.
   TRUST_PROXY: flag.transform((on) => (on ? 1 : 0)),
+  // Set when the edge proxy in front of the dashboard sits behind Cloudflare: a request that reached it
+  // from one of Cloudflare's addresses (src/http/cloudflare-ips.ts) is counted as the address in its
+  // CF-Connecting-IP. From any other address the header is ignored. Needs TRUST_PROXY.
+  TRUST_CLOUDFLARE: flag,
   // The voice service, for test calls from the dashboard. Leave both unset to turn them off.
   VOICE_URL: optional(z.string().url()),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
@@ -41,6 +48,9 @@ const Env = z.object({
   ATTENDRA_IDLE_MINUTES: z.preprocess(blank, z.coerce.number().int().min(5).max(720).default(15)),
   // Turns on /api/v1/provisioning for a hosting layer: opening accounts, numbers, usage. Unset, the routes do not exist.
   ATTENDRA_PROVISIONING_TOKEN: optional(z.string().min(32, 'ATTENDRA_PROVISIONING_TOKEN must be at least 32 characters: openssl rand -base64 32')),
+  // 'require': a provisioning request must be signed with the token (attendra-timestamp + attendra-signature), and the
+  // bearer token alone is refused, so the token itself never travels. 'accept' (default): either, while the hosting layer moves over.
+  ATTENDRA_PROVISIONING_SIGNATURES: z.preprocess(blank, z.enum(['accept', 'require']).default('accept')),
   // Where the hosting layer takes emails the engine cannot send itself ("forgot password"), signed with ATTENDRA_PROVISIONING_TOKEN.
   // Unset, the sign-in page tells people to ask their practice manager for a reset.
   ATTENDRA_MAIL_HOOK_URL: optional(z.url()),
@@ -65,6 +75,7 @@ export function loadEnv(source = process.env): ApiEnv {
   if (!parsed.success) {
     throw new Error(`invalid environment: ${parsed.error.issues.map((i) => `${i.path.join('.')} (${i.message})`).join(', ')}`);
   }
+  if (parsed.data.TRUST_CLOUDFLARE && !parsed.data.TRUST_PROXY) throw new Error('invalid environment: TRUST_CLOUDFLARE needs TRUST_PROXY=true (the edge proxy is the hop that is checked)');
   if (!parsed.data.VOICE_URL !== !parsed.data.VOICE_INTERNAL_TOKEN) throw new Error('invalid environment: set both VOICE_URL and VOICE_INTERNAL_TOKEN, or neither');
   return parsed.data;
 }

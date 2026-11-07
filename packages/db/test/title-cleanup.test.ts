@@ -11,7 +11,7 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-const providers = async () => ((await t.db.select({ config: schema.clinics.config }).from(schema.clinics).where(eq(schema.clinics.id, RIVERBEND_CLINIC.id)))[0]!.config as typeof RIVERBEND_CLINIC).providers;
+const providers = async () => ((await t.owner.select({ config: schema.clinics.config }).from(schema.clinics).where(eq(schema.clinics.id, RIVERBEND_CLINIC.id)))[0]!.config as typeof RIVERBEND_CLINIC).providers;
 
 describe('"Dr." built in: the vets\' title clean-up', () => {
   it('counts on a dry run, strips typed titles and sets one on apply, and is quiet the second time', async () => {

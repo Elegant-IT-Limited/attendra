@@ -62,9 +62,9 @@ describe('team changes per location', () => {
     t = await openTestDatabase();
     await seedDemo(t.db, createPhiCipher(TEST_DATA_KEY));
     await saveClinic(t.db, 'org_demo', BRANCH);
-    for (const id of ['u_owner', 'u_owner2', 'u_ann', 'u_bo']) await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${`${id}@example.com`}, true)`);
-    await t.db.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_o', 'org_demo', 'u_owner', 'owner')`);
-    await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('cm1', ${DEMO_CLINIC.id}, 'u_ann', 'admin'), ('cm2', ${BRANCH.id}, 'u_ann', 'staff'), ('cm3', ${DEMO_CLINIC.id}, 'u_bo', 'staff')`);
+    for (const id of ['u_owner', 'u_owner2', 'u_ann', 'u_bo']) await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${id}, ${`${id}@example.com`}, true)`);
+    await t.owner.execute(sql`insert into memberships (id, organization_id, user_id, role) values ('m_o', 'org_demo', 'u_owner', 'owner')`);
+    await t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('cm1', ${DEMO_CLINIC.id}, 'u_ann', 'admin'), ('cm2', ${BRANCH.id}, 'u_ann', 'staff'), ('cm3', ${DEMO_CLINIC.id}, 'u_bo', 'staff')`);
   });
   afterAll(() => t.close());
 
@@ -94,7 +94,7 @@ describe('team changes per location', () => {
   it('an owner is account-wide: made at one location, owner at all; made something else, keeps that role at all', async () => {
     expect(await changeTeam(t.db, DEMO_CLINIC.id, owner, { type: 'role', userId: 'u_bo', role: 'owner' })).toBe('done');
     expect([await roleAt('u_bo', DEMO_CLINIC.id), await roleAt('u_bo', BRANCH.id)]).toEqual(['owner', 'owner']);
-    expect((await t.db.execute(sql`select count(*)::int as n from clinic_memberships where user_id = 'u_bo'`)).rows).toEqual([{ n: 0 }]);
+    expect((await t.owner.execute(sql`select count(*)::int as n from clinic_memberships where user_id = 'u_bo'`)).rows).toEqual([{ n: 0 }]);
     expect(await changeTeam(t.db, BRANCH.id, owner, { type: 'role', userId: 'u_bo', role: 'staff' })).toBe('done');
     expect([await roleAt('u_bo', DEMO_CLINIC.id), await roleAt('u_bo', BRANCH.id)]).toEqual(['staff', 'staff']);
   });

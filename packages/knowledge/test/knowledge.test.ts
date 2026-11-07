@@ -211,7 +211,7 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: 'text-embedding-4' })).changed).toBe(true);
     // a job that died mid-way: 16 minutes in indexing, and the same bytes queue it again
     await repo.forIndexing(DEMO_CLINIC.id, first.id, embedder.model);
-    await t.db.execute(sql`update knowledge_documents set updated_at = now() - interval '16 minutes' where id = ${first.id}`);
+    await t.owner.execute(sql`update knowledge_documents set updated_at = now() - interval '16 minutes' where id = ${first.id}`);
     expect((await repo.save(DEMO_CLINIC.id, { ...doc, embeddingModel: embedder.model })).changed).toBe(true);
     expect((await repo.get(DEMO_CLINIC.id, first.id))?.status).toBe('queued');
   });
@@ -225,7 +225,7 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await indexDocument(repo, embedder, DEMO_CLINIC.id, changed.id)).toBe('current');
     expect((await kb.search(DEMO_CLINIC.id, 'where can I park'))[0]?.text).toContain('Oak Street');
     expect((await repo.get(DEMO_CLINIC.id, changed.id))?.chunkCount).toBe(1);
-    const audits = (await t.db.execute(sql`select actor, action from audit_logs where entity = 'knowledge_document' and actor = 'user:u_ana'`)).rows;
+    const audits = (await t.owner.execute(sql`select actor, action from audit_logs where entity = 'knowledge_document' and actor = 'user:u_ana'`)).rows;
     expect(audits).toEqual([{ actor: 'user:u_ana', action: 'knowledge.document.uploaded' }]); // the unchanged upload wrote nothing
   });
 
@@ -243,7 +243,7 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await repo.remove(DEMO_CLINIC.id, doc!.id, 'u_ana')).toBe(true);
     expect(await kb.search(DEMO_CLINIC.id, 'how long has Dr. Okafor practised')).toEqual([]);
     expect(await repo.remove(OTHER.id, doc!.id, 'u_ana')).toBe(false);
-    expect((await t.db.execute(sql`select action from audit_logs where action = 'knowledge.document.deleted'`)).rows).toHaveLength(1);
+    expect((await t.owner.execute(sql`select action from audit_logs where action = 'knowledge.document.deleted'`)).rows).toHaveLength(1);
   });
 
   it('the search behind the assistant\'s tools finds nothing for a question that is not the clinic\'s, and never returns a technical passage', async () => {
@@ -254,6 +254,6 @@ describe('the clinic\'s knowledge, in Postgres', () => {
     expect(await kb.search(DEMO_CLINIC.id, 'tell me a joke')).toEqual([]);
     // a clinic word in it ("booking") does not let it out
     expect((await kb.search(DEMO_CLINIC.id, 'booking app')).map((p) => p.title)).not.toContain('Vendor notes');
-    await t.db.execute(sql`delete from knowledge_documents where id = ${notes.id}`);
+    await t.owner.execute(sql`delete from knowledge_documents where id = ${notes.id}`);
   });
 });

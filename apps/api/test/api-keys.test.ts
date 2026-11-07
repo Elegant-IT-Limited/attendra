@@ -58,7 +58,7 @@ describe('API keys', () => {
     expect((await api.request('DELETE', `${C}/api-keys/${apiKey.id}`, { cookie: as.owner })).statusCode).toBe(404);
     const listed = (await api.request('GET', `${C}/api-keys`, { cookie: as.owner })).json().keys.find((k: { id: string }) => k.id === apiKey.id);
     expect(listed.status).toBe('revoked');
-    const actions = (await api.t.db.execute(sql`select action, actor from audit_logs where entity = 'api_key' order by id`)).rows;
+    const actions = (await api.t.owner.execute(sql`select action, actor from audit_logs where entity = 'api_key' order by id`)).rows;
     expect(actions).toEqual([
       { action: 'api_key.created', actor: `user:${api.users.admin}` }, { action: 'api_key.created', actor: `user:${api.users.owner}` }, { action: 'api_key.revoked', actor: `user:${api.users.owner}` },
     ]);

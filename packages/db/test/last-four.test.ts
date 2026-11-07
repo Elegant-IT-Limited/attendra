@@ -24,7 +24,7 @@ describe('a pet by the last four digits and its name', () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     expect(await dir.findPetByLastFour(C, '0174', 'Luna', callId)).toMatchObject({ status: 'found', patient: { id: ids.luna, firstName: 'Luna', species: 'dog' } });
     expect(await dir.findPetByLastFour(C, '0 1 7 4', 'Loona', callId)).toMatchObject({ status: 'found', patient: { id: ids.luna } });
-    const audit = (await t.db.execute(sql`select action, entity_id from audit_logs where clinic_id = ${C} and action = 'patient.identified.by_last_four'`)).rows;
+    const audit = (await t.owner.execute(sql`select action, entity_id from audit_logs where clinic_id = ${C} and action = 'patient.identified.by_last_four'`)).rows;
     expect(audit).toContainEqual({ action: 'patient.identified.by_last_four', entity_id: ids.luna });
   });
 

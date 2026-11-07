@@ -110,7 +110,7 @@ describe('provisioning', () => {
     const settings = (await api.request('GET', `/api/v1/clinics/${clinicId}/settings`, { cookie })).json();
     expect(settings).toMatchObject({ name: 'Oak Hill South', industry: 'vet' });
     expect(settings.greeting).toContain('Oak Hill South');
-    expect((await api.t.db.execute(sql`select entity_id from audit_logs where action = 'clinic.created' and clinic_id = ${opened.clinicId}`)).rows).toEqual([{ entity_id: clinicId }]);
+    expect((await api.t.owner.execute(sql`select entity_id from audit_logs where action = 'clinic.created' and clinic_id = ${opened.clinicId}`)).rows).toEqual([{ entity_id: clinicId }]);
   });
 
   it('opens a second, separate clinic for an owner on the same login; never for staff or an unconfirmed login', async () => {
@@ -143,10 +143,10 @@ describe('provisioning', () => {
     expect(settings).toMatchObject({ name: 'Lakeside Pet Care', timezone: 'America/Denver', phoneNumbers: ['+13035550190'] });
     expect(settings.greeting).not.toContain('Oak Hill');
     expect((await api.request('GET', `/api/v1/clinics/${made.clinicId}/test-calls/allowance`, { cookie })).json()).toEqual({ limitSeconds: 300, usedSeconds: 0, perCallSeconds: null, callSeconds: null, minSeconds: 15 });
-    expect((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = 'organization.created.by_owner' and clinic_id = ${made.clinicId}`)).rows)
+    expect((await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = 'organization.created.by_owner' and clinic_id = ${made.clinicId}`)).rows)
       .toEqual([{ actor: `user:${opened.userId}`, entity_id: made.organizationId }]);
     // the first business is untouched: still one clinic in its organization
-    expect((await api.t.db.execute(sql`select id from clinics where org_id = ${opened.organizationId}`)).rows).toEqual([{ id: opened.clinicId }]);
+    expect((await api.t.owner.execute(sql`select id from clinics where org_id = ${opened.organizationId}`)).rows).toEqual([{ id: opened.clinicId }]);
   });
 
   it('sets which voice engine answers a clinic, which Settings cannot change', async () => {
@@ -182,7 +182,7 @@ describe('provisioning', () => {
     // a top-up leaves at least this much still to use: what was used plus it, never less than before
     const topUp = async (body: object) => api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/test-call-top-up`, { body, authorization: auth });
     expect((await topUp({ remainingSeconds: 7200 })).json()).toEqual({ limitSeconds: null, usedSeconds: 0, newLimitSeconds: null, changed: false });
-    const call = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, channel, started_at, ended_at)
+    const call = (await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, channel, started_at, ended_at)
       values (${DEMO_CLINIC.id}, 'rtc_top_up', 'web', now() - interval '15 minutes', now() - interval '5 minutes') returning id`)).rows[0] as { id: string };
     try {
       await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: 600 }, authorization: auth });
@@ -192,7 +192,7 @@ describe('provisioning', () => {
       expect((await topUp({ remainingSeconds: 7200 })).json()).toMatchObject({ limitSeconds: 7800, newLimitSeconds: 7800, changed: false });
       expect((await topUp({ remainingSeconds: 60 })).json()).toMatchObject({ newLimitSeconds: 7800, changed: false });
     } finally {
-      await api.t.db.execute(sql`delete from calls where id = ${call.id}`);
+      await api.t.owner.execute(sql`delete from calls where id = ${call.id}`);
       await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/test-call-limit`, { body: { seconds: null }, authorization: auth });
     }
     expect((await api.request('POST', `${P}/clinics/clinic_none/test-call-top-up`, { body: { remainingSeconds: 60 }, authorization: auth })).statusCode).toBe(404);
@@ -204,7 +204,7 @@ describe('provisioning', () => {
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/texting`, { body: { enabled: false }, authorization: auth })).statusCode).toBe(204);
     // the assistant paused by the hosting layer (the plan), and answering again; Settings never changes it
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/answering`, { body: { paused: true }, authorization: auth })).statusCode).toBe(204);
-    const pausedNow = async () => ((await api.t.db.execute(sql`select config->'answeringPaused' as p from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { p: unknown }).p;
+    const pausedNow = async () => ((await api.t.owner.execute(sql`select config->'answeringPaused' as p from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { p: unknown }).p;
     expect(await pausedNow()).toBe(true);
     expect((await api.request('PUT', `${P}/clinics/clinic_none/answering`, { body: { paused: true }, authorization: auth })).statusCode).toBe(404);
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/answering`, { body: { paused: false }, authorization: auth })).statusCode).toBe(204);
@@ -215,10 +215,10 @@ describe('provisioning', () => {
     expect((await api.request('DELETE', `${P}/numbers/${encodeURIComponent('+13035550177')}`, { authorization: auth })).statusCode).toBe(204);
     expect(await clinicForNumber(api.t.db, '+13035550177')).toBeNull();
     // the clinic's audit log shows the number it got and the one it gave back
-    expect((await api.t.db.execute(sql`select action, entity_id from audit_logs where clinic_id = ${DEMO_CLINIC.id} and action like 'number.%' order by id`)).rows)
+    expect((await api.t.owner.execute(sql`select action, entity_id from audit_logs where clinic_id = ${DEMO_CLINIC.id} and action like 'number.%' order by id`)).rows)
       .toEqual([{ action: 'number.assigned', entity_id: '+13035550177' }, { action: 'number.released', entity_id: '+13035550177' }]);
 
-    await api.t.db.execute(sql`update calls set ended_at = started_at + interval '95 seconds', channel = 'phone' where id = ${api.callId}`);
+    await api.t.owner.execute(sql`update calls set ended_at = started_at + interval '95 seconds', channel = 'phone' where id = ${api.callId}`);
     const from = new Date(Date.now() - 86_400_000).toISOString();
     const to = new Date(Date.now() + 86_400_000).toISOString();
     const usage = await api.request('GET', `${P}/clinics/${DEMO_CLINIC.id}/usage?from=${from}&to=${to}`, { authorization: auth });
@@ -227,7 +227,7 @@ describe('provisioning', () => {
     // the forwarding check and the quiet-line alert: calls since a moment, and one from a number, by its hash
     const caller = '+13035550147';
     const since = new Date(Date.now() - 3_600_000).toISOString();
-    await api.t.db.execute(sql`update calls set started_at = now() - interval '10 minutes', ended_at = now() - interval '10 minutes' + interval '95 seconds' where id = ${api.callId}`);
+    await api.t.owner.execute(sql`update calls set started_at = now() - interval '10 minutes', ended_at = now() - interval '10 minutes' + interval '95 seconds' where id = ${api.callId}`);
     const check = (body: object) => api.request('POST', `${P}/clinics/${DEMO_CLINIC.id}/calls-check`, { body, authorization: auth });
     expect((await check({ since, from: caller })).json()).toMatchObject({ calls: 1, heard: true });
     expect((await check({ since, from: '+13035550122' })).json()).toMatchObject({ calls: 1, heard: false });
@@ -254,7 +254,7 @@ describe('provisioning', () => {
     const viewer = await api.signIn('vic@maple.example', true);
     expect((await api.request('GET', G, { cookie: viewer })).json()).toEqual({ plan: null, minutesUsed: null, textsUsed: null });
 
-    await api.t.db.execute(sql`update calls set started_at = now() - interval '1 hour', ended_at = now() - interval '1 hour' + interval '125 seconds', channel = 'phone' where id = ${api.callId}`);
+    await api.t.owner.execute(sql`update calls set started_at = now() - interval '1 hour', ended_at = now() - interval '1 hour' + interval '125 seconds', channel = 'phone' where id = ${api.callId}`);
     const plan = {
       status: 'active', includedMinutes: 400, periodStart: new Date(Date.now() - 86_400_000).toISOString(), periodEnd: new Date(Date.now() + 29 * 86_400_000).toISOString(),
       trialEndsAt: null, trialDays: 14, endsAt: null, manageUrl: '/account/billing/clinic_maple',
@@ -309,7 +309,7 @@ describe('provisioning', () => {
       expect.objectContaining({ id: location.clinicId, name: 'Downtown', organizationId: opened.organizationId, organizationName: 'Cedar Row Vets' }),
     ]);
     expect((await api.request('GET', `/api/v1/clinics/${location.clinicId}/settings`, { cookie })).json().name).toBe('Downtown');
-    const audit = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${location.clinicId} and action = 'clinic.renamed'`)).rows;
+    const audit = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${location.clinicId} and action = 'clinic.renamed'`)).rows;
     expect(audit).toEqual([{ n: 1 }]);
   });
 });
