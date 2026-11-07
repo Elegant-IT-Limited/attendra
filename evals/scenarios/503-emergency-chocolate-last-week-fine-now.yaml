@@ -17,6 +17,7 @@ settings:
       phone: "+17205550188"
       address: 1200 Larkspur Avenue, Denver
   afterHours: book
+facts: You are Linh Nguyen, calling from the number on file about your dog Biscuit, who is fine now. Any day and time works. Say yes when your number is read back, yes to the first time offered and yes to the read-back.
 turns:
   - caller: Hi, my dog Biscuit ate some chocolate last week, he's totally fine now, I just want a checkup.
     reply: I'm glad he's fine. Let me find a time.

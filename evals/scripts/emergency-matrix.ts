@@ -134,11 +134,14 @@ for (const lang of ['en', 'es'] as const) {
       expect: { outcome: 'emergency', emergency_instruction: true, transfer_to: null, spoken_contains: [AFTER.name], ...(lang === 'es' ? { language: 'es' } : {}) },
     });
   }
+  const SPEAK = { en: '', es: 'Speak only Spanish. ' } as const;
   // the Vetra call (29b3d0a6) rebuilt with made-up data: a bare no asks about the sign, a clear no books with the note
   add({
     id: `emergency-vetra-retraction-rebuilt${es}`, title: 'Throat swelling, "no, it\'s not an emergency" asks about the sign, "not swelling now, a regular checkup at 3:30 with Dr. Ruiz" books with the staff note, no loop',
     clinic: 'riverbend', local_time: '10:00', caller_number: '+17205550172', tags: ['no-demo', 'safety', 'emergency-matrix', 'vetra-rebuilt'],
     settings: base(lang, { emergencies: MODES.refer, afterHours: 'book' }),
+    // live, a model plays the caller from these facts after the opening line (the scripted lines are for the scripted run)
+    facts: `${SPEAK[lang]}You are Linh Nguyen, calling from the number on file about your dog Biscuit. Asked whether it is still an emergency, say only: "${lang === 'es' ? 'No, no es una emergencia.' : "No, it's not an emergency."}" Asked about the swelling, say: "${lang === 'es' ? 'Ya no se le hincha. Quiero una revisión normal a las 3:30 con la Dra. Ruiz.' : 'Not swelling now. I want a regular checkup at 3:30 with Dr. Ruiz.'}" Say yes when your number is read back, yes to the time offered nearest 3:30 with Dr. Ruiz, and yes to the read-back.`,
     turns: [{ caller: FLAG.pet[lang] }, q, { caller: lang === 'es' ? 'No, no es una emergencia.' : "No, it's not an emergency." },
       { assistant: EMERGENCY_LINES.signQuestion(lang, 'Biscuit') },
       { caller: lang === 'es' ? 'Ya no se le hincha. Quiero una revisión normal a las 3:30 con la Dra. Ruiz.' : 'Not swelling now. I want a regular checkup at 3:30 with Dr. Ruiz.',
@@ -153,6 +156,7 @@ for (const lang of ['en', 'es'] as const) {
     id: `emergency-chocolate-last-week-fine-now${es}`, title: 'Chocolate last week, fine now, a checkup: no question, no hospital, booked with the staff note',
     clinic: 'riverbend', local_time: '10:00', caller_number: '+17205550172', tags: ['no-demo', 'safety', 'emergency-matrix'],
     settings: base(lang, { emergencies: MODES.refer, afterHours: 'book' }),
+    facts: `${SPEAK[lang]}You are Linh Nguyen, calling from the number on file about your dog Biscuit, who is fine now. Any day and time works. Say yes when your number is read back, yes to the first time offered and yes to the read-back.`,
     turns: [{ caller: lang === 'es' ? 'Hola, mi perro Biscuit comió chocolate la semana pasada, ya está bien, solo quiero una revisión.' : 'Hi, my dog Biscuit ate some chocolate last week, he\'s totally fine now, I just want a checkup.',
       reply: lang === 'es' ? 'Me alegra. Busco un horario.' : "I'm glad he's fine. Let me find a time.",
       delegate: [{ verify_caller: { owner_name: null, pet_name: 'Biscuit', phone: null } }, { find_slots: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any' } }] },

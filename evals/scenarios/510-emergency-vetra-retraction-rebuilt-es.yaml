@@ -21,6 +21,7 @@ settings:
       phone: "+17205550188"
       address: 1200 Larkspur Avenue, Denver
   afterHours: book
+facts: 'Speak only Spanish. You are Linh Nguyen, calling from the number on file about your dog Biscuit. Asked whether it is still an emergency, say only: "No, no es una emergencia." Asked about the swelling, say: "Ya no se le hincha. Quiero una revisión normal a las 3:30 con la Dra. Ruiz." Say yes when your number is read back, yes to the time offered nearest 3:30 with Dr. Ruiz, and yes to the read-back.'
 turns:
   - caller: A mi perro Biscuit se le está hinchando la garganta.
   - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?

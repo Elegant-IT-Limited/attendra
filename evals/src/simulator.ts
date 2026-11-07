@@ -329,32 +329,38 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // another pet's needs, or the next step for this one (2026-11-15)
     if (state.emergencyLocked && !state.emergencyScriptSaid) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
-    if (livePlanner) queue.push(livePlanner);
-    else {
-      const steps: ScriptedStep[] = turn.delegate!.map((step) => {
-        const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
-        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
-      });
-      const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
-      queue.push(scripted);
+    // live, a script that ends on a question (the emergency question, the one about the sign) is the voice's whole reply,
+    // as on a call: the instruction becomes the reply and the voice then waits for the caller. Asking the model for a
+    // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
+    const waitsForCaller = !!livePlanner && heard.some((o) => o.type === 'instructions' && /\?\s*$/.test(scriptLines(o.content)));
+    if (!waitsForCaller) {
+      if (livePlanner) queue.push(livePlanner);
+      else {
+        const steps: ScriptedStep[] = turn.delegate!.map((step) => {
+          const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
+          return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
+        });
+        const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
+        queue.push(scripted);
+      }
+      const out = await agent.onDelegation(`item_${++delegations}`);
+      outbound.push(...out);
+      // the lookup line the voice says while the backend works ("Let me check Thursday for you."): spoken, before the answer
+      for (const o of out) if (o.type === 'thinking') {
+        const line = announcedLine(o.content);
+        if (!line) continue;
+        clock += 500;
+        agent.onAgentTranscript(line, clock, clock + 500);
+        if (livePlanner) transcript.push({ speaker: 'assistant', text: line });
+      }
+      for (const o of out) if (o.type === 'commentary') {
+        clock += 1500;
+        agent.onAgentTranscript(o.content, clock, clock + 1000);
+        if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
+      }
+      if (state.pending) lastReadback = state.pending.readback;
+      await say();
     }
-    const out = await agent.onDelegation(`item_${++delegations}`);
-    outbound.push(...out);
-    // the lookup line the voice says while the backend works ("Let me check Thursday for you."): spoken, before the answer
-    for (const o of out) if (o.type === 'thinking') {
-      const line = announcedLine(o.content);
-      if (!line) continue;
-      clock += 500;
-      agent.onAgentTranscript(line, clock, clock + 500);
-      if (livePlanner) transcript.push({ speaker: 'assistant', text: line });
-    }
-    for (const o of out) if (o.type === 'commentary') {
-      clock += 1500;
-      agent.onAgentTranscript(o.content, clock, clock + 1000);
-      if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
-    }
-    if (state.pending) lastReadback = state.pending.readback;
-    await say();
     // live, after the last line so far: the model caller answers the planner's question from
     // the scenario's facts, until the call is over or it has said ten lines
     // a caller who says goodbye still has that last line heard ("Yes, that's right, thanks, bye")
