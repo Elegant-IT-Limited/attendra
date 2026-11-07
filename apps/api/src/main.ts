@@ -36,6 +36,7 @@ const app = await createApi({
   log,
   options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, mcpUrl: env.ATTENDRA_MCP_URL, twoFactor: env.ATTENDRA_TWO_FACTOR, idleMinutes: env.ATTENDRA_IDLE_MINUTES, searchScan: env.ATTENDRA_SEARCH_SCAN, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN, provisioningSignatures: env.ATTENDRA_PROVISIONING_SIGNATURES, passwordReset: !!mail },
   trustProxy: env.TRUST_PROXY,
+  trustCloudflare: env.TRUST_CLOUDFLARE,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
   changes: pgChangeFeed(env.DATABASE_URL, {

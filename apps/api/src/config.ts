@@ -23,6 +23,10 @@ const Env = z.object({
   // Set when the API sits behind the web app's proxy (docker compose does), so the
   // rate limiter sees each browser's address instead of the proxy's.
   TRUST_PROXY: flag.transform((on) => (on ? 1 : 0)),
+  // Set when the edge proxy in front of the dashboard sits behind Cloudflare: a request that reached it
+  // from one of Cloudflare's addresses (src/http/cloudflare-ips.ts) is counted as the address in its
+  // CF-Connecting-IP. From any other address the header is ignored. Needs TRUST_PROXY.
+  TRUST_CLOUDFLARE: flag,
   // The voice service, for test calls from the dashboard. Leave both unset to turn them off.
   VOICE_URL: optional(z.string().url()),
   VOICE_INTERNAL_TOKEN: optional(z.string().min(32, 'VOICE_INTERNAL_TOKEN must be at least 32 characters')),
@@ -68,6 +72,7 @@ export function loadEnv(source = process.env): ApiEnv {
   if (!parsed.success) {
     throw new Error(`invalid environment: ${parsed.error.issues.map((i) => `${i.path.join('.')} (${i.message})`).join(', ')}`);
   }
+  if (parsed.data.TRUST_CLOUDFLARE && !parsed.data.TRUST_PROXY) throw new Error('invalid environment: TRUST_CLOUDFLARE needs TRUST_PROXY=true (the edge proxy is the hop that is checked)');
   if (!parsed.data.VOICE_URL !== !parsed.data.VOICE_INTERNAL_TOKEN) throw new Error('invalid environment: set both VOICE_URL and VOICE_INTERNAL_TOKEN, or neither');
   return parsed.data;
 }
