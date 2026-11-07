@@ -53,16 +53,17 @@ export class ApiKeyRepository {
 
 /**
  * Finds the key a request carries, by its hash, before the clinic is known: through
- * api_key_by_hash (migration 0051), which reads that one key past row-level security.
- * Null for anything that is not a live key: unknown, revoked, expired, or made by
- * someone who is no longer an owner or practice manager at the clinic.
+ * api_key_by_hash (migration 0051), which reads that one key past row-level security,
+ * then checks it in its clinic. Null for anything that is not a live key: unknown,
+ * revoked, expired, or made by someone who is no longer an owner or practice manager there.
  */
 export async function authenticateApiKey(db: Database, key: string, now = new Date()): Promise<ApiCaller | null> {
   if (!/^atk_[A-Za-z0-9_-]{43}$/.test(key)) return null;
-  const [r] = rows<{ id: string; clinic_id: string; scopes: ApiScope[]; created_by_user_id: string; expires_at: string | Date; revoked_at: string | null }>(
-    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id, expires_at, revoked_at from api_key_by_hash(${hashOf(key)})`));
-  if (!r || r.revoked_at || new Date(r.expires_at) <= now) return null;
-  return { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
+  const [r] = rows<{ id: string; clinic_id: string; scopes: ApiScope[]; created_by_user_id: string }>(
+    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id from api_key_by_hash(${hashOf(key)})`));
+  if (!r) return null;
+  const caller = { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
+  return (await apiKeyIsLive(db, caller, now)) ? caller : null;
 }
 
 /**

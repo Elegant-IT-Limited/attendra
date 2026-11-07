@@ -35,14 +35,14 @@ create policy clinics_service on clinics for all to attendra_service using (true
 -- must happen before the clinic is known are functions that run as the owner and return only what
 -- they are for. Each sets its own search_path, and only the services' role may call it.
 
--- An API key, by the hash of the key a request carries: which clinic it is for, and whether it is
--- live (its maker still an owner or manager there). Nothing else about the clinic or its keys.
+-- An API key, by the hash of the key a request carries: which clinic it is for, and what it may do.
+-- Nothing else about the clinic or its keys. Whether its maker may still hold one is checked after,
+-- in that clinic (apiKeyIsLive), so the rule is written once.
 create or replace function api_key_by_hash(p_key_hash text)
   returns table (id uuid, clinic_id text, scopes text[], created_by_user_id text, expires_at timestamptz, revoked_at timestamptz)
   language sql stable security definer set search_path = pg_catalog, public as $$
   select k.id, k.clinic_id, k.scopes, k.created_by_user_id, k.expires_at, k.revoked_at from public.api_keys k
   where k.key_hash = p_key_hash
-    and exists (select 1 from public.clinic_access a where a.clinic_id = k.clinic_id and a.user_id = k.created_by_user_id and a.role in ('owner', 'admin'))
 $$;
 revoke all on function api_key_by_hash(text) from public;
 grant execute on function api_key_by_hash(text) to attendra_service;
