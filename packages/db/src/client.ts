@@ -25,6 +25,30 @@ export function connect(url: string, opts: { onError?: (code: string) => void } 
 }
 
 /**
+ * The URL a service's queries go to: the services' own role when the deploy gives it one
+ * (migration 0051), the owner's otherwise. pg-boss and the migrator keep DATABASE_URL.
+ */
+export const serviceDatabaseUrl = (env: { DATABASE_URL: string; ATTENDRA_SERVICE_DATABASE_URL?: string }) => env.ATTENDRA_SERVICE_DATABASE_URL ?? env.DATABASE_URL;
+
+/**
+ * The role a connection runs as, and whether row-level security can hold it (a superuser or
+ * a BYPASSRLS role it cannot). Logged at boot, so a deploy shows which side a service is on,
+ * and an error when the services' URL turns out to be a role that gets past it.
+ */
+export async function connectionRole(db: Database): Promise<{ role: string; bypassesRls: boolean }> {
+  const [r] = (await db.execute(sql`select current_user as role, (rolsuper or rolbypassrls) as bypasses from pg_roles where rolname = current_user`)).rows as { role: string; bypasses: boolean }[];
+  return { role: r!.role, bypassesRls: r!.bypasses };
+}
+
+/** Logs connectionRole at boot; never throws, since the health check reports a database that does not answer. */
+export async function logConnectionRole(db: Database, log: { info: (o: object, msg: string) => void; error: (o: object, msg: string) => void }, serviceUrlSet: boolean) {
+  const r = await connectionRole(db).catch(() => null);
+  if (!r) return;
+  if (serviceUrlSet && r.bypassesRls) log.error({ role: r.role }, 'ATTENDRA_SERVICE_DATABASE_URL is a role that gets past row-level security; it should be attendra_service');
+  else log.info({ role: r.role, rowLevelSecurity: !r.bypassesRls }, 'database role');
+}
+
+/**
  * Runs fn in one transaction, as the application role, scoped to one clinic. Both
  * settings are transaction-local, so a pooled connection never carries a tenant
  * into the next request. This is the second wall; every query also filters on
@@ -36,6 +60,24 @@ export async function withClinic<T>(db: Database, clinicId: string, fn: (tx: Tx)
     await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
     return fn(tx);
   });
+}
+
+/**
+ * Runs fn in one transaction scoped to one clinic, keeping the connecting role: for the
+ * system work the application role has no grant for (a purge's deletes, the team tables an
+ * API key's check reads). Row-level security still holds it to this clinic's rows on the
+ * services' role (migration 0051); the owner, as a superuser, is not held by it.
+ */
+export async function withClinicScope<T>(db: Database, clinicId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await setClinicScope(tx, clinicId);
+    return fn(tx);
+  });
+}
+
+/** Sets the clinic for the rest of a transaction already open, the role left as it is. */
+export async function setClinicScope(tx: Tx, clinicId: string) {
+  await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
 }
 
 /**

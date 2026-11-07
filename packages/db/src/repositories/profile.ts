@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { authUsers, clinicAccess, userAvatars } from '../auth-schema';
-import type { Database } from '../client';
+import { type Database, setClinicScope } from '../client';
 import { auditLogs, clinics } from '../schema';
 
 /** The largest picture kept: the browser sends a 256 px WebP of about 30 KB. */
@@ -22,7 +22,7 @@ export async function renameUser(db: Database, userId: string, name: string, now
     const theirs = await tx.select({ id: clinics.id }).from(clinics)
       .innerJoin(clinicAccess, eq(clinicAccess.clinicId, clinics.id)).where(and(eq(clinicAccess.userId, userId), isNull(clinics.closedAt)));
     for (const { id: clinicId } of theirs) {
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       await tx.insert(auditLogs).values({ clinicId, actor: `user:${userId}`, action: 'user.name.changed', entity: 'member', entityId: userId });
     }
   });
