@@ -10,7 +10,8 @@
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit -p .",
     "test:e2e": "playwright test",
-    "demo": "next dev --port 3000"
+    "demo": "next dev --port 3000",
+    "load-test": "tsx scripts/load-test/run.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
@@ -34,6 +35,8 @@
   },
   "devDependencies": {
     "@attendra/api": "workspace:*",
+    "@attendra/db": "workspace:*",
+    "@attendra/voice-engine": "workspace:*",
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "4.3.3",

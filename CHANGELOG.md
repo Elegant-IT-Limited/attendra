@@ -4,6 +4,11 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (launch readiness: a load test)
+
+- **`pnpm --filter @attendra/web load-test`** keeps browser test calls going on many lines at once (20 by default, each speaking scripted lines from committed WAVs and dialled again when it ends) and holds dashboard change streams open (10), for a set time (15 minutes), against a staging deployment. It then measures every call as `db:call-stats` does, counts dropped calls and streams and 429s, samples `docker stats` over ssh, and writes a JSON and a Markdown report with PASS or FAIL against limits taken from the voice service's own constants. Real calls need `--spend`; `--dry-run` runs one simulated call against the local demo. `docs/load-test.md` has how to run it and what a run costs.
+- `statsRow` (packages/db) measures one call from what was read, so a call read through the API gets the same turn times as the database report; `isDropped` (packages/core) is the dropped-call test, exported.
+
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.
