@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise } from '@attendra/core';
+import { type ClinicConfig, extractFacts, type Language, localDateOf, localName, PACKS, providerName, type SaidDay, type SaidTime, soundsLike, heardNumber, normalise, weekdayOf } from '@attendra/core';
 
 /** Where a fact came from: the caller's own words, a tool's arguments, the clinic's records, or the planner model's reading of the call (the intent). */
 export type FactSource = 'caller' | 'tool' | 'record' | 'model';
@@ -42,6 +42,8 @@ export class CallMemory {
   nameCheck: { digits: string; result: 'match' | 'no_match' | 'no_owner' | 'not_given' } | null = null;
   /** "This Wednesday, November 4, or Wednesday, November 11?" was asked: once per call. */
   whichWeekAsked = false;
+  /** The caller's day was a bare weekday ("Thursday", "el viernes"): no month, date, holiday or week count with it. */
+  dayBare = false;
   /** The number "And your name?" was asked for: asked once per number. */
   nameAskedFor: string | null = null;
   /** The caller was thanked by the owner's name on file: once a call (the pick question or the pet found). */
@@ -81,7 +83,10 @@ export class CallMemory {
     if (said.age) this.set('age', said.age, 'caller', atTurn);
     // the planner model's reading of the intent wins; the word lists are the fallback when it gave none (a timeout)
     if (said.intent && this.fact('intent')?.source !== 'model') this.set('intent', said.intent, 'caller', atTurn);
-    if (said.day !== undefined) this.set('day', said.day, 'caller', atTurn);
+    if (said.day !== undefined) {
+      this.set('day', said.day, 'caller', atTurn);
+      this.dayBare = !QUALIFIED_DAY.test(normalise(text));
+    }
     if (said.time) this.set('time', said.time, 'caller', atTurn);
     const vet = vetNamed(text, clinic);
     if (vet) this.set('vet', vet, 'caller', atTurn);
@@ -162,6 +167,13 @@ function vetNamed(text: string, clinic: ClinicConfig): string | null {
  * never has to ask again for what the caller already said. A value the planner passed is never replaced. Returns the
  * arguments and the names of those filled (logged, never their values).
  */
+/**
+ * A weekday said with more than itself: a month or a date ("Friday the 27th", "el viernes 2 de octubre"), a holiday
+ * ("the Friday after Thanksgiving"), a week count ("Friday after next", "in two weeks"). Its date may be weeks out, so
+ * the model's date for it is not corrected to the nearest one.
+ */
+const QUALIFIED_DAY = /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|thanksgiving|christmas|easter|holiday|new year|accion de gracias|navidad|feriado|after next|weeks?|semanas?|month|mes|the \d{1,2}(?:st|nd|rd|th)?(?![:\d])|\d{1,2}(?:st|nd|rd|th)|el \d{1,2}(?![:\d]))\b/;
+
 export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemory, opts: { industry: string; verifiedPatient: boolean; callerNumber: string | null; ownerOnFile?: string | null; timeZone?: string }): { args: unknown; filled: string[] } {
   if (!rawArgs || typeof rawArgs !== 'object' || Array.isArray(rawArgs)) return { args: rawArgs, filled: [] };
   const args = { ...(rawArgs as Record<string, unknown>) };
@@ -195,6 +207,13 @@ export function fillFromMemory(name: string, rawArgs: unknown, memory: CallMemor
     if (memory.get('intent') === 'move' && memory.visit && timeOnly && opts.timeZone) fill('from_date', localDateOf(memory.visit.start, opts.timeZone));
     const day = said('day');
     if (day && 'date' in day) fill('from_date', day.date);
+    // the caller's "Thursday" is the clinic clock's Thursday: a date on that weekday in another week is the model's own
+    // calendar, never the caller's (live runs booked Thursday, November 12 for "Thursday" on Monday, September 28)
+    const passed = typeof args.from_date === 'string' ? args.from_date : null;
+    if (day && 'date' in day && memory.dayBare && passed && /^\d{4}-\d{2}-\d{2}$/.test(passed) && passed !== day.date && weekdayOf(passed) === weekdayOf(day.date)) {
+      args.from_date = day.date;
+      filled.push('from_date');
+    }
     fill('from_time', said('time')?.time);
     fill('visit_type_id', memory.get('visitType'));
     fill('provider_id', said('vet'));

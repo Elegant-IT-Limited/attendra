@@ -18,7 +18,7 @@ settings:
       address: 1200 Larkspur Avenue, Denver
 turns:
   - caller: My dog Biscuit's throat is swelling up.
-  - assistant: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
+  - assistant: I'm sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?
   - caller: Yes, it's still happening, please help.
   - assistant: Please take Biscuit to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. Their number is one seven two zero five five five zero one eight eight.
   - caller: We're going now. Can I book my cat Mochi for her shots next week?

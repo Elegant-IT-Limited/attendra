@@ -83,7 +83,7 @@ describe('a number the caller says', () => {
     const slots = await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: '2026-09-30', part_of_day: 'morning' } }]);
     const slot = (slots.results[0]!.data.slots as { slot_id: string }[])[0]!.slot_id;
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot, replaces_appointment_id: null } }]);
-    c.assistant('Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Yes.');
     const booked = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(booked.results[0]!.data.booked).toBe(true);

@@ -28,7 +28,7 @@ describe('a booking, then "make it 4" on the same call', () => {
     expect(data(found, 1).proposed_slot_id).toBe(first.slot_id);
     expect(String(data(found, 1).spoken)).toMatch(/^I have Wednesday, September 30, at 5:00 PM with Dr\. /);
     await c.delegate([{ tool: 'propose_booking', args: { slot_id: first.slot_id, replaces_appointment_id: null } }]);
-    c.assistant('Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Yes.');
     expect(data(await c.delegate([{ tool: 'commit_pending', args: {} }])).booked).toBe(true);
 
@@ -44,7 +44,7 @@ describe('a booking, then "make it 4" on the same call', () => {
     expect(vet).toBe('Dr. Elena Ruiz');
     expect(c.state.pending?.readback).toBe(`move Biscuit's wellness exam from Wednesday, September 30, at 5:00 PM to Wednesday, September 30, at 4:00 PM with ${vet}`);
     expect(String(data(proposed).spoken)).toMatch(/^So I'd move Biscuit's wellness exam from .* Shall I go ahead\?$/);
-    c.assistant('Shall I go ahead?');
+    c.readBack('Shall I go ahead?');
     c.caller('Yes please.');
     const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(c.state.outcome).toBe('rescheduled');

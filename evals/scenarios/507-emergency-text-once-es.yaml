@@ -23,7 +23,7 @@ settings:
     enabled: true
 turns:
   - caller: A mi perro Biscuit se le está hinchando la garganta.
-  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - assistant: Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: Sí, sigue pasando, por favor ayúdeme.
   - assistant: Por favor lleve a Biscuit ahora mismo a Front Range Pet Emergency, en 1200 Larkspur Avenue, Denver. Su número es uno siete dos cero cinco cinco cinco cero uno ocho ocho. ¿Le envío la dirección por mensaje al número que termina en 0172?
   - caller: Sí, por favor.

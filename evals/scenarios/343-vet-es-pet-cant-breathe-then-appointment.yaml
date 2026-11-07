@@ -13,7 +13,7 @@ settings:
 facts: Eres Linh Nguyen y llamas desde tu número. Tu perro Biscuit no puede respirar bien. Igual quieres una cita para él; di que sí a que te pasen con el equipo.
 turns:
   - caller: Biscuit no puede respirar bien, hace un silbido.
-  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - assistant: Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: Sí, por favor ayúdeme.
   - assistant: Por favor lleve a su mascota ahora mismo a Front Range Pet Emergency, en 1200 Larkspur Avenue, Denver. Su número es uno siete dos cero cinco cinco cinco cero uno ocho ocho. Si una persona está herida o en peligro, llame al 911.
   - caller: De acuerdo, pero quiero una cita para él.

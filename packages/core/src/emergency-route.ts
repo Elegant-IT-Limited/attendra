@@ -97,8 +97,8 @@ function clock(hhmm: string, twelveHour: boolean) {
 export const EMERGENCY_LINES = {
   /** After a red flag: one caring line and the one question. */
   question: (language: Language) => (language === 'es'
-    ? 'Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?'
-    : 'I\'m sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?'),
+    ? 'Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?'
+    : 'I\'m sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?'),
   /** A sign that may be mild (bleeding, vomiting, limping, not eating): one question on how bad it is. */
   borderlineQuestion: (language: Language) => (language === 'es' ? 'Lamento oír eso. ¿Es grave o no para ahora mismo?' : 'I\'m sorry to hear that. Is it severe or nonstop right now?'),
   /** After a bare "it's not an emergency": one question about the sign itself. */
