@@ -294,6 +294,8 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
     // the line is said after what came before it, and the caller answers after it: the clock moves, as on a call (an
     // answer "after the question was said" needs the question to have been said first, batch 1b)
+    // live, a scripted line the voice has just said itself (the emergency question) is not said a second time
+    if ('assistant' in turn && livePlanner && transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.trim() === turn.assistant.trim()) continue;
     if ('assistant' in turn) { clock += 1500; agent.onAgentTranscript(turn.assistant, clock, clock + 1000); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
@@ -329,10 +331,13 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // another pet's needs, or the next step for this one (2026-11-15)
     if (state.emergencyLocked && !state.emergencyScriptSaid) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
-    // live, a script that ends on a question (the emergency question, the one about the sign) is the voice's whole reply,
+    // live, a script (the emergency question, the one about the sign, the route, the 911 line) is the voice's whole reply,
     // as on a call: the instruction becomes the reply and the voice then waits for the caller. Asking the model for a
     // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
-    const waitsForCaller = !!livePlanner && heard.some((o) => o.type === 'instructions' && /\?\s*$/.test(scriptLines(o.content)));
+    // a script that tells the voice to carry on afterwards ("then help with what they ask") is not the whole reply
+    const emergencyOn = state.emergencyCase !== null || state.emergency !== null;
+    const waitsForCaller = !!livePlanner && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
+      && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)));
     if (!waitsForCaller) {
       if (livePlanner) queue.push(livePlanner);
       else {
