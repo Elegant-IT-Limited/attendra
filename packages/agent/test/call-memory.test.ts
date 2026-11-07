@@ -127,4 +127,13 @@ describe('the caller\'s day, from the clinic clock (batch 1c)', () => {
     es.fromCaller('¿Puede ver la doctora Vance a Biscuit el viernes a las 5:30 de la tarde?', 'es', clinic, '2026-09-28', 0);
     expect((fillFromMemory('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-11-06', part_of_day: 'any', from_time: '17:30' }, es, opts).args as { from_date: string }).from_date).toBe('2026-10-02');
   });
+
+  it('a weekday with a holiday, a date or a week count is the caller\'s own: "the Friday after Thanksgiving" is never pulled to next Friday', () => {
+    for (const said of ['Can we do the Friday after Thanksgiving?', 'Friday the 27th, please.', 'Not this Friday, the Friday after next.', 'el viernes 27 de noviembre']) {
+      const m = new CallMemory();
+      m.fromCaller(said, said.startsWith('el ') ? 'es' : 'en', clinic, '2026-09-28', 0);
+      const out = fillFromMemory('find_slots', { visit_type_id: 'vt_sick', provider_id: null, from_date: '2026-11-27', part_of_day: 'any', from_time: null }, m, opts);
+      expect((out.args as { from_date: string }).from_date).toBe('2026-11-27');
+    }
+  });
 });
