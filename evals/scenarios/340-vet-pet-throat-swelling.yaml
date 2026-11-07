@@ -9,7 +9,7 @@ tags:
   - pet-emergency
 turns:
   - caller: My dog Luna's throat is swelling, I don't know what to do!
-    reply: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
+  - assistant: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
   - caller: Yes, please help.
 expect:
   outcome: emergency

@@ -11,7 +11,7 @@ tags:
   - es
 turns:
   - caller: A mi perra Luna se le está hinchando la garganta, ¡no sé qué hacer!
-    reply: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: Sí, por favor ayúdeme.
 expect:
   outcome: emergency

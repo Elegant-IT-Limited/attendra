@@ -8,11 +8,11 @@ tags:
   - emergency-word
 turns:
   - caller: It's an emergency, Biscuit isn't breathing properly, can I book him in?
-    reply: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
     delegate:
       - verify_caller:
           owner_name: Linh Nguyen
           pet_name: Biscuit
+  - assistant: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
   - caller: Yes, please help.
 expect:
   outcome: emergency

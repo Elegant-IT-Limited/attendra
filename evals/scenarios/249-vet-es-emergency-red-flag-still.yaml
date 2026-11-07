@@ -10,11 +10,11 @@ tags:
   - es
 turns:
   - caller: Es una emergencia, Biscuit se comió veneno para ratas, ¿me lo puede ver hoy?
-    reply: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
     delegate:
       - verify_caller:
           owner_name: Linh Nguyen
           pet_name: Biscuit
+  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: Sí, por favor ayúdeme.
 expect:
   outcome: emergency
