@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, asc, desc, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
-import { type Database, withClinic } from '../client';
+import { type Database, withClinic, setClinicScope } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, tasks } from '../schema';
 import { callerKey } from './calls';
@@ -171,9 +171,9 @@ export const PURGE_BATCH = 500;
  * Each batch writes its own counts row in the same transaction as its deletes, so
  * a purge that stops part way still has an audit row for everything it deleted.
  * The call rows stay, with their outcome and times, and so do requests, their notes
- * and text records: docs/hipaa.md says why. Runs as the connecting (owner) role,
- * like the migrations: the application role cannot delete call records. Row Level
- * Security still applies, so the clinic is set for each transaction.
+ * and text records: docs/hipaa.md says why. Runs as the connecting role (the
+ * owner, or the services' role of migration 0051): the application role cannot delete
+ * call records. Row Level Security still applies, so the clinic is set for each transaction.
  */
 export async function purgeCallRecords(db: Database, clinicId: string, before: Date, batch = PURGE_BATCH): Promise<{ transcriptLines: number; summaries: number; callActions: number }> {
   const counts = { transcriptLines: 0, summaries: 0, callActions: 0 };
@@ -181,7 +181,7 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
   let batches = 0;
   for (;;) {
     const ids = await db.transaction(async (tx) => {
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       const old = (await tx.select({ id: calls.id }).from(calls)
         .where(and(eq(calls.clinicId, clinicId), lt(calls.startedAt, before), gt(calls.id, after))).orderBy(asc(calls.id)).limit(batch)).map((c) => c.id);
       // a run with nothing to delete is still audited, once
@@ -212,14 +212,14 @@ export async function purgeCallRecords(db: Database, clinicId: string, before: D
  * Deletes the webhook events stored before `before`, with every delivery attempt of
  * each, in batches of events, on the same retention period as transcripts. Like the
  * call purge, each batch writes its counts in the same transaction as its deletes.
- * Owner connection: the application role cannot delete webhook records.
+ * The connecting role, as there: the application role cannot delete webhook records.
  */
 export async function purgeWebhookRecords(db: Database, clinicId: string, before: Date, batch = PURGE_BATCH): Promise<{ webhookEvents: number; webhookAttempts: number }> {
   const counts = { webhookEvents: 0, webhookAttempts: 0 };
   let after = '';
   for (;;) {
     const ids = await db.transaction(async (tx) => {
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       const old = ((await tx.execute(sql`select id from webhook_events where clinic_id = ${clinicId} and created_at < ${before.toISOString()}::timestamptz and id > ${after}
         order by id limit ${batch}`)).rows as { id: string }[]).map((r) => r.id);
       if (!old.length) return old;
@@ -239,7 +239,7 @@ export async function purgeWebhookRecords(db: Database, clinicId: string, before
   return counts;
 }
 
-/** Every clinic's id and stored config, for jobs that run across clinics, and whether it was closed. Owner connection; no PHI. */
+/** Every clinic's id and stored config, for jobs that run across clinics, and whether it was closed. Tenant registry; no PHI. */
 export async function allClinics(db: Database): Promise<{ id: string; config: unknown; closedAt: Date | null }[]> {
   return db.select({ id: clinics.id, config: clinics.config, closedAt: clinics.closedAt }).from(clinics);
 }
@@ -247,12 +247,14 @@ export async function allClinics(db: Database): Promise<{ id: string; config: un
 /**
  * The worker's jobs, one clinic at a time, for the dashboard. pg-boss creates its own
  * schema when the worker first starts, after our migrations, so the worker creates
- * this view then. The view filters on the clinic of the current transaction, so the
- * application role only ever sees its own clinic's jobs. Job data holds ids only.
+ * this view then, on pg-boss's own connection (the owner's: `exec`). The view filters on
+ * the clinic of the current transaction, so the application role only ever sees its own
+ * clinic's jobs. Job data holds ids only. The services' role (migration 0051) gets what
+ * deleting a purged clinic's jobs takes, as 0051 gives it on a database pg-boss was on first.
  */
-export async function ensureWorkerJobsView(db: Database, schema = 'pgboss') {
+export async function ensureWorkerJobsView(exec: (text: string) => Promise<unknown>, schema = 'pgboss') {
   if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error('invalid job schema name');
-  await db.execute(sql.raw(`
+  await exec(`
     create or replace view worker_jobs with (security_barrier) as
       select id, name, state::text as state, retry_count, retry_limit, data->>'clinicId' as clinic_id, data->>'callId' as call_id,
              created_on, started_on, completed_on,
@@ -261,8 +263,10 @@ export async function ensureWorkerJobsView(db: Database, schema = 'pgboss') {
                   when output->>'message' ~ '^[a-z][a-z0-9_]{0,79}$' then output->>'message'
                   else 'unexpected_error' end as failure
       from ${schema}.job
-      where data->>'clinicId' = current_setting('app.clinic_id', true)`));
-  await db.execute(sql.raw('grant select on worker_jobs to attendra_app'));
+      where data->>'clinicId' = current_setting('app.clinic_id', true)`);
+  await exec('grant select on worker_jobs to attendra_app');
+  await exec(`grant usage on schema ${schema} to attendra_service`);
+  await exec(`grant select, delete on ${schema}.job to attendra_service`);
 }
 
 export interface WorkerJob { id: string; name: string; state: string; retryCount: number; retryLimit: number; callId: string | null; createdOn: Date; completedOn: Date | null; failure: string | null }

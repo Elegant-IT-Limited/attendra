@@ -131,6 +131,25 @@ Using your own Postgres instead of Compose? It needs the pgvector extension inst
 grant attendra_app to <your_service_user>;
 ```
 
+### The services' own role (migration 0051)
+
+By default every service connects as the database's owner, and the owner gets past row-level security: only `withClinic` (which switches to `attendra_app`) holds a query to one clinic. Migration 0051 adds `attendra_service`, a role for the services to connect as instead. It is no superuser, has no `BYPASSRLS` and owns no table, so a query that forgets its clinic reads no clinic's patients, calls, requests or audit log. What it may do before a clinic is known is narrow and written down in 0051: it reads and writes the tenant registry (organizations, clinics, phone numbers; no patient data), and finds an API key by its hash through one function. Every cross-clinic job goes clinic by clinic.
+
+The migration makes the role without a login, so no password is in the repository. Give it one once, as the owner, with a password from a new secret (`openssl rand -base64 32`):
+
+```bash
+docker compose -f infra/docker-compose.yml exec postgres psql -U attendra -d attendra \
+  -c "alter role attendra_service login password '<ATTENDRA_SERVICE_DB_PASSWORD>'"
+```
+
+Then give each service that may switch `ATTENDRA_SERVICE_DATABASE_URL`, the same URL as `DATABASE_URL` with that role and password (`postgres://attendra_service:<password>@postgres:5432/attendra`). Keep `DATABASE_URL` as it is: the `migrate` service runs on it, and so does pg-boss, which creates and upgrades its own schema. A service logs `database role` with the role it runs as at start, and an error if `ATTENDRA_SERVICE_DATABASE_URL` is a role that gets past row-level security.
+
+- **May switch now:** the API (`api`), the worker (`worker`) and MCP (`mcp`). CI runs their tests, and the database package's, as `attendra_service` on the production Postgres image.
+- **Stays on the owner for now:** the voice service. Its tests do not all pass as `attendra_service` yet.
+- **Scripts you run by hand** (`pnpm db:*`, `pnpm add-member`) keep using `DATABASE_URL`.
+
+To switch a service back, remove `ATTENDRA_SERVICE_DATABASE_URL` from it and restart it: it connects as the owner again. Nothing else changes, and the role can stay. To remove the role too, the rollback is at the end of `packages/db/migrations/0051_service_role.sql`.
+
 ## 4. Check it
 
 - `GET /healthz` on the voice service and `GET /api/v1/health` on the dashboard return `ok: true`. The dashboard's check asks the database too: with Postgres down or slower than a second it answers 503 with `ok: false`.
@@ -144,5 +163,9 @@ A clinic is one validated JSON document (`ClinicConfig` in `packages/core/src/cl
 **For a veterinary clinic**, set `industry` to `vet` when the clinic is created (provisioning or the seed; Settings does not change it) and fill in the emergency hospital: the animal emergency script sends owners there. Choose what happens while you are closed (book, or take requests for the morning), and set the average visit value the Quality page uses for bookings made after hours. See [industries.md](industries.md).
 
 **The MCP address.** `ATTENDRA_MCP_URL` on the API, such as `https://app.example.com/mcp`, is shown on **Settings > API keys** so an owner can copy it with a key. Behind a reverse proxy, set `TRUST_PROXY=true` on the MCP server too, so its limit on requests without a working key counts each client's address, not the proxy's ([mcp.md](mcp.md)).
+
+**Behind Cloudflare.** With the dashboard's reverse proxy behind Cloudflare's proxy, every request reaches it from a Cloudflare address, so the API's rate limits would count Cloudflare's edges instead of the browsers. Set `TRUST_CLOUDFLARE=true` with `TRUST_PROXY=true` on the API: a request that reached your proxy from one of Cloudflare's published addresses (the list is in `apps/api/src/http/cloudflare-ips.ts`, with its source and date) is counted as the address in its `CF-Connecting-IP`; from anywhere else that header is ignored, so a client that reaches your server directly cannot choose its own address.
+
+**Paging.** Alerts go to Slack (`ATTENDRA_SLACK_WEBHOOK_URL`). The few that need someone at once, the P0 kinds in `packages/observability/src/paging.ts` (the change notices lost, a burst of failed, dropped or empty calls), also page the on-call phone when `ATTENDRA_PAGER_NTFY_URL` is set: an [ntfy](https://ntfy.sh) topic, with the ntfy app on the phone subscribed to it. Each kind pages at most once an hour. With `ATTENDRA_RUNBOOK_URL` set, the Slack line and the page link to `<ATTENDRA_RUNBOOK_URL>/<runbook>.md`.
 
 **Extra menu links.** `ATTENDRA_ACCOUNT_LINKS` on the API adds links for owners to the dashboard menu, as JSON: `[{"label":"Billing","href":"https://billing.example/{clinicId}"}]`. An href is an `https://` address or a path, and `{clinicId}` becomes the clinic's id. At most five; leave it unset for none.

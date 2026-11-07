@@ -50,11 +50,14 @@ const BUSY_WAITS = [2_000, 5_000];
  * twice, and then the problem dialog says so.
  */
 async function send(path: string, init: RequestInit): Promise<Response> {
+  // every POST carries an idempotency key, the same one through its own retries here: a request
+  // that reached the API before the answer was lost is answered again, never done twice
+  const once: Record<string, string> = (init.method ?? 'GET').toUpperCase() === 'POST' ? { 'idempotency-key': newKey() } : {};
   for (let tried = 0; ; tried++) {
     const res = await fetch(`/api/v1${path}`, {
       ...init,
       credentials: 'same-origin',
-      headers: { ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
+      headers: { ...(init.body ? { 'content-type': 'application/json' } : {}), ...once, ...init.headers },
     });
     if (res.status !== 429) return res;
     if (tried === BUSY_WAITS.length) {

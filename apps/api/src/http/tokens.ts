@@ -73,6 +73,8 @@ export interface ApiOptions {
   searchScan?: boolean;
   /** The bearer token for /api/v1/provisioning; without it those routes answer 404. */
   provisioningToken?: string;
+  /** 'require': provisioning requests must be signed with the token (http/signature.ts); the bearer alone is refused. Default 'accept': either. */
+  provisioningSignatures?: 'accept' | 'require';
   /** "Forgot password" works: the hosting layer's mail hook is set. The sign-in page offers it. */
   passwordReset?: boolean;
   /** A live stream ends after `maxMs` (60 minutes) and checks the watcher's session every `recheckMs` (5 minutes). */

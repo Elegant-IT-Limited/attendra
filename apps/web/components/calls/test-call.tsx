@@ -140,7 +140,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
 
   /** Ends a started session through the API; keepalive lets the request outlive a closed tab. */
   const endRemote = useCallback((id: string) => {
-    void fetch(`/api/v1/clinics/${clinicId}/test-calls/${id}/end`, { method: 'POST', credentials: 'same-origin', keepalive: true }).catch(() => {});
+    void fetch(`/api/v1/clinics/${clinicId}/test-calls/${id}/end`, { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'idempotency-key': newKey() } }).catch(() => {});
   }, [clinicId]);
 
   /**
@@ -342,7 +342,7 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     const id = simulatedId.current;
     simulatedId.current = null;
     setSimulated(null);
-    if (id) void fetch(`/api/v1/clinics/${clinicId}/calls/${id}/live/end`, { method: 'POST', credentials: 'same-origin', keepalive, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: newKey() }) }).catch(() => {});
+    if (id) void fetch(`/api/v1/clinics/${clinicId}/calls/${id}/live/end`, { method: 'POST', credentials: 'same-origin', keepalive, headers: { 'content-type': 'application/json', 'idempotency-key': newKey() }, body: JSON.stringify({ key: newKey() }) }).catch(() => {});
   }, [clinicId]);
   // a simulated call ends on its own page too: the bar goes once the call is no longer live
   const live = useQuery({

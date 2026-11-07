@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { connect, createPhiCipher, KnowledgeRepository, LISTEN_DOWN_ALERT_MS, pgChangeFeed } from '@attendra/db';
+import { connect, createPhiCipher, KnowledgeRepository, LISTEN_DOWN_ALERT_MS, logConnectionRole, pgChangeFeed, serviceDatabaseUrl } from '@attendra/db';
 import { HybridKnowledgeBase, LocalAnswerer, ModelAnswerer } from '@attendra/knowledge';
 import { createAlerter, createLogger } from '@attendra/observability';
 import { bossQueue, createBoss } from '@attendra/worker/queue';
@@ -17,7 +17,9 @@ const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
 const alerts = createAlerter({ webhookUrl: env.ATTENDRA_SLACK_WEBHOOK_URL, service: 'api', log });
 if (env.ATTENDRA_DEMO_MODE) log.warn({}, 'demo mode: two-factor is not required. Do not use with real patient data.');
 
-const db = connect(env.DATABASE_URL, { onError: (code) => log.error({ code }, 'database connection error') });
+// queries (and sign-in) on the services' role when given (migration 0051); pg-boss on the owner's URL
+const db = connect(serviceDatabaseUrl(env), { onError: (code) => log.error({ code }, 'database connection error') });
+await logConnectionRole(db, log, !!env.ATTENDRA_SERVICE_DATABASE_URL);
 // sends jobs only (document indexing); the worker runs them
 const boss = createBoss({ connectionString: env.DATABASE_URL }, { producer: true });
 boss.on('error', (err) => log.error({ err: { message: err.message } }, 'job queue error'));
@@ -34,11 +36,12 @@ const app = await createApi({
   cipher: createPhiCipher(env.ATTENDRA_DATA_KEY),
   auth: createAuth(db, { publicUrl: env.PUBLIC_URL, secret: env.BETTER_AUTH_SECRET, log, passwordReset: mail ?? undefined }),
   log,
-  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, mcpUrl: env.ATTENDRA_MCP_URL, twoFactor: env.ATTENDRA_TWO_FACTOR, idleMinutes: env.ATTENDRA_IDLE_MINUTES, searchScan: env.ATTENDRA_SEARCH_SCAN, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN, passwordReset: !!mail },
+  options: { publicUrl: env.PUBLIC_URL, demoMode: env.ATTENDRA_DEMO_MODE, accountLinks: env.ATTENDRA_ACCOUNT_LINKS, mcpUrl: env.ATTENDRA_MCP_URL, twoFactor: env.ATTENDRA_TWO_FACTOR, idleMinutes: env.ATTENDRA_IDLE_MINUTES, searchScan: env.ATTENDRA_SEARCH_SCAN, provisioningToken: env.ATTENDRA_PROVISIONING_TOKEN, provisioningSignatures: env.ATTENDRA_PROVISIONING_SIGNATURES, passwordReset: !!mail },
   trustProxy: env.TRUST_PROXY,
+  trustCloudflare: env.TRUST_CLOUDFLARE,
   voice: env.VOICE_URL && env.VOICE_INTERNAL_TOKEN ? httpVoiceClient(env.VOICE_URL, env.VOICE_INTERNAL_TOKEN) : null,
   jobs: bossQueue(boss),
-  changes: pgChangeFeed(env.DATABASE_URL, {
+  changes: pgChangeFeed(serviceDatabaseUrl(env), {
     onError: (code) => log.warn({ code }, 'change notices: connection error'),
     // no screen hears of a change until it is back; then every open screen reads again
     onDown: () => alerts.alert('change_notices_down', `the API has not heard database change notices for over ${LISTEN_DOWN_ALERT_MS / 1000} s; open screens refresh only on their slow safety check until it is back.`),

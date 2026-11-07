@@ -2,6 +2,9 @@
 # A server that is down cannot say so itself, so this check lives elsewhere. Each address
 # gets three tries 20 s apart; one that still fails is posted to Slack (the repository
 # secret UPTIME_SLACK_WEBHOOK_URL) and fails the run. Free: the repository is public.
+# A site that is down is a P0: with the secret UPTIME_PAGER_NTFY_URL (an ntfy topic, as
+# ATTENDRA_PAGER_NTFY_URL on the server) it also pages the on-call phone, and with the
+# repository variable RUNBOOK_URL the page links to <RUNBOOK_URL>/not-answering.md.
 name: uptime
 
 on:
@@ -31,6 +34,8 @@ jobs:
         env:
           SLACK: ${{ secrets.UPTIME_SLACK_WEBHOOK_URL }}
           SLACK_TEST: ${{ inputs.slack_test }}
+          PAGER: ${{ secrets.UPTIME_PAGER_NTFY_URL }}
+          RUNBOOK_URL: ${{ vars.RUNBOOK_URL }}
         run: |
           # a run started by hand can check the Slack path itself; a failure here is said in the run
           if [ "$SLACK_TEST" = "true" ]; then
@@ -64,6 +69,13 @@ jobs:
             text="[uptime] :rotating_light: Attendra is not answering from outside: ${down[*]}. Checked 3 times, 20 s apart. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             if [ -n "$SLACK" ]; then
               curl -s -o /dev/null -X POST -H 'content-type: application/json' --data "$(jq -n --arg t "$text" '{text: $t}')" "$SLACK" || true
+            fi
+            # the page: once per failed run, which is at most every 10 minutes
+            if [ -n "$PAGER" ]; then
+              link=; case "$RUNBOOK_URL" in https://*) link="${RUNBOOK_URL%/}/not-answering.md" ;; esac
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Title: Attendra P0: not answering (uptime)' -H 'Priority: urgent' -H 'Tags: rotating_light' \
+                ${link:+-H "Click: $link"} --data-binary "$text${link:+ Runbook: $link}" "$PAGER" || true)
+              [ "$code" = "200" ] || echo "::warning::the pager answered $code"
             fi
             echo "::error::$text"
             exit 1

@@ -29,7 +29,7 @@ export function totp(uri: string, at = Date.now()) {
 }
 
 /** `logs` collects every line the API and Better Auth log, for tests that prove something never reaches them. */
-export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; mcpUrl?: string; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples' | 'rateLimit'>) {
+export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | null; now?: () => Date; logs?: string[]; liveStream?: ApiOptions['liveStream']; accountLinks?: ApiOptions['accountLinks']; mcpUrl?: string; twoFactor?: ApiOptions['twoFactor']; provisioningToken?: string; provisioningSignatures?: ApiOptions['provisioningSignatures']; changes?: boolean; mails?: MailRequest[] } & Pick<ApiDeps, 'jobs' | 'knowledge' | 'webhooks' | 'voiceSamples' | 'rateLimit' | 'trustProxy' | 'trustCloudflare'>) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);
   const { patientIds } = await seedDemo(t.db, cipher);
@@ -55,18 +55,18 @@ export async function startApi(opts: { demoMode: boolean; voice?: VoiceClient | 
   });
 
   const changes = opts.changes ? await pgliteChangeFeed(t.client) : null;
-  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples, mail, rateLimit: opts.rateLimit });
+  const app = await createApi({ db: t.db, cipher, auth, log, options: { publicUrl: ORIGIN, demoMode: opts.demoMode, liveStream: opts.liveStream, accountLinks: opts.accountLinks, mcpUrl: opts.mcpUrl, twoFactor: opts.twoFactor, provisioningToken: opts.provisioningToken, provisioningSignatures: opts.provisioningSignatures, passwordReset: !!opts.mails }, voice: opts.voice, now: opts.now, jobs: opts.jobs, knowledge: opts.knowledge, webhooks: opts.webhooks, changes, voiceSamples: opts.voiceSamples, mail, rateLimit: opts.rateLimit, trustProxy: opts.trustProxy, trustCloudflare: opts.trustCloudflare });
   const http = app.getHttpAdapter().getInstance();
 
   type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** `raw` sends bytes as they are, with the content-type given in `headers` (a picture, a document). */
-  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; raw?: Buffer; origin?: string | null; authorization?: string; headers?: Record<string, string> } = {}) => {
+  const request = async (method: Method, url: string, o: { cookie?: string; body?: unknown; raw?: Buffer; origin?: string | null; authorization?: string; headers?: Record<string, string>; remoteAddress?: string } = {}) => {
     const headers: Record<string, string> = { ...o.headers };
     if (o.cookie) headers.cookie = o.cookie;
     if (o.authorization) headers.authorization = o.authorization;
     if (o.origin !== null) headers.origin = o.origin ?? ORIGIN;
     if (o.body !== undefined) headers['content-type'] = 'application/json';
-    return http.inject({ method, url, headers, payload: o.raw ?? (o.body === undefined ? undefined : JSON.stringify(o.body)) });
+    return http.inject({ method, url, headers, ...(o.remoteAddress ? { remoteAddress: o.remoteAddress } : {}), payload: o.raw ?? (o.body === undefined ? undefined : JSON.stringify(o.body)) });
   };
 
   const cookieFrom = (setCookie: string | string[] | undefined) =>

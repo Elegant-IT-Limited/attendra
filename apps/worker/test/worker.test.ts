@@ -40,7 +40,7 @@ const summaryOf = (clinicId: string, callId: string) =>
 const audits = (clinicId: string, action: string) =>
   withClinic(t.db, clinicId, (tx) => tx.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.clinicId, clinicId), eq(schema.auditLogs.action, action))));
 
-const lines = async (callId: string) => ((await t.db.execute(sql`select count(*)::int as n from call_segments where call_id = ${callId}`)).rows[0] as { n: number }).n;
+const lines = async (callId: string) => ((await t.owner.execute(sql`select count(*)::int as n from call_segments where call_id = ${callId}`)).rows[0] as { n: number }).n;
 
 beforeAll(async () => {
   t = await openTestDatabase();
@@ -156,12 +156,12 @@ describe('the retention purge', () => {
     const recent = await closedCall(OTHER.id);
     const h = handlers({ boss: { send: async () => null }, db: t.db, cipher, summariser: new LocalSummariser(), log, now: () => new Date() });
     await h.summariseCall({ clinicId: OTHER.id, callId: old });
-    await t.db.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
+    await t.owner.execute(sql`update calls set started_at = now() - interval '40 days' where id = ${old}`);
 
     await calls.recordAction(OTHER.id, old, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
     await calls.recordAction(OTHER.id, recent, { tool: 'get_clinic_info', argsRedacted: ['question'], result: { ok: true }, taskRevision: 1 });
 
-    const actionsOf = async (id: string) => ((await t.db.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
+    const actionsOf = async (id: string) => ((await t.owner.execute(sql`select count(*)::int as n from call_actions where call_id = ${id}`)).rows[0] as { n: number }).n;
     const oldActions = await actionsOf(old);
     const recentActions = await actionsOf(recent);
 
@@ -183,7 +183,7 @@ describe('the retention purge', () => {
     const event = async (id: string, days: number) => {
       await hooks.record({ id, clinicId: OTHER.id, type: 'call.completed', data: {}, occurredAt: new Date().toISOString() });
       await hooks.logAttempt(OTHER.id, { endpointId: endpoint, eventId: id, kind: 'automatic', attempt: 1, statusCode: 200, durationMs: 5, error: null });
-      await t.db.execute(sql`update webhook_events set created_at = now() - make_interval(days => ${days}) where id = ${id}`);
+      await t.owner.execute(sql`update webhook_events set created_at = now() - make_interval(days => ${days}) where id = ${id}`);
     };
     for (const id of ['evt_old_1', 'evt_old_2', 'evt_old_3']) await event(id, 40);
     await event('evt_recent', 5);
@@ -203,7 +203,7 @@ describe('the retention purge', () => {
 
   it('works through old calls in batches, each its own transaction', async () => {
     const ids = [await closedCall(OTHER.id), await closedCall(OTHER.id), await closedCall(OTHER.id)];
-    await t.db.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
+    await t.owner.execute(sql`update calls set started_at = now() - interval '50 days' where id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`);
     const seen = new Set((await audits(OTHER.id, 'retention.purged')).map((r) => r.id));
     const counts = await purgeCallRecords(t.db, OTHER.id, new Date(Date.now() - 30 * 86_400_000), 2);
     expect(counts.transcriptLines).toBe(3);
@@ -323,9 +323,9 @@ describe('a refill ready to pick up', () => {
   let saved: unknown;
   beforeAll(async () => {
     saved = await clinicById(t.db, DEMO_CLINIC.id);
-    await t.db.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || '{"enabled": true}'::jsonb) where id = ${DEMO_CLINIC.id}`);
+    await t.owner.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || '{"enabled": true}'::jsonb) where id = ${DEMO_CLINIC.id}`);
   });
-  afterAll(async () => { await t.db.execute(sql`update clinics set config = ${JSON.stringify(saved)}::jsonb where id = ${DEMO_CLINIC.id}`); });
+  afterAll(async () => { await t.owner.execute(sql`update clinics set config = ${JSON.stringify(saved)}::jsonb where id = ${DEMO_CLINIC.id}`); });
 
   it('texts a request from a call only when the caller said yes to the text', async () => {
     const sent: string[] = [];
@@ -372,7 +372,7 @@ describe('a refill ready to pick up', () => {
     };
     const before = await clinicById(t.db, DEMO_CLINIC.id);
     const wording = JSON.stringify({ refill_sent: { en: { extra: 'Bring your ID when you collect it' } } });
-    await t.db.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || jsonb_build_object('wording', ${wording}::jsonb)) where id = ${DEMO_CLINIC.id}`);
+    await t.owner.execute(sql`update clinics set config = config || jsonb_build_object('texting', coalesce(config->'texting', '{}'::jsonb) || jsonb_build_object('wording', ${wording}::jsonb)) where id = ${DEMO_CLINIC.id}`);
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-sent-1', 'refill_sent', 'CVS on Main St') })).toBe('sent');
     expect(await h.requestReady({ clinicId: DEMO_CLINIC.id, taskId: await decided('refill-no-1', 'refill_declined', 'CVS on Main St') })).toBe('sent');
     // collected at the clinic: "sent to your pharmacy" would be wrong, so nothing goes out for it
@@ -381,7 +381,7 @@ describe('a refill ready to pick up', () => {
     expect(sent[0]).toContain('Bring your ID when you collect it. Reply STOP to opt out.');
     expect(sent[1]).toMatch(/About your recent request \(R-\d+\), please call us on/);
     expect(sent.join(' ')).not.toMatch(/carprofen/i);
-    await t.db.execute(sql`update clinics set config = ${JSON.stringify(before)}::jsonb where id = ${DEMO_CLINIC.id}`);
+    await t.owner.execute(sql`update clinics set config = ${JSON.stringify(before)}::jsonb where id = ${DEMO_CLINIC.id}`);
   });
 
   it('sends nothing when texts are off, and keeps why on the request', async () => {
@@ -485,12 +485,12 @@ describe('the backup route', () => {
 
 describe('team invitations nobody answered', () => {
   it('are closed by the worker after 7 days, with an audit row dated when each lapsed; reading them changes nothing', async () => {
-    await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_inviter', 'Inviter', 'inviter@maple.example', true)`);
+    await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values ('u_inviter', 'Inviter', 'inviter@maple.example', true)`);
     const sent = new Date('2026-11-06T15:00:00Z');
     const invited = await inviteToTeam(t.db, DEMO_CLINIC.id, { userId: 'u_inviter', role: 'owner' }, { email: 'late@elsewhere.example', role: 'staff' }, sent);
     if (invited.result !== 'done') throw new Error(invited.result);
     const later = new Date(sent.getTime() + 8 * 86_400_000);
-    const status = async () => ((await t.db.execute(sql`select status from invitations where id = ${invited.id}`)).rows[0] as { status: string }).status;
+    const status = async () => ((await t.owner.execute(sql`select status from invitations where id = ${invited.id}`)).rows[0] as { status: string }).status;
     expect(await invitationsFor(t.db, 'late@elsewhere.example', later)).toEqual([]);
     expect(await status()).toBe('pending');
     expect(await audits(DEMO_CLINIC.id, 'member.invite.expired')).toHaveLength(0);
@@ -518,7 +518,7 @@ describe('the daily digest', () => {
     expect(text).toMatch(/Stalls \(5 s of silence after the caller spoke\): \d+ in \d+ calls? \([^)]*clinic_other 1/);
     expect(text).toMatch(/Answers past the 60 s limit: \d+ in \d+ calls? \([^)]*clinic_other 1/);
     // the row keeps the numbers, so the digest never depends on logs
-    const [row] = (await t.db.execute(sql`select first_audio_ms, stalls, answer_timeouts from calls where id = ${stalled}`)).rows;
+    const [row] = (await t.owner.execute(sql`select first_audio_ms, stalls, answer_timeouts from calls where id = ${stalled}`)).rows;
     expect(row).toEqual({ first_audio_ms: 700, stalls: 2, answer_timeouts: 1 });
     expect(text).not.toContain('5550147');
   });

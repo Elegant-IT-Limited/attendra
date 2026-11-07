@@ -1,0 +1,15 @@
+{
+  "booking": [
+    "Hi, I'd like to book a check-up for my dog Biscuit next Tuesday.",
+    "He's a four year old beagle, and he's due for his shots.",
+    "Tuesday morning would be best, around ten if you have it.",
+    "Yes, that works. Please book it.",
+    "No, that's everything. Thank you, bye."
+  ],
+  "question": [
+    "Hello, what time are you open on Saturday?",
+    "Do you trim nails for cats, and how long does that take?",
+    "Could someone call me back about my cat Pepper's vaccines?",
+    "Great, that's all I needed. Goodbye."
+  ]
+}

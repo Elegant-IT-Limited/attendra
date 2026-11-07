@@ -47,7 +47,7 @@ describe('one number, one form: the stored-phone clean-up', () => {
 
     const again = await normalisePhones(t.db, cipher, { apply: true });
     expect(again).toMatchObject({ records: 0, requests: 0, settings: 0, storedTwice: 0 });
-    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.phone.normalised'`)).rows;
+    const audit = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.phone.normalised'`)).rows;
     expect(audit).toEqual([{ n: dry.records }]);
   });
 });

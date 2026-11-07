@@ -22,7 +22,7 @@ const endOf = async (userEmail: string) => {
   return new Date(rows.rows[0]!.expires_at).getTime();
 };
 /** The session as if it had been renewed `hours` ago: its end is 12 hours after that. */
-const renewedAgo = (userEmail: string, hours: number) => api.t.db.execute(sql`
+const renewedAgo = (userEmail: string, hours: number) => api.t.owner.execute(sql`
   update auth_sessions set expires_at = now() + make_interval(secs => ${(SESSION_HOURS - hours) * 3600}), updated_at = now() - make_interval(secs => ${hours * 3600})
   where user_id = (select id from auth_users where email = ${userEmail})`);
 

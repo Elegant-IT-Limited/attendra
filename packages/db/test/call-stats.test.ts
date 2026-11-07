@@ -1,7 +1,7 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, callStats, createPhiCipher, formatCallStats, groupCallStats, seedDemo, withClinic } from '../src';
+import { CallRepository, callStats, createPhiCipher, formatCallStats, FrontDeskRepository, groupCallStats, seedDemo, statsRow, withClinic } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -61,10 +61,34 @@ describe('db:call-stats', () => {
     expect(groups[0]!.costPerMinute).toBeGreaterThan(0);
   });
 
+  it('measures a call read through the API (the load test) to the same turn times as the database', async () => {
+    const rows = await callStats(t.db, cipher, { clinicIds: [DEMO_CLINIC.id], since });
+    const desk = new FrontDeskRepository(t.db, cipher);
+    for (const want of rows.filter((r) => r.segments)) {
+      const c = (await desk.getCall(DEMO_CLINIC.id, want.id, 'user_load_test'))!;
+      // what the API answers: numbers as numbers, and no engine, flow or quality fields
+      const got = statsRow({ ...c, engine: null, voiceFlow: null, firstAudioMs: null, stalls: null, answerTimeouts: null, voiceSeconds: want.voiceSeconds },
+        DEMO_CLINIC.id, c.transcript, c.actions, null);
+      expect({ voiceOnlyMs: got.voiceOnlyMs, lookupMs: got.lookupMs, lookupEstimated: got.lookupEstimated, closeReason: got.closeReason })
+        .toEqual({ voiceOnlyMs: want.voiceOnlyMs, lookupMs: want.lookupMs, lookupEstimated: want.lookupEstimated, closeReason: want.closeReason });
+    }
+  });
+
   it('prints numbers and id prefixes only, never a word of a transcript', async () => {
     const rows = await callStats(t.db, cipher, { clinicIds: [DEMO_CLINIC.id], since });
     const text = formatCallStats(rows, { perCall: true }).join('\n');
     expect(text).toContain('lookup answer ms');
     for (const word of ['Biscuit', 'Thursday', 'Okafor', 'close today', 'Friday']) expect(text).not.toContain(word);
+  });
+});
+
+describe('the questions in a line', () => {
+  it('are the runs that end in "?", as /[^.!?]*\\?/g finds them, and a long line without one is quick', async () => {
+    const { questionsIn } = await import('../src/repositories/call-stats');
+    const regex = (t: string) => t.match(/[^.!?]*\?/g) ?? [];
+    for (const line of ['Hi. Is it Biscuit? Yes! When?', 'no question here.', '??', 'What day works. Tuesday? Or Wednesday?!', '']) expect(questionsIn(line)).toEqual(regex(line));
+    const started = Date.now();
+    expect(questionsIn(' '.repeat(200_000))).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

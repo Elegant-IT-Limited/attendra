@@ -8,7 +8,7 @@ const C = `/api/v1/clinics/${DEMO_CLINIC.id}/doctors`;
 let api: Awaited<ReturnType<typeof startApi>>;
 let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 
-const stored = async () => ClinicConfig.parse(((await api.t.db.execute(sql`select config from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { config: unknown }).config);
+const stored = async () => ClinicConfig.parse(((await api.t.owner.execute(sql`select config from clinics where id = ${DEMO_CLINIC.id}`)).rows[0] as { config: unknown }).config);
 const kim = {
   name: 'Dr. Jae Kim', gender: 'male', specialty: 'Pediatrics', categories: ['Children', 'Vaccinations'], ages: { min: 0, max: 17 }, acceptingNewPatients: true,
   visitTypeIds: ['vt_sick', 'vt_new'], hours: { '1': [{ open: '09:00', close: '13:00' }] }, timeOff: [{ from: '2026-12-24', to: '2026-12-31' }],
@@ -53,7 +53,7 @@ describe('doctors', () => {
     id = added.id;
     expect(id).toMatch(/^prov_jae_kim_[a-z0-9]{4}$/);
     expect((await stored()).providers.find((p) => p.id === id)).toMatchObject({ specialty: 'Pediatrics', ages: { min: 0, max: 17 }, timeOff: [{ from: '2026-12-24', to: '2026-12-31' }] });
-    const audit = (await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = 'clinic.doctor.added'`)).rows;
+    const audit = (await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = 'clinic.doctor.added'`)).rows;
     expect(audit).toEqual([{ actor: `user:${api.users.admin}`, entity_id: id }]);
   });
 
@@ -85,7 +85,7 @@ describe('doctors', () => {
   it('sends a warning for each visit type nobody does, in the same words Settings shows', async () => {
     const before = await stored();
     expect((await api.request('GET', C, { cookie: as.staff })).json().noProvider).toEqual([]);
-    const put = async (config: unknown) => api.t.db.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
+    const put = async (config: unknown) => api.t.owner.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
     await put({ ...before, providers: before.providers.map((p) => ({ ...p, visitTypeIds: p.visitTypeIds.filter((v) => v !== 'vt_new') })) });
     const list = (await api.request('GET', C, { cookie: as.staff })).json();
     expect(list.noProvider).toEqual([{ visitTypeId: 'vt_new', message: 'No doctor does new patient visit: callers can\'t book it' }]);
@@ -117,11 +117,11 @@ describe('doctors', () => {
     expect((await api.request('PUT', lists, { cookie: as.owner, body: { values: ['Family medicine', 'Pediatrics', 'Surgery'] } })).statusCode).toBe(200);
     expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, specialty: 'Surgery' } })).statusCode).toBe(200);
     // a value already on the doctor that has left the list stays when the doctor is saved again: nothing is lost
-    await api.t.db.execute(sql`update clinics set config = jsonb_set(config, '{lists,specialties}', '["Family medicine", "Pediatrics"]') where id = ${DEMO_CLINIC.id}`);
+    await api.t.owner.execute(sql`update clinics set config = jsonb_set(config, '{lists,specialties}', '["Family medicine", "Pediatrics"]') where id = ${DEMO_CLINIC.id}`);
     expect((await api.request('PUT', `${C}/${id}`, { cookie: as.owner, body: { ...kim, specialty: 'Surgery', acceptingNewPatients: false } })).statusCode).toBe(200);
     expect((await stored()).providers.find((p) => p.id === id)!.specialty).toBe('Surgery');
     // and put back as it was for the tests below
-    await api.t.db.execute(sql`update clinics set config = ${JSON.stringify({ ...before, providers: (await stored()).providers.map((p) => (p.id === id ? { ...p, specialty: 'Pediatrics' } : p)) })}::jsonb where id = ${DEMO_CLINIC.id}`);
+    await api.t.owner.execute(sql`update clinics set config = ${JSON.stringify({ ...before, providers: (await stored()).providers.map((p) => (p.id === id ? { ...p, specialty: 'Pediatrics' } : p)) })}::jsonb where id = ${DEMO_CLINIC.id}`);
   });
 
   it('refuses a number another doctor at the clinic has, under the field, and keeps the numbers as the clinic dials them', async () => {
@@ -145,19 +145,19 @@ describe('doctors', () => {
   it('lets the stand-in a new clinic starts with go once a real doctor is added, unless a visit points at it', async () => {
     const before = await stored();
     const standIn = { id: 'prov_1', name: 'our doctor', visitTypeIds: ['vt_sick'], placeholder: true, categories: [], acceptingNewPatients: true, timeOff: [] };
-    const put = async (config: unknown) => api.t.db.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
+    const put = async (config: unknown) => api.t.owner.execute(sql`update clinics set config = ${JSON.stringify(config)}::jsonb where id = ${DEMO_CLINIC.id}`);
     await put({ ...before, providers: [...before.providers, standIn] });
     const added = await api.request('POST', C, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale' } });
     expect(added.statusCode).toBe(201);
     expect((await stored()).providers.some((p) => p.id === 'prov_1')).toBe(false);
     // with a visit on file, it stays in the settings, and the dashboard and the assistant pass it by
     await put({ ...(await stored()), providers: [...(await stored()).providers, standIn] });
-    await api.t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
+    await api.t.owner.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key, created_by_user_id)
       values (${DEMO_CLINIC.id}, ${api.patientIds.maria}, 'prov_1', 'vt_sick', '2026-09-01T15:00:00Z', '2026-09-01T15:20:00Z', 'doctors-test-stand-in', ${api.users.owner})`);
     const vale = (await stored()).providers.find((p) => p.name === 'Ines Vale')!;
     expect((await api.request('PUT', `${C}/${vale.id}`, { cookie: as.owner, body: { ...kim, name: 'Dr. Ines Vale', acceptingNewPatients: false } })).statusCode).toBe(200);
     expect((await stored()).providers.some((p) => p.id === 'prov_1')).toBe(true);
-    await api.t.db.execute(sql`delete from appointments where provider_id = 'prov_1'`);
+    await api.t.owner.execute(sql`delete from appointments where provider_id = 'prov_1'`);
     await put({ ...before, providers: before.providers });
   });
 

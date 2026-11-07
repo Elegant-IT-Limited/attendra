@@ -106,7 +106,7 @@ export class CallRepository {
 
 /**
  * Fills the digit keys of migration 0049 (call_search_keys) for calls that still have their number (from_enc) and no
- * keys, or keys made another way. Safe to run more than once: only keys that differ are written. Owner connection, one
+ * keys, or keys made another way. Safe to run more than once: only keys that differ are written. One
  * clinic at a time, 1,000 calls per read, with one audit row per clinic that records how many changed. With `apply`
  * false nothing is written: the counts say what a run with it would change.
  */
@@ -148,8 +148,8 @@ export async function rehashCallLookups(db: Database, cipher: PhiCipher, opts: {
 }
 
 /**
- * Runs before the tenant is known, as the connecting (owner) role: which clinic
- * owns the number that was dialled. Returns the stored config for the caller to
+ * Runs before the tenant is known, on the connecting role: which clinic owns the
+ * number that was dialled, from the tenant registry (open to the services' role, 0051). Returns the stored config for the caller to
  * validate with ClinicConfig.parse.
  */
 export async function clinicForNumber(db: Database, e164: string): Promise<unknown | null> {
@@ -159,14 +159,14 @@ export async function clinicForNumber(db: Database, e164: string): Promise<unkno
   return row?.config ?? null;
 }
 
-/** Every number calls come in on, with its open clinic's config: for the backup route. Owner connection; no PHI. */
+/** Every number calls come in on, with its open clinic's config: for the backup route. Tenant registry; no PHI. */
 export async function activeNumbers(db: Database): Promise<{ e164: string; config: unknown }[]> {
   return db.select({ e164: phoneNumbers.e164, config: clinics.config }).from(phoneNumbers)
     .innerJoin(clinics, eq(clinics.id, phoneNumbers.clinicId))
     .where(and(eq(phoneNumbers.status, 'active'), isNull(clinics.closedAt)));
 }
 
-/** A clinic's stored config by id, for a test call started from the dashboard. Owner connection; no PHI. */
+/** A clinic's stored config by id, for a test call started from the dashboard. Tenant registry; no PHI. */
 export async function clinicById(db: Database, clinicId: string): Promise<unknown | null> {
   const [row] = await db.select({ config: clinics.config }).from(clinics).where(eq(clinics.id, clinicId));
   return row?.config ?? null;
@@ -262,14 +262,18 @@ export function formatCallTimeline(callId: string, t: { clinicId: string; channe
 }
 
 /**
- * The calls started since `since`, across every clinic, as the daily digest counts them.
- * Owner connection, like the worker's other cross-clinic jobs; codes and counts only, no
- * caller, no words.
+ * The calls started since `since`, across every clinic, as the daily digest counts them:
+ * one clinic at a time, each under its own row-level security, like the worker's other
+ * cross-clinic jobs. Codes and counts only, no caller, no words.
  */
 export async function callsForDigest(db: Database, since: Date): Promise<DigestCall[]> {
-  const rows = await db.select({
-    clinicId: calls.clinicId, channel: calls.channel, outcome: calls.outcome, closeReason: calls.closeReason,
-    firstAudioMs: calls.firstAudioMs, stalls: calls.stalls, answerTimeouts: calls.answerTimeouts, endedAt: calls.endedAt,
-  }).from(calls).where(gte(calls.startedAt, since));
-  return rows.map(({ endedAt, ...r }) => ({ ...r, ended: endedAt !== null }));
+  const out: DigestCall[] = [];
+  for (const { id: clinicId } of await db.select({ id: clinics.id }).from(clinics).orderBy(clinics.id)) {
+    const rows = await withClinic(db, clinicId, (tx) => tx.select({
+      clinicId: calls.clinicId, channel: calls.channel, outcome: calls.outcome, closeReason: calls.closeReason,
+      firstAudioMs: calls.firstAudioMs, stalls: calls.stalls, answerTimeouts: calls.answerTimeouts, endedAt: calls.endedAt,
+    }).from(calls).where(and(eq(calls.clinicId, clinicId), gte(calls.startedAt, since))));
+    out.push(...rows.map(({ endedAt, ...r }) => ({ ...r, ended: endedAt !== null })));
+  }
+  return out;
 }

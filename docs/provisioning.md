@@ -5,9 +5,25 @@ A hosting layer (sign-up, billing, phone numbers) opens and runs accounts throug
 ```bash
 # the API's .env
 ATTENDRA_PROVISIONING_TOKEN=...   # 32 characters or more: openssl rand -base64 32
+ATTENDRA_PROVISIONING_SIGNATURES=accept   # or require: signed requests only (below)
 ```
 
-Without the token the routes answer 404. With it, every request needs `Authorization: Bearer <token>`. Call them from the server only, never from a browser. None of them reads patient data.
+Without the token the routes answer 404. With it, every request needs `Authorization: Bearer <token>`, or a signature made with it (below). Call them from the server only, never from a browser. None of them reads patient data.
+
+### Signed requests
+
+A request can prove it holds the token without sending it: it carries the time it was made and an HMAC-SHA256, keyed with the token, of that time, the method, the path with its query, and a SHA-256 of the body (`apps/api/src/http/signature.ts`):
+
+```
+attendra-timestamp: 1794052800
+attendra-signature: v1=<hex of HMAC-SHA256(token, "<timestamp>\n<METHOD>\n<path?query>\n<sha256 hex of the raw body, or of the empty string>")>
+```
+
+A signature is good for 5 minutes either way of the engine's clock, and for that request only: another path, method or body fails it. A signature that is there must be good, whatever else the request carries (`401 bad_signature`, or `signature_expired` when it is old). `ATTENDRA_PROVISIONING_SIGNATURES=require` makes it the only way in: the bearer token alone answers `401 signature_required`. Move a hosting layer over in two steps: sign every request while still sending the bearer token, then require signatures and stop sending it. The engine signs what it posts to the hosting layer's mail hook the same way.
+
+### Sending a POST again
+
+Every POST takes an `Idempotency-Key` header (8 to 128 letters, digits or `-_:.`; a UUID fits). A POST sent again with the same key, after a timeout or a lost answer, is answered with the first answer and `Idempotent-Replayed: true`, and nothing is done twice. The same key with another body answers `422 idempotency_key_reused`; while the first request is still being answered, `409 idempotency_in_progress`. A request that failed frees its key. Answers are kept 24 hours, encrypted. The same works on the dashboard's API, where a key belongs to the person who sent it; the dashboard sends one with every POST.
 
 | Route | What it does |
 |---|---|
@@ -22,6 +38,8 @@ Without the token the routes answer 404. With it, every request needs `Authoriza
 | `POST /provisioning/clinics/:clinicId/test-call-top-up` | `{ remainingSeconds, dryRun? }`: at least this much test-call time left (the limit becomes the time used plus it, never lower). Returns `{ limitSeconds, usedSeconds, newLimitSeconds, changed }`; a clinic with no limit keeps none. |
 | `PUT /provisioning/clinics/:clinicId/numbers/:number` | Points a number (E.164, URL-encoded) at the clinic: calls to it reach the assistant and texts are sent from it. |
 | `DELETE /provisioning/numbers/:number` | Stops a number reaching any clinic. |
+| `GET /provisioning/clinics/:clinicId/purge-preview?force=&keepLogins=` | What the delete below would remove, with the same options, and changes nothing: `{ counts, blockers }`. `counts` is rows per table (`calls`, `patients`, `auth_users`, `pgboss.job`, ...); `blockers` lists what would refuse it. 404 for no such clinic. |
+| `DELETE /provisioning/clinics/:clinicId?force=&keepLogins=` | Deletes the clinic with everything recorded for it, its organization when it was the last clinic, and the logins left with no team. Answers `200 { deleted }`, the rows deleted per table. Without `force=1` only a clinic closed 30 days ago or more (`409 not_closed`, `409 closed_recently`); with it, any clinic, such as a tester's. `keepLogins=1` keeps every login and takes away only its memberships of what went. Always `409 call_in_progress` while a call that started in the last 6 hours has not ended, and `409 number_assigned` while a number still reaches the clinic: release the numbers first. Each 409 also lists every `blockers`. The clinic's audit log goes with it, so the hosting layer keeps its own record of who asked. |
 | `GET /provisioning/clinics/:clinicId/usage?from=&to=` | Phone calls in the period (ISO times): `{ calls, seconds }`, each call start to end, rounded up to the second. Browser test calls are not counted. |
 | `POST /provisioning/clinics/:clinicId/calls-check` | `{ since, from? }`: phone calls that started since `since` (ISO time), ended or not: `{ calls, lastCallAt, heard, openMinutes }`. With `from` (E.164), `heard` says whether one came from that number, compared by its keyed hash (the forwarding check: the owner calls the clinic's own number from a phone); otherwise `null`. `openMinutes` is how long the clinic was open since then, by its hours, holidays and special days, for at most 7 days (a quiet line). A POST, so a number is never in an address. |
 | `GET /provisioning/clinics/:clinicId/report?weeks=1` | The weekly report: the clinic's name, time zone, industry and average visit value, its owners with a confirmed address, and the Quality page's numbers for the last whole weeks, newest first. |

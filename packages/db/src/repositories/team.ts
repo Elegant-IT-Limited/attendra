@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, authVerifications, clinicAccess, clinicMemberships, memberships, userAvatars } from '../auth-schema';
-import type { Database, Tx } from '../client';
+import { type Database, type Tx, setClinicScope } from '../client';
 import { auditLogs, clinics, tasks } from '../schema';
 import type { StaffRole } from './front-desk';
 
@@ -189,7 +189,7 @@ export async function changeTeam(db: Database, clinicId: string, actor: { userId
     else await tx.delete(clinicMemberships).where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.userId, change.userId)));
     // whatever they held goes back to the queue, in each location they left
     for (const id of where) {
-      await tx.execute(sql`select set_config('app.clinic_id', ${id}, true)`);
+      await setClinicScope(tx, id);
       const released = await tx.update(tasks).set({ assigneeUserId: null, claimedAt: null })
         .where(and(eq(tasks.clinicId, id), eq(tasks.status, 'open'), eq(tasks.assigneeUserId, change.userId))).returning({ id: tasks.id });
       if (released.length) {
@@ -244,7 +244,7 @@ export async function membershipCount(db: Database, userId: string) {
 /** A person who can no longer make keys loses the ones they made at these locations, audited. */
 async function revokeKeysOf(tx: Tx, clinicIds: string[], actorId: string, memberId: string) {
   for (const clinicId of clinicIds) {
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    await setClinicScope(tx, clinicId);
     const revoked = (await tx.execute(sql`update api_keys set revoked_at = now() where clinic_id = ${clinicId} and created_by_user_id = ${memberId} and revoked_at is null returning id`)).rows as { id: string }[];
     if (revoked.length) {
       await tx.insert(auditLogs).values(revoked.map((k) => ({ clinicId, actor: `user:${actorId}`, action: 'api_key.revoked', entity: 'api_key', entityId: k.id })));
@@ -259,7 +259,7 @@ async function clinicsOf(tx: Tx, orgId: string) {
 /** Whether this organization removed the person from its team before (its audit log says so). */
 async function removedHere(tx: Tx, orgId: string, userId: string) {
   for (const clinicId of await clinicsOf(tx, orgId)) {
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    await setClinicScope(tx, clinicId);
     const [row] = await tx.select({ id: auditLogs.id }).from(auditLogs)
       .where(and(eq(auditLogs.clinicId, clinicId), eq(auditLogs.action, 'member.removed'), eq(auditLogs.entityId, userId))).limit(1);
     if (row) return true;
@@ -269,7 +269,7 @@ async function removedHere(tx: Tx, orgId: string, userId: string) {
 
 async function audit(tx: Tx, clinicIds: string[], actorId: string, action: string, memberId: string) {
   for (const clinicId of clinicIds) {
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    await setClinicScope(tx, clinicId);
     await tx.insert(auditLogs).values({ clinicId, actor: `user:${actorId}`, action, entity: 'member', entityId: memberId });
   }
 }
