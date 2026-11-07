@@ -198,7 +198,8 @@ export class CallAgent {
       for (const m of fresh) this.state.emergencyKinds.add(m.kind);
       const flagged = flag ? this.flagPetEmergency(flag, recent, turnText, endMs)
         : !this.state.emergencyCase && BORDERLINE.test(normalise(turnText)) ? this.flagBorderline(turnText, endMs) : [];
-      return [...flagged, ...(flagged.length ? [] : this.answerEmergencyCase()), ...this.checkGuards(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+      const answered = flagged.length ? [] : this.answerEmergencyCase();
+      return [...flagged, ...answered, ...(flagged.length || answered.length ? [] : this.afterEmergencyNumber(trade)), ...this.checkGuards(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
     }
     // the clinic's other trades: the word alone is not asked about (a person in danger is, at once, below)
     const danger = trade.emergency ? this.state.answerToDangerQuestion() : null;
@@ -214,7 +215,10 @@ export class CallAgent {
     // emergency, whose script also tells a person in danger to call the emergency number
     // at a clinic for animals this is a person in danger (an animal's red flag went to the state machine above)
     const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => !isPetEmergency(m.kind) && m.kind !== 'general') ?? fresh[0] : fresh[0];
-    if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkGuards(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+    if (!match) {
+      const cleared = [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency()];
+      return [...cleared, ...(cleared.length ? [] : this.afterEmergencyNumber(trade)), ...this.checkGuards(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+    }
     this.state.emergencyCleared = false; // a new emergency holds the call again
     this.sinceLock = '';
 
@@ -307,6 +311,25 @@ export class CallAgent {
     const language = s.language;
     return this.emergencyLine(c, `The caller mentioned a sign that may or may not be serious. Ask once, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.borderlineQuestion(language)}" `
       + 'Then wait for their answer. Give no medical advice.');
+  }
+
+  /**
+   * A person in danger at a clinic for animals, after the emergency number was said: what the caller says next gets a
+   * line from here, never the voice model's own (a live run repeated 911 and added advice, "don't drive", batch 1c).
+   * The first time: call the number now; after that, hang up and call it.
+   */
+  private afterEmergencyNumber(trade: ReturnType<typeof industryPack>): Outbound[] {
+    const s = this.state;
+    if (!trade.emergency || !s.emergencyLocked || !s.emergencyScriptSaid || !s.emergency) return [];
+    if (isPetEmergency(s.emergency.kind) || s.emergency.kind === 'general' || s.emergency.kind === 'self_harm' || s.emergencyCase?.stage === 'escalated') return [];
+    const language = s.language;
+    const number = emergencyNumberFor(this.ctx.clinic, language);
+    const again = s.guardsSaid.has('after_911');
+    s.guardsSaid.add('after_911');
+    const line = language === 'es'
+      ? (again ? `Por favor cuelgue y llame al ${number} ahora.` : `Por favor llame al ${number} ahora. Ellos pueden ayudar de inmediato.`)
+      : (again ? `Please hang up and call ${number} now.` : `Please call ${number} now. They can help right away.`);
+    return [{ type: 'instructions', delegationId: null, content: `Say exactly, word for word: "${line}" Then say nothing more. Give no advice of your own.` }];
   }
 
   /** The caller's answer to the question (or to the one about the sign), when they have given it. */
@@ -820,6 +843,8 @@ export class CallAgent {
       moved: committed || s.outcome === 'rescheduled',
       cancelled: committed || s.outcome === 'cancelled',
       not_found: s.notFound || s.toolLog.some((t) => ['no_pets_on_number', 'unknown_appointment', 'too_many_attempts', 'not_verified', 'last_four_no_match'].includes(t.error ?? '')),
+      // a vet's day comes from the schedule: a slot search or the clinic's information, on this call
+      vet_day: s.toolLog.some((t) => t.name === 'find_slots' || t.name === 'get_clinic_info'),
     };
     const out: Outbound[] = [];
     for (const claim of claimsIn(turn.text)) {
