@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (real time: batch 3)
+
+- **Invitations and role changes appear at once.** Migration 0048 adds triggers on `clinic_memberships`, `memberships` and `invitations` that send a notice to the person it is about (`{user, topic: "me"}`), and a per-person stream, `GET /api/v1/me/changes`, for pages outside a clinic. An invitation shows in the invited person's open tab within 3 seconds; a role change reaches their menu without a reload.
+- **Knowledge, texts and live calls are on the stream.** 0048 adds triggers on `knowledge_documents` (`knowledge`) and `sms_messages` (`texts`); the voice service sends `live` when a live call opens, changes state or ends (at most every 500 ms per clinic).
+- **A stream that dropped catches up.** Every message carries an id; the first message after a reconnect says which topics changed while it was away (the last 60 seconds), or that everything should be read again. If the API loses its LISTEN connection for more than 10 seconds it sends a `change_notices_down` alert, and when it is back every open stream reads everything again.
+- **Screens the stream covers no longer poll**: Today, Calls, Schedule, Requests, knowledge indexing, a call's summary, the menu's count, schedule conflicts, the test-call bar, live calls and invitations. A 2-minute safety poll stays (`SAFETY_POLL_MS`), and the error texts say so from the same number.
+- **A click shows its result at once.** Claiming, assigning or closing a request, and moving or cancelling a visit, update every screen holding a copy before the server answers, and are put back if it says no.
+
 ### Changed (search from the first letter, by keys: batch 3)
 
 - **Every search box searches from the first character**, 150 ms after the last key (`SEARCH_SETTLE_MS`, one hook for every box): Pets, Requests, Calls, ⌘K and "Call as". `POST /calls/search` takes one character too.
