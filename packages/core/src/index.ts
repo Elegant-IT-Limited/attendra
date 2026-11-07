@@ -16,6 +16,7 @@ export * from './call-costs';
 export * from './demo';
 export * from './emergency';
 export * from './emergency-review';
+export * from './emergency-route';
 export * from './hours';
 export * from './identity';
 export * from './industries';

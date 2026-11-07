@@ -1,5 +1,5 @@
 import { PROGRESS_NOTE } from '../src/delegation';
-import { DEMO_CLINIC, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
+import { DEMO_CLINIC, EMERGENCY_LINES, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
@@ -324,17 +324,30 @@ describe('safety', () => {
   });
 
   it('at a veterinary clinic, sends an animal in danger to the emergency hospital, and keeps a person in danger first', async () => {
+    // the demo clinic takes emergencies itself (its on-call line): one question, then on a yes a live transfer
     const pet = await w.call('+17205550172', { clinic: RIVERBEND_CLINIC });
-    const out = pet.caller('my dog got into the antifreeze');
-    const script = out[0]!.type === 'instructions' ? out[0]!.content : '';
-    expect(script).toContain('Front Range Pet Emergency');
-    expect(script).toContain('call 911');
+    const asked = pet.caller('my dog got into the antifreeze');
+    expect(asked[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining(EMERGENCY_LINES.question('en')) });
+    expect(pet.state.emergency).toBeNull();
+    pet.assistant(EMERGENCY_LINES.question('en'));
+    const out = pet.caller('Yes, please help!');
+    const line = out[0]!.type === 'instructions' ? out[0]!.content : '';
+    expect(line).toContain("I'm putting you through to our team now.");
     expect(pet.state.emergency?.kind).toBe('pet_toxin');
     expect(out).toContainEqual({ type: 'transfer', uri: 'tel:+17205550179', afterMs: 8000, quiet: true });
-    // ending the call waits until the hospital's name has been said
+    // ending the call waits until the line has been said
     expect(pet.agent.canEndByStaff()).toBe(false);
-    pet.agent.onAgentTranscript('Please take your pet to Front Range Pet Emergency right away.', 0, 1000);
+    pet.agent.onAgentTranscript("I'm putting you through to our team now. Please stay on the line.", 9000, 11_000);
     expect(pet.agent.canEndByStaff()).toBe(true);
+    // a clinic that refers emergencies: the hospital, said with the person-in-danger number
+    const referring = await w.call('+17205550172', { clinic: { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false } });
+    referring.caller('my dog got into the antifreeze');
+    referring.assistant(EMERGENCY_LINES.question('en'));
+    const sent = referring.caller('yes');
+    const script = sent[0]!.type === 'instructions' ? sent[0]!.content : '';
+    expect(script).toContain('Front Range Pet Emergency');
+    expect(script).toContain('call 911');
+    expect(sent.some((o) => o.type === 'transfer')).toBe(false);
 
     const person = await w.call('+17205550172', { clinic: RIVERBEND_CLINIC });
     const harm = person.caller('my dog died and I want to kill myself');
@@ -824,29 +837,35 @@ describe('what the review found on calls', () => {
     const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
     const c = await w.call('+17205550172', { clinic: open });
     c.caller('my dog ate a whole bar of chocolate');
-    c.assistant('Please take your pet to Front Range Pet Emergency right away.');
+    c.assistant(EMERGENCY_LINES.question('en'));
+    c.caller('yes, just now');
+    c.assistant("I'm putting you through to our team now.");
     for (const doubt of ["I don't think he's okay, he's still not moving", 'Do you think she is okay?', "I hope he's fine", 'No está bien, sigue sin moverse', '¿Usted cree que ella está bien?']) {
       expect(c.caller(doubt), doubt).toEqual([]);
       expect(c.state.emergencyLocked, doubt).toBe(true);
-      c.assistant('Please take him to the emergency hospital now.');
+      c.assistant('Our team will be with you in a moment.');
     }
-    expect(c.caller("but he's fine now, it was a false alarm")[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('animal is safe') });
+    expect(c.caller("but he's fine now, it was a false alarm")[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('not an emergency now') });
   });
 
   it('lets a calm owner carry on after an animal emergency they say is over, and never after a person in danger', async () => {
     const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
     const c = await w.call('+17205550172', { clinic: open });
-    expect(c.caller('my dog swallowed a sock last week')[0]).toMatchObject({ type: 'instructions' });
-    expect(c.state.emergencyLocked).toBe(true);
-    c.assistant('Please take your pet to Front Range Pet Emergency right away.');
-    const cleared = c.caller("he's fine now, it's not an emergency, I just want a check-up");
-    expect(cleared[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('animal is safe') });
+    // in the past but not said to be fine: the one question
+    expect(c.caller('my dog swallowed a sock last week')[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining(EMERGENCY_LINES.question('en')) });
     expect(c.state.emergencyLocked).toBe(false);
-    expect(c.state.emergency?.kind).toBe('pet_toxin'); // still on the record
+    c.assistant(EMERGENCY_LINES.question('en'));
+    const cleared = c.caller("he's fine now, it's not an emergency, I just want a check-up");
+    expect(cleared[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining('If it comes back') });
+    expect(c.state.emergencyLocked).toBe(false);
+    expect(c.state.emergencyResult).toBe('cleared'); // on the record, with the note for the team
+    expect(c.state.emergencyNotes).toEqual(['Owner reported "swallowed a sock" earlier on this call.']);
     const [slots] = (await c.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }])).results;
     expect(slots!.ok).toBe(true);
-    // a new emergency holds the call again
-    c.caller('oh no, now he is having a seizure');
+    // a new red flag: the question again, and a yes holds the call
+    expect(c.caller('oh no, now he is having a seizure')[0]).toMatchObject({ type: 'instructions', content: expect.stringContaining(EMERGENCY_LINES.question('en')) });
+    c.assistant(EMERGENCY_LINES.question('en'));
+    c.caller('yes!');
     expect(c.state.emergencyLocked).toBe(true);
 
     const person = await w.call('+17205550172', { clinic: open });
@@ -858,10 +877,12 @@ describe('what the review found on calls', () => {
 
   it('names the emergency hospital that is open at the time of the call', async () => {
     // Monday 8 pm: the day hospital is closed, the night one is open
-    const clinic = { ...RIVERBEND_CLINIC, emergencyHospital: { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } },
+    const clinic = { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false, emergencyHospital: { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } },
       moreEmergencyHospitals: [{ name: 'Night Vets', phone: '+17205550101', address: '1 Night Road, Denver' }] };
     const c = await w.call('+17205550172', { clinic });
-    const out = c.caller('my cat ate a lily');
+    c.caller('my cat ate a lily');
+    c.assistant(EMERGENCY_LINES.question('en'));
+    const out = c.caller('yes');
     const script = out[0]!.type === 'instructions' ? out[0]!.content : '';
     expect(script).toContain('Night Vets');
     expect(script).not.toContain('Day Referral');

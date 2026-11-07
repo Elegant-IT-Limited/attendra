@@ -67,4 +67,15 @@ describe('the rates table', () => {
     expect(fast.modelUsd).toBeCloseTo(0.2, 6);
     expect(normal.unpriced).toEqual(['mystery-model']);
   });
+
+  it('prices gpt-realtime by its audio and text tokens when they were counted, never also by the minute', () => {
+    // 1M audio tokens in (half of them cached) and 100k out, plus the transcription
+    const models = { 'gpt-realtime-2.1:audio': { input: 1_000_000, cached: 500_000, output: 100_000 }, 'gpt-4o-transcribe': { input: 100_000, cached: 0, output: 0 } };
+    const c = callCost({ engine: 'gpt-realtime', channel: 'phone', voiceSeconds: 600, models, texts: 0 });
+    expect(c.voiceUsd).toBe(0);
+    expect(c.modelUsd).toBeCloseTo(0.5 * 32 + 0.5 * 0.4 + 0.1 * 64 + 0.1 * 2.5, 6);
+    expect(c.unpriced).toEqual([]);
+    // without its tokens (an older call), the minute rate stands in
+    expect(callCost({ engine: 'gpt-realtime', channel: 'web', voiceSeconds: 60, models: {}, texts: 0 }).voiceUsd).toBeCloseTo(CALL_RATES.voicePerMinute['gpt-realtime'], 6);
+  });
 });

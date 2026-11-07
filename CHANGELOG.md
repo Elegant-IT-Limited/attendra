@@ -4,6 +4,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Added (batch 1b: emergencies, the rest of 11-16, path A)
+
+- **Emergency settings per location** (Settings > Emergencies): refer to a hospital, handle emergencies any time, or handle them in hours and refer after, each with what it needs to be saved, and a preview of what callers will hear (open and closed, English and Spanish). `emergencyRoute` is the one source of where an emergency goes; the test-call page says it. `pnpm db:emergency-settings` writes the setting for clinics saved before it.
+- **The emergency state machine**: a pet's red flag gets one question ("Is this still an emergency right now?"); a yes or "not sure" routes by the setting (the hospital said and texted once, or a live transfer); a clear no books as usual with a note for the team and says once what to do if it comes back; a bare "it's not an emergency" gets one question about the sign; "ate chocolate last week, fine now" is a clear no at once. A transfer that fails leaves an urgent Emergency request. Signs that may be mild get one question on how bad. A person in danger hears the emergency number, whatever the setting. Migration 0050: `calls.emergency_result`, `tasks.origin`.
+- **The rest of 11-16**: the real reason on "why?", facts checked again when disputed, no result said without a tool, honest answers about recording and being an AI, side talk never translated, "which vet for allergies?" from the vets' specialties, a callback number never asked twice, batch 2's polite line for questions that are not about the clinic.
+- **Path A**: a note after each caller turn (a tool first, no lead-in, only the questions a tool gives); the greeting as a short first reply; the test-call page sends its offer without a 3 s wait; the cost from real tokens (call_costs); `ATTENDRA_REALTIME_MODEL` for the smaller model.
+
+### Fixed
+
+- **Path C records**: each Vapi line once (it sends windows of the conversation), first audio and answer waits from Vapi's own times.
+
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.

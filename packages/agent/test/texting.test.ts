@@ -1,4 +1,4 @@
-import { ClinicConfig, DEMO_CLINIC, RIVERBEND_CLINIC } from '@attendra/core';
+import { ClinicConfig, DEMO_CLINIC, EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_TEXTS_PER_CALL, type ToolResult } from '../src';
 import { world } from './support';
@@ -112,19 +112,47 @@ describe('texting during a call', () => {
 
   it('in an animal emergency texts only the hospital, after the offer the script makes, and never in calm times', async () => {
     // the vet clinic's settings on the test clinic's record
-    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true } });
+    // a clinic that refers emergencies to its hospital: the route on a yes is the hospital, with the text offer
+    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencyTransferEnabled: false });
     const calm = await w.call('+13035550147', { clinic: vet });
     expect((await calm.delegate([{ tool: 'send_text', args: { kind: 'emergency_hospital', ref: null, to: null } }])).errors).toEqual(['not_an_emergency']);
 
     const c = await w.call('+13035550147', { clinic: vet });
-    const script = c.caller('My dog ate a whole bar of dark chocolate!');
-    expect(JSON.stringify(script)).toContain("I can text you the hospital's address and number right now; shall I?");
+    c.caller('My dog ate a whole bar of dark chocolate!');
+    c.assistant(EMERGENCY_LINES.question('en'));
+    const script = c.caller('Yes, just now.');
+    // the number it goes to is said in the offer: confirmed before it is sent (approval, 2026-11-06)
+    expect(JSON.stringify(script)).toContain('Shall I text you the address, to the number ending in 0147?');
     expect((await c.delegate([{ tool: 'send_text', args: { kind: 'hours', ref: null, to: null } }])).errors).toEqual(['emergency_in_progress']);
-    c.assistant("Please take your pet to Front Range Pet Emergency right away. I can text you the hospital's address and number right now; shall I?");
+    c.assistant('Please take your pet to Front Range Pet Emergency right away. Shall I text you the address, to the number ending in 0147?');
     c.caller('Yes, please.');
     const out = await c.delegate([{ tool: 'send_text', args: { kind: 'emergency_hospital', ref: null, to: null } }]);
     expect(out.errors).toEqual([null]);
     expect(w.sms.at(-1)).toMatchObject({ template: 'emergency_hospital' });
+    expect(c.state.emergencyResult).toBe('hospital_texted');
+    // once a call
+    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'emergency_hospital', ref: null, to: null } }])).errors).toEqual(['already_sent']);
+  });
+
+  it('in an animal emergency, the address the caller said yes to is the hospital\'s, whichever kind the voice picks; EN and ES (a live run)', async () => {
+    const vet = ClinicConfig.parse({ ...RIVERBEND_CLINIC, id: DEMO_CLINIC.id, phoneNumbers: DEMO_CLINIC.phoneNumbers, texting: { enabled: true }, emergencyTransferEnabled: false });
+    for (const [flag, yes, offer] of [
+      ['My dog Biscuit\'s throat is swelling up.', 'Yes, he still is.', 'Shall I text you the address, to the number ending in 0147?'],
+      ['A mi perro Biscuit se le está hinchando la garganta.', 'Sí, sigue pasando, por favor ayúdeme.', '¿Le envío la dirección por mensaje al número que termina en 0147?'],
+    ] as const) {
+      const c = await w.call('+13035550147', { clinic: vet });
+      c.caller(flag);
+      c.assistant(EMERGENCY_LINES.question(c.state.language));
+      expect(JSON.stringify(c.caller(yes))).toContain(offer);
+      c.assistant(offer);
+      c.caller(c.state.language === 'es' ? 'Sí, por favor.' : 'Yes, please.');
+      const out = await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }]);
+      expect(out.errors).toEqual([null]);
+      expect(w.sms.at(-1)).toMatchObject({ template: 'emergency_hospital' });
+      expect(c.state.emergencyResult).toBe('hospital_texted');
+      // still once a call, whichever kind is asked for again
+      expect((await c.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }])).errors).toEqual(['emergency_in_progress']);
+    }
   });
 
   it('confirms a cancellation by text, like a booking', async () => {

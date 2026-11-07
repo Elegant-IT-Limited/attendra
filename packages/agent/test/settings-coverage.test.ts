@@ -149,6 +149,8 @@ const AUDIT: Record<string, Way> = {
   'vipCallers[].name': 'code', // the VIP opening greets them by it
   'vipCallers[].phone': 'code',
   emergencyTransferEnabled: 'code',
+  // where an animal's emergency goes (emergencyRoute): the lines the state machine hands the voice, never a prompt rule
+  emergencies: 'code',
   'emergencyHospital.name': 'clinic_info',
   'emergencyHospital.phone': 'clinic_info',
   'emergencyHospital.address': 'clinic_info',

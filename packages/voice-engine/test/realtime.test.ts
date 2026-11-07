@@ -124,6 +124,44 @@ describe('the Realtime engine', () => {
     expect(s.sent.at(-1)).toEqual({ type: 'response.create' });
   });
 
+  it('greets with a first reply of its own short instructions (the greeting, no tools), and marks the first audio', async () => {
+    const { e, s } = engine();
+    await e.accept('rtc_g', DEMO_CLINIC, NOW);
+    const events: SidebandEvent[] = [];
+    const sideband = e.attach('rtc_g');
+    sideband.onEvent((x) => events.push(x));
+    // not the whole session prompt: only what to say first, so the model starts speaking at once (path A, batch 1b)
+    expect(s.sent).toHaveLength(1);
+    expect(s.sent[0]).toMatchObject({ type: 'response.create', response: { tool_choice: 'none' } });
+    const instructions = (s.sent[0] as { response: { instructions: string } }).response.instructions;
+    expect(instructions).toContain(DEMO_CLINIC.greeting.slice(0, 30));
+    expect(instructions.length).toBeLessThan(1200);
+    // a VIP's opening instead of the greeting, when the call has one
+    const vip = engine();
+    await vip.e.accept('rtc_v', DEMO_CLINIC, NOW, 'Say exactly: "Hello, putting you through to the team."');
+    vip.e.attach('rtc_v');
+    expect(JSON.stringify(vip.s.sent[0])).toContain('putting you through');
+    // the line starts playing the assistant's audio: the runner's first audio
+    s.play({ type: 'output_audio_buffer.started', event_id: 'ob1' });
+    expect(events.map((x) => x.type)).toContain('session.output_audio.delta');
+  });
+
+  it('reports each reply\'s audio and text tokens, and the transcription\'s, for the call\'s cost', () => {
+    const { e, s } = engine();
+    const events: SidebandEvent[] = [];
+    e.attach('rtc_u').onEvent((x) => events.push(x));
+    s.play({ type: 'response.done', event_id: 'r1', response: { usage: { input_token_details: { audio_tokens: 900, text_tokens: 4000, cached_tokens_details: { audio_tokens: 100, text_tokens: 3500 } }, output_token_details: { audio_tokens: 300, text_tokens: 60 } } } });
+    s.play({ type: 'conversation.item.input_audio_transcription.completed', event_id: 't1', item_id: 'i1', transcript: 'hi', usage: { type: 'tokens', input_tokens: 40, output_tokens: 5 } });
+    // the caller's words are never dropped as a repeat of the usage event's id (a live run lost every caller line to it)
+    expect(events.find((x) => x.type === 'session.input_transcript.delta')).toMatchObject({ event_id: 't1', delta: 'hi' });
+    expect(new Set(events.map((x) => x.event_id)).size).toBe(events.length);
+    expect(events.filter((x) => x.type === 'session.model_usage')).toEqual([
+      { type: 'session.model_usage', event_id: 'r1_usage_gpt-realtime-2.1:audio', model: 'gpt-realtime-2.1:audio', input: 900, cached: 100, output: 300 },
+      { type: 'session.model_usage', event_id: 'r1_usage_gpt-realtime-2.1:text', model: 'gpt-realtime-2.1:text', input: 4000, cached: 3500, output: 60 },
+      { type: 'session.model_usage', event_id: 't1_usage', model: 'gpt-4o-transcribe', input: 40, cached: 0, output: 5 },
+    ]);
+  });
+
   it('keeps what is sent before the socket opens, then greets with it as context', () => {
     const { e, s } = engine(0);
     const sideband = e.attach('rtc_1');

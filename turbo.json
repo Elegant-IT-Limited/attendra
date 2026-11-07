@@ -46,7 +46,8 @@
         "ATTENDRA_IDLE_MINUTES",
         "ATTENDRA_SEARCH_SCAN",
         "VAPI_SERVER_SECRET",
-        "ATTENDRA_LOOKUP_AHEAD"
+        "ATTENDRA_LOOKUP_AHEAD",
+        "ATTENDRA_REALTIME_MODEL"
       ]
     }
   }

@@ -23,7 +23,8 @@
     "visit-type-coverage": "tsx scripts/visit-type-coverage.ts",
     "call-timeline": "tsx scripts/call-timeline.ts",
     "call-stats": "tsx scripts/call-stats.ts",
-    "seed-bakeoff": "tsx scripts/seed-bakeoff.ts"
+    "seed-bakeoff": "tsx scripts/seed-bakeoff.ts",
+    "emergency-settings": "tsx scripts/emergency-settings.ts"
   },
   "dependencies": {
     "@attendra/core": "workspace:*",

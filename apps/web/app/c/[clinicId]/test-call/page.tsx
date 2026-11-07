@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { TestCallAllowance } from '@attendra/api/contracts';
+import { emergencyCallLine } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
 import Link from 'next/link';
@@ -14,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
 import { Alert, Empty } from '@/components/ui/feedback';
-import { api, useClinic } from '@/lib/api';
+import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
@@ -30,6 +31,8 @@ export default function TestCallPage() {
   const { phase, captions, callId, seconds, maxSeconds, micNote, micStopped, start, end, record, setRecord, recording, saved, savedAt, saveAgain, markSaved, calledAsLast4 } = useTestCall();
   // "Call as": null while the choice is not finished
   const [callAs, setCallAs] = useState<CallAs | null>(NO_CALLER_ID);
+  // where an emergency on this call would go now (batch 1b): the same route the assistant follows
+  const config = useClinicConfig(clinicId);
   const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
   // only in the browser, after the first render: the server cannot know, and the two must render the same
   const [recordable, setRecordable] = useState(false);
@@ -41,9 +44,13 @@ export default function TestCallPage() {
   // the server's minimum, never a number here: below it the start is refused
   const noTime = left !== null && allowance.data !== undefined && left < allowance.data.minSeconds;
 
+  // where an emergency goes now, at a vet clinic: shown whether or not browser test calls are on (a simulated call follows it too)
+  const emergencyLine = config.data?.industry === 'vet'
+    ? <p className="-mt-2 mb-4 text-sm text-text-muted" data-testid="emergency-line">{emergencyCallLine(config.data, new Date())} A test call is never put through: you hear what happens when nobody answers.</p>
+    : null;
   if (clinic && !can('calls:test')) return <Empty title="Not available">Your role cannot make test calls.</Empty>;
   // the page's own title above it: the menu leads here for a simulated call too
-  if (me && !me.testCalls) return <><PageHeader title="Test call" /><Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
+  if (me && !me.testCalls) return <><PageHeader title="Test call" />{emergencyLine}<Empty title="Test calls are off" action={<a href={TEST_CALLS_DOC} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">How to set up test calls</a>}>{FAILURES.voice_not_configured}</Empty>{me.simulatedCalls && <SimulatedCall clinicId={clinicId} />}</>;
   const busy = phase === 'connecting' || phase === 'live' || phase === 'ending';
 
   return (
@@ -52,6 +59,7 @@ export default function TestCallPage() {
         title="Test call"
         description="Talk to the receptionist through your microphone, with this clinic's live settings. It is recorded like a phone call and marked as a browser test."
       />
+      {emergencyLine}
       <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:items-start">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 py-8 text-center">

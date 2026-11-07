@@ -30,6 +30,7 @@
     "db:call-timeline": "pnpm --filter @attendra/db run call-timeline",
     "db:call-stats": "pnpm --filter @attendra/db run call-stats",
     "db:seed-bakeoff": "pnpm --filter @attendra/db run seed-bakeoff",
+    "db:emergency-settings": "pnpm --filter @attendra/db run emergency-settings",
     "db:reindex-knowledge": "pnpm --filter @attendra/worker run reindex-knowledge",
     "add-member": "pnpm --filter @attendra/api add-member",
     "demo": "turbo run demo",

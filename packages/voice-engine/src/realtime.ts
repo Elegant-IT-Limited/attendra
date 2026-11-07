@@ -4,7 +4,7 @@ import { type ClinicConfig, PREVIEW_VOICES, type VoiceFlow } from '@attendra/cor
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
-import { conversationPrompt } from './prompt';
+import { conversationPrompt, openingInstruction } from './prompt';
 import { toolsVoicePrompt } from './tools-prompt';
 
 /**
@@ -46,6 +46,34 @@ export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clin
  * their words ask for is run first and handed to it. If no go comes this long after the turn ended (the transcript
  * failed, say), it replies by itself: a caller is never left waiting on us.
  */
+/** The model that writes down the caller's words on these calls. */
+const TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
+
+/** A Realtime reply's usage, as response.done reports it. */
+interface RealtimeUsage {
+  input_token_details?: { audio_tokens?: number; text_tokens?: number; cached_tokens_details?: { audio_tokens?: number; text_tokens?: number } };
+  output_token_details?: { audio_tokens?: number; text_tokens?: number };
+}
+
+/** One reply's tokens, per modality (`<model>:audio`, `<model>:text`), for the call's cost. None when nothing was reported. */
+export function replyUsage(model: string, u: RealtimeUsage | undefined): { model: string; input: number; cached: number; output: number }[] {
+  if (!u) return [];
+  const i = u.input_token_details ?? {};
+  const c = i.cached_tokens_details ?? {};
+  const o = u.output_token_details ?? {};
+  return ([['audio', i.audio_tokens, c.audio_tokens, o.audio_tokens], ['text', i.text_tokens, c.text_tokens, o.text_tokens]] as const)
+    .filter(([, input, , output]) => (input ?? 0) + (output ?? 0) > 0)
+    .map(([kind, input, cached, output]) => ({ model: `${model}:${kind}`, input: input ?? 0, cached: cached ?? 0, output: output ?? 0 }));
+}
+
+/**
+ * After each caller turn on the tools path: what to do with it. The voice says only what a tool gives it (batch 1b):
+ * no words before a tool call ("let me check...", "one moment"), and no question of its own ("Is Clover new to us?").
+ */
+export const TURN_NOTE = 'Reply to the caller now. If you need a tool, call it as the very first thing in your reply, with no words before it: never "let me...", "let\'s...", "okay, let me get that set up", "one moment", or anything about what you are about to do, in any language. When its result comes, say what it gives you, in the caller\'s language. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
+
+/** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
+const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
 /**
  * Turn detection on the tools path: the turn ends once the caller has clearly finished, and the engine starts each reply
@@ -82,6 +110,8 @@ export class RealtimeEngine implements VoiceEngine {
   private readonly browser = new Set<string>();
   /** The voice each call was created with: set once, never changed in the call. */
   private readonly voices = new Map<string, string>();
+  /** What each call says first (the clinic's greeting, or a VIP's or a paused clinic's opening), for its first reply. */
+  private readonly openings = new Map<string, string>();
 
   constructor(
     private readonly client: OpenAI,
@@ -105,7 +135,7 @@ export class RealtimeEngine implements VoiceEngine {
       audio: {
         // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
         // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
-        input: { transcription: { model: 'gpt-4o-transcribe' }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
+        input: { transcription: { model: TRANSCRIBE_MODEL }, turn_detection: tools ? TOOLS_TURNS : { type: 'semantic_vad' as const } },
         output: { voice: voiceFor(clinic.voice) },
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
@@ -113,8 +143,9 @@ export class RealtimeEngine implements VoiceEngine {
     };
   }
 
-  async accept(callId: string, clinic: ClinicConfig, now: Date, _opening?: string, opts: CallOptions = {}) {
+  async accept(callId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: CallOptions = {}) {
     await this.client.realtime.calls.accept(callId, this.session(clinic, now, opts));
+    this.openings.set(callId, opening ?? openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
   }
@@ -132,6 +163,7 @@ export class RealtimeEngine implements VoiceEngine {
     const callId = res.headers.get('location')?.split('/').filter(Boolean).at(-1);
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
+    this.openings.set(callId, openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
     return { sessionId: callId, sdpAnswer: await res.text() };
@@ -154,6 +186,7 @@ export class RealtimeEngine implements VoiceEngine {
     this.browser.delete(callId);
     this.voices.delete(callId);
     this.flows.delete(callId);
+    this.openings.delete(callId);
   }
 
   attach(callId: string): Sideband {
@@ -187,14 +220,28 @@ export class RealtimeEngine implements VoiceEngine {
       if (active) wanted = e; else { active = true; ws.send(e); }
     };
     const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
+    // one note at a time: the last turn's is removed when the next one goes in, so the conversation does not grow with them
+    let notes = 0;
+    const turnNote = () => {
+      if (!open) return;
+      if (notes) ws.send({ type: 'conversation.item.delete', item_id: `turn_note_${notes}` });
+      notes++;
+      ws.send({ type: 'conversation.item.create', item: { id: `turn_note_${notes}`, type: 'message', role: 'system', content: [{ type: 'input_text', text: TURN_NOTE }] } });
+    };
+    // The greeting is the first reply, with its own short instructions: only what to say, and no tools. With the whole
+    // session prompt (the clinic, the tools and their rules) the model first read all of it, and the caller waited
+    // (path A, 2026-11-07: first audio 5.3 s on a browser call). Anything queued before the socket opened (a note for the
+    // first answer) is context the greeting must see: then the reply is the usual one.
+    const opening = this.openings.get(callId);
+    const greet = (queued: boolean) => respond(opening && !queued ? { type: 'response.create', response: { instructions: `${opening} ${GREETING_VOICE}`, tool_choice: 'none' } } : { type: 'response.create' });
     ws.socket.on('open', () => {
       open = true;
       const items = queue.filter((e) => e.type === 'conversation.item.create');
       queue = [];
       for (const e of items) ws.send(e);
-      respond();
+      greet(items.length > 0);
     });
-    if (open) respond();
+    if (open) greet(false);
 
     // the model's words come in pieces smaller than a word ("Bisc", "uit"): they are passed on
     // a word at a time, so the record and the live captions read as said
@@ -245,12 +292,19 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
+          // the tools path: the turn's note right after the caller's words, where the model weighs it most (batch 1b:
+          // a rule in the session prompt alone still let it say "let me check..." before most tool calls)
+          if (toolsPath) turnNote();
           // the tools path starts its own replies: at once, or (manual) after the go, or by itself in a moment without one
           if (toolsPath && !manual) respond();
           else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }
           return;
         // the caller's turn, whole, once it is transcribed
         case 'conversation.item.input_audio_transcription.completed':
+          if ((e.usage as { type?: string } | undefined)?.type === 'tokens') {
+            const u = e.usage as { input_tokens?: number; output_tokens?: number };
+            emit({ type: 'session.model_usage', event_id: `${id(e)}_usage`, model: TRANSCRIBE_MODEL, input: u.input_tokens ?? 0, cached: 0, output: u.output_tokens ?? 0 });
+          }
           if (typeof e.transcript === 'string' && e.transcript.trim()) {
             const at = typeof e.item_id === 'string' ? spokenAt.get(e.item_id) : undefined;
             if (typeof e.item_id === 'string') spokenAt.delete(e.item_id);
@@ -267,8 +321,15 @@ export class RealtimeEngine implements VoiceEngine {
         case 'response.created':
           active = true;
           return;
+        // the caller's line starts playing the assistant's audio (WebRTC and phone calls): the runner's first audio
+        case 'output_audio_buffer.started':
+          emit({ type: 'session.output_audio.delta', event_id: id(e), delta: '' });
+          return;
         case 'response.done': {
           spoken(e, true);
+          // what the reply cost: audio and text tokens, each with its cached part, priced per modality (call_costs)
+          // each with its own event id: the runner drops an event id it has seen (the reply's own words carry this one)
+          for (const u of replyUsage(this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: `${id(e)}_usage_${u.model}`, ...u });
           active = false;
           const next = wanted;
           wanted = null;

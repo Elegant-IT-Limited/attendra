@@ -140,6 +140,8 @@ export const calls = pgTable('calls', {
   engine: text('engine', { enum: ['gpt-live', 'gpt-realtime', 'vapi'] }),
   engineSessionId: text('engine_session_id'),
   voiceFlow: text('voice_flow', { enum: ['planner', 'tools'] }),
+  /** How an animal's emergency on the call ended (migration 0050); null when the call had none. */
+  emergencyResult: text('emergency_result', { enum: ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] }),
 });
 
 /** What one call cost us, from the rates table in core (call-costs.ts): numbers only (migration 0045). */
@@ -208,6 +210,8 @@ export const tasks = pgTable('tasks', {
   /** Who at the clinic wrote it down by hand (migration 0040); null for the assistant's own. */
   createdByUserId: text('created_by_user_id'),
   urgent: boolean('urgent').notNull().default(false),
+  /** 'emergency' for the urgent request an emergency leaves (migration 0050); null for every other request. */
+  origin: text('origin', { enum: ['emergency'] }),
   dueOn: date('due_on', { mode: 'string' }),
   /** The clinic's own details on the request, encrypted JSON. */
   customEnc: text('custom_enc'),

@@ -67,7 +67,7 @@ describe('waiting requests', () => {
   it('lists open unclaimed requests oldest first, with type and age only, not audited', async () => {
     const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/tasks/waiting`, { cookie: staff });
-    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, number: expect.any(Number), type: 'refill', createdAt: expect.any(String), callId: api.callId, urgent: false }], total: 1, byType: { refill: 1 } });
+    expect(res.json()).toEqual({ tasks: [{ id: api.taskId, number: expect.any(Number), type: 'refill', createdAt: expect.any(String), callId: api.callId, urgent: false, origin: null }], total: 1, byType: { refill: 1 } });
     // the caller's number (+13035550147), not any "555": a random id can contain those digits
     expect(res.body).not.toMatch(/Maria|lisinopril|5550147/);
     const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };

@@ -100,6 +100,8 @@ if (realCalls || simulated) {
       vapiSecret: process.env.VAPI_SERVER_SECRET && process.env.VAPI_SERVER_SECRET.length >= 32 ? process.env.VAPI_SERVER_SECRET : undefined,
       // the lookup run ahead (round 2), off unless ATTENDRA_LOOKUP_AHEAD=on, for comparing
       lookupAhead: process.env.ATTENDRA_LOOKUP_AHEAD === 'on',
+      // which gpt-realtime model path A runs on (the cost test of a smaller one, batch 1b); unset, the default
+      realtimeModel: process.env.ATTENDRA_REALTIME_MODEL || undefined,
     })
     : createSimulatedVoiceApp(common);
   try {

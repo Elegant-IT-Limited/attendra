@@ -2,7 +2,7 @@
 // What a hosting layer needs to open and run accounts: a new organization with its
 // clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
 // none of it reads patient data.
-import { ClinicConfig, DEFAULT_ANIMALS, managedList, PACKS } from '@attendra/core';
+import { ClinicConfig, DEFAULT_ANIMALS, emergencySettingsOf, managedList, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, clinicAccess, clinicMemberships, invitations, memberships } from '../auth-schema';
 import type { Database } from '../client';
@@ -336,4 +336,30 @@ export async function seedAnimalLists(db: Database, opts: { apply: boolean }): P
     filled++;
   }
   return { clinics: rows.length, vet, empty, filled };
+}
+
+/**
+ * Emergency settings (batch 1b) for clinics saved before them: each vet clinic without one gets what its older fields
+ * meant (emergencySettingsOf: an on-call line it transferred to is "handle", a hospital alone is "refer"). Clinics with
+ * neither are listed, to choose one in Settings > Emergencies. Returns per clinic its id and the mode, never a name or
+ * a number. `apply: false` changes nothing.
+ */
+export async function writeEmergencySettings(db: Database, opts: { apply: boolean }): Promise<{ clinic: string; mode: string; action: 'kept' | 'written' | 'would write' | 'none' }[]> {
+  const rows = await db.select({ id: clinics.id, config: clinics.config }).from(clinics);
+  const out: { clinic: string; mode: string; action: 'kept' | 'written' | 'would write' | 'none' }[] = [];
+  for (const row of rows) {
+    const parsed = ClinicConfig.safeParse(row.config);
+    if (!parsed.success || parsed.data.industry !== 'vet') continue;
+    if (parsed.data.emergencies) { out.push({ clinic: row.id, mode: parsed.data.emergencies.mode, action: 'kept' }); continue; }
+    const derived = emergencySettingsOf(parsed.data);
+    if (!derived) { out.push({ clinic: row.id, mode: 'none', action: 'none' }); continue; }
+    if (!opts.apply) { out.push({ clinic: row.id, mode: derived.mode, action: 'would write' }); continue; }
+    const config = { ...parsed.data, emergencies: derived };
+    await db.transaction(async (tx) => {
+      await tx.update(clinics).set({ config, configVersion: sql`${clinics.configVersion} + 1`, configUpdatedAt: new Date(), configUpdatedBy: 'provisioning' }).where(eq(clinics.id, row.id));
+      await tx.insert(auditLogs).values({ clinicId: row.id, actor: 'provisioning', action: 'clinic.emergencies.updated', entity: 'clinic', entityId: row.id });
+    });
+    out.push({ clinic: row.id, mode: derived.mode, action: 'written' });
+  }
+  return out;
 }

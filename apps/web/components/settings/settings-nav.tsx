@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 /** The parts of Settings: what the assistant is and does, what it knows, and where its events go. */
 export const SETTINGS_PAGES: { href: string; label: string; permission?: string }[] = [
   { href: '', label: 'General' },
+  { href: '/emergencies', label: 'Emergencies' },
   { href: '/texting', label: 'Texting' },
   { href: '/fields', label: 'Fields and lists' },
   { href: '/knowledge', label: 'Knowledge' },

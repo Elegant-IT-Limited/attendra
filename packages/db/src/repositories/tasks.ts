@@ -39,7 +39,7 @@ export class PostgresTaskQueue implements TaskQueue {
    * Idempotent: the same key twice returns the first task, so a retried delegation cannot open two refills. The key
    * is looked for before a number is taken, so a retry costs no number; the number and the household go in with the row.
    */
-  async create(clinicId: string, input: { type: TaskType; callId: string | null; patientId: string | null; idempotencyKey: string; details: Record<string, string>; urgent?: boolean }) {
+  async create(clinicId: string, input: { type: TaskType; callId: string | null; patientId: string | null; idempotencyKey: string; details: Record<string, string>; urgent?: boolean; origin?: 'emergency' }) {
     return withClinic(this.db, clinicId, async (tx) => {
       const [existing] = await tx.select({ id: tasks.id, number: tasks.number }).from(tasks)
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.idempotencyKey, input.idempotencyKey)));
@@ -50,6 +50,7 @@ export class PostgresTaskQueue implements TaskQueue {
         clinicId, number, householdHash, type: input.type, callId: input.callId, patientId: input.patientId,
         detailsEnc: this.cipher.encrypt(JSON.stringify(input.details), phiContext(clinicId, 'tasks.details')), idempotencyKey: input.idempotencyKey,
         ...(input.urgent ? { urgent: true } : {}),
+        ...(input.origin ? { origin: input.origin } : {}),
         // a request someone at the clinic wrote down: who, for "Added by"
         ...(this.actor.startsWith('user:') ? { createdByUserId: this.actor.slice(5) } : {}),
       }).onConflictDoNothing().returning({ id: tasks.id });
