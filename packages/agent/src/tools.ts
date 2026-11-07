@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, EMERGENCY_LINES, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_LINES, saysSlot, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -309,6 +309,8 @@ const TITLES = new Set(['dr', 'dra', 'doctor', 'doctora', 'doc', 'the', 'la', 'e
 export function specialtyIsTheVisit(specialty: string, clinic: Pick<ClinicConfig, 'visitTypes'>): boolean {
   const t = normalise(specialty).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!t || /^(?:general|general practice|general medicine|primary care|any|medicina general|general practitioner|gp|consulta general)$/.test(t)) return true;
+  // an animal is who the pet is, not a vet's specialty (the pet's kind already picks the vets who see it)
+  if (/^(?:dogs?|cats?|puppy|puppies|kittens?|rabbits?|birds?|perros?|gatos?|conejos?|aves?|cachorros?)$/.test(t)) return true;
   return clinic.visitTypes.some((v) => [v.name, ...Object.values(v.names ?? {})].some((n) => {
     const name = normalise(n ?? '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
     return !!name && (name === t || name.includes(t) || t.includes(name));
@@ -895,6 +897,17 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const target = confirmationTarget(replaces ? 'change_confirmed' : 'booking_confirmed');
       // said once a call: the caller heard it, and five read-backs of five times each with it were judged robotic
       const textNote = target && !TEXT_NOTE_SAID.has(state) ? pack.confirmTextNote({ target }) : null;
+      // the voice already said this booking's day and time ("Monday at 3:30 with Dr. Ruiz, shall I book it?") and the
+      // caller said yes to it: that was the read-back, and asking again was judged robotic (batch 1c live runs). Not for
+      // a move (both times are read back), nor when a confirmation text still has to be mentioned and that line did not
+      const lastAgent = [...state.turns].reverse().find((t) => t.speaker === 'agent');
+      const after = lastAgent ? state.turns.filter((t) => t.speaker === 'caller' && t.startMs > lastAgent.startMs).map((t) => t.text).join(' ') : '';
+      if (!replaces && lastAgent && saysSlot(lastAgent.text, slot.start, clinic.timezone, ctx.now()) && (!textNote || /\b(?:text|mensaje)/i.test(lastAgent.text))
+        && after && isClearYes(after, clinic.languages)) {
+        state.pending.readbackAtMs = lastAgent.startMs;
+        if (textNote) TEXT_NOTE_SAID.add(state);
+        return { ok: true, data: { say: `The caller already heard this and said yes: ${readback}. Call commit_pending now; do not read it back again.` } };
+      }
       if (textNote) TEXT_NOTE_SAID.add(state);
       return { ok: true, data: { say: textNote ? `Read this back, say "${textNote}", and ask for a clear yes: ${readback}.` : `Read this back and ask for a clear yes: ${readback}.`, spoken: pack.spoken.readback({ readback, textNote, move: !!replaces }) } };
     }

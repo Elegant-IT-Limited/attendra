@@ -653,6 +653,34 @@ describe('review fixes', () => {
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
   });
 
+  it('a yes to the voice\'s own line with the day and time is the read-back: no second read-back; another time still needs one (batch 1c)', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit, afternoon');
+    const found = await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+    ]);
+    const slot = (found.results[1]!.data.slots as { slot_id: string; when: string }[])[0]!;
+    c.assistant(`I can do ${slot.when} with Dr. Okafor, and I'll text you a confirmation. Shall I book it?`);
+    c.caller('Yes, please.');
+    const proposed = await c.delegate([{ tool: 'propose_booking', args: { slot_id: slot.slot_id, replaces_appointment_id: null } }]);
+    expect(String(proposed.results[0]!.data.say)).toContain('Call commit_pending now; do not read it back again.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+    // the voice's line named another time: the proposal is read back as usual
+    const other = await w.call();
+    other.caller('Maria Delgado, March 4 1985, sick visit, afternoon');
+    const again = await other.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+    ]);
+    const [first, second] = again.results[1]!.data.slots as { slot_id: string; when: string }[];
+    other.assistant(`I can do ${first!.when}. Shall I book it?`);
+    other.caller('Yes.');
+    const p2 = await other.delegate([{ tool: 'propose_booking', args: { slot_id: second!.slot_id, replaces_appointment_id: null } }]);
+    expect(String(p2.results[0]!.data.say)).toMatch(/^Read this back/);
+    expect((await other.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['not_read_back']);
+  });
+
   it('keeps the yes when the planner proposes the same change again after it, as in live run 5', async () => {
     const before = (await bookings()).length;
     const c = await w.call();

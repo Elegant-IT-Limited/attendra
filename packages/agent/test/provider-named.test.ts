@@ -24,7 +24,7 @@ describe('providerNamed', () => {
 describe('specialtyIsTheVisit: a "specialty" that narrows nothing (batch 1c)', () => {
   const clinic = { visitTypes: [...RIVERBEND_CLINIC.visitTypes, { id: 'vt_dental', name: 'dental care', names: { es: 'cuidado dental' }, minutes: 30, audience: 'all' as const }] };
   it('is the visit type itself, in either language, or no specialty at all', () => {
-    for (const said of ['dental care', 'Dental', 'cuidado dental', 'General practice', 'medicina general', 'sick visit']) expect(specialtyIsTheVisit(said, clinic)).toBe(true);
+    for (const said of ['dental care', 'Dental', 'cuidado dental', 'General practice', 'medicina general', 'sick visit', 'dog', 'perro']) expect(specialtyIsTheVisit(said, clinic)).toBe(true);
   });
   it('is a real specialty when it names none of the visits', () => {
     for (const said of ['Cardiology', 'exotics', 'Dermatología']) expect(specialtyIsTheVisit(said, clinic)).toBe(false);
