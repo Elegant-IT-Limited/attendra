@@ -3,7 +3,7 @@
 // clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
 // none of it reads patient data.
 import { ClinicConfig, DEFAULT_ANIMALS, managedList, PACKS } from '@attendra/core';
-import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, clinicAccess, clinicMemberships, invitations, memberships } from '../auth-schema';
 import type { Database } from '../client';
 import type { PhiCipher } from '../crypto';
@@ -138,87 +138,129 @@ export async function setClinicClosed(db: Database, clinicId: string, closed: bo
   });
 }
 
+/** A call with no end that started this recently is taken as still going; an older one was left open by a crash and never ended. */
+export const UNFINISHED_CALL_HOURS = 6;
+
+/** Why a purge is refused: open, closed too recently, a call still going, or a number that still reaches the clinic. */
+export type PurgeBlocker = 'not_closed' | 'closed_recently' | 'call_in_progress' | 'number_assigned';
+export type PurgeCounts = Record<string, number>;
+export type PurgeOptions = {
+  /** An open clinic, or one closed less than 30 days ago, may go too: a tester's clinic. */
+  force?: boolean;
+  /** Logins stay, with only the memberships of what goes taken away, so a tester can sign in and open a new clinic. */
+  keepLogins?: boolean;
+  /** Counts what would go, table by table, and changes nothing. */
+  dryRun?: boolean;
+  now?: Date;
+};
+export type PurgeOutcome =
+  | { status: 'not_found' }
+  | { status: 'refused'; blockers: PurgeBlocker[] }
+  | { status: 'purged' | 'dry_run'; counts: PurgeCounts; blockers: PurgeBlocker[] };
+
 /**
- * Deletes a clinic closed at least 30 days ago, with everything recorded for it: calls,
- * transcripts, the call's steps, patients, appointments, requests, texts, documents and their
- * chunks, webhooks, keys, invitations sent from it, the worker's jobs about it and its audit
- * log. When it was its organization's last clinic, the organization goes too, with its team
- * and invitations, and every login left with no team. An open clinic, or one closed more
- * recently, is left as it is. A test scans every table for a clinic, organization or user
- * column, so a new table this forgets fails it.
+ * The clinic's own tables, in the order they are emptied: the rows that point at others go
+ * first. A patient and the call that created it point at each other, so that link is cleared
+ * before any of them.
  */
-export async function purgeClosedClinic(db: Database, clinicId: string, now = new Date()): Promise<'purged' | 'not_found' | 'open' | 'recent'> {
-  return db.transaction(async (tx) => {
-    const [c] = await tx.select({ closedAt: clinics.closedAt, orgId: clinics.orgId }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
-    if (!c) return 'not_found';
-    if (!c.closedAt) return 'open';
-    if (c.closedAt.getTime() > now.getTime() - CLOSED_KEPT_DAYS * 86_400_000) return 'recent';
-    // row-level security applies to this connection too: the clinic's own rows only
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
-    // the rows that point at others go first; a patient and the call that created it point at each other
-    const steps = [
-      sql`delete from webhook_attempts where clinic_id = ${clinicId}`,
-      sql`delete from webhook_events where clinic_id = ${clinicId}`,
-      sql`delete from webhook_endpoints where clinic_id = ${clinicId}`,
-      sql`delete from task_notes where clinic_id = ${clinicId}`,
-      sql`delete from tasks where clinic_id = ${clinicId}`,
-      sql`delete from clinic_counters where clinic_id = ${clinicId}`,
-      sql`delete from appointments where clinic_id = ${clinicId}`,
-      sql`delete from call_summaries where clinic_id = ${clinicId}`,
-      sql`delete from call_costs where clinic_id = ${clinicId}`,
-      sql`delete from call_actions where clinic_id = ${clinicId}`,
-      sql`delete from call_segments where clinic_id = ${clinicId}`,
-      sql`delete from call_search_keys where clinic_id = ${clinicId}`,
-      sql`delete from patient_search_keys where clinic_id = ${clinicId}`,
-      sql`update patients set created_by_call_id = null where clinic_id = ${clinicId} and created_by_call_id is not null`,
-      sql`delete from calls where clinic_id = ${clinicId}`,
-      sql`delete from patients where clinic_id = ${clinicId}`,
-      sql`delete from knowledge_chunks where clinic_id = ${clinicId}`,
-      sql`delete from knowledge_documents where clinic_id = ${clinicId}`,
-      sql`delete from invitations where clinic_id = ${clinicId}`,
-      sql`delete from sms_messages where clinic_id = ${clinicId}`,
-      sql`delete from sms_opt_outs where clinic_id = ${clinicId}`,
-      sql`delete from api_keys where clinic_id = ${clinicId}`,
-      sql`delete from audit_logs where clinic_id = ${clinicId}`,
-      sql`delete from phone_numbers where clinic_id = ${clinicId}`,
-    ];
-    for (const step of steps) await tx.execute(step);
-    // the people who worked only here: their logins go with the business if it goes, as an owner's do
-    const team = (await tx.select({ userId: clinicMemberships.userId }).from(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId))).map((m) => m.userId);
-    await tx.delete(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId));
-    // the worker's jobs carry the clinic's id in their data (pg-boss, in its own schema, once the worker has run here)
-    const [jobs] = (await tx.execute(sql`select to_regclass('pgboss.job') is not null as ok`)).rows as [{ ok: boolean }];
-    if (jobs.ok) await tx.execute(sql`delete from pgboss.job where data->>'clinicId' = ${clinicId}`);
-    await tx.delete(clinics).where(eq(clinics.id, clinicId));
-    const [left] = await tx.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, c.orgId)).limit(1);
-    if (!left) await removeOrganization(tx, c.orgId, team);
-    else await removeLoginsWithNoTeam(tx, team);
-    return 'purged';
-  });
+const CLINIC_TABLES = [
+  'webhook_attempts', 'webhook_events', 'webhook_endpoints', 'task_notes', 'tasks', 'clinic_counters', 'appointments',
+  'call_summaries', 'call_costs', 'call_actions', 'call_segments', 'call_search_keys', 'patient_search_keys', 'calls', 'patients',
+  'knowledge_chunks', 'knowledge_documents', 'invitations', 'sms_messages', 'sms_opt_outs', 'api_keys', 'audit_logs', 'phone_numbers',
+] as const;
+
+/** Thrown inside a dry run's transaction, so everything it did is rolled back. */
+class DryRunDone extends Error {}
+
+/**
+ * Deletes a clinic with everything recorded for it: calls, transcripts, the call's steps,
+ * patients, appointments, requests, texts, documents and their chunks, webhooks, keys,
+ * invitations sent from it, the worker's jobs about it and its audit log. When it was its
+ * organization's last clinic, the organization goes too, with its team and invitations, and
+ * every login left with no team (unless `keepLogins`). Without `force`, only a clinic closed
+ * at least 30 days ago. Never while a call is still going, or while a number still reaches it
+ * (the hosting layer releases its numbers first). A test scans every table for a clinic,
+ * organization or user column, so a new table this forgets fails it.
+ *
+ * Counts are rows deleted per table. A dry run takes the very same steps in a transaction that
+ * is rolled back, so its counts are what a real run would delete, by construction, and it
+ * reports the blockers instead of stopping at them.
+ */
+export async function purgeClinic(db: Database, clinicId: string, opts: PurgeOptions = {}): Promise<PurgeOutcome> {
+  const now = opts.now ?? new Date();
+  let outcome: PurgeOutcome = { status: 'not_found' };
+  try {
+    await db.transaction(async (tx) => {
+      const [c] = await tx.select({ closedAt: clinics.closedAt, orgId: clinics.orgId }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
+      if (!c) return;
+      // row-level security applies to this connection too: the clinic's own rows only
+      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      const blockers: PurgeBlocker[] = [];
+      if (!opts.force && !c.closedAt) blockers.push('not_closed');
+      if (!opts.force && c.closedAt && c.closedAt.getTime() > now.getTime() - CLOSED_KEPT_DAYS * 86_400_000) blockers.push('closed_recently');
+      const since = new Date(now.getTime() - UNFINISHED_CALL_HOURS * 3_600_000);
+      if ((await tx.execute(sql`select 1 from calls where clinic_id = ${clinicId} and ended_at is null and started_at > ${since} limit 1`)).rows.length) blockers.push('call_in_progress');
+      if ((await tx.execute(sql`select 1 from phone_numbers where clinic_id = ${clinicId} and status = 'active' limit 1`)).rows.length) blockers.push('number_assigned');
+      if (blockers.length && !opts.dryRun) {
+        outcome = { status: 'refused', blockers };
+        return;
+      }
+
+      const counts: PurgeCounts = {};
+      const tally = (table: string, n: number) => { if (n) counts[table] = (counts[table] ?? 0) + n; };
+      await tx.execute(sql`update patients set created_by_call_id = null where clinic_id = ${clinicId} and created_by_call_id is not null`);
+      for (const table of CLINIC_TABLES) tally(table, await deleteCounted(tx, sql`${sql.identifier(table)} where clinic_id = ${clinicId}`));
+      // the people who worked only here: their logins go with the business if it goes, as an owner's do
+      const team = (await tx.select({ userId: clinicMemberships.userId }).from(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId))).map((m) => m.userId);
+      tally('clinic_memberships', (await tx.delete(clinicMemberships).where(eq(clinicMemberships.clinicId, clinicId)).returning({ id: clinicMemberships.id })).length);
+      // the worker's jobs carry the clinic's id in their data (pg-boss, in its own schema, once the worker has run here)
+      const [jobs] = (await tx.execute(sql`select to_regclass('pgboss.job') is not null as ok`)).rows as [{ ok: boolean }];
+      if (jobs.ok) tally('pgboss.job', await deleteCounted(tx, sql`pgboss.job where data->>'clinicId' = ${clinicId}`));
+      tally('clinics', (await tx.delete(clinics).where(eq(clinics.id, clinicId)).returning({ id: clinics.id })).length);
+      const [left] = await tx.select({ id: clinics.id }).from(clinics).where(eq(clinics.orgId, c.orgId)).limit(1);
+      const keepLogins = opts.keepLogins ?? false;
+      if (!left) await removeOrganization(tx, c.orgId, team, keepLogins, tally);
+      else if (!keepLogins) await removeLoginsWithNoTeam(tx, team, tally);
+      outcome = { status: opts.dryRun ? 'dry_run' : 'purged', counts, blockers };
+      if (opts.dryRun) throw new DryRunDone();
+    });
+  } catch (err) {
+    if (!(err instanceof DryRunDone)) throw err;
+  }
+  return outcome;
 }
 
-/** An organization with no clinic left: its owners, its invitations, and the logins that belonged to no other team. */
-async function removeOrganization(tx: Pick<Database, 'select' | 'delete' | 'update'>, orgId: string, staff: string[] = []) {
+type Tally = (table: string, n: number) => void;
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** Deletes `from` (a table and its condition) and says how many rows went. */
+async function deleteCounted(tx: Pick<Database, 'execute'>, from: SQL): Promise<number> {
+  const [row] = (await tx.execute(sql`with gone as (delete from ${from} returning 1) select count(*)::int as n from gone`)).rows as [{ n: number }];
+  return Number(row.n);
+}
+
+/** An organization with no clinic left: its owners, its invitations, and (unless kept) the logins that belonged to no other team. */
+async function removeOrganization(tx: Tx, orgId: string, staff: string[], keepLogins: boolean, tally: Tally) {
   const owners = (await tx.select({ userId: memberships.userId }).from(memberships).where(eq(memberships.organizationId, orgId))).map((m) => m.userId);
-  await tx.delete(invitations).where(eq(invitations.organizationId, orgId));
-  await tx.delete(memberships).where(eq(memberships.organizationId, orgId));
+  tally('invitations', (await tx.delete(invitations).where(eq(invitations.organizationId, orgId)).returning({ id: invitations.id })).length);
+  tally('memberships', (await tx.delete(memberships).where(eq(memberships.organizationId, orgId)).returning({ id: memberships.id })).length);
   await tx.update(authSessions).set({ activeOrganizationId: null }).where(eq(authSessions.activeOrganizationId, orgId));
-  await tx.delete(organizations).where(eq(organizations.id, orgId));
-  await removeLoginsWithNoTeam(tx, [...new Set([...owners, ...staff])]);
+  tally('organizations', (await tx.delete(organizations).where(eq(organizations.id, orgId)).returning({ id: organizations.id })).length);
+  if (!keepLogins) await removeLoginsWithNoTeam(tx, [...new Set([...owners, ...staff])], tally);
 }
 
 /** Of these people, the ones who can open no location any more lose their login, with what hangs on it. */
-async function removeLoginsWithNoTeam(tx: Pick<Database, 'select' | 'delete'>, team: string[]) {
+async function removeLoginsWithNoTeam(tx: Tx, team: string[], tally: Tally) {
   if (!team.length) return;
   const staying = new Set((await tx.select({ userId: clinicAccess.userId }).from(clinicAccess).where(inArray(clinicAccess.userId, team))).map((m) => m.userId));
   const gone = team.filter((u) => !staying.has(u));
   if (!gone.length) return;
   // invitations they sent to other teams go with them, as their sign-in does
-  await tx.delete(invitations).where(inArray(invitations.inviterId, gone));
-  await tx.delete(authSessions).where(inArray(authSessions.userId, gone));
-  await tx.delete(authTwoFactors).where(inArray(authTwoFactors.userId, gone));
-  await tx.delete(authAccounts).where(inArray(authAccounts.userId, gone));
-  await tx.delete(authUsers).where(inArray(authUsers.id, gone));
+  tally('invitations', (await tx.delete(invitations).where(inArray(invitations.inviterId, gone)).returning({ id: invitations.id })).length);
+  tally('auth_sessions', (await tx.delete(authSessions).where(inArray(authSessions.userId, gone)).returning({ id: authSessions.id })).length);
+  tally('auth_two_factors', (await tx.delete(authTwoFactors).where(inArray(authTwoFactors.userId, gone)).returning({ id: authTwoFactors.id })).length);
+  tally('auth_accounts', (await tx.delete(authAccounts).where(inArray(authAccounts.userId, gone)).returning({ id: authAccounts.id })).length);
+  tally('auth_users', (await tx.delete(authUsers).where(inArray(authUsers.id, gone)).returning({ id: authUsers.id })).length);
 }
 
 /**
