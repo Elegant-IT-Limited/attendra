@@ -34,6 +34,8 @@ describe('a session in use does not end', () => {
     expect(sessionCookie(res)).toBeUndefined();
     const end = await endOf('omar@maple.example');
     expect(Date.parse(res.json().expiresAt)).toBe(end);
+    // and as seconds left, for a browser whose clock is not the server's
+    expect(Math.abs(res.json().expiresInSeconds - (end - Date.now()) / 1000)).toBeLessThan(5);
     expect(end - Date.now()).toBeGreaterThan((SESSION_HOURS - 0.1) * HOUR);
   });
 

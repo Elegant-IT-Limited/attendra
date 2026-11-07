@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { endedNote, idleWords, reasonForSignedOut, sessionEnd, signedOutUrl, stageAt, WARN_BEFORE_MS, warningText } from '../lib/session-end';
+import { endedNote, idleWords, localEnd, reasonForSignedOut, sessionEnd, signedOutUrl, stageAt, WARN_BEFORE_MS, warningText } from '../lib/session-end';
 
 /**
  * When the dashboard's session ends and what the person is told: a warning 10 minutes
@@ -10,7 +10,7 @@ const t0 = Date.parse('2026-11-09T14:00:00.000Z');
 const store = (items: Record<string, string>) => ({ getItem: (k: string) => items[k] ?? null });
 
 describe('an idle session', () => {
-  const end = sessionEnd({ lastActive: t0, idleMinutes: 120, expiresAt: new Date(t0 + 11 * 60 * MIN).toISOString() });
+  const end = sessionEnd({ lastActive: t0, idleMinutes: 120, endsAt: t0 + 11 * 60 * MIN });
 
   it('ends 120 minutes after the last click or key, before the session\'s own end', () => {
     expect(end).toEqual({ at: t0 + 120 * MIN, why: 'idle' });
@@ -25,21 +25,33 @@ describe('an idle session', () => {
   });
 
   it('a click while warned moves the end again', () => {
-    const later = sessionEnd({ lastActive: t0 + 115 * MIN, idleMinutes: 120, expiresAt: new Date(t0 + 11 * 60 * MIN).toISOString() });
+    const later = sessionEnd({ lastActive: t0 + 115 * MIN, idleMinutes: 120, endsAt: t0 + 11 * 60 * MIN });
     expect(stageAt(later, t0 + 116 * MIN)).toBe('fine');
   });
 });
 
 describe('a session that reaches its own end first', () => {
   it('ends at expiresAt, warned 10 minutes ahead', () => {
-    const end = sessionEnd({ lastActive: t0, idleMinutes: 120, expiresAt: new Date(t0 + 30 * MIN).toISOString() });
+    const end = sessionEnd({ lastActive: t0, idleMinutes: 120, endsAt: t0 + 30 * MIN });
     expect(end).toEqual({ at: t0 + 30 * MIN, why: 'ended' });
     expect(stageAt(end, t0 + 20 * MIN)).toBe('warn');
     expect(stageAt(end, t0 + 30 * MIN)).toBe('over');
   });
 
+  it('is counted on this browser\'s clock from the seconds left, so a computer clock hours off still ends it on time', () => {
+    // the API said 30 minutes were left; this browser's clock reads a day behind the server's, and it does not matter
+    const answeredAt = t0 - 24 * 60 * MIN;
+    expect(localEnd(answeredAt, 30 * 60)).toBe(answeredAt + 30 * MIN);
+    const end = sessionEnd({ lastActive: answeredAt, idleMinutes: 120, endsAt: localEnd(answeredAt, 30 * 60) });
+    expect(stageAt(end, answeredAt + MIN)).toBe('fine');
+    expect(stageAt(end, answeredAt + 20 * MIN)).toBe('warn');
+    // nothing known yet: no end of its own
+    expect(localEnd(0, 30 * 60)).toBeNull();
+    expect(localEnd(answeredAt, undefined)).toBeNull();
+  });
+
   it('with no end known yet (/me still loading), only the idle minutes count', () => {
-    expect(sessionEnd({ lastActive: t0, idleMinutes: 15, expiresAt: null })).toEqual({ at: t0 + 15 * MIN, why: 'idle' });
+    expect(sessionEnd({ lastActive: t0, idleMinutes: 15, endsAt: null })).toEqual({ at: t0 + 15 * MIN, why: 'idle' });
   });
 });
 

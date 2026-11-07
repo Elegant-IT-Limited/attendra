@@ -44,6 +44,8 @@ export const Me = z.object({
   idleMinutes: z.number(),
   /** When this session ends unless it is used again (ISO): 12 hours after its last renewal, which a request more than an hour later makes. */
   expiresAt: z.string(),
+  /** The same end as seconds left when this answer was made: a browser counts from its own clock, so one set hours off still warns and signs out on time. */
+  expiresInSeconds: z.number(),
   /** Whether this deployment has a voice service for test calls from the browser. */
   testCalls: z.boolean(),
   /** Whether it can play a simulated call, with no audio, to show a live call. The local demo only. */

@@ -7,7 +7,7 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 ### Changed (sessions end after the last use, and say so)
 
 - **A session ends 12 hours after it was last used**, not 12 hours after sign-in: a request more than an hour after its last renewal moves the end, and the API sends the renewed cookie back with that answer. The idle sign-out (`ATTENDRA_IDLE_MINUTES`) is unchanged.
-- **Ten minutes before the dashboard signs out**, idle or at the session's end, it says when: "You'll be signed out at 6:45 PM. Keep working to stay signed in." A click or key keeps the session. `GET /api/v1/me` returns `expiresAt`.
+- **Ten minutes before the dashboard signs out**, idle or at the session's end, it says when: "You'll be signed out at 6:45 PM. Keep working to stay signed in." A click or key keeps the session. `GET /api/v1/me` returns `expiresAt`, and `expiresInSeconds`, which the dashboard counts from its own clock, so a computer whose clock is hours off is still warned and signed out on time.
 - **The sign-in page says why the last session ended**: "You were signed out after 2 hours without activity" (the deployment's minutes) or "Your session ended", never only "You were signed out". A request that is told "signed out" while the dashboard is signing out by itself goes to the same note.
 
 ### Changed (real time: batch 3)

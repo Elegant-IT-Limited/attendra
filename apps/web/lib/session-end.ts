@@ -22,11 +22,19 @@ export const IDLE_MINUTES_KEY = 'attendra.idleMinutes';
 export type EndReason = 'idle' | 'ended';
 export interface SessionEnd { at: number; why: EndReason }
 
-/** The first of the two ends: idle minutes after the last activity, or the session's own end. */
-export function sessionEnd({ lastActive, idleMinutes, expiresAt }: { lastActive: number; idleMinutes: number; expiresAt?: string | null }): SessionEnd {
+/**
+ * The session's own end on this browser's clock: the seconds the API said were left, from
+ * when its answer arrived. Never the server's time itself, which a computer clock set hours
+ * off would read as long past (or far away).
+ */
+export function localEnd(answeredAt: number, expiresInSeconds: number | null | undefined): number | null {
+  return answeredAt > 0 && typeof expiresInSeconds === 'number' ? answeredAt + expiresInSeconds * 1000 : null;
+}
+
+/** The first of the two ends: idle minutes after the last activity, or the session's own end (this browser's clock). */
+export function sessionEnd({ lastActive, idleMinutes, endsAt }: { lastActive: number; idleMinutes: number; endsAt?: number | null }): SessionEnd {
   const idle = lastActive + idleMinutes * 60_000;
-  const expires = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-  return Number.isFinite(expires) && expires < idle ? { at: expires, why: 'ended' } : { at: idle, why: 'idle' };
+  return typeof endsAt === 'number' && endsAt < idle ? { at: endsAt, why: 'ended' } : { at: idle, why: 'idle' };
 }
 
 /** Nothing to say yet, the warning, or past the end. */

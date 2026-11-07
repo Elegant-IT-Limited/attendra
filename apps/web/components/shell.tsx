@@ -26,7 +26,7 @@ import { personName, setClinicCountry, timeOf } from '@/lib/format';
 import { authClient } from '@/lib/auth-client';
 import { rememberClinic } from '@/lib/last-clinic';
 import { markSignedOut } from '@/lib/next';
-import { ACTIVE_AT_KEY, type EndReason, IDLE_MINUTES_KEY, type SessionEnd, sessionEnd, signedOutUrl, stageAt, warningText } from '@/lib/session-end';
+import { ACTIVE_AT_KEY, type EndReason, IDLE_MINUTES_KEY, localEnd, type SessionEnd, sessionEnd, signedOutUrl, stageAt, warningText } from '@/lib/session-end';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
 import { useTerms } from '@/lib/terms';
@@ -48,7 +48,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const pathname = usePathname();
   const router = useRouter();
   const queries = useQueryClient();
-  const { data: me, clinic, can, isPending } = useClinic(clinicId);
+  const { data: me, dataUpdatedAt: meAt, clinic, can, isPending } = useClinic(clinicId);
   // the clock and money follow the clinic's country; set before the page below formats anything
   const config = useClinicConfig(clinicId);
   if (config.data) setClinicCountry(config.data.phoneNumbers);
@@ -74,7 +74,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   const { hangUpNow, confirmLeave } = useTestCall();
   // the deployment's idle minutes (15 by default; the server's number) and the session's own end
   const idleMinutes = me?.idleMinutes ?? 15;
-  const expiresAt = me?.expiresAt ?? null;
+  const endsAt = localEnd(meAt, me?.expiresInSeconds);
   const signOut = useCallback(async (reason?: EndReason) => {
     // a test call recording not yet saved is lost on the way out: the person is asked (a sign-out by itself cannot ask)
     if (!reason && !confirmLeave()) return;
@@ -95,7 +95,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     let renewed = false;
     const shared = () => { try { return Number(localStorage.getItem(ACTIVE_AT_KEY)) || 0; } catch { return 0; } };
     const check = () => {
-      const end = sessionEnd({ lastActive: Math.max(local, shared()), idleMinutes, expiresAt });
+      const end = sessionEnd({ lastActive: Math.max(local, shared()), idleMinutes, endsAt });
       const stage = stageAt(end, Date.now());
       if (stage === 'over') return void signOut(end.why);
       setWarning((was) => (stage === 'warn' ? (was?.at === end.at && was.why === end.why ? was : end) : null));
@@ -116,7 +116,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
     for (const e of events) window.addEventListener(e, touch, { passive: true });
     return () => { clearInterval(timer); for (const e of events) window.removeEventListener(e, touch); };
-  }, [signOut, idleMinutes, expiresAt, queries]);
+  }, [signOut, idleMinutes, endsAt, queries]);
 
   // menu labels in the account's own words ("Pets", "Veterinarians")
   const terms = useTerms(clinicId);

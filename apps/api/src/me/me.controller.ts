@@ -35,6 +35,8 @@ export class MeController {
       twoFactorRequired: !this.options.demoMode && this.options.twoFactor !== 'optional',
       idleMinutes: this.options.idleMinutes ?? 15,
       expiresAt: staff.sessionExpiresAt,
+      // on the clock the session's end was set by (Better Auth's), not the injected one tests move
+      expiresInSeconds: Math.max(0, Math.round((Date.parse(staff.sessionExpiresAt) - Date.now()) / 1000)),
       testCalls: !!this.voice?.browserCalls,
       simulatedCalls: !!this.voice?.simulatedCalls,
       roles: ROLES,
