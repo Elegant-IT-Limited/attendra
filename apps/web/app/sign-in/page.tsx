@@ -12,6 +12,7 @@ import { Input, Label, PasswordInput } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { rememberNext, safeNext } from '@/lib/next';
+import { endedNote } from '@/lib/session-end';
 
 const LINK = 'font-medium text-primary underline-offset-4 hover:underline';
 
@@ -32,6 +33,8 @@ function SignIn() {
   const params = useSearchParams();
   const idle = params.get('idle');
   const expired = params.get('expired');
+  // why the last session ended, never only that it did
+  const ended = endedNote({ idle, expired });
   const invited = params.get('invited');
   const next = params.get('next');
   const [email, setEmail] = useState('');
@@ -83,8 +86,7 @@ function SignIn() {
     // shown once the API has said whether this is a demo, so the demo box never pushes the form down
     <AuthCard title="Sign in" subtitle="The front desk for your AI receptionist." pending={health.isPending}
       footer={health.data?.signupUrl ? <>New to Attendra? <a className={LINK} href={health.data.signupUrl}>Start your free trial</a></> : undefined}>
-      {idle && <Alert>You were signed out after a while without activity.</Alert>}
-      {expired && !idle && <Alert>You were signed out. Sign in again to carry on where you were.</Alert>}
+      {ended && <Alert>{ended}</Alert>}
       {invited && <Alert title="Sign in to answer your invitation">New to Attendra? Choose your password with the link in the invitation email first, then sign in here.</Alert>}
       {health.data?.demoSignIn ? (
         <Alert title="Demo clinic, synthetic patients">

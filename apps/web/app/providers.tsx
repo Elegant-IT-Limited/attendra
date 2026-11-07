@@ -5,17 +5,23 @@ import { type ReactNode, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/overlay';
 import { ToastProvider } from '@/components/ui/toast';
 import { ApiFailure, redirectFor } from '@/lib/api';
-import { safeNext, signedOutOnPurpose } from '@/lib/next';
+import { safeNext, signedOutTo } from '@/lib/next';
+import { reasonForSignedOut, signedOutUrl } from '@/lib/session-end';
 
 // A signed-out or not-yet-enrolled person is sent to the right page from any screen. A
 // session that ended mid-work says so on the sign-in page, and comes back to the same page.
 function follow(error: unknown) {
   const to = redirectFor(error);
   if (!to || window.location.pathname === to) return;
-  if (to === '/sign-in' && signedOutOnPurpose()) window.location.href = to;
+  const purpose = to === '/sign-in' ? signedOutTo() : null;
+  if (purpose) window.location.href = purpose;
   else if (to === '/sign-in') {
+    // the sign-in page says why: the idle minutes passed (another tab signed out), or the session itself ended
     const here = window.location.pathname + window.location.search;
-    window.location.href = `/sign-in?expired=1${safeNext(here) ? `&next=${encodeURIComponent(here)}` : ''}`;
+    let storage: Storage | null = null;
+    try { storage = window.localStorage; } catch { /* storage off: "your session ended", which is still true */ }
+    const { why, idleMinutes } = reasonForSignedOut(Date.now(), storage);
+    window.location.href = signedOutUrl(why, { idleMinutes: idleMinutes ?? 15, here: safeNext(here) ? here : null });
   } else window.location.href = to;
 }
 

@@ -5,7 +5,7 @@ import {
   NotFoundException, SetMetadata, UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { can, type Permission } from '../access';
 import type { Auth } from '../auth';
 import { API_OPTIONS, type ApiOptions, AUTH, DB } from './tokens';
@@ -17,6 +17,8 @@ export interface Staff {
   twoFactorEnabled: boolean;
   /** A temporary password is still in use: nothing but "who am I" until it is changed. */
   mustChangePassword: boolean;
+  /** When this session ends unless it is used again (ISO): 12 hours after its last renewal. */
+  sessionExpiresAt: string;
   /** Set on clinic routes, after the membership check. */
   clinicId?: string;
   role?: StaffRole;
@@ -74,11 +76,18 @@ export class StaffGuard implements CanActivate {
       throw new ForbiddenException({ error: 'cross_origin_write' });
     }
 
-    const session = await this.auth.api.getSession({ headers: toHeaders(req.headers) });
+    // a session used more than an hour after its last renewal is renewed here: its new cookie
+    // (12 hours from now) goes back with this answer, or the browser would drop it at the old end
+    const { headers: renewed, response: session } = await this.auth.api.getSession({ headers: toHeaders(req.headers), returnHeaders: true });
     if (!session) throw new UnauthorizedException({ error: 'signed_out' });
+    const cookies = renewed.getSetCookie();
+    if (cookies.length) ctx.switchToHttp().getResponse<FastifyReply>().header('set-cookie', cookies);
     const user = session.user as typeof session.user & { twoFactorEnabled?: boolean | null };
     const password = await passwordState(this.db, { userId: user.id });
-    req.staff = { userId: user.id, name: user.name, email: user.email, twoFactorEnabled: !!user.twoFactorEnabled, mustChangePassword: !!password?.mustChange };
+    req.staff = {
+      userId: user.id, name: user.name, email: user.email, twoFactorEnabled: !!user.twoFactorEnabled, mustChangePassword: !!password?.mustChange,
+      sessionExpiresAt: new Date(session.session.expiresAt).toISOString(),
+    };
 
     const beforeTwoFactor = meta<boolean>(BEFORE_TWO_FACTOR);
     // demo mode or not: the person who typed a temporary password must not be able to act as its owner

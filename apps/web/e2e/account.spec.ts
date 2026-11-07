@@ -111,9 +111,36 @@ test('signing in again after the session ended opens the page you were on', asyn
   const page = await context.newPage();
   await page.goto(schedule, { waitUntil: 'commit' });
   await expect(page).toHaveURL(/\/sign-in\?expired=1&next=/);
-  await expect(page.getByText('You were signed out. Sign in again to carry on where you were.')).toBeVisible();
+  await expect(page.getByText('Your session ended. Sign in again to carry on where you were.')).toBeVisible();
   await signInPatiently(page, () => page.getByRole('button', { name: 'Front desk', exact: true }).click());
   await expect(page).toHaveURL(new RegExp(`${schedule}$`), { timeout: 20_000 });
+});
+
+test('ten minutes before the idle sign-out a warning says when, a key keeps the session, and the sign-in page says why it ended', async ({ browser }) => {
+  // a login of its own (the sign-out ends its session) and a clock this test moves on by hand, from the suite's time
+  const context = await newContext(browser, undefined, { realClock: true });
+  await context.clock.install({ time: testNow() });
+  const page = await context.newPage();
+  await page.goto('/sign-in');
+  await signInPatiently(page, () => page.getByRole('button', { name: 'Front desk', exact: true }).click());
+  await expect(page).toHaveURL(/\/c\/[^/]+$/, { timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible({ timeout: 20_000 });
+  // the deployment's idle minutes, as the server says them
+  const minutes = ((await (await page.request.get('/api/v1/me')).json()) as { idleMinutes: number }).idleMinutes;
+  const warning = page.getByTestId('sign-out-warning');
+  await expect(warning).toHaveCount(0);
+
+  await page.clock.fastForward((minutes - 10) * 60_000 + 20_000);
+  await expect(warning).toContainText(/^You'll be signed out at \d{1,2}:\d{2}( [AP]M)?\. Keep working to stay signed in\.$/);
+  // a key is someone at work: the warning goes, and the session stays
+  await page.keyboard.press('Shift');
+  await expect(warning).toHaveCount(0);
+
+  // then nothing for the whole idle time: signed out, and the sign-in page says why, with the server's minutes
+  await page.clock.fastForward(minutes * 60_000 + 20_000);
+  await expect(page).toHaveURL(new RegExp(`/sign-in\\?idle=${minutes}$`), { timeout: 20_000 });
+  const words = minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`;
+  await expect(page.getByText(`You were signed out after ${words} without activity. Sign in again to carry on.`)).toBeVisible();
 });
 
 test('a wrong password says so, and a forgotten one is sent to the manager when no email is set up', async ({ browser }) => {

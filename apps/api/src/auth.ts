@@ -19,6 +19,9 @@ const roles = {
   viewer: ac.newRole(memberAc.statements),
 };
 
+/** A session lasts this long after its last use (renewed at most once an hour). */
+export const SESSION_HOURS = 12;
+
 export interface AuthOptions {
   publicUrl: string;
   secret: string;
@@ -49,9 +52,11 @@ export function createAuth(db: Database, opts: AuthOptions) {
     user: { modelName: 'auth_users' },
     account: { modelName: 'auth_accounts' },
     verification: { modelName: 'auth_verifications' },
-    // A front-desk shift, not a month: a session ends 12 hours after sign-in, however
-    // busy it is. The dashboard also signs out after 15 idle minutes.
-    session: { modelName: 'auth_sessions', expiresIn: 60 * 60 * 12, disableSessionRefresh: true },
+    // A session ends 12 hours after it was last used, never in the middle of someone's work:
+    // a request more than an hour after the last renewal moves the end to 12 hours from then
+    // (the guard hands the renewed cookie back). The dashboard signs out after its idle
+    // minutes (ATTENDRA_IDLE_MINUTES, 15 by default) long before that.
+    session: { modelName: 'auth_sessions', expiresIn: SESSION_HOURS * 60 * 60, updateAge: 60 * 60 },
     // People are added on the Team page or with scripts/add-member.ts, never by sign-up.
     // Accounts made here are confirmed already; one opened by self-serve sign-up waits until its address is confirmed.
     emailAndPassword: {
