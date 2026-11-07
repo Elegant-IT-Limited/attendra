@@ -9,7 +9,7 @@ import { openingIfNotStarted } from './prompt';
 
 export interface CallRecorder {
   appendSegment(s: { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }): Promise<void>;
-  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }): Promise<void>;
+  close(c: { reason: string; voiceSeconds: number | null; outcome: string; emergency: boolean; emergencyResult?: string | null; language?: string; quality?: CallQuality; usage?: { models: Record<string, ModelTokens>; fastTier?: boolean; engineUsd?: number } }): Promise<void>;
 }
 
 /**
@@ -210,7 +210,9 @@ export class CallRunner {
       }
       case 'session.output_transcript.delta': {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
-        this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        // a result said with no tool behind it is corrected at once (the claim guard, batch 1b)
+        const corrections = this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        if (corrections.length) void this.dispatch(corrections);
         // the first words after a lookup's result: how long the caller waited for the answer
         if (this.answerDue) {
           this.answerDue = false;
@@ -581,8 +583,10 @@ export class CallRunner {
     if (quality.firstAudioMs === null && lasted >= EMPTY_CALL_MIN_MS) {
       this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}). ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
     }
-    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
-    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts }, 'call finished');
+    await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, emergencyResult: state.emergencyResult, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
+    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts,
+      // the tokens each model used (counts only), the same numbers call_costs prices: a cost can be read off the logs
+      model_tokens: state.modelTokens }, 'call finished');
     this.sideband.close();
   }
 }

@@ -271,7 +271,7 @@ describe('the GPT-Live call runner', () => {
       { speaker: 'agent', text: 'Thanks for calling Maple Street.' },
       { speaker: 'caller', text: 'What are your hours?' },
     ]);
-    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 }, usage: { models: {}, fastTier: false } }]);
+    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, emergencyResult: null, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 }, usage: { models: {}, fastTier: false } }]);
     expect(h.sideband.close).toHaveBeenCalled();
   });
 });

@@ -130,6 +130,8 @@ export interface TaskQueue {
     details: Record<string, string>; // stored encrypted; shown to staff, never logged
     /** Leads the Requests page and Today: a request taken while an emergency holds the call. */
     urgent?: boolean;
+    /** Where it came from, when not an ordinary request: an emergency nobody could be put through for (shown as Emergency). */
+    origin?: 'emergency';
   }): Promise<{ id: string; /** The request's own number at the clinic, shown as R-1042. */ number: number; created: boolean }>;
 }
 

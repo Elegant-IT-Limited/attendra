@@ -133,7 +133,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const followedUp = new Set(requests.flatMap((t) => (t.type === 'follow_up' && t.callId ? [t.callId] : [])));
   const request = (t: (typeof requests)[number]) => ({
     key: t.id, icon: t.urgent ? <AlertTriangle className="size-4 text-danger" /> : <RequestIcon type={t.type} />, ...(t.urgent ? { tone: 'danger' as const } : {}),
-    title: `${t.urgent ? 'Urgent · ' : ''}${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
+    title: `${t.urgent ? (t.origin === 'emergency' ? 'Emergency · ' : 'Urgent · ') : ''}${requestNumber(t.number)} · ${taskType(t.type, terms.patient)}`, detail: <>Came in <RelativeTime iso={t.createdAt} exact={clinicTime(t.createdAt, tz, 'long')} now={now} />, nobody has it yet</>,
     action: canWork
       ? <Button size="sm" variant="outline" disabled={claim.isPending} onClick={() => claim.mutate(t.id)}>Claim</Button>
       : <Link href={`/c/${clinicId}/requests`} className={LINK}>Open</Link>,

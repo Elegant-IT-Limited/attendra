@@ -292,7 +292,11 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
-    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
+    // the line is said after what came before it, and the caller answers after it: the clock moves, as on a call (an
+    // answer "after the question was said" needs the question to have been said first, batch 1b)
+    // live, a scripted line the voice has just said itself (the emergency question) is not said a second time
+    if ('assistant' in turn && livePlanner && transcript.filter((t) => t.speaker === 'assistant').at(-1)?.text.trim() === turn.assistant.trim()) continue;
+    if ('assistant' in turn) { clock += 1500; agent.onAgentTranscript(turn.assistant, clock, clock + 1000); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
     if (livePlanner) clock += 1500;
@@ -327,32 +331,41 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     // another pet's needs, or the next step for this one (2026-11-15)
     if (state.emergencyLocked && !state.emergencyScriptSaid) { await say(); if (lines.slice(i + 1).some((l) => 'caller' in l)) continue; break; }
     if (endedByRule) { await say(); break; } // the assistant ended the call on this line (an abusive caller): nothing is planned after a goodbye
-    if (livePlanner) queue.push(livePlanner);
-    else {
-      const steps: ScriptedStep[] = turn.delegate!.map((step) => {
-        const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
-        return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
-      });
-      const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
-      queue.push(scripted);
+    // live, a script (the emergency question, the one about the sign, the route, the 911 line) is the voice's whole reply,
+    // as on a call: the instruction becomes the reply and the voice then waits for the caller. Asking the model for a
+    // second reply here made it repeat the question or add words of its own (batch 1b live matrix)
+    // a script that tells the voice to carry on afterwards ("then help with what they ask") is not the whole reply
+    const emergencyOn = state.emergencyCase !== null || state.emergency !== null;
+    const waitsForCaller = !!livePlanner && emergencyOn && heard.some((o) => o.type === 'instructions' && /"[^"]+"/.test(o.content)
+      && (/\?\s*$/.test(scriptLines(o.content)) || !/carry on|help with what they|go on with|offer the soonest/i.test(o.content)));
+    if (!waitsForCaller) {
+      if (livePlanner) queue.push(livePlanner);
+      else {
+        const steps: ScriptedStep[] = turn.delegate!.map((step) => {
+          const [tool, args] = Object.entries(step)[0]! as [ToolName, Record<string, unknown>];
+          return { tool, args: (sofar: ToolResult[]) => resolve(args, state, [...results, ...sofar], clinic, now) };
+        });
+        const scripted = new ScriptedPlanner(steps, (r) => { results.push(...r); const last = r.at(-1); return last ? JSON.stringify(last.data) : null; });
+        queue.push(scripted);
+      }
+      const out = await agent.onDelegation(`item_${++delegations}`);
+      outbound.push(...out);
+      // the lookup line the voice says while the backend works ("Let me check Thursday for you."): spoken, before the answer
+      for (const o of out) if (o.type === 'thinking') {
+        const line = announcedLine(o.content);
+        if (!line) continue;
+        clock += 500;
+        agent.onAgentTranscript(line, clock, clock + 500);
+        if (livePlanner) transcript.push({ speaker: 'assistant', text: line });
+      }
+      for (const o of out) if (o.type === 'commentary') {
+        clock += 1500;
+        agent.onAgentTranscript(o.content, clock, clock + 1000);
+        if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
+      }
+      if (state.pending) lastReadback = state.pending.readback;
+      await say();
     }
-    const out = await agent.onDelegation(`item_${++delegations}`);
-    outbound.push(...out);
-    // the lookup line the voice says while the backend works ("Let me check Thursday for you."): spoken, before the answer
-    for (const o of out) if (o.type === 'thinking') {
-      const line = announcedLine(o.content);
-      if (!line) continue;
-      clock += 500;
-      agent.onAgentTranscript(line, clock, clock + 500);
-      if (livePlanner) transcript.push({ speaker: 'assistant', text: line });
-    }
-    for (const o of out) if (o.type === 'commentary') {
-      clock += 1500;
-      agent.onAgentTranscript(o.content, clock, clock + 1000);
-      if (livePlanner) transcript.push({ speaker: 'assistant', text: o.content });
-    }
-    if (state.pending) lastReadback = state.pending.readback;
-    await say();
     // live, after the last line so far: the model caller answers the planner's question from
     // the scenario's facts, until the call is over or it has said ten lines
     // a caller who says goodbye still has that last line heard ("Yes, that's right, thanks, bye")
@@ -483,8 +496,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
   // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)
   if (livePlanner) {
-    // a read-back followed by its own "shall I book it?" is one question, not two
-    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?/i.test(q);
+    // a read-back followed by its own "shall I book it?" is one question, not two; so is the emergency question, said in
+    // two sentences as approved ("Is this still an emergency right now? Do you need help getting emergency care?")
+    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?|emergency care\?|atenci[oó]n de emergencia\?/i.test(q);
     if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1 || (qs.length === 2 && confirming(qs[1]!)), `asked ${qs.length} questions in one reply: "${line}"`); }
     if (e.no_repeated_questions) {
       const asked: { q: string; at: number }[] = [];

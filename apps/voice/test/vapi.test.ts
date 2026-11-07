@@ -78,6 +78,28 @@ describe('path C: Vapi calling our tools', () => {
     expect(rows).toEqual([{ engine: 'vapi', voice_flow: 'tools', channel: 'web', voice_seconds: '42.00', lines: 4, cost_engine: 'vapi', voice_usd: '0.091200' }]);
   });
 
+  it('records each line once from both of Vapi\'s list shapes, with the first audio and the wait for a tool answer', async () => {
+    const c = { id: 'vapi-call-3', type: 'webCall' };
+    const greeting = { role: 'bot', message: clinic.greeting, secondsFromStart: 1.12, duration: 3360 };
+    const ask = { role: 'user', message: 'What time do you close today?', secondsFromStart: 5.2, duration: 1800 };
+    const toolCall = { role: 'tool_calls', secondsFromStart: 7.4 };
+    const toolResult = { role: 'tool_call_result', secondsFromStart: 7.5 };
+    const answer = { role: 'bot', message: 'We close at six today.', secondsFromStart: 8.9, duration: 1500 };
+    // a tool call's artifact: the system line and the tool entries in it
+    await post({ type: 'tool-calls', call: c, artifact: { messages: [{ role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, ask, toolCall] }, toolCallList: [{ id: 'tc_a', function: { name: 'clinic_now', arguments: {} } }] });
+    // conversation-update: the same lines in another shape, sent again and again as the call goes
+    await post({ type: 'conversation-update', call: c, messages: [greeting, ask] });
+    // the same lines again, as Vapi resends them: the question with another end, and a piece of the greeting
+    await post({ type: 'conversation-update', call: c, messages: [{ ...greeting, message: 'Thanks for calling', secondsFromStart: 1.9, duration: 1200 }, { ...ask, duration: 2400 }, answer] });
+    await post({ type: 'conversation-update', call: c, messages: [{ role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, ask, toolCall, toolResult, answer] });
+    await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 12, cost: 0.02, artifact: { messages: [{ role: 'system', message: 'prompt', secondsFromStart: 0 }, greeting, ask, toolCall, toolResult, answer] } });
+    await t.client.query(`select set_config('app.clinic_id', $1, false)`, [clinic.id]);
+    const [row] = (await t.client.query(`select c.first_audio_ms, (select count(*)::int from call_segments s where s.call_id = c.id) as lines,
+      (select result->>'wait_ms' from call_actions a where a.call_id = c.id and a.tool = 'answer_timing') as wait from calls c where c.openai_session_id = 'vapi_vapi-call-3'`)).rows;
+    // three lines said: the greeting, the question, the answer; the answer came 1.9 s after the question ended (7.0 s → 8.9 s)
+    expect(row).toEqual({ first_audio_ms: 1120, lines: 3, wait: '1900' });
+  });
+
   it('refuses a clinic it does not know, as a result Vapi can say', async () => {
     const res = await post({ type: 'tool-calls', call: { id: 'vapi-call-2', type: 'webCall' }, toolCallList: [{ id: 'tc_9', function: { name: 'clinic_now', arguments: {} } }] }, SECRET, 'clinic_unknown');
     expect(res.json()).toEqual({ results: [{ toolCallId: 'tc_9', error: 'This call cannot be helped here.' }] });

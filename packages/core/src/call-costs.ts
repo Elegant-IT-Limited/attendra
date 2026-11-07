@@ -17,13 +17,24 @@ export interface ModelTokens { input: number; cached: number; output: number }
  * closed after carries the new version on its row. A model or engine missing here costs 0 and is logged by the caller.
  */
 export const CALL_RATES = {
-  version: '2026-11-06',
-  /** Voice engine, per minute of the call (OpenAI bills GPT-Live by the minute; gpt-realtime and Vapi are averaged to it). */
+  version: '2026-11-07',
+  /**
+   * Voice engine, per minute of the call: OpenAI bills GPT-Live by the minute, and Vapi reports its own charge. gpt-realtime
+   * is billed by its tokens (below, `<model>:audio` and `<model>:text`); the minute rate is only for a call without them.
+   */
   voicePerMinute: { 'gpt-live': 0.05, 'gpt-realtime': 0.085, vapi: 0.11 } satisfies Record<VoiceEngineName, number>,
   /** Text models, per million tokens. Priority processing ("fast") is charged at twice these. */
   modelsPerMTok: {
     'gpt-6-luna': { input: 0.10, cached: 0.01, output: 0.50 },
     'gpt-6-sol': { input: 1.25, cached: 0.125, output: 10 },
+    // gpt-realtime, per modality (OpenAI's price list, 2026-11-07): what path A's voice actually costs
+    'gpt-realtime-2.1:audio': { input: 32, cached: 0.40, output: 64 },
+    'gpt-realtime-2.1:text': { input: 4, cached: 0.40, output: 24 },
+    'gpt-realtime-2.1-mini:audio': { input: 10, cached: 0.30, output: 20 },
+    'gpt-realtime-2.1-mini:text': { input: 0.60, cached: 0.06, output: 2.40 },
+    // the caller's words transcribed on gpt-realtime (about $0.006 a minute)
+    'gpt-4o-transcribe': { input: 2.50, cached: 2.50, output: 10 },
+    'gpt-4o-mini-transcribe': { input: 1.25, cached: 1.25, output: 5 },
   } as Record<string, { input: number; cached: number; output: number }>,
   /** One text segment, carrier fees included (Twilio US). */
   textEach: 0.0123,
@@ -57,7 +68,9 @@ const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 /** What one call cost, from the rates table. Every part rounds to a millionth of a dollar. */
 export function callCost(c: CallCostInput, rates = CALL_RATES): CallCost {
   const minutes = Math.max(0, c.voiceSeconds ?? 0) / 60;
-  const voiceUsd = c.engineUsd !== undefined && c.engineUsd >= 0 ? c.engineUsd : minutes * rates.voicePerMinute[c.engine];
+  // gpt-realtime with its tokens counted: the voice is in the model cost, not the minute rate (counted once)
+  const byTokens = c.engine === 'gpt-realtime' && Object.keys(c.models).some((m) => m.endsWith(':audio'));
+  const voiceUsd = c.engineUsd !== undefined && c.engineUsd >= 0 ? c.engineUsd : byTokens ? 0 : minutes * rates.voicePerMinute[c.engine];
   const unpriced: string[] = [];
   let modelUsd = 0;
   for (const [model, t] of Object.entries(c.models)) {

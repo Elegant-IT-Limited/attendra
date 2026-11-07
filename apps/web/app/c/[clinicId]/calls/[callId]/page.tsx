@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { testCallBadge } from '@/lib/call-as';
-import { requestNumber, clinicTime, clock, duration, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
+import { requestNumber, clinicTime, clock, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
@@ -86,7 +86,7 @@ export default function CallPage() {
       <div className="mb-6 space-y-2">
         <h1 className="text-xl font-semibold tracking-tight">{clinicTime(c.startedAt, tz, 'long')}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
-          <Outcome outcome={c.outcome} emergency={c.emergency} />
+          <Outcome outcome={c.outcome} emergency={c.emergency} emergencyResult={c.emergencyResult} />
           {allCancelled && <Badge tone="warn">Booking since cancelled</Badge>}
           {c.channel === 'web' && <Badge tone="accent">{testCallBadge(c.calledAsLast4)}</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
@@ -112,7 +112,11 @@ export default function CallPage() {
           })}
         </ul>
       )}
-      {c.emergency && (
+      {c.emergencyResult && EMERGENCY_RESULTS[c.emergencyResult] ? (
+        <Alert tone={c.emergencyResult === 'cleared' ? 'warn' : 'danger'} title={EMERGENCY_RESULTS[c.emergencyResult]!.label} className="mb-6">
+          {EMERGENCY_RESULTS[c.emergencyResult]!.text} Review the call and follow up as your protocol says.
+        </Alert>
+      ) : c.emergency && (
         <Alert tone="danger" title="Emergency language on this call" className="mb-6">
           The assistant stopped what it was doing and gave the emergency script. Review the call and follow up as your protocol says.
         </Alert>

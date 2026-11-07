@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@attendra/core": "workspace:*",
+    "@attendra/knowledge": "workspace:*",
     "@attendra/observability": "workspace:*",
     "openai": "7.33.0",
     "zod": "4.6.7"

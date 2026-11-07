@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine, TURN_NOTE,
 } from '../src';
 
 // Batch 1a, the tools path: the voice calls our tools itself (gpt-realtime, path A), or GPT-Live hands each task to a
@@ -13,6 +13,9 @@ import {
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const NOW = zonedInstant('2026-09-28', '10:00', DEMO_CLINIC.timezone);
 const vet = { ...RIVERBEND_CLINIC, voiceFlow: 'tools' as const };
+
+/** Leaves out the turn notes (batch 1b), to count what else was sent. */
+const notNote = (x: Record<string, unknown>) => x.type !== 'conversation.item.delete' && !String((x.item as { id?: string } | undefined)?.id ?? '').startsWith('turn_note_');
 
 describe('the tools-path prompts', () => {
   it('carry tone, language, turn-taking and how to use the tools: no hours, no open or closed, no booking rules', () => {
@@ -112,6 +115,26 @@ describe('path A: what waits for the caller\'s words', () => {
 });
 
 describe('round 2: manual replies on gpt-realtime', () => {
+  it('puts one note after each caller turn (the voice says only what a tool gives it), and removes the last one', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_n', vet, NOW, undefined, { flow: 'tools' });
+    e.attach('rtc_n');
+    s.play({ type: 'response.done', event_id: 'r0' });
+    const start = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
+    expect(s.sent.slice(start)).toEqual([
+      { type: 'conversation.item.create', item: { id: 'turn_note_1', type: 'message', role: 'system', content: [{ type: 'input_text', text: TURN_NOTE }] } },
+      { type: 'response.create' },
+    ]);
+    expect(TURN_NOTE).toContain('with no words before it');
+    s.play({ type: 'response.done', event_id: 'r1' });
+    const next = s.sent.length;
+    s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
+    expect(s.sent.slice(next).map((x) => x.type)).toEqual(['conversation.item.delete', 'conversation.item.create', 'response.create']);
+    expect(s.sent[next]).toEqual({ type: 'conversation.item.delete', item_id: 'turn_note_1' });
+  });
+
   it('waits for the go after a turn, takes the lookup handed to it, and replies once; by itself if no go comes', async () => {
     vi.useFakeTimers();
     const s = realtimeSocket();
@@ -122,24 +145,24 @@ describe('round 2: manual replies on gpt-realtime', () => {
     // before a pet is found, a turn gets its reply at once
     const start = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c0', item_id: 'item_0' });
-    expect(s.sent.slice(start).map((x) => x.type)).toEqual(['response.create']);
+    expect(s.sent.slice(start).filter(notNote).map((x) => x.type)).toEqual(['response.create']);
     s.play({ type: 'response.done', event_id: 'r00' });
     sideband.send({ type: 'turns.manual', event_id: 'm1', on: true });
     const before = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
     sideband.send({ type: 'tool.inject', event_id: 'i1', call_id: 'spec_1', name: 'find_slots', arguments: '{}', output: '{"ok":true}' });
     sideband.send({ type: 'reply.go', event_id: 'g1' });
-    expect(s.sent.slice(before).map((x) => (x.item as { type?: string } | undefined)?.type ?? x.type)).toEqual(['function_call', 'function_call_output', 'response.create']);
+    expect(s.sent.slice(before).filter(notNote).map((x) => (x.item as { type?: string } | undefined)?.type ?? x.type)).toEqual(['function_call', 'function_call_output', 'response.create']);
     // a second go for the same turn does nothing; a turn with no go replies by itself
     sideband.send({ type: 'reply.go', event_id: 'g2' });
     s.play({ type: 'response.done', event_id: 'r1' });
     const mid = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c2', item_id: 'item_2' });
     vi.advanceTimersByTime(GO_WAIT_MS);
-    expect(s.sent.slice(mid).map((x) => x.type)).toEqual(['response.create']);
+    expect(s.sent.slice(mid).filter(notNote).map((x) => x.type)).toEqual(['response.create']);
     // a lookup handed over after it already replied by itself is dropped
     sideband.send({ type: 'tool.inject', event_id: 'i2', call_id: 'spec_2', name: 'find_slots', arguments: '{}', output: '{}' });
-    expect(s.sent.slice(mid)).toHaveLength(1);
+    expect(s.sent.slice(mid).filter(notNote)).toHaveLength(1);
     vi.useRealTimers();
   });
 });

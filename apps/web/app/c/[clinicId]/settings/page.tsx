@@ -365,7 +365,7 @@ export default function Settings() {
         </Section>
 
         {(pet || c.emergencyHospital) && (
-          <Section id="emergency" title="Emergency hospitals" description="Where the assistant sends a caller whose animal is in danger, with the address and phone. It names your first choice that is open at that moment. With none set or none open, callers are told to go to the nearest 24-hour emergency vet."
+          <Section id="emergency" title="Emergency hospitals" description="Your emergency hospitals, in order: the assistant names your first choice that is open at that moment. How emergencies are handled (a hospital, your team any time, or your team in hours and a hospital after) is under Settings > Emergencies."
             action={<Button type="button" size="sm" variant="outline" disabled={hospitals.length >= 5} onClick={() => addOrFocus(hospitals, BLANK.hospital, (_h, i) => `item-hospital-${i}`, () => { setHospitals([{ name: '', phone: '', address: '' }, ...hospitals]); setAdded('item-hospital-0'); })}><Plus /> Hospital</Button>}>
             {hospitals.length === 0 && <EmptyNote>No emergency hospital yet. Add the one you send clients to at night.</EmptyNote>}
             <Sortable items={hospitals} keyOf={(_h, i) => String(i)} label={(h) => h.name} disabled={!writable || save.isPending} onMove={(f, t) => setHospitals(moved(hospitals, f, t))} className="space-y-5">

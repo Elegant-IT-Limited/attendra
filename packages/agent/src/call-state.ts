@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { answerAcrossPieces, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, type Slot } from '@attendra/core';
 import { CallMemory } from './call-memory';
+import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
 export interface Turn { speaker: 'caller' | 'agent'; text: string; startMs: number; endMs: number }
 
@@ -122,6 +123,23 @@ export class CallState {
   emergencyPet: { name: string | null; species: string | null } | null = null;
   /** The on-call transfer an emergency asks for has been queued: it rings once per call. */
   emergencyTransferSent = false;
+  /**
+   * An animal's emergency, as the state machine has it (flow/emergency.ts, batch 1b): flagged, asked, escalated or cleared.
+   * Null until a red flag. While it is flagged or asked, a routine visit for that pet waits for the caller's answer.
+   */
+  emergencyCase: EmergencyCase | null = null;
+  /** Notes for the team from an emergency the caller cleared ("Owner reported ... earlier on this call."): on the booking and the request. */
+  emergencyNotes: string[] = [];
+  /** How the call's emergency ended, for the Calls page. */
+  emergencyResult: EmergencyResult | null = null;
+  /** The hospital's details were texted on this call: once only. */
+  emergencyTextSent = false;
+  /** The last tool refusal (its reason code): what "why?" is answered with (flow/guards.ts). */
+  lastRefusal: { code: string; atTurn: number } | null = null;
+  /** Every tool's result on this call, by name and code: what the assistant may say happened (the claim guard). */
+  toolLog: { name: string; ok: boolean; error: string | null }[] = [];
+  /** Lines the guards say once a call: a claim corrected, side talk, the recording answer. */
+  readonly guardsSaid = new Set<string>();
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
   /** Answers that ran past the 60 s limit and were apologised for: counted on the call row (migration 0044). */
@@ -226,6 +244,12 @@ export class CallState {
     // proposal counts as the read-back, not only a new turn.
     if (speaker === 'agent' && this.pending && this.pending.readbackAtMs === null && endMs > this.pending.proposedAtMs) {
       this.pending.readbackAtMs = Math.max(startMs, this.pending.proposedAtMs);
+    }
+    // an emergency line (the question, the route, the sign question): the caller's answer is what comes after it is said
+    const c = this.emergencyCase;
+    if (speaker === 'agent' && c && c.saidAtMs === null && endMs > c.sentAtMs) {
+      c.saidAtMs = Math.max(startMs, c.sentAtMs);
+      if (c.stage === 'flagged') c.stage = 'asked';
     }
     // the same for a text offer: the question is the first thing said after it
     if (speaker === 'agent' && this.textOffer && this.textOffer.askedAtMs === null && endMs > this.textOffer.offeredAtMs) {
