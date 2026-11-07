@@ -4,6 +4,14 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 1c: scheduling on path A)
+
+- **A booking is read back before it is made, in the words themselves**: the assistant's words after a proposal must carry its day and time (EN/ES, digits or words) before a yes counts. Any speech after the proposal used to count, so a "yes" after "I found Biscuit" could book.
+- **Dates from the clinic's clock**: a bare "Thursday" is the clinic's next Thursday, whatever date the voice model guessed; the per-turn note on path A carries the clinic's date.
+- **Vets by name** in the slot search ("Dr. Khan", "la doctora Vance"); a "specialty" that is really the visit ("dental care") or none ("general practice") no longer refuses with "no doctor is listed".
+- **A tool's own question is said as written** ("Shall I look with them?"), and "Dr. Vance isn't in on Tuesday" needs a lookup behind it.
+- **Emergencies**: the question opens with "I'm sorry to hear that." ("Lo siento mucho."), never a rating of the sign; for a person in danger, the lines after the emergency number come from code.
+
 ### Added (batch 1b: emergencies, the rest of 11-16, path A)
 
 - **Emergency settings per location** (Settings > Emergencies): refer to a hospital, handle emergencies any time, or handle them in hours and refer after, each with what it needs to be saved, and a preview of what callers will hear (open and closed, English and Spanish). `emergencyRoute` is the one source of where an emergency goes; the test-call page says it. `pnpm db:emergency-settings` writes the setting for clinics saved before it.
