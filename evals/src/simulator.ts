@@ -485,8 +485,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   if (e.hung_up !== undefined) check(endedByRule === e.hung_up, `the assistant ${endedByRule ? 'ended the call itself' : 'did not end the call itself'}, expected ${e.hung_up ? 'it to' : 'not to'} (a goodbye after the caller said goodbye is not that)`);
   // live, the planner's own lines: one question at a time, and never the same question twice (asking again when the caller asks is fine)
   if (livePlanner) {
-    // a read-back followed by its own "shall I book it?" is one question, not two
-    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?/i.test(q);
+    // a read-back followed by its own "shall I book it?" is one question, not two; so is the emergency question, said in
+    // two sentences as approved ("Is this still an emergency right now? Do you need help getting emergency care?")
+    const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?|emergency care\?|atenci[oó]n de emergencia\?/i.test(q);
     if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1 || (qs.length === 2 && confirming(qs[1]!)), `asked ${qs.length} questions in one reply: "${line}"`); }
     if (e.no_repeated_questions) {
       const asked: { q: string; at: number }[] = [];

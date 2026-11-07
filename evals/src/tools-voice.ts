@@ -30,6 +30,8 @@ interface Session { flow: FlowMemory; sent: number; lastSaid: string | null; ws?
 
 export class ToolsPathPlanner implements Planner {
   private readonly sessions = new WeakMap<CallState, Session>();
+  /** The call's open socket: scenarios run one after another, so a new call closes the last one's (a socket left open hits OpenAI's 60-minute limit and its error ends the run). */
+  private open: OpenAIRealtimeWS | null = null;
   constructor(private readonly openai: OpenAI, readonly path: ToolsPath, private readonly model: string) {}
 
   private session(state: CallState): Session {
@@ -94,8 +96,12 @@ export class ToolsPathPlanner implements Planner {
   /** Path A: one gpt-realtime session per call, in text, fed the caller's new words each turn; tool calls answered until it writes words. */
   private async realtime(input: PlannerInput, s: Session, run: (name: string, args: string) => Promise<string>, requests: PlannerTiming['requests']): Promise<string | null> {
     if (!s.ws) {
+      this.close();
       const ws = await OpenAIRealtimeWS.create(this.openai as never, { model: this.model });
+      // errors after a call ended (session_expired) are not a failed eval; a call's own errors reach it through its events
+      ws.on('error', () => {});
       s.ws = ws;
+      this.open = ws;
       s.ready = new Promise((resolve, reject) => { ws.socket.once('open', () => resolve()); ws.socket.once('error', reject); if (ws.socket.readyState === 1) resolve(); });
       await s.ready;
       ws.send({ type: 'session.update', session: { type: 'realtime', output_modalities: ['text'], instructions: toolsVoicePrompt(input.clinic, { callerNumber: input.callerNumber ?? null }), tools: realtimeTools(input.clinic) as never, tool_choice: 'auto' } });
@@ -153,5 +159,5 @@ export class ToolsPathPlanner implements Planner {
   }
 
   /** Closes every realtime session left open. */
-  close() { /* sessions close with their sockets when the process ends */ }
+  close() { try { this.open?.close(); } catch { /* already closed */ } this.open = null; }
 }
