@@ -22,7 +22,7 @@ settings:
       address: 88 Cedar Road, Denver
 turns:
   - caller: A mi perro Biscuit se le está hinchando la garganta.
-  - assistant: Lo siento, eso suena preocupante. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
+  - assistant: Lo siento mucho. ¿Sigue siendo una emergencia ahora mismo? ¿Necesita ayuda para recibir atención de emergencia?
   - caller: No estoy segura, no sé.
 expect:
   outcome: emergency
