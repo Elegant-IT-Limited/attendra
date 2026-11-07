@@ -77,7 +77,7 @@ describe('booking over the phone', () => {
         { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
       ]);
       const proposed = await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-      c.assistant('Tuesday at 8 with Dr. Okafor, and I will text you a confirmation. Shall I book it?');
+      c.readBack('Tuesday at 8 with Dr. Okafor, and I will text you a confirmation. Shall I book it?');
       c.caller(answer);
       return { proposed, callId: c.callId, done: await c.delegate([{ tool: 'commit_pending', args: {} }]) };
     };
@@ -103,7 +103,7 @@ describe('booking over the phone', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
     ]);
     await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-    c.assistant('Shall I book Tuesday at 1 PM?');
+    c.readBack('Shall I book Tuesday at 1 PM?');
     c.caller('Hmm, maybe, is there anything Thursday?');
     const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(out.errors).toEqual(['no_clear_yes']);
@@ -235,7 +235,7 @@ describe('booking over the phone', () => {
         { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
         { tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) },
       ]);
-      c.assistant('Just to confirm, the first time. Is that right?');
+      c.readBack('Just to confirm, the first time. Is that right?');
       c.caller('Yes');
       return c.delegate([{ tool: 'commit_pending', args: {} }]);
     };
@@ -521,7 +521,7 @@ describe('call control', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
-    c.assistant('Tuesday afternoon with Dr. Okafor. Shall I book it?');
+    c.readBack('Tuesday afternoon with Dr. Okafor. Shall I book it?');
     c.caller('Yes, please book it.');
     const done = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(spoken(done)).toContain('"booked":true');
@@ -620,11 +620,36 @@ describe('review fixes', () => {
     ]);
     c.caller('yeah yeah'); // over the hold music, before anything was read back
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['not_read_back']);
-    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Hmm, maybe.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['no_clear_yes']);
     c.assistant('Would you like me to book it?');
     c.caller('Yes please.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
+  });
+
+  it('counts the read-back only when the words carry the day and time: a yes after "I found her" books nothing (batch 1c, a live run)', async () => {
+    const c = await w.call();
+    c.caller('Maria Delgado, March 4 1985, sick visit, afternoon');
+    await c.delegate([
+      { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } },
+      { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
+      { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
+    ]);
+    const when = c.state.pending!.when!;
+    c.assistant('Thanks, Maria. I found you.');
+    c.caller('Yes, please.');
+    expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual(['not_read_back']);
+    // another time is not this one
+    const other = new Date(when.start.getTime() + 60 * 60_000);
+    c.assistant(`That's ${other.toLocaleString('en-US', { timeZone: when.timeZone, weekday: 'long', hour: 'numeric', minute: '2-digit' })}.`);
+    expect(c.state.pending!.readbackAtMs).toBeNull();
+    // the read-back in two pieces of one turn counts
+    const [day, time] = [when.start.toLocaleString('en-US', { timeZone: when.timeZone, weekday: 'long' }), when.start.toLocaleString('en-US', { timeZone: when.timeZone, hour: 'numeric', minute: '2-digit' })];
+    c.assistant(`So that's ${day},`);
+    c.assistant(`at ${time} with Dr. Okafor. Shall I book it?`);
+    expect(c.state.pending!.readbackAtMs).not.toBeNull();
+    c.caller('Yes.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
   });
 
@@ -637,7 +662,7 @@ describe('review fixes', () => {
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
-    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.readBack('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
     c.caller('Yes, that is right. Thanks, goodbye.');
     // the planner looks it all up again and proposes the same slot before committing
     const again = await c.delegate([
@@ -655,7 +680,7 @@ describe('review fixes', () => {
       { tool: 'verify_caller', args: { full_name: 'Maria Delgado', date_of_birth: 'March 4 1985' } }, slot,
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
-    c2.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c2.readBack('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
     c2.caller('Yes.');
     const other = await c2.delegate([
       { tool: 'propose_booking', args: () => ({ slot_id: [...c2.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) },
@@ -675,7 +700,7 @@ describe('review fixes', () => {
     c.caller('3');
     c.assistant('Sure, I will go ahead and book that.'); // already speaking while the proposal runs
     await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()].at(-1)!, replaces_appointment_id: null }) }]);
-    c.assistant('Tuesday at 3 PM with Dr. Okafor for a sick visit. Would you like me to book it?'); // same turn
+    c.readBack('Tuesday at 3 PM with Dr. Okafor for a sick visit. Would you like me to book it?'); // same turn
     c.caller('Yeah');
     c.assistant('Alright, booking that now.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).errors).toEqual([null]);
@@ -690,7 +715,7 @@ describe('review fixes', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'afternoon' } },
       { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
     ]);
-    c.assistant('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
+    c.readBack('Tuesday at 1:00 PM with Dr. Okafor for a sick visit. Shall I book it?');
     c.caller('Yes. I said yes');
     c.assistant('Thanks, I will book it.');
     c.caller('[clear throat');
@@ -783,7 +808,7 @@ describe('review fixes', () => {
         { tool: 'find_slots', args: { visit_type_id: 'vt_annual', provider_id: null, from_date: '2026-10-05', part_of_day: 'any' } },
         { tool: 'propose_booking', args: (r) => ({ slot_id: firstSlot(r), replaces_appointment_id: null }) },
       ]);
-      c.assistant('Monday October 5 at 8 AM. Shall I book it?');
+      c.readBack('Monday October 5 at 8 AM. Shall I book it?');
       c.caller('Yes.');
       const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
       expect(spoken(out)).toContain('"booked":true');

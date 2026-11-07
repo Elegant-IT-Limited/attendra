@@ -163,13 +163,13 @@ describe('texting during a call', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-    c.assistant('Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Yes.');
     await c.delegate([{ tool: 'commit_pending', args: {} }]);
     const [appt] = await w.backend.scheduler.upcoming(DEMO_CLINIC.id, w.patientIds.maria!, new Date('2026-09-28T00:00:00Z'));
     c.caller('Actually, please cancel it.');
     await c.delegate([{ tool: 'propose_cancellation', args: { appointment_id: appt!.id } }]);
-    c.assistant('Cancel the appointment on Tuesday?');
+    c.readBack('Cancel the appointment on Tuesday?');
     c.caller('Yes, cancel it.');
     const out = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(out.results[0]!.data).toMatchObject({ cancelled: true, sms_sent: true });
@@ -186,7 +186,7 @@ describe('the reminder question after a booking', () => {
       { tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } },
     ]);
     await c.delegate([{ tool: 'propose_booking', args: () => ({ slot_id: [...c.state.offered.keys()][0]!, replaces_appointment_id: null }) }]);
-    c.assistant('Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Yes.');
     return (await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!;
   };

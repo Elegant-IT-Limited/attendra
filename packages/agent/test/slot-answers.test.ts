@@ -182,7 +182,7 @@ describe('a time asked for and free, with the pet found', () => {
   it('a booked visit changed to another kind keeps its time: its own 5:00 is not in its way', async () => {
     const c = await findPet();
     await c.delegate([at5('vt_wellness')]);
-    c.assistant('Shall I book it?');
+    c.readBack('Shall I book it?');
     c.caller('Yes.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!.data.booked).toBe(true);
     c.caller('That should be a sick visit, not a wellness exam.');
@@ -190,7 +190,7 @@ describe('a time asked for and free, with the pet found', () => {
     const again = (await c.delegate([at5('vt_sick')])).results[0]!.data;
     expect(again.exact).toEqual({ time: '17:00', free: true });
     expect(String(again.spoken)).toMatch(/^So I'd move Biscuit's sick visit from Thursday, October 1, at 5:00 PM to Thursday, October 1, at 5:00 PM/);
-    c.assistant('Shall I go ahead?');
+    c.readBack('Shall I go ahead?');
     c.caller('Yes.');
     expect((await c.delegate([{ tool: 'commit_pending', args: {} }])).results[0]!.data.booked).toBe(true);
     expect(c.state.outcome).toBe('rescheduled');

@@ -55,6 +55,8 @@ export async function world(seed: typeof seedDemo = seedDemo) {
       /** A whole caller turn, with timestamps that move forward like a real call. */
       caller: (text: string) => { clock += 1000; return agent.onCallerTranscript(text, clock, clock + 900); },
       assistant: (text: string) => { clock += 1000; agent.onAgentTranscript(text, clock, clock + 900); },
+      /** The read-back of the change on the table, as the voice says it (its day and time), then any words after it. */
+      readBack: (after = '') => { clock += 1000; agent.onAgentTranscript(`${state.pending!.readback}. ${after}`.trim(), clock, clock + 900); },
       /** GPT-Live delegates; the next scripted plan answers. */
       delegate: async (steps: ScriptedStep[], planner?: Planner, emit?: Parameters<CallAgent['onDelegation']>[1]) => {
         const scripted = new ScriptedPlanner(steps);
