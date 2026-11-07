@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { RIVERBEND_CLINIC } from '@attendra/core';
+import { EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
 import { schema, seedRiverbend } from '@attendra/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { world } from './support';
@@ -16,12 +16,31 @@ const open = { ...RIVERBEND_CLINIC, afterHours: 'book' as const, emergencyTransf
 const openLate = { ...open, hours: { ...open.hours, '1': [{ open: '08:00', close: '22:00' }] } };
 const instructions = (out: { type: string; content?: string }[]) => out.filter((o) => o.type === 'instructions').map((o) => o.content ?? '').join(' ');
 const FIND = { tool: 'find_slots', args: { visit_type_id: 'vt_wellness', provider_id: null, from_date: null, part_of_day: 'any' } } as const;
-const SCRIPT = 'This sounds like an emergency. Please take your pet to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. If a person is hurt or in danger, call 911.';
+const SCRIPT = 'Please take your pet to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. If a person is hurt or in danger, call 911.';
+const QUESTION = EMERGENCY_LINES.question('en');
+/**
+ * A red flag, the one question (batch 1b), the caller's yes, and the route said: the call is held as an emergency. These
+ * clinics refer emergencies to a hospital (no on-call line), so the route is the hospital.
+ */
+function routed(c: Awaited<ReturnType<typeof w.call>>, said: string) {
+  const flagged = instructions(c.caller(said));
+  expect(flagged).toContain(QUESTION);
+  c.assistant(QUESTION);
+  const out = instructions(c.caller('Yes, please.'));
+  c.assistant(SCRIPT);
+  return out;
+}
 
 describe('the right script', () => {
-  it('a pet\'s throat swelling gets the pet script with the hospital, not the 911 line', async () => {
+  it('a pet\'s throat swelling gets the one question, then on a yes the pet\'s route (the hospital), never the 911 line', async () => {
     const c = await w.call('+17205550172', { clinic: open });
-    const out = instructions(c.caller("My dog Luna's throat is swelling!"));
+    const asked = instructions(c.caller("My dog Luna's throat is swelling!"));
+    expect(asked).toContain(QUESTION);
+    expect(asked).not.toContain('Front Range Pet Emergency');
+    expect(c.state.emergency).toBeNull();
+    expect(c.state.emergencyCase?.kind).toBe('pet_breathing');
+    c.assistant(QUESTION);
+    const out = instructions(c.caller('Yes!'));
     expect(out).toContain('Front Range Pet Emergency');
     expect(out).not.toContain('If this is a medical emergency');
     expect(c.state.emergency?.kind).toBe('pet_breathing');
@@ -29,8 +48,12 @@ describe('the right script', () => {
 
   it('in Spanish too', async () => {
     const c = await w.call('+17205550172', { clinic: { ...open, languages: ['en', 'es'] } });
-    const out = instructions(c.caller('A mi perra Luna se le está hinchando la garganta.'));
-    expect(out).toContain('lleve a su mascota');
+    const asked = instructions(c.caller('A mi perra Luna se le está hinchando la garganta.'));
+    expect(asked).toContain(EMERGENCY_LINES.question('es'));
+    c.assistant(EMERGENCY_LINES.question('es'));
+    const out = instructions(c.caller('Sí, por favor.'));
+    expect(out).toContain('Por favor lleve a');
+    expect(out).toContain('Front Range Pet Emergency');
     expect(c.state.emergency?.kind).toBe('pet_breathing');
   });
 
@@ -47,8 +70,7 @@ describe('the right script', () => {
 describe('after the pet script', () => {
   it('a caller who still wants a visit for that pet is offered the team now, never the hospital again, and booking stays refused', async () => {
     const c = await w.call('+17205550172', { clinic: openLate });
-    c.caller("Biscuit can't breathe properly.");
-    c.assistant(SCRIPT);
+    routed(c, "Biscuit can't breathe properly.");
     c.caller("Okay, but I'd like an appointment for him.");
     const first = await c.delegate([FIND]);
     expect(first.errors).toEqual(['emergency_in_progress']);
@@ -67,8 +89,7 @@ describe('after the pet script', () => {
   it('closed, the next step is an urgent request, flagged urgent for the team', async () => {
     const closed = { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false }; // 8 pm: closed, and it takes requests
     const c = await w.call('+17205550172', { clinic: closed });
-    c.caller('My cat is choking.');
-    c.assistant(SCRIPT);
+    routed(c, 'My cat is choking.');
     c.caller('Can you book her in for tomorrow?');
     const out = await c.delegate([FIND]);
     expect(out.errors).toEqual(['emergency_in_progress']);
@@ -81,9 +102,8 @@ describe('after the pet script', () => {
 
   it('another pet\'s visit is answered as usual, while the pet in danger\'s stays refused', async () => {
     const c = await w.call('+17205550172', { clinic: open });
-    c.caller("My dog Biscuit's throat is swelling!");
+    routed(c, "My dog Biscuit's throat is swelling!");
     expect(c.state.emergencyPet).toEqual({ name: null, species: 'dog' });
-    c.assistant(SCRIPT);
     c.caller("We're going now. Quick question, can I book my cat Mochi for her shots next week?");
     const other = await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Mochi', phone: null } }, FIND]);
     expect(other.errors).toEqual([null, null]);
@@ -97,13 +117,12 @@ describe('after the pet script', () => {
     const c = await w.call('+17205550172', { clinic: open });
     await c.delegate([{ tool: 'verify_caller', args: { owner_name: null, pet_name: 'Biscuit', phone: null } }]);
     c.caller("Biscuit's tongue is swelling up");
-    expect(c.state.emergencyPet).toEqual({ name: 'Biscuit', species: 'dog' });
+    expect(c.state.emergencyCase?.pet).toEqual({ name: 'Biscuit', species: 'dog' });
   });
 
   it('plans nothing on the red flag itself once the script is said: no unasked transfer (a live run, 2026-11-15)', async () => {
     const c = await w.call('+17205550172', { clinic: openLate });
-    c.caller("Biscuit can't breathe properly.");
-    c.assistant(SCRIPT);
+    routed(c, "Biscuit can't breathe properly.");
     const out = await c.delegate([{ tool: 'transfer_call', args: { target: 'on_call' } }]);
     expect(out.results).toEqual([]);
     expect(out.some((o) => o.type === 'transfer')).toBe(false);
@@ -112,8 +131,7 @@ describe('after the pet script', () => {
 
   it('never sends the caller to the on-call line itself in an animal emergency: the next step instead', async () => {
     const c = await w.call('+17205550172', { clinic: openLate });
-    c.caller("Biscuit can't breathe properly.");
-    c.assistant(SCRIPT);
+    routed(c, "Biscuit can't breathe properly.");
     c.caller('Can I talk to someone?');
     const out = await c.delegate([{ tool: 'transfer_call', args: { target: 'on_call' } }]);
     expect(out.errors).toEqual(['emergency_in_progress']);

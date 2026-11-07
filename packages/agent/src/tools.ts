@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import {
   bookableProviders,
-  addDays, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
+  addDays, EMERGENCY_LINES, ageOn, asE164, groupedNumber, heardNumber, providerName, noticeWords, relatedBookable, spokenDigits, callUsNumber, declinesText, describesPet, pointsAtPet, withoutTextRefusal, type AuditLog, dobProblem, type Gender, genderWord, type ClinicConfig, type DomainEvent, emergencyNumberFor, type EventSink, findSlots, isClearYes, isMedicalQuestion, type KnowledgeBase, localDateOf, localName, MEDICAL_REFUSAL,
   fold, industryPack, isOpen, isPetEmergency, LANGUAGES, normalise, localParts, matchesSpecialty, toMinutes, type Messenger, NO_INFORMATION, PACKS, parseDob, parsePetBirth, saidGoodbye, samePhone,
   type PatientDirectory, providerFacts, resolveTransfer, type SchedulerAdapter, seesAge, type Slot, speakSlot, specialtyFacts, type TaskQueue,
   toolArgsFor, type ToolName, todaysHoursLine, visitTypeFacts, currentOffers, requestTopicFacts, weekHours, zonedInstant, dayShift, offerTimesLine,
@@ -71,6 +71,15 @@ const WRITE_TOOLS = new Set<ToolName>(['register_patient', 'propose_booking', 'p
 // after an emergency the only things left to do are to hand the caller to a person
 // (send_text narrows itself: in an emergency, only the hospital's details)
 const EMERGENCY_ALLOWED = new Set<ToolName>(['transfer_call', 'create_callback', 'end_call', 'get_clinic_info', 'send_text']);
+/** What waits for the caller's answer to the emergency question, for the pet it is about: looking for times and booking. */
+const WAITS_FOR_ANSWER = new Set<ToolName>(['find_slots', 'propose_booking', 'commit_pending']);
+
+/** The note on a booking for the team: who booked it (when not the owner on file), and what an emergency the caller cleared reported. */
+function bookingNote(state: CallState, byCaller: string | null, clinic: ClinicConfig): { note?: string } {
+  const pack = PACKS[clinic.primaryLanguage];
+  const notes = [byCaller ? pack.bookedByCallerNote({ name: byCaller }) : state.foundByLastFour ? pack.foundByLastFourNote : null, ...state.emergencyNotes].filter((n): n is string => !!n);
+  return notes.length ? { note: notes.join(' ') } : {};
+}
 /**
  * After an animal's emergency script: no routine visit for the pet in danger, and the next step instead, the team now
  * (a front-desk line that takes calls while the clinic is open) or an urgent request. The hospital only if asked.
@@ -89,9 +98,9 @@ function petEmergencyNextStep(state: CallState, ctx: CallContext): ToolResult {
  * talked about, which counts as another pet only when its name, or else its kind, differs from the one in danger. When the
  * call cannot tell, it is the same pet.
  */
-function aboutPetInDanger(name: ToolName, args: Record<string, unknown>, state: CallState): boolean {
+function aboutPetInDanger(name: ToolName, args: Record<string, unknown>, state: CallState, flagged?: { name: string | null; species: string | null } | null): boolean {
   if (name === 'verify_caller') return false;
-  const danger = state.emergencyPet;
+  const danger = flagged ?? state.emergencyPet;
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   const pet = name === 'register_patient' ? { name: text(args.pet_name), species: text(args.species) }
     : state.verifiedPatient ? { name: state.verifiedPatient.firstName, species: state.verifiedPatient.species ?? null }
@@ -297,6 +306,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   const parsed = toolArgsFor(ctx.clinic.industry)[name].safeParse(rawArgs);
   // the arguments were the model's mistake, not the caller's: they are never asked to say it again for it
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
+  // an animal's red flag waits for the caller's answer to the one question: no times or booking for that pet until then
+  const flagged = state.emergencyCase;
+  if (trade.identity === 'pet' && flagged && (flagged.stage === 'flagged' || flagged.stage === 'asked') && WAITS_FOR_ANSWER.has(name)
+    && aboutPetInDanger(name, parsed.data as Record<string, unknown>, state, flagged.pet)) {
+    return refuse('pet_flagged', `The caller has not yet answered whether this is still an emergency. Do not look for times or book for ${flagged.pet?.name ?? 'this pet'}. If the question has not been asked, ask it now, word for word: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer.`);
+  }
   if (state.emergencyLocked && !EMERGENCY_ALLOWED.has(name)) {
     if (trade.identity !== 'pet') return refuse('emergency_in_progress', `Do not continue the task. Repeat that if this is an emergency they should call ${emergencyNumberFor(ctx.clinic, state.language)}.`);
     // where to take the animal comes first, and is said once (two test calls repeated the hospital four times)
@@ -868,7 +883,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const result = await backend.scheduler.book(clinic.id, {
         patientId: patient.id, slot: pending.slot, callId: ctx.callId, idempotencyKey: key(ctx.callId, 'book', pending.slot.id, pending.seq),
         replacesAppointmentId: pending.replacesAppointmentId,
-        ...(byCaller ? { note: PACKS[clinic.primaryLanguage].bookedByCallerNote({ name: byCaller }) } : state.foundByLastFour ? { note: PACKS[clinic.primaryLanguage].foundByLastFourNote } : {}),
+        ...bookingNote(state, byCaller, clinic),
       });
       state.pending = null;
       if (result.status === 'slot_taken') {
@@ -955,7 +970,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
         // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once
         idempotencyKey: key(ctx.callId, 'callback', topic?.id ?? (/^privacy request/i.test(String(args.reason)) ? 'privacy' : 'general')),
-        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: asGiven(clinic, callback) },
+        details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: asGiven(clinic, callback), ...(state.emergencyNotes.length ? { note: state.emergencyNotes.join(' ') } : {}) },
         // taken while an emergency holds the call: urgent, so it leads the Requests page and Today
         ...(state.emergencyLocked ? { urgent: true } : {}),
       });
@@ -993,6 +1008,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // in an emergency the only text is where to take the animal, and only then
       if (state.emergencyLocked && kind !== 'emergency_hospital') return refuse('emergency_in_progress', 'Do not text anything else now. Repeat where to take the animal.');
       if (!state.emergencyLocked && kind === 'emergency_hospital') return refuse('not_an_emergency', 'That text is only for an animal emergency. Read the hospital\'s details out instead if they ask.');
+      // the hospital's details go once a call (FRIDAY notes: text once, to a confirmed number)
+      if (kind === 'emergency_hospital' && state.emergencyTextSent) return refuse('already_sent', 'The hospital\'s details were already texted on this call. Say they are on their phone; do not send them again.');
       // only to the number they are calling from, or the one on their file: never another person's
       const asked = (args.to as string | null) ?? null;
       const onFile = state.verifiedPatient?.phone ?? null;
@@ -1045,6 +1062,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         return refuse('not_sent', 'Say the text didn\'t go through, and read it out instead.');
       }
       if (sent.status === 'sent') state.textsSent++;
+      if (sent.status === 'sent' && kind === 'emergency_hospital') { state.emergencyTextSent = true; state.emergencyResult = 'hospital_texted'; }
       state.lastTextConsentMs = consentAtMs;
       // the text has gone: a failed audit row is logged, never turned into "I couldn't do that"
       await backend.audit.record(clinic.id, { actor: 'voice-agent', action: 'sms.consent.asked', entity: 'call', entityId: ctx.callId, callId: ctx.callId })

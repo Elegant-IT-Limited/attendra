@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addTokens, bySubject, claimsAuthority, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
+import { addTokens, bySubject, claimsAuthority, EMERGENCY_LINES, type EmergencyMatch, emergencyRoute, clinicNow, clinicNowLine, crisisLineFor, detectEmergencies, isAbusive, isInjectionAttempt, isReturningCall, leakIn, redactSensitive, detectLanguage, emergencyNumberFor, hospitalFor, industryPack, isPetEmergency, type Language, localDateOf, normalise, PACKS, resolveTransfer, textingOf, todayLine, todaysHoursLine, TRANSFER_KINDS, type ToolName } from '@attendra/core';
 import type { Logger } from '@attendra/observability';
 import type { CallState } from './call-state';
 import { coachingInstruction, DOING, type LiveEvent, shortName } from './live';
 import type { Planner, PlannerTiming } from './planner';
 import { afterTool, type FlowMemory, flowStage, nextStep } from './flow/booking';
 import { speculativeLookup } from './flow/speculate';
+import { answerTo, BORDERLINE, type EmergencyCase, lastQuestionIsOurs, MILD, pastAndFineNow, SEVERE, staffNote } from './flow/emergency';
 import { isVoiceTool, shapeForVoice, visitTypeChoices, type VoiceToolOutput } from './flow/voice-tools';
 import { type Backend, type CallContext, runTool, type ToolResult } from './tools';
 
@@ -184,9 +185,20 @@ export class CallAgent {
     const recent = this.state.recentCallerText();
     const heard = detectEmergencies(recent, trade.emergency?.phrases);
     let fresh = (trade.emergency?.subjects ? bySubject(heard, recent, trade.emergency.subjects, this.petNames()) : heard).filter((m) => !this.state.emergencyKinds.has(m.kind));
-    // At a clinic for animals an emergency is decided by its signs, not the word: "she had an emergency last week",
-    // "after her emergency surgery", "the emergency doctor" are not one. The word alone gets one short question
-    // ("Is Ginger in danger right now?"), and only a yes holds the call (two test calls were stuck on the word).
+    // At a clinic for animals an animal's emergency is the state machine's (flow/emergency.ts, batch 1b): a red flag, or
+    // the word "emergency" said about now, gets one question, and only the caller's answer routes it. A person in danger
+    // is not: they hear the public emergency number at once (below), whatever the clinic's setting.
+    if (trade.emergency && !fresh.some((m) => !isPetEmergency(m.kind) && m.kind !== 'general')) {
+      const turnText = turn?.speaker === 'caller' ? turn.text : delta;
+      const word = fresh.find((m) => m.kind === 'general');
+      // "she had an emergency last week", "after her emergency surgery", "the emergency doctor": not one
+      const flag = fresh.find((m) => isPetEmergency(m.kind)) ?? (word && !NOT_NOW.test(normalise(recent)) ? word : undefined);
+      for (const m of fresh) this.state.emergencyKinds.add(m.kind);
+      const flagged = flag ? this.flagPetEmergency(flag, recent, turnText, endMs)
+        : !this.state.emergencyCase && BORDERLINE.test(normalise(turnText)) ? this.flagBorderline(turnText, endMs) : [];
+      return [...flagged, ...(flagged.length ? [] : this.answerEmergencyCase()), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
+    }
+    // the clinic's other trades: the word alone is not asked about (a person in danger is, at once, below)
     const danger = trade.emergency ? this.state.answerToDangerQuestion() : null;
     let asked: Outbound[] = [];
     if (trade.emergency && fresh.length && fresh.every((m) => m.kind === 'general')) {
@@ -198,7 +210,8 @@ export class CallAgent {
     if (danger === 'yes' && !this.state.emergencyLocked && !fresh.length) fresh = [{ kind: 'general', phrase: 'yes', language: this.state.language }];
     // a person in danger of harming themselves always comes first; then the trade's
     // emergency, whose script also tells a person in danger to call the emergency number
-    const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => isPetEmergency(m.kind)) ?? fresh[0] : fresh[0];
+    // at a clinic for animals this is a person in danger (an animal's red flag went to the state machine above)
+    const match = trade.emergency ? fresh.find((m) => m.kind === 'self_harm') ?? fresh.find((m) => !isPetEmergency(m.kind) && m.kind !== 'general') ?? fresh[0] : fresh[0];
     if (!match) return [...asked, ...(danger === 'no' ? this.notInDanger() : []), ...this.maybeClearEmergency(), ...this.checkAbuse(), ...this.checkSecurity(), ...this.checkReturnedCall()];
     this.state.emergencyCleared = false; // a new emergency holds the call again
     this.sinceLock = '';
@@ -233,7 +246,8 @@ export class CallAgent {
     this.emergencyScript = { content: script, number: forTrade && hospital ? hospital.name : number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
     // once per call, the first time a kind serious enough is heard: "this is an emergency"
     // on its own does not ring anyone, and must not stop the chest pain after it from doing so
-    if (!this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
+    // (at a clinic for animals a person in danger hears the public number only: the clinic's line is for its patients)
+    if (!trade.emergency && !this.state.emergencyTransferSent && this.ctx.clinic.emergencyTransferEnabled && TRANSFER_KINDS.has(match.kind)) {
       const onCall = resolveTransfer(this.ctx.clinic, 'on_call', this.ctx.now());
       if (onCall.ok) {
         // after the script has been said: the runner waits until the assistant is quiet
@@ -242,6 +256,186 @@ export class CallAgent {
       }
     }
     return out;
+  }
+
+  /** The language an emergency line is said in: the one the caller used, when the clinic speaks it, else the call's. */
+  private emergencyLanguage(said?: Language): Language {
+    return said && this.ctx.clinic.languages.includes(said) ? said : this.state.language;
+  }
+
+  /** Hands the voice an emergency line: the caller's answer is what they say after it is spoken. */
+  private emergencyLine(c: EmergencyCase, content: string): Outbound[] {
+    c.sentAtMs = this.state.lastMs();
+    c.saidAtMs = null;
+    return [{ type: 'instructions', delegationId: null, content }];
+  }
+
+  /**
+   * An animal's red flag (or the word "emergency" about now): one caring line and the one question, nothing routed
+   * yet. Said in the past and fine now in the same breath ("ate some chocolate last week, she's totally fine now"): a
+   * clear no already, and the call goes on with a note for the team.
+   */
+  private flagPetEmergency(match: EmergencyMatch, recent: string, turnText: string, endMs: number): Outbound[] {
+    const s = this.state;
+    if (s.emergencyCase && s.emergencyCase.stage !== 'cleared') return []; // already asked or routed: one question, never two
+    const pet = this.petInDanger(recent, match);
+    const c: EmergencyCase = { stage: 'flagged', kind: match.kind, sign: match.kind === 'general' ? 'an emergency' : match.phrase, pet, sentAtMs: endMs, saidAtMs: null, signAsked: false, route: null, transfer: 'none' };
+    s.emergencyCase = c;
+    this.log.warn({ call_id: this.ctx.callId, emergency_kind: match.kind }, 'red flag: one question before any route');
+    this.emit({ type: 'emergency', kind: match.kind });
+    if (pastAndFineNow(turnText)) return this.clearEmergencyCase();
+    s.revision++; // a request in flight is not spoken over the question
+    this.emitState();
+    const language = this.emergencyLanguage(match.language);
+    const name = pet?.name ?? null;
+    return this.emergencyLine(c, `The caller may be describing an animal emergency. Stop the current task. Say calmly, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.question(language)}" `
+      + `Then wait for their answer. Do not give medical or first-aid advice, do not name a hospital or a number yet, and do not book or move anything for ${name ?? 'this pet'} until they answer.`);
+  }
+
+  /** A sign that may be mild (bleeding, vomiting, limping, not eating): one question on how bad it is; heavy or nonstop already said is a red flag. */
+  private flagBorderline(turnText: string, endMs: number): Outbound[] {
+    const s = this.state;
+    const said = normalise(turnText);
+    const sign = said.match(BORDERLINE)?.[0] ?? 'a sign';
+    const pet = this.petInDanger(turnText, { phrase: sign });
+    if (SEVERE.test(said)) return this.flagPetEmergency({ kind: 'pet_trauma', phrase: sign, language: s.language }, turnText, turnText, endMs);
+    const c: EmergencyCase = { stage: 'flagged', kind: 'borderline', sign, pet, sentAtMs: endMs, saidAtMs: null, signAsked: true, route: null, transfer: 'none' };
+    s.emergencyCase = c;
+    this.log.info({ call_id: this.ctx.callId }, 'a sign that may be mild: asking how bad it is');
+    const language = s.language;
+    return this.emergencyLine(c, `The caller mentioned a sign that may or may not be serious. Ask once, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.borderlineQuestion(language)}" `
+      + 'Then wait for their answer. Give no medical advice.');
+  }
+
+  /** The caller's answer to the question (or to the one about the sign), when they have given it. */
+  private answerEmergencyCase(): Outbound[] {
+    const s = this.state;
+    const c = s.emergencyCase;
+    if (!c || c.stage === 'cleared' || c.saidAtMs === null) return [];
+    const words = s.latestCallerWordsAfter(c.saidAtMs);
+    if (!words) return [];
+    // before the route, only an answer to our question counts: the assistant may have asked something else since
+    if (c.stage !== 'escalated' && !lastQuestionIsOurs([...s.turns].reverse().find((t) => t.speaker === 'agent')?.text ?? '')) return [];
+    let a = answerTo(words, c.stage === 'escalated');
+    if (c.kind === 'borderline') a = SEVERE.test(normalise(words)) ? 'yes' : MILD.test(normalise(words)) ? 'clear_no' : a;
+    if (c.stage !== 'escalated' && (a === 'yes' || a === 'unsure')) return this.escalateEmergencyCase();
+    // a clear no, then or later (the caller retracts after a yes): booked as usual, with a note for the team
+    if (a === 'clear_no' || (a === 'bare_not' && c.signAsked)) return this.clearEmergencyCase();
+    if (a === 'bare_not') return this.askAboutTheSign();
+    return [];
+  }
+
+  /** A bare "it's not an emergency": it denies the word, not the sign. One question about the sign itself, then its answer decides. */
+  private askAboutTheSign(): Outbound[] {
+    const c = this.state.emergencyCase!;
+    c.signAsked = true;
+    const language = this.state.language;
+    return this.emergencyLine(c, `The caller says it is not an emergency, but has not said the sign is gone. Ask once, in ${PACKS[language].name}, word for word: "${EMERGENCY_LINES.signQuestion(language, c.pet?.name ?? null)}" Then wait for their answer.`);
+  }
+
+  /**
+   * A yes or "not sure": the route, by the clinic's setting and the hour (emergencyRoute). A hospital is said once (and
+   * texted once, to a confirmed number, when the clinic texts it); the team gets a live transfer. On a test call nothing
+   * is transferred: the caller hears what happens when nobody answers.
+   */
+  private escalateEmergencyCase(): Outbound[] {
+    const s = this.state;
+    const c = s.emergencyCase!;
+    const { clinic } = this.ctx;
+    const route = emergencyRoute(clinic, this.ctx.now());
+    c.route = route;
+    c.stage = 'escalated';
+    s.emergency ??= { kind: c.kind, atMs: s.lastMs() };
+    s.emergencyCleared = false;
+    s.emergencyPet = c.pet;
+    s.outcome = 'emergency';
+    s.pending = null; // nothing half-booked survives an emergency
+    s.textOffer = null;
+    s.revision++;
+    this.log.warn({ call_id: this.ctx.callId, emergency_kind: c.kind, action: route.action, mode: route.mode }, 'emergency confirmed: routed by the clinic\'s setting');
+    this.emit({ type: 'emergency', kind: c.kind });
+    this.emitState();
+    const language = this.state.language;
+    const pet = c.pet?.name ?? null;
+    const number = emergencyNumberFor(clinic, language);
+    if (route.action === 'transfer' && route.number) {
+      // a browser test call cannot be put through: it hears the fallback, as a caller would when nobody answers
+      if (this.ctx.channel === 'web') return this.emergencyTransferFailed();
+      c.transfer = 'sent';
+      s.emergencyResult = 'transferred';
+      s.emergencyTransferSent = true;
+      const line = EMERGENCY_LINES.transfer(language);
+      this.emergencyScript = { content: line, number: language === 'es' ? 'equipo' : 'team', sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+      return [...this.emergencyLine(c, `Say calmly, in ${PACKS[language].name}, word for word: "${line}" Then say nothing more: the call is being put through.`),
+        { type: 'transfer', uri: `tel:${route.number}`, afterMs: AFTER_EMERGENCY_SCRIPT_MS, quiet: true }];
+    }
+    s.emergencyResult = 'hospital_said';
+    const line = EMERGENCY_LINES.refer(language, pet, route.hospital);
+    const texting = textingOf(clinic);
+    const offer = texting.enabled && texting.kinds.emergency_hospital && route.hospital && !s.emergencyTextSent
+      ? (this.ctx.callerNumber
+        ? ` Then offer once, word for word: "${language === 'es' ? `¿Le envío la dirección por mensaje al número que termina en ${this.ctx.callerNumber.slice(-4)}?` : `Shall I text you the address, to the number ending in ${this.ctx.callerNumber.slice(-4)}?`}" On a yes, call send_text with emergency_hospital.`
+        : ' Then offer once to text them the address; ask for the number, read it back, and send it only after their yes, with send_text and emergency_hospital.')
+      : '';
+    this.state.emergencyScriptSaid = false;
+    this.state.emergencyScriptSaidAtTurn = null;
+    this.emergencyScript = { content: line, number: route.hospital ? route.hospital.name : number, sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+    return this.emergencyLine(c, `Say calmly, in ${PACKS[language].name}, word for word: "${line}" Then say: "${language === 'es' ? `Si una persona está herida o en peligro, llame al ${number}.` : `If a person is hurt or in danger, call ${number}.`}"${offer} `
+      + `Say the hospital once: never again unless they ask where to go. Do not give medical or first-aid advice, and do not book a routine visit for ${pet ?? 'this pet'}.`);
+  }
+
+  /**
+   * The transfer did not go through (or cannot, on a test call): an urgent request for the team, the line that says so
+   * with the team's emergency number, and the backup hospital only for a caller who says they can't wait.
+   */
+  private emergencyTransferFailed(): Outbound[] {
+    const s = this.state;
+    const c = s.emergencyCase!;
+    c.transfer = 'failed';
+    s.emergencyResult = 'urgent_request';
+    void this.urgentRequest(c).catch((err: unknown) => this.log.error({ call_id: this.ctx.callId, err }, 'urgent request for an emergency not saved'));
+    const language = s.language;
+    const backup = c.route?.backup;
+    const line = EMERGENCY_LINES.transferFailed(language, c.route?.number ?? null);
+    this.emergencyScript = { content: line, number: language === 'es' ? 'urgente' : 'urgent', sentAt: this.ctx.now().getTime(), said: false, heard: '' };
+    return this.emergencyLine(c, `Say calmly, in ${PACKS[language].name}, word for word: "${line}"`
+      + (backup ? ` Only if they say they can't wait, say: "${EMERGENCY_LINES.cantWait(language, backup)}"` : '')
+      + ' Say each of these once. Do not give medical advice.');
+  }
+
+  /** The urgent request an emergency leaves when nobody could be reached: top of Today and Requests, marked Emergency. */
+  private async urgentRequest(c: EmergencyCase) {
+    const { clinic } = this.ctx;
+    const callback = this.ctx.callerNumber;
+    const task = await this.backend.tasks.create(clinic.id, {
+      type: 'callback', callId: this.ctx.callId, patientId: this.state.verifiedPatient?.id ?? null, idempotencyKey: `${this.ctx.callId}:emergency`,
+      details: { reason: `Emergency: ${staffNote(c.sign)} The transfer to the team did not go through.${c.pet?.name ? ` Pet: ${c.pet.name}.` : ''}`, ...(callback ? { callback_number: callback } : {}) },
+      urgent: true, origin: 'emergency',
+    });
+    if (task.created) this.emit({ type: 'staff', action: 'urgent_request' });
+  }
+
+  /** A clear no: the flag clears, the call books as usual with a note for the team, and the caller hears once what to do if it comes back. */
+  private clearEmergencyCase(): Outbound[] {
+    const s = this.state;
+    const c = s.emergencyCase!;
+    const wasRouted = c.stage === 'escalated';
+    c.stage = 'cleared';
+    s.emergencyNotes.push(staffNote(c.sign));
+    if (s.emergency) s.emergencyCleared = true;
+    if (!s.emergencyResult || s.emergencyResult === 'hospital_said') s.emergencyResult = 'cleared';
+    s.revision++;
+    this.log.info({ call_id: this.ctx.callId, emergency_kind: c.kind, after_route: wasRouted }, 'the caller says it is not an emergency now; the call goes on with a note for the team');
+    this.emit({ type: 'emergency', kind: 'cleared' });
+    this.emitState();
+    const language = s.language;
+    const pet = c.pet?.name ?? null;
+    if (c.kind === 'borderline') {
+      return [{ type: 'instructions', delegationId: null, content: `The caller says it is mild. Say you are sorry ${pet ?? 'their pet'} isn't feeling well, then offer the soonest visit for a sick pet (find_slots with the sick visit type, the earliest time). Give no medical advice.` }];
+    }
+    const back = EMERGENCY_LINES.ifReturns(language, pet, emergencyRoute(this.ctx.clinic, this.ctx.now()));
+    return [{ type: 'instructions', delegationId: null, content: `The caller says it is not an emergency now. Say you are glad in a few words, then say once, in ${PACKS[language].name}, word for word: "${back}" `
+      + `Then help with what they want, including booking a visit for ${pet ?? 'their pet'}. Do not mention emergencies or hospitals again unless they describe a danger sign.` }];
   }
 
   /**
@@ -387,6 +581,8 @@ export class CallAgent {
   onControlFailed(kind: 'transfer' | 'hangup'): Outbound[] {
     this.log.warn({ call_id: this.ctx.callId, kind }, 'call control failed');
     this.emit({ type: 'staff', action: kind === 'transfer' ? 'transfer_failed' : 'end_failed' });
+    // an animal's emergency put through to the team: an urgent request and the team's number instead (FRIDAY notes)
+    if (kind === 'transfer' && this.state.emergencyCase?.transfer === 'sent') return this.emergencyTransferFailed();
     const out: Outbound[] = [{
       type: 'instructions', delegationId: null,
       content: kind === 'transfer'
