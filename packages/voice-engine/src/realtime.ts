@@ -66,6 +66,12 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
     .map(([kind, input, cached, output]) => ({ model: `${model}:${kind}`, input: input ?? 0, cached: cached ?? 0, output: output ?? 0 }));
 }
 
+/**
+ * After each caller turn on the tools path: what to do with it. The voice says only what a tool gives it (batch 1b):
+ * no words before a tool call ("let me check...", "one moment"), and no question of its own ("Is Clover new to us?").
+ */
+export const TURN_NOTE = 'Reply to the caller now. If you need a tool, call it first and say nothing at all before it: no "let me check", no "one moment", no words until you have its result, then say what it gives you. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
+
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
@@ -214,6 +220,14 @@ export class RealtimeEngine implements VoiceEngine {
       if (active) wanted = e; else { active = true; ws.send(e); }
     };
     const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
+    // one note at a time: the last turn's is removed when the next one goes in, so the conversation does not grow with them
+    let notes = 0;
+    const turnNote = () => {
+      if (!open) return;
+      if (notes) ws.send({ type: 'conversation.item.delete', item_id: `turn_note_${notes}` });
+      notes++;
+      ws.send({ type: 'conversation.item.create', item: { id: `turn_note_${notes}`, type: 'message', role: 'system', content: [{ type: 'input_text', text: TURN_NOTE }] } });
+    };
     // The greeting is the first reply, with its own short instructions: only what to say, and no tools. With the whole
     // session prompt (the clinic, the tools and their rules) the model first read all of it, and the caller waited
     // (path A, 2026-11-07: first audio 5.3 s on a browser call). Anything queued before the socket opened (a note for the
@@ -278,6 +292,9 @@ export class RealtimeEngine implements VoiceEngine {
           return;
         case 'input_audio_buffer.committed':
           if (typeof e.item_id === 'string') awaiting.add(e.item_id);
+          // the tools path: the turn's note right after the caller's words, where the model weighs it most (batch 1b:
+          // a rule in the session prompt alone still let it say "let me check..." before most tool calls)
+          if (toolsPath) turnNote();
           // the tools path starts its own replies: at once, or (manual) after the go, or by itself in a moment without one
           if (toolsPath && !manual) respond();
           else if (manual) { goDue = true; if (goTimer) clearTimeout(goTimer); goTimer = setTimeout(go, GO_WAIT_MS); }

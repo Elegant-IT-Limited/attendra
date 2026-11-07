@@ -210,7 +210,9 @@ export class CallRunner {
       }
       case 'session.output_transcript.delta': {
         const e = event as Extract<SidebandEvent, { start_ms: number }>;
-        this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        // a result said with no tool behind it is corrected at once (the claim guard, batch 1b)
+        const corrections = this.agent.onAgentTranscript(e.delta, e.start_ms, e.end_ms);
+        if (corrections.length) void this.dispatch(corrections);
         // the first words after a lookup's result: how long the caller waited for the answer
         if (this.answerDue) {
           this.answerDue = false;

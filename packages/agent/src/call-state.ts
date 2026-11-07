@@ -134,6 +134,12 @@ export class CallState {
   emergencyResult: EmergencyResult | null = null;
   /** The hospital's details were texted on this call: once only. */
   emergencyTextSent = false;
+  /** The last tool refusal (its reason code): what "why?" is answered with (flow/guards.ts). */
+  lastRefusal: { code: string; atTurn: number } | null = null;
+  /** Every tool's result on this call, by name and code: what the assistant may say happened (the claim guard). */
+  toolLog: { name: string; ok: boolean; error: string | null }[] = [];
+  /** Lines the guards say once a call: a claim corrected, side talk, the recording answer. */
+  readonly guardsSaid = new Set<string>();
   /** Staff pressed End call: the record says so, not that the assistant hung up on its own. */
   endedByStaff = false;
   /** Answers that ran past the 60 s limit and were apologised for: counted on the call row (migration 0044). */

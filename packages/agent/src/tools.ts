@@ -13,6 +13,8 @@ import { fillFromMemory } from './call-memory';
 import { dayReason, doesntDoType, frontDeskLine, nothingFound, vetHoursLine } from './slot-answer';
 import type { CallState } from './call-state';
 import { answerFromFaqs } from './knowledge';
+import { asksWhichVet } from './flow/guards';
+import { outOfScopeLine } from '@attendra/knowledge/scope';
 
 export interface Backend {
   patients: PatientDirectory;
@@ -124,8 +126,13 @@ function topicOf(question: string, clinicName: string): string {
 /** What to say when a number can't get texts: once, out loud instead, and never a hunt for another number. */
 const NOT_TEXTABLE = 'This number can\'t get texts: it isn\'t a mobile number in the clinic\'s country. Say so in a few words and read it out slowly instead. Don\'t offer a text again on this call, and never ask for another number to text.';
 
-const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null; clinic: ClinicConfig }) =>
-  heardPhone(ctx.clinic, args.callback_number) ?? ctx.callerNumber;
+const callbackNumber = (args: Record<string, unknown>, ctx: { callerNumber: string | null; clinic: ClinicConfig }, state?: CallState) =>
+  heardPhone(ctx.clinic, args.callback_number) ?? ctx.callerNumber ?? rememberedNumber(state, ctx.clinic);
+/** A number the caller already gave on this call, read back or said for the call back: never asked for again (11-16). */
+const rememberedNumber = (state: CallState | undefined, clinic: ClinicConfig): string | null => {
+  const n = state?.memory.get('number');
+  return n && n.digits.length >= 7 ? heardNumber(clinic, n.digits) : null;
+};
 /** A number the caller said, as E.164 like every number on file (as said when it isn't a whole one); null when none was said. */
 const heardPhone = (clinic: ClinicConfig, said: unknown): string | null =>
   typeof said === 'string' && said.trim() ? heardNumber(clinic, said) : null;
@@ -296,6 +303,10 @@ export async function runTool(
   if (filled.length) ctx.log?.info({ call_id: ctx.callId, tool: name, filled_from_memory: filled }, 'arguments filled from the call memory');
   if (args && typeof args === 'object') state.memory.fromToolArgs(name, args as Record<string, unknown>, ctx.clinic, ctx.callerNumber, state.turns.length);
   const done = await toolCall(name, args, state, ctx, backend, revision);
+  // what the tools said, for "why?" and for the claim guard (flow/guards.ts)
+  const error = done.ok ? null : String((done.data as { error?: unknown }).error ?? 'refused');
+  state.toolLog.push({ name, ok: done.ok, error });
+  if (error) state.lastRefusal = { code: error, atTurn: state.turns.length };
   const result = filled.length ? { ...done, data: { ...done.data, filled_from_memory: filled } } : done;
   return name === 'verify_caller' || name === 'register_patient' ? withPhoneAsGiven(result, args, state, ctx) : result;
 }
@@ -500,7 +511,12 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const question = String(args.question);
       // the medical-advice rule wins over anything the FAQ or a document says. It checks
       // what the caller said too: the model may pass on a question it has softened
-      if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
+      // "which vet is good for allergies?" is clinic information (who is listed for what), not medical advice (11-16)
+      const whichVet = asksWhichVet(question);
+      if (!whichVet && (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false }))) return MEDICAL();
+      // not about the clinic (the weather, how the assistant is made): the one polite line, nothing searched (batch 2)
+      const outOfScope = outOfScopeLine(question);
+      if (outOfScope && !whichVet) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
       const hours = todaysHoursLine(clinic, ctx.now());
       const topic = topicOf(question, clinic.name);
       const answer = answerFromFaqs(clinic.faqs, topic);
@@ -529,6 +545,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           ...(emergencyHospitalFacts(clinic).length ? { emergency_hospitals: emergencyHospitalFacts(clinic) } : {}),
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
+          // which vet sees what: the vets' listed specialties and animals, said as clinic information; the medical side is the team's
+          ...(whichVet ? { which_vet: `Answer from the providers' listed specialties and the animals they see, in a sentence or two ("Dr. Green's listed specialty is dermatology"). Say plainly that the team decides the medical side; say nothing about the condition itself. If none is listed for it, say so and offer a visit with any of them.` } : {}),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
           ...(clinic.requestTopics?.length ? { request_topics: requestTopicFacts(clinic) } : {}),
           // what may be texted on request: offered only after the caller has heard it
@@ -541,6 +559,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     case 'search_knowledge': {
       const question = String(args.question);
       if (isMedicalQuestion(question) || isMedicalQuestion(state.recentCallerText(), { quantities: false })) return MEDICAL();
+      const outOfScope = outOfScopeLine(question);
+      if (outOfScope) return { ok: true, data: { passages: [], say: `Say exactly: "${outOfScope}"` } };
       const topic = topicOf(question, clinic.name);
       const passages = backend.knowledge ? await backend.knowledge.search(clinic.id, topic) : [];
       if (!passages.length) {
@@ -942,7 +962,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
     }
 
     case 'create_refill_request': {
-      const callback = callbackNumber(args, ctx);
+      const callback = callbackNumber(args, ctx, state);
       if (!callback) return NO_CALLBACK_NUMBER(state.language);
       // the team's decision goes out by text only on a yes, asked before the request is logged
       const textUpdates = typeof args.text_updates === 'boolean' ? args.text_updates : null;
@@ -964,7 +984,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       const same = (x: string) => fold(x).toLowerCase().trim();
       const asked = typeof args.topic === 'string' ? same(args.topic) : '';
       const topic = asked ? clinic.requestTopics?.find((t) => same(t.name) === asked || t.id === args.topic) : undefined;
-      const callback = callbackNumber(args, ctx);
+      const callback = callbackNumber(args, ctx, state);
       if (!callback) return NO_CALLBACK_NUMBER(state.language);
       const task = await backend.tasks.create(clinic.id, {
         type: 'callback', callId: ctx.callId, patientId: state.verifiedPatient?.id ?? null,
@@ -1115,7 +1135,11 @@ function specialHoursAhead(clinic: ClinicConfig, today: string): string[] {
 
 /** The clinic's emergency hospitals in its order of choice, each with its hours (none is around the clock). */
 function emergencyHospitalFacts(clinic: ClinicConfig) {
-  return [clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].flatMap((h) => (h
+  // the emergency setting's hospital (Settings > Emergencies) first, then the clinic's list, each once
+  const e = clinic.emergencies;
+  const fromSetting = e?.mode === 'refer' ? e.hospital : e?.mode === 'hours' ? e.afterHoursHospital : e?.mode === 'handle' ? e.backupHospital : undefined;
+  const all = [fromSetting, clinic.emergencyHospital, ...(clinic.moreEmergencyHospitals ?? [])].filter((h, i, list) => h && list.findIndex((x) => x?.name === h.name) === i);
+  return all.flatMap((h) => (h
     ? [{ name: h.name, phone: h.phone, address: h.address, hours: h.hours ? `${h.hours.open} to ${h.hours.close}` : 'open around the clock' }]
     : []));
 }

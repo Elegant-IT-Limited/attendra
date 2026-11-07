@@ -154,7 +154,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       if (l.role === 'user') {
         // what the guardrails say on the caller's words (an emergency script, an abuse warning) goes with the next result
         for (const o of s.agent.onCallerTranscript(text, at, end)) if (o.type === 'instructions') s.notes.push(o.content);
-      } else if (l.role === 'bot' || l.role === 'assistant') s.agent.onAgentTranscript(text, at, end);
+      } else if (l.role === 'bot' || l.role === 'assistant') {
+        // a correction (a result said with no tool behind it) goes with the next result, as the guardrails' lines do
+        for (const o of s.agent.onAgentTranscript(text, at, end)) if (o.type === 'instructions') s.notes.push(o.content);
+      }
     }
   }
 

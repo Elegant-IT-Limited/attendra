@@ -516,6 +516,9 @@ importers:
       '@attendra/core':
         specifier: workspace:*
         version: link:../core
+      '@attendra/knowledge':
+        specifier: workspace:*
+        version: link:../knowledge
       '@attendra/observability':
         specifier: workspace:*
         version: link:../observability
