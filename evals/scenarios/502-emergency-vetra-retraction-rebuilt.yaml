@@ -21,7 +21,7 @@ settings:
 facts: "You are Linh Nguyen, calling from the number on file about your dog Biscuit. Asked whether it is still an emergency, say only: \"No, it's not an emergency.\" Asked about the swelling, say: \"Not swelling now. I want a regular checkup at 3:30 with Dr. Ruiz.\" Say yes when your number is read back, yes to the time offered nearest 3:30 with Dr. Ruiz, and yes to the read-back."
 turns:
   - caller: My dog Biscuit's throat is swelling up.
-  - assistant: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
+  - assistant: I'm sorry to hear that. Is this still an emergency right now? Do you need help getting emergency care?
   - caller: No, it's not an emergency.
   - assistant: "Okay. Just to be safe: is Biscuit still having that problem right now?"
   - caller: Not swelling now. I want a regular checkup at 3:30 with Dr. Ruiz.
