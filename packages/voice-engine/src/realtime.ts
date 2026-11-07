@@ -93,14 +93,15 @@ export const sayToolQuestion = (line: string) => `Say exactly this to the caller
 const REFUSAL_REASONS = new Set(['not_working_that_day', 'fully_booked', 'clinic_closed', 'notice', 'too_far_ahead']);
 /**
  * A tool's refusal line, the answer in the backend's own words ("Dra. Mara Vance no trabaja los martes. Atiende los
- * viernes y los domingos."): the slot search's say_as when it carries one of those reasons, or a refusal whose
- * instruction is "Say, in these words: ...". Left to the model, a live run paraphrased it (batch 1d).
+ * viernes y los domingos."), from the result as the voice gets it (shapeForVoice: say_as is `spoken`, the reason is in
+ * `data`): the slot search's words when they carry one of those reasons, or a refusal whose instruction is "Say, in
+ * these words: ...". Left to the model, a live run paraphrased it (batch 1d).
  */
 export function toolRefusalLine(output: string): string | null {
   try {
-    const o = JSON.parse(output) as { say_as?: unknown; reason?: unknown; error?: unknown; say?: unknown };
-    if (typeof o.say_as === 'string' && typeof o.reason === 'string' && REFUSAL_REASONS.has(o.reason)) return o.say_as.trim();
-    const quoted = typeof o.error === 'string' && typeof o.say === 'string' ? /^Say, in these words: "([^"]+)"/.exec(o.say) : null;
+    const o = JSON.parse(output) as { ok?: unknown; spoken?: unknown; say?: unknown; data?: { reason?: unknown } };
+    if (typeof o.spoken === 'string' && typeof o.data?.reason === 'string' && REFUSAL_REASONS.has(o.data.reason)) return o.spoken.trim();
+    const quoted = o.ok === false && typeof o.say === 'string' ? /^Say, in these words: "([^"]+)"/.exec(o.say) : null;
     return quoted ? quoted[1]!.trim() : null;
   } catch { return null; }
 }

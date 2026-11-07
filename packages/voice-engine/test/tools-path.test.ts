@@ -1,4 +1,4 @@
-import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner } from '@attendra/agent';
+import { type ActionRecorder, CallAgent, CallState, ScriptedPlanner, shapeForVoice } from '@attendra/agent';
 import { DEMO_CLINIC, localDateOf, PACKS, RIVERBEND_CLINIC, zonedInstant } from '@attendra/core';
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
@@ -111,14 +111,17 @@ describe('path A: gpt-realtime with our tools as its own', () => {
     const line = 'Dra. Mara Vance no trabaja los martes. Atiende los viernes y los domingos.';
     const before = s.sent.length;
     sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'fc_1', output: JSON.stringify({ verified: true, say: 'Say first, in these words: "Gracias, Jordan."' }) });
-    sideband.send({ type: 'tool.result', event_id: 't2', call_id: 'fc_2', output: JSON.stringify({ slots: [], say_as: line, reason: 'not_working_that_day', note: 'x' }) });
+    // as the voice gets it: shaped (say_as is spoken, the reason is in data)
+    const shaped = (data: Record<string, unknown>, ok = true) => JSON.stringify(shapeForVoice('find_slots', { ok, data }, 'times_offered', null));
+    sideband.send({ type: 'tool.result', event_id: 't2', call_id: 'fc_2', output: shaped({ slots: [], say_as: line, reason: 'not_working_that_day', note: 'x' }) });
     expect(s.sent.slice(before).at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolLine(line), tool_choice: 'none' } });
     expect(sayToolLine(line)).toContain('comes before it');
     // a refusal's own "Say, in these words"
-    expect(toolRefusalLine(JSON.stringify({ error: 'staff_books', say: 'Say, in these words: "The team books surgery." A request: create_callback.' }))).toBe('The team books surgery.');
+    expect(toolRefusalLine(shaped({ error: 'staff_books', say: 'Say, in these words: "The team books surgery." A request: create_callback.' }, false))).toBe('The team books surgery.');
+    expect(toolRefusalLine(shaped({ error: 'too_far_ahead', reason: 'too_far_ahead', say_as: 'Vaccine appointments are booked up to 30 days ahead.', say: 'Say, in these words: "x"' }, false))).toBe('Vaccine appointments are booked up to 30 days ahead.');
     // times with no reason, a visit the vet doesn't do (said only if the caller named it), and plain results are not
-    expect(toolRefusalLine(JSON.stringify({ slots: [{}], say_as: 'On Friday I have 9:00.' }))).toBeNull();
-    expect(toolRefusalLine(JSON.stringify({ slots: [], say_as: 'Dr. Vance does not do wellness exams.', reason: 'doesnt_do_type' }))).toBeNull();
+    expect(toolRefusalLine(shaped({ slots: [{}], say_as: 'On Friday I have 9:00.' }))).toBeNull();
+    expect(toolRefusalLine(shaped({ slots: [], say_as: 'Dr. Vance does not do wellness exams.', reason: 'doesnt_do_type' }))).toBeNull();
     expect(toolRefusalLine('not json')).toBeNull();
     // a question and a refusal line in one response: the question
     s.play({ type: 'response.created', event_id: 'r3' });
@@ -126,7 +129,7 @@ describe('path A: gpt-realtime with our tools as its own', () => {
     s.play({ type: 'response.function_call_arguments.done', event_id: 'd', name: 'propose_booking', call_id: 'fc_4', arguments: '{}' });
     s.play({ type: 'response.done', event_id: 'r4' });
     const ask = 'I have Friday at 9:00 AM. Shall I book it?';
-    sideband.send({ type: 'tool.result', event_id: 't3', call_id: 'fc_3', output: JSON.stringify({ slots: [], say_as: line, reason: 'fully_booked' }) });
+    sideband.send({ type: 'tool.result', event_id: 't3', call_id: 'fc_3', output: shaped({ slots: [], say_as: line, reason: 'fully_booked' }) });
     sideband.send({ type: 'tool.result', event_id: 't4', call_id: 'fc_4', output: JSON.stringify({ spoken: ask }) });
     expect(s.sent.at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolQuestion(ask), tool_choice: 'none' } });
   });
