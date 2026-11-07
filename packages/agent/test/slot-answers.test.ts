@@ -39,6 +39,12 @@ describe('a vet\'s own hours (item 1)', () => {
     expect(r.reason).toBeUndefined();
   });
 
+  it('a caller who can\'t pick is offered the first time alone, for a yes (batch 1d: live runs asked them to choose again and again)', async () => {
+    const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-04' }) as { note?: string };
+    expect(r.note).toContain('If the caller can\'t choose');
+    expect(r.note).toContain('offer the first time alone, Sunday, October 4, at 9:00 AM');
+  });
+
   it('the same in Spanish', async () => {
     const r = await find({ provider_id: 'prov_morgan', from_date: '2026-10-04' }, { language: 'es' });
     expect(r.say_as).toMatch(/^La recepción de la clínica está cerrada los domingos, pero (?:la )?Dra\. Mara Vance atiende el domingo de 9 a 1\. /);

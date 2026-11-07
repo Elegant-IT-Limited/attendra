@@ -305,6 +305,20 @@ export function providerNamed<P extends { id: string; name: string; placeholder?
 }
 const TITLES = new Set(['dr', 'dra', 'doctor', 'doctora', 'doc', 'the', 'la', 'el', 'vet', 'veterinarian', 'veterinaria', 'veterinario']);
 
+/** A listed vet named with a day ("Dr. Vance on Tuesday", "la doctora Vance el martes"), in the caller's words or the question. */
+const DAY_WORD = /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|weekend|lunes|martes|miercoles|jueves|viernes|sabado|domingo|hoy|manana)\b/;
+export function vetDayAsked(clinic: Pick<ClinicConfig, 'providers'>, text: string): boolean {
+  const t = normalise(text);
+  if (!DAY_WORD.test(t)) return false;
+  const words = new Set(t.replace(/[^a-z\s'-]/g, ' ').split(/\s+/));
+  return bookableProviders(clinic.providers).some((p) => normalise(p.name).replace(/[^a-z\s'-]/g, ' ').split(/\s+/).some((w) => w.length > 2 && !TITLES.has(w) && words.has(w)));
+}
+export const VET_DAY_NOTE = 'Whether this vet is in, away, fully booked or free on that day comes only from find_slots with their provider_id and that from_date: call it now and say its say_as. Never work it out from these hours, and never say the clinic is closed on a day the vet works.';
+
+/** Words that ask where the clinic is, or for its address or directions (EN/ES). */
+const WHERE = /\b(?:address|where (?:are you|exactly|is the clinic|is your clinic)|where's the clinic|located|location|directions|find you|get there|direcci[oó]n|d[oó]nde (?:est[aá]n|queda|est[aá] la cl[ií]nica)|ubicaci[oó]n|ubicad[oa]s?|c[oó]mo llego|c[oó]mo llegar)\b/i;
+export const asksWhere = (text: string) => WHERE.test(text);
+
 /** A "specialty" the model passed that names a visit type (any language) or no specialty at all ("general practice"). */
 export function specialtyIsTheVisit(specialty: string, clinic: Pick<ClinicConfig, 'visitTypes'>): boolean {
   const t = normalise(specialty).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -577,6 +591,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
           // who works here: anyone may ask, so it carries no patient data
           providers: providerFacts(clinic, today, lang), specialties: specialtyFacts(clinic, lang), visit_types: visitTypeFacts(clinic, lang),
           // which vet sees what: the vets' listed specialties and animals, said as clinic information; the medical side is the team's
+          // "is Dr. Vance in on Tuesday?": the vet's day from the schedule, never worked out from these hours (live runs said
+          // "she's away Friday" of a vet who was fully booked, and "the clinic is closed on Sundays" of a vet who works them)
+          ...(vetDayAsked(clinic, `${question} ${state.lastTurn('caller')}`) ? { vet_day: VET_DAY_NOTE } : {}),
           ...(whichVet ? { which_vet: `Answer from the providers' listed specialties and the animals they see, in a sentence or two ("Dr. Green's listed specialty is dermatology"). Say plainly that the team decides the medical side; say nothing about the condition itself. If none is listed for it, say so and offer a visit with any of them.` } : {}),
           ...(currentOffers(clinic, today).length ? { current_offers: currentOffers(clinic, today) } : {}),
           ...(clinic.requestTopics?.length ? { request_topics: requestTopicFacts(clinic) } : {}),
@@ -783,6 +800,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         }
       }
       for (const s of slots) state.offered.set(s.id, s);
+      // a caller who can't pick ("I don't know which time", "no sé qué hora"): the first one, for a yes. Live runs asked
+      // them to choose again and again, then took a request or put them through to the desk (batch 1d)
+      if (slots.length > 1) note += ` If the caller can't choose ("I don't know which", "any is fine", "no sé"), offer the first time alone, ${when(slots[0]!.start)}, and ask whether to book it; never ask them to pick again.`;
       // what else about the day or the vet asked for (closed, a half day, away, notice), for the planner to say in a few words
       const why = whyNot(clinic, { date: args.from_date as string | null, provider: one, providers, noticeHours: visitType.noticeHours, now, today });
       // the answer in the caller's language, the direct one first: "Yes, 4:00 PM ... is free", "Not at 4:00, but 3:50 or 4:20 PM"
@@ -1077,7 +1097,10 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
       // hospital's, not the clinic's (a live run sent 'directions', was refused, and the caller who said yes got no text)
       const sentToHospital = state.emergencyCase?.stage === 'escalated' && state.emergencyCase.route?.action === 'refer' && !!state.emergencyCase.route.hospital;
       if (state.emergencyLocked && sentToHospital && kind === 'directions' && !state.emergencyTextSent) kind = 'emergency_hospital';
-      const ref = (args.ref as string | null) ?? null;
+      let ref = (args.ref as string | null) ?? null;
+      // "text me the address": the clinic's address and map link, whichever kind the model picked for it (a live run sent
+      // the clinic's "where are you" common question as an 'answer' text, with no map link; batch 1d)
+      if (!state.emergencyLocked && kind === 'answer' && textingOf(clinic).kinds.directions && asksWhere(clinic.faqs.find((f) => f.id === ref)?.question ?? state.lastTurn('caller', 3))) { kind = 'directions'; ref = null; }
       if (!texting.enabled) return refuse('texting_off', `The clinic does not text this. Say: "${pack.textRefused({ reason: 'off' })}" Then say it out loud, slowly, and offer to repeat it.`);
       // the clinic texts, just not this: never "texting isn't set up"
       if (!texting.kinds[kind]) return refuse('texting_off', 'The clinic does not send this one by text (it sends other things). Say in a few words that you can\'t text that one, then say it out loud, slowly, and offer to repeat it. Never say texting is not set up or not available on this line.');

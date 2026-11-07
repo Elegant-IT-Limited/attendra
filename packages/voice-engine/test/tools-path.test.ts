@@ -5,7 +5,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
-  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine, TURN_NOTE, turnNoteFor, sayToolQuestion, toolQuestion,
+  type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, type VoiceEngine, TURN_NOTE, turnNoteFor, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
 } from '../src';
 
 // Batch 1a, the tools path: the voice calls our tools itself (gpt-realtime, path A), or GPT-Live hands each task to a
@@ -97,6 +97,38 @@ describe('path A: gpt-realtime with our tools as its own', () => {
     expect(s.sent.slice(before).at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolQuestion(line), tool_choice: 'none' } });
     expect(toolQuestion(JSON.stringify({ spoken: 'I have 9:00 or 9:20.' }))).toBeNull();
     expect(toolQuestion('not json')).toBeNull();
+  });
+
+  it('says a tool\'s refusal line word for word; a question still wins (batch 1d: "no trabaja los martes" paraphrased)', async () => {
+    const s = realtimeSocket();
+    const e = new RealtimeEngine({ realtime: { calls: { accept: vi.fn(async () => {}) } } } as never, 'gpt-realtime-2.1', () => s.ws);
+    await e.accept('rtc_r', vet, NOW, undefined, { flow: 'tools' });
+    const sideband = e.attach('rtc_r');
+    s.play({ type: 'response.created', event_id: 'r1' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'a', name: 'verify_caller', call_id: 'fc_1', arguments: '{}' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'b', name: 'find_slots', call_id: 'fc_2', arguments: '{}' });
+    s.play({ type: 'response.done', event_id: 'r2' });
+    const line = 'Dra. Mara Vance no trabaja los martes. Atiende los viernes y los domingos.';
+    const before = s.sent.length;
+    sideband.send({ type: 'tool.result', event_id: 't1', call_id: 'fc_1', output: JSON.stringify({ verified: true, say: 'Say first, in these words: "Gracias, Jordan."' }) });
+    sideband.send({ type: 'tool.result', event_id: 't2', call_id: 'fc_2', output: JSON.stringify({ slots: [], say_as: line, reason: 'not_working_that_day', note: 'x' }) });
+    expect(s.sent.slice(before).at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolLine(line), tool_choice: 'none' } });
+    expect(sayToolLine(line)).toContain('comes before it');
+    // a refusal's own "Say, in these words"
+    expect(toolRefusalLine(JSON.stringify({ error: 'staff_books', say: 'Say, in these words: "The team books surgery." A request: create_callback.' }))).toBe('The team books surgery.');
+    // times with no reason, a visit the vet doesn't do (said only if the caller named it), and plain results are not
+    expect(toolRefusalLine(JSON.stringify({ slots: [{}], say_as: 'On Friday I have 9:00.' }))).toBeNull();
+    expect(toolRefusalLine(JSON.stringify({ slots: [], say_as: 'Dr. Vance does not do wellness exams.', reason: 'doesnt_do_type' }))).toBeNull();
+    expect(toolRefusalLine('not json')).toBeNull();
+    // a question and a refusal line in one response: the question
+    s.play({ type: 'response.created', event_id: 'r3' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'c', name: 'find_slots', call_id: 'fc_3', arguments: '{}' });
+    s.play({ type: 'response.function_call_arguments.done', event_id: 'd', name: 'propose_booking', call_id: 'fc_4', arguments: '{}' });
+    s.play({ type: 'response.done', event_id: 'r4' });
+    const ask = 'I have Friday at 9:00 AM. Shall I book it?';
+    sideband.send({ type: 'tool.result', event_id: 't3', call_id: 'fc_3', output: JSON.stringify({ slots: [], say_as: line, reason: 'fully_booked' }) });
+    sideband.send({ type: 'tool.result', event_id: 't4', call_id: 'fc_4', output: JSON.stringify({ spoken: ask }) });
+    expect(s.sent.at(-1)).toEqual({ type: 'response.create', response: { instructions: sayToolQuestion(ask), tool_choice: 'none' } });
   });
 });
 

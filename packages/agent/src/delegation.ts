@@ -843,8 +843,9 @@ export class CallAgent {
       moved: committed || s.outcome === 'rescheduled',
       cancelled: committed || s.outcome === 'cancelled',
       not_found: s.notFound || s.toolLog.some((t) => ['no_pets_on_number', 'unknown_appointment', 'too_many_attempts', 'not_verified', 'last_four_no_match'].includes(t.error ?? '')),
-      // a vet's day comes from the schedule: a slot search or the clinic's information, on this call
-      vet_day: s.toolLog.some((t) => t.name === 'find_slots' || t.name === 'get_clinic_info'),
+      // a vet's day comes from the schedule: a slot search on this call (the clinic's information has the weekly hours,
+      // and a live run read "away on Friday" into them for a vet who was only fully booked; batch 1d)
+      vet_day: s.toolLog.some((t) => t.name === 'find_slots'),
     };
     const out: Outbound[] = [];
     for (const claim of claimsIn(turn.text)) {

@@ -81,8 +81,21 @@ describe('no result without a tool', () => {
     expect(instructions(c.agent.onAgentTranscript("No, Dr. Ruiz isn't in on Tuesday.", 5000, 7000))).toContain('no tool returned (vet day)');
     const after = await w.call('+17205550172', { clinic: open });
     after.caller('Is Dr. Ruiz in on Tuesday?');
-    await after.delegate([{ tool: 'get_clinic_info', args: { question: 'Is Dr. Ruiz in on Tuesday?' } }]);
+    await after.delegate([{ tool: 'find_slots', args: { visit_type_id: 'vt_sick', provider_id: null, from_date: null, part_of_day: 'any' } }]);
     expect(after.agent.onAgentTranscript("No, Dr. Ruiz isn't in on Tuesday.", 9000, 11000)).toEqual([]);
+  });
+
+  it('the clinic\'s information does not back a vet\'s day, and points the model to the slot search (batch 1d, live runs)', async () => {
+    const c = await w.call('+17205550172', { clinic: open });
+    c.caller('Is Dr. Ruiz in on Tuesday?');
+    const [info] = (await c.delegate([{ tool: 'get_clinic_info', args: { question: 'Is Dr. Ruiz in on Tuesday?' } }])).results;
+    expect(String(info!.data.vet_day)).toContain('only from find_slots');
+    expect(instructions(c.agent.onAgentTranscript("No, Dr. Ruiz isn't in on Tuesday.", 9000, 11000))).toContain('no tool returned (vet day)');
+    // a question with no vet and day carries no such note
+    const plain = await w.call('+17205550172', { clinic: open });
+    plain.caller('What are your hours?');
+    const [hours] = (await plain.delegate([{ tool: 'get_clinic_info', args: { question: 'opening hours' } }])).results;
+    expect(hours!.data.vet_day).toBeUndefined();
   });
 });
 

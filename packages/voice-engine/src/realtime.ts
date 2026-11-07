@@ -89,6 +89,28 @@ export function toolQuestion(output: string): string | null {
 }
 export const sayToolQuestion = (line: string) => `Say exactly this to the caller, word for word, in the language it is written in, with nothing before or after it: "${line}" Then stop and wait for their answer.`;
 
+/** The slot search's reasons whose line is the answer: why the day or the vet asked for has nothing, in the backend's words. */
+const REFUSAL_REASONS = new Set(['not_working_that_day', 'fully_booked', 'clinic_closed', 'notice', 'too_far_ahead']);
+/**
+ * A tool's refusal line, the answer in the backend's own words ("Dra. Mara Vance no trabaja los martes. Atiende los
+ * viernes y los domingos."): the slot search's say_as when it carries one of those reasons, or a refusal whose
+ * instruction is "Say, in these words: ...". Left to the model, a live run paraphrased it (batch 1d).
+ */
+export function toolRefusalLine(output: string): string | null {
+  try {
+    const o = JSON.parse(output) as { say_as?: unknown; reason?: unknown; error?: unknown; say?: unknown };
+    if (typeof o.say_as === 'string' && typeof o.reason === 'string' && REFUSAL_REASONS.has(o.reason)) return o.say_as.trim();
+    const quoted = typeof o.error === 'string' && typeof o.say === 'string' ? /^Say, in these words: "([^"]+)"/.exec(o.say) : null;
+    return quoted ? quoted[1]!.trim() : null;
+  } catch { return null; }
+}
+export const sayToolLine = (line: string) => `In this reply, say this line to the caller word for word, in the language it is written in: "${line}" Anything another tool result asked you to say first (the pet found, for one) comes before it; after it you may ask one short question for the next step (which time suits them, or another day or vet). Do not change its words, and call no tools in this reply.`;
+
+/** What the next reply must say from the tools' results, if anything: a tool's own question wins over a refusal line. */
+export function toolReplyInstructions(question: string | null, line: string | null): string | null {
+  return question ? sayToolQuestion(question) : line ? sayToolLine(line) : null;
+}
+
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
 export const GO_WAIT_MS = 1200;
@@ -223,6 +245,8 @@ export class RealtimeEngine implements VoiceEngine {
     const outstanding = new Set<string>();
     // the last tool question among the results of one response, said once all of them are back
     let question: string | null = null;
+    // and the last refusal line among them (a question wins over it)
+    let refusal: string | null = null;
     // manual replies: whether the model waits for our go, and whether a turn that ended is waiting for it now
     let manual = false;
     let goDue = false;
@@ -406,11 +430,13 @@ export class RealtimeEngine implements VoiceEngine {
         raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
         outstanding.delete(event.call_id);
         question = toolQuestion(event.output) ?? question;
+        refusal = toolRefusalLine(event.output) ?? refusal;
         if (!outstanding.size) {
-          // the tool's own question, said as written (no tools in that reply: it waits for the caller)
-          const line = question;
+          // the tool's own question, or its refusal line, said as written (no tools in that reply: it waits for the caller)
+          const instructions = toolReplyInstructions(question, refusal);
           question = null;
-          if (line) respond({ type: 'response.create', response: { instructions: sayToolQuestion(line), tool_choice: 'none' } });
+          refusal = null;
+          if (instructions) respond({ type: 'response.create', response: { instructions, tool_choice: 'none' } });
           else respond();
         }
         return;

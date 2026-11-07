@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { afterTool, type CallState, type FlowMemory, flowStage, nextStep, type Planner, type PlannerInput, type PlannerOutput, type PlannerTiming, shapeForVoice, speculativeLookup, type ToolResult, visitTypeChoices, voiceToolDefinitions } from '@attendra/agent';
 import { addDays, clinicNow, clinicNowLine, type ClinicConfig, localDateOf, type ToolName, weekdayOf } from '@attendra/core';
-import { realtimeTools, sayToolQuestion, toolQuestion, toolsBackendInstructions, toolsVoicePrompt, turnNoteFor } from '@attendra/voice-engine';
+import { realtimeTools, toolQuestion, toolRefusalLine, toolReplyInstructions, toolsBackendInstructions, toolsVoicePrompt, turnNoteFor } from '@attendra/voice-engine';
 import type OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 
@@ -132,8 +132,9 @@ export class ToolsPathPlanner implements Planner {
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call', call_id: callId, name: spec.name, arguments: args } } as never);
       ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: callId, output } } as never);
     }
-    // a tool's own question is the next reply, as written, as on a call
+    // a tool's own question, or its refusal line, is the next reply, as written, as on a call
     let question: string | null = null;
+    let refusal: string | null = null;
     for (let round = 0, retried = false; round < 8; round++) {
       const t0 = performance.now();
       const answer = () => new Promise<{ text: string; calls: { name: string; call_id: string; arguments: string }[]; usage: { input_tokens?: number; output_tokens?: number; input_token_details?: { cached_tokens?: number } } | undefined }>((resolve, reject) => {
@@ -154,7 +155,8 @@ export class ToolsPathPlanner implements Planner {
           }
         };
         ws.on('event', on as never);
-        ws.send((question ? { type: 'response.create', response: { instructions: sayToolQuestion(question), tool_choice: 'none' } } : { type: 'response.create' }) as never);
+        const instructions = toolReplyInstructions(question, refusal);
+        ws.send((instructions ? { type: 'response.create', response: { instructions, tool_choice: 'none' } } : { type: 'response.create' }) as never);
       });
       let reply: Awaited<ReturnType<typeof answer>>;
       try { reply = await answer(); }
@@ -174,9 +176,11 @@ export class ToolsPathPlanner implements Planner {
         return s.lastSaid;
       }
       question = null;
+      refusal = null;
       for (const c of calls) {
         const output = await run(c.name, c.arguments);
         question = toolQuestion(output) ?? question;
+        refusal = toolRefusalLine(output) ?? refusal;
         ws.send({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.call_id, output } } as never);
       }
     }

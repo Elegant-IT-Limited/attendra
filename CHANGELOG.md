@@ -4,6 +4,13 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 1d: the last scheduling misses on path A)
+
+- **"Text me the address" sends the directions text** (the address and a map link), also when the voice model picks the clinic's "where are you" common question as an answer text.
+- **A tool's refusal line is said word for word** on path A ("Dra. Mara Vance no trabaja los martes. Atiende los viernes y los domingos.", "fully booked on Friday", too far ahead, "the team books surgery"), with anything another tool asked to be said first before it. A tool's own question still comes first.
+- **A vet's day comes from the slot search**: asked "is Dr. Vance in on Friday?", the clinic's information tells the model to search instead of working it out from the weekly hours, and only a slot search backs "she isn't in on Friday" (live runs said "away" of a vet who was fully booked, and "the clinic is closed on Sundays" of a vet who works them).
+- **A caller who can't pick a time** is offered the first one alone, for a yes, never asked to choose again.
+
 ### Changed (batch 1c: scheduling on path A)
 
 - **A booking is read back before it is made, in the words themselves**: the assistant's words after a proposal must carry its day and time (EN/ES, digits or words) before a yes counts. Any speech after the proposal used to count, so a "yes" after "I found Biscuit" could book.

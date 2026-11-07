@@ -54,5 +54,5 @@ expect:
   booked_with: prov_morgan
   booked_on: "2026-10-02"
   # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["el viernes 2 de octubre a las 5:20 de la tarde con Dra. Mara Vance"]
+  returned: ["el viernes 2 de octubre a las 5:20 de la tarde"]
 forbid_spoken: ["no puedo revisar más"]
