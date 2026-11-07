@@ -91,6 +91,9 @@ describe('paging the P0 alert kinds', () => {
 
   it('links each P0 kind to its runbook, only over https, and nothing for other kinds', () => {
     expect(runbookLink(`${RUNBOOKS}/`, 'call_failed')).toBe(`${RUNBOOKS}/calls-failing.md`);
+    expect(runbookLink(`${RUNBOOKS}///`, 'call_failed')).toBe(`${RUNBOOKS}/calls-failing.md`);
+    // a long run of slashes is trimmed at once, not in time that grows with its square
+    expect(runbookLink(`${RUNBOOKS}${'/'.repeat(50_000)}`, 'call_failed')).toBe(`${RUNBOOKS}/calls-failing.md`);
     expect(runbookLink(undefined, 'call_failed')).toBeUndefined();
     expect(runbookLink('http://runbooks.example', 'call_failed')).toBeUndefined();
     expect(runbookLink(RUNBOOKS, 'call_rejected')).toBeUndefined();

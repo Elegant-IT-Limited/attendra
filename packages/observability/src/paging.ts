@@ -99,6 +99,8 @@ export function pagerFromEnv(env: Env, log?: Warn): Pager | null {
 /** The runbook for a P0 kind, or undefined when the kind has none or no runbook address is set. */
 export function runbookLink(base: string | undefined, kind: string): string | undefined {
   const rule = p0Rule(kind);
-  const root = base?.trim().replace(/\/+$/, '');
+  // trailing slashes dropped by hand: a regex anchored after `/+` is slow on a long run of them (CodeQL js/polynomial-redos)
+  let root = base?.trim();
+  while (root?.endsWith('/')) root = root.slice(0, -1);
   return rule && root && /^https:\/\//.test(root) ? `${root}/${rule.runbook}.md` : undefined;
 }

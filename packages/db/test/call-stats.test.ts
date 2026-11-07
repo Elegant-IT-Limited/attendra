@@ -81,3 +81,14 @@ describe('db:call-stats', () => {
     for (const word of ['Biscuit', 'Thursday', 'Okafor', 'close today', 'Friday']) expect(text).not.toContain(word);
   });
 });
+
+describe('the questions in a line', () => {
+  it('are the runs that end in "?", as /[^.!?]*\\?/g finds them, and a long line without one is quick', async () => {
+    const { questionsIn } = await import('../src/repositories/call-stats');
+    const regex = (t: string) => t.match(/[^.!?]*\?/g) ?? [];
+    for (const line of ['Hi. Is it Biscuit? Yes! When?', 'no question here.', '??', 'What day works. Tuesday? Or Wednesday?!', '']) expect(questionsIn(line)).toEqual(regex(line));
+    const started = Date.now();
+    expect(questionsIn(' '.repeat(200_000))).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});

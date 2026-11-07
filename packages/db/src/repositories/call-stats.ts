@@ -96,7 +96,7 @@ function measure(c: CallStatsCall, clinicId: string, segs: Line[], actionMs: num
     const t = turns[i]!;
     if (t.speaker !== 'agent') continue;
     if (FILLER.test(t.text)) row.fillerLines++;
-    for (const q of t.text.match(/[^.!?]*\?/g) ?? []) {
+    for (const q of questionsIn(t.text)) {
       const n = normQ(q);
       if (n.length < 12) continue;
       if (asked.has(n)) row.repeatedQuestions++; else asked.add(n);
@@ -181,4 +181,19 @@ export function formatCallStats(rows: CallStatsRow[], opts: { perCall?: boolean 
     lines.push('');
   }
   return lines;
+}
+
+/**
+ * The questions in a line: each run of text since the last full stop, "!" or "?" that ends in "?". The same as
+ * matching /[^.!?]*\?/g, in one pass: that regex retries from every character of a long run with no "?" in it
+ * (CodeQL js/polynomial-redos on transcript text).
+ */
+export function questionsIn(text: string): string[] {
+  const out: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '?') { out.push(text.slice(start, i + 1)); start = i + 1; } else if (ch === '.' || ch === '!') start = i + 1;
+  }
+  return out;
 }
