@@ -86,7 +86,7 @@ describe('closing a clinic, and deleting it 30 days later', () => {
 
       expect((await purge(C, c)).json()).toMatchObject({ error: 'not_closed' });
       expect((await close(true, C, c)).statusCode).toBe(204);
-      const closedAt = async () => ((await c.t.db.execute(sql`select closed_at from clinics where id = ${C}`)).rows[0] as { closed_at: unknown }).closed_at;
+      const closedAt = async () => ((await c.t.owner.execute(sql`select closed_at from clinics where id = ${C}`)).rows[0] as { closed_at: unknown }).closed_at;
       const first = await closedAt();
       // closing again keeps the first date
       expect((await close(true, C, c)).statusCode).toBe(204);
@@ -95,7 +95,7 @@ describe('closing a clinic, and deleting it 30 days later', () => {
       expect([recent.statusCode, recent.json()]).toEqual([409, { error: 'closed_recently', blockers: ['closed_recently'] }]);
       expect((await rowsOf(C, c)).patients).toBe(before.patients);
 
-      await c.t.db.execute(sql`update clinics set closed_at = ${new Date(now.getTime() - 31 * 86_400_000)} where id = ${C}`);
+      await c.t.owner.execute(sql`update clinics set closed_at = ${new Date(now.getTime() - 31 * 86_400_000)} where id = ${C}`);
       const counted = (await preview(C, c)).json();
       expect(counted.blockers).toEqual([]);
       const deleted = await purge(C, c);
@@ -105,9 +105,9 @@ describe('closing a clinic, and deleting it 30 days later', () => {
       // the audit log grew since (closing is audited), so at least what was there
       for (const t of TABLES.filter((t) => before[t]! > 0)) expect(deleted.json().deleted[t], t).toBeGreaterThanOrEqual(before[t]!);
       expect(await rowsOf(C, c)).toEqual(Object.fromEntries(TABLES.map((t) => [t, 0])));
-      expect((await c.t.db.execute(sql`select id from clinics where id = ${C}`)).rows).toEqual([]);
+      expect((await c.t.owner.execute(sql`select id from clinics where id = ${C}`)).rows).toEqual([]);
       expect(await rowsOf(OTHER.id, c)).toEqual(otherBefore);
-      expect((await c.t.db.execute(sql`select id from clinics where id = ${OTHER.id}`)).rows).toHaveLength(1);
+      expect((await c.t.owner.execute(sql`select id from clinics where id = ${OTHER.id}`)).rows).toHaveLength(1);
       expect((await purge(C, c)).statusCode).toBe(404);
       expect((await preview(C, c)).statusCode).toBe(404);
     } finally {

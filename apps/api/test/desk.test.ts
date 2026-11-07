@@ -12,8 +12,8 @@ let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 let callback: string;
 
 const audit = async (action: string) =>
-  ((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
-const count = async () => ((await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number }).n;
+  ((await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
+const count = async () => ((await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number }).n;
 
 beforeAll(async () => {
   api = await startApi({ demoMode: false });
@@ -64,7 +64,7 @@ describe('requests', () => {
     const res = await api.request('POST', `${C}/tasks/${api.taskId}/notes`, { cookie: as.staff, body: { body: 'Pharmacy closed until 9, calling back then.' } });
     expect(res.statusCode).toBe(204);
     expect((await list('?type=refill'))[0]!.notes).toEqual([expect.objectContaining({ author: 'Ana Front', body: 'Pharmacy closed until 9, calling back then.' })]);
-    expect(JSON.stringify((await api.t.db.execute(sql`select * from task_notes`)).rows)).not.toContain('Pharmacy');
+    expect(JSON.stringify((await api.t.owner.execute(sql`select * from task_notes`)).rows)).not.toContain('Pharmacy');
     expect(await audit('task.note.added')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.taskId }]);
   });
 
@@ -146,8 +146,8 @@ describe('requests', () => {
 
 describe('calls', () => {
   beforeAll(async () => {
-    await api.t.db.execute(sql`update calls set patient_id = ${api.patientIds.maria!}, started_at = ${zonedInstant('2026-09-28', '14:00', DEMO_CLINIC.timezone).toISOString()} where id = ${api.callId}`);
-    await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, outcome, emergency_flag, channel)
+    await api.t.owner.execute(sql`update calls set patient_id = ${api.patientIds.maria!}, started_at = ${zonedInstant('2026-09-28', '14:00', DEMO_CLINIC.timezone).toISOString()} where id = ${api.callId}`);
+    await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, outcome, emergency_flag, channel)
       values (${DEMO_CLINIC.id}, 'live_desk_2', ${zonedInstant('2026-09-20', '09:00', DEMO_CLINIC.timezone).toISOString()}, 'emergency', true, 'phone'),
              (${DEMO_CLINIC.id}, 'live_desk_3', ${zonedInstant('2026-09-29', '09:00', DEMO_CLINIC.timezone).toISOString()}, 'booked', false, 'web')`);
   });
@@ -294,16 +294,16 @@ describe('the team', () => {
   });
 
   it('removes the new account when adding the membership fails, so adding the person again works', async () => {
-    await api.t.db.execute(sql`create function refuse_membership() returns trigger language plpgsql as $$ begin raise exception 'membership refused'; end $$`);
-    await api.t.db.execute(sql`create trigger refuse_membership before insert on clinic_memberships for each row execute function refuse_membership()`);
+    await api.t.owner.execute(sql`create function refuse_membership() returns trigger language plpgsql as $$ begin raise exception 'membership refused'; end $$`);
+    await api.t.owner.execute(sql`create trigger refuse_membership before insert on clinic_memberships for each row execute function refuse_membership()`);
     const body = { name: 'Rhea Retry', email: 'rhea@maple.example', role: 'staff' };
     try {
       expect((await api.request('POST', M, { cookie: as.admin, body })).statusCode).toBe(500);
     } finally {
-      await api.t.db.execute(sql`drop trigger refuse_membership on clinic_memberships`);
-      await api.t.db.execute(sql`drop function refuse_membership()`);
+      await api.t.owner.execute(sql`drop trigger refuse_membership on clinic_memberships`);
+      await api.t.owner.execute(sql`drop function refuse_membership()`);
     }
-    expect((await api.t.db.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
+    expect((await api.t.owner.execute(sql`select id from auth_users where email = 'rhea@maple.example'`)).rows).toEqual([]);
     const again = await api.request('POST', M, { cookie: as.admin, body });
     expect(again.statusCode).toBe(201);
     expect((await members()).map((m) => m.email)).toContain('rhea@maple.example');
@@ -351,7 +351,7 @@ describe('the team', () => {
     const me = (await api.request('GET', '/api/v1/me', { cookie: as.owner })).json();
     expect(me.clinics.find((c: { id: string }) => c.id === DEMO_CLINIC.id).approvesRefills).toBe(true);
     expect((await set(as.admin, api.users.viewer, false)).statusCode).toBe(204);
-    const rows = await api.t.db.execute(sql`select action from audit_logs where action like 'member.refill_approval.%' and clinic_id = ${DEMO_CLINIC.id} order by id`);
+    const rows = await api.t.owner.execute(sql`select action from audit_logs where action like 'member.refill_approval.%' and clinic_id = ${DEMO_CLINIC.id} order by id`);
     expect((rows.rows as { action: string }[]).map((r) => r.action)).toEqual(['member.refill_approval.on', 'member.refill_approval.on', 'member.refill_approval.off']);
     await set(as.owner, api.users.owner, false);
   });
@@ -371,14 +371,14 @@ describe('the team', () => {
     expect((await api.request('GET', '/api/v1/me', { cookie: as.viewer })).statusCode).toBe(401);
     expect((await members()).map((m) => m.email)).not.toContain('vic@maple.example');
     expect((await audit('member.removed')).at(-1)).toEqual({ actor: `user:${api.users.admin}`, entity_id: api.users.viewer });
-    const [task] = (await api.t.db.execute(sql`select assignee_user_id from tasks where id = ${api.taskId}`)).rows as { assignee_user_id: string | null }[];
+    const [task] = (await api.t.owner.execute(sql`select assignee_user_id from tasks where id = ${api.taskId}`)).rows as { assignee_user_id: string | null }[];
     expect(task!.assignee_user_id).toBeNull();
     expect((await audit('task.released.override')).at(-1)).toEqual({ actor: `user:${api.users.admin}`, entity_id: api.taskId });
   });
 
   it('removing someone who also works for another practice leaves that practice, and their sessions, alone', async () => {
     // Otto owns the other practice and is added here directly, as the CLI would
-    await api.t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m_otto_demo', ${DEMO_CLINIC.id}, ${api.users.outsider}, 'staff')`);
+    await api.t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m_otto_demo', ${DEMO_CLINIC.id}, ${api.users.outsider}, 'staff')`);
     const otto = await api.signIn('otto@other.example', true);
     expect((await api.request('GET', `${C}/calls`, { cookie: otto })).statusCode).toBe(200);
     expect((await api.request('DELETE', `${M}/${api.users.outsider}`, { cookie: as.admin })).statusCode).toBe(204);

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // What a hosting layer needs to open and run accounts: a new organization with its
-// clinic, a phone number pointed at a clinic, and the minutes it used. Owner connection;
-// none of it reads patient data.
+// clinic, a phone number pointed at a clinic, and the minutes it used. None of it reads
+// patient data. The tenant registry (organizations, clinics, phone numbers) is open to the
+// services' role (migration 0051); every other table is written with its clinic set.
 import { ClinicConfig, DEFAULT_ANIMALS, managedList, PACKS } from '@attendra/core';
 import { and, asc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
 import { authAccounts, authSessions, authTwoFactors, authUsers, clinicAccess, clinicMemberships, invitations, memberships } from '../auth-schema';
-import type { Database } from '../client';
+import { type Database, setClinicScope, withClinic } from '../client';
 import type { PhiCipher } from '../crypto';
 import { auditLogs, calls, clinics, organizations } from '../schema';
 import { callerKey } from './calls';
@@ -42,6 +43,7 @@ export async function openOrganizationForOwner(db: Database, userId: string, org
     await tx.insert(organizations).values({ id: org.id, name: org.name, slug: org.id, plan: org.plan });
     await tx.insert(clinics).values({ id: c.id, orgId: org.id, name: c.name, timezone: c.timezone, config: c });
     await tx.insert(memberships).values({ id: crypto.randomUUID(), organizationId: org.id, userId, role: 'owner' });
+    await setClinicScope(tx, c.id);
     await tx.insert(auditLogs).values({ clinicId: c.id, actor: `user:${userId}`, action: 'organization.created.by_owner', entity: 'organization', entityId: org.id });
     return 'opened';
   });
@@ -65,6 +67,7 @@ export async function addClinicToOrganization(db: Database, orgId: string, confi
     const lang = from.primaryLanguage;
     const c = ClinicConfig.parse({ ...config, ...shared, greeting: PACKS[lang].greeting({ assistantName: from.assistantName ?? null, clinicName: config.name }) });
     await tx.insert(clinics).values({ id: c.id, orgId, name: c.name, timezone: c.timezone, config: c });
+    await setClinicScope(tx, first.id);
     await tx.insert(auditLogs).values({ clinicId: first.id, actor: 'provisioning', action: 'clinic.created', entity: 'clinic', entityId: c.id });
     return c.id;
   });
@@ -89,6 +92,7 @@ export async function assignNumber(db: Database, clinicId: string, e164: string)
     await tx.execute(sql`insert into phone_numbers (e164, clinic_id) values (${e164}, ${clinicId}) on conflict (e164) do update set clinic_id = excluded.clinic_id, status = 'active'`);
     const phoneNumbers = [e164, ...config.phoneNumbers.filter((n) => n !== e164)];
     // who got which number, and when: the clinic's audit log shows it
+    await setClinicScope(tx, clinicId);
     await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${clinicId}, 'hosting', 'number.assigned', 'phone_number', ${e164})`);
     await tx.execute(sql`update clinics set config = ${JSON.stringify({ ...config, phoneNumbers })}::jsonb, config_version = config_version + 1 where id = ${clinicId}`);
     return true;
@@ -97,10 +101,13 @@ export async function assignNumber(db: Database, clinicId: string, e164: string)
 
 /** Stops a number reaching any clinic, as when an account is closed. The clinic keeps it in its settings until changed. */
 export async function releaseNumber(db: Database, e164: string): Promise<boolean> {
-  const rows = await db.execute(sql`update phone_numbers set status = 'released' where e164 = ${e164} and status = 'active' returning clinic_id`);
-  const [row] = rows.rows as { clinic_id: string }[];
-  if (row) await db.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${row.clinic_id}, 'hosting', 'number.released', 'phone_number', ${e164})`);
-  return rows.rows.length === 1;
+  return db.transaction(async (tx) => {
+    const [row] = (await tx.execute(sql`update phone_numbers set status = 'released' where e164 = ${e164} and status = 'active' returning clinic_id`)).rows as { clinic_id: string }[];
+    if (!row) return false;
+    await setClinicScope(tx, row.clinic_id);
+    await tx.execute(sql`insert into audit_logs (clinic_id, actor, action, entity, entity_id) values (${row.clinic_id}, 'hosting', 'number.released', 'phone_number', ${e164})`);
+    return true;
+  });
 }
 
 /** Sets the plan the hosting layer keeps for a clinic, or clears it with null. False when there is no such clinic. */
@@ -128,7 +135,7 @@ export async function setClinicClosed(db: Database, clinicId: string, closed: bo
     const rows = await tx.update(clinics).set({ closedAt: closed ? sql`coalesce(${clinics.closedAt}, ${now})` : null })
       .where(eq(clinics.id, clinicId)).returning({ id: clinics.id });
     if (!rows.length) return false;
-    await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+    await setClinicScope(tx, clinicId);
     if (closed) {
       await tx.execute(sql`update phone_numbers set status = 'released' where clinic_id = ${clinicId} and status = 'active'`);
       await tx.execute(sql`update api_keys set revoked_at = ${now} where clinic_id = ${clinicId} and revoked_at is null`);
@@ -194,7 +201,7 @@ export async function purgeClinic(db: Database, clinicId: string, opts: PurgeOpt
       const [c] = await tx.select({ closedAt: clinics.closedAt, orgId: clinics.orgId }).from(clinics).where(eq(clinics.id, clinicId)).for('update');
       if (!c) return;
       // row-level security applies to this connection too: the clinic's own rows only
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       const blockers: PurgeBlocker[] = [];
       if (!opts.force && !c.closedAt) blockers.push('not_closed');
       if (!opts.force && c.closedAt && c.closedAt.getTime() > now.getTime() - CLOSED_KEPT_DAYS * 86_400_000) blockers.push('closed_recently');
@@ -268,15 +275,17 @@ async function removeLoginsWithNoTeam(tx: Tx, team: string[], tally: Tally) {
  * test calls are not counted, nor calls taken while the assistant was paused (a short line, then the front desk).
  */
 export async function phoneUsage(db: Database, clinicId: string, from: Date, to: Date): Promise<{ calls: number; seconds: number; texts: number }> {
-  const [row] = (await db.execute(sql`
-    select count(*)::int as calls, coalesce(sum(ceil(extract(epoch from (ended_at - started_at)))), 0)::int as seconds
-    from calls where clinic_id = ${clinicId} and channel = 'phone' and ended_at is not null and started_at >= ${from} and started_at < ${to}
-      and not exists (select 1 from call_actions a where a.call_id = calls.id and a.tool = 'answering_paused')`)).rows as [{ calls: number; seconds: number }];
-  // a text counts once the carrier took it (Twilio gave it an id), delivered or not; one refused before sending never does
-  const [sms] = (await db.execute(sql`
-    select count(*)::int as texts from sms_messages
-    where clinic_id = ${clinicId} and provider_sid is not null and sent_at >= ${from} and sent_at < ${to}`)).rows as [{ texts: number }];
-  return { calls: Number(row.calls), seconds: Number(row.seconds), texts: Number(sms.texts) };
+  return withClinic(db, clinicId, async (tx) => {
+    const [row] = (await tx.execute(sql`
+      select count(*)::int as calls, coalesce(sum(ceil(extract(epoch from (ended_at - started_at)))), 0)::int as seconds
+      from calls where clinic_id = ${clinicId} and channel = 'phone' and ended_at is not null and started_at >= ${from} and started_at < ${to}
+        and not exists (select 1 from call_actions a where a.call_id = calls.id and a.tool = 'answering_paused')`)).rows as [{ calls: number; seconds: number }];
+    // a text counts once the carrier took it (Twilio gave it an id), delivered or not; one refused before sending never does
+    const [sms] = (await tx.execute(sql`
+      select count(*)::int as texts from sms_messages
+      where clinic_id = ${clinicId} and provider_sid is not null and sent_at >= ${from} and sent_at < ${to}`)).rows as [{ texts: number }];
+    return { calls: Number(row.calls), seconds: Number(row.seconds), texts: Number(sms.texts) };
+  });
 }
 
 /**
@@ -285,17 +294,19 @@ export async function phoneUsage(db: Database, clinicId: string, from: Date, to:
  * or returned). For the hosting layer's forwarding check and its quiet-line alert.
  */
 export async function phoneCallsSince(db: Database, cipher: PhiCipher, clinicId: string, since: Date, from?: string): Promise<{ calls: number; lastCallAt: string | null; heard: boolean | null }> {
-  const [row] = (await db.execute(sql`
-    select count(*)::int as calls, max(started_at) as last_at
-    from calls where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since}`)).rows as [{ calls: number; last_at: string | Date | null }];
-  let heard: boolean | null = null;
-  if (from) {
-    const [match] = (await db.execute(sql`
-      select count(*)::int as n from calls
-      where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since} and from_hash = ${cipher.hash(callerKey(clinicId, from))}`)).rows as [{ n: number }];
-    heard = Number(match.n) > 0;
-  }
-  return { calls: Number(row.calls), lastCallAt: row.last_at ? new Date(row.last_at).toISOString() : null, heard };
+  return withClinic(db, clinicId, async (tx) => {
+    const [row] = (await tx.execute(sql`
+      select count(*)::int as calls, max(started_at) as last_at
+      from calls where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since}`)).rows as [{ calls: number; last_at: string | Date | null }];
+    let heard: boolean | null = null;
+    if (from) {
+      const [match] = (await tx.execute(sql`
+        select count(*)::int as n from calls
+        where clinic_id = ${clinicId} and channel = 'phone' and started_at >= ${since} and from_hash = ${cipher.hash(callerKey(clinicId, from))}`)).rows as [{ n: number }];
+      heard = Number(match.n) > 0;
+    }
+    return { calls: Number(row.calls), lastCallAt: row.last_at ? new Date(row.last_at).toISOString() : null, heard };
+  });
 }
 
 /** The owners of the organization a clinic belongs to, for account email. */
@@ -333,12 +344,12 @@ export async function removeUnconfirmedAccount(db: Database, email: string, opts
     const clinicIds = alone.length ? (await tx.select({ id: clinics.id }).from(clinics).where(inArray(clinics.orgId, alone))).map((c) => c.id) : [];
     // calls and the audit log are behind row-level security, even for this connection: one clinic at a time
     for (const clinicId of clinicIds) {
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       const [used] = await tx.select({ id: calls.id }).from(calls).where(eq(calls.clinicId, clinicId)).limit(1);
       if (used) return 'in_use'; // checked for every clinic before anything is removed
     }
     for (const clinicId of clinicIds) {
-      await tx.execute(sql`select set_config('app.clinic_id', ${clinicId}, true)`);
+      await setClinicScope(tx, clinicId);
       await tx.delete(auditLogs).where(eq(auditLogs.clinicId, clinicId));
     }
     if (clinicIds.length) await tx.delete(clinics).where(inArray(clinics.id, clinicIds));
@@ -372,6 +383,7 @@ export async function seedAnimalLists(db: Database, opts: { apply: boolean }): P
     if (!opts.apply) continue;
     const config = { ...parsed.data, lists: { ...parsed.data.lists, categories: [...DEFAULT_ANIMALS] } };
     await db.transaction(async (tx) => {
+      await setClinicScope(tx, row.id);
       await tx.update(clinics).set({ config, configVersion: sql`${clinics.configVersion} + 1`, configUpdatedAt: new Date(), configUpdatedBy: 'provisioning' }).where(eq(clinics.id, row.id));
       await tx.insert(auditLogs).values({ clinicId: row.id, actor: 'provisioning', action: 'clinic.list.updated.categories', entity: 'clinic', entityId: row.id });
     });

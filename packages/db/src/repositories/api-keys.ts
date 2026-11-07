@@ -2,7 +2,7 @@
 import type { ApiScope } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
-import { type Database, type Tx, withClinic } from '../client';
+import { type Database, type Tx, withClinic, withClinicScope } from '../client';
 
 export { API_SCOPES, type ApiScope } from '@attendra/core';
 
@@ -52,16 +52,18 @@ export class ApiKeyRepository {
 }
 
 /**
- * Finds the key a request carries, by its hash, before the clinic is known (owner
- * connection). Null for anything that is not a live key: unknown, revoked, expired,
- * or made by someone who is no longer an owner or practice manager at the clinic.
+ * Finds the key a request carries, by its hash, before the clinic is known: through
+ * api_key_by_hash (migration 0051), which reads that one key past row-level security,
+ * then checks it in its clinic. Null for anything that is not a live key: unknown,
+ * revoked, expired, or made by someone who is no longer an owner or practice manager there.
  */
 export async function authenticateApiKey(db: Database, key: string, now = new Date()): Promise<ApiCaller | null> {
   if (!/^atk_[A-Za-z0-9_-]{43}$/.test(key)) return null;
-  const [r] = rows<{ id: string; clinic_id: string; scopes: ApiScope[]; created_by_user_id: string; expires_at: string | Date; revoked_at: string | null }>(
-    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id, expires_at, revoked_at from api_keys where key_hash = ${hashOf(key)} and ${holder}`));
-  if (!r || r.revoked_at || new Date(r.expires_at) <= now) return null;
-  return { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
+  const [r] = rows<{ id: string; clinic_id: string; scopes: ApiScope[]; created_by_user_id: string }>(
+    await db.execute(sql`select id, clinic_id, scopes, created_by_user_id from api_key_by_hash(${hashOf(key)})`));
+  if (!r) return null;
+  const caller = { keyId: r.id, clinicId: r.clinic_id, scopes: r.scopes, createdByUserId: r.created_by_user_id };
+  return (await apiKeyIsLive(db, caller, now)) ? caller : null;
 }
 
 /**
@@ -69,8 +71,9 @@ export async function authenticateApiKey(db: Database, key: string, now = new Da
  * call, so a key revoked while a client is connected stops at its next call.
  */
 export async function apiKeyIsLive(db: Database, caller: ApiCaller, now = new Date()): Promise<boolean> {
-  const [r] = rows<{ expires_at: string | Date; revoked_at: string | null }>(
-    await db.execute(sql`select expires_at, revoked_at from api_keys where id = ${caller.keyId} and clinic_id = ${caller.clinicId} and ${holder}`));
+  // the clinic's scope, not withClinic: the application role has no grant on the team tables `holder` reads
+  const [r] = await withClinicScope(db, caller.clinicId, async (tx) => rows<{ expires_at: string | Date; revoked_at: string | null }>(
+    await tx.execute(sql`select expires_at, revoked_at from api_keys where id = ${caller.keyId} and clinic_id = ${caller.clinicId} and ${holder}`)));
   return !!r && !r.revoked_at && new Date(r.expires_at) > now;
 }
 

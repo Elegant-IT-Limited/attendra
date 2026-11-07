@@ -11,7 +11,7 @@ let api: Awaited<ReturnType<typeof startApi>>;
 let as: Record<'owner' | 'admin' | 'staff' | 'viewer', string>;
 
 const audit = async (action: string) =>
-  ((await api.t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
+  ((await api.t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
 const search = (query: string, cookie = as.staff) => api.request('POST', `${C}/search`, { cookie, body: { query } });
 const names = async (query: string) => (await search(query)).json().patients.map((p: { name: string }) => p.name);
 
@@ -82,7 +82,7 @@ describe('search', () => {
     const last = (await audit('patient.searched')).at(-1)!;
     expect(last).toEqual({ actor: `user:${api.users.staff}`, entity_id: 'matches:1' });
     expect((await audit('patient.search.result')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: api.patientIds.james });
-    const dump = JSON.stringify((await api.t.db.execute(sql`select * from audit_logs`)).rows);
+    const dump = JSON.stringify((await api.t.owner.execute(sql`select * from audit_logs`)).rows);
     // the phone number as it would be written; four digits alone turn up by chance in random ids
     expect(dump).not.toMatch(/whitaker|delgado|5550163/i);
   });
@@ -98,7 +98,7 @@ describe('search', () => {
 
 describe('a patient\'s record', () => {
   it('shows contact details, appointments, verified calls and requests, audited', async () => {
-    await api.t.db.execute(sql`update calls set patient_id = ${api.patientIds.maria!} where id = ${api.callId}`);
+    await api.t.owner.execute(sql`update calls set patient_id = ${api.patientIds.maria!} where id = ${api.callId}`);
     const p = (await api.request('GET', `${C}/${api.patientIds.maria}`, { cookie: as.staff })).json();
     expect(p).toMatchObject({ name: 'Maria Delgado', dob: '1985-03-04', phone: '+13035550147', appointments: [] });
     expect(p.calls).toEqual([expect.objectContaining({ id: api.callId, outcome: 'task_created', forThisRecord: true })]);
@@ -136,7 +136,7 @@ describe('adding and editing', () => {
     expect(await directory().findByIdentity(DEMO_CLINIC.id, 'Nora Quinlan', '1971-06-18', '3035550188')).toMatchObject({ status: 'found', patient: { id, phone: '+13035550188' } }); // kept as E.164, so a text reaches it
     expect(await names('3035550188')).toEqual(['Nora Quinlan']);
     expect((await audit('patient.created')).filter((a) => a.entity_id === id)).toEqual([{ actor: `user:${api.users.staff}`, entity_id: id }]);
-    const stored = JSON.stringify((await api.t.db.execute(sql`select * from patients where id = ${id}`)).rows);
+    const stored = JSON.stringify((await api.t.owner.execute(sql`select * from patients where id = ${id}`)).rows);
     // the year on its own, not four digits inside a hash, an id or the ciphertext
     expect(stored).not.toMatch(/Nora|Quinlan|(?<![\w+/=])1971(?![\w+/=])/);
   });
@@ -155,7 +155,7 @@ describe('adding and editing', () => {
     expect(noGender.json().issues[0]).toMatchObject({ path: 'gender' });
     const res = await api.request('POST', C, { cookie: as.staff, body: { firstName: 'Gia', lastName: 'Gender', dob: '1990-01-01', phone: '303-555-0146', gender: 'undisclosed' } });
     expect((await api.request('GET', `${C}/${res.json().id}`, { cookie: as.staff })).json().gender).toBe('undisclosed');
-    expect(JSON.stringify((await api.t.db.execute(sql`select gender_enc from patients where id = ${res.json().id}`)).rows)).not.toContain('undisclosed');
+    expect(JSON.stringify((await api.t.owner.execute(sql`select gender_enc from patients where id = ${res.json().id}`)).rows)).not.toContain('undisclosed');
   });
 
   it('needs a phone number for everyone, and a parent or guardian for anyone under 18', async () => {
@@ -282,7 +282,7 @@ describe("the clinic's own fields on a record", () => {
     expect(await fieldsOf()).toEqual({});
     expect((await put({ microchip: ' 985112003456789 ', insured: 'yes', rabies: '' })).statusCode).toBe(204);
     expect(await fieldsOf()).toEqual({ microchip: '985112003456789', insured: 'yes' });
-    const [row] = (await api.t.db.execute(sql`select custom_enc from patients where id = ${api.patientIds.maria}`)).rows as { custom_enc: string }[];
+    const [row] = (await api.t.owner.execute(sql`select custom_enc from patients where id = ${api.patientIds.maria}`)).rows as { custom_enc: string }[];
     expect(row!.custom_enc).not.toContain('985112003456789');
     expect((await audit('patient.fields.updated')).at(-1)).toEqual({ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria });
   });

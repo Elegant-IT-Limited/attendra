@@ -18,7 +18,7 @@ beforeAll(async () => {
   boss = createBoss({ pglite: t.client });
   await boss.start();
   await ensureQueues(boss);
-  await ensureWorkerJobsView(t.db);
+  await ensureWorkerJobsView((text) => t.client.exec(text));
 }, 60_000);
 afterAll(async () => { await boss.stop({ graceful: false }); await t.close(); });
 

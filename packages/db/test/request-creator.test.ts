@@ -15,7 +15,7 @@ beforeAll(async () => {
   await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
   for (const [id, name, org] of [['u_ana', 'Ana Front', 'org_demo'], ['u_otto', 'Otto Other', 'org_other']] as const) {
-    await t.db.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${name}, ${`${id}@example.test`}, true)`);
+    await t.owner.execute(sql`insert into auth_users (id, name, email, email_verified) values (${id}, ${name}, ${`${id}@example.test`}, true)`);
     await addMembership(t.db, org, id, 'staff');
   }
   // a request written down by hand at each clinic, under the application role as the API does it

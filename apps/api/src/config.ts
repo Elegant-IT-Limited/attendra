@@ -12,6 +12,9 @@ export const port = (fallback: number) => z.preprocess(blank, z.coerce.number().
 const Env = z.object({
   API_PORT: port(8081),
   DATABASE_URL: z.string().url(),
+  // the services' own role (migration 0051, docs/self-hosting.md): its queries never get past row-level
+  // security. Unset, they run on DATABASE_URL, the owner's, as before. pg-boss stays on DATABASE_URL.
+  ATTENDRA_SERVICE_DATABASE_URL: optional(z.string().url()),
   ATTENDRA_DATA_KEY: z.string().min(40, 'ATTENDRA_DATA_KEY must be 32 random bytes, base64'),
   BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters: openssl rand -base64 32'),
   // The address people open in the browser. The web app proxies /api to this service,

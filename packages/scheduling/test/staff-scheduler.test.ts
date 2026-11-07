@@ -17,7 +17,7 @@ let ids: Record<string, string>;
 let staff: StaffScheduler;
 
 const audit = async (action: string) =>
-  ((await t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
+  ((await t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[]);
 const book = (time: string, key: string, extra: Partial<Parameters<StaffScheduler['book']>[1]> = {}) =>
   staff.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-09-29', time), idempotencyKey: key, ...extra }, 'u_ana');
 
@@ -104,7 +104,7 @@ describe('staff bookings', () => {
   it('books, encrypts the note, and audits under the staff member', async () => {
     const result = await book('09:00', 'desk-1', { note: 'Needs the ground-floor room.' });
     expect(result).toMatchObject({ status: 'done' });
-    const [row] = (await t.db.execute(sql`select created_by_user_id, created_by_call_id, note_enc from appointments where idempotency_key = 'staff:u_ana:desk-1'`)).rows as { created_by_user_id: string; created_by_call_id: null; note_enc: string }[];
+    const [row] = (await t.owner.execute(sql`select created_by_user_id, created_by_call_id, note_enc from appointments where idempotency_key = 'staff:u_ana:desk-1'`)).rows as { created_by_user_id: string; created_by_call_id: null; note_enc: string }[];
     expect(row).toMatchObject({ created_by_user_id: 'u_ana', created_by_call_id: null });
     expect(row!.note_enc).not.toContain('ground-floor');
     expect(await audit('appointment.booked.staff')).toEqual([{ actor: 'user:u_ana', entity_id: result.status === 'done' ? result.appointmentId : '' }]);
@@ -131,12 +131,12 @@ describe('staff bookings', () => {
     expect(await staff.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-09-28', '10:00'), idempotencyKey: 'desk-6' }, 'u_ana'))
       .toEqual({ status: 'refused', reason: 'past' });
     expect(await book('09:00', 'desk-7', { providerId: 'prov_lindqvist', visitTypeId: 'vt_new' })).toEqual({ status: 'refused', reason: 'not_offered' });
-    const [{ n }] = (await t.db.execute(sql`select count(*)::int as n from appointments where idempotency_key like 'staff:u_ana:desk-%'`)).rows as [{ n: number }];
+    const [{ n }] = (await t.owner.execute(sql`select count(*)::int as n from appointments where idempotency_key like 'staff:u_ana:desk-%'`)).rows as [{ n: number }];
     expect(n).toBe(1);
   });
 
   it('will not book another clinic\'s patient', async () => {
-    const otherPatient = (await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash) values (${OTHER.id}, 'x', 'x', 'x', 'x', 'x', 'x') returning id`)).rows[0] as { id: string };
+    const otherPatient = (await t.owner.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash) values (${OTHER.id}, 'x', 'x', 'x', 'x', 'x', 'x') returning id`)).rows[0] as { id: string };
     expect(await book('11:00', 'desk-8', { patientId: otherPatient.id })).toEqual({ status: 'not_found' });
   });
 });
@@ -151,7 +151,7 @@ describe('moving and cancelling', () => {
 
   it('refuses to move into a taken slot, and leaves the booking where it was', async () => {
     expect(await staff.reschedule(DEMO_CLINIC, id, { start: at('2026-09-29', '09:00') }, 'u_ana')).toEqual({ status: 'refused', reason: 'taken' });
-    const [row] = (await t.db.execute(sql`select starts_at from appointments where id = ${id}`)).rows as { starts_at: string }[];
+    const [row] = (await t.owner.execute(sql`select starts_at from appointments where id = ${id}`)).rows as { starts_at: string }[];
     expect(new Date(row!.starts_at)).toEqual(at('2026-09-29', '14:00'));
   });
 
@@ -169,7 +169,7 @@ describe('moving and cancelling', () => {
   it('cancels with a reason, once; a second cancel changes nothing and a cancelled booking cannot move', async () => {
     expect(await staff.cancel(DEMO_CLINIC, id, { reason: 'patient_asked' }, 'u_ben')).toEqual({ status: 'done', appointmentId: id });
     expect(await staff.cancel(DEMO_CLINIC, id, { reason: 'other' }, 'u_ben')).toEqual({ status: 'already_done', appointmentId: id });
-    const [row] = (await t.db.execute(sql`select status, cancelled_by_user_id, cancel_reason from appointments where id = ${id}`)).rows;
+    const [row] = (await t.owner.execute(sql`select status, cancelled_by_user_id, cancel_reason from appointments where id = ${id}`)).rows;
     expect(row).toEqual({ status: 'cancelled', cancelled_by_user_id: 'u_ben', cancel_reason: 'patient_asked' });
     expect(await audit('appointment.cancelled.staff')).toEqual([{ actor: 'user:u_ben', entity_id: id }]);
     expect(await staff.reschedule(DEMO_CLINIC, id, { start: at('2026-09-29', '15:00') }, 'u_ana')).toEqual({ status: 'refused', reason: 'cancelled' });
@@ -187,7 +187,7 @@ describe('moving and cancelling', () => {
 
 describe('the database', () => {
   it('refuses an appointment that came from neither a call nor a person', async () => {
-    await expect(t.db.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key)
+    await expect(t.owner.execute(sql`insert into appointments (clinic_id, patient_id, provider_id, visit_type_id, starts_at, ends_at, idempotency_key)
       values (${DEMO_CLINIC.id}, ${ids.maria!}, 'prov_okafor', 'vt_sick', '2026-10-01T16:00:00Z', '2026-10-01T16:20:00Z', 'no-source')`)).rejects.toThrow();
   });
 });
@@ -204,7 +204,7 @@ describe('races and mistakes', () => {
       return busy(tx, ...rest);
     };
     expect(await racing.reschedule(DEMO_CLINIC, r.appointmentId, { start: at('2026-09-29', '16:00') }, 'u_ana')).toEqual({ status: 'refused', reason: 'just_cancelled' });
-    const [row] = (await t.db.execute(sql`select status, starts_at from appointments where id = ${r.appointmentId}`)).rows as { status: string; starts_at: string }[];
+    const [row] = (await t.owner.execute(sql`select status, starts_at from appointments where id = ${r.appointmentId}`)).rows as { status: string; starts_at: string }[];
     expect(row!.status).toBe('cancelled');
     expect(new Date(row!.starts_at)).toEqual(at('2026-09-29', '15:00')); // not moved back to life at a new time
   });
@@ -214,7 +214,7 @@ describe('races and mistakes', () => {
     if (r.status !== 'done') throw new Error(r.status);
     const [a, b] = await Promise.all([staff.cancel(DEMO_CLINIC, r.appointmentId, {}, 'u_ana'), staff.cancel(DEMO_CLINIC, r.appointmentId, {}, 'u_ben')]);
     expect([a.status, b.status].sort()).toEqual(['already_done', 'done']);
-    const [row] = (await t.db.execute(sql`select cancel_key from appointments where id = ${r.appointmentId}`)).rows as { cancel_key: string }[];
+    const [row] = (await t.owner.execute(sql`select cancel_key from appointments where id = ${r.appointmentId}`)).rows as { cancel_key: string }[];
     expect(row!.cancel_key).toMatch(new RegExp(`^staff:u_(ana|ben):${r.appointmentId}$`));
     expect((await audit('appointment.cancelled.staff')).filter((x) => x.entity_id === r.appointmentId)).toHaveLength(1);
   });
@@ -278,11 +278,11 @@ describe('special days, part-day absences and the desk override', () => {
   it('keeps the reason on the booking and audits it as an override', async () => {
     const r = await staff.book(DEMO_CLINIC, { patientId: ids.james!, providerId: 'prov_okafor', visitTypeId: 'vt_sick', start: at('2026-10-03', '10:00'), idempotencyKey: 'ovr-1', overrideReason: 'Owner can only come Saturday' }, 'u_ana');
     if (r.status !== 'done') throw new Error(r.status);
-    const row = (await t.db.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string };
+    const row = (await t.owner.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string };
     expect(row.override_reason).toBe('Owner can only come Saturday');
     expect(await audit('appointment.booked.staff.override')).toEqual([{ actor: 'user:u_ana', entity_id: r.appointmentId }]);
     // moved back inside the hours, the reason goes
     expect(await staff.reschedule(DEMO_CLINIC, r.appointmentId, { start: at('2026-10-05', '10:00') }, 'u_ana')).toMatchObject({ status: 'done' });
-    expect(((await t.db.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string | null }).override_reason).toBeNull();
+    expect(((await t.owner.execute(sql`select override_reason from appointments where id = ${r.appointmentId}`)).rows[0] as { override_reason: string | null }).override_reason).toBeNull();
   });
 });

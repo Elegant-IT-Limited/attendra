@@ -21,7 +21,7 @@ describe('pets at a veterinary clinic', () => {
     const dir = new PostgresPatientDirectory(t.db, cipher);
     const found = await dir.findPet(C, 'Mochi', '(720) 555-0172');
     expect(found).toMatchObject({ status: 'found', patient: { id: ids.mochi, firstName: 'Mochi', species: 'cat', guardianName: 'Linh Nguyen' } });
-    const audit = (await t.db.execute(sql`select action, entity_id from audit_logs where clinic_id = ${C} and action = 'patient.identified.by_number'`)).rows;
+    const audit = (await t.owner.execute(sql`select action, entity_id from audit_logs where clinic_id = ${C} and action = 'patient.identified.by_number'`)).rows;
     expect(audit).toContainEqual({ action: 'patient.identified.by_number', entity_id: ids.mochi });
   });
 
@@ -45,7 +45,7 @@ describe('pets at a veterinary clinic', () => {
     expect(await dir.nameOnFile(C, '+17205550181', callId)).toBe('Chidi');
     expect(await dir.nameOnFile(C, '+17205550128', callId)).toBeNull();
     expect(await dir.household(C, '+17205550181')).toEqual({ owner: 'Chidi Okafor', pets: ['Rex', 'Tiny', 'Bolt'] });
-    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.name_on_file.read' and call_id = ${callId}`)).rows;
+    const audit = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.name_on_file.read' and call_id = ${callId}`)).rows;
     expect(audit).toEqual([{ n: 2 }]);
   });
 
@@ -54,7 +54,7 @@ describe('pets at a veterinary clinic', () => {
     const callId = await new CallRepository(t.db, cipher).open(C, 'sess_pets', null);
     expect(await dir.petsOnNumber(C, '+17205550172', callId)).toEqual({ names: ['Biscuit', 'Mochi'], more: false });
     expect(await dir.petsOnNumber(C, '+17205550128', callId)).toEqual({ names: [], more: false });
-    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.pets_on_number.read' and call_id = ${callId}`)).rows;
+    const audit = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.pets_on_number.read' and call_id = ${callId}`)).rows;
     expect(audit).toEqual([{ n: 1 }]);
   });
 
@@ -94,7 +94,7 @@ describe('one number, one owner: unifying records made before the rule', () => {
     expect(applied).toMatchObject({ numbers: 1, pets: 1 });
     expect((await dir.findPet(C, 'Fig', shared))).toMatchObject({ status: 'found', patient: { guardianName: 'Noor Park' } });
     expect(await unifyHouseholds(t.db, cipher, { apply: true })).toMatchObject({ numbers: 0, pets: 0 });
-    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.owner.unified'`)).rows;
+    const audit = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where clinic_id = ${C} and action = 'patient.owner.unified'`)).rows;
     expect(audit).toEqual([{ n: 1 }]);
   });
 });
@@ -109,7 +109,7 @@ describe('the animals list for vet clinics opened before it came with sign-up', 
     expect(dry).toMatchObject({ empty: 1, filled: 0 });
     expect(dry.vet).toBeGreaterThanOrEqual(2); // Riverbend, with its own vets' animals, is a vet clinic with a list already
     expect(await seedAnimalLists(t.db, { apply: true })).toMatchObject({ empty: 1, filled: 1 });
-    const [row] = (await t.db.execute(sql`select config -> 'lists' -> 'categories' as list, config_version as v from clinics where id = 'clinic_old_vets'`)).rows as { list: string[]; v: number }[];
+    const [row] = (await t.owner.execute(sql`select config -> 'lists' -> 'categories' as list, config_version as v from clinics where id = 'clinic_old_vets'`)).rows as { list: string[]; v: number }[];
     expect(row).toEqual({ list: ['Dogs', 'Cats', 'Rabbits', 'Birds', 'Reptiles', 'Small mammals', 'Exotic pets'], v: 2 });
     expect(await seedAnimalLists(t.db, { apply: true })).toMatchObject({ empty: 0, filled: 0 });
   });
@@ -135,7 +135,7 @@ describe('the owner check on a spoken number', () => {
     expect(await dir.ownerMatches(C, '+17205550172', 'Alex', callId)).toBe('no_match');
     expect(await dir.ownerMatches(C, '+17205550172', null, callId)).toBe('name_needed');
     expect(await dir.ownerMatches(C, '+17205550199', 'Alex', callId)).toBe('no_owner');
-    const audit = (await t.db.execute(sql`select action, entity, entity_id from audit_logs where clinic_id = ${C} and call_id = ${callId} and action like 'patient.owner_check%' order by id`)).rows;
+    const audit = (await t.owner.execute(sql`select action, entity, entity_id from audit_logs where clinic_id = ${C} and call_id = ${callId} and action like 'patient.owner_check%' order by id`)).rows;
     expect(audit).toEqual([
       { action: 'patient.owner_check.match', entity: 'call', entity_id: callId },
       { action: 'patient.owner_check.no_match', entity: 'call', entity_id: callId },
@@ -148,7 +148,7 @@ describe('the owner check on a spoken number', () => {
     const callId = await new CallRepository(t.db, cipher).open(C, 'sess_household', null);
     expect(await dir.householdOnNumber(C, '+17205550172', callId)).toEqual({ owner: 'Linh', names: expect.arrayContaining(['Biscuit', 'Mochi']), more: false });
     expect(await dir.householdOnNumber(C, '+17205550199', callId)).toEqual({ owner: null, names: [], more: false });
-    const audit = (await t.db.execute(sql`select count(*)::int as n from audit_logs where call_id = ${callId} and action = 'patient.household.read.call'`)).rows[0] as { n: number };
+    const audit = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where call_id = ${callId} and action = 'patient.household.read.call'`)).rows[0] as { n: number };
     expect(audit.n).toBe(1);
   });
 });

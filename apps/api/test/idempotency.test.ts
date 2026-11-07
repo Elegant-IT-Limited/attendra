@@ -26,7 +26,7 @@ afterAll(() => api.close());
 const request = (name: string) => ({ type: 'callback', topic: null, name, patientId: null, reason: 'asked about a refill', callbackNumber: null, urgent: false, dueOn: null });
 const tasksNamed = async (name: string) => {
   // every request at the clinic: the tests here only ever add to it
-  const rows = await api.t.db.execute<{ n: number }>(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`);
+  const rows = await api.t.owner.execute<{ n: number }>(sql`select count(*)::int as n from tasks where clinic_id = ${DEMO_CLINIC.id}`);
   return { name, n: rows.rows[0]!.n };
 };
 

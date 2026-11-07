@@ -82,6 +82,17 @@ export const callSearchKeys = pgTable('call_search_keys', {
   callId: uuid('call_id').notNull(),
 }, (t) => [primaryKey({ columns: [t.clinicId, t.key, t.callId] })]);
 
+/** A POST's idempotency key and its kept answer (migration 0052; idempotency.ts): per sender and path, 24 hours, the answer encrypted. */
+export const idempotencyKeys = pgTable('idempotency_keys', {
+  scope: text('scope').notNull(),
+  key: text('key').notNull(),
+  requestHash: text('request_hash').notNull(),
+  /** Null while the first request is still being answered. */
+  status: integer('status'),
+  response: text('response'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.scope, t.key] })]);
+
 export const appointments = pgTable('appointments', {
   id: uuid('id').primaryKey().defaultRandom(),
   clinicId: text('clinic_id').notNull(),

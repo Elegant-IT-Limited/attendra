@@ -9,7 +9,7 @@ const C = DEMO_CLINIC.id;
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
 let ids: Record<string, string>;
 
-const lookupsOf = async (id: string) => (await t.db.execute(sql`select owner_words_hash, phone_suffix_hash from patients where id = ${id}`)).rows[0] as { owner_words_hash: string[] | null; phone_suffix_hash: string | null };
+const lookupsOf = async (id: string) => (await t.owner.execute(sql`select owner_words_hash, phone_suffix_hash from patients where id = ${id}`)).rows[0] as { owner_words_hash: string[] | null; phone_suffix_hash: string | null };
 const wordHash = (w: string) => cipher.hash(ownerWordKey(C, w));
 
 beforeAll(async () => {
@@ -32,7 +32,7 @@ describe('the search lookups of migration 0042', () => {
   it('the rehash fills them for a row stored without them, counts it once, and leaves it alone the second time', async () => {
     // a row the way it was stored before 0042: the same ciphertext and hashes, no search lookups
     const older = sealPatient(cipher, C, { firstName: 'Pretzel', lastName: 'Okonkwo', dob: '2020-01-15', phone: '+17205550181', guardianName: 'Amara Okonkwo' });
-    const [{ id }] = (await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, identity_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash, guardian_name_enc)
+    const [{ id }] = (await t.owner.execute(sql`insert into patients (clinic_id, lookup_hash, identity_hash, first_name_enc, last_name_enc, dob_enc, phone_enc, phone_hash, guardian_name_enc)
       values (${C}, ${older.lookupHash}, ${older.identityHash}, ${older.firstNameEnc}, ${older.lastNameEnc}, ${older.dobEnc}, ${older.phoneEnc}, ${older.phoneHash}, ${older.guardianNameEnc}) returning id`)).rows as [{ id: string }];
     expect(await lookupsOf(id)).toEqual({ owner_words_hash: null, phone_suffix_hash: null });
     const first = await rehashPatientLookups(t.db, cipher, { apply: true });
@@ -82,7 +82,7 @@ describe('finding a record by its keys alone', () => {
   });
 
   it('by a request number, written as one or as digits alone', async () => {
-    await t.db.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key, number) values (${C}, 'callback', ${ids.james}, 'x', 'search-1042', 1042)`);
+    await t.owner.execute(sql`insert into tasks (clinic_id, type, patient_id, details_enc, idempotency_key, number) values (${C}, 'callback', ${ids.james}, 'x', 'search-1042', 1042)`);
     for (const q of ['R-1042', '1042']) {
       const found = (await capped().search(C, q, 'u_ana'))!;
       expect(found.patients.map((p) => [p.firstName, p.matchedOn]), q).toEqual([['James', 'request']]);

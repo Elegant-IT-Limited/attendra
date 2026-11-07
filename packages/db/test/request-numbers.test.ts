@@ -15,13 +15,13 @@ beforeAll(async () => {
   await seedDemo(t.db, cipher);
   ({ patientIds: pets } = await seedRiverbend(t.db, cipher));
   await saveClinic(t.db, 'org_other', { ...DEMO_CLINIC, id: 'clinic_numbers_other', name: 'Other', phoneNumbers: ['+13035550120'] });
-  await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_num', 'Nia Desk', 'nia@example.test')`);
+  await t.owner.execute(sql`insert into auth_users (id, name, email) values ('u_num', 'Nia Desk', 'nia@example.test')`);
   await addMembership(t.db, 'org_riverbend', 'u_num', 'staff');
 });
 afterAll(() => t.close());
 
 const queue = () => new PostgresTaskQueue(t.db, cipher);
-const numbersOf = async (clinicId: string) => ((await t.db.execute(sql`select number from tasks where clinic_id = ${clinicId} order by number`)).rows as { number: number }[]).map((r) => r.number);
+const numbersOf = async (clinicId: string) => ((await t.owner.execute(sql`select number from tasks where clinic_id = ${clinicId} order by number`)).rows as { number: number }[]).map((r) => r.number);
 
 // every request has its own number (2026-11-01): R-1042, in the order they came in, never reused
 describe('request numbers', () => {
@@ -40,7 +40,7 @@ describe('request numbers', () => {
     expect(again).toMatchObject({ number: 4, created: false });
     const next = await queue().create(V, { type: 'callback', callId: null, patientId: null, idempotencyKey: 'n-13', details: { reason: 'the next' } });
     expect(next).toMatchObject({ number: 13, created: true });
-    const audit = (await t.db.execute(sql`select counts from audit_logs where clinic_id = ${V} and action = 'task.created.callback' and entity_id = ${next.id}`)).rows as { counts: { number: number } }[];
+    const audit = (await t.owner.execute(sql`select counts from audit_logs where clinic_id = ${V} and action = 'task.created.callback' and entity_id = ${next.id}`)).rows as { counts: { number: number } }[];
     expect(audit).toEqual([{ counts: { number: 13 } }]);
   });
 
@@ -55,7 +55,7 @@ describe('request numbers', () => {
     const fromUnknown = await calls.open(V, 'live_num_2', '+17205550199');
     const byCall = await queue().create(V, { type: 'callback', callId: fromKnown, patientId: null, idempotencyKey: 'h-2', details: { reason: 'from the number on file' } });
     const stranger = await queue().create(V, { type: 'callback', callId: fromUnknown, patientId: null, idempotencyKey: 'h-3', details: { reason: 'from a number nobody is on' } });
-    const rows = (await t.db.execute(sql`select id, household_hash from tasks where clinic_id = ${V} and id in (${linked.id}, ${byCall.id}, ${stranger.id})`)).rows as { id: string; household_hash: string | null }[];
+    const rows = (await t.owner.execute(sql`select id, household_hash from tasks where clinic_id = ${V} and id in (${linked.id}, ${byCall.id}, ${stranger.id})`)).rows as { id: string; household_hash: string | null }[];
     expect(Object.fromEntries(rows.map((r) => [r.id, r.household_hash]))).toEqual({ [linked.id]: household, [byCall.id]: household, [stranger.id]: null });
   });
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { authUsers, clinicAccess, invitations, memberships } from '../auth-schema';
-import type { Database, Tx } from '../client';
+import { type Database, type Tx, setClinicScope } from '../client';
 import { auditLogs, clinics, organizations } from '../schema';
 import { grant } from './team';
 import type { StaffRole } from './front-desk';
@@ -196,7 +196,7 @@ async function lapse(tx: Tx, now: Date, where = sql`true`): Promise<number> {
 /** One row in each location the invitation was for. */
 async function audit(tx: Tx, clinicIds: string[], actor: string, action: string, invitationId: string, at: Date) {
   for (const id of clinicIds) {
-    await tx.execute(sql`select set_config('app.clinic_id', ${id}, true)`);
+    await setClinicScope(tx, id);
     await tx.insert(auditLogs).values({ clinicId: id, actor, action, entity: 'invitation', entityId: invitationId, at });
   }
 }

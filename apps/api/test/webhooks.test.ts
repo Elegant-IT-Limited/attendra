@@ -68,7 +68,7 @@ describe('webhook endpoints', () => {
     const list = await api.request('GET', `${C}/webhooks`, { cookie: as.owner });
     expect(list.json().endpoints).toEqual([expect.objectContaining({ id: endpointId, url: `${base}/n8n`, enabled: true, events: ['appointment.booked', 'request.done'] })]);
     expect(list.body).not.toContain(secret);
-    const stored = (await api.t.db.execute(sql`select secret_enc from webhook_endpoints where id = ${endpointId}`)).rows[0] as { secret_enc: string };
+    const stored = (await api.t.owner.execute(sql`select secret_enc from webhook_endpoints where id = ${endpointId}`)).rows[0] as { secret_enc: string };
     expect(stored.secret_enc).not.toContain(secret.slice(6));
   });
 
@@ -108,7 +108,7 @@ describe('webhook endpoints', () => {
   });
 
   it('records no test event for an endpoint that is not the clinic\'s own', async () => {
-    const events = async () => Number(((await api.t.db.execute(sql`select count(*)::int as n from webhook_events where type = 'webhook.test'`)).rows[0] as { n: number }).n);
+    const events = async () => Number(((await api.t.owner.execute(sql`select count(*)::int as n from webhook_events where type = 'webhook.test'`)).rows[0] as { n: number }).n);
     const before = await events();
     expect((await api.request('POST', `/api/v1/clinics/${OTHER.id}/webhooks/${endpointId}/test`, { cookie: as.outsider })).statusCode).toBe(404);
     expect((await api.request('POST', `/api/v1/clinics/${OTHER.id}/webhooks/00000000-0000-4000-8000-000000000000/test`, { cookie: as.outsider })).statusCode).toBe(404);
@@ -122,7 +122,7 @@ describe('webhook endpoints', () => {
     expect(off.json()).toMatchObject({ enabled: false, disabledReason: 'turned_off', events: ['request.done'] });
     expect((await api.request('PUT', `${C}/webhooks/${endpointId}`, { cookie: as.admin, body: { url: 'https://10.0.0.1/x' } })).statusCode).toBe(422);
     expect((await api.request('DELETE', `${C}/webhooks/${endpointId}`, { cookie: as.admin })).statusCode).toBe(204);
-    const actions = (await api.t.db.execute(sql`select action from audit_logs where entity = 'webhook_endpoint' order by id`)).rows.map((r: unknown) => (r as { action: string }).action);
+    const actions = (await api.t.owner.execute(sql`select action from audit_logs where entity = 'webhook_endpoint' order by id`)).rows.map((r: unknown) => (r as { action: string }).action);
     expect(actions).toEqual(['webhook.endpoint.created', 'webhook.endpoint.secret_rotated', 'webhook.endpoint.updated', 'webhook.endpoint.deleted']);
   });
   it('turning an endpoint off and on keeps its description and patient-id choice', async () => {

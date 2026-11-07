@@ -373,7 +373,8 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
  */
 export async function startWorker(d: WorkerDeps) {
   await ensureQueues(d.boss, d.retry);
-  await ensureWorkerJobsView(d.db);
+  // on pg-boss's connection: production runs it as the owner, which may create the view
+  await ensureWorkerJobsView((text) => d.boss.getDb().executeSql(text));
   const h = handlers(d);
   const each = <T>(fn: (data: T, job: Job<T>) => Promise<unknown>) => async (jobs: Job<T>[]) => { for (const job of jobs) await fn(job.data, job); };
   const poll = { pollingIntervalSeconds: 1 };

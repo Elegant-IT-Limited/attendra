@@ -14,7 +14,7 @@ let viewer: string;
 let admin: string;
 
 const call = (at: string, outcome: string, seconds: number, extra = '') =>
-  api.t.db.execute(sql.raw(`insert into calls (clinic_id, openai_session_id, started_at, outcome, voice_seconds${extra ? ', channel' : ''})
+  api.t.owner.execute(sql.raw(`insert into calls (clinic_id, openai_session_id, started_at, outcome, voice_seconds${extra ? ', channel' : ''})
     values ('${DEMO_CLINIC.id}', 'live_ov_${Math.random().toString(36).slice(2)}', '${at}', '${outcome}', ${seconds}${extra ? `, '${extra}'` : ''})`));
 
 beforeAll(async () => {
@@ -23,8 +23,8 @@ beforeAll(async () => {
   viewer = await api.signIn('vic@maple.example', true);
   admin = await api.signIn('olga@maple.example', true);
   // the helper's own call (a refill, 48 s) started at the real time; put it on Monday afternoon
-  await api.t.db.execute(sql`update calls set started_at = ${zonedInstant('2026-09-28', '14:00', DEMO_CLINIC.timezone).toISOString()} where id = ${api.callId}`);
-  await api.t.db.execute(sql`update tasks set created_at = ${zonedInstant('2026-09-28', '14:01', DEMO_CLINIC.timezone).toISOString()} where id = ${api.taskId}`);
+  await api.t.owner.execute(sql`update calls set started_at = ${zonedInstant('2026-09-28', '14:00', DEMO_CLINIC.timezone).toISOString()} where id = ${api.callId}`);
+  await api.t.owner.execute(sql`update tasks set created_at = ${zonedInstant('2026-09-28', '14:01', DEMO_CLINIC.timezone).toISOString()} where id = ${api.taskId}`);
   const tz = (d: string, t: string) => zonedInstant(d, t, DEMO_CLINIC.timezone).toISOString();
   await call(tz('2026-09-29', '09:00'), 'booked', 120);       // today, open
   await call(tz('2026-09-29', '06:30'), 'cancelled', 60);     // today, before opening
@@ -32,7 +32,7 @@ beforeAll(async () => {
   await call(tz('2026-09-26', '10:00'), 'transferred', 30);   // Saturday: closed
   await call(tz('2026-09-10', '10:00'), 'booked', 600);       // outside the week
   await call(tz('2026-09-29', '09:30'), 'booked', 300, 'web'); // a browser test: not counted
-  await api.t.db.execute(sql`update calls set emergency_flag = true where outcome = 'transferred'`); // Saturday's call ran the emergency script
+  await api.t.owner.execute(sql`update calls set emergency_flag = true where outcome = 'transferred'`); // Saturday's call ran the emergency script
 });
 afterAll(() => api.close());
 
@@ -49,11 +49,11 @@ describe('the overview', () => {
   });
 
   it('carries no patient data, so a viewer sees it and nothing is audited', async () => {
-    const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const before = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/overview`, { cookie: viewer });
     expect(res.statusCode).toBe(200);
     expect(res.body).not.toMatch(/Maria|Delgado|lisinopril/);
-    const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
   });
 
@@ -65,12 +65,12 @@ describe('the overview', () => {
 
 describe('waiting requests', () => {
   it('lists open unclaimed requests oldest first, with type and age only, not audited', async () => {
-    const before = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const before = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     const res = await api.request('GET', `${C}/tasks/waiting`, { cookie: staff });
     expect(res.json()).toEqual({ tasks: [{ id: api.taskId, number: expect.any(Number), type: 'refill', createdAt: expect.any(String), callId: api.callId, urgent: false }], total: 1, byType: { refill: 1 } });
     // the caller's number (+13035550147), not any "555": a random id can contain those digits
     expect(res.body).not.toMatch(/Maria|lisinopril|5550147/);
-    const after = (await api.t.db.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
+    const after = (await api.t.owner.execute(sql`select count(*)::int as n from audit_logs`)).rows[0] as { n: number };
     expect(after.n).toBe(before.n);
   });
 

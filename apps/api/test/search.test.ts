@@ -35,7 +35,7 @@ beforeAll(async () => {
   await repo.recordAction(DEMO_CLINIC.id, waffleCall, { tool: 'find_pet', argsRedacted: {}, result: { verified: true }, taskRevision: 1, patientId: waffles });
   await repo.close(DEMO_CLINIC.id, waffleCall, { reason: 'caller_hangup', voiceSeconds: 30, outcome: 'task_created', emergency: false });
   const { id: taskId } = await new PostgresTaskQueue(api.t.db, cipher).create(DEMO_CLINIC.id, { type: 'callback', callId: waffleCall, patientId: waffles, idempotencyKey: 'search-1042', details: { reason: 'limping' } });
-  await api.t.db.execute(sql`update tasks set number = 1042 where id = ${taskId}`);
+  await api.t.owner.execute(sql`update tasks set number = 1042 where id = ${taskId}`);
   // and a call from a number nobody is on file with: found by its number alone
   strangerCall = await repo.open(DEMO_CLINIC.id, 'search_call_2', '+17205550164');
   await repo.close(DEMO_CLINIC.id, strangerCall, { reason: 'caller_hangup', voiceSeconds: 12, outcome: 'info', emergency: false });
@@ -80,9 +80,9 @@ describe('the Pets box', () => {
 
   it('audits by the number of matches, never by what was typed', async () => {
     await pets('danial');
-    const rows = (await api.t.db.execute(sql`select entity_id from audit_logs where action = 'patient.searched' order by id desc limit 1`)).rows;
+    const rows = (await api.t.owner.execute(sql`select entity_id from audit_logs where action = 'patient.searched' order by id desc limit 1`)).rows;
     expect(rows).toEqual([{ entity_id: 'matches:1' }]);
-    expect(JSON.stringify((await api.t.db.execute(sql`select * from audit_logs`)).rows)).not.toMatch(/danial|waffles|ferreira|5550162/i);
+    expect(JSON.stringify((await api.t.owner.execute(sql`select * from audit_logs`)).rows)).not.toMatch(/danial|waffles|ferreira|5550162/i);
   });
 });
 
@@ -108,7 +108,7 @@ describe('the Calls box', () => {
 
   it('audits by the number of matches, never by what was typed', async () => {
     await calls('0162');
-    const rows = (await api.t.db.execute(sql`select entity_id from audit_logs where action = 'calls.searched' order by id desc limit 1`)).rows;
+    const rows = (await api.t.owner.execute(sql`select entity_id from audit_logs where action = 'calls.searched' order by id desc limit 1`)).rows;
     expect(rows).toEqual([{ entity_id: 'matches:1' }]);
   });
 });

@@ -18,10 +18,10 @@ let records: PatientRecords;
 let desk: FrontDeskRepository;
 const pet = { biscuit: '', bishop: '', ma: '' };
 
-const keysOf = async (id: string) => ((await t.db.execute(sql`select key from patient_search_keys where patient_id = ${id} order by key`)).rows as { key: string }[]).map((r) => r.key);
-const callKeysOf = async (id: string) => ((await t.db.execute(sql`select key from call_search_keys where call_id = ${id}`)).rows as { key: string }[]).map((r) => r.key);
+const keysOf = async (id: string) => ((await t.owner.execute(sql`select key from patient_search_keys where patient_id = ${id} order by key`)).rows as { key: string }[]).map((r) => r.key);
+const callKeysOf = async (id: string) => ((await t.owner.execute(sql`select key from call_search_keys where call_id = ${id}`)).rows as { key: string }[]).map((r) => r.key);
 const names = async (q: string) => (await records.search(C, q, 'u_kim'))!.patients.map((p) => [p.firstName, p.matchedOn]);
-const audit = async (action: string) => (await t.db.execute(sql`select entity_id from audit_logs where clinic_id = ${C} and action = ${action} order by id`)).rows.map((r: unknown) => (r as { entity_id: string }).entity_id);
+const audit = async (action: string) => (await t.owner.execute(sql`select entity_id from audit_logs where clinic_id = ${C} and action = ${action} order by id`)).rows.map((r: unknown) => (r as { entity_id: string }).entity_id);
 
 beforeAll(async () => {
   t = await openTestDatabase();
@@ -80,10 +80,10 @@ describe('a search from one letter, by keys alone', () => {
   it('keys a record with no phone too, which no rehash of its own row may change', async () => {
     const old = sealPatient(cipher, C, { firstName: 'Pumpkin', lastName: 'Hale', dob: '2016-03-03', phone: '+17205550134', guardianName: 'Ivy Hale' });
     // a record from before v0.5 made the phone required: no phone, and no keys yet
-    await t.db.execute(sql`alter table patients drop constraint patients_phone_required`);
-    await t.db.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, guardian_name_enc)
+    await t.owner.execute(sql`alter table patients drop constraint patients_phone_required`);
+    await t.owner.execute(sql`insert into patients (clinic_id, lookup_hash, first_name_enc, last_name_enc, dob_enc, guardian_name_enc)
       values (${C}, ${old.lookupHash}, ${old.firstNameEnc}, ${old.lastNameEnc}, ${old.dobEnc}, ${old.guardianNameEnc})`);
-    await t.db.execute(sql`alter table patients add constraint patients_phone_required check (phone_enc is not null and phone_hash is not null) not valid`);
+    await t.owner.execute(sql`alter table patients add constraint patients_phone_required check (phone_enc is not null and phone_hash is not null) not valid`);
     expect(await names('pum')).toEqual([]);
     expect(await rehashPatientLookups(t.db, cipher, { apply: true })).toMatchObject({ withoutPhone: 1, searchable: 1 });
     expect(await names('pum')).toEqual([['Pumpkin', 'name']]);
@@ -96,7 +96,7 @@ describe('the rehash', () => {
     const id = pet.biscuit;
     const before = await keysOf(id);
     // the record as it was before migration 0049: no keys
-    await t.db.execute(sql`delete from patient_search_keys where patient_id = ${id}`);
+    await t.owner.execute(sql`delete from patient_search_keys where patient_id = ${id}`);
     const dry = await rehashPatientLookups(t.db, cipher, { apply: false });
     expect(dry).toMatchObject({ changed: 1, searchable: 1 });
     expect(await keysOf(id)).toEqual([]);
@@ -112,7 +112,7 @@ describe('the rehash', () => {
     const calls = new CallRepository(t.db, cipher);
     const id = await calls.open(C, 'keys_rehash_1', '+17205550135');
     const before = (await callKeysOf(id)).sort();
-    await t.db.execute(sql`delete from call_search_keys where call_id = ${id}`);
+    await t.owner.execute(sql`delete from call_search_keys where call_id = ${id}`);
     expect(await desk.callIdsByNumber(C, '50135')).toEqual([]);
     expect(await rehashCallLookups(t.db, cipher, { apply: false })).toMatchObject({ changed: 1 });
     expect(await callKeysOf(id)).toEqual([]);
@@ -133,7 +133,7 @@ describe('the Calls search by digits', () => {
     expect(await desk.callIdsByNumber(C, '5550137')).toEqual([b]);
     expect(await desk.callIdsByNumber(C, '30')).toEqual([b]); // two digits: the start of a number only
     // ATTENDRA_SEARCH_SCAN reads the numbers of the newest calls again, keys or not
-    await t.db.execute(sql`delete from call_search_keys where call_id = ${b}`);
+    await t.owner.execute(sql`delete from call_search_keys where call_id = ${b}`);
     expect(await desk.callIdsByNumber(C, '0137')).toEqual([]);
     expect(await new FrontDeskRepository(t.db, cipher, { scan: true }).callIdsByNumber(C, '0137')).toEqual([b]);
     // the retention purge takes the number, and the keys with it
@@ -147,10 +147,10 @@ describe('the Requests search', () => {
   it('finds a request past the newest it reads, by its patient\'s or owner\'s name, a phone\'s digits or its number', async () => {
     const queue = new PostgresTaskQueue(t.db, cipher);
     const old = await queue.create(C, { type: 'callback', callId: null, patientId: pet.bishop, idempotencyKey: 'keys-old', details: { reason: 'a sore paw' } });
-    await t.db.execute(sql`update tasks set created_at = now() - interval '90 days' where id = ${old.id}`);
+    await t.owner.execute(sql`update tasks set created_at = now() - interval '90 days' where id = ${old.id}`);
     // newer requests than it, more than one search reads: the same sealed details on each, so they cost one encryption
     const filler = cipher.encrypt(JSON.stringify({ reason: 'filler' }), phiContext(C, 'tasks.details'));
-    await t.db.execute(sql`insert into tasks (clinic_id, type, details_enc, idempotency_key, number) select ${C}, 'callback', ${filler}, 'keys-fill-' || g, 500000 + g from generate_series(1, ${TASK_SEARCH_SCAN + 10}) g`);
+    await t.owner.execute(sql`insert into tasks (clinic_id, type, details_enc, idempotency_key, number) select ${C}, 'callback', ${filler}, 'keys-fill-' || g, 500000 + g from generate_series(1, ${TASK_SEARCH_SCAN + 10}) g`);
     const find = async (q: string) => (await desk.listTasks(C, { status: 'open', limit: 50, q }, 'u_kim')).map((x) => x.id);
     for (const q of ['varga', 'dan', 'bish', '0132', `R-${old.number}`, 'daniel callback']) expect(await find(q), q).toEqual([old.id]);
     // words in the details have no keys: only the newest are read for them

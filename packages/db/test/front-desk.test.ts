@@ -13,14 +13,14 @@ let otherCallId: string;
 let refillId: string;
 
 const audit = async (action: string) =>
-  (await t.db.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[];
+  (await t.owner.execute(sql`select actor, entity_id from audit_logs where action = ${action} order by id`)).rows as { actor: string; entity_id: string }[];
 
 beforeAll(async () => {
   t = await openTestDatabase();
   const { patientIds } = await seedDemo(t.db, cipher);
   await saveClinic(t.db, 'org_other', OTHER);
-  await t.db.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_ben', 'Ben Desk', 'ben@example.test')`);
-  await t.db.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff'), ('m2', ${DEMO_CLINIC.id}, 'u_ben', 'staff')`);
+  await t.owner.execute(sql`insert into auth_users (id, name, email) values ('u_ana', 'Ana Front', 'ana@example.test'), ('u_ben', 'Ben Desk', 'ben@example.test')`);
+  await t.owner.execute(sql`insert into clinic_memberships (id, clinic_id, user_id, role) values ('m1', ${DEMO_CLINIC.id}, 'u_ana', 'staff'), ('m2', ${DEMO_CLINIC.id}, 'u_ben', 'staff')`);
 
   const repo = new CallRepository(t.db, cipher);
   callId = await repo.open(DEMO_CLINIC.id, 'live_fd_1', '+13035550147');
@@ -117,7 +117,7 @@ describe('settings', () => {
   it('the application role cannot rename another clinic, even with its id in the query', async () => {
     const touched = await withClinic(t.db, DEMO_CLINIC.id, (tx) => tx.update(schema.clinics).set({ name: 'Hijacked' }).where(eq(schema.clinics.id, OTHER.id)).returning());
     expect(touched).toHaveLength(0);
-    const [other] = (await t.db.execute(sql`select name from clinics where id = ${OTHER.id}`)).rows as { name: string }[];
+    const [other] = (await t.owner.execute(sql`select name from clinics where id = ${OTHER.id}`)).rows as { name: string }[];
     expect(other?.name).toBe('Other Clinic');
   });
 });

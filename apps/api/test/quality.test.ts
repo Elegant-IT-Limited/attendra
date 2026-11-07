@@ -11,16 +11,16 @@ let api: Awaited<ReturnType<typeof startApi>>;
 let as: Record<'admin' | 'staff' | 'viewer', string>;
 
 async function call(at: Date, outcome: string, o: { seconds?: number; tools?: [string, Record<string, unknown>][]; turns?: number; flagged?: boolean; channel?: string; close?: string } = {}) {
-  const [row] = (await api.t.db.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, outcome, voice_seconds, channel, close_reason)
+  const [row] = (await api.t.owner.execute(sql`insert into calls (clinic_id, openai_session_id, started_at, ended_at, outcome, voice_seconds, channel, close_reason)
     values (${DEMO_CLINIC.id}, ${`live_q_${Math.random()}`}, ${at.toISOString()}::timestamptz, ${at.toISOString()}::timestamptz, ${outcome}, ${o.seconds ?? 60}, ${o.channel ?? 'phone'}, ${o.close ?? 'caller_hangup'}) returning id`)).rows as { id: string }[];
   const id = row!.id;
   for (const [tool, result] of o.tools ?? []) {
-    await api.t.db.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values (${DEMO_CLINIC.id}, ${id}, ${tool}, '[]'::jsonb, ${JSON.stringify(result)}::jsonb, 1)`);
+    await api.t.owner.execute(sql`insert into call_actions (clinic_id, call_id, tool, args_redacted, result, task_revision) values (${DEMO_CLINIC.id}, ${id}, ${tool}, '[]'::jsonb, ${JSON.stringify(result)}::jsonb, 1)`);
   }
   for (let i = 0; i < (o.turns ?? 0); i++) {
-    await api.t.db.execute(sql`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values (${DEMO_CLINIC.id}, ${id}, 'caller', 'x', ${i * 1000}, ${i * 1000 + 500})`);
+    await api.t.owner.execute(sql`insert into call_segments (clinic_id, call_id, speaker, text_enc, start_ms, end_ms) values (${DEMO_CLINIC.id}, ${id}, 'caller', 'x', ${i * 1000}, ${i * 1000 + 500})`);
   }
-  if (o.flagged) await api.t.db.execute(sql`insert into call_summaries (call_id, clinic_id, body_enc, intent, sentiment, needs_review, model) values (${id}, ${DEMO_CLINIC.id}, 'x', 'other', 'calm', true, 'local')`);
+  if (o.flagged) await api.t.owner.execute(sql`insert into call_summaries (call_id, clinic_id, body_enc, intent, sentiment, needs_review, model) values (${id}, ${DEMO_CLINIC.id}, 'x', 'other', 'calm', true, 'local')`);
   return id;
 }
 
@@ -28,9 +28,9 @@ beforeAll(async () => {
   api = await startApi({ demoMode: false, now: () => NOW });
   as = { admin: await api.signIn('olga@maple.example', true), staff: await api.signIn('ana@maple.example', true), viewer: await api.signIn('vic@maple.example', true) };
   // the helper's own call is in some other week; start from a clean slate
-  await api.t.db.execute(sql`update calls set started_at = '2026-01-05T15:00:00Z'`);
+  await api.t.owner.execute(sql`update calls set started_at = '2026-01-05T15:00:00Z'`);
   // a clinic that signed up in June: its weeks go back further than any test asks
-  await api.t.db.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
+  await api.t.owner.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
   const monday9 = zonedInstant('2026-09-28', '09:00', tz);
   await call(monday9, 'booked', { seconds: 120, turns: 4, tools: [['propose_booking', { ok: true }], ['commit_pending', { ok: true, booked: true }]] });
   await call(monday9, 'booked', { seconds: 180, turns: 6, tools: [['propose_booking', { ok: true }], ['commit_pending', { ok: false, error: 'no_clear_yes' }], ['commit_pending', { ok: true, booked: true }]] });
@@ -63,9 +63,9 @@ describe('the quality page', () => {
   it('counts what the weekly report needs: bookings made after hours, emergencies and refill requests', async () => {
     await call(zonedInstant('2026-09-15', '21:00', tz), 'booked', { seconds: 60 });
     const emergency = await call(zonedInstant('2026-09-15', '10:00', tz), 'emergency', { seconds: 40 });
-    await api.t.db.execute(sql`update calls set emergency_flag = true where id = ${emergency}`);
+    await api.t.owner.execute(sql`update calls set emergency_flag = true where id = ${emergency}`);
     const refill = await call(zonedInstant('2026-09-16', '10:00', tz), 'task_created', { seconds: 50 });
-    await api.t.db.execute(sql`insert into tasks (clinic_id, number, type, call_id, details_enc, idempotency_key) values (${DEMO_CLINIC.id}, (select coalesce(max(number), 0) + 1 from tasks where clinic_id = ${DEMO_CLINIC.id}), 'refill', ${refill}, 'x', ${`q_${refill}`})`);
+    await api.t.owner.execute(sql`insert into tasks (clinic_id, number, type, call_id, details_enc, idempotency_key) values (${DEMO_CLINIC.id}, (select coalesce(max(number), 0) + 1 from tasks where clinic_id = ${DEMO_CLINIC.id}), 'refill', ${refill}, 'x', ${`q_${refill}`})`);
     const weeks = (await api.request('GET', `${C}/quality?weeks=3`, { cookie: as.admin })).json().weeks;
     expect(weeks[2]).toMatchObject({ start: '2026-09-14', calls: 3, afterHours: 1, afterHoursBookings: 1, emergencies: 1, refillRequests: 1 });
     expect(weeks[0]).toMatchObject({ afterHoursBookings: 0, emergencies: 0, refillRequests: 0 });
@@ -86,7 +86,7 @@ describe('the quality page', () => {
 
   it('starts at the clinic\'s sign-up week, half a year at most', async () => {
     const weeksAfter = async (signedUp: string) => {
-      await api.t.db.execute(sql`update clinics set created_at = ${signedUp}::timestamptz where id = ${DEMO_CLINIC.id}`);
+      await api.t.owner.execute(sql`update clinics set created_at = ${signedUp}::timestamptz where id = ${DEMO_CLINIC.id}`);
       return (await api.request('GET', `${C}/quality?weeks=26`, { cookie: as.admin })).json().weeks.map((w: { start: string }) => w.start);
     };
     // signed up on a Tuesday two weeks ago: that week, last week and this one
@@ -101,7 +101,7 @@ describe('the quality page', () => {
     expect(year.at(-1)).toBe('2026-04-06');
     // and the default for a client that does not ask is still 8
     expect((await api.request('GET', `${C}/quality`, { cookie: as.admin })).json().weeks).toHaveLength(8);
-    await api.t.db.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
+    await api.t.owner.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
   });
 
   it('is for owners and managers', async () => {

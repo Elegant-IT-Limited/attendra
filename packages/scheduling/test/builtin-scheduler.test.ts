@@ -52,7 +52,7 @@ describe('the built-in scheduler', () => {
     const id = booked.appointment.id;
     const results = await Promise.all(['k-race-a', 'k-race-b'].map((key) => scheduler.cancel(DEMO_CLINIC.id, { patientId: ids.maria!, appointmentId: id, callId, idempotencyKey: key })));
     expect(results.map((r) => r.status).sort()).toEqual(['cancelled', 'not_found']);
-    const audits = (await t.db.execute(sql`select count(*)::int as n from audit_logs where action = 'appointment.cancelled' and entity_id = ${id}`)).rows[0] as { n: number };
+    const audits = (await t.owner.execute(sql`select count(*)::int as n from audit_logs where action = 'appointment.cancelled' and entity_id = ${id}`)).rows[0] as { n: number };
     expect(audits.n).toBe(1);
   });
 
