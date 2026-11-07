@@ -13,6 +13,12 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **One audit row per search**: `patient.searched`, `calls.searched` and the new `tasks.searched`, each with the number of matches. `patient.search.result` stays (who saw which patient), but a patient already shown to the same person in the last 5 minutes is not written again, so typing "m", "ma", "mar" records each patient once. Opening a record is audited every time, as before.
 - **`pnpm db:rehash-lookups` is a dry run by default**: it prints the counts of patients and calls it would change; `--apply` writes. Run it with `--apply` once after this upgrade: until then, records stored before it are found by whole words and last four digits only.
 
+### Fixed (path C, from the first bake-off calls on a deployment)
+
+- **A number read back on a Vapi call is confirmed by the caller's yes**: Vapi sends each line's length in milliseconds, which was read as seconds, so every line seemed to end long after it did and `verify_caller` asked for the read-back again and again.
+- **`vapi-setup` makes the assistant Vapi accepts**: tool parameters without the `$schema` line, and optional fields as `type: [string, null]` (Vapi answered 400 to both).
+- **The real-audio harness on Vapi**: a fresh copy of the microphone on each request (Vapi's transport opens it twice, and the second, stopped copy sent silence), both forms of Vapi's caption messages, a 180 s limit per call on Vapi's side (`--max-seconds`), and a stop with no retry on a billing or credit error, with that call left out of the numbers.
+
 ### Added (round 2 on the tools path, and path C for the bake-off)
 
 - **The visit type always comes from the clinic** on the tools path: `find_slots` takes only its own visit type ids, listed with their names; a refusal hands them back.
