@@ -18,12 +18,14 @@ import { testCallBadge } from '@/lib/call-as';
 import { requestNumber, clinicTime, clock, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 const CLOSE_REASONS: Record<string, string> = {
   caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', ended_by_staff: 'Ended by staff', connection_lost: 'Connection dropped',
 };
 
-const SUMMARY_POLL_MS = 5_000;
+/** How often the "still writing the summary" line checks its clock. The summary itself arrives on the change stream. */
+const CLOCK_MS = 5_000;
 const SUMMARY_WAIT_MS = 120_000;
 /** A summary is on its way: the call has no summary yet, its job has not failed, and it is not an old call that never had one. */
 function summaryPending(c: CallDetail) {
@@ -37,7 +39,7 @@ export default function CallPage() {
   const terms = useTerms(clinicId);
   const { clinic, can, isPending: meLoading } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
-  // until the worker has written the summary, look again every 5 seconds, for up to 2 minutes
+  // until the worker has written the summary: it arrives on the change stream
   const [opened] = useState(() => Date.now());
   const [now, setNow] = useState(opened);
   const call = useQuery({
@@ -46,15 +48,15 @@ export default function CallPage() {
     enabled: can('calls:read'),
     refetchInterval: (q) => {
       const c = q.state.data;
-      if (!c || !summaryPending(c)) return false;
-      return Date.now() - opened < SUMMARY_WAIT_MS ? SUMMARY_POLL_MS : false;
+      // the summary arrives on the change stream ('calls'); while it is due, a slow safety check too
+      return c && summaryPending(c) ? SAFETY_POLL_MS : false;
     },
   });
   const pending = !!call.data && summaryPending(call.data);
   // the clock is only for telling a slow summary apart, so it runs only while one is pending
   useEffect(() => {
     if (!pending) return;
-    const t = setInterval(() => setNow(Date.now()), SUMMARY_POLL_MS);
+    const t = setInterval(() => setNow(Date.now()), CLOCK_MS);
     return () => clearInterval(t);
   }, [pending]);
   const slowSummary = pending && now - opened >= SUMMARY_WAIT_MS;

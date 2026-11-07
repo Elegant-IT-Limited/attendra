@@ -20,7 +20,7 @@ Self-hosters are responsible for their own BAAs and operations.
 - Row Level Security isolates clinics inside Postgres, as a second wall behind the application's own filters.
 - Every identification, booking, cancellation, task, transfer and text message is recorded in an append-only audit log.
 - The dashboard audits every screen that shows patient data, in the same transaction as the read. The schedule adds these actions:
-  - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes every 30 seconds; a repeat is covered by the earlier row only when it is exactly the same view within 5 minutes. The entity id carries every parameter (range, provider, filters, page) and `p:` with a short hash of the patient ids shown, so a refresh that shows someone new writes a new row. The same rule applies to `calls.listed` and `patient.recent.viewed`.
+  - `schedule.viewed`: a range of the schedule, one row per range rather than per appointment. A screen left open refreshes when something in it changes (and every 2 minutes as a safety net); a repeat is covered by the earlier row only when it is exactly the same view within 5 minutes. The entity id carries every parameter (range, provider, filters, page) and `p:` with a short hash of the patient ids shown, so a refresh that shows someone new writes a new row. The same rule applies to `calls.listed` and `patient.recent.viewed`.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
   - `appointment.booked.staff.override`, `appointment.rescheduled.staff.override`: the same, outside the hours, with the reason kept on the visit.
@@ -28,7 +28,7 @@ Self-hosters are responsible for their own BAAs and operations.
 - The call record is audited under the actor `system` when the call opens (`call.opened`) and when it closes (`call.closed`, with how many transcript lines and tool steps it wrote, as counts). There is no row per line or step, so the log stays readable for the rows that matter: people reading patient data. A browser test call is opened as `call.test.started` under the staff member instead.
 - The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
 - Patients add these actions:
-  - `patient.searched`: a search, with the number of matches (`matches:3`) and never the query, and `patient.search.result`, one row for each patient the search showed. The call search writes the same result rows. The query is sent in a request body, not a URL, so it does not reach access logs or browser history.
+  - `patient.searched`: a search, one row per search, with the number of matches (`matches:3`) and never the query, and `patient.search.result`, one row for each patient the search showed. Search runs as the person types, so a patient already shown to the same person in the last 5 minutes is covered by the row written then. The call search writes the same result rows. The query is sent in a request body, not a URL, so it does not reach access logs or browser history. A search finds records by keyed hashes (the first letters and sound of each name, the date of birth, runs of the phone's digits), never by plain text.
   - `patient.viewed`: a patient's record, with their appointments, verified calls and requests.
   - `patient.recent.viewed`: the list of patients a person opened recently, once per 5 minutes.
   - `patient.created`, `patient.updated`: changes made at the front desk. A patient added by the seed or the voice service is audited as `patient.created` too, under that service's name.
@@ -37,8 +37,9 @@ Self-hosters are responsible for their own BAAs and operations.
   - `task.note.added`, `task.assigned`: a note on a request, and a request handed to a teammate. `task.done` now records an outcome code with the request.
   - `calls.listed`: the call list with verified callers' names, once per person per 5 minutes. A viewer's list has no names and writes nothing.
   - `call.transcript.viewed`: a call's transcript opened on the call page, once per person and call per 5 minutes (the page refreshes while a summary is written).
-  - `task.viewed`: each request shown on the Requests page, with its details and the patient's name, once per person and request per 5 minutes (the page refreshes every 30 seconds).
-  - `calls.searched`: a search of calls by patient name, with the number of matches and never the name typed.
+  - `task.viewed`: each request shown on the Requests page, with its details and the patient's name, once per person and request per 5 minutes (the page refreshes when a request changes, and every 2 minutes as a safety net).
+  - `calls.searched`: a search of calls by patient name or number, one row per search, with the number of matches and never what was typed.
+  - `tasks.searched`: a search of the requests, one row per search, with the number of matches and never what was typed; each request shown is its own `task.viewed`.
   - `member.added:<role>`, `member.role.changed:<role>`, `member.removed`, `member.password.reset`: team changes, written to every clinic of the organization in the same transaction as the change.
 - Every person has their own password. A temporary one, issued when someone is added or reset, must be changed at first sign-in, before two-step setup, and stops working after 72 hours, so the manager who read it out never holds a working password for someone else. It never reaches a log.
 - Links between clinic rows (a call's patient, a note's request) are enforced by composite foreign keys as well as by the application.
@@ -89,6 +90,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `call.transferred.<target>` | Transferred the call (<target>) |
 | `calls.listed` | Looked at the call list with names |
 | `calls.live.listed` | Looked at live calls with names |
+| `call.lookups.rehashed` | Updated how calls are found by their number |
 | `calls.searched` | Searched calls by patient |
 | `clinic.settings.updated` | Changed clinic settings |
 | `knowledge.document.deleted` | Deleted a document |
@@ -124,6 +126,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `task.released` | Released a request |
 | `task.released.override` | Released someone else's request |
 | `task.viewed` | Viewed a request |
+| `tasks.searched` | Searched the requests |
 | `webhook.endpoint.created` | Added a webhook endpoint |
 | `webhook.endpoint.deleted` | Removed a webhook endpoint |
 | `webhook.endpoint.disabled` | Turned off a webhook endpoint that kept failing |

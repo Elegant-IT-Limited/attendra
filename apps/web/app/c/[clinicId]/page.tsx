@@ -21,22 +21,26 @@ import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { requestNumber, clinicTime, dayTitle, taskType, timeOf, TOOLS, usd, zoneLabel } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS, SAFETY_POLL_WORDS } from '@/lib/changes';
+import { patchRequestElsewhere } from '@/lib/optimistic';
 
-const REFRESH = 30_000;
+/** How often the ages ("12 min ago") and the "next" marker move. */
+const CLOCK_MS = 30_000;
 const LINK = 'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 text-sm font-medium hover:bg-surface-sunken focus-ring';
 
-/** The home screen: what needs someone, today's appointments, and what the assistant did. Refreshes every 30 seconds. */
+/** The home screen: what needs someone, today's appointments, and what the assistant did, kept current by the change stream. */
 export default function Today() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { can, data: me, clinic: account } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
   const clinic = config.data;
   const tz = clinic?.timezone ?? 'UTC';
-  // a clock for the ages and the "next" marker, moving with the refresh
+  // a clock for the ages and the "next" marker
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), REFRESH); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), CLOCK_MS); return () => clearInterval(t); }, []);
   const today = localDateOf(new Date(now), tz);
-  const live = { refetchInterval: REFRESH, placeholderData: keepPreviousData };
+  // the change stream refreshes these as things happen; the slow poll is only a safety net
+  const live = { refetchInterval: SAFETY_POLL_MS, placeholderData: keepPreviousData };
 
   const overview = useQuery({ queryKey: ['overview', clinicId], queryFn: () => api<Overview>(`/clinics/${clinicId}/overview?days=7`), ...live });
   const calls = useQuery({ queryKey: ['calls', clinicId, 'recent'], queryFn: () => api<CallList>(`/clinics/${clinicId}/calls?limit=50`), ...live });
@@ -112,8 +116,10 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
   const setTaken = (message: string | null) => { if (message) problem({ title: 'Not claimed', message }); };
   const claim = useMutation({
     mutationFn: (id: string) => api<void>(`/clinics/${clinicId}/tasks/${id}/claim`, { method: 'POST' }),
+    // it leaves "waiting for someone" at once, and comes back if someone else had it first
+    onMutate: async (id) => ({ undo: await patchRequestElsewhere(queries, clinicId, id, 'claim') }),
     onSuccess: () => { void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); router.push(`/c/${clinicId}/requests`); },
-    onError: (e) => { setTaken(e instanceof ApiFailure && e.status === 409 ? 'Someone else claimed that one first.' : 'That did not work. Try again.'); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
+    onError: (e, _id, ctx) => { ctx?.undo(); setTaken(e instanceof ApiFailure && e.status === 409 ? 'Someone else claimed that one first.' : 'That did not work. Try again.'); void queries.invalidateQueries({ queryKey: ['tasks', clinicId] }); },
   });
   const day = now - 86_400_000;
   const recent = (calls.data?.calls ?? []).filter((c) => Date.parse(c.startedAt) >= day);
@@ -164,7 +170,7 @@ function NeedsAttention({ clinicId, tz, now, calls, waiting, canTasks, canWork, 
         <CardTitle>Needs attention</CardTitle>
         {!loading && <span className="text-sm text-text-muted">{items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : 'All clear'}</span>}
       </CardHeader>
-      {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every 30 seconds.</Alert>}
+      {calls.isError && <Alert tone="danger" className="m-5">This list did not load. It tries again every {SAFETY_POLL_WORDS}.</Alert>}
       {loading ? <div className="space-y-3 p-5"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
         : items.length === 0 ? (
           <Empty title="Nothing needs you right now" action={<Link href={`/c/${clinicId}/calls`} className="text-sm text-primary hover:underline">See the latest calls</Link>}>Emergencies from the last day, requests nobody has claimed, calls flagged for review, and calls that ended without an outcome appear here.</Empty>
@@ -202,7 +208,7 @@ function TodaysSchedule({ clinicId, clinic, now, today, schedule, allowed }: { c
       {!allowed ? <CardContent><p className="text-sm text-text-muted">Your role does not show the schedule, because it names patients.</p></CardContent>
         : holiday ? <Empty title="Closed today">The clinic is closed for a holiday. The assistant still answers and takes requests.</Empty>
           : schedule.isPending ? <div className="space-y-3 p-5"><Skeleton className="h-24" /></div>
-            : schedule.isError ? <Alert tone="danger" className="m-5">Today&apos;s schedule did not load. It tries again every 30 seconds.</Alert> : (
+            : schedule.isError ? <Alert tone="danger" className="m-5">Today&apos;s schedule did not load. It tries again every {SAFETY_POLL_WORDS}.</Alert> : (
               <div className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0">
                 {/* the stand-in a new clinic starts with steps aside once anyone else is listed, unless it has visits today */}
                 {shownProviders(clinic.providers, (schedule.data?.appointments ?? []).filter((a) => a.status === 'booked').map((a) => a.providerId)).map((p) => {
@@ -272,7 +278,7 @@ function AssistantDid({ overview, hosted }: { overview: Q<Overview>; hosted: boo
   return (
     <Card>
       <CardHeader><CardTitle>What the assistant did</CardTitle></CardHeader>
-      {overview.isError ? <Alert tone="danger" className="m-5">These numbers did not load. They try again every 30 seconds.</Alert> : !o ? <div className="p-5"><Skeleton className="h-48" /></div> : (
+      {overview.isError ? <Alert tone="danger" className="m-5">These numbers did not load. They try again every {SAFETY_POLL_WORDS}.</Alert> : !o ? <div className="p-5"><Skeleton className="h-48" /></div> : (
         <CardContent className="pt-2">
           <table className="w-full text-sm">
             <thead><tr className="text-xs text-text-muted"><th className="py-1.5 text-left font-medium"><span className="sr-only">Measure</span></th><th className="py-1.5 text-right font-medium">Today</th><th className="py-1.5 text-right font-medium">Last {o.days} days</th></tr></thead>

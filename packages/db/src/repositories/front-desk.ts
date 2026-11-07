@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { normalizeName } from '@attendra/core';
+import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { patientSetKey, recordView } from './audit';
-import { callerKey } from './calls';
-import { phoneMatch } from './patients';
-import { appointments, auditLogs, callActions, calls, callSegments, callSummaries, clinics, organizations, patients, smsMessages, taskNotes, tasks } from '../schema';
+import { callerKey, callerPartKey } from './calls';
+import { nameWordKeys, patientsWithKey, PHONE_PART_DIGITS, searchHash, phoneKey, phoneMatch, phonePartKey } from './patients';
+import { appointments, auditLogs, callActions, calls, callSearchKeys, callSegments, callSummaries, clinics, organizations, patients, smsMessages, taskNotes, tasks } from '../schema';
 import { decryptSummary } from './summaries';
 
 export type StaffRole = 'owner' | 'admin' | 'staff' | 'viewer';
 export type TaskOutcome = 'called_back' | 'left_message' | 'refill_sent' | 'refill_ready' | 'refill_declined' | 'not_needed' | 'details_confirmed';
-type TaskType = 'callback' | 'refill' | 'voicemail' | 'review' | 'follow_up';
+const TASK_TYPES = ['callback', 'refill', 'voicemail', 'review', 'follow_up'] as const;
+type TaskType = (typeof TASK_TYPES)[number];
 
 /**
  * Which clinics a signed-in person can open, and with which role: every location of a
@@ -65,10 +67,16 @@ const bump = (userId: string) => ({ configVersion: sql`${clinics.configVersion} 
 /** What a settings change hands back: the config to save with a result, or a result alone. */
 export type SettingsChange<T> = { save: { name: string; timezone: string }; result: T } | { result: T };
 
-/** The most requests one search of the queue reads before it filters. */
+/**
+ * The newest requests one search of the queue reads and decrypts, for words in their details and notes, which have no
+ * keys. A patient's or owner's name, a phone's digits and a request number are found by their keys past it; the keyed
+ * candidates are read up to the same number.
+ */
 export const TASK_SEARCH_SCAN = 2000;
-/** The newest calls whose numbers a search by a few digits decrypts and compares. */
+/** The newest calls whose numbers a search by a few digits decrypts and compares, when ATTENDRA_SEARCH_SCAN turns the old scan back on for this release. */
 export const CALL_NUMBER_SCAN = 5000;
+/** A patient shown again in a search by the same person within this many minutes is covered by the result row already written. */
+export const SEARCH_RESULT_WINDOW_MINUTES = 5;
 const TASK_LABELS: Record<string, string> = { refill: 'refill prescription', callback: 'callback call back', voicemail: 'voicemail message', review: 'review new patient check' };
 const fold = (s: string) => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -88,9 +96,22 @@ export function taskMatches(q: string, t: { number?: number; type: string; patie
   });
 }
 
-/** One row per patient a search showed, in the search's transaction. The query itself is never written. */
-export async function auditResults(tx: Tx, clinicId: string, userId: string, patientIds: string[]) {
-  const unique = [...new Set(patientIds)];
+/**
+ * One row per patient a search showed, in the search's transaction (docs/hipaa.md: who saw which patient in search
+ * results). The query itself is never written. With `fold` (search as you type), a patient this person was already
+ * shown within SEARCH_RESULT_WINDOW_MINUTES is covered by that row, the way task.viewed folds a refresh: typing
+ * "m", "ma", "mar" shows mostly the same patients three times and records each of them once. A record opened is
+ * audited by its own view, never folded here.
+ */
+export async function auditResults(tx: Tx, clinicId: string, userId: string, patientIds: string[], opts: { fold?: boolean } = {}) {
+  let unique = [...new Set(patientIds)];
+  if (opts.fold && unique.length) {
+    const seen = new Set((await tx.select({ id: auditLogs.entityId }).from(auditLogs).where(and(
+      eq(auditLogs.clinicId, clinicId), eq(auditLogs.actor, actorOf(userId)), eq(auditLogs.action, 'patient.search.result'), inArray(auditLogs.entityId, unique),
+      sql`${auditLogs.at} > now() - make_interval(mins => ${SEARCH_RESULT_WINDOW_MINUTES})`,
+    ))).map((r) => r.id));
+    unique = unique.filter((id) => !seen.has(id));
+  }
   if (unique.length) await tx.insert(auditLogs).values(unique.map((id) => ({ clinicId, actor: actorOf(userId), action: 'patient.search.result', entity: 'patient', entityId: id })));
 }
 
@@ -137,7 +158,8 @@ export async function setTransferNumber(db: Database, userId: string, clinicId: 
 class NotKept extends Error {}
 
 export class FrontDeskRepository {
-  constructor(private readonly db: Database, private readonly cipher: PhiCipher) {}
+  /** `scan`: the Calls search by a few digits also decrypts the numbers of the newest CALL_NUMBER_SCAN calls, as before v0.10 (ATTENDRA_SEARCH_SCAN). */
+  constructor(private readonly db: Database, private readonly cipher: PhiCipher, private readonly opts: { scan?: boolean } = {}) {}
 
   /**
    * The call list. Without `names` it carries no patient data: times, outcome, flags
@@ -198,7 +220,7 @@ export class FrontDeskRepository {
       const shown = rows.flatMap((r) => (r.firstNameEnc && r.patientId ? [r.patientId] : []));
       if (opts.names?.audit === 'search') {
         await tx.insert(auditLogs).values({ clinicId, actor: actorOf(opts.names.userId), action: 'calls.searched', entity: 'call', entityId: `matches:${rows.length}` });
-        await auditResults(tx, clinicId, opts.names.userId, shown);
+        await auditResults(tx, clinicId, opts.names.userId, shown, { fold: true });
       } else if (opts.names && shown.length) {
         // everything that changes what the list shows is in the key: filters, page, and who is on it
         const key = [
@@ -222,20 +244,24 @@ export class FrontDeskRepository {
 
   /**
    * The calls from a phone number, for the Calls search. A whole number (ten digits or more)
-   * is found by its keyed hash, like the number of a call coming in. Fewer digits (the last
-   * four, say) have no hash: the numbers of the newest CALL_NUMBER_SCAN calls are decrypted
-   * here and compared, the same way the Pets search reads its window. Ids only; the search
-   * that shows them writes the audit rows.
+   * is found by its keyed hash, like the number of a call coming in; fewer digits (the last
+   * four, an area code) by the keyed hash of that run of digits (call_search_keys, migration
+   * 0049), so no number is decrypted to find them. A call from before 0049 has no keys until
+   * the rehash has run. Ids only; the search that shows them writes the audit rows.
    */
   async callIdsByNumber(clinicId: string, digits: string): Promise<string[]> {
     return withClinic(this.db, clinicId, async (tx) => {
-      if (digits.length >= 10) {
+      if (digits.length > PHONE_PART_DIGITS) {
         return (await tx.select({ id: calls.id }).from(calls).where(and(eq(calls.clinicId, clinicId), eq(calls.fromHash, this.cipher.hash(callerKey(clinicId, digits)))))).map((c) => c.id);
       }
+      const keyed = (await tx.select({ id: callSearchKeys.callId }).from(callSearchKeys)
+        .where(and(eq(callSearchKeys.clinicId, clinicId), eq(callSearchKeys.key, searchHash(this.cipher, callerPartKey(clinicId, digits)))))).map((c) => c.id);
+      if (!this.opts.scan) return keyed;
+      // the way back for one release (ATTENDRA_SEARCH_SCAN): the numbers of the newest calls decrypted and compared, as before
       const rows = await tx.select({ id: calls.id, fromEnc: calls.fromEnc }).from(calls)
         .where(and(eq(calls.clinicId, clinicId), isNotNull(calls.fromEnc))).orderBy(desc(calls.startedAt), desc(calls.id)).limit(CALL_NUMBER_SCAN);
       const ctx = phiContext(clinicId, 'calls.from');
-      return rows.filter((r) => phoneMatch(digits, this.cipher.decrypt(r.fromEnc!, ctx)) !== null).map((r) => r.id);
+      return [...new Set([...keyed, ...rows.filter((r) => phoneMatch(digits, this.cipher.decrypt(r.fromEnc!, ctx)) !== null).map((r) => r.id)])];
     });
   }
 
@@ -358,26 +384,35 @@ export class FrontDeskRepository {
   /**
    * The queue with its details and notes decrypted; one audit row per task shown.
    * Filters run in the database, so a task that is not shown is not read or audited.
+   * A search (`q`) writes one tasks.searched row with how many matched, never what was typed.
    */
   /** `viewer` is the staff member reading, or the API key an MCP client reads with; the task.viewed rows are theirs. */
   async listTasks(clinicId: string, opts: { status: 'open' | 'done'; limit: number; type?: TaskType; assignee?: { userId: string } | 'unassigned'; q?: string; from?: Date; to?: Date }, viewer: string | { apiKeyId: string }) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, guardianNameEnc: patients.guardianNameEnc, phoneEnc: patients.phoneEnc, summary: callSummaries })
+      const filters = and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
+        opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
+        opts.from ? sql`${tasks.createdAt} >= ${opts.from}` : undefined, opts.to ? lt(tasks.createdAt, opts.to) : undefined);
+      const read = (where: SQL | undefined, limit: number) => tx.select({ task: tasks, firstNameEnc: patients.firstNameEnc, lastNameEnc: patients.lastNameEnc, guardianNameEnc: patients.guardianNameEnc, phoneEnc: patients.phoneEnc, summary: callSummaries })
         .from(tasks).leftJoin(patients, eq(patients.id, tasks.patientId)).leftJoin(callSummaries, eq(callSummaries.callId, tasks.callId))
-        .where(and(eq(tasks.clinicId, clinicId), eq(tasks.status, opts.status), opts.type ? eq(tasks.type, opts.type) : undefined,
-          opts.assignee === 'unassigned' ? isNull(tasks.assigneeUserId) : opts.assignee ? eq(tasks.assigneeUserId, opts.assignee.userId) : undefined,
-          opts.from ? sql`${tasks.createdAt} >= ${opts.from}` : undefined, opts.to ? lt(tasks.createdAt, opts.to) : undefined))
+        .where(where)
         // the newest first: what just came in is what the front desk looks for
         // urgent ones lead the open queue
         .orderBy(...(opts.status === 'open' ? [desc(tasks.urgent), desc(tasks.createdAt)] : [desc(tasks.doneAt)]), desc(tasks.id))
-        // a search reads more, decrypts them and keeps the matches: names and details are encrypted (decision 7)
-        .limit(opts.q ? Math.max(opts.limit, TASK_SEARCH_SCAN) : opts.limit);
+        .limit(limit);
+      if (!opts.q) return this.taskViews(tx, clinicId, await read(filters, opts.limit), viewer);
+      // a search reads the newest TASK_SEARCH_SCAN and decrypts them, for words in the details and notes, which have no keys
+      // (decision 7); a name, a phone's digits, the type or the number are found past that by their keys
+      const keyed = this.taskKeys(tx, clinicId, opts.q);
+      const rows = [...new Map([...await read(filters, Math.max(opts.limit, TASK_SEARCH_SCAN)), ...(keyed ? await read(and(filters, keyed), TASK_SEARCH_SCAN) : [])].map((r) => [r.task.id, r])).values()]
+        .sort(opts.status === 'open'
+          ? (a, b) => Number(b.task.urgent) - Number(a.task.urgent) || b.task.createdAt.getTime() - a.task.createdAt.getTime() || (b.task.id > a.task.id ? 1 : -1)
+          : (a, b) => (b.task.doneAt?.getTime() ?? Infinity) - (a.task.doneAt?.getTime() ?? Infinity) || (b.task.id > a.task.id ? 1 : -1));
       const ctxOf = (col: string) => phiContext(clinicId, col);
-      // a search also reads the notes of the rows scanned: what the team wrote on a request is something they search by
-      const scannedNotes = opts.q && rows.length
+      // a search also reads the notes of the rows it reads: what the team wrote on a request is something they search by
+      const scannedNotes = rows.length
         ? await tx.select({ taskId: taskNotes.taskId, bodyEnc: taskNotes.bodyEnc }).from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id))))
         : [];
-      const matching = opts.q ? rows.filter((r) => taskMatches(opts.q!, {
+      const matching = rows.filter((r) => taskMatches(opts.q!, {
         number: r.task.number,
         type: r.task.type,
         patientName: r.firstNameEnc && r.lastNameEnc ? `${this.cipher.decrypt(r.firstNameEnc, ctxOf('patients.first_name'))} ${this.cipher.decrypt(r.lastNameEnc, ctxOf('patients.last_name'))}` : '',
@@ -385,9 +420,35 @@ export class FrontDeskRepository {
         phone: r.phoneEnc ? this.cipher.decrypt(r.phoneEnc, ctxOf('patients.phone')) : null,
         details: Object.values(JSON.parse(this.cipher.decrypt(r.task.detailsEnc, ctxOf('tasks.details'))) as Record<string, string>),
         notes: scannedNotes.filter((n) => n.taskId === r.task.id).map((n) => this.cipher.decrypt(n.bodyEnc, ctxOf('task_notes.body'))),
-      })).slice(0, opts.limit) : rows;
-      return this.taskViews(tx, clinicId, matching, viewer);
+      }));
+      // one row per search, with how many matched; each request shown is its own task.viewed below
+      const actor = typeof viewer === 'string' ? actorOf(viewer) : `api_key:${viewer.apiKeyId}`;
+      await tx.insert(auditLogs).values({ clinicId, actor, action: 'tasks.searched', entity: 'task', entityId: `matches:${matching.length}` });
+      return this.taskViews(tx, clinicId, matching.slice(0, opts.limit), viewer);
     });
+  }
+
+  /**
+   * The requests a search can reach by keys, whatever their age: every word typed must be the request's number, part
+   * of its type, the start or the sound of a word of its patient's or owner's name, or digits of the patient's phone
+   * (the patient's search keys, searchKeyHashes). Null when a word can be none of these: it is looked for in the details
+   * and notes of the newest requests only. What the keys find is still matched by taskMatches on the decrypted text.
+   */
+  private taskKeys(tx: Tx, clinicId: string, q: string): SQL | null {
+    const has = (keys: string[]) => inArray(tasks.patientId, patientsWithKey(tx, this.cipher, clinicId, keys));
+    const each = fold(q).split(/\s+/).filter(Boolean).map((w): SQL | undefined => {
+      const asNumber = /^r-?(\d{1,9})$/.exec(w);
+      if (asNumber) return eq(tasks.number, Number(asNumber[1]));
+      const typed = w.replace(/\D/g, '');
+      if (/^[\d()+.-]+$/.test(w) && typed) {
+        return or(typed.length <= PHONE_PART_DIGITS ? eq(tasks.number, Number(typed)) : undefined,
+          typed.length > PHONE_PART_DIGITS ? eq(patients.phoneHash, this.cipher.hash(phoneKey(clinicId, typed))) : has([phonePartKey(clinicId, typed)]));
+      }
+      const types = TASK_TYPES.filter((t) => (TASK_LABELS[t] ?? t).includes(w));
+      const name = normalizeName(w).split(' ').filter(Boolean);
+      return or(types.length ? inArray(tasks.type, types) : undefined, name.length ? and(...name.map((n) => has(nameWordKeys(clinicId, n)))) : undefined);
+    });
+    return each.every(Boolean) ? and(...each as SQL[])! : null;
   }
 
   /** Requests as staff see them: details and notes decrypted, one audit row per request shown. */
@@ -396,7 +457,7 @@ export class FrontDeskRepository {
     const notes = rows.length
       ? await tx.select().from(taskNotes).where(and(eq(taskNotes.clinicId, clinicId), inArray(taskNotes.taskId, rows.map((r) => r.task.id)))).orderBy(taskNotes.createdAt, taskNotes.id)
       : [];
-    // the Requests page refreshes every 30 seconds: one row per person and request per five minutes
+    // the Requests page reads again on every change to a request (and every 2 minutes): one row per person and request per five minutes
     for (const { task } of rows) await recordView(tx, { clinicId, actor, action: 'task.viewed', entity: 'task', entityId: task.id, callId: task.callId }, 5);
     const ctx = (col: string) => phiContext(clinicId, col);
     return rows.map(({ task, firstNameEnc, lastNameEnc, summary }) => ({

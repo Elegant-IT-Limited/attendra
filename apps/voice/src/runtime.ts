@@ -2,7 +2,7 @@
 import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
   CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
-  PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue,
+  PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify,
 } from '@attendra/db';
 import { callUsNumber, type KnowledgeBase, PACKS, readablePhone, speakSlot } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
@@ -12,6 +12,7 @@ import { confirmByReply, recordSmsStanding, smsKeyword, smsStatusUrl, twilioSend
 import { EngineRouter, GptLiveEngine, RealtimeEngine, SimulatedEngine, type ToolsBackend } from '@attendra/voice-engine';
 import OpenAI from 'openai';
 import twilio from 'twilio';
+import { LiveRegistry } from './live';
 import { buildServer, type IncomingCall, type VoiceDeps } from './server';
 import { simulatedCallFor } from './simulated-calls';
 
@@ -98,8 +99,11 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
   };
   const sim = simulated ?? (rt.simulatedCalls ? new SimulatedEngine() : null);
 
+  // "Live now" on the dashboard hears when a call starts, ends or moves on, instead of asking every few seconds
+  const liveNotice = throttledNotify(db, 500, (err) => rt.log.warn({ err: { message: (err as Error).message } }, 'live notice not sent'));
   return {
     ...parts,
+    live: new LiveRegistry(undefined, undefined, (clinicId) => liveNotice(clinicId, 'live')),
     claimDelivery: (id) => claimDelivery(db, id, 'openai'),
     clinicForNumber: async (e164) => remember(await clinicForNumber(db, e164)),
     clinicById: async (id) => remember(await clinicById(db, id)),

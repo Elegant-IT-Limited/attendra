@@ -129,7 +129,7 @@ export const CallQuery = Page.extend(CallFilters.shape);
 /** A name search is a POST: a name is PHI and stays out of URLs. */
 /** What is typed in the Calls search: a verified caller's name (a pet's or its owner's), a phone number in any form or its last digits, or a request number ("R-1042"). */
 export const CallSearch = z.object({
-  query: z.string().trim().min(2, 'type at least two characters').max(100),
+  query: z.string().trim().min(1, 'type something to search for').max(100),
   from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
   emergency: z.boolean().optional(),
   review: z.literal('needed').optional(),

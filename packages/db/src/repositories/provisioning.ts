@@ -168,6 +168,8 @@ export async function purgeClosedClinic(db: Database, clinicId: string, now = ne
       sql`delete from call_costs where clinic_id = ${clinicId}`,
       sql`delete from call_actions where clinic_id = ${clinicId}`,
       sql`delete from call_segments where clinic_id = ${clinicId}`,
+      sql`delete from call_search_keys where clinic_id = ${clinicId}`,
+      sql`delete from patient_search_keys where clinic_id = ${clinicId}`,
       sql`update patients set created_by_call_id = null where clinic_id = ${clinicId} and created_by_call_id is not null`,
       sql`delete from calls where clinic_id = ${clinicId}`,
       sql`delete from patients where clinic_id = ${clinicId}`,

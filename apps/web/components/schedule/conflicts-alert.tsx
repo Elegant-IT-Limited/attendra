@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Alert } from '@/components/ui/feedback';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 /**
  * Visits still booked on a day their vet or doctor is away, or the clinic is closed for
@@ -15,7 +16,7 @@ import { dayTitle } from '@/lib/format';
 export function ConflictsAlert({ clinicId, className }: { clinicId: string; className?: string }) {
   const { can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
-  const q = useQuery({ queryKey: ['schedule-conflicts', clinicId], queryFn: () => api<ScheduleConflicts>(`/clinics/${clinicId}/appointments/conflicts`), enabled: can('schedule:list'), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['schedule-conflicts', clinicId], queryFn: () => api<ScheduleConflicts>(`/clinics/${clinicId}/appointments/conflicts`), enabled: can('schedule:list'), refetchInterval: SAFETY_POLL_MS });
   const list = q.data?.conflicts ?? [];
   if (!list.length || !config.data) return null;
   const name = (id: string) => { const p = config.data!.providers.find((x) => x.id === id); return p ? providerName(p) : 'Someone no longer listed'; };

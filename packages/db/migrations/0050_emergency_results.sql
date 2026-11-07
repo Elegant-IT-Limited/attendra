@@ -1,4 +1,4 @@
--- Attendra schema v48: how an animal's emergency on a call ended, and where a request came from (batch 1b).
+-- Attendra schema v50: how an animal's emergency on a call ended, and where a request came from (batch 1b).
 --
 -- calls.emergency_result  'transferred'     put through to the team's emergency line
 --                         'hospital_said'   sent to the emergency hospital, said on the call

@@ -69,6 +69,8 @@ export interface ApiOptions {
   twoFactor?: 'required' | 'optional';
   /** Minutes without activity before the dashboard signs out (default 15). */
   idleMinutes?: number;
+  /** ATTENDRA_SEARCH_SCAN: searches also read the newest records, as before the search keys (v0.10). Off by default. */
+  searchScan?: boolean;
   /** The bearer token for /api/v1/provisioning; without it those routes answer 404. */
   provisioningToken?: string;
   /** "Forgot password" works: the hosting layer's mail hook is set. The sign-in page offers it. */

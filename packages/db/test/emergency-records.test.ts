@@ -5,7 +5,7 @@ import { CallRepository, createPhiCipher, PostgresTaskQueue, schema, seedRiverbe
 import { writeEmergencySettings } from '../src/repositories/provisioning';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
-// Batch 1b: how an animal's emergency on a call ended (migration 0048), the urgent request it leaves, and the emergency
+// Batch 1b: how an animal's emergency on a call ended (migration 0050), the urgent request it leaves, and the emergency
 // settings written for clinics saved before them. Made-up demo data only.
 const cipher = createPhiCipher(TEST_DATA_KEY);
 let t: Awaited<ReturnType<typeof openTestDatabase>>;
@@ -17,7 +17,7 @@ beforeAll(async () => {
 });
 afterAll(() => t.close());
 
-describe('emergency records (migration 0048)', () => {
+describe('emergency records (migration 0050)', () => {
   it('keeps how the emergency ended on the call, and refuses a result it does not know', async () => {
     const calls = new CallRepository(t.db, cipher);
     const id = await calls.open(clinic, 'rtc_emergency_1', '+17205550172', 'phone', undefined, null, { engine: 'gpt-realtime', voiceFlow: 'tools' });

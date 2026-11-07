@@ -63,7 +63,7 @@ export class ScheduleRepository {
           q.providerId ? eq(appointments.providerId, q.providerId) : undefined,
           q.status && q.status !== 'all' ? eq(appointments.status, q.status) : undefined))
         .orderBy(asc(appointments.startsAt), asc(appointments.id));
-      // a screen left open refreshes every 30 seconds: the same range, filter and patients within 5 minutes is one row
+      // a screen left open reads again on every change: the same range, filter and patients within 5 minutes is one row
       const key = `${q.label};provider=${q.providerId ?? 'all'};${q.status && q.status !== 'all' ? `status=${q.status};` : ''}${patientSetKey(rows.map((r) => r.a.patientId))}`;
       await recordView(tx, { clinicId, actor: actorOf(userId), action: 'schedule.viewed', entity: 'schedule', entityId: key }, 5);
       return rows;

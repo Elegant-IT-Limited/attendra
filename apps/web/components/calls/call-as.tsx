@@ -36,7 +36,7 @@ export function CallAsPicker({ clinicId, canReadRecords, onChange, live, calledA
   const [text, setText] = useState('');
   const [picked, setPicked] = useState<{ patientId: string; label: string } | null>(null);
   const [typed, setTyped] = useState('');
-  const q = useSettled(text.trim(), 250);
+  const q = useSettled(text.trim());
   const numbers = useQuery({
     queryKey: ['test-call-numbers', clinicId, q],
     queryFn: () => api<TestCallNumbers>(`/clinics/${clinicId}/test-calls/numbers`, { method: 'POST', body: JSON.stringify({ q }) }),

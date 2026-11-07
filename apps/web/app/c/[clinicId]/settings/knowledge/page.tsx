@@ -19,6 +19,7 @@ import { usePets } from '@/lib/terms';
 import { api, ApiFailure, useClinic } from '@/lib/api';
 import { clinicTime } from '@/lib/format';
 import { documentStats, looksScanned } from '@/lib/knowledge';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 const MAX = 5 * 1024 * 1024;
 const TYPES: Record<string, string> = { pdf: 'PDF', markdown: 'Markdown', text: 'Text' };
@@ -53,8 +54,8 @@ export default function Knowledge() {
   const docs = useQuery({
     queryKey: ['knowledge', clinicId],
     queryFn: () => api<KnowledgeDocuments>(`/clinics/${clinicId}/knowledge/documents`),
-    // while something is being indexed, look again every few seconds
-    refetchInterval: (q) => (q.state.data?.documents.some((d) => d.status === 'queued' || d.status === 'indexing') ? 2000 : false),
+    // a document's progress arrives on the change stream ('knowledge'); while one is being indexed, a slow safety check too
+    refetchInterval: (q) => (q.state.data?.documents.some((d) => d.status === 'queued' || d.status === 'indexing') ? SAFETY_POLL_MS : false),
   });
   const file = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');

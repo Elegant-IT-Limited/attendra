@@ -5,9 +5,10 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { CheckCircle2, CircleDashed, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useState } from 'react';
 import { LiveNow } from '@/components/calls/live-now';
 import { Outcome } from '@/components/calls/outcome';
+import { useSettled } from '@/components/patients/patient-search';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/bits';
@@ -22,6 +23,7 @@ import { clinicTime, duration, OUTCOMES, phone, REFUSALS, TOOLS, zoneLabel } fro
 import { SPOOFED_SIGN, SPOOFING_DOC, shortFirstCalls } from '@/lib/spoofing';
 import { usePets } from '@/lib/terms';
 import { cn } from '@/lib/utils';
+import { SAFETY_POLL_MS } from '@/lib/changes';
 
 const FILTERS = {
   all: { label: 'All calls', test: () => true },
@@ -53,19 +55,19 @@ function Calls() {
   // the emergency log is this page with ?emergency=true
   const [emergencyOnly, setEmergencyOnly] = useState(params.get('emergency') === 'true');
   const [text, setText] = useState('');
-  const [query, setQuery] = useState('');
-  useEffect(() => { const t = setTimeout(() => setQuery(text.trim()), 300); return () => clearTimeout(t); }, [text]);
+  const query = useSettled(text.trim());
   const filters = {
     ...(from ? { from } : {}), ...(to ? { to } : {}), ...(outcome ? { outcome } : {}), ...(channel ? { channel } : {}), ...(emergencyOnly ? { emergency: 'true' } : {}),
     ...(filter === 'review' ? { review: 'needed' } : {}), ...(refusal ? { refusal } : {}),
   };
-  const searching = query.length >= 2 && can('calls:read');
+  // from the first character, like every search box
+  const searching = query.length >= 1 && can('calls:read');
   const calls = useInfiniteQuery({
     queryKey: ['calls', clinicId, filters],
     queryFn: ({ pageParam }) => api<CallList>(`/clinics/${clinicId}/calls?${new URLSearchParams({ limit: '50', ...filters, ...(pageParam ? { before: pageParam } : {}) })}`),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next,
-    refetchInterval: 30_000,
+    refetchInterval: SAFETY_POLL_MS,
     placeholderData: keepPreviousData,
     enabled: !searching,
   });

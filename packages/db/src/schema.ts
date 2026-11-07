@@ -57,7 +57,7 @@ export const patients = pgTable('patients', {
   genderEnc: text('gender_enc'),
   speciesEnc: text('species_enc'),
   customEnc: text('custom_enc'),
-  /** Keyed hashes of each word of the owner's and the patient's names, and of the phone's last four digits, for search (migration 0042). */
+  /** Keyed hashes of each word of the owner's and the patient's names, and of the phone's last four digits (migration 0042). Search reads patient_search_keys since 0049. */
   ownerWordsHash: text('owner_words_hash').array(),
   phoneSuffixHash: text('phone_suffix_hash'),
   /** They agreed to reminder texts: when, and how (on a call, at the desk, in an import). */
@@ -67,6 +67,20 @@ export const patients = pgTable('patients', {
   createdByCallId: uuid('created_by_call_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** A patient's search keys (migration 0049): shortened keyed hashes, looked up by equality so the index serves them under Row Level Security. */
+export const patientSearchKeys = pgTable('patient_search_keys', {
+  clinicId: text('clinic_id').notNull(),
+  key: text('key').notNull(),
+  patientId: uuid('patient_id').notNull(),
+}, (t) => [primaryKey({ columns: [t.clinicId, t.key, t.patientId] })]);
+
+/** A call's search keys (migration 0049): the digit runs of the number it came from. Deleted with the number. */
+export const callSearchKeys = pgTable('call_search_keys', {
+  clinicId: text('clinic_id').notNull(),
+  key: text('key').notNull(),
+  callId: uuid('call_id').notNull(),
+}, (t) => [primaryKey({ columns: [t.clinicId, t.key, t.callId] })]);
 
 export const appointments = pgTable('appointments', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -126,7 +140,7 @@ export const calls = pgTable('calls', {
   engine: text('engine', { enum: ['gpt-live', 'gpt-realtime', 'vapi'] }),
   engineSessionId: text('engine_session_id'),
   voiceFlow: text('voice_flow', { enum: ['planner', 'tools'] }),
-  /** How an animal's emergency on the call ended (migration 0048); null when the call had none. */
+  /** How an animal's emergency on the call ended (migration 0050); null when the call had none. */
   emergencyResult: text('emergency_result', { enum: ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] }),
 });
 
@@ -196,7 +210,7 @@ export const tasks = pgTable('tasks', {
   /** Who at the clinic wrote it down by hand (migration 0040); null for the assistant's own. */
   createdByUserId: text('created_by_user_id'),
   urgent: boolean('urgent').notNull().default(false),
-  /** 'emergency' for the urgent request an emergency leaves (migration 0048); null for every other request. */
+  /** 'emergency' for the urgent request an emergency leaves (migration 0050); null for every other request. */
   origin: text('origin', { enum: ['emergency'] }),
   dueOn: date('due_on', { mode: 'string' }),
   /** The clinic's own details on the request, encrypted JSON. */

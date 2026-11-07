@@ -202,7 +202,13 @@ describe('calls', () => {
     expect(await audit('patient.search.result')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria }]); // one row per patient shown
     expect((await api.request('POST', `${C}/calls/search`, { cookie: as.viewer, body: { query: 'delg' } })).statusCode).toBe(403);
     expect((await api.request('POST', `${O}/calls/search`, { cookie: as.owner, body: { query: 'delg' } })).statusCode).toBe(404);
-    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'd' } })).json().error).toBe('invalid_request');
+    // from the first character, like every search box; a blank box is still refused
+    const one = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'd' } });
+    expect(one.json().calls.map((c: { id: string }) => c.id)).toEqual([api.callId]);
+    expect((await audit('calls.searched')).map((r) => r.entity_id)).toEqual(['matches:1', 'matches:0', 'matches:1']);
+    // Maria was shown a moment ago by the same person: the result row already written covers her
+    expect(await audit('patient.search.result')).toEqual([{ actor: `user:${api.users.staff}`, entity_id: api.patientIds.maria }]);
+    expect((await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: '  ' } })).json().error).toBe('invalid_request');
   });
   it('keeps the refusal filter on a name search', async () => {
     const all = await api.request('POST', `${C}/calls/search`, { cookie: as.staff, body: { query: 'delg' } });

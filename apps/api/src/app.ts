@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
 import type { KnowledgeBase } from '@attendra/core';
-import { type ChangeFeed, clearTemporaryPassword, type Database, endSessions, FrontDeskRepository, passwordState, PatientRecords, type PhiCipher, resetTokenUser, ScheduleRepository } from '@attendra/db';
+import { type ChangeFeed, clearTemporaryPassword, type Database, endSessions, FrontDeskRepository, passwordState, PATIENT_SCAN_LIMIT, PatientRecords, type PhiCipher, resetTokenUser, ScheduleRepository } from '@attendra/db';
 import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
 import { type GuardOptions, type Resolver } from '@attendra/webhooks';
@@ -108,9 +108,9 @@ class ApiModule {
         { provide: CHANGES, useValue: deps.changes ?? null },
         { provide: VOICE_SAMPLES, useValue: deps.voiceSamples ?? null },
         { provide: MAIL, useValue: deps.mail ?? null },
-        { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher) },
+        { provide: FRONT_DESK, useValue: new FrontDeskRepository(deps.db, deps.cipher, { scan: deps.options.searchScan }) },
         { provide: SCHEDULE, useValue: new ScheduleRepository(deps.db, deps.cipher) },
-        { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher) },
+        { provide: PATIENTS, useValue: new PatientRecords(deps.db, deps.cipher, { scanWindow: deps.options.searchScan ? PATIENT_SCAN_LIMIT : undefined }) },
         { provide: STAFF_SCHEDULER, useValue: new StaffScheduler(deps.db, deps.cipher, deps.now) },
         { provide: CLOCK, useValue: deps.now ?? (() => new Date()) },
         { provide: APP_GUARD, useClass: StaffGuard },
