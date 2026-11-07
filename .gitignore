@@ -23,3 +23,6 @@ AGENTS.md
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
 evals/real-audio/.cache/
+
+# load test reports (pnpm --filter @attendra/web load-test)
+apps/web/load-reports/

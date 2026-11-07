@@ -49,13 +49,9 @@ export async function callStats(db: Database, cipher: PhiCipher, q: CallStatsQue
         .from(callActions).where(and(eq(callActions.clinicId, clinicId), inArray(callActions.callId, ids)));
       const costs = await tx.select({ callId: callCosts.callId, total: callCosts.totalUsd }).from(callCosts).where(and(eq(callCosts.clinicId, clinicId), inArray(callCosts.callId, ids)));
       const ctx = phiContext(clinicId, 'call_segments.text');
-      return list.map((c) => {
-        const own = segs.filter((s) => s.callId === c.id).map((s) => ({ speaker: s.speaker, startMs: s.startMs, endMs: s.endMs, text: cipher.decrypt(s.textEnc, ctx) }));
-        const ownActs = acts.filter((a) => a.callId === c.id);
-        const timings = ownActs.filter((a) => a.tool === 'answer_timing').map((a) => (a.result as { wait_ms?: unknown }).wait_ms).filter((n): n is number => typeof n === 'number' && n >= 0);
-        const tools = ownActs.filter((a) => a.tool !== 'answer_timing' && a.tool !== 'abusive_caller');
-        return measure(c, clinicId, own, tools.map((a) => a.at.getTime() - c.startedAt.getTime()), timings, costs.find((x) => x.callId === c.id)?.total ?? null);
-      });
+      return list.map((c) => statsRow(c, clinicId,
+        segs.filter((s) => s.callId === c.id).map((s) => ({ speaker: s.speaker, startMs: s.startMs, endMs: s.endMs, text: cipher.decrypt(s.textEnc, ctx) })),
+        acts.filter((a) => a.callId === c.id), costs.find((x) => x.callId === c.id)?.total ?? null));
     });
     out.push(...rows);
   }
@@ -63,9 +59,23 @@ export async function callStats(db: Database, cipher: PhiCipher, q: CallStatsQue
 }
 
 type Line = { speaker: 'caller' | 'agent'; startMs: number; endMs: number; text: string };
+/** The call row's fields the numbers need. `voiceSeconds` is numeric in the database and a number in the API. */
+export interface CallStatsCall {
+  id: string; channel: string; engine: string | null; voiceFlow: string | null; startedAt: Date; endedAt: Date | null; outcome: string | null;
+  firstAudioMs: number | null; stalls: number | null; answerTimeouts: number | null; closeReason: string | null; voiceSeconds: string | number | null;
+}
 
-function measure(c: { id: string; channel: string; engine: string | null; voiceFlow: string | null; startedAt: Date; endedAt: Date | null; outcome: string | null; firstAudioMs: number | null; stalls: number | null; answerTimeouts: number | null; closeReason: string | null; voiceSeconds: string | null },
-  clinicId: string, segs: Line[], actionMs: number[], timings: number[], cost: string | null): CallStatsRow {
+/**
+ * One call's row from its call row, its lines (decrypted) and its tool actions. The load test (apps/web/scripts/load-test)
+ * reads calls through the API and measures them here too, so its turn times are the same numbers as this report's.
+ */
+export function statsRow(c: CallStatsCall, clinicId: string, lines: Line[], actions: { tool: string; result: unknown; at: Date }[], cost: string | null): CallStatsRow {
+  const timings = actions.filter((a) => a.tool === 'answer_timing').map((a) => (a.result as { wait_ms?: unknown } | null)?.wait_ms).filter((n): n is number => typeof n === 'number' && n >= 0);
+  const tools = actions.filter((a) => a.tool !== 'answer_timing' && a.tool !== 'abusive_caller');
+  return measure(c, clinicId, lines, tools.map((a) => a.at.getTime() - c.startedAt.getTime()), timings, cost);
+}
+
+function measure(c: CallStatsCall, clinicId: string, segs: Line[], actionMs: number[], timings: number[], cost: string | null): CallStatsRow {
   // consecutive lines of one speaker are one turn, as the call state joins them
   const turns: Line[] = [];
   for (const s of segs) {

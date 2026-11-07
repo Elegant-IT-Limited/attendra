@@ -1,7 +1,7 @@
 import { DEMO_CLINIC } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CallRepository, callStats, createPhiCipher, formatCallStats, groupCallStats, seedDemo, withClinic } from '../src';
+import { CallRepository, callStats, createPhiCipher, formatCallStats, FrontDeskRepository, groupCallStats, seedDemo, statsRow, withClinic } from '../src';
 import { openTestDatabase, TEST_DATA_KEY } from '../src/testing';
 
 const cipher = createPhiCipher(TEST_DATA_KEY);
@@ -59,6 +59,19 @@ describe('db:call-stats', () => {
     expect(groups.every((g) => g.costUsd >= 0)).toBe(true);
     // a 20 s call on GPT-Live: its cost row over a third of a minute
     expect(groups[0]!.costPerMinute).toBeGreaterThan(0);
+  });
+
+  it('measures a call read through the API (the load test) to the same turn times as the database', async () => {
+    const rows = await callStats(t.db, cipher, { clinicIds: [DEMO_CLINIC.id], since });
+    const desk = new FrontDeskRepository(t.db, cipher);
+    for (const want of rows.filter((r) => r.segments)) {
+      const c = (await desk.getCall(DEMO_CLINIC.id, want.id, 'user_load_test'))!;
+      // what the API answers: numbers as numbers, and no engine, flow or quality fields
+      const got = statsRow({ ...c, engine: null, voiceFlow: null, firstAudioMs: null, stalls: null, answerTimeouts: null, voiceSeconds: want.voiceSeconds },
+        DEMO_CLINIC.id, c.transcript, c.actions, null);
+      expect({ voiceOnlyMs: got.voiceOnlyMs, lookupMs: got.lookupMs, lookupEstimated: got.lookupEstimated, closeReason: got.closeReason })
+        .toEqual({ voiceOnlyMs: want.voiceOnlyMs, lookupMs: want.lookupMs, lookupEstimated: want.lookupEstimated, closeReason: want.closeReason });
+    }
   });
 
   it('prints numbers and id prefixes only, never a word of a transcript', async () => {
