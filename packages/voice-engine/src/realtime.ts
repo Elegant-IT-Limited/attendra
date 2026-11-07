@@ -70,7 +70,7 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
  * After each caller turn on the tools path: what to do with it. The voice says only what a tool gives it (batch 1b):
  * no words before a tool call ("let me check...", "one moment"), and no question of its own ("Is Clover new to us?").
  */
-export const TURN_NOTE = 'Reply to the caller now. If you need a tool, call it first and say nothing at all before it: no "let me check", no "one moment", no words until you have its result, then say what it gives you. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
+export const TURN_NOTE = 'Reply to the caller now. If you need a tool, call it as the very first thing in your reply, with no words before it: never "let me...", "let\'s...", "okay, let me get that set up", "one moment", or anything about what you are about to do, in any language. When its result comes, say what it gives you, in the caller\'s language. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
 
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';

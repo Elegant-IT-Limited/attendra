@@ -127,7 +127,7 @@ describe('round 2: manual replies on gpt-realtime', () => {
       { type: 'conversation.item.create', item: { id: 'turn_note_1', type: 'message', role: 'system', content: [{ type: 'input_text', text: TURN_NOTE }] } },
       { type: 'response.create' },
     ]);
-    expect(TURN_NOTE).toContain('say nothing at all before it');
+    expect(TURN_NOTE).toContain('with no words before it');
     s.play({ type: 'response.done', event_id: 'r1' });
     const next = s.sent.length;
     s.play({ type: 'input_audio_buffer.committed', event_id: 'c1', item_id: 'item_1' });
