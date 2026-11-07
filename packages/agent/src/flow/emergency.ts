@@ -40,8 +40,9 @@ export interface EmergencyCase {
 /** The caller's answer to the question, or to the question about the sign. Null: no answer in these words. */
 export type EmergencyAnswer = 'yes' | 'unsure' | 'clear_no' | 'bare_not' | null;
 
-// accents folded and lower case (normalise): "sí" is "si"
-const UNSURE = /\b(?:not sure|i'?m not sure|i don'?t know|i dunno|dunno|maybe|possibly|i guess|hard to say|no (?:se|lo se)|no estoy segur[oa]|quizas|tal vez|a lo mejor)\b/;
+// accents folded and lower case (normalise): "sí" is "si", and "no sé" (I don't know) reads like "no se" in "no se le
+// hincha" (it isn't swelling): only the first, by what follows it
+const UNSURE = /\b(?:not sure|i'?m not sure|i don'?t know|i dunno|dunno|maybe|possibly|i guess|hard to say|no (?:lo )?se(?=$|,| si\b| que\b| bien\b| nada\b| muy\b| la verdad\b)|no estoy segur[oa]|quizas|tal vez|a lo mejor)\b/;
 const YES = /^(?:yes|yeah|yep|yup|ya|i think so|it is|(?:she|he|it|they) (?:is|are|still)|please help|help|right now|si|claro|creo que si|ahora mismo|necesito ayuda|ayuda)\b|\b(?:still (?:is|can'?t|cannot|not|having|swelling|bleeding)|getting worse|worse now|sigue (?:igual|mal|sin)|peor)\b/;
 /** "It's not an emergency", alone: it denies the word, not the sign. */
 const NOT_AN_EMERGENCY = /\b(?:(?:it'?s|its|it is|this is|that'?s) not an? emergency|not an? emergency|isn'?t an emergency|no emergency|not urgent|no es (?:una )?emergencia|no es urgente)\b/;

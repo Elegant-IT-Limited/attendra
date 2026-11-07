@@ -10,6 +10,7 @@ describe('the answer to the emergency question', () => {
     ['not swelling now, regular checkup at 3:30 with Dr. Alam', 'clear_no'], ['No, ya está bien', 'clear_no'], ['es solo una revisión', 'clear_no'],
     ['No, it\'s not an emergency', 'bare_not'], ['it\'s not an emergency', 'bare_not'], ['No es una emergencia', 'bare_not'],
     ['No, it\'s not an emergency, she\'s fine now', 'clear_no'], ['what time do you close?', null],
+    ['Ya no se le hincha.', 'clear_no'], ['No sé, la verdad', 'unsure'], ['no se mueve', null],
   ])('"%s" → %s', (said, want) => expect(answerTo(said)).toBe(want));
 
   it('a red flag in the past with "fine now" in the same breath is already a clear no; yesterday is still asked', () => {

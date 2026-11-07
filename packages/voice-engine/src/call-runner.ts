@@ -584,7 +584,9 @@ export class CallRunner {
       this.alerts?.alert('empty_call', `A caller was on the line ${Math.round(lasted / 1000)} s and never heard the assistant (${note ?? reason}). ${this.alerts.where ?? `Session ${this.sessionId}`}.`);
     }
     await this.recorder.close({ reason: note ?? reason, voiceSeconds, outcome, emergency: !!state.emergency, emergencyResult: state.emergencyResult, language: state.language, quality, usage: { models: state.modelTokens, fastTier: state.fastTier } });
-    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts }, 'call finished');
+    this.log.info({ session_id: this.sessionId, reason, outcome, voice_seconds: voiceSeconds, first_audio_ms: quality.firstAudioMs, stalls: quality.stalls, answer_timeouts: quality.answerTimeouts,
+      // the tokens each model used (counts only), the same numbers call_costs prices: a cost can be read off the logs
+      model_tokens: state.modelTokens }, 'call finished');
     this.sideband.close();
   }
 }

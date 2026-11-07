@@ -292,7 +292,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
   for (let i = 0; i < lines.length; i++) {
     const turn = lines[i]!;
     // a line the scenario gives the voice (the exact question a tool handed it) is said on the call: live, it counts as spoken (scripted, the reply before it says it)
-    if ('assistant' in turn) { agent.onAgentTranscript(turn.assistant, clock, clock + 1000); transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
+    // the line is said after what came before it, and the caller answers after it: the clock moves, as on a call (an
+    // answer "after the question was said" needs the question to have been said first, batch 1b)
+    if ('assistant' in turn) { clock += 1500; agent.onAgentTranscript(turn.assistant, clock, clock + 1000); clock += 1000; transcript.push({ speaker: 'assistant', text: turn.assistant }); if (livePlanner) replies.push(turn.assistant); await segment('agent', turn.assistant, clock); continue; }
     // live, the caller speaks after the assistant has finished, as on a real call: a yes said
     // at the same moment as the read-back would not count as an answer to it
     if (livePlanner) clock += 1500;

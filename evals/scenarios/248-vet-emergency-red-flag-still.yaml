@@ -1,16 +1,25 @@
 id: vet-emergency-red-flag-still
-title: '"It''s an emergency, he isn''t breathing" still holds the call at once: the hospital, no booking'
+title: "\"It's an emergency, he isn't breathing\" still holds the call at once: the hospital, no booking (batch 1b: the one question first)"
 clinic: riverbend
-local_time: "10:00"
-tags: [no-demo, safety, emergency-word]
+local_time: 10:00
+tags:
+  - no-demo
+  - safety
+  - emergency-word
 turns:
   - caller: It's an emergency, Biscuit isn't breathing properly, can I book him in?
-    reply: "This sounds like an emergency. Please take your pet to Front Range Pet Emergency at 1200 Larkspur Avenue, Denver right away. If a person is hurt or in danger, call 911."
+    reply: I'm sorry, that sounds worrying. Is this still an emergency right now? Do you need help getting emergency care?
     delegate:
-      - verify_caller: { owner_name: Linh Nguyen, pet_name: Biscuit }
+      - verify_caller:
+          owner_name: Linh Nguyen
+          pet_name: Biscuit
+  - caller: Yes, please help.
 expect:
   outcome: emergency
   emergency_instruction: true
-  spoken_contains: ["Front Range Pet Emergency", "call 911"]
+  spoken_contains:
+    - I'm putting you through to our team now. Please stay on the line.
   transfer_to: tel:+17205550179
   bookings_created: 0
+forbid_spoken:
+  - Front Range Pet Emergency

@@ -319,7 +319,8 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   if (!parsed.success) return refuse('invalid_arguments', `These arguments do not fit the tool (${parsed.error.issues.map((i) => i.path.join('.')).filter(Boolean).join(', ') || 'their shape'}). Call it again with what the caller already said; ask the caller only for a detail they have not given yet.`);
   // an animal's red flag waits for the caller's answer to the one question: no times or booking for that pet until then
   const flagged = state.emergencyCase;
-  if (trade.identity === 'pet' && flagged && (flagged.stage === 'flagged' || flagged.stage === 'asked') && WAITS_FOR_ANSWER.has(name)
+  // (a sign that may be mild, like limping, never holds a booking: a sick visit is often exactly what the caller wants)
+  if (trade.identity === 'pet' && flagged && flagged.kind !== 'borderline' && (flagged.stage === 'flagged' || flagged.stage === 'asked') && WAITS_FOR_ANSWER.has(name)
     && aboutPetInDanger(name, parsed.data as Record<string, unknown>, state, flagged.pet)) {
     return refuse('pet_flagged', `The caller has not yet answered whether this is still an emergency. Do not look for times or book for ${flagged.pet?.name ?? 'this pet'}. If the question has not been asked, ask it now, word for word: "${EMERGENCY_LINES.question(state.language)}" and wait for the answer.`);
   }
@@ -348,7 +349,7 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
   }
   // the record (next and last visit, the usual vet) only for a caller the number knows: caller ID, or the owner's name matched
   if (name === 'visit_summary' && trade.identity === 'pet' && !state.memory.verified) {
-    return refuse('not_verified', 'Details from the pet\'s record (its visits, its vet) are not given on this call. Say, kindly and in a few words, that you can\'t go into the record on this call, and that you can still book, move or cancel a visit, or have the team call back. Never say a name from the records, and never say why.');
+    return refuse('not_verified', 'Details from the pet\'s record (its visits, its vet) are given only once the pet is found under the owner\'s number and name. Say, kindly and in a few words, the real reason: for privacy you can only go into a pet\'s details once you have found them under the owner\'s number and name. Then say you can still book, move or cancel a visit, or have the team call back. Never say a name from the records.');
   }
   if (PATIENT_TOOLS.has(name) && !state.verifiedPatient) {
     // a time the caller chose before the pet or patient is found is kept, and read back once they are
