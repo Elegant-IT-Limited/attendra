@@ -4,6 +4,16 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 1e: emergencies as one setting, and open call bugs)
+
+- **Emergencies are one setting, `emergencies`, everywhere.** The setup page's emergency step offers the same three choices as Settings > Emergencies, with the same wording, required fields and "what callers will hear" preview, served by the engine (`GET /api/v1/clinics/:id/settings/emergencies`, `POST …/settings/emergencies/preview`). Settings > General no longer has its own "Emergency hospitals" section; several hospitals in order now live in the setting as `moreHospitals` (up to 4: the first one open at that moment is named). The engine and dashboard read only `emergencies`; a test fails if the old `emergencyHospital` / `moreEmergencyHospitals` fields are read anywhere. **Upgrade:** run `pnpm db:emergency-settings` (dry run, counts only), then `pnpm db:emergency-settings --apply`, right after deploying: it moves old hospital and on-call settings into `emergencies` and removes the old keys. Until then a vet clinic still on the old fields has no emergency route.
+- **One table decides which text goes when** (`TEXT_TABLE` in `@attendra/core`): "text me the address" or "the hospital's number" during an emergency sent to a hospital (or after a transfer nobody took, with a backup hospital) texts that hospital's details; while a caller is being put through, or before the emergency question is answered, nothing else is texted. Tested in English and Spanish for every row.
+- **The setup page reads its limits from the engine** (saved answers, greeting, assistant name): one `SETTINGS_LIMITS` in core.
+- **A caller is never left in silence**: if the assistant has said nothing 9 s after a phone call is answered, the caller is put through to the front desk, or the call ends when there is none, recorded as `no_audio` with close reason `silent_start` and the empty-call alert. (Four October calls lasted exactly 30 s with no audio until the session expired.)
+- **Quality's "Flagged for review" counts calls someone should look at**: the summary model's own flag is no longer kept on a hang-up before the caller said what they wanted, nor on a calm call that already made a request for staff. Fixed rules (emergency, unverified caller, security, abuse, errors) still always flag.
+- **Path A's instructions are 22% shorter** for a vet clinic: lines whose rule the code already enforces are left out on path A only (an offline count: $0.0930 → $0.0906 per call).
+- **The `packages/agent` tests pass as the services' database role** (`attendra_service`, no BYPASSRLS), and CI runs them that way; the voice service still runs as the owner on production.
+
 ### Changed (path A for new clinics)
 
 - **Every clinic the hosting layer opens answers on path A from its first call**: an account's first clinic, another business on the same login, or an added location starts with `voiceFlow: tools` and `voiceEngine: gpt-realtime`, at the deployment's realtime model. The planner path stays as the one-step fallback per clinic (`PUT /provisioning/clinics/:clinicId/voice-flow` and `/voice-engine`). Self-hosted installs keep the planner unless their operator switches.
