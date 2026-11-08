@@ -180,7 +180,7 @@ export class GptLiveEngine implements VoiceEngine {
     const outstanding = new Set<string>();
     const send = (event: SidebandCommand) => {
       // GPT-Live replies when it decides: manual turns are gpt-realtime's
-      if (event.type === 'turns.manual' || event.type === 'tool.inject' || event.type === 'reply.go') return;
+      if (event.type === 'turns.manual' || event.type === 'tool.inject' || event.type === 'reply.go' || event.type === 'context.note') return;
       if (event.type !== 'tool.result') return ws.send(event);
       ws.send({ type: 'response.item.create', event_id: event.event_id, item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
       outstanding.delete(event.call_id);

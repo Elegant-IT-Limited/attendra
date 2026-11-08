@@ -30,6 +30,19 @@ const delta = (type: 'in' | 'out', id: string, text: string, at: number): Sideba
   type: type === 'in' ? 'session.input_transcript.delta' : 'session.output_transcript.delta', event_id: id, delta: text, start_ms: at, end_ms: at + 400,
 });
 
+describe('the tools path: the call state for the voice model (batch 1d)', () => {
+  it('goes in before the tool result when a tool changed it, and not again while it stays the same', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle({ type: 'session.tool_call', event_id: 't0', call_id: 'fc_0', name: 'clinic_now', arguments: '{}' });
+    expect(h.sent.map((e) => (e as { type: string }).type)).toEqual(['tool.result']);
+    h.agent.state.verifiedPatient = { id: 'p1', firstName: 'Biscuit', phone: null, dob: '2020-01-01', isNew: false, gender: null };
+    await h.runner.handle({ type: 'session.tool_call', event_id: 't1', call_id: 'fc_1', name: 'clinic_now', arguments: '{}' });
+    await h.runner.handle({ type: 'session.tool_call', event_id: 't2', call_id: 'fc_2', name: 'clinic_now', arguments: '{}' });
+    expect(h.sent.slice(1).map((e) => (e as { type: string }).type)).toEqual(['context.note', 'tool.result', 'tool.result']);
+    expect(h.sent[1]).toMatchObject({ type: 'context.note', content: 'Call state. found: Biscuit.' });
+  });
+});
+
 describe('the GPT-Live call runner', () => {
   it('answers a delegation with thinking then commentary on the same delegation id', async () => {
     const h = harness(new ScriptedPlanner([{ tool: 'get_clinic_info', args: { question: 'do you take my insurance' } }], (r) => String(r[0]!.data.answer)));

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, greetingFor, industryPack, openingWords, PACKS } from '@attendra/core';
+import { type ClinicConfig, greetingFor, industryPack, localDateOf, openingWords, PACKS } from '@attendra/core';
 import { LISTENING, talkLines } from './prompt';
 
 /**
@@ -48,8 +48,26 @@ function numberLine(clinic: ClinicConfig, callerNumber: string | null | undefine
   return `${last4 ? `Caller ID shows the number they are calling from, ending ${last4}.` : 'There is no caller ID on this call.'} When the caller wants to book, move or cancel a visit, the first question is the number, in the caller's language: ${asks} A question about the clinic needs no number.`;
 }
 
-/** The voice's prompt on the tools path when the voice itself calls the tools (gpt-realtime). */
+/** The voice's prompt on the tools path when the voice itself calls the tools (gpt-realtime, GPT-Live's voice). */
 export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: string | null } = {}): string {
+  return [...voiceLines(clinic), numberLine(clinic, opts.callerNumber)].filter(Boolean).join('\n');
+}
+
+/**
+ * The same prompt without anything that changes from call to call (the caller ID, the date), for gpt-realtime: the
+ * instructions and the tool definitions after them are then the same on every call of a clinic, so OpenAI's prompt
+ * cache holds them across calls as well as across turns (batch 1d, cost per call). The call's own facts go in the
+ * conversation once, at the start (callFacts).
+ */
+export function toolsVoiceStaticPrompt(clinic: ClinicConfig): string {
+  return [
+    ...voiceLines(clinic),
+    industryPack(clinic.industry).identity === 'pet' ? 'When the caller wants to book, move or cancel a visit, the first question is the number the pet\'s profile is under, in the words the call facts give. A question about the clinic needs no number.' : '',
+  ].filter(Boolean).join('\n');
+}
+
+/** What every call of a clinic hears, whichever voice: tone, language, turn-taking and how to work with the tools. */
+function voiceLines(clinic: ClinicConfig): string[] {
   const others = clinic.languages.filter((l) => l !== clinic.primaryLanguage);
   const { terms } = industryPack(clinic.industry);
   return [
@@ -66,8 +84,19 @@ export function toolsVoicePrompt(clinic: ClinicConfig, opts: { callerNumber?: st
     ...clinic.languages.flatMap((l) => PACKS[l].prompt),
     ...LISTENING.map(viaTools),
     ...toolWork(clinic),
-    numberLine(clinic, opts.callerNumber),
-  ].filter(Boolean).join('\n');
+  ];
+}
+
+/**
+ * One call's own facts, said to the model once as the conversation's first item (gpt-realtime): the clinic's date (the
+ * model dated "Thursday" from its own calendar, weeks out; batch 1c) and the caller ID with the number question.
+ */
+export function callFacts(clinic: ClinicConfig, now: Date, callerNumber: string | null | undefined): string {
+  const today = localDateOf(now, clinic.timezone);
+  return [
+    `Call facts. Today at the clinic is ${PACKS.en.fullDay(today)} (${today}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`,
+    numberLine(clinic, callerNumber),
+  ].filter(Boolean).join(' ');
 }
 
 /**

@@ -57,8 +57,8 @@ export interface ScenarioResult {
 /** Plays the caller after the opening line, live: the next line given the call so far, and whether they hang up after it. */
 export type FollowUp = (scenario: Scenario, transcript: ScenarioResult['transcript']) => Promise<{ text: string; hangup: boolean }>;
 
-/** One tool call as the report shows it: the name, the arguments and what came back. Synthetic data only. */
-export interface ToolCall { tool: string; args: unknown; data: Record<string, unknown> }
+/** One tool call as the report shows it: the name, the arguments and what came back, and after which caller turn (1-based; 0 before any). Synthetic data only. */
+export interface ToolCall { tool: string; args: unknown; data: Record<string, unknown>; turn?: number }
 
 /** Records every tool result the planner saw, so refusals can be checked whichever planner ran. */
 class Observed implements Planner {
@@ -68,11 +68,13 @@ class Observed implements Planner {
   readonly sources: string[] = [];
   readonly cited: string[] = [];
   readonly timings: PlannerTiming[] = [];
+  /** The caller turns so far, for each call's place in the call (the offline token count, batch 1d). */
+  turn = 0;
   constructor(private readonly inner: Planner) {}
   async plan(input: PlannerInput, execute: (name: ToolName, args: unknown) => Promise<ToolResult>) {
     const out = await this.inner.plan(input, async (name, args) => {
       const r = await execute(name, args);
-      this.calls.push({ tool: name, args, data: r.data });
+      this.calls.push({ tool: name, args, data: r.data, turn: this.turn });
       this.tools.push(name);
       if (typeof r.data.error === 'string') this.refusals.push(r.data.error);
       if (typeof r.data.source === 'string') this.sources.push(r.data.source);
@@ -304,6 +306,7 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     outbound.push(...heard);
     if (heard.some((o) => o.type === 'hangup')) endedByRule = true;
     transcript.push({ speaker: 'caller', text: turn.caller });
+    observed.turn++;
     // the voice let this turn go: after 5 s the watchdog gives it the caller's own words to answer, and it hands them on
     if (turn.dropped) {
       const nudge = agent.onSilence(1);

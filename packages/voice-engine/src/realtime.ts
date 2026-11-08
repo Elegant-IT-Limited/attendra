@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, localDateOf, PACKS, PREVIEW_VOICES, type VoiceFlow } from '@attendra/core';
+import { type ClinicConfig, industryPack, PREVIEW_VOICES, type VoiceFlow } from '@attendra/core';
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
 import { conversationPrompt, openingInstruction } from './prompt';
-import { toolsVoicePrompt } from './tools-prompt';
+import { callFacts, toolsVoiceStaticPrompt } from './tools-prompt';
 
 /**
  * The one tool the Realtime model has: ask our backend. It is the same hand-off GPT-Live
@@ -27,7 +27,7 @@ const REALTIME_LINES = [
 ];
 
 /** On the tools path the model calls our tools itself: what it is told on top of the tools prompt. */
-const REALTIME_TOOLS_LINES = [
+export const REALTIME_TOOLS_LINES = [
   'Your tools are part of you, not someone else: never mention a tool, a backend or a system, and never say you are asking or checking with anyone.',
 ];
 
@@ -38,8 +38,58 @@ const REALTIME_TOOLS_LINES = [
  */
 const READS = new Set(['find_slots', 'get_clinic_info', 'search_knowledge', 'list_appointments', 'visit_summary', 'clinic_now']);
 
-/** Our tools as the Realtime API takes them: function tools without `strict`, which it does not use. */
-export const realtimeTools = (clinic: ClinicConfig) => voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description, parameters }));
+/**
+ * The longest tool descriptions, said shorter for the voice of a vet clinic on path A (batch 1d, cost per call): every
+ * rule is kept, only the wording is tighter. The planner path, which every clinic runs on, keeps the full wording.
+ */
+export const VET_VOICE_DESCRIPTIONS: Record<string, string> = {
+  verify_caller: 'Find the pet before booking, changing or reading anything of theirs: the owner\'s first name (full if given), the pet\'s name, the phone number on file (null: the number they are calling from), and species if they said it ("my cat Mango"), else null. Call it again to switch pets. Owner known but not the pet: pet_name null (with caller ID it may return pets_on_number, the names to ask about). phone_last4: null, unless a tool asked for the last four digits on file; then those digits as said, with pet_name, and phone null.',
+  register_patient: 'Add a new pet, when the caller says it is new (no lookup first: this checks it is not on file) or verify_caller found nothing and they say it is new. pet_name; owner_name only as they said it, else null (a tool asks for a name only when the number has none); species (dog, cat, rabbit...); sex (female, male or unknown); birthday_or_age as the owner said it, never with a year they did not say (a day and month alone is not a birthday: ask the age); phone (null: the number they are calling from). The pet is then found and can book.',
+  get_clinic_info: 'Hours today and for 7 days, the vets (animals and services they see, weekly hours, time off, new patients, details such as qualifications), visit types, emergency hospitals, the clinic FAQ, and document passages when the FAQ has no answer. No identity needed.',
+  find_slots: 'Up to 3 open slots, optionally with one vet (provider_id) or the vets for a kind of animal or service from get_clinic_info (specialty). No identity needed ("who is free Monday" before asking who they are). from_date: the first day asked for ("next week" is the coming Monday); null is today. from_time: the time named ("after 3" is 15:00, "at 10:30" is 10:30), else null; time_mode as said: at ("is 4 free?"), around ("around 5"), before ("earlier than 6"), after ("after 3") or earliest; the answer leads with that exact time, then the nearest on that side. propose_if_exact: true only for one exact day and time ("Thursday at 2:30") for a new booking by a caller already found: if free it is staged and its read-back spoken, so no propose_booking; if not, the nearest times come back. Never for a move; null before the pet is found.',
+  send_text: 'Text the caller something they just heard: directions, hours, emergency_hospital, provider (ref: provider id), answer (ref: its source id) or link (ref: link id from get_clinic_info). Only when they asked for it or said yes to your offer: the first call gives the exact question; after a clear yes, call it again the same way. to: null for the number they are calling from.',
+  clinic_now: 'The clinic\'s time, date and zone, whether it is open, when it closes or next opens, and whether a visit is booked now or taken as a request. Call it before saying anything about the time, the day, today\'s hours, or good morning/afternoon/evening after the greeting. Never say the clinic is open or closed without it.',
+};
+
+/** Our tools as the Realtime API takes them: function tools without `strict`, which it does not use, and compact schemas. */
+export const realtimeTools = (clinic: ClinicConfig) => {
+  const short = industryPack(clinic.industry).identity === 'pet' ? VET_VOICE_DESCRIPTIONS : {};
+  return voiceToolDefinitions(clinic).map(({ type, name, description, parameters }) => ({ type, name, description: short[name] ?? description, parameters: compactSchema(parameters) as Record<string, unknown> }));
+};
+
+/**
+ * A tool's JSON schema as the voice model reads it, without what only a validator needs: `$schema`, defaults and
+ * length limits go, and a nullable string is one `type` list instead of an `anyOf`. Enums, patterns and descriptions
+ * stay. The backend checks every call's arguments against the full schema anyway (runTool). About a third of the tool
+ * definitions' tokens, on every reply of a call (batch 1d, cost per call).
+ */
+export function compactSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(compactSchema);
+  if (!node || typeof node !== 'object') return node;
+  const o = node as Record<string, unknown>;
+  // { anyOf: [{ type: 'string', ... }, { type: 'null' }] } -> { type: ['string', 'null'], ... }
+  if (Array.isArray(o.anyOf) && o.anyOf.length === 2 && o.anyOf.some((x) => (x as { type?: unknown }).type === 'null')) {
+    const other = o.anyOf.find((x) => (x as { type?: unknown }).type !== 'null') as Record<string, unknown>;
+    if (other && typeof other.type === 'string' && !other.anyOf) {
+      const rest = Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'anyOf'));
+      return compactSchema({ ...rest, ...other, type: [other.type, 'null'] });
+    }
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (k === '$schema' || k === 'default' || k === 'minLength' || k === 'maxLength' || k === 'minItems' || k === 'maxItems') continue;
+    out[k] = compactSchema(v);
+  }
+  return out;
+}
+
+/**
+ * How long the tools path's conversation may grow before its oldest turns go (after the instructions and tools): a
+ * phone call of a few minutes stays under it; a long one drops back to 70%, so it is cut now and then, not on every
+ * turn, and the prompt cache holds in between. What the call has done lives in the backend and in the call-state notes,
+ * which are recent, so nothing the call needs is lost (batch 1d, cost per call).
+ */
+export const TOOLS_TRUNCATION = { type: 'retention_ratio' as const, retention_ratio: 0.7, token_limits: { post_instructions: 12_000 } };
 
 /**
  * Manual replies (the tools path, once a pet is found): after a caller's turn the model waits for our go, so a lookup
@@ -69,13 +119,11 @@ export function replyUsage(model: string, u: RealtimeUsage | undefined): { model
 /**
  * After each caller turn on the tools path: what to do with it. The voice says only what a tool gives it (batch 1b):
  * no words before a tool call ("let me check...", "one moment"), and no question of its own ("Is Clover new to us?").
+ * The same short note every turn, added after the caller's words and never removed: removing the last one moved every
+ * item after it, so the prompt cache missed the rest of the call on each turn (batch 1d). The date is in the call
+ * facts, once.
  */
-export const TURN_NOTE = 'Reply to the caller now. If you need a tool, call it as the very first thing in your reply, with no words before it: never "let me...", "let\'s...", "okay, let me get that set up", "one moment", or anything about what you are about to do, in any language. When its result comes, say what it gives you, in the caller\'s language. Ask the caller only what a tool\'s result tells you to ask, or a detail a tool needs that they have not given; never a question of your own.';
-/** The note with the clinic's date (batch 1c): the model dated "Thursday" from its own calendar, weeks out. */
-export function turnNoteFor(clinic: Pick<ClinicConfig, 'timezone'>, now: Date): string {
-  const today = localDateOf(now, clinic.timezone);
-  return `${TURN_NOTE} Today at the clinic is ${PACKS.en.fullDay(today)} (${today}): a day the caller names ("Thursday", "tomorrow") is counted from it, and its date comes from clinic_now's days list.`;
-}
+export const TURN_NOTE = 'Reply now. A tool you need is called first, with no words before it (never "let me...", "one moment"). Then say what it gives you, in the caller\'s language. Ask only what a tool result asks for, or a detail a tool needs.';
 /**
  * A tool's own words that end in a question ("Dr. Rahman and Dr. Khan do dental care. Shall I look with them?", a
  * read-back's "Shall I book it?"): the next reply says them as written, and nothing else, then waits for the caller.
@@ -87,7 +135,30 @@ export function toolQuestion(output: string): string | null {
     return typeof o.spoken === 'string' && /\?\s*$/.test(o.spoken) ? o.spoken.trim() : null;
   } catch { return null; }
 }
-export const sayToolQuestion = (line: string) => `Say exactly this to the caller, word for word, in the language it is written in, with nothing before or after it: "${line}" Then stop and wait for their answer.`;
+export const sayToolQuestion = (line: string) => `Say exactly this to the caller next, word for word, in the language it is written in, with nothing before or after it: "${line}" Then stop and wait for their answer.`;
+
+/** The slot search's reasons whose line is the answer: why the day or the vet asked for has nothing, in the backend's words. */
+const REFUSAL_REASONS = new Set(['not_working_that_day', 'fully_booked', 'clinic_closed', 'notice', 'too_far_ahead']);
+/**
+ * A tool's refusal line, the answer in the backend's own words ("Dra. Mara Vance no trabaja los martes. Atiende los
+ * viernes y los domingos."), from the result as the voice gets it (shapeForVoice: say_as is `spoken`, the reason is in
+ * `data`): the slot search's words when they carry one of those reasons, or a refusal whose instruction is "Say, in
+ * these words: ...". Left to the model, a live run paraphrased it (batch 1d).
+ */
+export function toolRefusalLine(output: string): string | null {
+  try {
+    const o = JSON.parse(output) as { ok?: unknown; spoken?: unknown; say?: unknown; data?: { reason?: unknown } };
+    if (typeof o.spoken === 'string' && typeof o.data?.reason === 'string' && REFUSAL_REASONS.has(o.data.reason)) return o.spoken.trim();
+    const quoted = o.ok === false && typeof o.say === 'string' ? /^Say, in these words: "([^"]+)"/.exec(o.say) : null;
+    return quoted ? quoted[1]!.trim() : null;
+  } catch { return null; }
+}
+export const sayToolLine = (line: string) => `In your next reply, say this line to the caller word for word, in the language it is written in: "${line}" Anything another tool result asked you to say first (the pet found, for one) comes before it; after it you may ask one short question for the next step (which time suits them, or another day or vet). Do not change its words, and call no tools in this reply.`;
+
+/** What the next reply must say from the tools' results, if anything: a tool's own question wins over a refusal line. */
+export function toolReplyInstructions(question: string | null, line: string | null): string | null {
+  return question ? sayToolQuestion(question) : line ? sayToolLine(line) : null;
+}
 
 /** How the greeting is said, with the short instructions of the first reply (the session's tone lines are not in them). */
 const GREETING_VOICE = 'Speak warmly and naturally, at an easy pace, like a friendly receptionist answering the phone.';
@@ -138,8 +209,8 @@ export class RealtimeEngine implements VoiceEngine {
 
   /** How each call's turns are answered: the planner behind ask_backend, or our tools called by the model itself. */
   private readonly flows = new Map<string, VoiceFlow>();
-  /** Each call's clinic time zone and clock (the call's own "now", plus what has passed), for the date in the per-turn note. */
-  private readonly zones = new Map<string, { timezone: string; offsetMs: number }>();
+  /** Each call's own facts (the clinic's date by the call's clock, the caller ID), said once at the start on the tools path. */
+  private readonly facts = new Map<string, string>();
 
   /**
    * The planner path: the conversation prompt and one tool, ask_backend. The tools path (batch 1a): the tools prompt
@@ -149,8 +220,11 @@ export class RealtimeEngine implements VoiceEngine {
     const tools = opts.flow === 'tools';
     return {
       type: 'realtime' as const,
-      model: this.model,
-      instructions: tools ? [toolsVoicePrompt(clinic, { callerNumber: opts.callerNumber }), ...REALTIME_TOOLS_LINES].join('\n') : [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
+      // a clinic on a trial of another model has it here (batch 1d); everyone else, the deployment's
+      model: this.modelFor(clinic),
+      // the tools path: the same instructions and tools on every call of the clinic (the call's own facts go in the
+      // conversation), so they stay in the prompt cache
+      instructions: tools ? [toolsVoiceStaticPrompt(clinic), ...REALTIME_TOOLS_LINES].join('\n') : [conversationPrompt(clinic, now), ...REALTIME_LINES].join('\n'),
       audio: {
         // on the tools path the reply is a tool call away, so the turn ends sooner: semantic_vad at high eagerness answers
         // once the caller has clearly finished, instead of waiting out a longer pause (real-audio runs, batch 1a)
@@ -159,15 +233,22 @@ export class RealtimeEngine implements VoiceEngine {
       },
       tools: tools ? realtimeTools(clinic) : [ASK_BACKEND],
       tool_choice: 'auto' as const,
+      ...(tools ? { truncation: TOOLS_TRUNCATION } : {}),
     };
   }
 
+  /** The model a clinic's calls run on: its own trial choice, or the deployment's. */
+  private modelFor(clinic: ClinicConfig): string { return clinic.realtimeModel ?? this.model; }
+  /** Each call's model, so its tokens are priced as that model's. */
+  private readonly models = new Map<string, string>();
+
   async accept(callId: string, clinic: ClinicConfig, now: Date, opening?: string, opts: CallOptions = {}) {
+    this.models.set(callId, this.modelFor(clinic));
     await this.client.realtime.calls.accept(callId, this.session(clinic, now, opts));
     this.openings.set(callId, opening ?? openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
-    this.zones.set(callId, { timezone: clinic.timezone, offsetMs: now.getTime() - Date.now() });
+    if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
   }
 
   sessionInfo(callId: string) {
@@ -183,10 +264,11 @@ export class RealtimeEngine implements VoiceEngine {
     const callId = res.headers.get('location')?.split('/').filter(Boolean).at(-1);
     if (!callId) throw new Error('realtime call created without a call id');
     this.browser.add(callId);
+    this.models.set(callId, this.modelFor(clinic));
     this.openings.set(callId, openingInstruction(clinic));
     this.voices.set(callId, voiceFor(clinic.voice));
     this.flows.set(callId, opts.flow ?? 'planner');
-    this.zones.set(callId, { timezone: clinic.timezone, offsetMs: now.getTime() - Date.now() });
+    if (opts.flow === 'tools') this.facts.set(callId, callFacts(clinic, now, opts.callerNumber));
     return { sessionId: callId, sdpAnswer: await res.text() };
   }
 
@@ -207,14 +289,11 @@ export class RealtimeEngine implements VoiceEngine {
     this.browser.delete(callId);
     this.voices.delete(callId);
     this.flows.delete(callId);
-    this.zones.delete(callId);
+    this.facts.delete(callId);
+    this.models.delete(callId);
     this.openings.delete(callId);
   }
 
-  private turnNote(callId: string): string {
-    const z = this.zones.get(callId);
-    return z ? turnNoteFor(z, new Date(Date.now() + z.offsetMs)) : TURN_NOTE;
-  }
 
   attach(callId: string): Sideband {
     const ws = this.openSocket(callId);
@@ -223,6 +302,10 @@ export class RealtimeEngine implements VoiceEngine {
     const outstanding = new Set<string>();
     // the last tool question among the results of one response, said once all of them are back
     let question: string | null = null;
+    // and the last refusal line among them (a question wins over it)
+    let refusal: string | null = null;
+    // the call's state, changed by those calls: added after their results
+    let stateNote: string | null = null;
     // manual replies: whether the model waits for our go, and whether a turn that ended is waiting for it now
     let manual = false;
     let goDue = false;
@@ -249,14 +332,15 @@ export class RealtimeEngine implements VoiceEngine {
       if (active) wanted = e; else { active = true; ws.send(e); }
     };
     const interrupt = () => { if (open && active) ws.send({ type: 'response.cancel' }); };
-    // one note at a time: the last turn's is removed when the next one goes in, so the conversation does not grow with them
-    let notes = 0;
-    const turnNote = () => {
-      if (!open) return;
-      if (notes) ws.send({ type: 'conversation.item.delete', item_id: `turn_note_${notes}` });
-      notes++;
-      ws.send({ type: 'conversation.item.create', item: { id: `turn_note_${notes}`, type: 'message', role: 'system', content: [{ type: 'input_text', text: this.turnNote(callId) }] } });
-    };
+    // a note for the model at the end of the conversation (never removed: removing one moves everything after it, and
+    // the prompt cache misses from there)
+    const note = (text: string) => ws.send({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text }] } });
+    const turnNote = () => { if (open) note(TURN_NOTE); };
+    // the tools path: the call's own facts, once, before anything else in the conversation
+    const facts = this.facts.get(callId);
+    // words a tool gave that the next reply says as written: a note, then a reply with no tools. Not the reply's own
+    // instructions, which replace the session's for that reply, so the prompt cache missed the whole call each time
+    const sayNext = (instructions: string) => { note(instructions); respond({ type: 'response.create', response: { tool_choice: 'none' } }); };
     // The greeting is the first reply, with its own short instructions: only what to say, and no tools. With the whole
     // session prompt (the clinic, the tools and their rules) the model first read all of it, and the caller waited
     // (path A, 2026-11-07: first audio 5.3 s on a browser call). Anything queued before the socket opened (a note for the
@@ -265,12 +349,13 @@ export class RealtimeEngine implements VoiceEngine {
     const greet = (queued: boolean) => respond(opening && !queued ? { type: 'response.create', response: { instructions: `${opening} ${GREETING_VOICE}`, tool_choice: 'none' } } : { type: 'response.create' });
     ws.socket.on('open', () => {
       open = true;
+      if (facts) note(facts);
       const items = queue.filter((e) => e.type === 'conversation.item.create');
       queue = [];
       for (const e of items) ws.send(e);
       greet(items.length > 0);
     });
-    if (open) greet(false);
+    if (open) { if (facts) note(facts); greet(false); }
 
     // the model's words come in pieces smaller than a word ("Bisc", "uit"): they are passed on
     // a word at a time, so the record and the live captions read as said
@@ -358,7 +443,7 @@ export class RealtimeEngine implements VoiceEngine {
           spoken(e, true);
           // what the reply cost: audio and text tokens, each with its cached part, priced per modality (call_costs)
           // each with its own event id: the runner drops an event id it has seen (the reply's own words carry this one)
-          for (const u of replyUsage(this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: `${id(e)}_usage_${u.model}`, ...u });
+          for (const u of replyUsage(this.models.get(callId) ?? this.model, (e as { response?: { usage?: RealtimeUsage } }).response?.usage)) emit({ type: 'session.model_usage', event_id: `${id(e)}_usage_${u.model}`, ...u });
           active = false;
           const next = wanted;
           wanted = null;
@@ -401,16 +486,26 @@ export class RealtimeEngine implements VoiceEngine {
         return;
       }
       if (event.type === 'reply.go') return go();
+      if (event.type === 'context.note') {
+        if (!toolsPath) return;
+        // while the model waits on its tool calls, the note goes after their results (a call and its output stay together)
+        if (outstanding.size) stateNote = event.content;
+        else raw({ type: 'conversation.item.create', item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: event.content }] } });
+        return;
+      }
       if (event.type === 'tool.result') {
         // a tool's result: the function call's output, and once every call of the response has its result, the model goes on
         raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: event.call_id, output: event.output } });
         outstanding.delete(event.call_id);
         question = toolQuestion(event.output) ?? question;
+        refusal = toolRefusalLine(event.output) ?? refusal;
         if (!outstanding.size) {
-          // the tool's own question, said as written (no tools in that reply: it waits for the caller)
-          const line = question;
+          if (stateNote) { note(stateNote); stateNote = null; }
+          // the tool's own question, or its refusal line, said as written (no tools in that reply: it waits for the caller)
+          const instructions = toolReplyInstructions(question, refusal);
           question = null;
-          if (line) respond({ type: 'response.create', response: { instructions: sayToolQuestion(line), tool_choice: 'none' } });
+          refusal = null;
+          if (instructions) sayNext(instructions);
           else respond();
         }
         return;

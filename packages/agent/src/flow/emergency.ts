@@ -130,5 +130,17 @@ export const staffNote = (sign: string) => `Owner reported "${sign.trim()}" earl
 export const BORDERLINE = /\b(?:bleeding|bleeds|blood|vomit(?:s|ed|ing)?|threw up|throwing up|been sick|limping|limps|lame|not eating|won'?t eat|stopped eating|off (?:his|her|its) food|diarrh(?:o)?ea|sangra(?:ndo)?|sangre|vomit(?:a|o|ando)|cojea(?:ndo)?|no come|no quiere comer|diarrea)\b/;
 /** Heavy or nonstop, in the caller's words about the sign. */
 export const SEVERE = /\b(?:a lot|lots|heavy|heavily|badly|nonstop|non-stop|won'?t stop|keeps (?:vomiting|throwing up|bleeding)|all (?:day|night)|every (?:hour|few minutes)|can'?t stop|really bad|severe|mucho|muchisimo|sin parar|no para|todo el dia|toda la noche|grave)\b/;
+/**
+ * Heavy or nonstop as the caller's own answer, not our question echoed or denied: "I'm not sure if it's severe or
+ * nonstop" and "it's not severe" say nothing heavy (a live run put such a caller through to the team; batch 1d).
+ * "I don't know, he keeps vomiting" still does.
+ */
+export function saysSevere(normalised: string): boolean {
+  const W = '(?:severe|nonstop|non-stop|heavy|bad|grave|sin parar)';
+  const rest = normalised
+    .replace(new RegExp(`\\b(?:if|whether|si) (?:it'?s |it is |he'?s |she'?s |es |esta )?(?:really |very |muy )?${W}(?: (?:or|o) (?:really |very |muy )?${W})?`, 'g'), ' ')
+    .replace(new RegExp(`\\b(?:not|isn'?t|it'?s not|wasn'?t|no es|no esta|nada) (?:that |so |too |very |really |muy |tan )?${W}(?: (?:or|nor|o|ni) ${W})?`, 'g'), ' ');
+  return SEVERE.test(rest);
+}
 /** Mild, in the caller's words about the sign: once, a little, it stopped. */
 export const MILD = /\b(?:once|just once|one time|a little|a bit|not much|not really|mild|small|stopped|it'?s stopped|seems fine|una vez|solo una vez|un poco|poquito|leve|ya paro|ya se le paso)\b/;

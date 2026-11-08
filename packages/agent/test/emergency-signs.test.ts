@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { EMERGENCY_LINES, RIVERBEND_CLINIC } from '@attendra/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { saysSevere } from '../src/flow/emergency';
 import { world } from './support';
 
 // An emergency at a clinic for animals is decided by its signs, not the word. Two test calls were held by the bare word
@@ -86,6 +87,18 @@ describe('the word "emergency" alone at a vet clinic', () => {
     expect(out.some((o) => o.type === 'transfer')).toBe(false);
     expect(instructions(out)).toContain('soonest visit');
     expect(unsure.state.emergencyLocked).toBe(false);
+    // our question's own words echoed, or denied, are not an answer of heavy or nonstop (batch 1d, a live run)
+    for (const echo of ["I'm not sure if it's severe or nonstop; he's just been sick.", "It's not severe, he's just been sick.", 'No sé si es grave o sin parar.', 'No es grave.']) {
+      const e = await w.call('+17205550172', { clinic: open });
+      e.caller("Hi, Linh Nguyen. Are you still open? Biscuit's been sick, can I bring him in now?");
+      e.assistant(BORDERLINE_Q);
+      const said = e.caller(echo);
+      expect(said.some((o) => o.type === 'transfer'), echo).toBe(false);
+      expect(e.state.emergencyLocked, echo).toBe(false);
+    }
+    expect(saysSevere("i don't know, he keeps vomiting")).toBe(true);
+    expect(saysSevere("i'm not sure if it's severe or nonstop")).toBe(false);
+    expect(saysSevere("it's not that bad, but he's been bleeding a lot")).toBe(true);
     const heavy = await w.call('+17205550172', { clinic: open });
     heavy.caller("Biscuit's been sick, can I bring him in now?");
     heavy.assistant(BORDERLINE_Q);

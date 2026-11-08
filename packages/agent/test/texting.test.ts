@@ -99,6 +99,32 @@ describe('texting during a call', () => {
     expect((await noAddress.delegate([{ tool: 'send_text', args: { kind: 'directions', ref: null, to: null } }])).errors).toEqual(['nothing_to_send']);
   });
 
+  it('"text me the address" is the directions text (address and map link), whichever kind the model picks; EN and ES (batch 1d, a live run)', async () => {
+    for (const [lang, where, yes] of [['en', 'Hi, where exactly are you?', 'Yes please.'], ['es', '¿Dónde están ubicados?', 'Sí, por favor.']] as const) {
+      w.sms.length = 0;
+      const c = await w.call('+13035550147', { clinic: TEXTING });
+      c.caller(where);
+      await c.delegate([{ tool: 'get_clinic_info', args: { question: 'address' } }]);
+      // the clinic's "where are you" common question, sent as an answer
+      const first = await c.delegate([{ tool: 'send_text', args: { kind: 'answer', ref: 'faq_address', to: null } }]);
+      expect(first.errors).toEqual(['consent_required']);
+      c.assistant(lang === 'en' ? "We're at 214 Maple Street. Would you like me to text that to the number you're calling from?" : 'Estamos en 214 Maple Street. ¿Quiere que se lo envíe por mensaje de texto al número desde el que llama?');
+      c.caller(yes);
+      const sent = await c.delegate([{ tool: 'send_text', args: { kind: 'answer', ref: 'faq_address', to: null } }]);
+      expect(sent.results[0]!.data).toMatchObject({ texted: true, template: 'directions' });
+      expect(w.sms).toMatchObject([{ template: 'directions' }]);
+    }
+    // any other common question stays an answer
+    w.sms.length = 0;
+    const c = await w.call('+13035550147', { clinic: TEXTING });
+    c.caller('Which insurance do you take?');
+    await c.delegate([{ tool: 'get_clinic_info', args: { question: 'insurance' } }]);
+    await c.delegate([{ tool: 'send_text', args: { kind: 'answer', ref: 'faq_insurance', to: null } }]);
+    c.assistant("We accept most plans. Would you like me to text that to the number you're calling from?");
+    c.caller('Yes please.');
+    expect((await c.delegate([{ tool: 'send_text', args: { kind: 'answer', ref: 'faq_insurance', to: null } }])).results[0]!.data).toMatchObject({ texted: true, template: 'answer' });
+  });
+
   it('stops after the per-call limit, and for a number that opted out', async () => {
     const c = await w.call('+13035550147', { clinic: TEXTING });
     c.state.textsSent = MAX_TEXTS_PER_CALL;

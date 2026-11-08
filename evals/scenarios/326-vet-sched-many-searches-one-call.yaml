@@ -52,6 +52,7 @@ expect:
   sms_sent: 1
   booked_with: prov_morgan
   booked_on: "2026-10-02"
-  # the backend's own words to the planner (say_as), in the caller's language
-  returned: ["Friday, October 2, at 5:20 PM with Dr. Mara Vance"]
+  # the 5:20 search answered: its time, in the backend's words, whether the pet was found by then (staged and read
+  # back) or not yet ("Yes, 5:20 PM on Friday, October 2 is free")
+  returned: ["Friday, October 2, at 5:20 PM"]
 forbid_spoken: ["can't check any more", "cannot check more"]

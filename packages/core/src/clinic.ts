@@ -340,6 +340,10 @@ const ClinicConfigShape = z.object({
   // how the voice answers each turn: 'planner' (one hand-off per turn to the planner, today's way) or 'tools' (the voice
   // calls the tools API itself: batch 1a, one clinic at a time). Set by the operator (provisioning), never in Settings; absent is 'planner'
   voiceFlow: z.enum(['planner', 'tools']).optional(),
+  // which gpt-realtime model answers when the clinic is on gpt-realtime: absent is the deployment's
+  // (ATTENDRA_REALTIME_MODEL). For a one-clinic phone trial of the cheaper model (batch 1d). Set by the operator
+  // (provisioning), never in Settings
+  realtimeModel: z.enum(['gpt-realtime-2.1', 'gpt-realtime-2.1-mini']).optional(),
   // the hosting layer pauses the assistant (a plan's free minutes used up, a payment missing): calls go to the
   // front desk while it takes transfers, or hear a short message. Set by provisioning, never in Settings
   answeringPaused: z.boolean().optional(),
