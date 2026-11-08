@@ -108,7 +108,14 @@ export interface VapiAssistantInput {
 }
 
 /** The route Vapi posts to for one location. */
-export const vapiServerUrl = (base: string, clinicId: string) => `${base.replace(/\/+$/, '')}${VAPI_EVENTS_PATH}?clinic=${encodeURIComponent(clinicId)}`;
+export const vapiServerUrl = (base: string, clinicId: string) => `${withoutTrailingSlashes(base)}${VAPI_EVENTS_PATH}?clinic=${encodeURIComponent(clinicId)}`;
+
+/** The address without its trailing slashes, in one pass (a /\/+$/ regex runs slowly on a long run of slashes). */
+function withoutTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47) end--;
+  return s.slice(0, end);
+}
 
 /** Ends of turn: LiveKit's model for English only, Vapi's for a location that also speaks another language. */
 const endpointingFor = (clinic: ClinicConfig) => (clinic.languages.every((l) => l === 'en') ? { provider: 'livekit' } : { provider: 'vapi' });
