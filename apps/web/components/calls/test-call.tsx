@@ -326,7 +326,16 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved]);
-  const confirmLeave = useCallback(() => !unsavedNow.current || window.confirm(LEAVE_WARNING), []);
+  // "Leave anyway and lose it?" answered yes: the recording goes with the frame, as the person chose
+  const discard = useRef(false);
+  const confirmLeave = useCallback(() => {
+    if (!unsavedNow.current) return true;
+    discard.current = window.confirm(LEAVE_WARNING);
+    return discard.current;
+  }, []);
+  // the recording as it stands, for the frame going away (below)
+  const savedNow = useRef(saved);
+  savedNow.current = saved;
   const saveAgain = useCallback(() => {
     if (saved && saveRecording(saved)) setSaved({ ...saved, savedAt: new Date() });
   }, [saved]);
@@ -378,7 +387,12 @@ export function TestCallProvider({ clinicId, children }: { clinicId: string; chi
   // clinic it was started in (these callbacks change only with the clinic)
   useEffect(() => () => {
     if (attempt.current) release(attempt.current);
-    if (recorder.current) { void recorder.current.stop(); recorder.current = null; }
+    // a recording still going, or done but not saved (the browser refused), saves itself on the way out, unless the
+    // person said to lose it: a way out of the clinic's pages that asks nothing (the browser's Back) never loses it
+    const keep = !discard.current;
+    if (recorder.current) { const r = recorder.current; recorder.current = null; void r.stop().then((rec) => { if (keep) saveRecording(rec); }); }
+    else if (keep && savedNow.current && !savedNow.current.savedAt) saveRecording(savedNow.current);
+    discard.current = false;
     endSimulated(true);
     setPhase('idle'); setCallId(null); setCaptions([]); setSeconds(0); setMicStopped(false); setMicNote(null); setMuted(false);
   }, [release, endSimulated]);

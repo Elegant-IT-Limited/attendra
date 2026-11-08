@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { E2E_PROVISIONING_TOKEN } from './auth-state';
 import { openAs } from './session';
@@ -199,6 +200,8 @@ test('the recording saves itself to Downloads when the call ends, asks before a 
   await page.getByRole('button', { name: 'End call' }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/^attendra-test-call-\d{4}-\d{2}-\d{2}-\d{4}\.webm$/);
+  // the file is the recording itself, made in this browser
+  expect(readFileSync((await file.path())!).toString()).toBe(RECORDING);
   const saved = page.getByTestId('recording-saved');
   await expect(saved).toContainText(`Saved to your Downloads: ${file.suggestedFilename()}`);
 
@@ -214,6 +217,23 @@ test('the recording saves itself to Downloads when the call ends, asks before a 
   await expect(page.getByRole('button', { name: 'Start test call' })).toBeVisible();
   expect(askedAgain).toBe(false);
   expect(carried).toEqual([]);
+});
+
+test('a recording still going when the clinic\'s pages are left without a question (the browser\'s Back, a link out) saves itself', async ({ browser }) => {
+  test.slow();
+  const page = await openAs(browser, 'frontdesk', async (p) => { await testCallsOn(p); await fakeBrowserCall(p, 600); });
+  const clinic = new URL(page.url()).pathname.split('/')[2]!;
+  await openTestCall(page, clinic);
+  await page.getByRole('checkbox', { name: 'Record this test call' }).click();
+  await page.getByRole('button', { name: 'Start test call' }).click();
+  await expect(page.getByTestId('recording-on')).toBeVisible();
+  // a move inside the app to a page outside the clinic's frame: no reload, so no browser question
+  const download = page.waitForEvent('download');
+  await page.evaluate(() => (window as unknown as { next: { router: { push: (href: string) => void } } }).next.router.push('/profile'));
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^attendra-test-call-\d{4}-\d{2}-\d{2}-\d{4}\.webm$/);
+  expect(readFileSync((await file.path())!).toString()).toBe(RECORDING);
+  await expect(page).toHaveURL(/\/profile$/);
 });
 
 // "Call as": the picker reads the demo's made-up records through the real API; the start request is answered here, so no call is placed.
