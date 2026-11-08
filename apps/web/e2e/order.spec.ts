@@ -61,3 +61,24 @@ test('a dropdown that takes typing picks the exact choice typed when Enter is pr
   await expect(panel.getByLabel('New specialty')).toHaveCount(0);
   await panel.getByRole('button', { name: 'Cancel' }).click();
 });
+
+// Note 21: each visit type shows Name, Minutes and What it includes; the rest is under More options, closed, with what
+// is set said on its closed line so nothing hides a value. The help line says what the list is for.
+test('visit types show three fields, and More options closed with what is set on its line', async ({ browser }) => {
+  const page = await openAs(browser, 'manager');
+  const clinic = new URL(page.url()).pathname.split('/')[2];
+  await page.goto(`/c/${clinic}/settings#visits`);
+  const section = page.locator('#visits');
+  await expect(section.getByText('What callers can book. The assistant offers these by name and books the minutes you set.')).toBeVisible();
+  const row = section.locator('[data-sortable-item]').filter({ has: page.locator('input[value="annual physical"]') });
+  for (const label of ['Name', 'Minutes', 'What it includes']) await expect(row.getByText(label, { exact: true })).toBeVisible();
+  const more = row.getByTestId('visit-more-options');
+  await expect(more).not.toHaveAttribute('open', '');
+  await expect(row.getByLabel('Who can book it')).toBeHidden();
+  await expect(more.getByTestId('visit-more-summary')).toHaveText(': Patients on file only');
+  for (const closed of await section.getByTestId('visit-more-options').all()) await expect(closed).not.toHaveAttribute('open', '');
+  await more.locator('summary').click();
+  await expect(row.getByLabel('Who can book it')).toBeVisible();
+  await expect(row.getByText('Team books it')).toBeVisible();
+  await expect(row.getByText('Break after (minutes)')).toBeVisible();
+});
