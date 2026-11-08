@@ -13,7 +13,7 @@ import { Kbd } from '@/components/ui/bits';
 import { Highlight } from '@/components/ui/highlight';
 import { api, useClinic } from '@/lib/api';
 import { usePets } from '@/lib/terms';
-import { clinicTime, dob, OUTCOMES, phone, taskType } from '@/lib/format';
+import { clinicTime, dob, EMERGENCY_RESULTS, OUTCOMES, phone, taskType } from '@/lib/format';
 import type { NavItem } from '@/lib/nav';
 import { useTheme } from '@/lib/theme';
 
@@ -165,7 +165,7 @@ export function CommandPalette({ clinicId, open, onOpenChange, pages, clinics = 
                         {c.patientName ? <Highlight text={c.patientName} query={query} /> : c.callerNumber ? <Highlight text={phone(c.callerNumber)} query={query} /> : 'Unknown caller'}
                         {' · '}{clinicTime(c.startedAt, tz)}
                       </span>
-                      <span className={muted}>{c.emergency ? 'Emergency' : OUTCOMES[c.outcome ?? '']?.label ?? 'Call'}</span>
+                      <span className={muted}>{c.emergency ? EMERGENCY_RESULTS[c.emergencyResult ?? '']?.label ?? 'Emergency' : OUTCOMES[c.outcome ?? '']?.label ?? 'Call'}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

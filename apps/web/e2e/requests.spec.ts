@@ -125,8 +125,8 @@ test('the request panel stays open through Assign to, Claim, Release and Mark ur
   // the list of requests nobody holds: an assignment takes the open one out of it
   await page.getByLabel('Assigned to').selectOption({ label: 'Unassigned' });
   await expect(page.getByTestId('task-row').filter({ hasNotText: 'Unclaimed' })).toHaveCount(0);
-  // one that is not urgent yet, so Mark urgent is the button to press
-  await page.getByTestId('task-row').filter({ hasNotText: 'Urgent' }).first().click();
+  // one that is not urgent yet, so Mark urgent is the button to press (an emergency's urgent check says Emergency)
+  await page.getByTestId('task-row').filter({ hasNotText: /Urgent|Emergency/ }).first().click();
   const panel = page.getByRole('dialog');
   const card = page.getByTestId('task');
   await expect(card.getByText('Unclaimed')).toBeVisible();

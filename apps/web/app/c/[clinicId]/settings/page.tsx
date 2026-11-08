@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
+import { asE164, localDateOf, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -199,6 +199,8 @@ export default function Settings() {
   const set = (patch: Partial<ClinicConfig>) => setDraft({ ...c, ...patch });
   const dirty = JSON.stringify(c) !== JSON.stringify(saved.data);
   const writable = can('settings:write');
+  // the clinic's own date, for the days that must be today or later (holidays, special days, an offer's end)
+  const todayHere = localDateOf(new Date(), c.timezone);
 
   const windows = (d: Day) => c.hours[d] ?? [];
   const setWindows = (d: Day, w: { open: string; close: string }[]) => set({ hours: { ...c.hours, [d]: w } });
@@ -210,7 +212,8 @@ export default function Settings() {
   // shown as a plain phone number; stored as the tel: address a transfer dials (a sip: address is kept as typed)
   const shownUri = (uri: string) => (uri.startsWith('tel:') ? uri.slice(4) : uri);
   // as typed while typing; as E.164 once the field is left (and again on save), so a half-typed number is never rewritten
-  const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
+  // a SIP address as typed, and the start of one while it is being typed ("si"); anything else is a number, kept as tel:+…
+  const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) || (!done && !!v.trim() && 'sips:'.startsWith(v.trim().toLowerCase())) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
 
   return (
     <SaveIssues.Provider value={issuesFor}>
@@ -239,10 +242,10 @@ export default function Settings() {
         </nav>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="greeting-voice" title="Greeting and voice" description="Callers must hear that they are talking to an AI assistant. The greeting cannot be saved without it.">
-          <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="organization" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
+          <Field label="Clinic name" htmlFor="name"><Input id="name" required maxLength={100} autoComplete="off" value={c.name} onChange={(e) => set({ name: e.target.value })} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
-            <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
+            <Field label="Address" htmlFor="address" hint="Given to callers who ask where you are."><Input id="address" maxLength={200} autoComplete="off" value={c.address ?? ''} placeholder="e.g. 400 Main Street, Denver" onChange={(e) => set({ address: e.target.value || undefined })} /></Field>
+            <Field label="Website" htmlFor="website" hint="Optional."><Input id="website" type="url" maxLength={200} autoComplete="off" value={c.website ?? ''} placeholder="https://" onChange={(e) => set({ website: e.target.value && e.target.value !== 'https://' ? e.target.value : undefined })} /></Field>
           </div>
           <Field label="Greeting" htmlFor="greeting" hint={`${c.greeting.length}/400. Mention "AI assistant", "virtual receptionist" or similar.`}>
             <Textarea id="greeting" value={c.greeting} maxLength={SETTINGS_LIMITS.greeting} onChange={(e) => set({ greeting: e.target.value })} />
@@ -298,7 +301,7 @@ export default function Settings() {
                 ? 'Write it as a full sentence, ending with a full stop: it is said right after the greeting\'s first words, before "How can I help you today?".'
                 : 'Said right after the clinic\'s and the assistant\'s names, before the question, so every caller hears it.'}>
                 <div className="flex flex-wrap gap-2">
-                  <Input id="notice" className="min-w-0 flex-1" maxLength={300} value={c.recording.notice ?? ''} placeholder={DEFAULT_RECORDING_NOTICE.en} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} />
+                  <Input id="notice" aria-describedby="notice-hint" className="min-w-0 flex-1" maxLength={300} autoComplete="off" value={c.recording.notice ?? ''} placeholder={DEFAULT_RECORDING_NOTICE.en} onChange={(e) => set({ recording: { ...c.recording, notice: e.target.value } })} />
                   {(c.recording.notice ?? '') !== DEFAULT_RECORDING_NOTICE.en && (
                     <Button type="button" size="sm" variant="outline" onClick={() => set({ recording: { ...c.recording, notice: DEFAULT_RECORDING_NOTICE.en } })}>Use the default</Button>
                   )}
@@ -351,9 +354,12 @@ export default function Settings() {
         <Section id="holidays" title="Holidays and special days" description="Days that differ from the weekly hours: a holiday, closed all day, or a special day, closed with a reason or open shorter hours. Nothing is offered outside them, and the assistant tells callers. Adding one never moves a visit already booked: the Schedule lists any to move.">
           <ConflictsAlert clinicId={clinicId} />
           <div className="flex flex-wrap gap-2">
-            <Input type="date" aria-label="Holiday date" className="w-44" value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)} />
-            <Button type="button" variant="outline" disabled={!newHoliday || c.holidays.includes(newHoliday) || !!c.specialDays?.some((d) => d.date === newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
+            {/* a holiday is a day to come: a past one closes nothing */}
+            <Input type="date" aria-label="Holiday date" className="w-44" min={todayHere} value={newHoliday} onChange={(e) => setNewHoliday(e.target.value)}
+              aria-invalid={(!!newHoliday && newHoliday < todayHere) || undefined} aria-describedby={newHoliday && newHoliday < todayHere ? 'holiday-past' : undefined} />
+            <Button type="button" variant="outline" disabled={!newHoliday || newHoliday < todayHere || c.holidays.includes(newHoliday) || !!c.specialDays?.some((d) => d.date === newHoliday)} onClick={() => { set({ holidays: [...c.holidays, newHoliday].sort() }); setNewHoliday(''); }}><Plus /> Add holiday</Button>
           </div>
+          {!!newHoliday && newHoliday < todayHere && <p id="holiday-past" className="text-xs font-medium text-danger">Pick today or a day to come.</p>}
           {c.holidays.length === 0 ? <EmptyNote>No holidays set.</EmptyNote> : (
             <div className="flex flex-wrap gap-2">
               {c.holidays.map((h) => (
@@ -365,7 +371,7 @@ export default function Settings() {
             </div>
           )}
           <h3 className="pt-2 text-base font-medium">Special days</h3>
-          <SpecialDaysEditor days={c.specialDays ?? []} holidays={c.holidays} providers={c.providers.filter((p) => !p.placeholder).map((p) => ({ id: p.id, name: providerName(p) }))} onChange={(specialDays) => set({ specialDays })} />
+          <SpecialDaysEditor today={todayHere} days={c.specialDays ?? []} holidays={c.holidays} providers={c.providers.filter((p) => !p.placeholder).map((p) => ({ id: p.id, name: providerName(p) }))} onChange={(specialDays) => set({ specialDays })} />
         </Section>
 
         <Section id="visits" title="Visit types" description="What callers can book. The assistant offers these by name and books the minutes you set."
@@ -416,7 +422,7 @@ export default function Settings() {
                   </Select>
                 </Field>
                 <Field label="Phone number" hint="With the country code.">
-                  <Input type="tel" value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} onBlur={(e) => upd('routing', i, { uri: storedUri(e.target.value, true) })} />
+                  <PhoneInput mode="transfer" autoComplete="off" maxLength={200} value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onValue={(v) => upd('routing', i, { uri: storedUri(v) })} onBlur={(e) => upd('routing', i, { uri: storedUri(e.target.value, true) })} />
                 </Field>
                 <Field label="When">
                   <Select value={r.when} onChange={(e) => upd('routing', i, { when: e.target.value as typeof r.when })}>
@@ -437,7 +443,7 @@ export default function Settings() {
           {(v, i, handle) => (
             <Item handle={handle} id={`item-vip-${i}`} removeLabel="Remove VIP caller" onRemove={() => remove('vipCallers', i)}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Who"><Input maxLength={60} value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
+                <Field label="Who"><Input maxLength={60} autoComplete="off" value={v.name} placeholder="e.g. Partner clinic" onChange={(e) => upd('vipCallers', i, { name: e.target.value })} /></Field>
                 <Field label="Phone number" hint="As you would dial it."><PhoneInput value={v.phone} autoComplete="off" placeholder={countryCopy(c).phone.local || countryCopy(c).phone.e164} onValue={(phone) => upd('vipCallers', i, { phone })} onBlur={(e) => upd('vipCallers', i, { phone: asE164(c, e.target.value) })} /></Field>
               </div>
             </Item>
@@ -468,9 +474,9 @@ export default function Settings() {
             <Item handle={handle} id={`item-${o.id}`} removeLabel="Remove offer" onRemove={() => remove('offers', i)}>
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem_10rem]">
-                  <Field label="Title"><Input maxLength={80} value={o.title} placeholder="e.g. Saturday vaccine clinic" onChange={(e) => upd('offers', i, { title: e.target.value })} /></Field>
+                  <Field label="Title"><Input maxLength={80} autoComplete="off" value={o.title} placeholder="e.g. Saturday vaccine clinic" onChange={(e) => upd('offers', i, { title: e.target.value })} /></Field>
                   <Field label="From" hint="Optional."><Input type="date" value={o.from ?? ''} onChange={(e) => upd('offers', i, { from: e.target.value || undefined })} /></Field>
-                  <Field label="To" hint="Optional."><Input type="date" value={o.to ?? ''} min={o.from} onChange={(e) => upd('offers', i, { to: e.target.value || undefined })} /></Field>
+                  <Field label="To" hint="Optional."><Input type="date" value={o.to ?? ''} min={o.from && o.from > todayHere ? o.from : todayHere} onChange={(e) => upd('offers', i, { to: e.target.value || undefined })} /></Field>
                 </div>
                 <Field label="Details" hint={`${o.details.length}/400`}><Textarea maxLength={400} value={o.details} placeholder="e.g. Core vaccines for dogs and cats, 9 to 1, no appointment needed." onChange={(e) => upd('offers', i, { details: e.target.value })} /></Field>
               </div>
@@ -496,8 +502,8 @@ export default function Settings() {
           {(l, i, handle) => (
             <Item handle={handle} id={`item-link-${i}`} removeLabel="Remove link" onRemove={() => remove('menuLinks', i)}>
               <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]">
-                <Field label="Label"><Input maxLength={30} value={l.label} placeholder="e.g. Practice software" onChange={(e) => upd('menuLinks', i, { label: e.target.value })} /></Field>
-                <Field label="Web address"><Input type="url" value={l.url} placeholder="https://" onChange={(e) => upd('menuLinks', i, { url: e.target.value })} /></Field>
+                <Field label="Label"><Input maxLength={30} autoComplete="off" value={l.label} placeholder="e.g. Practice software" onChange={(e) => upd('menuLinks', i, { label: e.target.value })} /></Field>
+                <Field label="Web address" hint="Starts with https://"><Input type="url" maxLength={500} autoComplete="off" value={l.url} placeholder="https://" onChange={(e) => upd('menuLinks', i, { url: e.target.value })} /></Field>
               </div>
             </Item>
           )}
@@ -523,9 +529,8 @@ export default function Settings() {
             ) : (
               <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                 {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
-                <Input aria-label="Your clinic's own line" data-own-line={n} type="tel" inputMode="tel" autoComplete="off" className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable}
-                  onChange={(e) => { const clean = cleanPhoneTyping(e.target.value); if (clean.dropped) e.target.value = clean.value; }} title={PHONE_NUMBERS_ONLY} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
-                  onBlur={(e) => { const v = e.target.value.trim() ? asE164(c, e.target.value) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
+                <OwnLine stored={n} shown={n ? phone(n) : ''} disabled={!writable} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
+                  onDone={(typed) => { const v = typed.trim() ? asE164(c, typed) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
                 <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
                 {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}
               </li>
@@ -556,5 +561,20 @@ export default function Settings() {
         </div>
       )}
     </SaveIssues.Provider>
+  );
+}
+
+/**
+ * One of the clinic's own lines, typed as the clinic writes it and kept as +1… once the field is left, so forwarding
+ * checks and texts can use it. Letters are dropped with a note (PhoneInput); a save from elsewhere shows here.
+ */
+function OwnLine({ stored, shown, disabled, placeholder, onDone }: { stored: string; shown: string; disabled: boolean; placeholder: string; onDone: (typed: string) => void }) {
+  const [typed, setTyped] = useState(shown);
+  useEffect(() => setTyped(shown), [shown]);
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <PhoneInput aria-label="Your clinic's own line" data-own-line={stored} autoComplete="off" className="h-8 w-48 tabular-nums" value={typed} disabled={disabled}
+        placeholder={placeholder} onValue={setTyped} onBlur={(e) => onDone(e.target.value)} />
+    </span>
   );
 }

@@ -25,11 +25,11 @@ export class CallsController {
 
   @Get()
   @Requires('calls:list')
-  @ApiOperation({ summary: 'Calls, newest first, with optional filters. The verified patient\'s name is included for roles that may read calls, and that view is audited; a viewer gets no patient data.' })
+  @ApiOperation({ summary: 'Calls, newest first, a page at a time, with optional filters (days, outcome, channel, emergencies, how an emergency ended, review, a refusal code). The verified patient\'s name is included for roles that may read calls, and that view is audited; a viewer gets no patient data.' })
   @ApiOkResponse({ schema: schemaOf(CallList) })
   async list(@Param('clinicId') clinicId: string, @Query(new ZodPipe(CallQuery)) q: z.infer<typeof CallQuery>, @CurrentStaff() staff: Staff): Promise<CallList> {
     const calls = await this.desk.listCalls(clinicId, {
-      before: q.before, limit: q.limit, outcome: q.outcome, channel: q.channel, emergency: q.emergency, needsReview: q.review === 'needed' || undefined, refusal: q.refusal,
+      before: q.before, limit: q.limit, outcome: q.outcome, channel: q.channel, emergency: q.emergency, emergencyResult: q.emergencyResult, needsReview: q.review === 'needed' || undefined, refusal: q.refusal,
       ...(await this.range(clinicId, q)), names: this.names(staff, 'list'),
     });
     return this.page(calls, q.limit);
@@ -50,7 +50,7 @@ export class CallsController {
     const number = readRequestNumber(body.query);
     if (number !== null) callIds.push(...await this.desk.callIdsByRequestNumber(clinicId, number));
     const calls = await this.desk.listCalls(clinicId, {
-      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, needsReview: body.review === 'needed' || undefined, refusal: body.refusal, match: { patientIds, callIds }, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
+      limit: 100, outcome: body.outcome, channel: body.channel, emergency: body.emergency, emergencyResult: body.emergencyResult, needsReview: body.review === 'needed' || undefined, refusal: body.refusal, match: { patientIds, callIds }, ...(await this.range(clinicId, body)), names: this.names(staff, 'search'),
     });
     return { ...this.page(calls, Number.POSITIVE_INFINITY), truncated: calls.length >= 100 };
   }
@@ -72,7 +72,7 @@ export class CallsController {
     const last = calls.at(-1);
     return {
       calls: calls.map((c) => ({
-        id: c.id, channel: c.channel, outcome: c.outcome, emergency: c.emergency, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
+        id: c.id, channel: c.channel, outcome: c.outcome, emergency: c.emergency, emergencyResult: c.emergencyResult, closeReason: c.closeReason, voiceSeconds: c.voiceSeconds, tools: c.tools, verified: c.verified,
         firstCall: c.firstCall, intent: c.intent, sentiment: c.sentiment, needsReview: c.needsReview,
         patientName: c.patientName, callerNumber: c.callerNumber, calledAsLast4: c.calledAsLast4, startedAt: c.startedAt.toISOString(), endedAt: c.endedAt?.toISOString() ?? null,
       })),

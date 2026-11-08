@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { callCost, type CallQuality, type DigestCall, type ModelTokens, type VoiceEngineName, type VoiceFlow } from '@attendra/core';
+import { callCost, type CallQuality, type DigestCall, type EmergencyResult, type ModelTokens, type VoiceEngineName, type VoiceFlow } from '@attendra/core';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { type Database, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -84,8 +84,11 @@ export class CallRepository {
       await tx.update(calls).set({
         endedAt: new Date(), closeReason: c.reason, voiceSeconds: c.voiceSeconds === null ? null : c.voiceSeconds.toFixed(2),
         outcome: c.outcome, emergencyFlag: c.emergency, ...(c.language ? { language: c.language } : {}),
-        ...(c.emergencyResult ? { emergencyResult: c.emergencyResult as 'transferred' | 'hospital_said' | 'hospital_texted' | 'urgent_request' | 'cleared' } : {}),
+        ...(c.emergencyResult ? { emergencyResult: c.emergencyResult as EmergencyResult } : {}),
         ...(c.quality ? { firstAudioMs: c.quality.firstAudioMs, stalls: c.quality.stalls, answerTimeouts: c.quality.answerTimeouts } : {}),
+        // how the call went for the caller (0055): only when the runner measured it, so an engine that cannot leaves null
+        ...(c.quality?.maxGapMs !== undefined ? { maxGapMs: c.quality.maxGapMs } : {}),
+        ...(c.quality?.repeatedQuestions !== undefined ? { repeatedQuestions: c.quality.repeatedQuestions } : {}),
       }).where(and(eq(calls.id, callId), eq(calls.clinicId, clinicId)));
       // what the call wrote, as counts on one row: a row per line or step would bury staff access in the log
       const [lines] = await tx.select({ n: sql<number>`count(*)::int` }).from(callSegments).where(and(eq(callSegments.clinicId, clinicId), eq(callSegments.callId, callId)));

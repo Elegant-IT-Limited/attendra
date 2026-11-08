@@ -224,6 +224,34 @@ export function cleanPhoneTyping(typed: string): { value: string; dropped: boole
   return { value: plus ? value : kept, dropped: value.replace(/^\+/, '').length + (plus ? 1 : 0) !== typed.length };
 }
 
+/** How a phone field cleans what is typed: one number, several separated by commas, or a transfer (a number or a SIP address). */
+export type PhoneTypingMode = 'one' | 'several' | 'transfer';
+
+/** A SIP address, or the start of one being typed ("s", "si", "sip", "sip:…"): a transfer keeps its letters. */
+const SIP_TYPED = /^sips?:/i;
+const sipStart = (typed: string) => SIP_TYPED.test(typed.trim()) || (!!typed.trim() && 'sips:'.startsWith(typed.trim().toLowerCase()));
+
+/**
+ * cleanPhoneTyping for every kind of phone field: several numbers are cleaned one by one (each may start with +),
+ * keeping the commas between them; a transfer that is a SIP address, or is becoming one, is kept as typed.
+ */
+export function cleanPhoneField(typed: string, mode: PhoneTypingMode = 'one'): { value: string; dropped: boolean } {
+  if (mode === 'transfer' && sipStart(typed)) return { value: typed, dropped: false };
+  if (mode !== 'several') return cleanPhoneTyping(typed);
+  // the space after a comma stays where it was typed
+  const one = (part: string) => { const lead = /^\s*/.exec(part)![0]; const c = cleanPhoneTyping(part.slice(lead.length)); return { value: lead + c.value, dropped: c.dropped }; };
+  const parts = typed.split(/([,;])/).map((part, i) => (i % 2 ? { value: part, dropped: false } : one(part)));
+  return { value: parts.map((p) => p.value).join(''), dropped: parts.some((p) => p.dropped) };
+}
+
+/** The short digits-only number a person in danger is told to call (911, 999, 112): what a typed one keeps, and whether anything was dropped. */
+export function cleanDigitsTyping(typed: string): { value: string; dropped: boolean } {
+  const value = typed.replace(/\D/g, '');
+  return { value, dropped: value.length !== typed.length };
+}
+/** The one message for an emergency number typed with anything but digits. */
+export const DIGITS_ONLY = 'Digits only, like 911.';
+
 /** The emergency setting with its line and every hospital's phone as E.164. */
 function emergencyPhonesAsE164<E extends EmergencyPhones>(e: E, one: (n: string | undefined) => string | undefined, fix: <T extends Phoned>(x: T) => T): E {
   const out: E = { ...e, ...(typeof e.number === 'string' ? { number: one(e.number) } : {}) };

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { CancelledList } from '@attendra/api/contracts';
-import { addDays, type ClinicConfig, industryPack, localDateOf, providerName } from '@attendra/core';
+import { addDays, type ClinicConfig, industryPack, localDateOf, providerName, SEARCH_MAX } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Bot, Search, User } from 'lucide-react';
 import { useState } from 'react';
@@ -45,7 +45,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 text-sm" data-toolbar="cancelled">
         <div className="flex items-center gap-1.5">
           <Label htmlFor="cancelled-from" className="text-text-muted">Visits from</Label>
           <Input id="cancelled-from" type="date" className="h-8 w-38" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
@@ -61,7 +61,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
         <div className="relative min-w-48 flex-1">
           <Label htmlFor="cancelled-search" className="sr-only">Find a patient</Label>
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-          <Input id="cancelled-search" type="search" className="h-8 pl-8" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={industryPack(clinic.industry).identity === 'pet' ? 'Pet or owner name' : 'Patient name'} />
+          <Input id="cancelled-search" type="search" maxLength={SEARCH_MAX} className="h-8 pl-8" autoComplete="off" value={text} onChange={(e) => setText(e.target.value)} placeholder={industryPack(clinic.industry).identity === 'pet' ? 'Pet or owner name' : 'Patient name'} />
         </div>
       </div>
       {list.isError && <Alert tone="danger" className="m-4">This list did not load. Try again in a moment.</Alert>}

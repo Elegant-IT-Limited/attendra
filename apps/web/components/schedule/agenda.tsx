@@ -12,6 +12,7 @@ import { Label, Select } from '@/components/ui/input';
 import { dayTitle, timeOf, VISIT_DOTS } from '@/lib/format';
 import { closedDay } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
+import { RENDER_MARKS, useRenderMark } from '@/lib/render-mark';
 
 /** Every row, a day's heading included, is this tall: the list draws only the rows in view. */
 const ROW = 44;
@@ -69,9 +70,10 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
   const last = Math.min(rows.length, Math.ceil((scrollTop + HEIGHT) / ROW) + OVERSCAN);
   const narrowed = !!(providerId || specialty || visitTypeId);
 
+  useRenderMark(RENDER_MARKS.agenda, rows.length > 0);
   return (
     <div data-testid="agenda">
-      <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3" data-toolbar="agenda">
         <div className="w-64 space-y-1">
           <Label htmlFor={`${id}-provider`} className="sr-only">{word.charAt(0).toUpperCase()}{word.slice(1)}</Label>
           <Combobox id={`${id}-provider`} label={`${word.charAt(0).toUpperCase()}${word.slice(1)}`} value={providerId} onChange={setProviderId} placeholder={`Every ${word}`}

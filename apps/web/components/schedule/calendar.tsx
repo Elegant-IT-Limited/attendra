@@ -9,6 +9,7 @@ import { Empty } from '@/components/ui/feedback';
 import { Popover } from '@/components/ui/overlay';
 import { dayTitle, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES } from '@/lib/format';
 import { blockHeight, clinicHoursFor, closedDay, columnsThatFit, hoursFor, initials, MIN_BLOCK, outsideDesk, placeLane, PX } from '@/lib/schedule-lanes';
+import { RENDER_MARKS, useRenderMark } from '@/lib/render-mark';
 import { cn } from '@/lib/utils';
 
 /** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
@@ -56,6 +57,8 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
   const laneRem = week ? WEEK_LANE_MIN_REM : LANE_MIN_REM;
   const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? `${providers.length * laneRem}rem` : `${laneRem}rem`}, 1fr))`;
   const minWidth = `max(640px, calc(3.5rem + ${(week ? dates.length : 1) * providers.length * laneRem}rem))`;
+  // the grid's own render time, for the render-speed test (e2e/schedule-scale.spec.ts) and the browser's performance panel
+  useRenderMark(RENDER_MARKS.grid, providers.length > 0);
 
   return (
     // one scroller for both directions, so the sticky headings and hour column hold; a focusable region for the keyboard

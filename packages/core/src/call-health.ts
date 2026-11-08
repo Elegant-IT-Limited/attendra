@@ -12,7 +12,27 @@ export interface CallQuality {
   stalls: number;
   /** Answers past the 60 s limit, apologised for. */
   answerTimeouts: number;
+  /** The longest the caller waited after speaking for the reply to start (call-markers maxGapMs); null when none. Set at close. */
+  maxGapMs?: number | null;
+  /** Questions the assistant asked again after they were answered (call-markers repeatedQuestions). Set at close. */
+  repeatedQuestions?: number;
 }
+
+/**
+ * Every outcome a call is recorded with: what the assistant's call state ended as (packages/agent CallState.outcome),
+ * and `no_audio` for a call the caller never heard (recordedOutcome). The one list the API's filters, the agent's state
+ * and the dashboard's labels are checked against.
+ */
+export const CALL_OUTCOMES = ['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned', 'no_audio'] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+
+/**
+ * How an animal's emergency on a call ended (batch 1b, migration 0050), set by the emergency state machine
+ * (packages/agent flow/emergency.ts): put through to the team, the hospital said (and texted), an urgent request when
+ * nobody could be put through, or cleared by the caller.
+ */
+export const EMERGENCY_RESULTS = ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] as const;
+export type EmergencyResult = (typeof EMERGENCY_RESULTS)[number];
 
 /**
  * The outcome a call is recorded with. A call the caller never heard the assistant on is

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 export * from './changes';
 export * from './client';
+export * from './timing';
 export * from './crypto';
 export * from './migrate';
 export * from './repositories/calls';

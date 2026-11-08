@@ -1,6 +1,8 @@
 import { ClinicConfig, DEMO_CLINIC, EMERGENCY_CHOICES, EMERGENCY_LIMITS, EMERGENCY_WORDING, EmergencyDraft, emergencyDraftOf, emergencyFormView, emergencyIntro, emergencyNumberFor } from '@attendra/core';
 import { sql } from 'drizzle-orm';
+import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { KEEP_ALIVE_MS } from '../src/app';
 import { loadEnv } from '../src/config';
 import { OTHER, PASSWORD, startApi } from './helpers';
 
@@ -46,8 +48,37 @@ describe('sign-in and two-factor', () => {
   it('answers the health check without a session, and nothing else', async () => {
     const health = await api.request('GET', '/api/v1/health');
     expect(health.json()).toEqual({ ok: true, database: 'ok', demoMode: false, passwordReset: false });
-    // the server's own time, for the browser's network panel
-    expect(health.headers['server-timing']).toMatch(/^app;dur=\d+(\.\d)?$/);
+    // the server's own time, for the browser's network panel, and the database's share of it (its one query)
+    expect(health.headers['server-timing']).toMatch(/^app;dur=\d+(\.\d)?, db;dur=\d+(\.\d)?;desc="1 query"$/);
+  });
+
+  it('times the database per request, the queries of a transaction included, and never shares one request\'s time with another', async () => {
+    const [a, b] = await Promise.all([api.request('GET', `${C}/settings`, { cookie: admin }), api.request('GET', '/api/v1/health')]);
+    const queries = (h: unknown) => Number(/db;dur=[\d.]+;desc="(\d+) quer/.exec(String(h))?.[1] ?? 0);
+    expect(queries(a.headers['server-timing'])).toBeGreaterThan(1); // the session, the role and the settings
+    expect(queries(b.headers['server-timing'])).toBe(1);
+    const [app, db] = [/app;dur=([\d.]+)/, /db;dur=([\d.]+)/].map((r) => Number(r.exec(String(a.headers['server-timing']))![1]));
+    expect(db).toBeLessThanOrEqual(app! + 1);
+  });
+
+  it('keeps connections open between requests', () => {
+    expect(api.app.getHttpServer().keepAliveTimeout).toBe(KEEP_ALIVE_MS);
+  });
+
+  it('compresses a large answer the browser accepts compressed, and leaves small ones and other clients alone', async () => {
+    const plain = await api.request('GET', `${C}/settings`, { cookie: admin });
+    expect(plain.headers['content-encoding']).toBeUndefined();
+    expect(plain.headers.vary).toMatch(/Accept-Encoding/);
+    for (const [accept, encoding, open] of [['gzip, deflate, br', 'br', brotliDecompressSync], ['gzip', 'gzip', gunzipSync]] as const) {
+      const packed = await api.request('GET', `${C}/settings`, { cookie: admin, headers: { 'accept-encoding': accept } });
+      expect(packed.statusCode).toBe(200);
+      expect(packed.headers['content-encoding']).toBe(encoding);
+      expect(packed.rawPayload.length).toBeLessThan(plain.rawPayload.length);
+      expect(JSON.parse(open(packed.rawPayload).toString())).toEqual(plain.json());
+    }
+    // the health check is a few bytes: not worth it
+    expect((await api.request('GET', '/api/v1/health', { headers: { 'accept-encoding': 'br' } })).headers['content-encoding']).toBeUndefined();
+    expect((await api.request('GET', `${C}/settings`, { cookie: admin, headers: { 'accept-encoding': 'br;q=0, gzip;q=0' } })).headers['content-encoding']).toBeUndefined();
   });
 
   it('answers 401 with no session at all', async () => {

@@ -16,9 +16,8 @@ import { type EmergencyRoute, normalise } from '@attendra/core';
  */
 export type EmergencyStage = 'flagged' | 'asked' | 'escalated' | 'cleared';
 
-/** How the call's emergency ended, for the Calls page: put through, sent to a hospital (and texted), an urgent request, or cleared by the caller. */
-export const EMERGENCY_RESULTS = ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] as const;
-export type EmergencyResult = (typeof EMERGENCY_RESULTS)[number];
+/** How the call's emergency ended, for the Calls page: put through, sent to a hospital (and texted), an urgent request, or cleared by the caller. One list, in core. */
+export { EMERGENCY_RESULTS, type EmergencyResult } from '@attendra/core';
 
 export interface EmergencyCase {
   stage: EmergencyStage;

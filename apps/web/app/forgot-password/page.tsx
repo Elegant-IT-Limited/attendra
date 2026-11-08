@@ -48,7 +48,7 @@ export default function ForgotPassword() {
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="email">Your email</Label>
-            <Input id="email" type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" autoComplete="username" required maxLength={254} autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           {state === 'limited' && <Alert tone="danger">Too many requests for now. Wait a while and try again.</Alert>}
           {state === 'failed' && <Alert tone="danger">Attendra could not be reached. Check your connection and try again.</Alert>}

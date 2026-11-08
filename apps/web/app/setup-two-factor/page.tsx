@@ -101,9 +101,10 @@ export default function SetupTwoFactor() {
       <form onSubmit={verify} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="code">Code from the app</Label>
-          <Input id="code" autoFocus required inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <Input id="code" autoFocus required maxLength={64} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)}
+            aria-invalid={!!error || undefined} aria-describedby={error ? 'code-error' : undefined} />
         </div>
-        {error && <Alert tone="danger">{error}</Alert>}
+        {error && <div id="code-error"><Alert tone="danger">{error}</Alert></div>}
         <Button type="submit" className="w-full">Turn on and continue</Button>
       </form>
     </AuthCard>

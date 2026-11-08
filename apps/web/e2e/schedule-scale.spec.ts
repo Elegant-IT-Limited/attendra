@@ -3,6 +3,7 @@ import { type Browser, expect, type Page, test } from '@playwright/test';
 import { E2E_PROVISIONING_TOKEN } from './auth-state';
 import { newContext, signInPatiently } from './session';
 import { testDate } from './clock';
+import { RENDER_MARKS } from '../lib/render-mark';
 
 /*
  * The Schedule at a clinic of two hundred veterinarians (a group practice that imported its whole
@@ -39,6 +40,8 @@ function zoned(date: string, time: string) {
   const asIf = Date.parse(`${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:00Z`);
   return new Date(wall - (asIf - wall)).toISOString();
 }
+/** The Day view and the Agenda draw their grid within this, measured around the render alone. Never raised (note 29). */
+const RENDER_BUDGET_MS = 1000;
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
 
 /**
@@ -106,7 +109,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await signInPatiently(page, () => page.getByRole('button', { name: 'Sign in', exact: true }).click());
     await expect(page).toHaveURL(new RegExp(`/c/${clinicId}$`), { timeout: 30_000 });
     const api = page.request; // the owner's cookies, through the dashboard's own /api
-    const origin = { origin: 'http://localhost:3000' }; // a write from anywhere else is turned away
+    const origin = { origin: new URL(page.url()).origin }; // a write from anywhere else is turned away (E2E_WEB_PORT too)
 
     // the roster, as a clinic imports it: six specialties in turn, Monday to Friday 8 to 5, the last vet away all week
     const hours = Array(5).fill('08:00-17:00');
@@ -370,37 +373,51 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     expect(await page.evaluate((id) => localStorage.getItem(`attendra.schedule.vets.${id}`), clinicId)).toBeNull();
   });
 
-  test('the Day view and the Agenda each show their first row within a second of the navigation', async ({ browser }) => {
+  test('the Day view and the Agenda each draw their grid within a second, measured around the render alone', async ({ browser }) => {
     test.setTimeout(120_000);
-    // the page's own performance.now() times it: the real clock, since E2E_CLOCK's fake one counts from its install
+    // the page's own performance marks time it: the real clock, since E2E_CLOCK's fake one counts from its install
     const page = await openPage(browser, { realClock: true });
-    // once, so the dev server has compiled the page and the browser has its scripts: what a second visit costs
+    // warm-up: once, so the dev server has compiled the page and the browser has its scripts, and a render after it is
+    // what a second visit costs; this one is not counted
     await page.goto(`/c/${clinicId}/schedule?view=day&date=${DAY}`);
     await expect(page.getByTestId('lane').first()).toBeVisible({ timeout: 30_000 });
+    /**
+     * The slowest render of a grid since the page loaded (or since `clear`), from the browser's own User Timing
+     * measures (lib/render-mark.ts): the start of the grid's render to the moment it is on the page. Not the network,
+     * the dev server or the page load, which a busy machine slows down whatever the grid costs (note 29).
+     */
+    const rendered = (name: string) => page.evaluate((n) => Math.max(0, ...performance.getEntriesByName(n, 'measure').map((m) => m.duration)), name);
     const timings: Record<string, number> = {};
-    for (const [name, url, row] of [['Day', `/c/${clinicId}/schedule?view=day&date=${DAY}`, 'lane'], ['Agenda', `/c/${clinicId}/schedule?view=agenda&date=${DAY}`, 'agenda-row']] as const) {
-      // the median of three loads, so one slow tick of the dev server does not decide it
+    const loaded: Record<string, number> = {};
+    for (const [name, url, row, mark] of [['Day', `/c/${clinicId}/schedule?view=day&date=${DAY}`, 'lane', RENDER_MARKS.grid], ['Agenda', `/c/${clinicId}/schedule?view=agenda&date=${DAY}`, 'agenda-row', RENDER_MARKS.agenda]] as const) {
+      // the median of three, so one slow tick does not decide it
+      const renders: number[] = [];
       const loads: number[] = [];
       for (let i = 0; i < 3; i++) {
         await page.goto(url);
         await expect(page.getByTestId(row).first()).toBeVisible({ timeout: 30_000 });
-        const at = await firstGridAt(page);
-        expect(at, `${name}: the first row was seen`).not.toBeNull();
-        loads.push(at!);
+        const ms = await rendered(mark);
+        expect(ms, `${name}: the grid's render was measured`).toBeGreaterThan(0);
+        renders.push(ms);
+        loads.push((await firstGridAt(page)) ?? NaN);
       }
-      timings[name] = loads.sort((a, b) => a - b)[1]!;
+      timings[name] = renders.sort((a, b) => a - b)[1]!;
+      loaded[name] = loads.sort((a, b) => a - b)[1]!;
     }
-    // and a switch between the two, which is the page re-rendering with the data it already has
+    // and a switch between the two: the Day grid drawn again from the data the page already has
     await page.goto(`/c/${clinicId}/schedule?view=agenda&date=${DAY}`);
     await expect(page.getByTestId('agenda-row').first()).toBeVisible();
-    const t0 = await page.evaluate(() => performance.now());
+    await page.evaluate(() => performance.clearMeasures());
     await page.getByRole('tab', { name: 'Day' }).click();
     await expect(page.getByTestId('lane').first()).toBeVisible();
-    timings['Agenda to Day'] = (await page.evaluate(() => performance.now())) - t0;
+    timings['Agenda to Day'] = await rendered(RENDER_MARKS.grid);
+    // for the report: the render alone (asserted), and the whole page load to the first row (not asserted: that one is
+    // the dev server and the machine's load as much as the page)
     test.info().annotations.push({ type: 'render', description: Object.entries(timings).map(([k, v]) => `${k}: ${Math.round(v)} ms`).join(', ') });
-    // under a second on a developer's machine; the shared CI runner serves next dev about half as fast (1,264 ms for the
-    // Day view on 2026-11-01 against 864 ms here), so it gets twice the room, still well under what a person waits for
-    const budget = process.env.CI ? 2000 : 1000;
-    for (const [name, ms] of Object.entries(timings)) expect(ms, `${name} render: ${Math.round(ms)} ms (budget ${budget})`).toBeLessThan(budget);
+    test.info().annotations.push({ type: 'page load to first row', description: Object.entries(loaded).map(([k, v]) => `${k}: ${Math.round(v)} ms`).join(', ') });
+    process.stdout.write(`render alone (median of 3): ${test.info().annotations.at(-2)!.description}; page load to first row: ${test.info().annotations.at(-1)!.description}\n`);
+    // One budget, on a developer's machine and on CI alike. The CI runner used to get twice the room because the old
+    // check timed the whole navigation, dev server included; the render alone does not depend on how fast next dev serves
+    for (const [name, ms] of Object.entries(timings)) expect(ms, `${name} render: ${Math.round(ms)} ms (budget ${RENDER_BUDGET_MS})`).toBeLessThan(RENDER_BUDGET_MS);
   });
 });

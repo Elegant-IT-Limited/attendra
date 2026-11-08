@@ -154,7 +154,7 @@ function ScheduleScreen() {
       <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.{named ? '' : ' Your role sees when visits are and with whom, without names.'}</>}
         actions={writable && <Button onClick={() => setBooking(true)}><Plus /> New booking</Button>} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
-      <div className="mb-4 flex flex-wrap items-end gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3" data-toolbar="schedule">
         <div className="flex items-center gap-1">
           <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
           <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>

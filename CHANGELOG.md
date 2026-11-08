@@ -4,6 +4,17 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 4b: dashboard, fields, requests and calls)
+
+- **Phone fields take numbers only, everywhere** (Transfers, the clinic's own line, a vet's other numbers, the emergency number, "Your number" on a live call): letters are dropped as typed and on paste with a note under the field, and the server refuses them (`PHONE_NUMBERS_ONLY`) before one normaliser turns the rest into E.164.
+- **Every form field follows one standard**, audited field by field in `docs/field-standard.md` (269 fields; 70 fixed): limits that match the server, labels tied to their inputs (no duplicate ids on Settings), dates that can't be in the past where the past makes no sense, names that must hold a letter or a digit, trimmed settings, real calendar dates.
+- **The dashboard is faster to answer and to measure**: `Server-Timing` now includes database time and query count, a per-route p95 budget (200 ms) is logged, API JSON over 1 KB is compressed (brotli, else gzip), keep-alive is explicit, and Patients, Doctors, Team, Quality and Test call load their data on hover. The Day-view render check measures the grid alone (warm-up, median of 3) and CI keeps the same 1 s budget.
+- **A test-call recording is never lost**: moving away inside the app (Back, another page) saves it first unless you chose to lose it.
+- **Requests**: a closed request can be reopened (audited, back in the queue unclaimed), its History shows who did what by name and role, "Added by" shows the role ("Added by Jordan Lee (Front desk)" or "the assistant"), and an urgent request from an emergency says so with a link to the call.
+- **Calls**: the emergency result shows on the list and the call page, with a filter for it; one table of outcome and close-reason labels (a test checks every code has one); each call records its longest wait for the caller and how often a question was repeated ("How it went for the caller"). Migration 0055.
+- **Warmth on calls, in English and Spanish**: short backchannels in the caller's language, humour only when the caller jokes first (never about illness, loss or money), the caller's pace matched; three voices prepared to try by ear (`cedar`, `coral`, `sage`), switched per clinic in Settings or with `PUT /provisioning/clinics/:clinicId/voice`.
+- **Toolbars**: hints and counts sit on the controls' vertical centre (Schedule, Agenda, cancelled history), checked at desktop, tablet and phone widths.
+
 ### Changed (batch 4a: scheduling and the desk)
 
 - **Visit statuses for the desk**: a visit can be marked arrived, completed or no-show from its panel (keys A, D, N, B back to booked), with `status_changed_at` / `status_changed_by`, audited, and a new webhook event `appointment.status_changed`. Arrived and completed visits still hold their time; Quality counts no-shows. Migration 0054.

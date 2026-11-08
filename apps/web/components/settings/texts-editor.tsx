@@ -158,6 +158,9 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                       const sent = renderText(t, example, lang, w);
                       const check = TextWording.safeParse(w);
                       const segments = smsSegments(sent);
+                      // the problem with these words, read with both boxes by a screen reader
+                      const errorId = `wording-${t}-${lang}-error`;
+                      const tied = check.success ? {} : { 'aria-invalid': true, 'aria-describedby': errorId };
                       return (
                         <div key={lang} className="space-y-2">
                           {languages.length > 1 && <p className="text-xs font-medium uppercase tracking-wide text-text-muted">{lang === 'es' ? 'Spanish' : 'English'}</p>}
@@ -167,14 +170,14 @@ export function TextsEditor({ config, texting, onChange, disabled }: { config: C
                           <div className="grid gap-3 sm:grid-cols-2">
                             <label className="space-y-1 text-sm">
                               <span className="font-medium">{names.yourLead}, after your name <span className="font-normal text-text-muted">(up to 40 characters)</span></span>
-                              <Input maxLength={40} disabled={disabled} value={w.label ?? ''} placeholder={lang === 'es' ? 'p. ej. Encuéntrenos aquí' : 'e.g. Find our clinic here'} onChange={(e) => set(t, lang, { label: e.target.value })} />
+                              <Input maxLength={40} autoComplete="off" {...tied} disabled={disabled} value={w.label ?? ''} placeholder={lang === 'es' ? 'p. ej. Encuéntrenos aquí' : 'e.g. Find our clinic here'} onChange={(e) => set(t, lang, { label: e.target.value })} />
                             </label>
                             <label className="space-y-1 text-sm">
                               <span className="font-medium">{names.yourLine}, before &quot;Reply STOP&quot; <span className="font-normal text-text-muted">(up to 100 characters)</span></span>
-                              <Input maxLength={100} disabled={disabled} value={w.extra ?? ''} placeholder={lang === 'es' ? 'p. ej. Llegue 10 minutos antes' : 'e.g. Please arrive 10 minutes early'} onChange={(e) => set(t, lang, { extra: e.target.value })} />
+                              <Input maxLength={100} autoComplete="off" {...tied} disabled={disabled} value={w.extra ?? ''} placeholder={lang === 'es' ? 'p. ej. Llegue 10 minutos antes' : 'e.g. Please arrive 10 minutes early'} onChange={(e) => set(t, lang, { extra: e.target.value })} />
                             </label>
                           </div>
-                          {!check.success && <p className="text-xs text-danger" role="alert">{check.error.issues[0]?.message}</p>}
+                          {!check.success && <p id={errorId} className="text-xs text-danger" role="alert">{check.error.issues[0]?.message}</p>}
                           <p className={`text-xs ${segments > 1 ? 'text-warn' : 'text-text-muted'}`}>About {sent.length} characters: {segments === 1 ? '1 text' : `${segments} texts`}. Names change the length a little.</p>
                           <details className="group text-sm">
                             <summary className="focus-ring cursor-pointer rounded text-xs font-medium text-primary hover:underline">See it as a client gets it, with made-up names</summary>

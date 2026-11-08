@@ -133,7 +133,7 @@ describe('follow-up requests', () => {
     // an emergency is a check on the caller, not a callback: one urgent request, even when they said no to a callback (2026-10-24)
     const checks = await tasksOf(emergency);
     expect(checks).toHaveLength(1);
-    expect(checks[0]).toMatchObject({ type: 'follow_up', urgent: true });
+    expect(checks[0]).toMatchObject({ type: 'follow_up', urgent: true, origin: 'emergency' });
     await h().summariseCall({ clinicId: DEMO_CLINIC.id, callId: emergency });
     expect(await tasksOf(emergency)).toHaveLength(1);
   });

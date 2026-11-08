@@ -5,6 +5,7 @@ import { Dialog as D, DropdownMenu as M } from 'radix-ui';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { groupClinics, type SwitcherClinic, switcherTitle } from '@/lib/clinics';
 import { cn } from '@/lib/utils';
+import { SEARCH_MAX } from '@attendra/core';
 
 export type { SwitcherClinic } from '@/lib/clinics';
 /** An owner's link to the hosting layer's pages (from the plan): a full page load. */
@@ -71,7 +72,7 @@ export function ClinicSwitcher({ current, clinics, grow, onPick, sheet }: {
   const searchBox = clinics.length >= SEARCH_FROM && (
     <div className="relative px-1 pb-1">
       <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-      <input ref={search} type="search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Find a clinic" placeholder="Find a clinic"
+      <input ref={search} type="search" maxLength={SEARCH_MAX} autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Find a clinic" placeholder="Find a clinic"
         // typing stays in the box (the menu would jump to an item); the down arrow goes to the list
         onKeyDown={(e) => {
           if (e.key === 'Escape') return;

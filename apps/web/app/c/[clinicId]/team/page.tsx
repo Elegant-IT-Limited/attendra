@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useProblem, useToast } from '@/components/ui/toast';
-import type { AddedMember, AddResult, Health, Me, Member, MemberList, TeamInvitationList } from '@attendra/api/contracts';
+import type { AddedMember, AddResult, Health, Me, Member } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, MailCheck, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -18,6 +18,7 @@ import { Label, Select, Textarea } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
 import { clinicTime, personName } from '@/lib/format';
+import { pageData } from '@/lib/page-data';
 
 // the roles, their names and what each can do come from /me: one source with the permissions the API checks
 type RoleInfo = Me['roles'][number];
@@ -38,9 +39,9 @@ export default function Team() {
     if (n?.tone === 'info') toast({ tone: 'success', message: n.text });
     else if (n) problem({ title: 'Not changed', message: n.text });
   };
-  const members = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
+  const members = useQuery({ ...pageData.members(clinicId), enabled: can('members:manage') });
   // invitations not answered yet: someone invited accepts or declines from their own dashboard
-  const invitations = useQuery({ queryKey: ['members', clinicId, 'invitations'], queryFn: () => api<TeamInvitationList>(`/clinics/${clinicId}/invitations`), enabled: can('members:manage') });
+  const invitations = useQuery({ ...pageData.invitations(clinicId), enabled: can('members:manage') });
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
@@ -276,9 +277,10 @@ function AddPeople({ clinicId, clinicName, locations, canAllLocations, open, onO
           <fieldset disabled={add.isPending} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="people-emails">Emails</Label>
-              <Textarea id="people-emails" rows={4} required value={text} onChange={(e) => setText(e.target.value)} placeholder={'riley@example.com\nSam Lee <sam@example.com>'} />
-              <p className="text-xs text-text-muted">One per line, or separated by commas. To give someone new a name, write it before the email: Sam Lee &lt;sam@example.com&gt;.</p>
-              {invalid.length > 0 && <p className="text-sm text-danger">Not an email address: {invalid.join(', ')}</p>}
+              <Textarea id="people-emails" rows={4} required maxLength={5000} autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
+                aria-describedby={['people-emails-hint', invalid.length > 0 ? 'people-emails-error' : null].filter(Boolean).join(' ')} aria-invalid={invalid.length > 0 || undefined} placeholder={'riley@example.com\nSam Lee <sam@example.com>'} />
+              <p id="people-emails-hint" className="text-xs text-text-muted">One per line, or separated by commas. To give someone new a name, write it before the email: Sam Lee &lt;sam@example.com&gt;.</p>
+              {invalid.length > 0 && <p id="people-emails-error" className="text-sm text-danger">Not an email address: {invalid.join(', ')}</p>}
             </div>
             {rows.map((r) => {
               const s = settings(r.email);

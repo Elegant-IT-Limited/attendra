@@ -29,6 +29,7 @@ import { markSignedOut } from '@/lib/next';
 import { ACTIVE_AT_KEY, type EndReason, IDLE_MINUTES_KEY, localEnd, type SessionEnd, sessionEnd, signedOutUrl, stageAt, warningText } from '@/lib/session-end';
 import { useEmergencyAlerts } from '@/lib/live';
 import { NAV, type NavItem, PHONE_BAR } from '@/lib/nav';
+import { prefetchPage } from '@/lib/page-data';
 import { useTerms } from '@/lib/terms';
 import { SHORTCUTS, useShortcuts } from '@/lib/shortcuts';
 import { type ThemeChoice, useTheme } from '@/lib/theme';
@@ -124,6 +125,8 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   // Test call is in the menu wherever its page has a call to offer: a browser call, or a simulated one (a demo with no key)
   const pages = nav.flatMap((g) => g.items).filter((n) => can(n.permission) && (n.href !== 'test-call' || me?.testCalls || me?.simulatedCalls));
   const hrefOf = (n: NavItem) => (n.href ? `/c/${clinicId}/${n.href}` : `/c/${clinicId}`);
+  // a page's first answers, asked for as soon as its link is pointed at, focused or touched (lib/page-data.ts)
+  const warm = (n: NavItem) => prefetchPage(queries, clinicId, n.href);
   useShortcuts({
     palette: () => setPalette(true),
     go: (k) => { const p = pages.find((x) => x.shortcut === k); if (p) router.push(hrefOf(p)); },
@@ -182,7 +185,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
             <div key={g.group ?? 'home'} role="group" aria-label={g.group ?? 'Home'} className="space-y-0.5">
               {g.group && <p className="px-3 pb-1 text-xs font-medium text-text-muted max-xl:sr-only">{g.group}</p>}
               {g.items.map((n) => (
-                <NavLink key={n.href || 'today'} item={n} href={hrefOf(n)} active={active(n)} count={count(n)} />
+                <NavLink key={n.href || 'today'} item={n} href={hrefOf(n)} active={active(n)} count={count(n)} onWarm={() => warm(n)} />
               ))}
             </div>
           ))}
@@ -232,7 +235,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       {/* phone: the bottom bar */}
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
         {phoneBar.map((n) => (
-          <Link key={n.href || 'today'} href={hrefOf(n)} aria-current={active(n) ? 'page' : undefined}
+          <Link key={n.href || 'today'} href={hrefOf(n)} aria-current={active(n) ? 'page' : undefined} onTouchStart={() => warm(n)} onFocus={() => warm(n)}
             className={cn('focus-ring relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-xs', active(n) ? 'font-medium text-primary' : 'text-text-muted')}>
             <n.icon className="size-5" aria-hidden />{n.label}
             {!!count(n) && <span className="absolute top-1.5 right-[calc(50%-18px)] rounded-full bg-primary px-1 text-xs leading-4 text-on-primary">{count(n)}</span>}
@@ -245,7 +248,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
       <Panel side="right" open={more} onOpenChange={setMore} title="More">
         <div className="space-y-1">
           {pages.filter((p) => !PHONE_BAR.includes(p.href)).map((n) => (
-            <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={hrefOf(n)} active={active(n)} count={count(n)} expanded /></div>
+            <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={hrefOf(n)} active={active(n)} count={count(n)} expanded onWarm={() => warm(n)} /></div>
           ))}
           {clinicLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={false} expanded external newTab /></div>)}
           {accountLinks.map((n) => <div key={n.href} onClick={() => setMore(false)}><NavLink item={n} href={n.href} active={false} expanded external /></div>)}
@@ -268,7 +271,7 @@ export function Shell({ clinicId, children }: { clinicId: string; children: Reac
   );
 }
 
-function NavLink({ item: n, href, active, count, expanded, external, newTab }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean; external?: boolean; newTab?: boolean }) {
+function NavLink({ item: n, href, active, count, expanded, external, newTab, onWarm }: { item: NavItem; href: string; active: boolean; count?: number; expanded?: boolean; external?: boolean; newTab?: boolean; onWarm?: () => void }) {
   const className = cn('focus-ring relative flex items-center gap-2.5 rounded-md px-3 py-2 text-base whitespace-nowrap transition-colors max-md:min-h-11',
     !expanded && 'max-xl:justify-center max-xl:px-0',
     active ? 'bg-primary-soft font-medium text-text' : 'text-text-muted hover:bg-surface-sunken hover:text-text');
@@ -283,7 +286,8 @@ function NavLink({ item: n, href, active, count, expanded, external, newTab }: {
   const link = external
     ? <a href={href} className={className} {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
     // every page in the menu is fetched ahead (the sidebar is always on screen), so a click needs no round trip first
-    : <Link href={href} prefetch aria-current={active ? 'page' : undefined} className={className}>{inner}</Link>;
+    // and its data on the first sign of a click to come: a pointer over it, keyboard focus, a finger down
+    : <Link href={href} prefetch aria-current={active ? 'page' : undefined} className={className} onMouseEnter={onWarm} onFocus={onWarm} onTouchStart={onWarm}>{inner}</Link>;
   return expanded ? link : <Tooltip content={n.label}>{link}</Tooltip>;
 }
 

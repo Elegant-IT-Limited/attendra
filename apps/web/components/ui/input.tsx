@@ -5,9 +5,14 @@ import { cn } from '@/lib/utils';
 
 const field = 'focus-ring w-full rounded-md border border-border-strong bg-surface px-3 text-base text-text shadow-xs transition-colors placeholder:text-text-muted/60 hover:border-text-muted/60 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger max-md:min-h-11 max-md:text-[16px]';
 
-/** A text field. It takes a ref, like the input it renders (a file field needs one to be cleared). */
-export function Input({ className, ...props }: ComponentProps<'input'>) {
-  return <input className={cn(field, 'h-9', className)} {...props} />;
+/**
+ * A text field. It takes a ref, like the input it renders (a file field needs one to be cleared). The browser's own
+ * suggestions are off unless the field says what it is (autoComplete="name", "email", "tel", a password): nearly every
+ * field here holds a client's, a vet's or the clinic's details, never the staff member's own, which the browser would
+ * offer (note 15).
+ */
+export function Input({ className, autoComplete = 'off', ...props }: ComponentProps<'input'>) {
+  return <input className={cn(field, 'h-9', className)} autoComplete={autoComplete} {...props} />;
 }
 
 /** A password field with an eye button that shows or hides what was typed. */
@@ -26,8 +31,9 @@ export function PasswordInput({ className, ...props }: Omit<ComponentProps<'inpu
   );
 }
 
-export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(field, 'min-h-20 py-2 leading-relaxed', className)} {...props} />;
+/** A text area; the browser's suggestions are off, as for Input. */
+export function Textarea({ className, autoComplete = 'off', ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={cn(field, 'min-h-20 py-2 leading-relaxed', className)} autoComplete={autoComplete} {...props} />;
 }
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {

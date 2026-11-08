@@ -98,6 +98,8 @@ describe('after the pet script', () => {
     expect(request.results[0]!.data).toMatchObject({ urgent: true, spoken: "I've sent that to the team as urgent, and someone will call you back as soon as they can." });
     const [task] = (await w.t.owner.select().from(schema.tasks)).filter((t) => t.id === request.results[0]!.data.task_id);
     expect(task!.urgent).toBe(true);
+    // and it says it came from an emergency call, so Requests labels it and links the call (REQ-2)
+    expect(task!.origin).toBe('emergency');
   });
 
   it('another pet\'s visit is answered as usual, while the pet in danger\'s stays refused', async () => {

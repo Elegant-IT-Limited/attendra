@@ -10,6 +10,7 @@ import { PhoneInput } from '@/components/ui/phone-input';
 import { api } from '@/lib/api';
 import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { cn } from '@/lib/utils';
+import { SEARCH_MAX } from '@attendra/core';
 
 type Mode = CallAs['kind'];
 
@@ -77,7 +78,7 @@ export function CallAsPicker({ clinicId, canReadRecords, onChange, live, calledA
           <Label htmlFor={`${id}-find`} className="sr-only">Find a number in your records</Label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-            <Input id={`${id}-find`} type="search" autoComplete="off" spellCheck={false} className="pl-9" value={text}
+            <Input id={`${id}-find`} type="search" maxLength={SEARCH_MAX} autoComplete="off" spellCheck={false} className="pl-9" value={text}
               onChange={(e) => setText(e.target.value)} placeholder="Owner name or last digits" />
           </div>
           {numbers.isError ? <p className="text-sm text-danger">The records could not be read. Try again in a moment.</p>

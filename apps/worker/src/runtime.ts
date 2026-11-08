@@ -115,10 +115,11 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
         if (task.created) await emit(clinicId, { type: 'request.created', key: task.id, data: { requestId: task.id, number: task.number, type: 'follow_up', patientId: call.patientId, callId } });
       }
       // an emergency is a check on the caller, not a callback: always in the team's queue, urgent, even when they said no to a callback
-      // one urgent item per call: an urgent request the assistant already took on the call is that check
+      // one urgent item per call: an urgent request the assistant already took on the call is that check. Marked as from
+      // an emergency call (REQ-2), so Requests labels it and links the call
       if (saved === 'saved' && call.emergency && !call.tasks.some((t) => t.urgent)) {
         const task = await tasks.create(clinicId, {
-          type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `emergency:${callId}`, urgent: true,
+          type: 'follow_up', callId, patientId: call.patientId, idempotencyKey: `emergency:${callId}`, urgent: true, origin: 'emergency',
           details: {
             reason: 'Emergency language on the call. Check on the caller as your protocol says.',
             ...(summary.followUp ? { suggested: summary.followUp } : {}),

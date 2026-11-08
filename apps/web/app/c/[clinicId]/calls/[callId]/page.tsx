@@ -4,7 +4,7 @@ import type { CallDetail } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Bot, CalendarCheck, CalendarX, Check, Lock, User, UserCheck, X } from 'lucide-react';
-import { localDateOf, providerName } from '@attendra/core';
+import { localDateOf, LONG_WAIT_MS, providerName } from '@attendra/core';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Outcome } from '@/components/calls/outcome';
@@ -15,14 +15,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { testCallBadge } from '@/lib/call-as';
-import { requestNumber, clinicTime, clock, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS } from '@/lib/format';
+import { requestNumber, clinicTime, clock, closeReasonLabel, duration, EMERGENCY_RESULTS, phone, REFUSALS, shortWhen, taskType, telHref, TOOLS, waitWords } from '@/lib/format';
 import { useTerms } from '@/lib/terms';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
-
-const CLOSE_REASONS: Record<string, string> = {
-  caller_hangup: 'Caller hung up', transferred: 'Transferred', agent_hangup: 'Assistant ended the call', ended_by_staff: 'Ended by staff', connection_lost: 'Connection dropped',
-};
 
 /** How often the "still writing the summary" line checks its clock. The summary itself arrives on the change stream. */
 const CLOCK_MS = 5_000;
@@ -90,7 +86,7 @@ export default function CallPage() {
           {allCancelled && <Badge tone="warn">Booking since cancelled</Badge>}
           {c.channel === 'web' && <Badge tone="accent">{testCallBadge(c.calledAsLast4)}</Badge>}
           <span>{duration(c.voiceSeconds)}</span>
-          {c.closeReason && <span>· {CLOSE_REASONS[c.closeReason] ?? c.closeReason}</span>}
+          {c.closeReason && <span data-testid="close-reason">· {closeReasonLabel(c.closeReason)}</span>}
         </div>
       </div>
       {c.appointments.length > 0 && (
@@ -147,6 +143,25 @@ export default function CallPage() {
         </Card>
         <div className="space-y-6">
           <SummaryCard clinicId={clinicId} call={c} canReview={can('calls:read')} slow={slowSummary} />
+          {/* how the call went for the caller (CALL-3): measured at the end of the call, from its own timeline */}
+          {(c.maxGapMs !== null || c.repeatedQuestions !== null) && (
+            <Card>
+              <CardHeader><CardTitle>How it went for the caller</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="flex items-center justify-between gap-3" data-testid="longest-wait">
+                  <span className="text-text-muted">Longest wait after they spoke</span>
+                  {c.maxGapMs === null ? <span className="text-text-muted">No reply to time</span>
+                    : <span className="inline-flex items-center gap-2"><span className="font-medium tabular-nums">{waitWords(c.maxGapMs)}</span>{c.maxGapMs >= LONG_WAIT_MS && <Badge tone="warn">Long</Badge>}</span>}
+                </p>
+                <p className="flex items-center justify-between gap-3" data-testid="repeated-questions">
+                  <span className="text-text-muted">Questions asked again</span>
+                  {c.repeatedQuestions === null ? <span className="text-text-muted">Not measured</span>
+                    : <span className="inline-flex items-center gap-2"><span className="font-medium tabular-nums">{c.repeatedQuestions}</span>{c.repeatedQuestions > 0 && <Badge tone="warn">Check the transcript</Badge>}</span>}
+                </p>
+                <p className="text-xs text-text-muted">A question counts as asked again when the caller had already answered it and did not ask to hear it again.</p>
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader><CardTitle>Who&apos;s calling</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">

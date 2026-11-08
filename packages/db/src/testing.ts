@@ -9,6 +9,7 @@ import { Client, Pool } from 'pg';
 import type { Database } from './client';
 import { migrate } from './migrate';
 import * as schema from './schema';
+import { timePglite, timePool } from './timing';
 
 /**
  * A real PostgreSQL running in-process (PGlite), migrated with the same files a
@@ -25,7 +26,8 @@ export async function openTestDatabase(opts: { as?: 'owner' | 'service' } = {}):
   if (url) return openServerTestDatabase(url, service);
   const pglite = new PGlite({ extensions: { btree_gist, vector } });
   await migrate(pglite);
-  const db = drizzle(pglite, { schema }) as unknown as Database;
+  // each request's database time, as production's pool gives it (timing.ts)
+  const db = drizzle(timePglite(pglite), { schema }) as unknown as Database;
   if (!service) return { db, owner: db, client: pglite, close: () => pglite.close() };
   // ATTENDRA_TEST_AS=service: the session runs as the services' role (0051), with no way past row-level
   // security; `client` and `owner` step back to the owner one transaction at a time, as a second connection would
@@ -110,7 +112,7 @@ async function openMigrated(url: string, name: string, service: boolean): Promis
     served = new Pool({ connectionString: at.toString(), max: 5 });
   }
   return {
-    db: drizzlePg(served, { schema }) as unknown as Database,
+    db: drizzlePg(timePool(served), { schema }) as unknown as Database,
     owner: drizzlePg(pool, { schema }) as unknown as Database,
     client: client as unknown as PGlite,
     close: async () => {

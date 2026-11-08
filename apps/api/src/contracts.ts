@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, DESK_STATUSES, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VISIT_STATUSES, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, CALL_OUTCOMES, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -99,7 +99,7 @@ export const CallSummary = z.object({
   outcome: z.string().nullable(),
   emergency: z.boolean(),
   /** How an animal's emergency on the call ended (batch 1b): put through, a hospital said or texted, an urgent request, or cleared by the caller. */
-  emergencyResult: z.enum(['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared']).nullable().optional(),
+  emergencyResult: z.enum(EMERGENCY_RESULTS).nullable().optional(),
   closeReason: z.string().nullable(),
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
@@ -124,9 +124,11 @@ const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
 const CallFilters = z.object({
   from: day().optional(),
   to: day().optional(),
-  outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned', 'no_audio']).optional(),
+  outcome: z.enum(CALL_OUTCOMES).optional(),
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
+  /** How an animal's emergency ended (CALL-2): put through, the hospital said or texted, an urgent request, cleared. */
+  emergencyResult: z.enum(EMERGENCY_RESULTS).optional(),
   review: z.literal('needed').optional(),
   refusal: z.string().regex(/^[a-z_]{2,40}$/).optional(),
 });
@@ -135,8 +137,8 @@ export const CallQuery = Page.extend(CallFilters.shape);
 /** A name search is a POST: a name is PHI and stays out of URLs. */
 /** What is typed in the Calls search: a verified caller's name (a pet's or its owner's), a phone number in any form or its last digits, or a request number ("R-1042"). */
 export const CallSearch = z.object({
-  query: z.string().trim().min(1, 'type something to search for').max(100),
-  from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
+  query: z.string().trim().min(1, 'type something to search for').max(SEARCH_MAX),
+  from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel, emergencyResult: CallFilters.shape.emergencyResult,
   emergency: z.boolean().optional(),
   review: z.literal('needed').optional(),
   refusal: CallFilters.shape.refusal,
@@ -174,6 +176,10 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   summary: CallSummaryCard.nullable(),
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
+  /** The longest the caller waited after speaking for the assistant to start its reply, in ms; null when none, or before v55 (CALL-3). */
+  maxGapMs: z.number().int().nullable(),
+  /** Questions the assistant asked again after the caller had answered them; null before v55 (CALL-3). */
+  repeatedQuestions: z.number().int().nullable(),
 });
 
 /** The calls going on now. Codes only; the verified caller's short name only for roles that may read calls. */
@@ -189,7 +195,8 @@ const actionKey = z.string().min(8).max(100);
 export const LiveCoach = z.object({ note: z.string().trim().min(1, 'write a note first').max(300, 'keep it to 300 characters'), key: actionKey });
 export const LiveTakeOver = z.object({ target: z.enum(['front_desk', 'me']), key: actionKey });
 export const LiveEnd = z.object({ key: actionKey });
-export const TransferNumber = z.object({ number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'a full number with the country code, like +13035550123').nullable() });
+/** Typed as the person writes it (numbers only); the API keeps it as E.164 in the clinic's country. Empty or null clears it. */
+export const TransferNumber = z.object({ number: z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).nullable().transform((v) => v || null) });
 
 /** A document in the clinic's knowledge. Clinic information, never patient data. */
 export const KnowledgeDocument = z.object({
@@ -317,7 +324,7 @@ export const TestCallStart = z.object({ sdp: z.string().min(1).max(64 * 1024), c
 /** `calledAsLast4`: the last four digits of the number the call was started as; null without one. */
 export const TestCall = z.object({ callId: z.string(), sdp: z.string(), maxSeconds: z.number(), calledAsLast4: z.string().nullable().optional() });
 /** What "Call as" offers from the records: one row per household, "Jordan · …0123". Never the whole number. */
-export const TestCallNumbersQuery = z.object({ q: z.string().trim().max(100).default('') });
+export const TestCallNumbersQuery = z.object({ q: z.string().trim().max(SEARCH_MAX).default('') });
 export const TestCallNumbers = z.object({ numbers: z.array(z.object({ patientId: z.string(), label: z.string() })) });
 /** A clinic's browser test-call time: its limit (null is none) and what its test calls have used. */
 export const TestCallAllowance = z.object({
@@ -344,7 +351,7 @@ export const TaskQuery = z.object({
 /** The same filters, and words to find, in a POST body: what is typed can be a name or a phone number, and URLs end up in logs. */
 export const TaskSearch = TaskQuery.extend({
   /** Words or digits to find: the request's number (R-1042 or 1042), the pet's or owner's name, a phone number, its details, its notes or its type. Matched as typed, from the first character. */
-  q: z.string().trim().max(100).default(''),
+  q: z.string().trim().max(SEARCH_MAX).default(''),
 });
 /** Texts about one thing: exactly one of a call, a request, a pet or patient, or a visit. */
 export const TextQuery = z.object({ callId: z.uuid().optional(), taskId: z.uuid().optional(), patientId: z.uuid().optional(), appointmentId: z.uuid().optional() })
@@ -432,6 +439,23 @@ export const Task = z.object({
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
+/**
+ * What was done to one request, oldest first (REQ-3): created, claimed, handed over, urgency or due day changed, a note
+ * added, closed, reopened. `by` is who did it: the assistant, a teammate by name and role (null name for someone no
+ * longer on the team), a connected app, or Attendra itself. Codes only, never what a note says.
+ */
+export const TaskHistory = z.object({
+  events: z.array(z.object({
+    action: z.string(), at: z.iso.datetime(),
+    by: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('assistant') }),
+      z.object({ kind: z.literal('staff'), name: z.string().nullable(), role: Role.nullable() }),
+      /** A connected app, with one of the clinic's API keys (Settings, Integrations). */
+      z.object({ kind: z.literal('app') }),
+      z.object({ kind: z.literal('system') }),
+    ]),
+  })),
+});
 export const TaskCount = z.object({ open: z.number() });
 
 const isoDate = day();
@@ -461,7 +485,7 @@ export const CancelledQuery = z.object({
   /** visit: by when the visit was to be; cancelled: by when it was cancelled. */
   sort: z.enum(['visit', 'cancelled']).default('cancelled'),
   order: z.enum(['newest', 'oldest']).default('newest'),
-  q: z.string().trim().max(100).optional(),
+  q: z.string().trim().max(SEARCH_MAX).optional(),
 });
 export const Appointment = z.object({
   id: z.string(),
@@ -562,7 +586,11 @@ export const AppointmentChange = z.object({ appointmentId: z.string(), status: z
 export const SetVisitStatus = z.object({ status: z.enum(DESK_STATUSES) });
 
 // a name: letters of any language, spaces, - ' . (digits allowed for pets), never only spaces or symbols
-const personName = z.string().trim().min(1, 'required').max(80).regex(HAS_NAME, 'type a name, not only spaces or symbols');
+/** What a name made only of spaces or symbols is told (note 15): the same words everywhere. */
+const NOT_A_NAME = 'type a name, not only spaces or symbols';
+/** An optional name: empty is fine, anything typed must have a letter or a digit in it. */
+const hasName = (v: string | null | undefined) => !v || HAS_NAME.test(v);
+const personName = z.string().trim().min(1, 'required').max(80).regex(HAS_NAME, NOT_A_NAME);
 // required: with name and date of birth it is how a patient is told apart from anyone else
 // numbers only (no letters, + only first), then at least ten digits; the one normaliser makes it E.164
 const phoneNumber = z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).refine((v) => v.replace(/\D/g, '').length >= 10, 'a phone number with at least 10 digits');
@@ -573,7 +601,7 @@ export const HouseholdQuery = z.object({ phone: z.string().trim().min(10).max(30
 export const Household = z.object({ owner: z.string().nullable(), pets: z.array(z.string()) });
 export type Household = z.infer<typeof Household>;
 export const PatientSearch = z.object({
-  query: z.string().trim().min(1, 'type something to search for').max(100),
+  query: z.string().trim().min(1, 'type something to search for').max(SEARCH_MAX),
   /** new: only patients the assistant added that nobody has checked yet. */
   status: PatientStatus.optional(),
 });
@@ -607,13 +635,13 @@ export const PatientList = z.object({
 export const PatientInput = z.object({
   firstName: personName,
   // required for a person, checked by the route; a pet's family name is its owner's last name, empty for an owner with one name
-  lastName: z.string().trim().max(80).default(''),
+  lastName: z.string().trim().max(80).refine(hasName, NOT_A_NAME).default(''),
   // "not in the future" is checked against the clinic's own date by the route, not the server's
   dob: isoDate.refine((d) => !Number.isNaN(Date.parse(d)) && d >= '1890-01-01', 'a real date of birth'),
   phone: phoneNumber,
   gender: Gender,
   // required for a patient under 18, and for every pet (its owner), checked by the route
-  guardianName: z.string().trim().max(120).nullable().optional(),
+  guardianName: z.string().trim().max(120).refine(hasName, NOT_A_NAME).nullable().optional(),
   /** The kind of animal, for a pet. Left out, an edit keeps what was there. */
   species: z.string().trim().max(40).nullable().optional(),
   /** They agreed to reminder texts. Left out, an edit keeps what was there. */
@@ -686,7 +714,7 @@ export const PatientProfile = PatientCard.extend({
 export const DoctorInput = Provider.omit({ id: true }).extend({
   id: z.string().regex(/^[A-Za-z0-9_-]{2,64}$/, 'an id is 2 to 64 letters, digits, dashes or underscores').optional(),
   // stored without a title ("Dr. Elena Ruiz" is saved as "Elena Ruiz"): the title choice says it
-  name: z.string().trim().max(80).transform(bareName).pipe(z.string().min(2, 'a name of at least 2 letters')),
+  name: z.string().trim().max(80).transform(bareName).pipe(z.string().min(2, 'a name of at least 2 letters').regex(HAS_NAME, NOT_A_NAME)),
   names: z.record(z.string(), z.string().trim().max(80).transform(bareName)).optional(),
   gender: Gender,
   // as typed; the clinic's country fills in the code, and a number another doctor has is refused under its field
@@ -758,11 +786,11 @@ export const Member = z.object({
 });
 export const MemberList = z.object({ members: z.array(Member) });
 /** The name is used only when the email is new to Attendra; without one, the part of the email before the @. */
-export const AddMember = z.object({ name: z.string().trim().max(80).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false),
+export const AddMember = z.object({ name: z.string().trim().max(80).refine(hasName, NOT_A_NAME).optional(), email: z.email().max(200), role: Role, approvesRefills: z.boolean().default(false),
   /** Owners only: invite to every open location of the business, one Accept for all. An owner invitation is account-wide by itself. */
   allLocations: z.boolean().default(false) });
 /** Your own name, as it shows to your team. */
-export const ProfileName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(80, 'at most 80 characters') });
+export const ProfileName = z.object({ name: z.string().trim().min(2, 'at least 2 characters').max(80, 'at most 80 characters').regex(HAS_NAME, NOT_A_NAME) });
 export const AvatarSaved = z.object({ avatarUrl: z.string() });
 /** The temporary password is shown once, for the manager to pass on in person. It must be changed at first sign-in and expires after 72 hours. */
 export const AddedMember = z.object({ userId: z.string(), temporaryPassword: z.string(), expiresInHours: z.number() });
@@ -936,6 +964,7 @@ export type WebhookAttempts = z.infer<typeof WebhookAttempts>;
 export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
+export type TaskHistory = z.infer<typeof TaskHistory>;
 export type TextItem = z.infer<typeof TextItem>;
 export type TextList = z.infer<typeof TextList>;
 export type TestCall = z.infer<typeof TestCall>;

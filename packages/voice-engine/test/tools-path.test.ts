@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CallRunner, fromDelegatedResponse, GO_WAIT_MS, GptLiveEngine, RealtimeEngine, realtimeTools, type RealtimeSocket, type Sideband, type SidebandEvent,
   type SidebandSocket, toolsBackendInstructions, toolsLivePrompt, toolsVoicePrompt, toolsVoiceStaticPrompt, callFacts, compactSchema, TOOLS_TRUNCATION, type VoiceEngine, TURN_NOTE, sayToolQuestion, toolQuestion, sayToolLine, toolRefusalLine,
-  PATH_A_CUTS, PATH_A_DROPS,
+  PATH_A_CUTS, PATH_A_DROPS, conversationPrompt,
 } from '../src';
 
 // Batch 1a, the tools path: the voice calls our tools itself (gpt-realtime, path A), or GPT-Live hands each task to a
@@ -62,6 +62,39 @@ describe('the tools-path prompts', () => {
     // the other voices keep them
     expect(toolsVoicePrompt(vet)).toContain('Never give anything from anyone\'s record');
     expect(toolsBackendInstructions(vet)).toContain('The tools refuse a step out of order');
+  });
+});
+
+// note 18 (sound human, batch 4b): the warmth rules reach every voice, in English and in Spanish, and path A keeps them
+describe('warmth, in each language the clinic speaks', () => {
+  const bilingual = { ...vet, languages: ['en' as const, 'es' as const], primaryLanguage: 'en' as const };
+  const rules = [
+    /short backchannel in their language is fine, never over them/,
+    /Humour only when the caller jokes first.*never about illness, injury, loss/,
+    /Match their pace/,
+    /Say the pet's name back once it is found/,
+  ];
+  it('the rules and each language\'s own words are in the planner prompt, the tools prompt and path A\'s cached prefix', () => {
+    for (const prompt of [conversationPrompt({ ...bilingual }, NOW), toolsVoicePrompt({ ...bilingual }), toolsVoiceStaticPrompt({ ...bilingual }), toolsLivePrompt({ ...bilingual })]) {
+      for (const rule of rules) expect(prompt).toMatch(rule);
+      expect(prompt).toContain('"Oh no, I\'m sorry to hear that"');
+      expect(prompt).toContain('"ajá", "claro" or "entiendo"');
+      expect(prompt).toContain('"Muy bien, Ginger entonces"');
+    }
+    // an English-only clinic gets no Spanish words, and the other way round
+    expect(toolsVoiceStaticPrompt({ ...vet, languages: ['en'], primaryLanguage: 'en' })).not.toContain('ajá');
+    expect(toolsVoiceStaticPrompt({ ...vet, languages: ['es'], primaryLanguage: 'es' })).not.toContain('Oh no');
+  });
+
+  it('the planner path speaks within about a second before a lookup; path A, whose tools answer in well under one, says nothing first', () => {
+    expect(conversationPrompt(bilingual, NOW)).toContain('at once, so the caller never hears more than about a second of silence');
+    const pathA = toolsVoiceStaticPrompt(bilingual);
+    expect(pathA).not.toContain('about a second of silence');
+    expect(pathA).toContain('Call a tool without saying anything first: results come back in well under a second');
+  });
+
+  it('path A\'s cached prefix is the same on every call of a clinic', () => {
+    expect(toolsVoiceStaticPrompt(bilingual)).toBe(toolsVoiceStaticPrompt({ ...bilingual }));
   });
 });
 
