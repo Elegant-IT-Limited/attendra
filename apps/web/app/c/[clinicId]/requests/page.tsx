@@ -200,7 +200,7 @@ function Requests() {
       </details>
       {/* the same filter bar as Pets and Veterinarians: a card, the switch first, then search and the dropdowns */}
       <Card className="mb-4"><CardContent className="py-4">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="requests">
         <Segmented label="Status" value={status} onValueChange={setStatus} options={[{ value: 'open', label: 'Open' }, { value: 'done', label: 'Done' }]} />
         <Label htmlFor="request-type" className="sr-only">Type</Label>
         <Select id="request-type" className="h-8 w-48" value={topic ? `topic:${topic}` : type} onChange={(e) => {

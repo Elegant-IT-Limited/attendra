@@ -83,7 +83,7 @@ export default function Patients() {
         <Card>
           <CardContent className="py-5">
             {/* one filter row, the same as on the other lists: which patients, then the dropdowns */}
-            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list">
+            <div className="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Filter the list" data-toolbar="pets">
             <Segmented label={`Which ${terms.patients}`} value={onlyNew ? 'new' : 'all'} onValueChange={(v) => setOnlyNew(v === 'new')}
               options={[{ value: 'all', label: `All ${terms.patients}` }, { value: 'new', label: 'Added by the assistant, to check' }]} />
             {(pet && speciesList.length > 0) || filterable.length > 0 ? (

@@ -73,7 +73,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
   useRenderMark(RENDER_MARKS.agenda, rows.length > 0);
   return (
     <div data-testid="agenda">
-      <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3" data-toolbar="agenda">
         <div className="w-64 space-y-1">
           <Label htmlFor={`${id}-provider`} className="sr-only">{word.charAt(0).toUpperCase()}{word.slice(1)}</Label>
           <Combobox id={`${id}-provider`} label={`${word.charAt(0).toUpperCase()}${word.slice(1)}`} value={providerId} onChange={setProviderId} placeholder={`Every ${word}`}

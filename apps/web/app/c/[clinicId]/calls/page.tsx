@@ -131,7 +131,7 @@ function Calls() {
             </Select>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border pt-3" data-toolbar="calls">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={emergencyOnly} onChange={(e) => setEmergencyOnly(e.target.checked)} /> Emergencies only</label>
           {refusal && <Badge tone="warn" className="px-2 text-sm">Refused: {REFUSALS[refusal] ?? refusal}</Badge>}
           <p id="call-dates-hint" className="text-xs text-text-muted">Times and dates are the clinic&rsquo;s.</p>

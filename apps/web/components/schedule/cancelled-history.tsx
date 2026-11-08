@@ -45,7 +45,7 @@ export function CancelledHistory({ clinicId, clinic, providerId, onOpen }: { cli
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3 text-sm" data-toolbar="cancelled">
         <div className="flex items-center gap-1.5">
           <Label htmlFor="cancelled-from" className="text-text-muted">Visits from</Label>
           <Input id="cancelled-from" type="date" className="h-8 w-38" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
