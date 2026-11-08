@@ -88,10 +88,11 @@ export class SettingsController {
   @Post('emergencies/preview')
   @HttpCode(200)
   @Requires('settings:read')
-  @ApiOperation({ summary: 'Check an emergency form draft: { issues, setting, callLine, preview }, built by the same schema, route and preview as Settings > Emergencies. Saves nothing.' })
+  @ApiOperation({ summary: 'Check an emergency form draft: { issues, setting, callLine, preview }, built by the same schema, route and preview as Settings > Emergencies. ?for=setup: the setup page wording for a clinic with no setting ("Choose one below."). Saves nothing.' })
   @ApiBody({ schema: schemaOf(EmergencyDraft) })
-  async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>) {
-    return emergencyFormView(await this.config(clinicId), draft, this.now());
+  async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>, @Query('for') place?: string) {
+    // the setup page has the choices under its "Right now" line: ?for=setup says "Choose one below." instead of pointing to Settings
+    return emergencyFormView(await this.config(clinicId), draft, this.now(), place === 'setup' ? 'setup' : 'settings');
   }
 
   private async config(clinicId: string): Promise<ClinicConfig> {
