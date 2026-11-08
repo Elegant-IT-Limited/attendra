@@ -25,7 +25,7 @@ describe('caller ID', () => {
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Rolo', species: 'dog', guardianName: 'Daniel Brooks' });
     expect(handed(out)).not.toMatch(/your name|su nombre/i);
     // one owner on the number, still
-    const owners = (await w.t.db.execute(sql`select count(distinct guardian_name_enc)::int as n from patients where clinic_id = ${clinic.id} and first_name_enc is not null and id = ${c.state.verifiedPatient!.id}`)).rows[0] as { n: number };
+    const owners = (await w.t.owner.execute(sql`select count(distinct guardian_name_enc)::int as n from patients where clinic_id = ${clinic.id} and first_name_enc is not null and id = ${c.state.verifiedPatient!.id}`)).rows[0] as { n: number };
     expect(owners.n).toBe(1);
   });
 });
@@ -88,7 +88,7 @@ describe('a number the caller says', () => {
     const booked = await c.delegate([{ tool: 'commit_pending', args: {} }]);
     expect(booked.results[0]!.data.booked).toBe(true);
     expect(handed(booked)).not.toMatch(/linh/i);
-    const [row] = (await w.t.db.execute(sql`select note_enc from appointments where created_by_call_id = ${c.callId}`)).rows as { note_enc: string | null }[];
+    const [row] = (await w.t.owner.execute(sql`select note_enc from appointments where created_by_call_id = ${c.callId}`)).rows as { note_enc: string | null }[];
     expect(row!.note_enc).not.toBeNull();
     expect(cipher.decrypt(row!.note_enc!, phiContext(clinic.id, 'appointments.note'))).toBe('booked by caller: Alex');
     expect(c.state.memory.verified).toBeNull();
@@ -111,7 +111,7 @@ describe('a number the caller says', () => {
     const out = await c.delegate([{ tool: 'register_patient', args: { pet_name: 'Fig', owner_name: 'Sam', species: null, sex: null, birthday_or_age: null, phone: '720 555 0172' } }]);
     expect(out.errors).toEqual([null]);
     expect(c.state.verifiedPatient).toMatchObject({ firstName: 'Fig', guardianName: 'Linh Nguyen' });
-    const [task] = (await w.t.db.execute(sql`select details_enc from tasks where call_id = ${c.callId} and type = 'review'`)).rows as { details_enc: string }[];
+    const [task] = (await w.t.owner.execute(sql`select details_enc from tasks where call_id = ${c.callId} and type = 'review'`)).rows as { details_enc: string }[];
     expect(JSON.parse(cipher.decrypt(task!.details_enc, phiContext(clinic.id, 'tasks.details')))).toMatchObject({ note: 'booked by caller: Sam' });
   });
 });

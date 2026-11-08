@@ -20,7 +20,11 @@ class PlanQueue implements Planner {
   }
 }
 
-/** A fresh database with the Maple Street demo clinic in it, or another demo clinic's seed (Riverbend's pets). */
+/**
+ * A fresh database with the Maple Street demo clinic in it, or another demo clinic's seed (Riverbend's pets).
+ * The agent's backend gets `t.db`: with ATTENDRA_TEST_AS=service the services' role, which sees no row
+ * without a clinic set. A test's own checks on the tables (`select ... from tasks`) read through `t.owner`.
+ */
 export async function world(seed: typeof seedDemo = seedDemo) {
   const t = await openTestDatabase();
   const cipher = createPhiCipher(TEST_DATA_KEY);

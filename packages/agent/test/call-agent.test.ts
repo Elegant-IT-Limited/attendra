@@ -15,7 +15,7 @@ const spoken = (out: Out) => out.flatMap((o) => (o.type === 'commentary' ? [o.co
 const bookings = () => w.backend.scheduler.upcoming(DEMO_CLINIC.id, w.patientIds.maria!, new Date('2026-09-28T00:00:00Z'));
 
 describe('the call record', () => {
-  const patientOf = async (callId: string) => ((await w.t.db.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+  const patientOf = async (callId: string) => ((await w.t.owner.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
 
   it('links a call to the patient once, and only once, the caller is verified', async () => {
     const c = await w.call('+13035550147', { record: true });
@@ -196,7 +196,7 @@ describe('booking over the phone', () => {
     expect(c.state.offered.size).toBeGreaterThan(0);
     expect([...c.state.offered.values()].every((s) => ['prov_okafor', 'prov_raman'].includes(s.providerId))).toBe(true);
     // the front desk is asked to check the new record
-    const [review] = await w.t.db.execute(sql`select type, status from tasks where call_id = ${c.callId}`).then((r) => r.rows);
+    const [review] = await w.t.owner.execute(sql`select type, status from tasks where call_id = ${c.callId}`).then((r) => r.rows);
     expect(review).toEqual({ type: 'review', status: 'open' });
   });
 

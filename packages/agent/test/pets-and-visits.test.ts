@@ -17,7 +17,7 @@ afterAll(() => w.t.close());
 const clinic = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
 const LINH = '+17205550172';
 const handed = (out: { results: { data: Record<string, unknown> }[] }) => JSON.stringify(out.results.map((r) => r.data));
-const audited = async (action: string, callId: string) => Number((await w.t.db.execute(sql`select count(*)::int as n from audit_logs where action = ${action} and call_id = ${callId}`)).rows[0]!.n);
+const audited = async (action: string, callId: string) => Number((await w.t.owner.execute(sql`select count(*)::int as n from audit_logs where action = ${action} and call_id = ${callId}`)).rows[0]!.n);
 const directory = () => new PostgresPatientDirectory(w.t.db, createPhiCipher(TEST_DATA_KEY), 'seed');
 
 describe('an owner caller ID knows picks from their pets', () => {

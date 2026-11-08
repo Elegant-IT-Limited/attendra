@@ -56,11 +56,12 @@ jobs:
       - name: your profile, the team, invitations and every role, on a real Postgres
         run: pnpm exec vitest run packages/db/test/clinic-access.test.ts packages/db/test/invitations.test.ts apps/api/test/profile.test.ts apps/api/test/invitations.test.ts apps/api/test/roles.test.ts apps/api/test/password.test.ts
         env: { ATTENDRA_TEST_DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/postgres' }
-      # The services' own role (migration 0051): every repository, the API, the worker and MCP,
-      # logged in as attendra_service, which no row-level security policy lets past. A query that
-      # forgets its clinic fails here, not on production. The voice service is not in it yet.
-      - name: the database, API, worker and MCP as attendra_service, on a real Postgres
-        run: pnpm exec vitest run packages/db apps/api apps/worker apps/mcp packages/knowledge packages/scheduling packages/telephony packages/webhooks
+      # The services' own role (migration 0051): every repository, the API, the worker, MCP and the
+      # call agent, logged in as attendra_service, which no row-level security policy lets past. A
+      # query that forgets its clinic fails here, not on production. The voice service itself still
+      # runs as the owner on production; its call agent (packages/agent) passing here is the step before.
+      - name: the database, API, worker, MCP and call agent as attendra_service, on a real Postgres
+        run: pnpm exec vitest run packages/db apps/api apps/worker apps/mcp packages/agent packages/knowledge packages/scheduling packages/telephony packages/webhooks
         env: { ATTENDRA_TEST_DATABASE_URL: 'postgres://postgres:postgres@localhost:5432/postgres', ATTENDRA_TEST_AS: service }
 
   e2e:

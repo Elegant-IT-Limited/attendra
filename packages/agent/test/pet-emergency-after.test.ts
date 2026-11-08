@@ -96,7 +96,7 @@ describe('after the pet script', () => {
     expect(JSON.stringify(out.results[0]!.data)).toContain('I can send our team an urgent message to call you back as soon as they can.');
     const request = await c.delegate([{ tool: 'create_callback', args: { reason: 'Cat choking, owner wants a visit', callback_number: null } }]);
     expect(request.results[0]!.data).toMatchObject({ urgent: true, spoken: "I've sent that to the team as urgent, and someone will call you back as soon as they can." });
-    const [task] = (await w.t.db.select().from(schema.tasks)).filter((t) => t.id === request.results[0]!.data.task_id);
+    const [task] = (await w.t.owner.select().from(schema.tasks)).filter((t) => t.id === request.results[0]!.data.task_id);
     expect(task!.urgent).toBe(true);
   });
 
