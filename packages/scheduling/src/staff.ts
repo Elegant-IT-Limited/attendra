@@ -98,8 +98,11 @@ export class StaffScheduler {
         }
         // only a row that is still booked: someone may have cancelled it since it was read
         // a move made outside the hours keeps its reason; a move back inside them clears it.
-        // the new time gets its own reminder and its own confirmation
-        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date(), overrideReason: input.overrideReason?.trim() || null, reminderSentAt: null, reminderSmsId: null, confirmedAt: null, confirmedVia: null })
+        // the new time gets its own reminder and its own confirmation; a visit only handed to another vet (the same
+        // time) keeps the ones it had
+        const sameTime = input.start.getTime() === row.startsAt.getTime();
+        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date(), overrideReason: input.overrideReason?.trim() || null,
+          ...(sameTime ? {} : { reminderSentAt: null, reminderSmsId: null, confirmedAt: null, confirmedVia: null }) })
           .where(and(eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
         if (!moved.length) return { status: 'refused', reason: 'just_cancelled' } as const;
         await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: input.overrideReason ? 'appointment.rescheduled.staff.override' : 'appointment.rescheduled.staff', entity: 'appointment', entityId: row.id });

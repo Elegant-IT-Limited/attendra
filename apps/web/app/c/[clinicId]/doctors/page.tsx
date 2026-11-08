@@ -14,6 +14,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { LocalNames } from '@/components/settings/assistant';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { StrandedDialog, strandedOf } from '@/components/schedule/stranded-dialog';
+import { HandoverDialog } from '@/components/schedule/handover-dialog';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
@@ -206,6 +207,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const showProblem = useProblem();
   const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not saved', message }); };
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // a vet with visits still to come: their visits go to other vets first (note 32)
+  const [handover, setHandover] = useState(false);
   const toast = useToast();
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const hours: Hours = d.hours ?? {};
@@ -236,8 +239,11 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   });
   const remove = useMutation({
     mutationFn: () => api<DoctorList>(`/clinics/${clinicId}/doctors/${editing.id}`, { method: 'DELETE' }),
-    onSuccess: () => { onSaved(); toast({ tone: 'success', message: 'Removed.' }); onClose(); },
-    onError: failed,
+    onSuccess: () => { onSaved(); toast({ tone: 'success', message: 'Removed.' }); setHandover(false); onClose(); },
+    onError: (e) => {
+      if (e instanceof ApiFailure && e.status === 409 && e.body.error === 'has_upcoming_visits') { setConfirmDelete(false); setHandover(true); return; }
+      failed(e);
+    },
   });
 
   const submit = (e: FormEvent) => {
@@ -276,6 +282,10 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       {config.data && (
         <StrandedDialog clinicId={clinicId} clinic={config.data} stranded={stranded?.visits ?? null} pending={save.isPending}
           onKeep={() => stranded && save.mutate({ body: stranded.body, keep: true })} onClose={() => setStranded(null)} />
+      )}
+      {editing.id && config.data && (
+        <HandoverDialog clinicId={clinicId} clinic={config.data} providerId={editing.id} open={handover} onClose={() => setHandover(false)}
+          onRemove={() => remove.mutate()} removing={remove.isPending} />
       )}
       <form id="doctor-form" onSubmit={submit} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">

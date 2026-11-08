@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { allVisitTypeIds, ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, noProviderWarnings, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, withListValues } from '@attendra/core';
-import type { FrontDeskRepository, ScheduleRepository, Tx } from '@attendra/db';
+import { allVisitTypeIds, ClinicConfig, configProblems, DESK_LEAD_MINUTES, type EventSink, leftOffList, listRowNote, newProviderId, noProviderWarnings, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, textingOf, withListValues } from '@attendra/core';
+import { appointmentFacts, type Database, type FrontDeskRepository, type ScheduleRepository, schema, type Tx, withClinic } from '@attendra/db';
+import { type HandoverProblem, planHandover, type StaffScheduler } from '@attendra/scheduling';
+import type { JobQueue } from '@attendra/worker/queue';
 import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { DoctorInput, DoctorList, ImportInput, ImportResult, KeepStrandedQuery } from '../contracts';
+import { DoctorInput, DoctorList, HandoverInput, HandoverPreview, HandoverQuery, HandoverResult, ImportInput, ImportResult, KeepStrandedQuery } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, FRONT_DESK, SCHEDULE } from '../http/tokens';
+import { CLOCK, DB, EVENTS, FRONT_DESK, JOBS, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
 import { keeps, type StrandedHit, strandedBy, strandedConflict } from '../schedule/stranded';
 
@@ -62,6 +64,25 @@ async function withoutStandIn(desk: FrontDeskRepository, clinicId: string, provi
   return keep;
 }
 
+/** Why one of a leaving vet's visits cannot go to another, in the words the handover shows. `vet` is "vet" or "doctor". */
+function handoverReason(reason: HandoverProblem | 'cancelled' | 'just_cancelled' | 'idempotency_mismatch' | 'patient_busy' | 'not_theirs', vet: string, chosen: boolean): string {
+  switch (reason) {
+    case 'not_offered': return chosen ? `This ${vet} does not do this visit type.` : `No other ${vet} does this visit type.`;
+    case 'taken': return chosen ? `This ${vet} has another visit then.` : `Every ${vet} who does it has another visit then.`;
+    case 'closed': return chosen ? `This ${vet} does not work then.` : `No ${vet} who does it works then.`;
+    case 'away': return chosen ? `This ${vet} is away then.` : `Every ${vet} who does it is away then.`;
+    case 'holiday': return 'The clinic is closed that day.';
+    case 'too_soon': return `It starts in less than ${DESK_LEAD_MINUTES} minutes: move it on the Schedule, with Override if needed.`;
+    case 'past': return 'It has already started.';
+    case 'no_vet': return `There is no other ${vet} to take it.`;
+    case 'unknown_provider': return `There is no such ${vet} at this clinic.`;
+    case 'unknown_visit_type': return 'Its visit type is no longer offered: move or cancel it on the Schedule.';
+    case 'patient_busy': return 'The pet already has another visit then.';
+    case 'not_theirs': return 'It is no longer one of their booked visits.';
+    default: return 'It was cancelled meanwhile.';
+  }
+}
+
 /** The doctors, the visit types, and a warning for each type nobody does (the same words Settings shows). */
 const listOf = (c: ClinicConfig): DoctorList => ({ providers: c.providers, visitTypes: c.visitTypes, noProvider: noProviderWarnings(c) });
 
@@ -70,7 +91,117 @@ const listOf = (c: ClinicConfig): DoctorList => ({ providers: c.providers, visit
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/doctors')
 export class DoctorsController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(CLOCK) private readonly now: () => Date, @Inject(SCHEDULE) private readonly schedule: ScheduleRepository) {}
+  constructor(
+    @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
+    @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(STAFF_SCHEDULER) private readonly scheduler: StaffScheduler,
+    @Inject(DB) private readonly db: Database,
+    @Inject(EVENTS) private readonly events: EventSink,
+    @Inject(JOBS) private readonly jobs: JobQueue,
+    @Inject(SCHEDULE) private readonly schedule: ScheduleRepository,
+  ) {}
+
+  private async settings(clinicId: string) {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    return ClinicConfig.parse(stored);
+  }
+
+  /**
+   * Before a vet with visits still to come is removed (note 32): who would take each visit, at the
+   * same day and time, by the booking rules (never a clash, never outside a vet's hours), and what
+   * no one can take, with why. Nothing changes. Ids, visit types and times only: no patient data.
+   */
+  @Post(':providerId/handover/preview')
+  @HttpCode(200)
+  @Requires('settings:write')
+  @ApiOperation({ summary: 'Preview handing a doctor\'s visits still to come to other doctors (one, or whoever is free), before removing them. Changes nothing.' })
+  @ApiBody({ schema: schemaOf(HandoverQuery) })
+  @ApiOkResponse({ schema: schemaOf(HandoverPreview) })
+  async handoverPreview(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @Body(new ZodPipe(HandoverQuery)) body: z.infer<typeof HandoverQuery>): Promise<HandoverPreview> {
+    const clinic = await this.settings(clinicId);
+    if (!clinic.providers.some((p) => p.id === providerId)) throw new NotFoundException({ error: 'not_found' });
+    const to = body.toProviderId ?? null;
+    if (to && (to === providerId || !clinic.providers.some((p) => p.id === to))) {
+      throw new UnprocessableEntityException({ error: 'invalid_request', issues: [{ path: 'toProviderId', message: 'choose another doctor at this clinic' }] });
+    }
+    const now = this.now();
+    const visits = await this.desk.handoverVisits(clinicId, providerId, now);
+    const last = visits.reduce((m, v) => Math.max(m, v.end.getTime()), now.getTime());
+    const busy = visits.length ? await this.desk.busy(clinicId, { from: now, to: new Date(last) }) : [];
+    const plan = planHandover(clinic, providerId, visits, busy, now, { toProviderId: to });
+    const vet = clinic.industry === 'vet' ? 'vet' : 'doctor';
+    const moving = new Map(plan.moves.map((m) => [m.appointmentId, m.toProviderId]));
+    const stuck = new Map(plan.stuck.map((m) => [m.appointmentId, m.reason]));
+    const texting = textingOf(clinic);
+    return {
+      visits: visits.map((v) => ({
+        appointmentId: v.appointmentId, startsAt: v.start.toISOString(), endsAt: v.end.toISOString(), visitTypeId: v.visitTypeId,
+        toProviderId: moving.get(v.appointmentId) ?? null,
+        reason: stuck.get(v.appointmentId) ?? null,
+        message: stuck.has(v.appointmentId) ? handoverReason(stuck.get(v.appointmentId)!, vet, !!to) : null,
+        textable: v.textable,
+      })),
+      candidates: plan.candidates,
+      textingOn: texting.enabled && texting.kinds.change_confirmed,
+    };
+  }
+
+  /**
+   * The moves the team confirmed, each made as a desk move (StaffScheduler.reschedule: the same day
+   * and time, another vet, checked again as it is made, audited, an appointment.rescheduled event).
+   * Then, only when the team said yes, one text to each owner who agreed to texts (the worker sends
+   * it, checking STOP and the clinic's limits; a test clinic with no number texts nobody). What could
+   * not move is listed and stays with the leaving vet. One audit row with counts.
+   */
+  @Post(':providerId/handover')
+  @HttpCode(200)
+  @Requires('settings:write')
+  @ApiOperation({ summary: 'Hand a doctor\'s visits still to come to other doctors, at the same times, then text the owners if asked. Audited with counts.' })
+  @ApiBody({ schema: schemaOf(HandoverInput) })
+  @ApiOkResponse({ schema: schemaOf(HandoverResult) })
+  async handover(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @Body(new ZodPipe(HandoverInput)) body: z.infer<typeof HandoverInput>, @CurrentStaff() staff: Staff): Promise<HandoverResult> {
+    const clinic = await this.settings(clinicId);
+    if (!clinic.providers.some((p) => p.id === providerId)) throw new NotFoundException({ error: 'not_found' });
+    const vet = clinic.industry === 'vet' ? 'vet' : 'doctor';
+    const theirs = new Map((await this.desk.handoverVisits(clinicId, providerId, this.now())).map((v) => [v.appointmentId, v]));
+    const texting = textingOf(clinic);
+    const mayText = body.textOwners && texting.enabled && texting.kinds.change_confirmed && !!this.jobs.visitHandedOver;
+    const out: HandoverResult = { moved: 0, notMoved: [], texts: { queued: 0, notTexted: 0 }, remaining: 0 };
+    for (const move of body.moves) {
+      const visit = theirs.get(move.appointmentId);
+      if (!visit || move.toProviderId === providerId) {
+        out.notMoved.push({ appointmentId: move.appointmentId, reason: 'not_theirs', message: handoverReason('not_theirs', vet, true) });
+        continue;
+      }
+      const r = await this.scheduler.reschedule(clinic, move.appointmentId, { start: visit.start, providerId: move.toProviderId }, staff.userId);
+      if (r.status === 'refused' || r.status === 'not_found') {
+        const reason = r.status === 'not_found' ? 'not_theirs' : r.reason;
+        out.notMoved.push({ appointmentId: move.appointmentId, reason, message: handoverReason(reason, vet, true) });
+        continue;
+      }
+      if (r.status !== 'done') continue;
+      out.moved++;
+      const a = await appointmentFacts(this.db, clinicId, move.appointmentId);
+      if (a) {
+        await this.events.emit(clinicId, {
+          type: 'appointment.rescheduled', key: `${a.appointmentId}|${a.startsAt}|${a.updatedAt}`,
+          data: { appointmentId: a.appointmentId, patientId: a.patientId, providerId: a.providerId, visitTypeId: a.visitTypeId, startsAt: a.startsAt, endsAt: a.endsAt, by: 'staff', callId: null, previousAppointmentId: null },
+        });
+      }
+      if (!body.textOwners) continue;
+      if (mayText && visit.textable) {
+        await this.jobs.visitHandedOver!({ clinicId, appointmentId: move.appointmentId, providerId: move.toProviderId });
+        out.texts.queued++;
+      } else out.texts.notTexted++;
+    }
+    out.remaining = await this.desk.upcomingForProvider(clinicId, providerId, this.now());
+    await withClinic(this.db, clinicId, (tx) => tx.insert(schema.auditLogs).values({
+      clinicId, actor: `user:${staff.userId}`, action: 'clinic.doctor.handover', entity: 'provider', entityId: providerId,
+      counts: { moved: out.moved, notMoved: out.notMoved.length, textsQueued: out.texts.queued, remaining: out.remaining },
+    }));
+    return out;
+  }
 
   @Get()
   @Requires('settings:read')
@@ -123,7 +254,7 @@ export class DoctorsController {
 
   @Delete(':providerId')
   @Requires('settings:write')
-  @ApiOperation({ summary: 'Remove a doctor with no visits still to come. Audited.' })
+  @ApiOperation({ summary: 'Remove a doctor with no visits still to come (hand them over first: POST :providerId/handover). Audited.' })
   @ApiOkResponse({ schema: schemaOf(DoctorList) })
   @ApiConflictResponse({ description: 'They still have booked visits to come, or they are the last doctor' })
   async remove(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @CurrentStaff() staff: Staff): Promise<DoctorList> {
@@ -131,7 +262,7 @@ export class DoctorsController {
     return this.change(clinicId, staff, 'clinic.doctor.removed', providerId, null, async (c, tx) => {
       if (!c.providers.some((p) => p.id === providerId)) return { error: 'not_found', status: 404 };
       const upcoming = await this.desk.upcomingForProvider(clinicId, providerId, this.now(), tx);
-      if (upcoming) return { error: `They have ${upcoming} booked ${upcoming === 1 ? 'visit' : 'visits'} still to come. Move or cancel ${upcoming === 1 ? 'it' : 'them'} on the Schedule first.`, status: 409 };
+      if (upcoming) return { error: `They have ${upcoming} booked ${upcoming === 1 ? 'visit' : 'visits'} still to come. Move ${upcoming === 1 ? 'it' : 'them'} to another ${c.industry === 'vet' ? 'vet' : 'doctor'} first (Move their visits), or cancel ${upcoming === 1 ? 'it' : 'them'} on the Schedule.`, status: 409 };
       if (c.providers.length === 1) return { error: 'A clinic needs at least one doctor for the assistant to book with.', status: 409 };
       return { config: { ...c, providers: c.providers.filter((p) => p.id !== providerId) } };
     });

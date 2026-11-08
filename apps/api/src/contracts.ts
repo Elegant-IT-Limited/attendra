@@ -671,6 +671,37 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
 });
 /** `noProvider`: each visit type nobody does, with Settings' warning for it ("No vet does Dental care: callers can't book it"). */
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType), noProvider: z.array(z.object({ visitTypeId: z.string(), message: z.string() })) });
+
+/** Who takes a leaving vet's visits: one vet for all of them, or (null or left out) whoever is free and does each visit type. */
+export const HandoverQuery = z.object({ toProviderId: z.string().max(64).nullable().optional() });
+/** The visits still to come with the leaving vet, each with the vet it would go to (same day and time) or why it cannot move. Ids, types and times only. */
+export const HandoverPreview = z.object({
+  visits: z.array(z.object({
+    appointmentId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), visitTypeId: z.string(),
+    /** The vet it would go to; null when no vet can take it, then `reason` and `message` say why. */
+    toProviderId: z.string().nullable(), reason: z.string().nullable(), message: z.string().nullable(),
+    /** The owner agreed to texts and has a number on file: a text can go once the team says yes. */
+    textable: z.boolean(),
+  })),
+  /** The vets who could take visits, with how many each could take on their own. */
+  candidates: z.array(z.object({ providerId: z.string(), canTake: z.number().int() })),
+  /** The clinic's texting is on (Settings, Texting): without it no owner is texted. */
+  textingOn: z.boolean(),
+});
+/** The moves the team confirmed, and whether to text the owners. Each move is checked again as it is made. */
+export const HandoverInput = z.object({
+  moves: z.array(z.object({ appointmentId: z.uuid(), toProviderId: z.string().min(1).max(64) })).min(1, 'nothing to move').max(1000),
+  textOwners: z.boolean().default(false),
+});
+export const HandoverResult = z.object({
+  moved: z.number().int(),
+  /** Visits that could not move after all (someone took the time meanwhile), with why: still the leaving vet's. */
+  notMoved: z.array(z.object({ appointmentId: z.string(), reason: z.string(), message: z.string() })),
+  /** Texts queued to owners (each still checked against STOP and the clinic's limits when sent), and owners not texted (no yes to texts, no number, or texting off). */
+  texts: z.object({ queued: z.number().int(), notTexted: z.number().int() }),
+  /** Booked visits the leaving vet still has to come: 0 means they can be removed. */
+  remaining: z.number().int(),
+});
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
 export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });
 export const ImportResult = z.object({
@@ -916,4 +947,6 @@ export type AcceptedInvitation = z.infer<typeof AcceptedInvitation>;
 export type InvitationView = z.infer<typeof InvitationView>;
 export type DoctorInput = z.infer<typeof DoctorInput>;
 export type DoctorList = z.infer<typeof DoctorList>;
+export type HandoverPreview = z.infer<typeof HandoverPreview>;
+export type HandoverResult = z.infer<typeof HandoverResult>;
 export type ImportResult = z.infer<typeof ImportResult>;

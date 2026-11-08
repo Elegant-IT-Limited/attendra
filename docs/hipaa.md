@@ -25,6 +25,7 @@ Self-hosters are responsible for their own BAAs and operations.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
   - `appointment.booked.staff.override`, `appointment.rescheduled.staff.override`: the same, outside the hours, with the reason kept on the visit.
   - `appointment.status.arrived`, `.completed`, `.no_show`, `.booked`: the desk marked what happened to a visit (or put it back to booked), under the staff member's own id; the visit keeps when and by whom.
+  - `clinic.doctor.handover`: a manager moved a provider's visits still to come to other providers (the same times) before removing them, with counts only (moved, not moved, texts queued, left). Each move is its own `appointment.rescheduled.staff`. Owners are texted (`sms.sent.vet_changed`) only when the manager ticked it, only those who agreed to texts.
   - `appointment.confirmed.text`: a reply of C to a reminder confirmed the visit. `patient.texts_ok.call`: the caller said yes to reminder texts on a call.
 - The call record is audited under the actor `system` when the call opens (`call.opened`) and when it closes (`call.closed`, with how many transcript lines and tool steps it wrote, as counts). There is no row per line or step, so the log stays readable for the rows that matter: people reading patient data. A browser test call is opened as `call.test.started` under the staff member instead.
 - The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
@@ -97,6 +98,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `calls.live.listed` | Looked at live calls with names |
 | `call.lookups.rehashed` | Updated how calls are found by their number |
 | `calls.searched` | Searched calls by patient |
+| `clinic.doctor.handover` | Moved a provider's visits to other providers, before removing them |
 | `clinic.settings.updated` | Changed clinic settings |
 | `knowledge.document.deleted` | Deleted a document |
 | `knowledge.document.uploaded` | Uploaded a document for the assistant |

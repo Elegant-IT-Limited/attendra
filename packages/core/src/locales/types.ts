@@ -62,6 +62,8 @@ export interface LanguagePack {
     /** A visit moved or cancelled on the phone: sent without asking, like the booking one. */
     change_confirmed: (v: Record<string, string>) => string;
     cancel_confirmed: (v: Record<string, string>) => string;
+    /** A visit handed to another vet when its vet is removed (same day and time): sent only after the team said yes, to people who agreed to texts. */
+    vet_changed: (v: Record<string, string>) => string;
     /** Texted during a call, only after the caller said yes to the offer. */
     directions: (v: Record<string, string>) => string;
     hours: (v: Record<string, string>) => string;

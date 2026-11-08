@@ -102,6 +102,7 @@ const ACTIONS: Record<string, string> = {
   'clinic.doctor.added': 'Added a provider',
   'clinic.doctor.updated': 'Changed a provider\'s details',
   'clinic.doctor.removed': 'Removed a provider',
+  'clinic.doctor.handover': 'Moved a provider\'s visits to other providers, before removing them',
   'clinic.doctors.imported': 'Imported providers from a spreadsheet',
   'sms.opt_out': 'A number replied STOP: no more texts to it',
   'sms.opt_in': 'A number replied START: texts to it again',

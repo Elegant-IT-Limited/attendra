@@ -721,6 +721,18 @@ export class FrontDeskRepository {
     return within ? count(within) : withClinic(this.db, clinicId, count);
   }
 
+  /**
+   * A provider's booked visits still to come, for a handover to another vet: ids, type and
+   * times, and whether the owner could get a text about it (agreed to texts, a number on
+   * file). Nothing is decrypted, so no audit row.
+   */
+  async handoverVisits(clinicId: string, providerId: string, now: Date): Promise<{ appointmentId: string; visitTypeId: string; start: Date; end: Date; textable: boolean }[]> {
+    return withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id, visitTypeId: appointments.visitTypeId, start: appointments.startsAt, end: appointments.endsAt, consent: patients.smsConsentAt, phone: patients.phoneEnc })
+      .from(appointments).innerJoin(patients, eq(patients.id, appointments.patientId))
+      .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${now}`))
+      .orderBy(appointments.startsAt)).map((r) => ({ appointmentId: r.id, visitTypeId: r.visitTypeId, start: r.start, end: r.end, textable: !!r.consent && !!r.phone })));
+  }
+
   /** Every visit with a provider, past or to come, in any state: a provider something still points at is kept in the settings. Inside `updateSettings`, pass its transaction. */
   async visitsWithProvider(clinicId: string, providerId: string, within?: Tx): Promise<number> {
     const count = async (tx: Tx) => {

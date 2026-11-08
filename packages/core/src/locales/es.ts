@@ -101,6 +101,7 @@ export const es: LanguagePack = {
     refill_not_approved: (v) => `${v.clinic}: ${hola(v, `sobre ${v.pet ? `el pedido reciente de ${v.pet}` : 'su pedido reciente'}${ref(v)}, por favor llámenos al ${v.clinicPhone}.`)} Responda STOP para no recibir más mensajes.`,
     change_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} se cambió ${v.from ? `del ${sinEl(v.from)} ` : ''}al ${sinEl(v.when)}.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hola(v, `${citaDe(v)} del ${sinEl(v.when)} quedó cancelada.`)} Para reservar otra, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
+    vet_changed: (v) => `${v.clinic}: ${hola(v, `${v.pet ? `la cita de ${v.pet}` : 'su cita'} del ${sinEl(v.when)} ahora es con ${v.provider}, a la misma hora.`)} Para cambiarla o cancelarla, llame al ${v.clinicPhone}. Responda STOP para no recibir más mensajes.`,
     directions: (v) => `${v.clinic}: ${v.address}. Mapa: ${v.mapUrl}. Responda STOP para no recibir más mensajes.`,
     hours: (v) => `Horario de ${v.clinic}: ${v.hours}. Responda STOP para no recibir más mensajes.`,
     emergency_hospital: (v) => `${v.clinic}: urgencias veterinarias: ${v.hospital}, ${v.hospitalAddress}, tel. ${v.hospitalPhone}. Si una persona está herida o en peligro, llame al ${v.emergencyNumber}. Responda STOP para no recibir más mensajes.`,

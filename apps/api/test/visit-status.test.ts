@@ -28,7 +28,8 @@ beforeAll(async () => {
     demoMode: false, now: () => now,
     jobs: { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async (e) => { events.push(e); }, requestReady: async () => {}, smsStatus: async () => {} },
   });
-  await saveClinic(api.t.db, 'org_demo', { ...DEMO_CLINIC, holidays: [] });
+  const clinic: typeof DEMO_CLINIC = { ...DEMO_CLINIC, holidays: [] };
+  await saveClinic(api.t.db, 'org_demo', clinic);
   as = { admin: await api.signIn('olga@maple.example', true), staff: await api.signIn('ana@maple.example', true), viewer: await api.signIn('vic@maple.example', true) };
   await api.t.owner.execute(sql`update clinics set created_at = '2026-06-01T15:00:00Z' where id = ${DEMO_CLINIC.id}`);
 });
