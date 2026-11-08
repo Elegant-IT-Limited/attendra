@@ -4,7 +4,7 @@ import { approvesRefills, type Database, type FrontDeskRepository, type PhiCiphe
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiNoContentResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
+import { CustomFieldValues, NewTask, TaskAssign, TaskAssignees, TaskCount, TaskDone, TaskList, TaskNoteInput, TaskHistory, TaskPlan, TaskQuery, TaskSearch, WaitingTasks } from '../contracts';
 import { can } from '../access';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
@@ -171,6 +171,44 @@ export class TasksController {
     if (facts) await this.events.emit(clinicId, { type: 'request.done', key: taskId, data: facts });
   }
 
+  /**
+   * Opens a closed request again: back in the queue, unclaimed, with no outcome. Everyone who works requests may (the
+   * same people who close one). Audited, in the request's history, and every open Requests page hears of it at once.
+   */
+  @Post(':taskId/reopen')
+  @HttpCode(204)
+  @Requires('tasks:work')
+  @ApiOperation({ summary: 'Open a closed request again: back in the queue, unclaimed, with no outcome. What closing it already did (a text sent, a record confirmed) stays done. Audited.' })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ description: 'The request is not closed' })
+  async reopen(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string, @CurrentStaff() staff: Staff) {
+    const result = isUuid(taskId) ? await this.desk.reopenTask(clinicId, taskId, staff.userId) : 'not_found';
+    if (result === 'taken') throw new ConflictException({ error: 'task_open', message: 'This request is already open.' });
+    this.outcome(result);
+  }
+
+  /** Who did what to one request, oldest first: codes, times and names, never a note's words. */
+  @Get(':taskId/history')
+  @Requires('tasks:read')
+  @ApiOperation({ summary: 'What was done to one request, oldest first: created, claimed, handed over, closed, reopened, notes added. Who did it, by name and role; never what a note says.' })
+  @ApiOkResponse({ schema: schemaOf(TaskHistory) })
+  async history(@Param('clinicId') clinicId: string, @Param('taskId') taskId: string): Promise<TaskHistory> {
+    const rows = isUuid(taskId) ? await this.desk.taskHistory(clinicId, taskId) : null;
+    if (!rows) throw new NotFoundException({ error: 'not_found' });
+    const userIds = rows.flatMap((r) => (r.actor.startsWith('user:') ? [r.actor.slice(5)] : []));
+    // only people still on the team: a former member's name and role are gone, as on the request itself
+    const people = await staffPeople(this.db, clinicId, userIds);
+    return {
+      events: rows.map((r) => ({
+        action: r.action, at: r.at.toISOString(),
+        by: r.actor === 'voice-agent' ? { kind: 'assistant' as const }
+          : r.actor.startsWith('user:') ? { kind: 'staff' as const, name: people.get(r.actor.slice(5))?.name ?? null, role: people.get(r.actor.slice(5))?.role ?? null }
+          : r.actor.startsWith('api_key:') ? { kind: 'app' as const }
+          : { kind: 'system' as const },
+      })),
+    };
+  }
+
   @Post(':taskId/notes')
   @HttpCode(204)
   @Requires('tasks:work')
@@ -230,7 +268,7 @@ export class TasksController {
     this.outcome(isUuid(taskId) ? await this.desk.releaseTask(clinicId, taskId, staff.userId, override) : 'not_found');
   }
 
-  private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'planned' | 'taken' | 'not_found') {
+  private outcome(result: 'claimed' | 'done' | 'released' | 'added' | 'assigned' | 'planned' | 'reopened' | 'taken' | 'not_found') {
     if (result === 'not_found') throw new NotFoundException({ error: 'not_found' });
     if (result === 'taken') throw new ConflictException({ error: 'task_taken', message: 'Someone else holds this request, or it is already done.' });
   }

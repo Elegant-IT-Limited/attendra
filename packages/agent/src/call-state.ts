@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { answerAcrossPieces, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot } from '@attendra/core';
+import { answerAcrossPieces, type CallOutcome, type CallPatient, isClearYes, type Language, LANGUAGES, newToClinic, normalise, redactSensitive, saysSlot, type Slot } from '@attendra/core';
 import { CallMemory } from './call-memory';
 import type { EmergencyCase, EmergencyResult } from './flow/emergency';
 
@@ -191,7 +191,8 @@ export class CallState {
   /** Caller turns with insults or threats in them, and the last such turn (each counts once). */
   abuse = 0;
   abuseTurn = -1;
-  outcome: 'booked' | 'rescheduled' | 'cancelled' | 'task_created' | 'transferred' | 'info' | 'emergency' | 'abandoned' = 'abandoned';
+  /** Every value but no_audio, which only the recorder sets (core CALL_OUTCOMES, recordedOutcome). */
+  outcome: Exclude<CallOutcome, 'no_audio'> = 'abandoned';
   /**
    * How an answer to a read-back or a number question is read: from the caller's latest piece (false, the planner path
    * today), or from every piece since the question, the latest that decides (true: the tools path, batch 1a). A yes

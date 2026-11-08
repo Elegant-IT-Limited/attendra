@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type ActionRecorder, CallAgent, CallState, type Outbound, type Planner, type PlannerInput, type PlannerTiming, ScriptedPlanner, type ScriptedStep, type ToolResult } from '@attendra/agent';
-import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
+import { addDays, awayOn, isPetEmergency, bookableWindows, textingOf, awayWindows, ClinicConfig, DEMO_CLINIC, DEMO_CLINICS, localDateOf, localParts, type Messenger, normalise, questionsIn, repeatedQuestions, speakSlot, toMinutes, type ToolName, weekdayOf, zonedInstant } from '@attendra/core';
 import { CallRepository, CEDAR_PARK_PATIENTS, createPhiCipher, type Database, DEMO_PATIENTS, KnowledgeRepository, PatientRecords, type PhiCipher, phoneKey, PostgresAuditLog, PostgresPatientDirectory, phiContext, PostgresTaskQueue, RIVERBEND_PETS, schema, seedCedarPark, seedDemo, seedRiverbend, withClinic } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { openTestDatabase, TEST_DATA_KEY } from '@attendra/db/testing';
@@ -128,21 +128,6 @@ function saysMostOf(line: string, phrase: string): boolean {
   const said = new Set(words(line));
   const wanted = words(phrase);
   return wanted.length > 0 && wanted.filter((w) => said.has(w)).length / wanted.length >= 0.75;
-}
-
-/** The questions in a line: each sentence that ends with a question mark. */
-function questionsIn(line: string): string[] {
-  return line.split(/(?<=[.!?])\s+/).map((q) => q.trim()).filter((q) => q.endsWith('?'));
-}
-
-/** Two questions are the same question when they are the same words (case, punctuation and accents aside); a confirmation asked once per change is not. */
-function sameQuestion(a: string, b: string): boolean {
-  const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’']/g, '\'').split(/[^\p{L}\p{N}']+/u).filter(Boolean).join(' ');
-  // the closing and confirming questions, and "how can I help?" once at the greeting and once after finding the caller, are no repeat
-  const closing = /anything else|is that right|shall i book|is that correct|book (it|that)\?|how can i help|en qu[eé] (le )?puedo ayudar|algo m[aá]s|le reservo la cita|es correcto/i;
-  if (closing.test(a) && closing.test(b)) return false;
-  const [x, y] = [norm(a), norm(b)];
-  return x.length >= 12 && x === y;
 }
 
 /**
@@ -504,18 +489,9 @@ export async function playScenario(db: Database, cipher: PhiCipher, patientIds: 
     const confirming = (q: string) => /shall i|is that right|is that correct|would you like me to|book (it|that)\?|sounds (good|right)\?|emergency care\?|atenci[oó]n de emergencia\?/i.test(q);
     if (e.one_question_per_reply) for (const line of said) { const qs = questionsIn(line); check(qs.length <= 1 || (qs.length === 2 && confirming(qs[1]!)), `asked ${qs.length} questions in one reply: "${line}"`); }
     if (e.no_repeated_questions) {
-      const asked: { q: string; at: number }[] = [];
-      transcript.forEach((l, at) => { if (l.speaker === 'assistant') for (const q of questionsIn(l.text)) asked.push({ q, at }); });
-      for (let i = 0; i < asked.length; i++) for (let j = i + 1; j < asked.length; j++) {
-        const between = transcript.slice(asked[i]!.at + 1, asked[j]!.at).filter((l) => l.speaker === 'caller').map((l) => l.text.toLowerCase());
-        // asked again on request ("say that again", "what?", "sorry?") is not a repeat
-        const askedToRepeat = between.some((t) => /\b(again|repeat|what\?|sorry\?|pardon|didn't catch|did not catch|say that)\b/.test(t));
-        // "Which time works for you?" after a new set of times (the caller changed the day: Wednesday, not Tuesday) is a new
-        // question: the reply around it differs, not only the question
-        const around = (at: number, q: string) => transcript[at]!.text.replace(q, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-        const newOffer = around(asked[i]!.at, asked[i]!.q) !== around(asked[j]!.at, asked[j]!.q) && around(asked[j]!.at, asked[j]!.q).length > 12;
-        if (between.length && !askedToRepeat && !newOffer && sameQuestion(asked[i]!.q, asked[j]!.q)) { check(false, `asked the same question twice: "${asked[i]!.q}" and later "${asked[j]!.q}"`); i = asked.length; break; }
-      }
+      // the same rule the call row's repeated_questions counts by (core repeatedQuestions)
+      const [repeat] = repeatedQuestions(transcript.map((l) => ({ speaker: l.speaker === 'assistant' ? 'agent' : l.speaker, text: l.text })));
+      if (repeat) check(false, `asked the same question twice: "${repeat.first}" and later "${repeat.again}"`);
     }
   }
   return { id: scenario.id, passed: failures.length === 0, failures, refusals: observed.refusals, outcome: state.outcome, spoken, transcript, tools: observed.tools, calls: observed.calls, timings: observed.timings, callId, ms: Math.round(performance.now() - started) };

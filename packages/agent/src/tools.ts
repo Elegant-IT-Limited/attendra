@@ -1063,8 +1063,9 @@ async function toolCall(name: ToolName, rawArgs: unknown, state: CallState, ctx:
         // one callback per call for each purpose (a topic, a privacy request, or anything else): the team calls once
         idempotencyKey: key(ctx.callId, 'callback', topic?.id ?? (/^privacy request/i.test(String(args.reason)) ? 'privacy' : 'general')),
         details: { ...(topic ? { topic: topic.name } : {}), reason: String(args.reason), callback_number: asGiven(clinic, callback), ...(state.emergencyNotes.length ? { note: state.emergencyNotes.join(' ') } : {}) },
-        // taken while an emergency holds the call: urgent, so it leads the Requests page and Today
-        ...(state.emergencyLocked ? { urgent: true } : {}),
+        // taken while an emergency holds the call: urgent, so it leads the Requests page and Today, and marked as from
+        // an emergency call (REQ-2), like the one a transfer that did not go through leaves
+        ...(state.emergencyLocked ? { urgent: true, origin: 'emergency' as const } : {}),
       });
       if (!state.emergencyLocked) state.outcome = 'task_created';
       if (!task.created) return { ok: true, data: { task_id: task.id, already: true, say: 'The team already has a callback request from this call. Say it is noted and they will call; do not take another.' } };

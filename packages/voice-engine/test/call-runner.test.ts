@@ -327,8 +327,19 @@ describe('the GPT-Live call runner', () => {
       { speaker: 'agent', text: 'Thanks for calling Maple Street.' },
       { speaker: 'caller', text: 'What are your hours?' },
     ]);
-    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, emergencyResult: null, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0 }, usage: { models: {}, fastTier: false } }]);
+    expect(h.closes).toEqual([{ reason: 'remote_hangup', voiceSeconds: 42.5, outcome: 'abandoned', emergency: false, emergencyResult: null, language: 'en', quality: { firstAudioMs: expect.any(Number), stalls: 0, answerTimeouts: 0, maxGapMs: null, repeatedQuestions: 0 }, usage: { models: {}, fastTier: false } }]);
     expect(h.sideband.close).toHaveBeenCalled();
+  });
+
+  it('closes with the longest wait after the caller spoke and the questions asked again (CALL-3)', async () => {
+    const h = harness(new ScriptedPlanner([]));
+    await h.runner.handle(delta('out', 'o1', 'Thanks for calling. What is the pet\'s name, please?', 0));
+    await h.runner.handle(delta('in', 'i1', 'Biscuit.', 1000)); // ends at 1400
+    await h.runner.handle(delta('out', 'o2', 'Thanks. What is the pet\'s name, please?', 2300)); // 900 ms after
+    await h.runner.handle(delta('in', 'i2', 'I said Biscuit.', 3000)); // ends at 3400
+    await h.runner.handle(delta('out', 'o3', 'Got it, Biscuit.', 5900)); // 2500 ms after
+    await h.runner.handle({ type: 'session.closed', event_id: 'c1', reason: 'remote_hangup', usage: { seconds: 8 } });
+    expect(h.closes.at(-1)).toMatchObject({ quality: { maxGapMs: 2500, repeatedQuestions: 1 } });
   });
 });
 

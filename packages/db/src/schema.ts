@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { EMERGENCY_RESULTS } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { bigserial, boolean, customType, date, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
 
@@ -166,7 +167,11 @@ export const calls = pgTable('calls', {
   engineSessionId: text('engine_session_id'),
   voiceFlow: text('voice_flow', { enum: ['planner', 'tools'] }),
   /** How an animal's emergency on the call ended (migration 0050); null when the call had none. */
-  emergencyResult: text('emergency_result', { enum: ['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared'] }),
+  emergencyResult: text('emergency_result', { enum: EMERGENCY_RESULTS }),
+  /** The longest the caller waited after speaking for the assistant to start its reply, in ms (migration 0055); null when none. */
+  maxGapMs: integer('max_gap_ms'),
+  /** Questions the assistant asked again after they were answered (migration 0055, core repeatedQuestions). */
+  repeatedQuestions: integer('repeated_questions'),
 });
 
 /** What one call cost us, from the rates table in core (call-costs.ts): numbers only (migration 0045). */

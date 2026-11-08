@@ -82,6 +82,8 @@ export type SettingsChange<T> = { save: { name: string; timezone: string }; resu
  * candidates are read up to the same number.
  */
 export const TASK_SEARCH_SCAN = 2000;
+/** The most history rows one request shows: a request handed back and forth all week still fits. */
+export const TASK_HISTORY_LIMIT = 200;
 /** The newest calls whose numbers a search by a few digits decrypts and compares, when ATTENDRA_SEARCH_SCAN turns the old scan back on for this release. */
 export const CALL_NUMBER_SCAN = 5000;
 /** A patient shown again in a search by the same person within this many minutes is covered by the result row already written. */
@@ -181,6 +183,8 @@ export class FrontDeskRepository {
   async listCalls(clinicId: string, opts: {
     before?: { startedAt: string; id: string }; limit: number;
     from?: Date; to?: Date; outcome?: string; channel?: 'phone' | 'web'; emergency?: boolean; needsReview?: boolean;
+    /** How an animal's emergency on the call ended (CALL-2): put through, sent to the hospital, an urgent request, cleared. */
+    emergencyResult?: string;
     /** A search: calls with one of these verified patients, or one of these ids (found by number or request). None of either is no match. */
     match?: { patientIds: string[]; callIds: string[] };
     /** Calls where a tool was refused with this code, for the quality page's links. */
@@ -222,6 +226,7 @@ export class FrontDeskRepository {
           opts.outcome ? eq(calls.outcome, opts.outcome) : undefined,
           opts.channel ? eq(calls.channel, opts.channel) : undefined,
           opts.emergency !== undefined ? eq(calls.emergencyFlag, opts.emergency) : undefined,
+          opts.emergencyResult ? sql`${calls.emergencyResult} = ${opts.emergencyResult}` : undefined,
           opts.match ? or(opts.match.patientIds.length ? inArray(calls.patientId, opts.match.patientIds) : undefined, opts.match.callIds.length ? inArray(calls.id, opts.match.callIds) : undefined) : undefined,
           opts.needsReview ? sql`${callSummaries.needsReview} and ${callSummaries.reviewedAt} is null` : undefined,
           opts.refusal ? sql`exists (select 1 from call_actions r where r.call_id = ${calls.id} and r.result->>'error' = ${opts.refusal})` : undefined))
@@ -234,7 +239,7 @@ export class FrontDeskRepository {
         // everything that changes what the list shows is in the key: filters, page, and who is on it
         const key = [
           `from=${opts.from?.toISOString() ?? ''}`, `to=${opts.to?.toISOString() ?? ''}`, `outcome=${opts.outcome ?? ''}`, `channel=${opts.channel ?? ''}`,
-          `emergency=${opts.emergency ?? ''}`, `review=${opts.needsReview ?? ''}`, `refusal=${opts.refusal ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
+          `emergency=${opts.emergency ?? ''}`, `result=${opts.emergencyResult ?? ''}`, `review=${opts.needsReview ?? ''}`, `refusal=${opts.refusal ?? ''}`, `before=${opts.before ? `${opts.before.startedAt}|${opts.before.id}` : ''}`, `limit=${opts.limit}`, patientSetKey(shown),
         ].join(';');
         await recordView(tx, { clinicId, actor: actorOf(opts.names.userId), action: 'calls.listed', entity: 'call', entityId: key }, 5);
       }
@@ -349,6 +354,7 @@ export class FrontDeskRepository {
       return {
         id: call.id, startedAt: call.startedAt, endedAt: call.endedAt, outcome: call.outcome, emergency: call.emergencyFlag, emergencyResult: call.emergencyResult,
         closeReason: call.closeReason, voiceSeconds: call.voiceSeconds === null ? null : Number(call.voiceSeconds), channel: call.channel,
+        maxGapMs: call.maxGapMs, repeatedQuestions: call.repeatedQuestions,
         callerNumber: call.fromEnc ? this.cipher.decrypt(call.fromEnc, phiContext(clinicId, 'calls.from')) : null,
         calledAsLast4: call.calledAsLast4,
         patient: caller ? {
@@ -605,6 +611,40 @@ export class FrontDeskRepository {
       }
       const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
       return exists ? 'taken' : 'not_found';
+    });
+  }
+
+  /**
+   * Opens a closed request again (REQ-3, batch 4b): back in the queue, unclaimed, with no outcome, as it was before it was
+   * closed. Anyone who works requests may, whoever closed it; the close stays in its history (the audit log), and so does
+   * this. What the close already did stays done: a text the caller was sent, a record confirmed, a review marked.
+   */
+  async reopenTask(clinicId: string, taskId: string, userId: string): Promise<'reopened' | 'taken' | 'not_found'> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const updated = await tx.update(tasks).set({ status: 'open', doneAt: null, doneByUserId: null, outcome: null, assigneeUserId: null, assignedByUserId: null, claimedAt: null })
+        .where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId), eq(tasks.status, 'done')))
+        .returning({ id: tasks.id, number: tasks.number, callId: tasks.callId });
+      if (updated.length) {
+        await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'task.reopened', entity: 'task', entityId: taskId, counts: { number: updated[0]!.number }, ...(updated[0]!.callId ? { callId: updated[0]!.callId } : {}) });
+        return 'reopened';
+      }
+      const [exists] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
+      return exists ? 'taken' : 'not_found';
+    });
+  }
+
+  /**
+   * A request's history, oldest first: what was done to it and by whom (the assistant, a teammate, the system), from the
+   * audit log's rows about it. Views are left out (they are who read it, not what happened to it). Codes and times only:
+   * no patient data, so reading it is not itself audited. Null when there is no such request at this clinic.
+   */
+  async taskHistory(clinicId: string, taskId: string): Promise<{ action: string; actor: string; at: Date }[] | null> {
+    return withClinic(this.db, clinicId, async (tx) => {
+      const [task] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.clinicId, clinicId), eq(tasks.id, taskId)));
+      if (!task) return null;
+      return tx.select({ action: auditLogs.action, actor: auditLogs.actor, at: auditLogs.at }).from(auditLogs)
+        .where(and(eq(auditLogs.clinicId, clinicId), eq(auditLogs.entity, 'task'), eq(auditLogs.entityId, taskId), sql`${auditLogs.action} <> 'task.viewed'`))
+        .orderBy(auditLogs.at, auditLogs.id).limit(TASK_HISTORY_LIMIT);
     });
   }
 

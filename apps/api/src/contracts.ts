@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, DESK_STATUSES, Gender, HAS_NAME, SEARCH_MAX, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VISIT_STATUSES, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, CALL_OUTCOMES, DESK_STATUSES, EMERGENCY_RESULTS, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, SEARCH_MAX, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -99,7 +99,7 @@ export const CallSummary = z.object({
   outcome: z.string().nullable(),
   emergency: z.boolean(),
   /** How an animal's emergency on the call ended (batch 1b): put through, a hospital said or texted, an urgent request, or cleared by the caller. */
-  emergencyResult: z.enum(['transferred', 'hospital_said', 'hospital_texted', 'urgent_request', 'cleared']).nullable().optional(),
+  emergencyResult: z.enum(EMERGENCY_RESULTS).nullable().optional(),
   closeReason: z.string().nullable(),
   voiceSeconds: z.number().nullable(),
   tools: z.array(z.string()),
@@ -124,9 +124,11 @@ const boolParam = z.enum(['true', 'false']).transform((v) => v === 'true');
 const CallFilters = z.object({
   from: day().optional(),
   to: day().optional(),
-  outcome: z.enum(['booked', 'rescheduled', 'cancelled', 'task_created', 'transferred', 'info', 'emergency', 'abandoned', 'no_audio']).optional(),
+  outcome: z.enum(CALL_OUTCOMES).optional(),
   channel: z.enum(['phone', 'web']).optional(),
   emergency: boolParam.optional(),
+  /** How an animal's emergency ended (CALL-2): put through, the hospital said or texted, an urgent request, cleared. */
+  emergencyResult: z.enum(EMERGENCY_RESULTS).optional(),
   review: z.literal('needed').optional(),
   refusal: z.string().regex(/^[a-z_]{2,40}$/).optional(),
 });
@@ -136,7 +138,7 @@ export const CallQuery = Page.extend(CallFilters.shape);
 /** What is typed in the Calls search: a verified caller's name (a pet's or its owner's), a phone number in any form or its last digits, or a request number ("R-1042"). */
 export const CallSearch = z.object({
   query: z.string().trim().min(1, 'type something to search for').max(SEARCH_MAX),
-  from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel,
+  from: CallFilters.shape.from, to: CallFilters.shape.to, outcome: CallFilters.shape.outcome, channel: CallFilters.shape.channel, emergencyResult: CallFilters.shape.emergencyResult,
   emergency: z.boolean().optional(),
   review: z.literal('needed').optional(),
   refusal: CallFilters.shape.refusal,
@@ -174,6 +176,10 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   summary: CallSummaryCard.nullable(),
   /** While there is no summary: whether the worker is on it, or gave up. */
   summaryJob: z.object({ state: z.string(), failure: z.string().nullable() }).nullable(),
+  /** The longest the caller waited after speaking for the assistant to start its reply, in ms; null when none, or before v55 (CALL-3). */
+  maxGapMs: z.number().int().nullable(),
+  /** Questions the assistant asked again after the caller had answered them; null before v55 (CALL-3). */
+  repeatedQuestions: z.number().int().nullable(),
 });
 
 /** The calls going on now. Codes only; the verified caller's short name only for roles that may read calls. */
@@ -433,6 +439,23 @@ export const Task = z.object({
   notes: z.array(z.object({ id: z.number(), author: z.string().nullable(), authorAvatarUrl: AvatarUrl, at: z.iso.datetime(), body: z.string() })),
 });
 export const TaskList = z.object({ tasks: z.array(Task) });
+/**
+ * What was done to one request, oldest first (REQ-3): created, claimed, handed over, urgency or due day changed, a note
+ * added, closed, reopened. `by` is who did it: the assistant, a teammate by name and role (null name for someone no
+ * longer on the team), a connected app, or Attendra itself. Codes only, never what a note says.
+ */
+export const TaskHistory = z.object({
+  events: z.array(z.object({
+    action: z.string(), at: z.iso.datetime(),
+    by: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('assistant') }),
+      z.object({ kind: z.literal('staff'), name: z.string().nullable(), role: Role.nullable() }),
+      /** A connected app, with one of the clinic's API keys (Settings, Integrations). */
+      z.object({ kind: z.literal('app') }),
+      z.object({ kind: z.literal('system') }),
+    ]),
+  })),
+});
 export const TaskCount = z.object({ open: z.number() });
 
 const isoDate = day();
@@ -941,6 +964,7 @@ export type WebhookAttempts = z.infer<typeof WebhookAttempts>;
 export type LiveCalls = z.infer<typeof LiveCalls>;
 export type Task = z.infer<typeof Task>;
 export type TaskList = z.infer<typeof TaskList>;
+export type TaskHistory = z.infer<typeof TaskHistory>;
 export type TextItem = z.infer<typeof TextItem>;
 export type TextList = z.infer<typeof TextList>;
 export type TestCall = z.infer<typeof TestCall>;
