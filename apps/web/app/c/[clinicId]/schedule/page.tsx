@@ -154,28 +154,36 @@ function ScheduleScreen() {
       <PageHeader title="Schedule" description={<>Every booking, whoever made it. Times are {zoneLabel(tz)}.{named ? '' : ' Your role sees when visits are and with whom, without names.'}</>}
         actions={writable && <Button onClick={() => setBooking(true)}><Plus /> New booking</Button>} />
       <ConflictsAlert clinicId={clinicId} className="mb-4" />
-      <div className="mb-4 flex flex-wrap items-center gap-3" data-toolbar="schedule">
-        <div className="flex items-center gap-1">
-          <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
-          <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
-          <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="schedule-date" className="sr-only">Date</Label>
-          <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
-        </div>
-        <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
-          {VIEWS.map((v) => (
-            <button key={v.value} id={`schedule-tab-${v.value}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v.value} title={v.hint} aria-describedby="schedule-view-hint"
-              onClick={() => { set({ view: v.value }); setRemembered(v.value); writeView(clinicId, v.value); }}
-              className={cn('rounded px-3 py-1 text-sm focus-ring', view === v.value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
-              {v.label}
-            </button>
-          ))}
-        </div>
-        <p id="schedule-view-hint" className="text-xs text-text-muted">{VIEWS.find((v) => v.value === view)!.hint}</p>
-        {view === 'agenda' && (
-          <div className="flex rounded-md border border-border-strong p-0.5" role="group" aria-label="Agenda range">
+      <div className="mb-4 space-y-2" data-testid="schedule-toolbar">
+        {/* Row 1, the same controls in the same places in every view: where you are, the date, the view, and the
+            Agenda's range last (it is the only one that comes and goes). Row 2: every filter, always in this order. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-7 pb-5" data-toolbar="schedule">
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => go(-1)} aria-label={`Previous ${unit}`}><ChevronLeft /></Button>
+            <Button variant="outline" size="sm" onClick={() => set({ date: today })} disabled={view === 'month' ? monthOf(today) === monthOf(date) : weekly ? mondayOf(today) === from : date === today}>Today</Button>
+            <Button variant="outline" size="sm" onClick={() => go(1)} aria-label={`Next ${unit}`}><ChevronRight /></Button>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="schedule-date" className="sr-only">Date</Label>
+            <Input id="schedule-date" type="date" className="h-8 w-40" value={date} onChange={(e) => e.target.value && set({ date: e.target.value })} />
+          </div>
+          <div className="relative">
+            <div className="flex rounded-md border border-border-strong p-0.5" role="tablist" aria-label="View">
+              {VIEWS.map((v) => (
+                <button key={v.value} id={`schedule-tab-${v.value}`} aria-controls="schedule-panel" role="tab" aria-selected={view === v.value} title={v.hint} aria-describedby="schedule-view-hint"
+                  onClick={() => { set({ view: v.value }); setRemembered(v.value); writeView(clinicId, v.value); }}
+                  className={cn('rounded px-3 py-1 text-sm focus-ring', view === v.value ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {/* the view's hint, a small caption under the buttons: out of the flow, so its length never moves anything */}
+            <p id="schedule-view-hint" className="pointer-events-none absolute left-0 top-full mt-1 whitespace-nowrap text-xs text-text-muted">{VIEWS.find((v) => v.value === view)!.hint}</p>
+          </div>
+          {/* the Agenda's range keeps its place in every view (hidden and inert where the view has none), so row 1 wraps
+              the same way on a phone and nothing below it moves */}
+          <div className={cn('flex rounded-md border border-border-strong p-0.5', view !== 'agenda' && 'invisible')} role="group" aria-label="Agenda range"
+            aria-hidden={view !== 'agenda' || undefined} inert={view !== 'agenda' || undefined}>
             {([['1', date === today ? 'Today' : 'This day'], ['7', 'This week']] as const).map(([d, label]) => (
               <button key={d} type="button" aria-pressed={agendaWeek === (d === '7')} onClick={() => set({ days: d === '7' ? '7' : null })}
                 className={cn('rounded px-3 py-1 text-sm focus-ring', agendaWeek === (d === '7') ? 'bg-primary text-on-primary' : 'text-text-muted hover:text-text')}>
@@ -183,24 +191,27 @@ function ScheduleScreen() {
               </button>
             ))}
           </div>
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
-          <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-            <option value="">{pets ? 'All veterinarians' : 'All providers'}</option>
-            {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${providerName(p)}, ${p.specialty}` : providerName(p)}</option>)}
-          </Select>
         </div>
-        {manyProviders && (view === 'day' || view === 'week') && (
-          <VetsPicker clinic={clinic} providers={listed} date={date} chosen={chosen} onChange={choose} word={pets ? 'veterinarians' : 'providers'} onGrid={providers.length} />
-        )}
-        <div className="space-y-1">
-          <Label htmlFor="schedule-show" className="sr-only">Show</Label>
-          <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
-            <option value="booked">Booked</option>
-            <option value="all">Booked and cancelled</option>
-            <option value="cancelled">Cancelled (history)</option>
-          </Select>
+        <div className="flex flex-wrap items-center gap-3" data-toolbar="schedule-filters">
+          <div className="space-y-1">
+            <Label htmlFor="schedule-provider" className="sr-only">Provider</Label>
+            <Select id="schedule-provider" className="h-8 w-64" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+              <option value="">{pets ? 'All veterinarians' : 'All providers'}</option>
+              {listed.map((p) => <option key={p.id} value={p.id}>{p.specialty ? `${providerName(p)}, ${p.specialty}` : providerName(p)}</option>)}
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="schedule-show" className="sr-only">Show</Label>
+            <Select id="schedule-show" className="h-8 w-56" value={show} onChange={(e) => set({ show: e.target.value })}>
+              <option value="booked">Booked</option>
+              <option value="all">Booked and cancelled</option>
+              <option value="cancelled">Cancelled (history)</option>
+            </Select>
+          </div>
+          {/* the vets picker (big clinics, Day and Week) comes last, so it never moves the filters before it */}
+          {manyProviders && (view === 'day' || view === 'week') && (
+            <VetsPicker clinic={clinic} providers={listed} date={date} chosen={chosen} onChange={choose} word={pets ? 'veterinarians' : 'providers'} onGrid={providers.length} />
+          )}
         </div>
       </div>
 
