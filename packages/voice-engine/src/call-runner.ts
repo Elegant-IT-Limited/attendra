@@ -51,6 +51,12 @@ const CHECK_MS = 500;
  * on 2026-10-29). On its own timer, so it is not up to a second late.
  */
 export const OPENING_NUDGE_MS = 2500;
+/**
+ * By then a caller who has heard nothing is never left waiting longer (batch 1e): four phone calls in October lasted
+ * exactly 30 s with no assistant audio until the session expired. The call goes to the front desk when the clinic has
+ * one, or ends, and the call is recorded as `no_audio` with the empty-call alert, so the team sees it at once.
+ */
+export const SILENT_START_DEADLINE_MS = 9000;
 /** An answer sent this long before the sideband dropped may never have reached the voice. */
 const LOST_BEFORE_DROP_MS = 3000;
 const OPENING_NUDGE = 'The call is connected and the caller has not heard you yet. Only if you have not started speaking and the caller has said nothing: greet them now, exactly as you were told to at the start of the call, then listen. If any part of the greeting was said, or the caller has spoken, never start it again: answer them.';
@@ -128,6 +134,12 @@ export class CallRunner {
    */
   manualTurns = false;
   private manual = false;
+  /**
+   * Where a call whose assistant never spoke goes at SILENT_START_DEADLINE_MS: the clinic's front desk, or null to end it
+   * (no front desk, a browser test call). Set by the voice service; undefined leaves the call as it is.
+   */
+  silentStartUri: string | null | undefined = undefined;
+  private silentStartHandled = false;
 
   constructor(
     private readonly sessionId: string,
@@ -157,6 +169,8 @@ export class CallRunner {
     this.watch();
     const opening = setTimeout(() => { this.timers.delete(opening); void this.openingCheck().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, OPENING_NUDGE_MS);
     this.timers.add(opening);
+    const deadline = setTimeout(() => { this.timers.delete(deadline); void this.silentStartCheck().catch((err) => this.log.warn({ session_id: this.sessionId, err }, 'call check failed')); }, SILENT_START_DEADLINE_MS);
+    this.timers.add(deadline);
     return new Promise((resolve) => {
       this.sideband.onEvent((event) => { void this.handle(event).catch((err) => this.log.error({ session_id: this.sessionId, err }, 'event handling failed')); });
       this.sideband.onError((err) => this.log.warn({ session_id: this.sessionId, err }, 'sideband error'));
@@ -483,6 +497,21 @@ export class CallRunner {
     this.sideband.send({ type: 'session.commentary.append', event_id: `opening_nudge_${this.sessionId}`, delegation_id: null, content: OPENING_NUDGE });
   }
 
+  /**
+   * The assistant has not said a word SILENT_START_DEADLINE_MS after the call was answered, nudge or not: the caller is
+   * put through to the front desk, or the call ends, instead of a silent line until the session expires. Never once any
+   * of the assistant's audio or words reached the line, nor while staff or a transfer are already on it.
+   */
+  private async silentStartCheck() {
+    if (this.silentStartUri === undefined || this.silentStartHandled) return;
+    if (this.closed || this.ending || this.agent.state.endedByStaff || this.audioStartedAt || this.agentSpokeAt) return;
+    this.silentStartHandled = true;
+    this.marks.mark('silent_start');
+    const uri = this.silentStartUri;
+    this.log.warn({ session_id: this.sessionId, ms: Date.now() - this.startedAt, to: uri ? 'front_desk' : 'end', caller_spoke: !!this.callerSaidAt }, 'the assistant never spoke: the caller is not left in silence');
+    await this.dispatch(uri ? [{ type: 'transfer', uri }] : [{ type: 'hangup' }]);
+  }
+
   /** The one timing line per call: at the first words, or at the end of a call that never had any. */
   private timing() {
     if (this.timed) return;
@@ -581,6 +610,8 @@ export class CallRunner {
     const state = this.agent.state;
     // a hang-up staff asked for is recorded as theirs; a dropped line is still a dropped line
     if (state.endedByStaff && !note && reason !== 'connection_lost') reason = 'ended_by_staff';
+    // a call the deadline took off a silent line says so as its close reason, wherever it went
+    if (this.silentStartHandled && !note) reason = 'silent_start';
     const quality = this.quality();
     // the caller never heard the assistant: recorded as such, and said when the line was up long enough to matter
     const outcome = recordedOutcome(state.outcome, quality);
