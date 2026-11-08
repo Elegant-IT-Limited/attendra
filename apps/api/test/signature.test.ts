@@ -41,9 +41,9 @@ describe('provisioning, while the hosting layer moves over (accept)', () => {
   const body = { engine: null };
 
   it('takes the bearer token, or a signature made with it and no token at all', async () => {
-    expect((await api.request('PUT', path, { body, authorization: `Bearer ${TOKEN}` })).statusCode).toBe(204);
+    expect((await api.request('PUT', path, { body, authorization: `Bearer ${TOKEN}` })).statusCode).toBe(200);
     const signed = signRequest(TOKEN, { method: 'PUT', path, body: JSON.stringify(body) });
-    expect((await api.request('PUT', path, { body, headers: signed })).statusCode).toBe(204);
+    expect((await api.request('PUT', path, { body, headers: signed })).statusCode).toBe(200);
   });
 
   it('refuses a bad or old signature even with the right bearer token beside it', async () => {
@@ -67,7 +67,7 @@ describe('provisioning once every request is signed (require)', () => {
     expect(bare.statusCode).toBe(401);
     expect(bare.json().error).toBe('signature_required');
     const signed = signRequest(TOKEN, { method: 'PUT', path, body: JSON.stringify({ engine: null }) });
-    expect((await api.request('PUT', path, { body: { engine: null }, headers: signed })).statusCode).toBe(204);
+    expect((await api.request('PUT', path, { body: { engine: null }, headers: signed })).statusCode).toBe(200);
   });
 
   it('a body-less request signs the empty body, its query included', async () => {
