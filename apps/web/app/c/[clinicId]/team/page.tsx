@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import { useProblem, useToast } from '@/components/ui/toast';
-import type { AddedMember, AddResult, Health, Me, Member, MemberList, TeamInvitationList } from '@attendra/api/contracts';
+import type { AddedMember, AddResult, Health, Me, Member } from '@attendra/api/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, KeyRound, MailCheck, ShieldCheck, ShieldOff, UserPlus } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -18,6 +18,7 @@ import { Label, Select, Textarea } from '@/components/ui/input';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, ApiFailure, useClinic, useMe } from '@/lib/api';
 import { clinicTime, personName } from '@/lib/format';
+import { pageData } from '@/lib/page-data';
 
 // the roles, their names and what each can do come from /me: one source with the permissions the API checks
 type RoleInfo = Me['roles'][number];
@@ -38,9 +39,9 @@ export default function Team() {
     if (n?.tone === 'info') toast({ tone: 'success', message: n.text });
     else if (n) problem({ title: 'Not changed', message: n.text });
   };
-  const members = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
+  const members = useQuery({ ...pageData.members(clinicId), enabled: can('members:manage') });
   // invitations not answered yet: someone invited accepts or declines from their own dashboard
-  const invitations = useQuery({ queryKey: ['members', clinicId, 'invitations'], queryFn: () => api<TeamInvitationList>(`/clinics/${clinicId}/invitations`), enabled: can('members:manage') });
+  const invitations = useQuery({ ...pageData.invitations(clinicId), enabled: can('members:manage') });
   const refresh = () => queries.invalidateQueries({ queryKey: ['members', clinicId] });
   const change = useMutation({
     mutationFn: ({ m, role }: { m: Member; role: string }) => api<void>(`/clinics/${clinicId}/members/${m.userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { Quality, QualityWeek } from '@attendra/api/contracts';
+import type { QualityWeek } from '@attendra/api/contracts';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -9,9 +9,10 @@ import { Sparkline } from '@/components/ui/bits';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
-import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, REFUSALS, usd } from '@/lib/format';
 import { testCallsLeftOut } from '@/lib/quality';
+import { pageData } from '@/lib/page-data';
 
 const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n * 100)}%`);
 const money = (n: number | null) => (n === null ? '—' : usd(n));
@@ -36,7 +37,7 @@ export default function QualityPage() {
   const takesRequests = useClinicConfig(clinicId).data?.afterHours === 'requests';
   const allowed = can('quality:read');
   // the weeks since the clinic signed up, half a year at most: the server trims them to its sign-up week
-  const q = useQuery({ queryKey: ['quality', clinicId], queryFn: () => api<Quality>(`/clinics/${clinicId}/quality?weeks=26`), enabled: allowed, refetchInterval: 60_000 });
+  const q = useQuery({ ...pageData.quality(clinicId), enabled: allowed, refetchInterval: 60_000 });
   const calls = (params: Record<string, string>) => `/c/${clinicId}/calls?${new URLSearchParams(params)}`;
   const week = (w: QualityWeek, extra: Record<string, string> = {}) => calls({ from: w.start, to: w.end, ...extra });
 

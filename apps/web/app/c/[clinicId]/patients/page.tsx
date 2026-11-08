@@ -19,6 +19,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { Label, Select } from '@/components/ui/input';
 import { useTerms } from '@/lib/terms';
+import { pageData } from '@/lib/page-data';
 
 const row = 'flex w-full items-center justify-between gap-3 px-3 py-2.5 text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none';
 
@@ -34,8 +35,7 @@ export default function Patients() {
   const allowed = can('patients:read');
   // before anything is typed: the newest patients, or the ones the assistant added that nobody has checked
   const newest = useQuery({
-    queryKey: ['patients', clinicId, onlyNew ? 'new' : 'all'],
-    queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients${onlyNew ? '?status=new' : ''}`),
+    ...(onlyNew ? { queryKey: ['patients', clinicId, 'new'], queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients?status=new`) } : pageData.newestPatients(clinicId)),
     enabled: allowed,
     // switching between all and new keeps the list on screen until the other one is in
     placeholderData: keepPreviousData,
@@ -55,8 +55,7 @@ export default function Patients() {
     placeholderData: keepPreviousData,
   });
   const recent = useQuery({
-    queryKey: ['patient', clinicId, 'recent'],
-    queryFn: () => api<PatientList>(`/clinics/${clinicId}/patients/recent`),
+    ...pageData.recentPatients(clinicId),
     enabled: allowed,
   });
 

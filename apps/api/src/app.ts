@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import 'reflect-metadata';
 import type { KnowledgeBase } from '@attendra/core';
-import { type ChangeFeed, clearTemporaryPassword, type Database, endSessions, FrontDeskRepository, passwordState, PATIENT_SCAN_LIMIT, PatientRecords, type PhiCipher, resetTokenUser, ScheduleRepository } from '@attendra/db';
+import { type ChangeFeed, clearTemporaryPassword, type Database, type DbTime, endSessions, measureDb, FrontDeskRepository, passwordState, PATIENT_SCAN_LIMIT, PatientRecords, type PhiCipher, resetTokenUser, ScheduleRepository } from '@attendra/db';
 import type { Answerer } from '@attendra/knowledge';
 import { StaffScheduler } from '@attendra/scheduling';
 import { type GuardOptions, type Resolver } from '@attendra/webhooks';
@@ -25,6 +25,7 @@ import { HealthController } from './health.controller';
 import { KnowledgeController } from './knowledge/knowledge.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { clientAddress } from './http/client-address';
+import { compressReply } from './http/compress';
 import { rateLimitKey } from './http/rate-key';
 import { StaffGuard, toHeaders } from './http/staff.guard';
 import { IdempotencyInterceptor } from './http/idempotency';
@@ -135,10 +136,15 @@ export const KNOWLEDGE_UPLOAD_ROUTE = '/api/v1/clinics/:clinicId/knowledge/docum
 /** CSV imports: up to 2 MB of text, as JSON. */
 export const IMPORT_ROUTES = ['/api/v1/clinics/:clinicId/doctors/import', '/api/v1/clinics/:clinicId/patients/import'];
 
+/** How long an idle connection stays open after an answer. */
+export const KEEP_ALIVE_MS = 72_000;
+
 export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> {
   const hops = deps.trustProxy ?? 0;
   // trust exactly `hops` proxies (the dashboard), so a client-sent X-Forwarded-For entry never becomes the address
-  const adapter = new FastifyAdapter({ trustProxy: (_address: string, hop: number) => hop < hops, bodyLimit: 512 * 1024 });
+  // keep-alive: a connection stays open 72 s after an answer (Fastify's default, written out so it stays), longer than the
+  // dashboard's proxy keeps an idle one, so the next request reuses it and never meets a socket closing under it
+  const adapter = new FastifyAdapter({ trustProxy: (_address: string, hop: number) => hop < hops, bodyLimit: 512 * 1024, keepAliveTimeout: KEEP_ALIVE_MS });
   const addressOf = (req: { ip: string; headers: Record<string, string | string[] | undefined> }) => clientAddress(req, !!deps.trustCloudflare);
   // rawBody: a JSON body's bytes as they came stay on the request (req.rawBody), next to the parsed body: a signed
   // provisioning request is checked against them (http/signature.ts), and an idempotency key is tied to them (http/idempotency.ts)
@@ -158,6 +164,9 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   fastify.addHook('onRequest', async (req) => {
     if (req.method === 'DELETE' && !Number(req.headers['content-length'] ?? 0) && !req.headers['transfer-encoding']) delete req.headers['content-type'];
   });
+  // each request's database time: every query it runs, however deep, adds to the DbTime kept on the request,
+  // read back for its Server-Timing header and its log line (counts and times only)
+  fastify.addHook('onRequest', (req, _reply, done) => { (req as { dbTime?: DbTime }).dbTime = measureDb(() => done()); });
   fastify.addHook('onRoute', (route) => {
     if (route.url === KNOWLEDGE_UPLOAD_ROUTE && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 5 * 1024 * 1024 + 1024;
     if (IMPORT_ROUTES.includes(route.url) && ([] as string[]).concat(route.method).includes('POST')) route.bodyLimit = 3 * 1024 * 1024;
@@ -176,16 +185,25 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   const timings = new RouteTimings();
   fastify.addHook('onResponse', async (req, reply) => {
     const ms = Math.round(reply.elapsedTime);
-    deps.log.info({ method: req.method, route: req.routeOptions.url, status: reply.statusCode, ms }, 'request');
+    const db = (req as { dbTime?: DbTime }).dbTime;
+    deps.log.info({ method: req.method, route: req.routeOptions.url, status: reply.statusCode, ms, dbMs: db ? Math.round(db.ms) : undefined, queries: db?.queries }, 'request');
     timings.add(`${req.method} ${req.routeOptions.url ?? 'unknown'}`, reply.elapsedTime);
   });
   // p50 and p95 per route, once a minute, so the slow ones show in the logs (counts and times only)
-  const report = setInterval(() => { const rows = timings.drain(); if (rows.length) deps.log.info({ routes: rows }, 'route timings'); }, 60_000);
+  const report = setInterval(() => {
+    const rows = timings.drain();
+    if (rows.length) deps.log.info({ routes: rows }, 'route timings');
+    const slow = overBudget(rows);
+    if (slow.length) deps.log.warn({ routes: slow, budgetMs: ROUTE_P95_BUDGET_MS }, 'routes over budget');
+  }, 60_000);
   report.unref();
   fastify.addHook('onClose', async () => clearInterval(report));
-  // the server's own time on every answer, for the browser's network panel (the round trip is the rest)
+  // the server's own time on every answer, for the browser's network panel (the round trip is the rest): app is the
+  // whole of it, db the time its queries took (summed: queries run side by side can add up to more than app)
   fastify.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/') && !reply.sent && !reply.raw.headersSent) reply.header('server-timing', `app;dur=${reply.elapsedTime.toFixed(1)}`);
+    if (!req.url.startsWith('/api/') || reply.sent || reply.raw.headersSent) return;
+    const db = (req as { dbTime?: DbTime }).dbTime;
+    reply.header('server-timing', serverTiming(reply.elapsedTime, db));
   });
   // Nest turns thrown errors into responses; the server-side ones still need a trace.
   // Name and code only: a database error message can quote the values in a row.
@@ -210,6 +228,9 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   fastify.addHook('onSend', async (req, reply) => {
     if (req.url.startsWith('/api/') && !String(reply.getHeader('cache-control') ?? '').startsWith('private,')) reply.header('cache-control', 'no-store');
   });
+  // JSON of 1 KB or more goes out compressed (brotli, else gzip) when the browser takes it: the calls list, the
+  // schedule and the settings are the big answers, and from far away every kilobyte is time (note 17)
+  fastify.addHook('onSend', async (req, reply, payload) => (req.url.startsWith('/api/') ? compressReply(req, reply, payload) : payload));
 
   fastify.route({
     method: ['GET', 'POST'],
@@ -274,6 +295,21 @@ export async function createApi(deps: ApiDeps): Promise<NestFastifyApplication> 
   await app.init();
   return app;
 }
+
+/** The Server-Timing header: the whole time on the server, and the database's share when it was measured. */
+export function serverTiming(appMs: number, db?: DbTime): string {
+  const app = `app;dur=${appMs.toFixed(1)}`;
+  return db && db.queries ? `${app}, db;dur=${db.ms.toFixed(1)};desc="${db.queries} ${db.queries === 1 ? 'query' : 'queries'}"` : app;
+}
+
+/**
+ * The server's share of a page change (docs/dashboard-speed.md): each route's p95 stays under this. A minute where a
+ * route with five answers or more went over it is logged as a warning, by route, counts and times only.
+ */
+export const ROUTE_P95_BUDGET_MS = 200;
+/** The routes over budget in one window; the change and live streams stay open by design and are left out. */
+export const overBudget = (rows: { route: string; count: number; p95: number }[]) =>
+  rows.filter((r) => r.count >= 5 && r.p95 > ROUTE_P95_BUDGET_MS && !/\/(changes|calls\/:callId\/live)$/.test(r.route));
 
 /** Response times per route in a window: p50 and p95, then reset. */
 export class RouteTimings {

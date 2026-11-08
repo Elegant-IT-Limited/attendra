@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { TestCallAllowance } from '@attendra/api/contracts';
 import { emergencyCallLine } from '@attendra/core';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Download, Mic, PhoneOff, User } from 'lucide-react';
@@ -15,12 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/controls';
 import { Alert, Empty } from '@/components/ui/feedback';
-import { api, useClinic, useClinicConfig } from '@/lib/api';
+import { useClinic, useClinicConfig } from '@/lib/api';
 import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
 import { limitIsTimeLeft, testCallLimitLabel } from '@/lib/test-call-limit';
 import { cn } from '@/lib/utils';
+import { pageData } from '@/lib/page-data';
 
 const TEST_CALLS_DOC = 'https://github.com/Elegant-IT-Limited/attendra/blob/main/docs/test-calls.md';
 
@@ -33,7 +33,7 @@ export default function TestCallPage() {
   const [callAs, setCallAs] = useState<CallAs | null>(NO_CALLER_ID);
   // where an emergency on this call would go now (batch 1b): the same route the assistant follows
   const config = useClinicConfig(clinicId);
-  const allowance = useQuery({ queryKey: ['test-call-allowance', clinicId], queryFn: () => api<TestCallAllowance>(`/clinics/${clinicId}/test-calls/allowance`), enabled: can('calls:test') });
+  const allowance = useQuery({ ...pageData.testCallAllowance(clinicId), enabled: can('calls:test') });
   // only in the browser, after the first render: the server cannot know, and the two must render the same
   const [recordable, setRecordable] = useState(false);
   useEffect(() => setRecordable(canRecord()), []);

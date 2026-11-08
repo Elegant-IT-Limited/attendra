@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { AuditList, MemberList } from '@attendra/api/contracts';
+import type { AuditList } from '@attendra/api/contracts';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -12,6 +12,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Table, TD, TH, THead, TRow } from '@/components/ui/table';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { clinicTime, dayTitle, personName, zoneLabel } from '@/lib/format';
+import { pageData } from '@/lib/page-data';
 
 const ACTIONS: Record<string, string> = {
   'call.transcript.viewed': 'Read a call transcript',
@@ -223,7 +224,7 @@ export default function Audit() {
   const { clinicId } = useParams<{ clinicId: string }>();
   const { clinic, data: me, can, isPending: meLoading } = useClinic(clinicId);
   const allowed = can('audit:read');
-  const team = useQuery({ queryKey: ['members', clinicId], queryFn: () => api<MemberList>(`/clinics/${clinicId}/members`), enabled: can('members:manage') });
+  const team = useQuery({ ...pageData.members(clinicId), enabled: can('members:manage') });
   const names = new Map((team.data?.members ?? []).map((m) => [m.userId, personName(m.name)]));
   const config = useClinicConfig(clinicId);
   const providers = new Map((config.data?.providers ?? []).map((p) => [p.id, p.name]));

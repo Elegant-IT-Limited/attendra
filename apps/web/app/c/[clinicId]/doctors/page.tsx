@@ -28,6 +28,7 @@ import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle } from '@/lib/format';
 import { useAddToList } from '@/lib/lists';
 import { providerTerms, useTerms } from '@/lib/terms';
+import { pageData } from '@/lib/page-data';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
@@ -61,7 +62,7 @@ export default function DoctorsPage() {
   const [specialty, setSpecialty] = useState('');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState<'added' | 'name' | 'specialty'>('added');
-  const doctors = useQuery({ queryKey: ['doctors', clinicId], queryFn: () => api<DoctorList>(`/clinics/${clinicId}/doctors`), enabled: can('settings:read') });
+  const doctors = useQuery({ ...pageData.doctors(clinicId), enabled: can('settings:read') });
   const manager = can('settings:write');
   const refresh = () => { void queries.invalidateQueries({ queryKey: ['doctors', clinicId] }); void queries.invalidateQueries({ queryKey: ['settings', clinicId] }); void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] }); };
   const tz = config.data?.timezone ?? 'UTC';

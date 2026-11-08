@@ -4,6 +4,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import { Pool } from 'pg';
 import * as schema from './schema';
+import { timePool } from './timing';
 
 // Any Postgres-backed Drizzle database with our schema: node-postgres in production,
 // PGlite in tests. Repositories only ever see this type. The query-result type
@@ -21,6 +22,8 @@ export function connect(url: string, opts: { onError?: (code: string) => void } 
   const pool = new Pool({ connectionString: url, max: 10 });
   const report = opts.onError ?? ((code: string) => process.stderr.write(`${JSON.stringify({ level: 50, msg: 'database connection error', code })}\n`));
   pool.on('error', (err: Error & { code?: string }) => report(err.code ?? 'unknown'));
+  // each request's database time, for its Server-Timing header (apps/api/src/app.ts)
+  timePool(pool);
   return drizzle(pool, { schema });
 }
 
