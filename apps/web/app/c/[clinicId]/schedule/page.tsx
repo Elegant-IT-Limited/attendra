@@ -21,7 +21,7 @@ import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
 import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
-import { laneProviders, MANY_PROVIDERS, MAX_CHOSEN, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
+import { capLanes, laneProviders, MANY_PROVIDERS, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
 
@@ -123,7 +123,7 @@ function ScheduleScreen() {
   // the visit open in the panel stays on the grid when it is cancelled there, so the block does not vanish behind it
   // a viewer's schedule carries no patient: each visit shows as a booked visit, and does not open
   const named = can('schedule:read');
-  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status === 'booked' || a.id === open)
+  const appointments = useMemo(() => (schedule.data?.appointments ?? []).filter((a) => showCancelled || a.status !== 'cancelled' || a.id === open)
     .map((a) => (a.patientName ? a : { ...a, patientName: NAMELESS_VISIT })), [schedule.data, showCancelled, open]);
   const hidden = (schedule.data?.appointments.length ?? 0) - appointments.length;
 
@@ -137,16 +137,15 @@ function ScheduleScreen() {
     : weekly ? weekDays(clinic, from, schedule.data?.appointments ?? []) : [date];
   // one provider picked in the dropdown is the grid; otherwise every lane, or on a big clinic the lanes in use (lib/schedule-lanes.ts)
   const lanesInUse = providerId ? listed.filter((p) => p.id === providerId) : laneProviders(clinic, listed, dates, appointments.map((a) => a.providerId), chosen);
-  // A week of a big clinic draws My vets, or the first few with visits that week: a hundred vets × five days is 500
-  // lanes, 40,000 px wide and too slow to use (ezyVet's Week shows one calendar). Day still draws every vet in use.
-  const weekCapped = !providerId && view === 'week' && manyProviders && lanesInUse.length > MAX_CHOSEN;
-  const providers = weekCapped
-    ? (chosen.length ? lanesInUse.filter((p) => chosen.includes(p.id)) : []).concat(lanesInUse.filter((p) => !chosen.includes(p.id))).slice(0, MAX_CHOSEN)
-    : lanesInUse;
+  // A big clinic's Day and Week draw at most MAX_CHOSEN lanes, My vets first, then the others with visits (note 24): a
+  // hundred vets is a hundred columns nobody reads, and × five days 40,000 px wide (ezyVet's Week shows one calendar).
+  // The line under the title says how many of how many, and the Agenda lists everyone, one click away.
+  const { lanes: providers, capped } = capLanes(lanesInUse, chosen, !providerId && manyProviders);
   const step = weekly ? 7 : 1;
   const go = (by: 1 | -1) => set({ date: view === 'month' ? shiftMonth(date, by) : addDays(date, by * step) });
   const unit = view === 'month' ? 'month' : weekly ? 'week' : 'day';
-  const booked = appointments.filter((a) => a.status === 'booked').length;
+  // every visit on the calendar, whatever the desk marked it
+  const booked = appointments.filter((a) => a.status !== 'cancelled').length;
   const writable = can('schedule:write');
   const pets = industryPack(clinic.industry).identity === 'pet';
 
@@ -220,7 +219,7 @@ function ScheduleScreen() {
           <div>
             <h2 className="font-semibold">{view === 'month' ? monthTitle(date) : weekly ? `Week of ${dayTitle(from)}` : dayTitle(date)}{!weekly && view !== 'month' && date === today ? ', today' : ''}</h2>
             <p className="text-xs text-text-muted">
-              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${!weekly && view !== 'month' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}${weekCapped ? `. The week shows ${providers.length} of the ${lanesInUse.length} ${pets ? 'vets' : 'providers'} with visits: ${chosen.length ? 'your chosen ones first' : 'choose vets to pick which'}, or use Day or Agenda for everyone.` : ''}`}
+              {schedule.isPending ? 'Loading…' : `${booked} booked${hidden > 0 ? `, ${hidden} cancelled hidden` : ''}${!weekly && view !== 'month' && clinic.holidays.includes(date) ? '. The clinic is closed for a holiday.' : ''}${capped ? `. ${weekly ? 'The week' : 'The day'} shows ${providers.length} of the ${lanesInUse.length} ${pets ? 'vets' : 'providers'} in use: ${chosen.length ? `My ${pets ? 'vets' : 'providers'} first` : `choose ${pets ? 'vets' : 'providers'} to pick which`}, or use Agenda for everyone.` : ''}`}
             </p>
           </div>
           <Legend clinic={clinic} />
@@ -248,7 +247,8 @@ function ScheduleScreen() {
       </Card>
       )}
 
-      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={named ? open : null} onClose={() => set({ appointment: null })} canWrite={writable}
+      <AppointmentPanel clinicId={clinicId} clinic={clinic} appointmentId={named ? open : null} onClose={() => set({ appointment: null, move: null })} canWrite={writable}
+        startMoving={params.get('move') === '1'}
         patientHref={can('patients:read') ? (id) => `/c/${clinicId}/patients/${id}` : undefined} />
       {writable && (
         <BookingDialog clinicId={clinicId} clinic={clinic} open={booking} onOpenChange={setBooking}

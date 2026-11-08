@@ -45,6 +45,18 @@ describe('emergencyRoute: the mode, open or closed', () => {
     expect(emergencyCallLine(old, OPEN)).toContain('no emergency setting yet');
   });
 
+  it('points a clinic with no setting to Settings, except on the setup page, which has the choices right below (2026-11-08)', () => {
+    const none = ClinicConfig.parse({ ...base, emergencies: undefined });
+    expect(emergencyCallLine(none, OPEN)).toBe('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Set one under Settings > Emergencies.');
+    expect(emergencyCallLine(none, OPEN, 'settings')).toBe(emergencyCallLine(none, OPEN));
+    expect(emergencyCallLine(none, OPEN, 'setup')).toBe('Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Choose one below.');
+    // a draft that is not complete yet keeps the setup wording; a clinic with a setting reads the same in both places
+    expect(emergencyFormView(none, emergencyDraftOf(none), OPEN, 'setup').callLine).toMatch(/Choose one below\.$/);
+    expect(emergencyFormView(none, emergencyDraftOf(none), OPEN).callLine).toMatch(/Set one under Settings > Emergencies\.$/);
+    const set = withMode({ mode: 'handle', number: TEAM });
+    expect(emergencyCallLine(set, OPEN, 'setup')).toBe(emergencyCallLine(set, OPEN, 'settings'));
+  });
+
   it('several hospitals in order: the first one open at that moment is named, in refer, hours (closed) and as the backup', () => {
     const NIGHT = { ...HOSPITAL, name: 'Night Paws Emergency', hours: { open: '18:00', close: '08:00' } };
     const DAY = { ...AFTER, name: 'Day Referral Vets', hours: { open: '08:00', close: '18:00' } };

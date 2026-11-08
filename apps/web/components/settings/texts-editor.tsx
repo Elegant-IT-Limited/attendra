@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { phone } from '@/lib/format';
 
 const NAMES: Record<SmsTemplateName, string> = {
-  booking_confirmed: 'Booking confirmed', change_confirmed: 'Visit moved', cancel_confirmed: 'Visit cancelled', reminder: 'Reminder before a visit',
+  booking_confirmed: 'Booking confirmed', change_confirmed: 'Visit moved', cancel_confirmed: 'Visit cancelled', reminder: 'Reminder before a visit', vet_changed: 'Visit handed to another vet',
   directions: 'Address and directions', hours: 'Opening hours', emergency_hospital: 'Emergency hospital', provider: 'A vet\'s details',
   answer: 'An answer to a common question', link: 'One of your links',
   request_ready: 'Refill ready to pick up', refill_sent: 'Refill sent to the pharmacy', refill_not_approved: 'Refill: please call us',
@@ -21,6 +21,7 @@ const DURING_CALL = 'During a call, when the caller says yes to a text';
 const WHEN: Record<SmsTemplateName, string> = {
   booking_confirmed: 'Right after the assistant books a visit', change_confirmed: 'Right after a visit is moved', cancel_confirmed: 'Right after a visit is cancelled',
   reminder: 'The day before a visit, to people who said yes to reminders',
+  vet_changed: 'When your team removes a vet and moves their visits to another vet, only if the team says yes to texting the owners',
   request_ready: 'When your team marks a refill ready to pick up', refill_sent: 'When your team marks a refill sent to a pharmacy', refill_not_approved: 'When your team marks a refill not approved',
   directions: DURING_CALL, hours: DURING_CALL, emergency_hospital: 'In an animal emergency, after the emergency advice', provider: DURING_CALL, answer: DURING_CALL,
   link: 'During a call, when one of your links fits and the caller says yes',
@@ -28,7 +29,7 @@ const WHEN: Record<SmsTemplateName, string> = {
 
 /** The texts in the groups a clinic thinks in. */
 const GROUPS: { title: string; texts: SmsTemplateName[] }[] = [
-  { title: 'Visits', texts: ['booking_confirmed', 'change_confirmed', 'cancel_confirmed', 'reminder'] },
+  { title: 'Visits', texts: ['booking_confirmed', 'change_confirmed', 'cancel_confirmed', 'reminder', 'vet_changed'] },
   { title: 'Refills', texts: ['request_ready', 'refill_sent', 'refill_not_approved'] },
   { title: 'Sent during a call', texts: ['directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] },
 ];

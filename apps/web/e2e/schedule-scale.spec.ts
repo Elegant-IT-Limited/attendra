@@ -20,6 +20,8 @@ const VETS = 200;
 const VISITS = 300;
 const PER_DAY = 60;
 const VETS_PER_DAY = 20;
+/** The most lanes a clinic this big draws on the Day and the Week (MAX_CHOSEN, note 24). */
+const MAX_LANES = 8;
 const PETS = 40;
 const SPECIALTIES = ['Surgery', 'Dentistry', 'Dermatology', 'Cardiology', 'Exotic animals', 'Internal medicine'];
 /** The starter clinic's visit types, by id and the name the doctor CSV uses. */
@@ -162,14 +164,16 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
       test.setTimeout(120_000);
       const page = await openPage(browser);
       await page.addInitScript((t) => { try { localStorage.setItem('attendra.theme', t); } catch { /* none */ } }, theme);
-      // Day: the twenty vets working with visits; Week at a clinic this big: eight of the hundred with visits (My vets
-      // first), a lane each on each of the five days, with a line that says so
-      for (const [view, lanes] of [['day', VETS_PER_DAY], ['week', 5 * 8]] as const) {
+      // a clinic this big draws at most eight vets (My vets first, note 24), with a line that says so: Day, eight of the
+      // twenty working with visits; Week, eight of the hundred with visits that week, a lane each on each of the five days.
+      // A window narrower than the eight lanes' least width (8 × 7rem), so the Day scrolls sideways too
+      await page.setViewportSize({ width: 900, height: 720 });
+      for (const [view, lanes] of [['day', MAX_LANES], ['week', 5 * MAX_LANES]] as const) {
         await page.goto(`/c/${clinicId}/schedule?view=${view}&date=${DAY}`);
         await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
         const scroller = page.getByTestId('schedule-scroller');
         await expect(page.getByTestId('lane')).toHaveCount(lanes);
-        if (view === 'week') await expect(page.getByTestId('schedule')).toContainText('The week shows 8 of the 100 vets with visits');
+        await expect(page.getByTestId('schedule')).toContainText(view === 'week' ? 'The week shows 8 of the 100 vets in use' : `The day shows 8 of the ${VETS_PER_DAY} vets in use`);
         // for a batch report: SCHEDULE_SHOTS=<folder> keeps a picture of each view and theme
         if (process.env.SCHEDULE_SHOTS) await page.screenshot({ path: `${process.env.SCHEDULE_SHOTS}/schedule-${view}-${theme}.png` });
         // the grid scrolls inside its card, not the page: taller and wider than the card
@@ -263,14 +267,17 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await expect(rows.last()).toContainText('11:00 AM');
   });
 
-  test('the Day view draws the twenty lanes in use, every header readable, the hours column staying put while the grid scrolls', async ({ browser }) => {
+  test('the Day view draws eight of the twenty lanes in use and says so, Agenda one click away; every header readable, the hours column staying put while the grid scrolls', async ({ browser }) => {
     const page = await openPage(browser);
+    await page.setViewportSize({ width: 900, height: 720 });
     await page.goto(`/c/${clinicId}/schedule?view=day&date=${DAY}`);
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const heads = page.getByTestId('lane-head');
-    await expect(heads).toHaveCount(VETS_PER_DAY);
-    await expect(page.getByTestId('appointment')).toHaveCount(onDay.length);
-    // twenty lanes are more than the card is wide, so each sits at its minimum: initials and the surname, the full name on hover
+    await expect(heads).toHaveCount(MAX_LANES);
+    await expect(page.getByTestId('appointment')).toHaveCount(onDay.filter((x) => x.vet < MAX_LANES).length);
+    await expect(page.getByTestId('schedule')).toContainText(`The day shows 8 of the ${VETS_PER_DAY} vets in use: choose vets to pick which, or use Agenda for everyone.`);
+    await expect(page.getByRole('button', { name: `Choose vets: 8 of ${VETS} on the grid` })).toContainText(`(8 of ${VETS})`);
+    // eight lanes are more than this card is wide, so each sits at its minimum: initials and the surname, the full name on hover
     await expect(heads.first()).toHaveAttribute('title', vetName(0));
     await expect(heads.first().getByText('V0', { exact: true })).toBeVisible();
     await expect(heads.first().getByText('001', { exact: true })).toBeVisible();
@@ -286,13 +293,17 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     const scroller = page.getByTestId('schedule-scroller');
     const hour = page.getByText('9 AM', { exact: true });
     const before = (await hour.boundingBox())!;
-    await scroller.evaluate((el) => { el.scrollLeft = 600; });
-    await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBe(600);
+    await scroller.evaluate((el) => { el.scrollLeft = 100; });
+    await expect.poll(() => scroller.evaluate((el) => el.scrollLeft)).toBe(100);
     const after = (await hour.boundingBox())!;
     expect(Math.abs(after.x - before.x)).toBeLessThan(1);
     const lastHead = (await heads.last().boundingBox())!;
     expect(lastHead.x).toBeLessThan(seen.at(-1)!.x); // the lanes moved
     await noSeriousAxe(page, 'Schedule, a day of 200 vets');
+    // everyone, in time order, one click away
+    await page.getByRole('tab', { name: 'Agenda' }).click();
+    await expect(page.locator('#schedule-view-hint')).toHaveText('Every visit as a list, in time order');
+    await expect(page.getByText(`${onDay.length} visits`)).toBeVisible();
   });
 
   test('the Vets picker pins lanes: up to eight, says so at the ninth, narrowed by name, specialty and working today, remembered after a reload', async ({ browser }) => {
@@ -300,18 +311,18 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await page.goto(`/c/${clinicId}/schedule?view=day&date=${DAY}`);
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
     const heads = page.getByTestId('lane-head');
-    await expect(heads).toHaveCount(VETS_PER_DAY);
+    await expect(heads).toHaveCount(MAX_LANES);
     await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     const picker = page.getByTestId('vets-picker');
     await expect(picker).toBeVisible();
     const list = picker.getByRole('list', { name: 'Veterinarians to show' });
 
-    // by name: one vet with nothing booked gets a lane of their own
+    // by name: one vet with nothing booked gets a lane of their own, first (My vets), still eight lanes in all
     await picker.getByLabel('Find a veterinarian').fill('Vet 150');
     await expect(list.getByRole('listitem')).toHaveCount(1);
     await picker.getByRole('checkbox', { name: vetName(149) }).click();
-    await expect(heads).toHaveCount(VETS_PER_DAY + 1);
-    await expect(heads.last()).toHaveAttribute('title', vetName(149));
+    await expect(heads).toHaveCount(MAX_LANES);
+    await expect(heads.first()).toHaveAttribute('title', vetName(149));
     await expect(picker.getByText('1 of 8 chosen')).toBeVisible();
 
     // by specialty, from the clinic's list, and working today: the vet away all week drops out
@@ -330,11 +341,14 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     // seven more, to eight; the ninth is refused with a word, not silently
     for (let i = 100; i < 107; i++) await picker.getByRole('checkbox', { name: vetName(i) }).click();
     await expect(picker.getByText('8 of 8 chosen')).toBeVisible();
-    await expect(heads).toHaveCount(VETS_PER_DAY + 8);
+    // the eight lanes are now My vets, in the list's order
+    await expect(heads).toHaveCount(MAX_LANES);
+    await expect(heads.first()).toHaveAttribute('title', vetName(100));
+    await expect(heads.last()).toHaveAttribute('title', vetName(149));
     await picker.getByRole('checkbox', { name: vetName(107) }).click();
     await expect(picker.getByRole('alert')).toHaveText('That is 8 already. Untick one to add another.');
     await expect(picker.getByRole('checkbox', { name: vetName(107) })).not.toBeChecked();
-    await expect(heads).toHaveCount(VETS_PER_DAY + 8);
+    await expect(heads).toHaveCount(MAX_LANES);
     await noSeriousAxe(page, 'the Vets picker');
     await page.keyboard.press('Escape');
     await expect(picker).toBeHidden();
@@ -343,14 +357,16 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     expect(JSON.parse(await page.evaluate((id) => localStorage.getItem(`attendra.schedule.vets.${id}`) ?? '[]', clinicId))).toHaveLength(8);
     await page.reload();
     await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
-    await expect(heads).toHaveCount(VETS_PER_DAY + 8);
+    await expect(heads).toHaveCount(MAX_LANES);
+    await expect(heads.first()).toHaveAttribute('title', vetName(100));
     await page.getByLabel('Provider').selectOption({ label: `${vetName(1)}, ${SPECIALTIES[1]}` });
     await expect(heads).toHaveCount(1);
     await expect(page.getByTestId('appointment')).toHaveCount(3);
     await page.getByLabel('Provider').selectOption({ index: 0 });
     await page.getByRole('button', { name: /^Choose vets: \d+ of 200 on the grid/ }).click();
     await page.getByTestId('vets-picker').getByRole('button', { name: 'Clear' }).click();
-    await expect(heads).toHaveCount(VETS_PER_DAY);
+    await expect(heads).toHaveCount(MAX_LANES);
+    await expect(heads.first()).toHaveAttribute('title', vetName(0));
     expect(await page.evaluate((id) => localStorage.getItem(`attendra.schedule.vets.${id}`), clinicId)).toBeNull();
   });
 

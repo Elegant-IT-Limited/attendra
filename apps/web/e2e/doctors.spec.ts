@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { testDate } from './clock';
 import { openAs } from './session';
 
 test('a manager adds a doctor with hours and days off, and the front desk sees them without a refresh', async ({ browser }) => {
@@ -165,4 +166,48 @@ test('a doctor\'s visit types: ticked one by one or all in one click, and a warn
   await expect(panel).toBeHidden();
   await expect(manager.getByTestId('no-provider-warnings')).toHaveCount(0);
   expect(await saveVisitTypes(false)).toBe(200);
+});
+
+// Note 32: removing a doctor who still has visits opens the handover instead of a dead end. The server picks who takes
+// each visit at the same time; the manager sees it, confirms, and then removes the doctor from the same dialog.
+test('removing a doctor with visits to come moves them to another doctor first, then removes them', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  const clinic = manager.url().split('/c/')[1]!;
+  const origin = { origin: new URL(manager.url()).origin };
+  const added = await manager.request.post(`/api/v1/clinics/${clinic}/doctors`, { headers: origin, data: {
+    name: 'Dr. Rhea Vance', gender: 'female', acceptingNewPatients: true, categories: [], timeOff: [], visitTypeIds: ['vt_sick', 'vt_annual', 'vt_new'],
+  } });
+  expect(added.status(), await added.text()).toBe(201);
+  const vance = ((await added.json()) as { providers: { id: string; name: string }[] }).providers.find((p) => p.name === 'Rhea Vance')!.id;
+  // a time next week that is free for Dr. Vance and for someone else too
+  const nextWeek = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate(7 * 86_400_000));
+  const slots = await (await manager.request.get(`/api/v1/clinics/${clinic}/appointments/slots?visitTypeId=vt_sick&providerId=${vance}&from=${nextWeek}&days=7`)).json() as { slots: { startsAt: string }[] };
+  const found = await (await manager.request.post(`/api/v1/clinics/${clinic}/patients/search`, { headers: origin, data: { query: 'whit' } })).json() as { patients: { id: string; name: string }[] };
+  let booked = false;
+  for (const s of slots.slots.slice(0, 40)) {
+    const res = await manager.request.post(`/api/v1/clinics/${clinic}/appointments`, { headers: origin, data: {
+      patientId: found.patients.find((p) => p.name === 'James Whitaker')!.id, providerId: vance, visitTypeId: 'vt_sick', startsAt: s.startsAt, idempotencyKey: `e2e-handover-${s.startsAt}`,
+    } });
+    if (res.status() !== 201) continue;
+    const preview = await (await manager.request.post(`/api/v1/clinics/${clinic}/doctors/${vance}/handover/preview`, { headers: origin, data: {} })).json() as { visits: { toProviderId: string | null; appointmentId: string }[] };
+    if (preview.visits.every((v) => v.toProviderId)) { booked = true; break; }
+    const { appointmentId } = await res.json() as { appointmentId: string };
+    await manager.request.post(`/api/v1/clinics/${clinic}/appointments/${appointmentId}/cancel`, { headers: origin, data: {} });
+  }
+  expect(booked).toBe(true);
+
+  await manager.goto(`/c/${clinic}/doctors`);
+  await manager.getByTestId('doctor').filter({ hasText: 'Dr. Rhea Vance' }).getByRole('button', { name: 'Edit hours and details' }).click();
+  const panel = manager.getByRole('dialog', { name: 'Edit Dr. Rhea Vance' });
+  await panel.getByRole('button', { name: 'Remove', exact: true }).click();
+  await panel.getByRole('button', { name: 'Remove', exact: true }).click();
+  const handover = manager.getByRole('dialog', { name: 'Move Dr. Rhea Vance\'s visits' });
+  await expect(handover.getByTestId('handover-summary')).toHaveText('1 of 1 can move.');
+  await expect(handover.getByTestId('handover-visit')).toHaveCount(1);
+  await expect(handover.getByLabel('Text the owners about the new doctor')).not.toBeChecked();
+  await handover.getByTestId('handover-confirm').click();
+  await expect(handover.getByTestId('handover-result')).toContainText('Moved 1 visit');
+  await expect(handover.getByTestId('handover-result')).toContainText('No owner was texted.');
+  await handover.getByTestId('handover-remove').click();
+  await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Rhea Vance' })).toHaveCount(0);
 });

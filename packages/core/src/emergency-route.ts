@@ -138,15 +138,20 @@ export const EMERGENCY_LINES = {
   },
 } as const;
 
+/** Where the "no emergency setting yet" line points: Settings and the test-call page send to Settings > Emergencies; the setup page has the choices right under it. */
+export const NO_SETTING_NEXT = { settings: 'Set one under Settings > Emergencies.', setup: 'Choose one below.' } as const;
+export type CallLinePlace = keyof typeof NO_SETTING_NEXT;
+
 /**
- * The one line on the test-call page (and the setup page): where an emergency call goes now, in the dashboard's words.
- * "Emergency calls here: transfer to the team now (open until 6 PM), Riverside Emergency Vet after."
+ * The one line on the test-call page, Settings > Emergencies and the setup page: where an emergency call goes now, in the
+ * dashboard's words (staff only, so English only). "Emergency calls here: transfer to the team now (open until 6 PM),
+ * Riverside Emergency Vet after." `place` changes only where a clinic with no setting is pointed to.
  */
-export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers'>, now: Date): string {
+export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phoneNumbers'>, now: Date, place: CallLinePlace = 'settings'): string {
   const r = emergencyRoute(clinic, now);
   const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
   const after = r.backup?.name ?? 'the hospital';
-  if (r.mode === null) return 'Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Set one under Settings > Emergencies.';
+  if (r.mode === null) return `Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". ${NO_SETTING_NEXT[place]}`;
   if (r.mode === 'refer') return `Emergency calls here: sent to ${r.hospital?.name ?? 'the nearest 24-hour emergency vet'}, any time.`;
   if (r.mode === 'handle') return 'Emergency calls here: transfer to the team now, any time.';
   if (r.open) return `Emergency calls here: transfer to the team now (open until ${clock(r.closesAt ?? '00:00', twelve)}), ${after} after.`;

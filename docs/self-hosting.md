@@ -93,7 +93,7 @@ Until it has run, records stored before the upgrade are found by whole words of 
    docker compose -f infra/docker-compose.yml run --rm api pnpm db:rehash-lookups --apply
    ```
 
-   It prints how many patients have no phone number yet, and how many are on file twice. Until a patient has a phone on file, the front desk can find them but the assistant cannot verify them: add the number on their page (the list of patients shows them with a No phone badge). Someone on file twice keeps their first record's identity; merge the two by hand.
+   It prints how many patients have no phone number yet, and how many are on file twice. Until a patient has a phone on file, the front desk can find them but the assistant cannot verify them: add the number on their page (the list of patients shows them with a No phone badge). Someone on file twice keeps their first record's identity; an owner or practice manager merges the two from the patient's page (Merge), as [hipaa.md](hipaa.md#deleting-and-merging-patient-records) describes.
 
 Outside Compose: Node 24 (the current LTS) and pnpm 12, then `pnpm install`, `pnpm db:migrate` and the rehash as above, with `DATABASE_URL` and `ATTENDRA_DATA_KEY` set. The API needs no new setting: it listens for change notices on its own connection to `DATABASE_URL`.
 

@@ -24,6 +24,8 @@ export const QUEUES = {
   deliverWebhook: 'deliver-webhook',
   /** A request the team approved: text the caller that it is ready to pick up. */
   requestReady: 'request-ready',
+  /** A visit handed to another vet when its vet was removed, and the team said yes to texting the owners: one text. */
+  visitHandedOver: 'visit-handed-over',
   /** Every 10 minutes: reminder texts for visits coming up, to people who said yes to them. */
   appointmentReminders: 'appointment-reminders',
   /** Every 10 minutes: what the backup route does for each of our numbers, kept current in Twilio. */
@@ -51,6 +53,10 @@ export type DeliveryJob = z.infer<typeof DeliveryJob>;
 
 export const RequestJob = z.object({ clinicId: z.string().min(1), taskId: z.uuid() });
 export type RequestJob = z.infer<typeof RequestJob>;
+
+/** A handed-over visit: which one, and the vet it is now with (the text names them; a later move makes the job a no-op). */
+export const HandoverJob = z.object({ clinicId: z.string().min(1), appointmentId: z.uuid(), providerId: z.string().min(1).max(64) });
+export type HandoverJob = z.infer<typeof HandoverJob>;
 
 /** Every status Twilio reports for a message it sends (its MessageStatus values for outbound messages). */
 export const SMS_STATUSES = ['accepted', 'scheduled', 'canceled', 'queued', 'sending', 'sent', 'delivered', 'undelivered', 'failed', 'partially_delivered', 'read'] as const;
@@ -86,6 +92,8 @@ export interface JobQueue {
   requestReady(job: RequestJob): Promise<void>;
   /** A delivery report from Twilio: once per text and status. */
   smsStatus(job: SmsStatusJob): Promise<void>;
+  /** Once per visit and vet: a handover confirmed twice does not text twice. Absent where nothing sends texts. */
+  visitHandedOver?(job: HandoverJob): Promise<void>;
 }
 
 export const noJobs: JobQueue = { callCompleted: async () => {}, indexDocument: async () => {}, webhookEvent: async () => {}, requestReady: async () => {}, smsStatus: async () => {} };
@@ -119,6 +127,9 @@ export function bossQueue(boss: PgBoss): JobQueue {
     async smsStatus(job) {
       await boss.send(QUEUES.smsStatus, SmsStatusJob.parse(job), { id: jobId(QUEUES.smsStatus, `${job.messageSid}|${job.status}`) });
     },
+    async visitHandedOver(job) {
+      await boss.send(QUEUES.visitHandedOver, HandoverJob.parse(job), { id: jobId(QUEUES.visitHandedOver, `${job.appointmentId}|${job.providerId}`) });
+    },
   };
 }
 
@@ -142,7 +153,7 @@ export function createBoss(target: { connectionString: string } | { pglite: PGli
 export async function ensureQueues(boss: PgBoss, retry?: Partial<RetryPolicy>) {
   const existing = new Set((await boss.getQueues()).map((q) => q.name));
   if (!existing.has(QUEUES.deadLetter)) await boss.createQueue(QUEUES.deadLetter, { retryLimit: 0, retentionSeconds: 30 * 86_400 });
-  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.appointmentReminders, QUEUES.fallbackSync, QUEUES.lapseInvitations, QUEUES.dailyDigest]) {
+  for (const name of [QUEUES.callCompleted, QUEUES.summariseCall, QUEUES.purgeRetention, QUEUES.smsStatus, QUEUES.indexDocument, QUEUES.webhookEvent, QUEUES.deliverWebhook, QUEUES.requestReady, QUEUES.visitHandedOver, QUEUES.appointmentReminders, QUEUES.fallbackSync, QUEUES.lapseInvitations, QUEUES.dailyDigest]) {
     const policy: Record<string, unknown> = { ...(name === QUEUES.deliverWebhook ? WEBHOOK_RETRY : RETRY), ...(retry ?? {}) };
     if (!policy.retryBackoff) delete policy.retryDelayMax; // only meaningful with backoff, and pg-boss refuses it otherwise
     if (existing.has(name)) await boss.updateQueue(name, { ...policy, deadLetter: QUEUES.deadLetter });

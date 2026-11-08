@@ -204,7 +204,7 @@ describe('doctors', () => {
     const json = { 'content-type': 'application/json' };
     const refused = await api.request('DELETE', `${C}/${one}`, { cookie: as.owner, headers: json });
     expect(refused.statusCode).toBe(409);
-    expect(refused.json()).toEqual({ error: 'has_upcoming_visits', message: 'They have 1 booked visit still to come. Move or cancel it on the Schedule first.' });
+    expect(refused.json()).toEqual({ error: 'has_upcoming_visits', message: 'They have 1 booked visit still to come. Move it to another doctor first (Move their visits), or cancel it on the Schedule.' });
     const res = await api.request('DELETE', `${C}/${two}`, { cookie: as.owner, headers: json });
     expect(res.statusCode, res.body).toBe(200);
     expect((await stored()).providers.filter((p) => p.name === 'John Doe').map((p) => p.id)).toEqual([one]);

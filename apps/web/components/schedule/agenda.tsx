@@ -6,6 +6,7 @@ import { Bot, Check, User } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Combobox } from '@/components/ui/combobox';
+import { MarkedBadge, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
 import { dayTitle, timeOf, VISIT_DOTS } from '@/lib/format';
@@ -119,7 +120,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
               return (
                 <li key={a.id} className="absolute inset-x-0 border-b border-border/70" style={{ top, height: ROW }}>
                   <button type="button" onClick={() => onOpen(a.id)} data-testid="agenda-row"
-                    aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${visit}, with ${who}${cancelled ? ', cancelled' : confirmed ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
+                    aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${visit}, with ${who}${cancelled ? ', cancelled' : markedWords(a.status) || (confirmed ? ', confirmed' : '')}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
                     className="flex h-full w-full items-center gap-3 px-4 text-left text-sm hover:bg-surface-sunken focus-visible:bg-surface-sunken focus-visible:outline-none">
                     <span className="w-16 shrink-0 tabular-nums text-text-muted">{timeOf(a.startsAt, tz)}</span>
                     <span className="w-40 shrink-0 truncate text-text-muted" title={who}>{who}</span>
@@ -129,7 +130,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
                       <span className="truncate">{visit}</span>
                     </span>
                     <span className="w-24 shrink-0">
-                      {cancelled ? <Badge tone="neutral">Cancelled</Badge> : confirmed ? <Badge tone="ok"><Check className="size-3" aria-hidden /> Confirmed</Badge> : <Badge tone="accent">Booked</Badge>}
+                      {cancelled ? <Badge tone="neutral">Cancelled</Badge> : a.status !== 'booked' ? <MarkedBadge status={a.status} /> : confirmed ? <Badge tone="ok"><Check className="size-3" aria-hidden /> Confirmed</Badge> : <Badge tone="accent">Booked</Badge>}
                     </span>
                     <Icon className="size-3.5 shrink-0 text-text-muted" aria-hidden />
                   </button>

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { API_SCOPES, bareName, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VisitType } from '@attendra/core';
+import { API_SCOPES, bareName, DESK_STATUSES, Gender, HAS_NAME, PHONE_NUMBERS_ONLY, PHONE_TYPED, Provider, VISIT_STATUSES, VisitType } from '@attendra/core';
 import { z } from 'zod';
 
 // The dashboard's HTTP contract. Request schemas are enforced by the API; response
@@ -163,7 +163,7 @@ export const CallDetail = CallSummary.omit({ tools: true, verified: true, patien
   /** What the call booked or cancelled, for "Booked: Tue 6 Oct 3:00 PM with Dr. Okafor". */
   appointments: z.array(z.object({
     id: z.string(), startsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
-    status: z.enum(['booked', 'cancelled']), change: z.enum(['booked', 'cancelled']),
+    status: z.enum(VISIT_STATUSES), change: z.enum(['booked', 'cancelled']),
     createdAt: z.iso.datetime(), updatedAt: z.iso.datetime(),
     /** Booked on this call, and moved to another time since. */
     moved: z.boolean(),
@@ -213,7 +213,7 @@ export const KnowledgeAnswer = z.object({
   refusal: z.enum(['medical', 'off_topic', 'no_information']).nullable(),
 });
 
-export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'request.created', 'request.done'] as const;
+export const WEBHOOK_EVENTS = ['call.completed', 'call.summary.ready', 'appointment.booked', 'appointment.rescheduled', 'appointment.cancelled', 'appointment.confirmed', 'appointment.status_changed', 'request.created', 'request.done'] as const;
 export const WebhookEndpoint = z.object({
   id: z.string(), url: z.string(), description: z.string(), events: z.array(z.enum(WEBHOOK_EVENTS)), enabled: z.boolean(),
   /** repeated_failures when Attendra turned it off, turned_off when someone did. */
@@ -265,6 +265,8 @@ export const QualityWeek = z.object({
   voiceMinutes: z.number(), cost: z.number(), costPerCall: z.number().nullable(), costPerBooking: z.number().nullable(),
   /** Browser test calls that week: not in any number above, which count real phone calls only. */
   testCallsLeftOut: z.number(),
+  /** Visits due that week that have started (any state but cancelled), and those the desk marked no-show, with their share (null with none due). Visits, not calls. */
+  visitsDue: z.number(), noShows: z.number(), noShowShare: z.number().nullable(),
 });
 export const Quality = z.object({ weeks: z.array(QualityWeek), costPerMinute: z.number() });
 export const QualityQuery = z.object({ weeks: z.coerce.number().int().min(1).max(26).default(8) });
@@ -448,7 +450,7 @@ export const ScheduleQuery = z.object({
   // a day, a week, or a month view's six weeks
   days: z.coerce.number().int().min(1).max(42).default(1),
   providerId: z.string().max(64).optional(),
-  /** booked: what is on the calendar; cancelled: only what was cancelled; all: both. */
+  /** booked: what is on the calendar, whatever the desk marked it (booked, arrived, completed, no-show); cancelled: only what was cancelled; all: both. */
   status: z.enum(['booked', 'cancelled', 'all']).default('all'),
 });
 /** Cancelled visits as a history list: a window of visit days, newest first by default. A POST body, since `q` is a patient's name. */
@@ -469,7 +471,11 @@ export const Appointment = z.object({
   visitTypeId: z.string(),
   startsAt: z.iso.datetime(),
   endsAt: z.iso.datetime(),
-  status: z.enum(['booked', 'cancelled']),
+  /** booked, arrived, completed, no_show or cancelled (core visit-status.ts). */
+  status: z.enum(VISIT_STATUSES),
+  /** When the desk last marked it (arrived, completed, no-show, back to booked), and the staff member's name; null until it does. */
+  statusChangedAt: z.iso.datetime().nullable(),
+  statusChangedBy: z.string().nullable(),
   cancelReason: CancelReason.nullable(),
   bookedBy: BookedBy,
   cancelledBy: BookedBy.nullable(),
@@ -502,9 +508,29 @@ export const SlotQuery = z.object({
   /** Who the visit is for: with no providerId, only providers who see their age (and take new patients, if they are new). */
   patientId: z.uuid().optional(),
 });
-/** Visits booked on a provider's day off or a holiday, by day and provider. */
-export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
+/** Why a booked visit no longer sits in bookable time (core strandedReason). */
+export const StrandedReason = z.enum(['holiday', 'away', 'outside_hours']);
+/** Visits booked on a provider's day off, a holiday, or outside the hours they are booked by, by day and provider. */
+export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: StrandedReason, count: z.number() })) });
 export type ScheduleConflicts = z.infer<typeof ScheduleConflicts>;
+/**
+ * The 409 a save of hours, a vet's hours or days off, holidays or special days answers when it would leave booked
+ * visits outside any bookable time: the "move or keep" list, earliest first. The same save sent again with
+ * `?keepStranded=true` goes through and keeps them where they are (audited).
+ */
+export const StrandedVisits = z.object({
+  error: z.literal('strands_visits'),
+  message: z.string(),
+  visits: z.array(z.object({
+    appointmentId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
+    /** The patient (the pet, at a vet clinic) as the schedule names them; empty for a role that sees the schedule without names. */
+    patientName: z.string(),
+    reason: StrandedReason,
+  })),
+});
+export type StrandedVisits = z.infer<typeof StrandedVisits>;
+/** `?keepStranded=true` on a save: keep the visits it leaves outside the hours where they are. */
+export const KeepStrandedQuery = z.object({ keepStranded: z.enum(['true', 'false']).optional() });
 
 export const SlotList = z.object({
   slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), outsideClinicHours: z.boolean().optional() })),
@@ -532,6 +558,8 @@ export const RescheduleAppointment = z.object({
 }).refine((b) => !b.override || !!b.overrideReason, { path: ['overrideReason'], message: 'say why it is moved outside the hours' });
 export const CancelAppointment = z.object({ reason: CancelReason.optional() });
 export const AppointmentChange = z.object({ appointmentId: z.string(), status: z.enum(['done', 'already_done']) });
+/** What the desk marks a visit: arrived, completed, no-show, or back to booked. */
+export const SetVisitStatus = z.object({ status: z.enum(DESK_STATUSES) });
 
 // a name: letters of any language, spaces, - ' . (digits allowed for pets), never only spaces or symbols
 const personName = z.string().trim().min(1, 'required').max(80).regex(HAS_NAME, 'type a name, not only spaces or symbols');
@@ -596,6 +624,32 @@ export const PatientSaved = z.object({
   /** Someone else is on file with this name and date of birth, on another phone. Saved anyway: worth a look. */
   similar: z.boolean().optional(),
 });
+/** Delete one pet's record, or every record on its number (the household). */
+export const PatientDelete = z.object({ scope: z.enum(['pet', 'household']).default('pet') });
+/** What a delete does (or would do), as counts. */
+export const PatientDeleteCounts = z.object({
+  /** Records deleted: 1 for a pet, every record on the number for a household. */
+  records: z.number().int(),
+  /** Visits still to come, cancelled. */
+  upcomingCancelled: z.number().int(),
+  /** Visits that have been, kept with no name so the clinic's counts stay right. */
+  visitsKept: z.number().int(),
+  /** Requests whose details and notes are removed (their number, type and outcome stay). */
+  requests: z.number().int(),
+  /** Calls no longer linked to the record; the call records follow the clinic's retention period. */
+  callsUnlinked: z.number().int(),
+});
+/** Merge one record into another: the same pet twice, or the same owner on two numbers (every pet of the other number joins the one kept). */
+export const PatientMerge = z.object({ kind: z.enum(['pet', 'household']), keepId: z.uuid(), mergeId: z.uuid() });
+/** What a merge moves (or would move), as counts. */
+export const PatientMergeCounts = z.object({
+  /** Records merged away: 1 for a pet, every record of the other number for a household. */
+  records: z.number().int(),
+  /** In a household merge, pets on both numbers that become one record. */
+  duplicates: z.number().int(),
+  appointments: z.number().int(), calls: z.number().int(), requests: z.number().int(), texts: z.number().int(),
+});
+
 /** The clinic's own details on a record, the whole set: an empty value leaves a field blank. */
 /** A POST: a field's value can be anything staff wrote, and URLs end up in logs. */
 export const PatientFilter = z.object({
@@ -617,7 +671,7 @@ export const PatientProfile = PatientCard.extend({
   usualProviderId: z.string().nullable(),
   appointments: z.array(z.object({
     id: z.string(), providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(),
-    status: z.enum(['booked', 'cancelled']), bookedBy: BookedBy,
+    status: z.enum(VISIT_STATUSES), bookedBy: BookedBy,
   })),
   /** Every call from this record's phone number, as one profile for the number: verified on this record, or from the number only. */
   calls: z.array(z.object({ id: z.string(), startedAt: z.iso.datetime(), outcome: z.string().nullable(), emergency: z.boolean(), channel: z.enum(['phone', 'web']), voiceSeconds: z.number().nullable(), forThisRecord: z.boolean() })),
@@ -643,6 +697,37 @@ export const DoctorInput = Provider.omit({ id: true }).extend({
 });
 /** `noProvider`: each visit type nobody does, with Settings' warning for it ("No vet does Dental care: callers can't book it"). */
 export const DoctorList = z.object({ providers: z.array(Provider), visitTypes: z.array(VisitType), noProvider: z.array(z.object({ visitTypeId: z.string(), message: z.string() })) });
+
+/** Who takes a leaving vet's visits: one vet for all of them, or (null or left out) whoever is free and does each visit type. */
+export const HandoverQuery = z.object({ toProviderId: z.string().max(64).nullable().optional() });
+/** The visits still to come with the leaving vet, each with the vet it would go to (same day and time) or why it cannot move. Ids, types and times only. */
+export const HandoverPreview = z.object({
+  visits: z.array(z.object({
+    appointmentId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), visitTypeId: z.string(),
+    /** The vet it would go to; null when no vet can take it, then `reason` and `message` say why. */
+    toProviderId: z.string().nullable(), reason: z.string().nullable(), message: z.string().nullable(),
+    /** The owner agreed to texts and has a number on file: a text can go once the team says yes. */
+    textable: z.boolean(),
+  })),
+  /** The vets who could take visits, with how many each could take on their own. */
+  candidates: z.array(z.object({ providerId: z.string(), canTake: z.number().int() })),
+  /** The clinic's texting is on (Settings, Texting): without it no owner is texted. */
+  textingOn: z.boolean(),
+});
+/** The moves the team confirmed, and whether to text the owners. Each move is checked again as it is made. */
+export const HandoverInput = z.object({
+  moves: z.array(z.object({ appointmentId: z.uuid(), toProviderId: z.string().min(1).max(64) })).min(1, 'nothing to move').max(1000),
+  textOwners: z.boolean().default(false),
+});
+export const HandoverResult = z.object({
+  moved: z.number().int(),
+  /** Visits that could not move after all (someone took the time meanwhile), with why: still the leaving vet's. */
+  notMoved: z.array(z.object({ appointmentId: z.string(), reason: z.string(), message: z.string() })),
+  /** Texts queued to owners (each still checked against STOP and the clinic's limits when sent), and owners not texted (no yes to texts, no number, or texting off). */
+  texts: z.object({ queued: z.number().int(), notTexted: z.number().int() }),
+  /** Booked visits the leaving vet still has to come: 0 means they can be removed. */
+  remaining: z.number().int(),
+});
 /** A CSV file as text: doctors or patients. `dryRun` checks every row and changes nothing. */
 export const ImportInput = z.object({ csv: z.string().min(1, 'the file is empty').max(2_000_000, 'the file is larger than 2 MB'), dryRun: z.boolean().default(true) });
 export const ImportResult = z.object({
@@ -874,6 +959,8 @@ export type CancelledList = z.infer<typeof CancelledList>;
 export type PatientList = z.infer<typeof PatientList>;
 export type PatientInput = z.infer<typeof PatientInput>;
 export type PatientSaved = z.infer<typeof PatientSaved>;
+export type PatientDeleteCounts = z.infer<typeof PatientDeleteCounts>;
+export type PatientMergeCounts = z.infer<typeof PatientMergeCounts>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
 export type Overview = z.infer<typeof Overview>;
 export type WaitingTasks = z.infer<typeof WaitingTasks>;
@@ -888,4 +975,6 @@ export type AcceptedInvitation = z.infer<typeof AcceptedInvitation>;
 export type InvitationView = z.infer<typeof InvitationView>;
 export type DoctorInput = z.infer<typeof DoctorInput>;
 export type DoctorList = z.infer<typeof DoctorList>;
+export type HandoverPreview = z.infer<typeof HandoverPreview>;
+export type HandoverResult = z.infer<typeof HandoverResult>;
 export type ImportResult = z.infer<typeof ImportResult>;

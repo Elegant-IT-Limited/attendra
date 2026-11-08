@@ -24,6 +24,8 @@ Self-hosters are responsible for their own BAAs and operations.
   - `appointment.viewed`: one appointment with the patient's date of birth, phone and the note.
   - `appointment.booked.staff`, `appointment.rescheduled.staff`, `appointment.cancelled.staff`: changes made at the front desk, under the staff member's own id.
   - `appointment.booked.staff.override`, `appointment.rescheduled.staff.override`: the same, outside the hours, with the reason kept on the visit.
+  - `appointment.status.arrived`, `.completed`, `.no_show`, `.booked`: the desk marked what happened to a visit (or put it back to booked), under the staff member's own id; the visit keeps when and by whom.
+  - `clinic.doctor.handover`: a manager moved a provider's visits still to come to other providers (the same times) before removing them, with counts only (moved, not moved, texts queued, left). Each move is its own `appointment.rescheduled.staff`. Owners are texted (`sms.sent.vet_changed`) only when the manager ticked it, only those who agreed to texts.
   - `appointment.confirmed.text`: a reply of C to a reminder confirmed the visit. `patient.texts_ok.call`: the caller said yes to reminder texts on a call.
 - The call record is audited under the actor `system` when the call opens (`call.opened`) and when it closes (`call.closed`, with how many transcript lines and tool steps it wrote, as counts). There is no row per line or step, so the log stays readable for the rows that matter: people reading patient data. A browser test call is opened as `call.test.started` under the staff member instead.
 - The Today screen reads no patient data except today's appointments, which are audited as `schedule.viewed`. Its counts and its list of waiting requests carry none, so they write no audit rows.
@@ -33,6 +35,7 @@ Self-hosters are responsible for their own BAAs and operations.
   - `patient.recent.viewed`: the list of patients a person opened recently, once per 5 minutes.
   - `patient.created`, `patient.updated`: changes made at the front desk. A patient added by the seed or the voice service is audited as `patient.created` too, under that service's name.
   - `patient.busy.shown`: a front-desk booking or move refused because the patient is already booked then, which shows the patient's name.
+  - `patient.deleted`, `patient.merged`, `patient.merged_away`, `patient.household.merged`, `patient.household.merged_away`: a record deleted or merged by an owner or practice manager, with counts only ("Deleting and merging patient records", below).
 - Requests, calls and the team add these actions:
   - `task.note.added`, `task.assigned`: a note on a request, and a request handed to a teammate. `task.done` now records an outcome code with the request.
   - `calls.listed`: the call list with verified callers' names, once per person per 5 minutes. A viewer's list has no names and writes nothing.
@@ -56,7 +59,17 @@ Self-hosters are responsible for their own BAAs and operations.
 - API keys for MCP are stored only as SHA-256 hashes, belong to one clinic, expire, and are audited at every use (`mcp.<tool>`, with the key's id), including uses a scope refused; making and revoking one is audited (`api_key.created`, `api_key.revoked`). Patient names reach an agent only with the `schedule:read` or `requests:read` scope, and no tool books or cancels.
 - Background jobs carry ids only. A failed job keeps an error code, never text from the call.
 - Transcripts, summaries, call actions (each call's tool steps) and webhook events, with their delivery attempts, are deleted after each clinic's retention period (`retentionDays`, 2555 days by default), in batches of 500 calls or events. The purge is audited with counts only (`retention.purged`), one row per batch, written in the same transaction as that batch's deletes.
-- The purge keeps, on purpose: the call rows themselves (times, outcome, the emergency flag and the linked patient, for the audit trail and the Quality numbers); requests, with their encrypted details and notes, which are the clinic's own work records and go when the clinic deletes them; and text records, which hold a hash of the number, the template and the delivery status, never the number or the message. Delete them by hand, or ask for them in the purge, if your records policy says otherwise.
+- The purge keeps, on purpose: the call rows themselves (times, outcome, the emergency flag and the linked patient, for the audit trail and the Quality numbers); requests, with their encrypted details and notes, which are the clinic's own work records and go when the clinic deletes them (deleting a patient's record removes its requests' details and notes: below); and text records, which hold a hash of the number, the template and the delivery status, never the number or the message. Delete them by hand, or ask for them in the purge, if your records policy says otherwise.
+
+## Deleting and merging patient records
+
+Owners and practice managers (permission `patients:merge`) delete and merge records from a patient's page. Each opens a confirm step that says, in counts from the server, what will move or go; nothing changes before the confirm. Everything runs inside the clinic's row-level security, so a record of another clinic is never found. Code: `packages/db/src/repositories/patient-removal.ts`.
+
+- **Delete a pet (or a patient), or everyone on its number.** The record's name, number, date of birth, owner, kind, gender and the clinic's own details are removed (the encrypted columns are replaced by a fixed placeholder, "Deleted record", or emptied), every keyed hash and search key goes, and so does the yes to texts: no search, call or import finds the record again. Visits still to come are cancelled (each `appointment.cancelled.staff`, with an `appointment.cancelled` webhook). Every visit's note is removed. The record's requests keep their number, type and outcome, with their details and notes removed (request notes stay append-only for the app; one owner-run function, scoped to the clinic, removes only those of a deleted record). Calls and text records are unlinked from it.
+- **What a delete keeps, and why.** The record's row stays, empty, with `deleted_at` and who deleted it, because its visits stay: the visits that took place, were missed or were cancelled count in Quality (no-shows) and in each vet's history, and an appointment must point at a record. A past visit shows "Deleted record" where the name was. The calls themselves (transcripts, summaries, the number they came from) are the clinic's call records and follow the retention period above, like every call; delete them sooner by hand if your records policy says so.
+- **Merge the same pet twice.** Its appointments, calls, requests and texts move to the record kept; the record kept fills its gaps from the other (kind, gender, the clinic's own fields, a yes to texts given on the same number); the other record is deleted outright, with its search keys.
+- **Merge one owner on two numbers** (a second number, or a typo). Every pet of the other number moves to the number and owner kept (one number, one owner), with its details re-encrypted and its search keys re-hashed, and takes that number's yes or no to texts; a pet that is on both numbers becomes one record, as above. The other number's requests move to the household kept.
+- **Audit.** `patient.deleted` (per record; `{ household: n }` for a household), `patient.merged` and `patient.merged_away`, `patient.household.merged` and `patient.household.merged_away`: who, when, which record ids and counts, never a name or a value. Values are decrypted and encrypted only through the PHI cipher, inside the API, and never logged.
 
 ## Every audit action
 
@@ -74,6 +87,10 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `appointment.cancelled` | Cancelled an appointment |
 | `appointment.cancelled.staff` | Cancelled an appointment at the desk |
 | `appointment.rescheduled.staff` | Moved an appointment |
+| `appointment.status.arrived` | Marked a visit arrived |
+| `appointment.status.booked` | Put a marked visit back to booked |
+| `appointment.status.completed` | Marked a visit completed |
+| `appointment.status.no_show` | Marked a visit a no-show |
 | `appointment.viewed` | Opened an appointment |
 | `call.closed` | Finished a call |
 | `call.coached` | Sent the assistant a note |
@@ -92,6 +109,7 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `calls.live.listed` | Looked at live calls with names |
 | `call.lookups.rehashed` | Updated how calls are found by their number |
 | `calls.searched` | Searched calls by patient |
+| `clinic.doctor.handover` | Moved a provider's visits to other providers, before removing them |
 | `clinic.settings.updated` | Changed clinic settings |
 | `knowledge.document.deleted` | Deleted a document |
 | `knowledge.document.uploaded` | Uploaded a document for the assistant |
@@ -104,8 +122,13 @@ Each row in the audit log has an action code. The audit page shows it in plain w
 | `member.transfer_number.set` | Set their number for take-overs |
 | `patient.busy.shown` | Saw that a patient was already booked then |
 | `patient.created` | Added a patient |
+| `patient.deleted` | Deleted a patient's record |
+| `patient.household.merged` | Merged another number's records into this household |
+| `patient.household.merged_away` | A household merged into another number |
 | `patient.identified` | Verified a caller |
 | `patient.lookups.rehashed` | Updated how patient names are matched |
+| `patient.merged` | Merged another record into this one |
+| `patient.merged_away` | A record merged into another one |
 | `patient.phone.called_as` | Used a patient's number for a browser test call ("Call as") |
 | `patient.recent.viewed` | Looked at recent patients |
 | `patient.search.result` | Saw a patient in search results |

@@ -16,8 +16,9 @@ Owners and practice managers (`quality:read`) see `/c/<clinic>/quality`: the las
 | Flagged for review | Share of calls someone should look at: emergency language, a caller who could not be verified, security or abusive language, an upset caller, or something left unfinished with no request for the team. Hang-ups before the caller said what they wanted, and calm calls that already made a request, are not counted (`modelFlagDropped` in apps/worker/src/summarise.ts). |
 | After-hours calls answered | Calls outside the clinic's hours. |
 | Cost per call, per booking | Voice minutes at the list price, the same estimate as Today. The planner, the summaries and texts are extra. |
+| No-shows | Visits, not calls: the visits the front desk marked a no-show on the schedule, out of the week's visits that have started, with their count (`visitsDue`, `noShows`, `noShowShare`, from `apps/api/src/quality/metrics.ts`). A visit nobody marked counts as due, not as a no-show; cancelled visits are left out. It opens that week on the schedule. |
 
-The definitions live in one place, `packages/core/src/quality.ts`, and the simulator below uses the same ones.
+The call definitions live in one place, `packages/core/src/quality.ts`, and the simulator below uses the same ones. The states the desk marks a visit (booked, arrived, completed, no-show) are in `packages/core/src/visit-status.ts`.
 
 ## The judge
 

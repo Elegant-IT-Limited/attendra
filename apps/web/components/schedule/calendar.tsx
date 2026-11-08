@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { Appointment } from '@attendra/api/contracts';
-import { type ClinicConfig, localParts, providerName, toMinutes } from '@attendra/core';
+import { bufferOf, type ClinicConfig, localParts, providerName, toMinutes } from '@attendra/core';
 import { Bot, Check, User } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { MarkedIcon, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
-import { dayTitle, timeOf, VISIT_DOTS, VISIT_TONES } from '@/lib/format';
-import { blockHeight, clinicHoursFor, closedDay, hoursFor, initials, outsideDesk, placeBlocks, PX } from '@/lib/schedule-lanes';
+import { Popover } from '@/components/ui/overlay';
+import { dayTitle, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES } from '@/lib/format';
+import { blockHeight, clinicHoursFor, closedDay, columnsThatFit, hoursFor, initials, MIN_BLOCK, outsideDesk, placeLane, PX } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 
 /** A day lane is never narrower than this, so its name stays readable; past the card's width the grid scrolls sideways. */
 const LANE_MIN_REM = 7;
-/** A lane in the week view: wide enough for three visits side by side at 24px each. */
+/**
+ * A lane in the week view: two visits side by side at 24px or more each (columnsThatFit). A third at the same time
+ * would be narrower than a target anyone can tap, so a busier moment shows one visit and "+N more" (placeLane).
+ */
 const WEEK_LANE_MIN_REM = 5;
+const REM_PX = 16;
 type Provider = ClinicConfig['providers'][number];
 
 const minutesOf = (iso: string, tz: string) => localParts(new Date(iso), tz).minutes;
@@ -44,7 +51,7 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
   const nowMin = localParts(now, tz).minutes;
   const visitIndex = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
   // Every lane keeps a readable minimum and the grid scrolls inside the card, both ways, instead of squeezing lanes to
-  // nothing: a day's lane is 7rem, a week's lane 5rem (three visits side by side stay 24px targets), so a week is
+  // nothing: a day's lane is 7rem, a week's lane 5rem (two visits side by side stay 24px targets, a third goes in "+N more"), so a week is
   // days × vets lanes wide. Headings stay at the top and the hour column on the left while it scrolls.
   const laneRem = week ? WEEK_LANE_MIN_REM : LANE_MIN_REM;
   const columns = `3.5rem repeat(${week ? dates.length : providers.length}, minmax(${week ? `${providers.length * laneRem}rem` : `${laneRem}rem`}, 1fr))`;
@@ -121,6 +128,8 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
   if (cursor < end) closed.push([cursor, end]);
   // bookable time while the front desk is closed: drawn open, with a band that says so
   const deskClosed = outsideDesk(open, desk);
+  // side by side only as many as stay 24-pixel targets at the lane's least width; a busier moment gets "+N more"
+  const laid = placeLane(appointments, (a) => [minutesOf(a.startsAt, tz), minutesOf(a.endsAt, tz)], columnsThatFit((divided ? WEEK_LANE_MIN_REM : LANE_MIN_REM) * REM_PX));
 
   return (
     <div className={cn('relative', !divided ? 'border-l border-border' : 'border-l border-border/40 first:border-l-0')} data-testid="lane" role="group" aria-label={`${providerName(provider)}, ${dayTitle(date)}`}>
@@ -136,7 +145,22 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
       {nowMin !== null && nowMin >= start && nowMin <= end && (
         <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-danger" style={{ top: (nowMin - start) * PX }} aria-hidden />
       )}
-      {placeBlocks(appointments, (a) => [minutesOf(a.startsAt, tz), minutesOf(a.endsAt, tz)]).map(({ item: a, column, columns }) => {
+      {laid.blocks.map(({ item: a, column, columns }) => {
+        const s = minutesOf(a.startsAt, tz);
+        const e = minutesOf(a.endsAt, tz);
+        const cancelled = a.status === 'cancelled';
+        const buffer = cancelled ? 0 : bufferOf(clinic.visitTypes, a.visitTypeId);
+        if (!buffer) return null;
+        // the minutes its visit type keeps free after it (cleaning time), drawn lighter under the visit's own block;
+        // protected by the database as well as the slot search (migration 0053)
+        const top = Math.max((s - start) * PX + 1 + blockHeight(s, e), (e - start) * PX);
+        return (
+          <div key={`tail-${a.id}`} data-testid="visit-buffer" role="img" aria-label={`${buffer} minutes kept free after ${a.patientName}`} title={`${buffer} minutes kept free after this visit`}
+            className={cn('absolute z-[5] rounded-b-md border-l-4 border-dashed opacity-80', VISIT_TAILS[visitIndex(a.visitTypeId) % VISIT_TAILS.length])}
+            style={{ top, height: Math.max(2, (e + buffer - start) * PX - top - 1), left: `calc(${(column / columns) * 100}% + 0.125rem)`, width: `calc(${100 / columns}% - 0.25rem)` }} />
+        );
+      })}
+      {laid.blocks.map(({ item: a, column, columns }) => {
         const s = minutesOf(a.startsAt, tz);
         const e = minutesOf(a.endsAt, tz);
         const cancelled = a.status === 'cancelled';
@@ -146,16 +170,17 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
         const twoLines = h >= 36;
         return (
           <button key={a.id} type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
-            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
+            aria-label={`${timeOf(a.startsAt, tz)}, ${a.patientName}, ${clinic.visitTypes.find((v) => v.id === a.visitTypeId)?.name ?? ''}${cancelled ? ', cancelled' : ''}${markedWords(a.status)}${a.confirmedAt && !cancelled ? ', confirmed' : ''}, booked by ${a.bookedBy.kind === 'assistant' ? 'the assistant' : 'staff'}`}
             className={cn('absolute z-10 overflow-hidden rounded-md border border-border/60 border-l-4 px-1.5 text-left text-xs leading-tight shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring',
               VISIT_TONES[visitIndex(a.visitTypeId) % VISIT_TONES.length],
-              cancelled && 'border-dashed text-text-muted')}
+              cancelled && 'border-dashed text-text-muted', a.status === 'no_show' && 'opacity-60')}
             // visits drawn at the same height share the lane, side by side: nothing is ever under anything
             style={{ top: (s - start) * PX + 1, height: h, left: `calc(${(column / columns) * 100}% + 0.125rem)`, width: `calc(${100 / columns}% - 0.25rem)` }}>
             <span className={cn('flex items-center gap-1', twoLines ? 'pt-1' : 'pt-0.5')}>
               <Icon className="size-3 shrink-0 text-text-muted" aria-hidden />
               {/* too short for a second line: the time goes on the first, and both truncate together */}
               <span className={cn('truncate font-medium', cancelled && 'line-through')}>
+                <MarkedIcon status={a.status} className="mr-0.5" />
                 {a.confirmedAt && !cancelled && <Check className="mr-0.5 inline size-3 text-success" aria-hidden />}
                 {a.patientName}{twoLines ? '' : <span className="font-normal text-text-muted"> · {timeOf(a.startsAt, tz)}</span>}
               </span>
@@ -164,7 +189,42 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
           </button>
         );
       })}
+      {laid.more.map((m) => (
+        <MoreVisits key={`more-${m.items[0]!.id}`} clinic={clinic} items={m.items} onOpen={onOpen}
+          style={{ top: (m.start - start) * PX + 1, height: Math.max(MIN_BLOCK, (m.end - m.start) * PX - 2), left: `calc(${(m.column / m.columns) * 100}% + 0.125rem)`, width: `calc(${100 / m.columns}% - 0.25rem)` }} />
+      ))}
     </div>
+  );
+}
+
+/**
+ * The visits of a busy moment that do not fit side by side as 24-pixel targets: one "+N more" target that lists them,
+ * each opening its panel. A button, so the keyboard reaches it like any visit; the list closes with Escape.
+ */
+function MoreVisits({ clinic, items, onOpen, style }: { clinic: ClinicConfig; items: Appointment[]; onOpen: (id: string) => void; style: CSSProperties }) {
+  const tz = clinic.timezone;
+  const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? '';
+  return (
+    <Popover className="w-64 p-1" trigger={
+      <button type="button" data-testid="more-visits" style={style}
+        aria-label={`${items.length} more ${items.length === 1 ? 'visit' : 'visits'} from ${timeOf(items[0]!.startsAt, tz)}: ${items.map((a) => a.patientName).join(', ')}`}
+        className="absolute z-10 flex items-start justify-center overflow-hidden rounded-md border border-border-strong bg-surface-sunken px-0.5 pt-0.5 text-xs font-medium text-text shadow-xs transition hover:z-20 hover:shadow-md focus-visible:z-20 focus-ring">
+        +{items.length}
+      </button>
+    }>
+      <ul aria-label="More visits" data-testid="more-visits-list">
+        {items.map((a) => (
+          <li key={a.id}>
+            <button type="button" onClick={() => onOpen(a.id)} data-testid="appointment"
+              className="focus-ring flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-surface-sunken">
+              <span className="shrink-0 tabular-nums text-text-muted">{timeOf(a.startsAt, tz)}</span>
+              <span className={cn('min-w-0 flex-1 truncate', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
+              <span className="sr-only">, {visit(a.visitTypeId)}{a.status === 'cancelled' ? ', cancelled' : ''}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Popover>
   );
 }
 
@@ -194,7 +254,7 @@ export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: 
                       <span className={cn('size-2 shrink-0 rounded-full', VISIT_DOTS[idx(a.visitTypeId) % VISIT_DOTS.length])} aria-hidden />
                       <span className="min-w-0 flex-1">
                         <span className={cn('block truncate font-medium', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
-                        <span className="block truncate text-xs text-text-muted">{visit(a.visitTypeId)}, {provider(a.providerId)}{a.status === 'cancelled' ? ', cancelled' : ''}</span>
+                        <span className="block truncate text-xs text-text-muted">{visit(a.visitTypeId)}, {provider(a.providerId)}{a.status === 'cancelled' ? ', cancelled' : markedWords(a.status)}</span>
                       </span>
                       <Icon className="size-3.5 shrink-0 text-text-muted" aria-label={a.bookedBy.kind === 'assistant' ? 'Booked by the assistant' : 'Booked by staff'} />
                     </button>
@@ -265,6 +325,7 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
                         <span className={cn('size-2 shrink-0 rounded-full', VISIT_DOTS[idx(a.visitTypeId) % VISIT_DOTS.length])} aria-hidden />
                         <span className="shrink-0 tabular-nums text-text-muted">{timeOf(a.startsAt, tz)}</span>
                         <span className={cn('truncate', a.status === 'cancelled' && 'line-through text-text-muted')}>{a.patientName}</span>
+                        <MarkedIcon status={a.status} />
                         {a.confirmedAt && a.status === 'booked' && <Check className="size-3 shrink-0 text-success" aria-label="confirmed" />}
                       </button>
                     </li>

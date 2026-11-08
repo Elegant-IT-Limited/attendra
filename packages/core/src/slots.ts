@@ -60,7 +60,11 @@ export const DESK_LEAD_MINUTES = 5;
 export const slotId = (providerId: string, start: Date) => `${providerId}@${start.toISOString()}`;
 
 const MINUTE = 60_000;
-const bufferOf = (visitTypes: Pick<VisitType, 'id' | 'bufferMinutes'>[] | undefined, id: string | undefined) => (id ? visitTypes?.find((v) => v.id === id)?.bufferMinutes ?? 0 : 0);
+/**
+ * The minutes a visit type keeps free after each visit (cleaning time), 0 when none: the slot search's, the schedule
+ * grid's drawn tail, and the database's own (migration 0053 reads the same setting for its exclusion).
+ */
+export const bufferOf = (visitTypes: readonly Pick<VisitType, 'id' | 'bufferMinutes'>[] | undefined, id: string | undefined) => (id ? visitTypes?.find((v) => v.id === id)?.bufferMinutes ?? 0 : 0);
 
 /**
  * Whether a visit from start to end, keeping `buffer` minutes free after it, overlaps
@@ -76,7 +80,8 @@ type SlotClinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'timezone'> & { visi
 
 /**
  * The starts on a window: its opening, then every clock multiple of `every` after it (8:05, 8:10, 8:20 on a 10-minute
- * grid), as long as the visit and its buffer end inside the window.
+ * grid), as long as the visit ends inside the window. Its buffer is cleaning time, not patient time, and may run past
+ * closing (approved 2026-11-08): a 20-minute visit with 10 minutes after it may start at 16:40 on a 17:00 close.
  */
 export function gridStarts(open: number, close: number, length: number, every: number): number[] {
   const out: number[] = [];
@@ -95,7 +100,8 @@ function freeOnDay(clinic: SlotClinic, busy: BusyInterval[], q: SlotQuery, date:
     // the vet's own hours decide, even outside the clinic's; the clinic's are for vets with none (bookableWindows)
     const { windows, clinicWindows } = bookableWindows(clinic, provider, date);
     for (const w of windows) {
-      for (const m of gridStarts(toMinutes(w.open), toMinutes(w.close), q.visitType.minutes + buffer, every)) {
+      // the visit inside the window; its buffer may run past the close, and still never into another visit (clashes)
+      for (const m of gridStarts(toMinutes(w.open), toMinutes(w.close), q.visitType.minutes, every)) {
         // away for part of the day: nothing that overlaps it
         if (away.some((a) => m < a.end && m + q.visitType.minutes > a.start)) continue;
         const start = zonedInstant(date, fromMinutes(m), clinic.timezone);

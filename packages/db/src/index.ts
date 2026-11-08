@@ -28,3 +28,4 @@ export * from './demo-schedule';
 export * from './seed';
 export * as schema from './schema';
 export { authModels } from './auth-schema';
+export * from './repositories/patient-removal';

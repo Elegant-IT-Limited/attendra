@@ -97,6 +97,7 @@ export const en: LanguagePack = {
     refill_not_approved: (v) => `${v.clinic}: ${hi(v, `about ${whose(v)} recent request${ref(v)}, please call us on ${v.clinicPhone}.`)} Reply STOP to opt out.`,
     change_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} has moved ${v.from ? `from ${v.from} ` : ''}to ${v.when}.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     cancel_confirmed: (v) => `${v.clinic}: ${hi(v, `${visitOf(v)} on ${v.when} is cancelled.`)} To book again, call ${v.clinicPhone}. Reply STOP to opt out.`,
+    vet_changed: (v) => `${v.clinic}: ${hi(v, `${whose(v)} ${v.visit || 'visit'} on ${v.when} is now with ${v.provider}, at the same time.`)} To change or cancel, call ${v.clinicPhone}. Reply STOP to opt out.`,
     directions: (v) => `${v.clinic}: ${v.address}. Map: ${v.mapUrl}. Reply STOP to opt out.`,
     hours: (v) => `${v.clinic} hours: ${v.hours}. Reply STOP to opt out.`,
     emergency_hospital: (v) => `${v.clinic}: emergency vet: ${v.hospital}, ${v.hospitalAddress}, ${v.hospitalPhone}. If a person is hurt or in danger, call ${v.emergencyNumber}. Reply STOP to opt out.`,

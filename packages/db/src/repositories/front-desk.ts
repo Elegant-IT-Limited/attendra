@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { normalizeName } from '@attendra/core';
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
+import { HOLDS_TIME, normalizeName } from '@attendra/core';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -643,14 +643,25 @@ export class FrontDeskRepository {
 
   /** Whether a record is this clinic's: an id only, no patient data, so no audit row. */
   async patientExists(clinicId: string, patientId: string): Promise<boolean> {
-    return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)))).length);
+    return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId), isNull(patients.deletedAt)))).length);
   }
 
-  /** Booked time in [from, to), for the open-slot search. No patient data, so no audit row. */
+  /** Time held in [from, to) (booked, arrived or completed visits), for the open-slot search. No patient data, so no audit row. */
   async busy(clinicId: string, q: { from: Date; to: Date; except?: string }) {
     return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId })
-      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), inArray(appointments.status, [...HOLDS_TIME]),
         lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
+  }
+
+  /**
+   * Booked visits that start in [from, to), with their ids and whether they were squeezed in outside the hours: what a
+   * change of hours is checked against (strandedReason). No patient data, so no audit row.
+   */
+  async bookedAhead(clinicId: string, q: { from: Date; to: Date }, within?: Tx): Promise<{ id: string; providerId: string; start: Date; end: Date; overrideReason: string | null }[]> {
+    const read = (tx: Tx) => tx.select({ id: appointments.id, providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, overrideReason: appointments.overrideReason })
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${q.from}`, lt(appointments.startsAt, q.to)))
+      .orderBy(asc(appointments.startsAt), asc(appointments.id));
+    return within ? read(within) : withClinic(this.db, clinicId, read);
   }
 
   /**
@@ -708,6 +719,18 @@ export class FrontDeskRepository {
       return n;
     };
     return within ? count(within) : withClinic(this.db, clinicId, count);
+  }
+
+  /**
+   * A provider's booked visits still to come, for a handover to another vet: ids, type and
+   * times, and whether the owner could get a text about it (agreed to texts, a number on
+   * file). Nothing is decrypted, so no audit row.
+   */
+  async handoverVisits(clinicId: string, providerId: string, now: Date): Promise<{ appointmentId: string; visitTypeId: string; start: Date; end: Date; textable: boolean }[]> {
+    return withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id, visitTypeId: appointments.visitTypeId, start: appointments.startsAt, end: appointments.endsAt, consent: patients.smsConsentAt, phone: patients.phoneEnc })
+      .from(appointments).innerJoin(patients, eq(patients.id, appointments.patientId))
+      .where(and(eq(appointments.clinicId, clinicId), eq(appointments.providerId, providerId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${now}`))
+      .orderBy(appointments.startsAt)).map((r) => ({ appointmentId: r.id, visitTypeId: r.visitTypeId, start: r.start, end: r.end, textable: !!r.consent && !!r.phone })));
   }
 
   /** Every visit with a provider, past or to come, in any state: a provider something still points at is kept in the settings. Inside `updateSettings`, pass its transaction. */

@@ -216,3 +216,39 @@ test.describe.serial('the schedule', () => {
     await expect(page.getByText('Since cancelled', { exact: true })).toBeVisible();
   });
 });
+
+// The desk marks what happened to a visit from its panel (SCH-1): a key on a keyboard, a button on a phone. Each state
+// is one the server allows now; the block on the grid says it.
+test('the desk marks a visit arrived with a key, the grid says so, and puts it back to booked on a phone', async ({ browser }) => {
+  const page = await openAs(browser, 'frontdesk');
+  const clinic = clinicOf(page);
+  const origin = { origin: new URL(page.url()).origin };
+  const found = await (await page.request.post(`/api/v1/clinics/${clinic}/patients/search`, { headers: origin, data: { query: 'whit' } })).json() as { patients: { id: string; name: string }[] };
+  const james = found.patients.find((p) => p.name === 'James Whitaker')!;
+  // late today in the clinic's time, squeezed in with Override: a visit of today, still ahead, so no-show is not offered yet
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate());
+  const offset = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'longOffset' }).formatToParts(testDate()).find((p) => p.type === 'timeZoneName')!.value.replace('GMT', '');
+  const booked = await page.request.post(`/api/v1/clinics/${clinic}/appointments`, { headers: origin, data: {
+    patientId: james.id, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: new Date(`${today}T23:30:00${offset}`).toISOString(), idempotencyKey: `e2e-mark-${testNow()}`,
+    override: true, overrideReason: 'late check',
+  } });
+  expect(booked.status(), await booked.text()).toBe(201);
+  const { appointmentId } = await booked.json() as { appointmentId: string };
+  await page.goto(`/c/${clinic}/schedule?view=day&date=${today}&appointment=${appointmentId}`);
+  const panel = page.getByRole('dialog', { name: 'James Whitaker' });
+  await expect(panel.getByRole('group', { name: 'Mark the visit' })).toBeVisible();
+  await expect(panel.getByTestId('mark-no_show')).toBeDisabled();
+  await page.keyboard.press('a');
+  await expect(panel.getByTestId('visit-marked')).toContainText('Arrived');
+  await expect(panel.getByTestId('visit-marked')).toContainText('by Jordan');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-testid=appointment][aria-label*="James Whitaker"][aria-label*=", arrived"]').first()).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/c/${clinic}/schedule?view=day&date=${today}&appointment=${appointmentId}`);
+  const onPhone = page.getByRole('dialog', { name: 'James Whitaker' });
+  await onPhone.getByRole('button', { name: /Back to booked/ }).click();
+  await expect(page.locator('[aria-live=polite]').getByText('Back to booked.')).toBeVisible();
+  await expect(onPhone.getByTestId('visit-marked')).toHaveCount(0);
+  await expect(onPhone.getByTestId('mark-arrived')).toBeEnabled();
+});

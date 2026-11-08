@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { AppointmentSummary, BookingResult, SchedulerAdapter, Slot } from '@attendra/core';
+import { type AppointmentSummary, type BookingResult, HOLDS_TIME, type SchedulerAdapter, type Slot } from '@attendra/core';
 import { type Database, type PhiCipher, phiContext, schema, withClinic } from '@attendra/db';
 import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { byKey, insertAppointment } from './write';
@@ -22,7 +22,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
     if (!providerIds.length) return [];
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select().from(appointments).where(and(
-        eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
+        eq(appointments.clinicId, clinicId), inArray(appointments.status, [...HOLDS_TIME]),
         inArray(appointments.providerId, providerIds), lt(appointments.startsAt, to), gt(appointments.endsAt, from),
       ));
       return rows.map((r) => ({ providerId: r.providerId, start: r.startsAt, end: r.endsAt, visitTypeId: r.visitTypeId }));
@@ -40,7 +40,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
     const existing = await byKey(this.db, clinicId, input.idempotencyKey);
     if (existing) return { status: 'already_done', appointment: summary(existing) };
     const busy = await withClinic(this.db, clinicId, async (tx) => (await tx.select({ id: appointments.id }).from(appointments).where(and(
-      eq(appointments.clinicId, clinicId), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked'),
+      eq(appointments.clinicId, clinicId), eq(appointments.patientId, input.patientId), inArray(appointments.status, [...HOLDS_TIME]),
       lt(appointments.startsAt, input.slot.end), gt(appointments.endsAt, input.slot.start),
       input.replacesAppointmentId ? ne(appointments.id, input.replacesAppointmentId) : undefined,
     )).limit(1)).length > 0);
@@ -54,7 +54,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
       noteEnc: input.note?.trim() && this.cipher ? this.cipher.encrypt(input.note.trim(), phiContext(clinicId, 'appointments.note')) : null,
     }, { actor: this.actor, action: 'appointment.booked', callId: input.callId }, replaces ? async (tx) => {
-      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date() })
+      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date(), cancelledAt: new Date() })
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, replaces), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked')))
         .returning({ id: appointments.id });
       if (done.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: replaces, callId: input.callId });
@@ -72,7 +72,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       if (!row) return { status: 'not_found' } as const; // includes someone else's appointment
       if (row.status === 'cancelled') return { status: row.cancelKey === input.idempotencyKey ? 'already_done' : 'not_found' } as const;
       // only a booked row is cancelled: of two cancels that both read it as booked, one wins
-      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId, updatedAt: new Date() })
+      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId, updatedAt: new Date(), cancelledAt: new Date() })
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
       if (!done.length) return { status: 'not_found' } as const;
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: row.id, callId: input.callId });
@@ -89,11 +89,11 @@ export class BuiltinScheduler implements SchedulerAdapter {
     });
   }
 
-  /** Past visits that took place (not cancelled), for the patient's usual provider and their last visit: the last two years. */
+  /** Past visits that took place (booked, arrived or completed; not a no-show, not cancelled), for the patient's usual provider and their last visit: the last two years. */
   async history(clinicId: string, patientId: string, now: Date) {
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select({ providerId: appointments.providerId, start: appointments.startsAt, visitTypeId: appointments.visitTypeId }).from(appointments).where(and(
-        eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), eq(appointments.status, 'booked'),
+        eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), inArray(appointments.status, [...HOLDS_TIME]),
         lt(appointments.startsAt, now), gt(appointments.startsAt, new Date(now.getTime() - 730 * 86_400_000)),
       ));
       return rows;

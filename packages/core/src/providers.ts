@@ -7,6 +7,7 @@ import { phoneDigits } from './identity';
 import { asE164 } from './phones';
 import type { Language } from './locales';
 import { addDays } from './time';
+import { tookPlace } from './visit-status';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -126,14 +127,14 @@ export function seesAnimal(p: Pick<Provider, 'categories'>, species: string): bo
 
 /**
  * The provider a patient usually sees: the one with the most past visits in the last
- * two years (cancelled ones do not count), the most recent breaking a tie. Null with none.
+ * two years (cancelled ones and no-shows do not count), the most recent breaking a tie. Null with none.
  */
 export function usualProviderOf(visits: { providerId: string; start: Date; status?: string }[], now: Date): string | null {
   const since = now.getTime() - 730 * 86_400_000;
   const seen = new Map<string, { n: number; last: number }>();
   for (const v of visits) {
     const t = v.start.getTime();
-    if ((v.status && v.status !== 'booked') || t >= now.getTime() || t < since) continue;
+    if ((v.status && !tookPlace(v.status)) || t >= now.getTime() || t < since) continue;
     const s = seen.get(v.providerId) ?? { n: 0, last: 0 };
     seen.set(v.providerId, { n: s.n + 1, last: Math.max(s.last, t) });
   }

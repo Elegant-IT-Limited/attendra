@@ -9,7 +9,7 @@ import { and, eq, gt, isNotNull, isNull, lte } from 'drizzle-orm';
 import OpenAI from 'openai';
 import type { Job, PgBoss } from 'pg-boss';
 import { type FallbackEntry, fallbackEntry, type SmsSender, smsStatusUrl, type SpendTrigger, type TwilioFallback, TwilioMessenger, type TwilioSpendAlerts } from '@attendra/telephony';
-import { CallJob, DeliveryJob, DocumentJob, ensureQueues, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
+import { CallJob, DeliveryJob, DocumentJob, ensureQueues, HandoverJob, jobId, QUEUES, RequestJob, SmsStatusJob, WEBHOOK_RETRY, WebhookEventJob } from './queue';
 import { JobError, LocalSummariser, ModelSummariser, type Summariser } from './summarise';
 
 export interface WorkerDeps {
@@ -338,6 +338,58 @@ export function handlers(d: Omit<WorkerDeps, 'boss'> & { boss: Pick<PgBoss, 'sen
     },
 
     /**
+     * A visit handed to another vet when its vet was removed (note 32), after the team said yes to
+     * texting the owners: one text, at the same day and time, naming the vet it is now with and never
+     * the reason for the visit. Only to an owner who agreed to texts, with a number on file, while the
+     * clinic's texting is on (a clinic with no number of its own, a test clinic, texts nobody), and only
+     * while the visit is still booked with that vet and still ahead: a visit moved again since is left
+     * alone. A number that replied STOP is refused by the messenger, which records why.
+     */
+    async visitHandedOver(job: HandoverJob): Promise<'sent' | 'off' | 'not_sent' | 'skipped'> {
+      const { clinicId, appointmentId, providerId } = HandoverJob.parse(job);
+      const found = await withClinic(d.db, clinicId, async (tx) => {
+        const [row] = await tx.select({ a: schema.appointments, p: schema.patients, language: schema.calls.language })
+          .from(schema.appointments)
+          .innerJoin(schema.patients, eq(schema.patients.id, schema.appointments.patientId))
+          .leftJoin(schema.calls, eq(schema.calls.id, schema.appointments.createdByCallId))
+          .where(and(eq(schema.appointments.clinicId, clinicId), eq(schema.appointments.id, appointmentId)));
+        const [clinic] = await tx.select({ config: schema.clinics.config, closedAt: schema.clinics.closedAt }).from(schema.clinics).where(eq(schema.clinics.id, clinicId));
+        return row && clinic ? { ...row, clinic } : null;
+      });
+      if (!found || found.clinic.closedAt) return 'skipped';
+      const { a, p, language } = found;
+      if (a.status !== 'booked' || a.providerId !== providerId || a.startsAt.getTime() <= now().getTime()) return 'skipped';
+      if (!p.smsConsentAt || !p.phoneEnc || p.deletedAt) return 'skipped';
+      const parsed = ClinicConfig.safeParse(found.clinic.config);
+      if (!parsed.success) return 'skipped';
+      const config = parsed.data;
+      const messenger = new TwilioMessenger(d.db, d.cipher, textingOf(config).enabled ? d.texts ?? null : null, () => config.phoneNumbers[0]!, {
+        actor: 'worker', dailyCap: d.sms?.dailyCap, monthlyCap: d.sms?.monthlyCap, alerts: d.alerts, log: d.log,
+        statusCallback: d.sms?.publicUrl ? (id) => smsStatusUrl(d.sms!.publicUrl!, id) : undefined,
+      });
+      const lang = config.languages.includes(language as never) ? (language as typeof config.primaryLanguage) : config.primaryLanguage;
+      const ctx = (col: string) => phiContext(clinicId, `patients.${col}`);
+      const pets = config.industry === 'vet';
+      const firstName = d.cipher.decrypt(p.firstNameEnc, ctx('first_name'));
+      const owner = pets && p.guardianNameEnc ? d.cipher.decrypt(p.guardianNameEnc, ctx('guardian_name')).trim().split(/\s+/)[0] : '';
+      const provider = config.providers.find((x) => x.id === providerId);
+      const visit = pets ? config.visitTypes.find((x) => x.id === a.visitTypeId) : undefined;
+      if (!provider) return 'skipped';
+      const result = await messenger.sendTemplate(clinicId, {
+        to: d.cipher.decrypt(p.phoneEnc, ctx('phone')), template: 'vet_changed', language: lang, kind: 'auto',
+        vars: {
+          clinic: config.name, when: speakSlot(a.startsAt, config.timezone, lang), clinicPhone: callUsNumber(config), provider: localName(provider, lang),
+          ...(pets ? { pet: firstName, ...(owner ? { name: owner } : {}) } : { name: firstName }),
+          ...(visit ? { visit: localName(visit, lang).toLowerCase() } : {}),
+        },
+        idempotencyKey: `vet-changed:${appointmentId}:${providerId}`, about: { patientId: p.id, appointmentId },
+      });
+      if (result.status !== 'not_sent') return 'sent';
+      if (result.reason === 'carrier') throw new JobError('sms_failed');
+      return result.reason === 'texting_off' ? 'off' : 'not_sent';
+    },
+
+    /**
      * A delivery report from Twilio, by its message id. A status never goes backwards
      * (a late "sent" after "delivered"), and a number the carrier says opted out is
      * marked so the clinic does not try it again.
@@ -387,6 +439,7 @@ export async function startWorker(d: WorkerDeps) {
   await d.boss.work<DeliveryJob>(QUEUES.deliverWebhook, { ...poll, localConcurrency: 4 }, each((data, job) => h.deliverWebhook(data, { retryCount: job.retryCount, retryLimit })));
   await d.boss.work<SmsStatusJob>(QUEUES.smsStatus, poll, each((data) => h.smsStatus(data)));
   await d.boss.work<RequestJob>(QUEUES.requestReady, poll, each((data) => h.requestReady(data)));
+  await d.boss.work<HandoverJob>(QUEUES.visitHandedOver, poll, each((data) => h.visitHandedOver(data)));
   await d.boss.work(QUEUES.appointmentReminders, each(() => h.appointmentReminders()));
   await d.boss.work(QUEUES.lapseInvitations, each(async () => { await h.lapseInvitations(); }));
   await d.boss.work(QUEUES.dailyDigest, each(async () => { await h.dailyDigest(); }));

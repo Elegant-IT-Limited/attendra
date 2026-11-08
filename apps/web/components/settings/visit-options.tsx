@@ -10,20 +10,37 @@ type Visit = ClinicConfig['visitTypes'][number];
 const num = (v: string) => (v === '' ? undefined : Math.max(0, Math.round(Number(v))));
 
 /**
- * The visit-type settings most clinics never touch, closed by default (open when one is set, so nothing hides a value):
- * who can book it, whether the team books it, the notice and the furthest date (labelled so the two can't be confused,
- * the notice in hours or days as typed), and the minutes kept free after it.
+ * What is set under More options, in a few words for its closed line ("Pets already on file · at least 3 days ahead"),
+ * so a closed section never hides a value. Empty when nothing is set.
+ */
+export function moreOptionsSummary(v: Visit, pet: boolean): string {
+  const days = (h: number) => (h >= 24 && h % 24 === 0 ? `${h / 24} day${h === 24 ? '' : 's'}` : `${h} hour${h === 1 ? '' : 's'}`);
+  return [
+    v.audience === 'new' ? (pet ? 'New clients only' : 'New patients only') : v.audience === 'existing' ? (pet ? 'Pets already on file' : 'Patients on file only') : null,
+    v.staffOnly ? 'Team books it' : null,
+    v.noticeHours !== undefined ? `at least ${days(v.noticeHours)} ahead` : null,
+    v.maxDaysAhead !== undefined ? `at most ${v.maxDaysAhead} day${v.maxDaysAhead === 1 ? '' : 's'} ahead` : null,
+    v.bufferMinutes ? `${v.bufferMinutes} min break after` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * The visit-type settings most clinics never touch (note 21), closed by default: who can book it, whether the team books
+ * it, the notice and the furthest date (labelled so the two can't be confused, the notice in hours or days as typed), and
+ * the break after it. The closed line says what is set (moreOptionsSummary), so nothing is hidden.
  */
 export function VisitMoreOptions({ v, pet, onChange, disabled }: { v: Visit; pet: boolean; onChange: (patch: Partial<Visit>) => void; disabled: boolean }) {
   const id = useId();
-  const set = v.audience !== 'all' || !!v.staffOnly || v.noticeHours !== undefined || v.maxDaysAhead !== undefined || !!v.bufferMinutes;
+  const summary = moreOptionsSummary(v, pet);
   // the notice is stored in hours and shown in days when it was typed in days (a whole number of days)
   const [unit, setUnit] = useState<'hours' | 'days'>(v.noticeHours && v.noticeHours >= 24 && v.noticeHours % 24 === 0 ? 'days' : 'hours');
   const shown = v.noticeHours === undefined ? '' : unit === 'days' ? String(v.noticeHours / 24) : String(v.noticeHours);
   const name = v.name || 'This visit';
   return (
-    <details className="group rounded-md border border-border" open={set || undefined}>
-      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">More options</summary>
+    <details className="group rounded-md border border-border" data-testid="visit-more-options">
+      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
+        More options{summary && <span className="font-normal text-text-muted" data-testid="visit-more-summary">: {summary}</span>}
+      </summary>
       <div className="space-y-4 border-t border-border px-3 py-3">
         <Field label="Who can book it" htmlFor={`${id}-audience`}>
           <Select id={`${id}-audience`} className="sm:w-72" value={v.audience} onChange={(e) => onChange({ audience: e.target.value as Visit['audience'] })}>
@@ -56,9 +73,9 @@ export function VisitMoreOptions({ v, pet, onChange, disabled }: { v: Visit; pet
             No day can be booked: the notice ({v.noticeHours} hours) is longer than the furthest date ({v.maxDaysAhead} days). Shorten the notice or allow more days.
           </p>
         )}
-        <Field label="Minutes kept free after" htmlFor={`${id}-buffer`} hint="For cleaning or notes, on calls and at the desk.">
+        <Field label="Break after (minutes)" htmlFor={`${id}-buffer`} hint="Kept free after each visit, for cleaning or notes, on calls and at the desk.">
           <Input id={`${id}-buffer`} className="sm:w-40" type="number" inputMode="numeric" min={0} max={120} value={v.bufferMinutes ?? ''} placeholder="0"
-            aria-label={`${name}: minutes free after`} onChange={(e) => onChange({ bufferMinutes: num(e.target.value) })} />
+            aria-label={`${name}: break after, in minutes`} onChange={(e) => onChange({ bufferMinutes: num(e.target.value) })} />
         </Field>
       </div>
     </details>

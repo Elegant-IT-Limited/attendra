@@ -289,7 +289,9 @@ describe('visits left on a day off or a holiday', () => {
     expect((await c.request('POST', `${S}/appointments`, { cookie, body: { patientId: c.patientIds.maria, providerId: 'prov_okafor', visitTypeId: 'vt_sick', startsAt: slot.startsAt, idempotencyKey: 'conflict-1' } })).statusCode).toBe(201);
     expect((await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json().conflicts).toEqual([]);
     const settings = (await c.request('GET', `${S}/settings`, { cookie })).json();
-    await c.request('PUT', `${S}/settings`, { cookie, body: { ...settings, holidays: [...settings.holidays, '2026-10-06'] } });
+    // the save asks first (a visit would be left on the holiday), and kept goes through
+    expect((await c.request('PUT', `${S}/settings`, { cookie, body: { ...settings, holidays: [...settings.holidays, '2026-10-06'] } })).statusCode).toBe(409);
+    expect((await c.request('PUT', `${S}/settings?keepStranded=true`, { cookie, body: { ...settings, holidays: [...settings.holidays, '2026-10-06'] } })).statusCode).toBe(200);
     const res = (await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json();
     expect(res.conflicts).toEqual([{ date: '2026-10-06', providerId: 'prov_okafor', reason: 'holiday', count: 1 }]);
     expect(JSON.stringify(res)).not.toMatch(/Maria|Delgado/);
@@ -306,10 +308,10 @@ describe('visits left on a day off or a holiday', () => {
     await book('2026-10-07', '15:00', 'half-day-1');
     await book('2026-10-08', '11:40', 'part-day-1');
     const settings = (await c.request('GET', `${S}/settings`, { cookie })).json();
-    expect((await c.request('PUT', `${S}/settings`, { cookie, body: { ...settings, specialDays: [{ date: '2026-10-07', windows: [{ open: '08:00', close: '12:00' }] }] } })).statusCode).toBe(200);
+    expect((await c.request('PUT', `${S}/settings?keepStranded=true`, { cookie, body: { ...settings, specialDays: [{ date: '2026-10-07', windows: [{ open: '08:00', close: '12:00' }] }] } })).statusCode).toBe(200);
     const okafor = { ...settings.providers.find((p: { id: string }) => p.id === 'prov_okafor') };
     delete okafor.id;
-    const away = await c.request('PUT', `${S}/doctors/prov_okafor`, { cookie, body: { ...okafor, timeOff: [...(okafor.timeOff ?? []), { from: '2026-10-08', to: '2026-10-08', start: '11:50', end: '13:00' }] } });
+    const away = await c.request('PUT', `${S}/doctors/prov_okafor?keepStranded=true`, { cookie, body: { ...okafor, timeOff: [...(okafor.timeOff ?? []), { from: '2026-10-08', to: '2026-10-08', start: '11:50', end: '13:00' }] } });
     expect(away.statusCode, away.body).toBe(200);
     const res = (await c.request('GET', `${S}/appointments/conflicts`, { cookie })).json();
     expect(res.conflicts).toEqual([

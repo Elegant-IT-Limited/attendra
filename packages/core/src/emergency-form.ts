@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { z } from 'zod';
 import { type ClinicConfig, type EmergencyHospital, emergencyHospitalsOf, EMERGENCY_MODES, type EmergencyMode, EmergencySettings, MORE_HOSPITALS_MAX } from './clinic';
-import { emergencyCallLine, emergencyPreview, emergencySettingsOf } from './emergency-route';
+import { type CallLinePlace, emergencyCallLine, emergencyPreview, emergencySettingsOf } from './emergency-route';
 import { emergencyNumberFor, type Language } from './locales';
 import { asE164 } from './phones';
 
@@ -139,7 +139,7 @@ export type EmergencyPreviewLines = ReturnType<typeof emergencyPreview>;
  * what callers will hear in each language with the emergency hours open and closed (the saved setting until the draft
  * is complete, as Settings does).
  */
-export function emergencyFormView(clinic: PreviewClinic & Pick<ClinicConfig, 'phoneNumbers'>, d: EmergencyDraft, now: Date) {
+export function emergencyFormView(clinic: PreviewClinic & Pick<ClinicConfig, 'phoneNumbers'>, d: EmergencyDraft, now: Date, place: CallLinePlace = 'settings') {
   const r = emergencySettingOf(d, clinic);
   const shown = { ...clinic, emergencies: r.success ? r.data : emergencySettingsOf(clinic) ?? undefined };
   const preview = Object.fromEntries((['en', 'es'] as const satisfies readonly Language[]).map((lang) => [lang, {
@@ -149,7 +149,7 @@ export function emergencyFormView(clinic: PreviewClinic & Pick<ClinicConfig, 'ph
   return {
     issues: r.success ? [] : [...new Set(r.error.issues.map((i) => emergencyFieldLabel(i.path as (string | number)[])))],
     setting: r.success ? r.data : null,
-    callLine: emergencyCallLine(shown, now),
+    callLine: emergencyCallLine(shown, now, place),
     preview,
   };
 }

@@ -10,9 +10,12 @@ import { dayTitle } from '@/lib/format';
 import { SAFETY_POLL_MS } from '@/lib/changes';
 
 /**
- * Visits still booked on a day their vet or doctor is away, or the clinic is closed for
- * a holiday: a change to days off or holidays never moves anyone, so the team is told.
+ * Visits still booked on a day their vet or doctor is away, the clinic is closed for a holiday, or outside the hours
+ * they are booked by: a change to hours, days off or holidays never moves anyone, so the team is told (the save asked
+ * "move or keep" first; this is what was kept, or changed since).
  */
+const REASON: Record<ScheduleConflicts['conflicts'][number]['reason'], string> = { holiday: 'a holiday', away: 'away that day', outside_hours: 'outside the hours' };
+
 export function ConflictsAlert({ clinicId, className }: { clinicId: string; className?: string }) {
   const { can } = useClinic(clinicId);
   const config = useClinicConfig(clinicId);
@@ -23,13 +26,13 @@ export function ConflictsAlert({ clinicId, className }: { clinicId: string; clas
   const total = list.reduce((n, c) => n + c.count, 0);
   const today = localDateOf(new Date(), config.data.timezone);
   return (
-    <Alert tone="warn" className={className} title={`${total} booked ${total === 1 ? 'visit is' : 'visits are'} on a day off or a holiday`}>
-      <p className="mb-2">Changing days off or holidays never moves a booking. Move these or call the owners.</p>
+    <Alert tone="warn" className={className} title={`${total} booked ${total === 1 ? 'visit is' : 'visits are'} on a day off, a holiday or outside the hours`}>
+      <p className="mb-2">Changing hours, days off or holidays never moves a booking. Move these or call the owners.</p>
       <ul className="space-y-1">
         {list.slice(0, 6).map((c) => (
           <li key={`${c.date}-${c.providerId}`}>
             <Link className="font-medium underline" href={`/c/${clinicId}/schedule?date=${c.date}`}>{c.date === today ? 'Today' : dayTitle(c.date, 'short')}</Link>
-            {': '}{c.count} with {name(c.providerId)}, {c.reason === 'holiday' ? 'a holiday' : 'away that day'}
+            {': '}{c.count} with {name(c.providerId)}, {REASON[c.reason]}
           </li>
         ))}
         {list.length > 6 && <li>and {list.length - 6} more days</li>}

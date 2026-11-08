@@ -16,7 +16,7 @@ import type { Slot } from './slots';
  * codes and counts only: never a name, a number, a date of birth or free text.
  */
 export interface DomainEvent {
-  type: 'call.completed' | 'call.summary.ready' | 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled' | 'appointment.confirmed' | 'request.created' | 'request.done';
+  type: 'call.completed' | 'call.summary.ready' | 'appointment.booked' | 'appointment.rescheduled' | 'appointment.cancelled' | 'appointment.confirmed' | 'appointment.status_changed' | 'request.created' | 'request.done';
   key: string;
   occurredAt?: Date;
   data: Record<string, string | number | boolean | null>;

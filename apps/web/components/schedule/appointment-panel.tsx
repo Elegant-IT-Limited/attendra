@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { AppointmentChange, AppointmentDetail, BookedBy, CancelReason } from '@attendra/api/contracts';
-import { type ClinicConfig, industryPack, localDateOf, providerName } from '@attendra/core';
+import { type ClinicConfig, DESK_STATUS_KEYS, DESK_STATUS_REFUSED, DESK_STATUSES, type DeskStatus, deskStatusProblem, industryPack, localDateOf, providerName, VISIT_STATUS_LABELS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { capital } from '@/components/schedule/booking-dialog';
+import { MarkedBadge } from '@/components/schedule/visit-status';
 import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,7 @@ type Mode = 'view' | 'reschedule' | 'cancel';
 export const LINK_BUTTON = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-sunken focus-ring';
 
 /** One appointment, opened from the schedule. Closes with Escape; every change says how it went. */
-export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, canWrite, patientHref }: {
+export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, canWrite, patientHref, startMoving }: {
   clinicId: string;
   clinic: ClinicConfig;
   appointmentId: string | null;
@@ -32,6 +33,8 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   canWrite: boolean;
   /** Where the patient's profile lives, once there is one. */
   patientHref?: (patientId: string) => string;
+  /** Open on Reschedule (the "Move" of a change of hours that would strand it), when it can still be moved. */
+  startMoving?: boolean;
 }) {
   const queries = useQueryClient();
   const [mode, setMode] = useState<Mode>('view');
@@ -76,13 +79,51 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
     },
   });
 
+  // the desk marks what happened: arrived, completed, no-show, or back to booked (core visit-status.ts)
+  const mark = useMutation({
+    mutationFn: (status: DeskStatus) => api<AppointmentChange>(`/clinics/${clinicId}/appointments/${appointmentId}/status`, { method: 'POST', body: JSON.stringify({ status }) }),
+    onSuccess: (r, status) => {
+      if (r.status === 'done') toast({ tone: 'success', message: status === 'booked' ? 'Back to booked.' : `Marked ${VISIT_STATUS_LABELS[status].toLowerCase()}.` });
+      void queries.invalidateQueries({ queryKey: ['schedule', clinicId] });
+      void queries.invalidateQueries({ queryKey: ['appointment', clinicId, appointmentId] });
+      void queries.invalidateQueries({ queryKey: ['patient', clinicId] });
+      void queries.invalidateQueries({ queryKey: ['slots', clinicId] });
+    },
+    onError: (e) => problem({ title: 'Not changed', message: e instanceof ApiFailure && e.body.message ? e.body.message : 'That did not save. Try again.' }),
+  });
+
   const close = (open: boolean) => { if (!open) { setMode('view'); setMessage(null); setSlot(null); onClose(); } };
   const a = detail.data;
+  // asked to open on Reschedule: once, when the visit has loaded and can still be moved
+  const [moveStarted, setMoveStarted] = useState<string | null>(null);
+  useEffect(() => {
+    if (!startMoving || !a || !canWrite || moveStarted === a.id || !offersChanges(a, new Date(), false)) return;
+    setMoveStarted(a.id); setMode('reschedule'); setFrom(localDateOf(new Date(), tz));
+  }, [startMoving, a, canWrite, moveStarted, tz]);
   const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
   const pets = industryPack(clinic.industry).identity === 'pet';
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id);
   // a move or cancel begun keeps its buttons if the visit's start passes meanwhile: the server then says why
   const upcoming = a && offersChanges(a, new Date(), mode !== 'view');
+  // which states the desk may set now, by the same rule the API refuses with
+  const marks = a && canWrite && a.status !== 'cancelled' && mode === 'view'
+    ? DESK_STATUSES.filter((s) => s !== a.status).map((s) => ({ status: s, problem: deskStatusProblem({ status: a.status, startsAt: new Date(a.startsAt) }, s, new Date(), tz) }))
+    : [];
+  // a key for each, while the panel shows the visit and nothing is being typed: A arrived, D completed, N no-show, B back to booked
+  useEffect(() => {
+    if (!marks.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || mark.isPending) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+      const m = marks.find((x) => DESK_STATUS_KEYS[x.status] === e.key.toLowerCase());
+      if (!m || m.problem) return;
+      e.preventDefault();
+      mark.mutate(m.status);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   let footer: ReactNode = a && patientHref ? <Link href={patientHref(a.patient.id)} className={LINK_BUTTON}>{pets ? 'Open pet' : 'Open patient'}</Link> : null;
   if (a && canWrite && upcoming) {
@@ -115,6 +156,28 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
           <Alert tone="warn">{detail.error instanceof ApiFailure && detail.error.status === 404 ? 'This appointment is not on this clinic\'s schedule.' : 'The appointment did not load. Close this and try again.'}</Alert>
         ) : (
           <div className="space-y-5">
+            {a.status !== 'booked' && a.status !== 'cancelled' && (
+              <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="visit-marked">
+                <MarkedBadge status={a.status} />
+                {a.statusChangedAt && <span className="text-text-muted">{a.statusChangedBy ? `by ${a.statusChangedBy}, ` : ''}{clinicTime(a.statusChangedAt, tz)}</span>}
+              </p>
+            )}
+            {marks.length > 0 && (
+              <section className="space-y-2" aria-labelledby="desk-status-title">
+                <h3 id="desk-status-title" className="text-xs font-medium uppercase tracking-wide text-text-muted">At the desk</h3>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="group" aria-label="Mark the visit">
+                  {marks.map((m) => (
+                    <Button key={m.status} variant="outline" size="sm" disabled={!!m.problem || mark.isPending} onClick={() => mark.mutate(m.status)}
+                      title={m.problem ? DESK_STATUS_REFUSED[m.problem] : `Key ${DESK_STATUS_KEYS[m.status].toUpperCase()}`} aria-keyshortcuts={DESK_STATUS_KEYS[m.status]}
+                      data-testid={`mark-${m.status}`} className="justify-center">
+                      {m.status === 'booked' ? 'Back to booked' : VISIT_STATUS_LABELS[m.status]}
+                      <kbd className="ml-1 hidden rounded border border-border px-1 text-[10px] text-text-muted sm:inline">{DESK_STATUS_KEYS[m.status].toUpperCase()}</kbd>
+                    </Button>
+                  ))}
+                </div>
+                {marks.every((m) => m.problem) && <p className="text-xs text-text-muted">{DESK_STATUS_REFUSED[marks[0]!.problem!]}</p>}
+              </section>
+            )}
             {a.status === 'cancelled' && (
               <Alert tone="warn" title="Cancelled">
                 {a.cancelReason ? CANCEL_REASONS[a.cancelReason] : 'No reason given'}{a.cancelledBy ? `, by ${who(a.cancelledBy)}` : ''}.
@@ -166,7 +229,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                     </span>
                   </p>
                 </section>
-                {!upcoming && a.status === 'booked' && <p className="text-xs text-text-muted">This appointment has started or passed, so it can no longer be moved or cancelled.</p>}
+                {!upcoming && a.status !== 'cancelled' && <p className="text-xs text-text-muted">This appointment has started or passed, so it can no longer be moved or cancelled.</p>}
               </>
             )}
           </div>

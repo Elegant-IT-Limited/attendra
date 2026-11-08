@@ -24,9 +24,10 @@ export function weeksSince(since: Date | null, now: Date, timezone: string, max:
  * newest first, with the definitions in packages/core/src/quality.ts. Cost is the
  * voice model's minutes at `costPerMinute`, the same estimate as the overview.
  * `rows` are phone calls only; `testCalls` are when the week's browser test calls
- * started, counted so the page can say how many it left out.
+ * started, counted so the page can say how many it left out. `visits` are the visits that
+ * were due and have started (visitsDue), for the no-shows.
  */
-export function qualityWeeks(rows: QualityRow[], clinic: ClinicConfig, now: Date, weeks: number, costPerMinute: number, testCalls: Date[] = []): QualityWeek[] {
+export function qualityWeeks(rows: QualityRow[], clinic: ClinicConfig, now: Date, weeks: number, costPerMinute: number, testCalls: Date[] = [], visits: { startsAt: Date; status: string }[] = []): QualityWeek[] {
   const thisWeek = weekStart(localDateOf(now, clinic.timezone));
   return Array.from({ length: weeks }, (_, i) => {
     const start = addDays(thisWeek, -7 * i);
@@ -34,6 +35,16 @@ export function qualityWeeks(rows: QualityRow[], clinic: ClinicConfig, now: Date
     const to = zonedInstant(addDays(start, 7), '00:00', clinic.timezone).getTime();
     const inWeek = (at: Date) => at.getTime() >= from && at.getTime() < to;
     const calls = rows.filter((r) => inWeek(r.startedAt)).map((r) => ({ ...r, afterHours: !isOpen(clinic, r.startedAt) }));
-    return { start, end: addDays(start, 6), ...qualityOf(calls, costPerMinute), testCallsLeftOut: testCalls.filter(inWeek).length };
+    return { start, end: addDays(start, 6), ...qualityOf(calls, costPerMinute), testCallsLeftOut: testCalls.filter(inWeek).length, ...noShowsOf(visits.filter((v) => inWeek(v.startsAt))) };
   });
+}
+
+/**
+ * The week's no-shows: visits the desk marked no-show, out of the visits that were due and
+ * have started (booked, arrived, completed or no-show; cancelled ones are not counted). A
+ * visit nobody marked counts as due, not as a no-show. The share is null with none due.
+ */
+export function noShowsOf(visits: { status: string }[]): { visitsDue: number; noShows: number; noShowShare: number | null } {
+  const noShows = visits.filter((v) => v.status === 'no_show').length;
+  return { visitsDue: visits.length, noShows, noShowShare: visits.length ? Math.round((noShows / visits.length) * 1000) / 1000 : null };
 }

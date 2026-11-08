@@ -18,6 +18,8 @@ import { moved, Sortable } from '@/components/ui/sortable';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
 import { VoicePreview } from '@/components/settings/voice-preview';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
+import { StrandedDialog, strandedOf } from '@/components/schedule/stranded-dialog';
+import type { StrandedVisits } from '@attendra/api/contracts';
 import { Switch } from '@/components/ui/controls';
 import { PageHeader } from '@/components/shell';
 import { Button, buttonStyles } from '@/components/ui/button';
@@ -157,13 +159,17 @@ export default function Settings() {
     else add();
   };
 
+  // a save that would leave booked visits outside the hours: the "move or keep" list, and what was being saved
+  const [stranded, setStranded] = useState<{ visits: StrandedVisits; config: ClinicConfig } | null>(null);
   const save = useMutation({
-    mutationFn: (config: ClinicConfig) => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings`, {
+    // with keep, the visits the server listed stay where they are (audited there)
+    mutationFn: ({ config, keep: keepStranded }: { config: ClinicConfig; keep?: boolean }) => apiTagged<ClinicConfig>(`/clinics/${clinicId}/settings${keepStranded ? '?keepStranded=true' : ''}`, {
       method: 'PUT', body: JSON.stringify(config), headers: loaded.data?.etag ? { 'if-match': loaded.data.etag } : {},
     }),
     onMutate: () => setConflict(null),
     onSuccess: ({ body: config, etag }) => {
       keep(config, etag);
+      setStranded(null);
       void queries.invalidateQueries({ queryKey: ['schedule-conflicts', clinicId] });
       // the clinic's name and time zone also come with who you are, for every other page
       void queries.invalidateQueries({ queryKey: ['me'] });
@@ -171,7 +177,10 @@ export default function Settings() {
       setIssues([]);
       toast({ tone: 'success', message: 'Saved. The next call uses these settings.' });
     },
-    onError: (e) => {
+    onError: (e, { config }) => {
+      const visits = strandedOf(e);
+      if (visits) { setStranded({ visits, config }); return; }
+      setStranded(null);
       if (!(e instanceof ApiFailure)) { problem({ title: 'Not saved', message: 'The settings did not reach the server. Check your connection and press Save changes again.' }); return; }
       if (e.status === 409 && e.body.error === 'settings_changed') {
         const b = e.body as unknown as { current: ClinicConfig; version: number; updatedAt: string | null; updatedBy: { name: string } | null };
@@ -208,6 +217,8 @@ export default function Settings() {
       <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
       <SettingsNav clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
+      <StrandedDialog clinicId={clinicId} clinic={c} stranded={stranded?.visits ?? null} pending={save.isPending}
+        onKeep={() => stranded && save.mutate({ config: stranded.config, keep: true })} onClose={() => setStranded(null)} />
       {conflict && saved.data && (
         <SettingsConflict base={saved.data} mine={c} conflict={conflict} label={issueLabel} timeLabel={(iso) => clinicTime(iso, c.timezone)}
           onResolved={(next) => { keep(conflict.theirs, `"v${conflict.version}"`); setDraft(next); setConflict(null); }} />
@@ -539,7 +550,7 @@ export default function Settings() {
             <p className="text-sm text-text-muted">You have unsaved changes.</p>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setDraft(saved.data ?? null)}>Discard</Button>
-              <Button onClick={() => save.mutate(withoutBlankRows(c))} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
+              <Button onClick={() => save.mutate({ config: withoutBlankRows(c) })} disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save changes'}</Button>
             </div>
           </div>
         </div>

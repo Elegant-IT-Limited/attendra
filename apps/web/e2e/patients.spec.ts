@@ -83,3 +83,45 @@ test.describe.serial('patients', () => {
     await expect(page.getByText('Attendra is busy for a moment')).toHaveCount(0);
   });
 });
+
+// DATA-5: a practice manager merges a duplicate record and deletes one, each after a confirm step with the server's
+// counts; the front desk sees neither button.
+test('a manager merges a duplicate into a record and deletes another, after seeing what moves or goes', async ({ browser }) => {
+  const desk = await openAs(browser, 'frontdesk');
+  const clinic = new URL(desk.url()).pathname.split('/')[2];
+  const origin = { origin: new URL(desk.url()).origin };
+  const add = async (firstName: string, lastName: string, phone: string, dob: string) => {
+    const res = await desk.request.post(`/api/v1/clinics/${clinic}/patients`, { headers: origin, data: { firstName, lastName, dob, phone, gender: 'female' } });
+    expect(res.status(), await res.text()).toBe(201);
+    return ((await res.json()) as { id: string }).id;
+  };
+  const keep = await add('Odile', 'Fenwick', '+13035550156', '1971-02-03');
+  const dupe = await add('Odile', 'Fenwik', '+13035550156', '1971-02-03');
+  const gone = await add('Pell', 'Mardon', '+13035550157', '1966-07-08');
+  await desk.goto(`/c/${clinic}/patients/${keep}`);
+  await expect(desk.getByRole('heading', { name: 'Odile Fenwick' })).toBeVisible();
+  await expect(desk.getByTestId('merge-open')).toHaveCount(0);
+  await expect(desk.getByTestId('delete-open')).toHaveCount(0);
+
+  const manager = await openAs(browser, 'manager');
+  await manager.goto(`/c/${clinic}/patients/${keep}`);
+  await manager.getByTestId('merge-open').click();
+  const merge = manager.getByRole('dialog', { name: 'Merge into Odile Fenwick' });
+  await merge.getByLabel('Find a patient').fill('fenwik');
+  await merge.getByRole('button', { name: /Odile Fenwik/ }).click();
+  await expect(merge.getByTestId('merge-preview')).toContainText('1 record merged away');
+  await merge.getByTestId('merge-confirm').click();
+  await expect(merge).toBeHidden();
+  expect((await manager.request.get(`/api/v1/clinics/${clinic}/patients/${dupe}`)).status()).toBe(404);
+
+  await manager.goto(`/c/${clinic}/patients/${gone}`);
+  await manager.getByTestId('delete-open').click();
+  const remove = manager.getByRole('dialog', { name: 'Delete Pell Mardon' });
+  await expect(remove.getByTestId('delete-preview')).toContainText('1 record emptied');
+  await expect(remove.getByTestId('delete-preview')).toContainText('0 visits still to come cancelled');
+  await remove.getByTestId('delete-confirm').click();
+  await expect(manager).toHaveURL(new RegExp(`/c/${clinic}/patients$`), { timeout: 20_000 });
+  expect((await manager.request.get(`/api/v1/clinics/${clinic}/patients/${gone}`)).status()).toBe(404);
+  const found = await (await manager.request.post(`/api/v1/clinics/${clinic}/patients/search`, { headers: origin, data: { query: 'mardon' } })).json() as { patients: unknown[] };
+  expect(found.patients).toEqual([]);
+});

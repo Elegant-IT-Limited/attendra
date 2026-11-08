@@ -18,7 +18,10 @@ const money = (n: number | null) => (n === null ? '—' : usd(n));
 // "29 Sep", day first like every other date in the dashboard
 const short = (d: string) => dayTitle(d, 'short').replace(/^\w+ /, '');
 
-type Metric = { key: string; label: string; explain: string; value: (w: QualityWeek) => string; trend: (w: QualityWeek) => number | null; href: (w: QualityWeek) => string };
+type Metric = { key: string; label: string; explain: string; value: (w: QualityWeek) => string; trend: (w: QualityWeek) => number | null; href: (w: QualityWeek) => string; sub?: (w: QualityWeek) => string };
+
+/** The no-shows card and column: the server's share and count, as it sent them (a test reads this against the API). */
+const noShowText = (w: Pick<QualityWeek, 'noShowShare' | 'noShows'>) => (w.noShowShare === null ? '—' : `${pct(w.noShowShare)} (${w.noShows})`);
 
 /**
  * How well the assistant is doing, week by week, from database counts. Every number
@@ -49,6 +52,7 @@ export default function QualityPage() {
       : { key: 'afterBooked', label: 'Bookings made after hours', explain: 'Visits booked while the clinic was closed: calls that would have gone to voicemail.', value: (w) => String(w.afterHoursBookings), trend: (w) => w.afterHoursBookings, href: (w) => week(w, { outcome: 'booked' }) },
     { key: 'emergencies', label: 'Emergencies sent on', explain: 'Calls where the emergency script ran.', value: (w) => String(w.emergencies), trend: (w) => w.emergencies, href: (w) => week(w, { emergency: 'true' }) },
     { key: 'refills', label: 'Refill requests', explain: 'Refill requests the assistant took for the team.', value: (w) => String(w.refillRequests), trend: (w) => w.refillRequests, href: (w) => week(w) },
+    { key: 'noShows', label: 'No-shows', explain: 'Visits the desk marked a no-show, out of the visits due that week that have started. A visit nobody marked is counted as due, not as a no-show; cancelled visits are left out.', value: noShowText, trend: (w) => w.noShowShare, href: (w) => `/c/${clinicId}/schedule?${new URLSearchParams({ view: 'agenda', days: '7', date: w.start })}`, sub: (w) => `This week, ${w.visitsDue} visit${w.visitsDue === 1 ? '' : 's'} due` },
     { key: 'cost', label: 'Cost per call', explain: 'Voice minutes at the list price, an estimate. The planner and summaries are extra.', value: (w) => money(w.costPerCall), trend: (w) => w.costPerCall, href: (w) => week(w) },
     { key: 'costBooking', label: 'Cost per booking', explain: 'The week\'s voice cost, divided by its bookings.', value: (w) => money(w.costPerBooking), trend: (w) => w.costPerBooking, href: (w) => week(w, { outcome: 'booked' }) },
   ];
@@ -77,7 +81,7 @@ export default function QualityPage() {
                 <p className="text-sm text-text-muted">{m.label}</p>
                 <p className="mt-1 text-xl font-semibold tabular-nums">{m.value(now)}</p>
                 <div className="mt-2 flex items-end justify-between gap-2">
-                  <p className="text-xs text-text-muted">This week, {now.calls} call{now.calls === 1 ? '' : 's'}</p>
+                  <p className="text-xs text-text-muted">{m.sub ? m.sub(now) : `This week, ${now.calls} call${now.calls === 1 ? '' : 's'}`}</p>
                   <Sparkline points={oldestFirst.map((w) => m.trend(w) ?? 0)} label={`${m.label}, ${weeks.length === 1 ? 'this week' : `last ${weeks.length} weeks`}`} className="h-6 w-20" />
                 </div>
               </Link>

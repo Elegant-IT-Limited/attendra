@@ -4,6 +4,18 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 
 ## [Unreleased]
 
+### Changed (batch 4a: scheduling and the desk)
+
+- **Visit statuses for the desk**: a visit can be marked arrived, completed or no-show from its panel (keys A, D, N, B back to booked), with `status_changed_at` / `status_changed_by`, audited, and a new webhook event `appointment.status_changed`. Arrived and completed visits still hold their time; Quality counts no-shows. Migration 0054.
+- **Buffer (cleaning) time is drawn and protected**: the schedule draws a lighter tail after each visit, and the database refuses two bookings inside each other's buffer even when they race (`appointments.blocks_until`, the overlap rule on `[starts_at, blocks_until)`). Cleaning time may run past closing: a 20-minute visit with 10 minutes' buffer can start at 16:40 on a 17:00 close. Migration 0053.
+- **An hours change never strands booked visits silently**: saving clinic hours, a holiday, a special day or a vet's hours that would leave booked visits outside any window answers with the list (`409 strands_visits`); the dashboard offers "Move" per visit or "Keep them and save" (`?keepStranded=true`, audited per visit). The schedule's warning also counts visits outside the hours.
+- **Removing a vet with visits to come**: "Move their visits" hands each visit, same day and time, to a vet who does that visit type and works then (the booking rules decide, never a clash); preview, confirm, and owners are texted only if the manager ticks it and they agreed to texts. What can't move is listed and stays.
+- **Patient records: merge and delete** (owners and practice managers, permission `patients:merge`): merge two records of one pet or one owner's two households; delete a pet or everyone on a number. A confirm step shows the server's counts first. A deleted record keeps an emptied row so its visits still count; every encrypted value and search key goes, visits to come are cancelled, requests keep only their number, type and outcome. Audited with counts only.
+- **Schedule at big clinics**: Day and Week show at most 8 vets (My vets first, "Choose vets (8 of N)"), Agenda one click away; a busy moment in a week lane shows "+N more" instead of columns too narrow to tap (24 px minimum).
+- **Cancelled history** is ordered by a real `cancelled_at`, set by every cancel and backfilled.
+- **Visit types**: More options starts closed and its closed line says what is set.
+- **Setup page**: the emergency step's "Right now" line says "Choose one below." for a clinic with no setting (Settings keeps "Set one under Settings > Emergencies."); the preview endpoint takes `?for=setup`.
+
 ### Changed (batch 1e: emergencies as one setting, and open call bugs)
 
 - **Emergencies are one setting, `emergencies`, everywhere.** The setup page's emergency step offers the same three choices as Settings > Emergencies, with the same wording, required fields and "what callers will hear" preview, served by the engine (`GET /api/v1/clinics/:id/settings/emergencies`, `POST …/settings/emergencies/preview`). Settings > General no longer has its own "Emergency hospitals" section; several hospitals in order now live in the setting as `moreHospitals` (up to 4: the first one open at that moment is named). The engine and dashboard read only `emergencies`; a test fails if the old `emergencyHospital` / `moreEmergencyHospitals` fields are read anywhere. **Upgrade:** run `pnpm db:emergency-settings` (dry run, counts only), then `pnpm db:emergency-settings --apply`, right after deploying: it moves old hospital and on-call settings into `emergencies` and removes the old keys. Until then a vet clinic still on the old fields has no emergency route.

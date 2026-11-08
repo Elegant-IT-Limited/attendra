@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, type ClinicConfig, localDateOf, zonedInstant } from '@attendra/core';
+import { addDays, type ClinicConfig, type DeskStatus, type DeskStatusProblem, deskStatusProblem, HOLDS_TIME, localDateOf, zonedInstant } from '@attendra/core';
 import { type Database, type PhiCipher, phiContext, schema, type Tx, withClinic } from '@attendra/db';
-import { and, eq, gt, lt, ne } from 'drizzle-orm';
+import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { type SlotProblem, slotProblem } from './rules';
 import { byKey, insertAppointment, isConstraint } from './write';
 
@@ -14,6 +14,13 @@ export type StaffChange =
   | { status: 'refused'; reason: SlotProblem | 'cancelled' | 'just_cancelled' | 'idempotency_mismatch' }
   /** The patient is already booked, with any provider, at an overlapping time. */
   | { status: 'refused'; reason: 'patient_busy'; patientName: string }
+  | { status: 'not_found' };
+
+/** A desk state set (or the same state again), or why not: the visit's state or time, or a no-show put back where another visit now is. */
+export type StatusChange =
+  | { status: 'done'; appointmentId: string; from: DeskStatus; to: DeskStatus }
+  | { status: 'already_done'; appointmentId: string }
+  | { status: 'refused'; reason: DeskStatusProblem | 'taken' }
   | { status: 'not_found' };
 
 const actorOf = (userId: string) => `user:${userId}`;
@@ -45,7 +52,8 @@ export class StaffScheduler {
     const visitType = clinic.visitTypes.find((v) => v.id === input.visitTypeId);
     const check = await withClinic(this.db, clinic.id, async (tx) => {
       const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, input.patientId)));
-      if (!patient) return { kind: 'no_patient' } as const;
+      // a deleted record (Patients, Delete) keeps its row for the counts, and is booked for nothing
+      if (!patient || patient.deletedAt) return { kind: 'no_patient' } as const;
       const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now(), { override: !!input.overrideReason });
       if (problem) return { kind: 'problem', problem } as const;
       const end = new Date(input.start.getTime() + (visitType?.minutes ?? 0) * 60_000);
@@ -91,8 +99,11 @@ export class StaffScheduler {
         }
         // only a row that is still booked: someone may have cancelled it since it was read
         // a move made outside the hours keeps its reason; a move back inside them clears it.
-        // the new time gets its own reminder and its own confirmation
-        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date(), overrideReason: input.overrideReason?.trim() || null, reminderSentAt: null, reminderSmsId: null, confirmedAt: null, confirmedVia: null })
+        // the new time gets its own reminder and its own confirmation; a visit only handed to another vet (the same
+        // time) keeps the ones it had
+        const sameTime = input.start.getTime() === row.startsAt.getTime();
+        const moved = await tx.update(appointments).set({ providerId, startsAt: input.start, endsAt: end, updatedAt: new Date(), overrideReason: input.overrideReason?.trim() || null,
+          ...(sameTime ? {} : { reminderSentAt: null, reminderSmsId: null, confirmedAt: null, confirmedVia: null }) })
           .where(and(eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
         if (!moved.length) return { status: 'refused', reason: 'just_cancelled' } as const;
         await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: input.overrideReason ? 'appointment.rescheduled.staff.override' : 'appointment.rescheduled.staff', entity: 'appointment', entityId: row.id });
@@ -109,7 +120,7 @@ export class StaffScheduler {
     return withClinic(this.db, clinic.id, async (tx) => {
       // one conditional update, so a cancel racing another cancel, or a move, changes the row once
       const cancelled = await tx.update(appointments).set({
-        status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date(),
+        status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date(), cancelledAt: new Date(),
         // like the assistant's cancels, a staff cancel carries a key, so a retry of it is recognised as one
         cancelKey: `staff:${userId}:${appointmentId}`,
       }).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId), eq(appointments.status, 'booked'), gt(appointments.startsAt, this.now())))
@@ -125,10 +136,38 @@ export class StaffScheduler {
     });
   }
 
+  /**
+   * The desk marks what happened to a visit: arrived, completed, no-show, or back to booked.
+   * The rule for when each may be set is core deskStatusProblem, the same the panel's buttons
+   * read. One conditional update on the state read, so two people marking the same visit at
+   * once change it once; each change is audited with who, and kept on the row with when.
+   * A no-show put back to booked takes its time again, and is refused if a visit was booked
+   * there since (the exclusion constraint says so).
+   */
+  async setStatus(clinic: ClinicConfig, appointmentId: string, to: DeskStatus, userId: string): Promise<StatusChange> {
+    try {
+      return await withClinic(this.db, clinic.id, async (tx) => {
+        const [row] = await tx.select().from(appointments).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId)));
+        if (!row) return { status: 'not_found' } as const;
+        if (row.status === to) return { status: 'already_done', appointmentId } as const;
+        const problem = deskStatusProblem(row, to, this.now(), clinic.timezone);
+        if (problem) return { status: 'refused', reason: problem } as const;
+        const changed = await tx.update(appointments).set({ status: to, statusChangedAt: this.now(), statusChangedBy: userId, updatedAt: new Date() })
+          .where(and(eq(appointments.id, row.id), eq(appointments.status, row.status))).returning({ id: appointments.id });
+        if (!changed.length) return { status: 'refused', reason: 'cancelled' } as const;
+        await tx.insert(auditLogs).values({ clinicId: clinic.id, actor: actorOf(userId), action: `appointment.status.${to}`, entity: 'appointment', entityId: row.id });
+        return { status: 'done', appointmentId, from: row.status as DeskStatus, to } as const;
+      });
+    } catch (err) {
+      if (isConstraint(err, '23P01')) return { status: 'refused', reason: 'taken' };
+      throw err;
+    }
+  }
+
   /** Whether the patient already has a booked appointment, with any provider, that overlaps [start, end). */
   private async patientBusy(tx: Tx, clinicId: string, patientId: string, start: Date, end: Date, except?: string) {
     const [clash] = await tx.select({ id: appointments.id }).from(appointments).where(and(
-      eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), eq(appointments.status, 'booked'),
+      eq(appointments.clinicId, clinicId), eq(appointments.patientId, patientId), inArray(appointments.status, [...HOLDS_TIME]),
       lt(appointments.startsAt, end), gt(appointments.endsAt, start), except ? ne(appointments.id, except) : undefined,
     )).limit(1);
     return !!clash;
@@ -144,13 +183,13 @@ export class StaffScheduler {
     return `${this.cipher.decrypt(p.firstNameEnc, ctx('first_name'))} ${this.cipher.decrypt(p.lastNameEnc, ctx('last_name'))}`;
   }
 
-  /** Booked time for one provider on the local day of `start`, leaving out the appointment being moved. */
+  /** Time held for one provider (booked, arrived or completed visits) on the local day of `start`, leaving out the appointment being moved. */
   private async busy(tx: Tx, clinic: ClinicConfig, providerId: string, start: Date, except?: string) {
     const date = localDateOf(start, clinic.timezone);
     const from = zonedInstant(date, '00:00', clinic.timezone);
     const to = zonedInstant(addDays(date, 1), '00:00', clinic.timezone);
     const rows = await tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId }).from(appointments).where(and(
-      eq(appointments.clinicId, clinic.id), eq(appointments.status, 'booked'), eq(appointments.providerId, providerId),
+      eq(appointments.clinicId, clinic.id), inArray(appointments.status, [...HOLDS_TIME]), eq(appointments.providerId, providerId),
       lt(appointments.startsAt, to), gt(appointments.endsAt, from), except ? ne(appointments.id, except) : undefined,
     ));
     return rows;

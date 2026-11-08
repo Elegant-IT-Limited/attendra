@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import type { DoctorInput, DoctorList } from '@attendra/api/contracts';
+import type { DoctorInput, DoctorList, StrandedVisits } from '@attendra/api/contracts';
 import { agesLine, bareName, doctorGuide, OWN_HOURS_NOTE, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine, allVisitTypeIds, doesEveryVisitType } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
@@ -13,6 +13,8 @@ import { ChipsPicker } from '@/components/ui/chips';
 import { Combobox } from '@/components/ui/combobox';
 import { LocalNames } from '@/components/settings/assistant';
 import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
+import { StrandedDialog, strandedOf } from '@/components/schedule/stranded-dialog';
+import { HandoverDialog } from '@/components/schedule/handover-dialog';
 import { PageHeader } from '@/components/shell';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonStyles } from '@/components/ui/button';
@@ -205,6 +207,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
   const showProblem = useProblem();
   const setProblem = (message: string | null) => { if (message) showProblem({ title: 'Not saved', message }); };
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // a vet with visits still to come: their visits go to other vets first (note 32)
+  const [handover, setHandover] = useState(false);
   const toast = useToast();
   const set = (patch: Partial<Draft>) => setD((x) => ({ ...x, ...patch }));
   const hours: Hours = d.hours ?? {};
@@ -220,15 +224,26 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       : 'That did not save. Check your connection and try again.');
   };
 
+  // hours or days off that would leave booked visits outside any bookable time: the "move or keep" list, and what was being saved
+  const [stranded, setStranded] = useState<{ visits: StrandedVisits; body: DoctorInput } | null>(null);
   const save = useMutation({
-    mutationFn: (body: DoctorInput) => api<DoctorList>(`/clinics/${clinicId}/doctors${editing.id ? `/${editing.id}` : ''}`, { method: editing.id ? 'PUT' : 'POST', body: JSON.stringify(body) }),
-    onSuccess: () => { onSaved(); toast({ tone: 'success', message: editing.id ? 'Saved. The assistant uses it from the next request.' : 'Added. The assistant can book them from the next request.' }); onClose(); },
-    onError: failed,
+    // with keep, the visits the server listed stay where they are (audited there)
+    mutationFn: ({ body, keep }: { body: DoctorInput; keep?: boolean }) => api<DoctorList>(`/clinics/${clinicId}/doctors${editing.id ? `/${editing.id}${keep ? '?keepStranded=true' : ''}` : ''}`, { method: editing.id ? 'PUT' : 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => { setStranded(null); onSaved(); toast({ tone: 'success', message: editing.id ? 'Saved. The assistant uses it from the next request.' : 'Added. The assistant can book them from the next request.' }); onClose(); },
+    onError: (e, { body }) => {
+      const visits = strandedOf(e);
+      if (visits) { setStranded({ visits, body }); return; }
+      setStranded(null);
+      failed(e);
+    },
   });
   const remove = useMutation({
     mutationFn: () => api<DoctorList>(`/clinics/${clinicId}/doctors/${editing.id}`, { method: 'DELETE' }),
-    onSuccess: () => { onSaved(); toast({ tone: 'success', message: 'Removed.' }); onClose(); },
-    onError: failed,
+    onSuccess: () => { onSaved(); toast({ tone: 'success', message: 'Removed.' }); setHandover(false); onClose(); },
+    onError: (e) => {
+      if (e instanceof ApiFailure && e.status === 409 && e.body.error === 'has_upcoming_visits') { setConfirmDelete(false); setHandover(true); return; }
+      failed(e);
+    },
   });
 
   const submit = (e: FormEvent) => {
@@ -236,7 +251,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
     const { ownHours, gender, otherPhones, ...rest } = d;
     if (!gender) { setProblem(`Choose their gender, so callers who ask for a female or a male ${terms.provider} are offered the right one.`); return; }
     if (!d.visitTypeIds.length) { setProblem(`Choose at least one visit type they do. Callers are offered a ${terms.provider} only for the visit types ticked here.`); return; }
-    save.mutate({
+    save.mutate({ body: {
       ...rest,
       gender,
       name: d.name.trim(),
@@ -249,7 +264,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       credentials: credentials.split(/[,;]/).map((c) => c.trim()).filter(Boolean),
       hours: ownHours ? Object.fromEntries(Object.entries(hours).filter(([, w]) => w && w.length)) : undefined,
       timeOff: d.timeOff.filter((t) => t.from && t.to),
-    });
+    } });
   };
   const setDay = (day: string, windows: { open: string; close: string }[]) => set({ hours: { ...hours, [day]: windows } });
 
@@ -264,6 +279,14 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           {!confirmDelete && <><Button variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" form="doctor-form" disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</Button></>}
         </>
       )}>
+      {config.data && (
+        <StrandedDialog clinicId={clinicId} clinic={config.data} stranded={stranded?.visits ?? null} pending={save.isPending}
+          onKeep={() => stranded && save.mutate({ body: stranded.body, keep: true })} onClose={() => setStranded(null)} />
+      )}
+      {editing.id && config.data && (
+        <HandoverDialog clinicId={clinicId} clinic={config.data} providerId={editing.id} open={handover} onClose={() => setHandover(false)}
+          onRemove={() => remove.mutate()} removing={remove.isPending} />
+      )}
       <form id="doctor-form" onSubmit={submit} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div className="space-y-1.5"><Label htmlFor="doc-name">Name</Label>

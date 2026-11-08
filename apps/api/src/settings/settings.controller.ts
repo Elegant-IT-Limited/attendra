@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { applyListChange, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
 import { can } from '../access';
-import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
+import { type Database, type FrontDeskRepository, PostgresAuditLog, type ScheduleRepository, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
 import { Body, ConflictException, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, CLOCK, DB, FRONT_DESK } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, CLOCK, DB, FRONT_DESK, SCHEDULE } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
-import { AssistantChoices, AssistantChoicesQuery, ListChange } from '../contracts';
+import { AssistantChoices, AssistantChoicesQuery, KeepStrandedQuery, ListChange } from '../contracts';
+import { keeps, strandedBy, strandedConflict } from '../schedule/stranded';
 import type { z } from 'zod';
 
 @ApiTags('settings')
@@ -18,7 +19,10 @@ import type { z } from 'zod';
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/settings')
 export class SettingsController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date) {}
+  constructor(
+    @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(SCHEDULE) private readonly schedule: ScheduleRepository,
+  ) {}
 
   @Get()
   @Requires('clinic:read')
@@ -84,10 +88,11 @@ export class SettingsController {
   @Post('emergencies/preview')
   @HttpCode(200)
   @Requires('settings:read')
-  @ApiOperation({ summary: 'Check an emergency form draft: { issues, setting, callLine, preview }, built by the same schema, route and preview as Settings > Emergencies. Saves nothing.' })
+  @ApiOperation({ summary: 'Check an emergency form draft: { issues, setting, callLine, preview }, built by the same schema, route and preview as Settings > Emergencies. ?for=setup: the setup page wording for a clinic with no setting ("Choose one below."). Saves nothing.' })
   @ApiBody({ schema: schemaOf(EmergencyDraft) })
-  async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>) {
-    return emergencyFormView(await this.config(clinicId), draft, this.now());
+  async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>, @Query('for') place?: string) {
+    // the setup page has the choices under its "Right now" line: ?for=setup says "Choose one below." instead of pointing to Settings
+    return emergencyFormView(await this.config(clinicId), draft, this.now(), place === 'setup' ? 'setup' : 'settings');
   }
 
   private async config(clinicId: string): Promise<ClinicConfig> {
@@ -143,8 +148,10 @@ export class SettingsController {
   @ApiBody({ schema: schemaOf(ClinicConfig) })
   @ApiOkResponse({ schema: schemaOf(ClinicConfig) })
   @ApiUnprocessableEntityResponse({ description: 'The configuration failed validation' })
-  @ApiConflictResponse({ description: 'settings_changed: someone saved since the If-Match version; the body has theirs as `current`' })
-  async put(@Param('clinicId') clinicId: string, @Body() body: unknown, @CurrentStaff() staff: Staff, @Headers('if-match') ifMatch: string | undefined, @Res({ passthrough: true }) reply: FastifyReply): Promise<ClinicConfig> {
+  @ApiConflictResponse({ description: 'settings_changed: someone saved since the If-Match version; the body has theirs as `current`. strands_visits: the hours, holidays or special days would leave booked visits outside any bookable time (StrandedVisits); send it again with ?keepStranded=true to keep them' })
+  @ApiQuery({ name: 'keepStranded', required: false, enum: ['true', 'false'], description: 'Keep the booked visits this save leaves outside the hours where they are (audited)' })
+  async put(@Param('clinicId') clinicId: string, @Body() body: unknown, @CurrentStaff() staff: Staff, @Headers('if-match') ifMatch: string | undefined, @Res({ passthrough: true }) reply: FastifyReply,
+    @Query(new ZodPipe(KeepStrandedQuery)) q: z.infer<typeof KeepStrandedQuery> = {}): Promise<ClinicConfig> {
     // without If-Match (older clients, scripts) the save goes through as before
     const expectedVersion = ifMatch ? versionOf(ifMatch) : undefined;
     if (ifMatch && expectedVersion === undefined) throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'If-Match', message: 'expected the ETag from the last read, like "v3"' }] });
@@ -205,8 +212,14 @@ export class SettingsController {
     if (this.options.demoMode && JSON.stringify(next.routing) !== JSON.stringify(current.routing)) {
       throw new UnprocessableEntityException({ error: 'invalid_settings', issues: [{ path: 'routing', message: 'transfer numbers cannot be changed in demo mode' }] });
     }
+    // hours, holidays or special days that would leave booked visits outside any bookable time are never saved
+    // silently: the "move or keep" list first, and with keepStranded those visits stay where they are, audited
+    const now = this.now();
+    const strands = await strandedBy(this.desk, clinicId, current, next, now);
+    if (strands.length && !keeps(q)) throw await strandedConflict(this.schedule, clinicId, strands, staff);
     const saved = await this.desk.saveSettings(clinicId, next, staff.userId, undefined, { expectedVersion });
     if (saved.status === 'conflict') return this.conflict(clinicId, staff.userId);
+    if (strands.length) await this.schedule.keepStranded(clinicId, strands.map((v) => v.id), staff.userId, now);
     reply.header('etag', etag(saved.version));
     return next;
   }

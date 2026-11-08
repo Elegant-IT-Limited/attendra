@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { testDate } from './clock';
 import { openAs } from './session';
 
 test.describe.serial('the front desk, end to end on the demo clinic', () => {
@@ -240,7 +241,14 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
     await expect(page.getByRole('dialog', { name: 'Not saved. Fix these first' }).getByText('the greeting must disclose that the caller is speaking with an AI assistant')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
     await greeting.fill(original);
-    await page.getByLabel('Holiday date').fill('2026-12-31');
+    // past the demo's three weeks of visits, so the save strands none and goes straight through (a holiday over booked
+    // visits asks "move or keep" first: schedule-stranded.spec.ts)
+    const clinic = new URL(page.url()).pathname.split('/')[2]!;
+    const taken = await page.evaluate(async (id) => { const c = await (await fetch(`/api/v1/clinics/${id}/settings`)).json(); return [...c.holidays, ...(c.specialDays ?? []).map((d: { date: string }) => d.date)] as string[]; }, clinic);
+    let ahead = 60;
+    const dateAhead = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate(ahead * 86_400_000));
+    while (taken.includes(dateAhead())) ahead++;
+    await page.getByLabel('Holiday date').fill(dateAhead());
     await page.getByRole('button', { name: 'Add holiday' }).click();
     await page.getByRole('button', { name: 'Save changes' }).click();
     // said in the page's toast, the live region with a surface of its own, so it can be read
