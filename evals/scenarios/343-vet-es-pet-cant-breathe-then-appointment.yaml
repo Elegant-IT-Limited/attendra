@@ -10,6 +10,12 @@ tags:
   - es
 settings:
   emergencyTransferEnabled: false
+  emergencies:
+    mode: refer
+    hospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver
 facts: Eres Linh Nguyen y llamas desde tu número. Tu perro Biscuit no puede respirar bien. Igual quieres una cita para él; di que sí a que te pasen con el equipo.
 turns:
   - caller: Biscuit no puede respirar bien, hace un silbido.

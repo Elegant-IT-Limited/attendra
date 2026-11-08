@@ -15,7 +15,7 @@ const CLINIC = {
   phoneNumbers: ['+13035550170'], routing: [{ target: 'front_desk', uri: 'tel:+13035550171' }],
   providers: [{ name: 'Dr. Tobias Quillfeather', categories: ['Dogs', 'Cats'] }, { name: 'Dr. Ingrid Marchetti', categories: ['Rabbits'] }],
   visitTypes: [{ name: 'wellness exam', names: { es: 'chequeo general' } }, { name: 'Senior Wellness Panel' }],
-  emergencyHospital: { name: 'Larkmoor Pet Emergency', phone: '+13035550188', address: '980 Tamsin Road, Fernbrook' },
+  emergencies: { mode: 'refer', hospital: { name: 'Larkmoor Pet Emergency', phone: '+13035550188', address: '980 Tamsin Road, Fernbrook' } },
 };
 const known = knownFromConfig(CLINIC);
 known.numbers.unshift('+1 303 555 0187');

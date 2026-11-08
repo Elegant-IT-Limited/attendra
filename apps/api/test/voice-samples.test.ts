@@ -1,4 +1,4 @@
-import { BUILT_IN_VOICES, DEMO_CLINIC, hasPreview, PREVIEW_VOICES } from '@attendra/core';
+import { BUILT_IN_VOICES, DEMO_CLINIC, hasPreview, PREVIEW_VOICES, SETTINGS_LIMITS } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OTHER, startApi } from './helpers';
@@ -79,6 +79,8 @@ describe('naming the assistant from a setup page', () => {
     // the demo clinic's greeting is the one suggested for its name
     expect(body.savedIsSuggested).toBe(true);
     expect((await api.request('GET', A, { cookie: staff })).json().suggested.en).toBe(DEMO_CLINIC.greeting);
+    // the setup page's limits are the ones Settings and the schema use (batch 1e: one source)
+    expect(res.json().limits).toEqual(SETTINGS_LIMITS);
   });
 
   it('a greeting the clinic wrote is kept; a name that is not one word and another clinic are refused', async () => {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { callUsNumber, type ClinicConfig, renderText, type SmsTemplateName, smsSegments, type Texting, TextWording } from '@attendra/core';
+import { callUsNumber, type ClinicConfig, emergencyHospitalsOf, renderText, type SmsTemplateName, smsSegments, type Texting, TextWording } from '@attendra/core';
 import { Fragment, useState } from 'react';
 import { Section } from '@/components/settings/section';
 import { Badge } from '@/components/ui/badge';
@@ -53,7 +53,7 @@ function slotNames(pets: boolean): Record<string, string> {
  * call or the team fills in as a tag. The clinic's own words show where they go.
  */
 function templateVars(c: ClinicConfig): Record<string, string> {
-  const h = c.emergencyHospital;
+  const [h] = emergencyHospitalsOf(c.emergencies);
   const pets = c.industry === 'vet';
   return {
     clinic: c.name, clinicPhone: callUsNumber(c), emergencyNumber: '911',
@@ -75,7 +75,7 @@ function exampleVars(c: ClinicConfig): Record<string, string> {
     answer: 'We are open until 6 PM today.', hours: 'Mon-Fri 8 AM-6 PM, Sat 9 AM-1 PM', mapUrl: 'https://maps.google.com/?q=clinic',
     label: c.texting?.links[0]?.label ?? 'New client form', url: c.texting?.links[0]?.url ?? 'https://example.com/form',
     address: c.address?.trim() || '214 Main Street',
-    hospital: c.emergencyHospital?.name ?? 'City Pet Emergency', hospitalAddress: c.emergencyHospital?.address ?? '1200 Larkspur Avenue', hospitalPhone: c.emergencyHospital?.phone ?? '+13035550188',
+    ...(() => { const [h] = emergencyHospitalsOf(c.emergencies); return { hospital: h?.name ?? 'City Pet Emergency', hospitalAddress: h?.address ?? '1200 Larkspur Avenue', hospitalPhone: h?.phone ?? '+13035550188' }; })(),
   };
 }
 

@@ -22,3 +22,9 @@ forbid_spoken:
   - If this is a medical emergency
 settings:
   emergencyTransferEnabled: false
+  emergencies:
+    mode: refer
+    hospital:
+      name: Front Range Pet Emergency
+      phone: "+17205550188"
+      address: 1200 Larkspur Avenue, Denver

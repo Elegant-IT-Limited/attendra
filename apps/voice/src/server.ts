@@ -502,6 +502,8 @@ export function buildServer(deps: VoiceDeps): FastifyInstance {
       if (tools && deps.internalToken) toolLines.set(callId, { clinicId: clinic.id, runner, token: mintToolToken(deps.internalToken, { callId, clinicId: clinic.id, expiresAt: Date.now() + TOOL_TOKEN_MAX_MS }) });
       // staff watching live see every event; their actions go through the runner like the agent's own
       frontDesk.set(callId, clinic.routing.find((r) => r.target === 'front_desk')?.uri ?? null);
+      // a phone caller who never hears the assistant goes to the front desk (or the call ends) instead of waiting in silence
+      runner.silentStartUri = channel === 'phone' ? frontDesk.get(callId) ?? null : null;
       live.open(callId, { clinicId: clinic.id, channel, startedAt: now() }, {
         coach: (note, by) => runner.act(a.coach(note, by)),
         takeOver: (uri, by) => runner.act(a.takeOver(uri, by)),

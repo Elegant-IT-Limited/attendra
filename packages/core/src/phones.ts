@@ -106,17 +106,19 @@ export function formatPhone(clinic: PhoneCountry, stored: string | null | undefi
 }
 
 type Phoned = { phone?: string | undefined };
+/** The emergency setting's numbers: its line, and each hospital's phone. */
+type EmergencyPhones = { number?: string | undefined; hospital?: Phoned | undefined; backupHospital?: Phoned | undefined; afterHoursHospital?: Phoned | undefined; moreHospitals?: Phoned[] | undefined };
+const EMERGENCY_HOSPITAL_KEYS = ['hospital', 'backupHospital', 'afterHoursHospital'] as const;
 type ConfigPhones = PhoneCountry & {
   vipCallers?: Phoned[] | undefined;
-  emergencyHospital?: Phoned | undefined;
-  moreEmergencyHospitals?: Phoned[] | undefined;
+  emergencies?: EmergencyPhones | undefined;
   routing?: { uri: string }[] | undefined;
   providers?: (Phoned & { otherPhones?: string[] | undefined })[] | undefined;
 };
 
 /**
- * A clinic's settings with every number in them as E.164 (VIP callers, emergency
- * hospitals, transfer numbers, providers' numbers), however staff typed them. Runs
+ * A clinic's settings with every number in them as E.164 (VIP callers, the emergency
+ * setting's line and hospitals, transfer numbers, providers' numbers), however staff typed them. Runs
  * before the settings are checked and saved, so "(303) 555-0100" is never refused for
  * missing its +1. The clinic's own numbers come from the hosting layer and are left alone.
  */
@@ -126,8 +128,7 @@ export function withPhonesAsE164<C extends ConfigPhones>(c: C): C {
   return {
     ...c,
     ...(c.vipCallers ? { vipCallers: c.vipCallers.map(fix) } : {}),
-    ...(c.emergencyHospital ? { emergencyHospital: fix(c.emergencyHospital) } : {}),
-    ...(c.moreEmergencyHospitals ? { moreEmergencyHospitals: c.moreEmergencyHospitals.map(fix) } : {}),
+    ...(c.emergencies ? { emergencies: emergencyPhonesAsE164(c.emergencies, one, fix) } : {}),
     ...(c.routing ? { routing: c.routing.map((r) => (r.uri.startsWith('tel:') ? { ...r, uri: `tel:${asE164(c, r.uri.slice(4))}` } : r)) } : {}),
     ...(c.providers ? { providers: c.providers.map((p) => ({ ...fix(p), ...(p.otherPhones ? { otherPhones: p.otherPhones.map((x) => asE164(c, x)) } : {}) })) } : {}),
   };
@@ -223,19 +224,31 @@ export function cleanPhoneTyping(typed: string): { value: string; dropped: boole
   return { value: plus ? value : kept, dropped: value.replace(/^\+/, '').length + (plus ? 1 : 0) !== typed.length };
 }
 
+/** The emergency setting with its line and every hospital's phone as E.164. */
+function emergencyPhonesAsE164<E extends EmergencyPhones>(e: E, one: (n: string | undefined) => string | undefined, fix: <T extends Phoned>(x: T) => T): E {
+  const out: E = { ...e, ...(typeof e.number === 'string' ? { number: one(e.number) } : {}) };
+  for (const k of EMERGENCY_HOSPITAL_KEYS) if (e[k]) out[k] = fix(e[k]!) as E[typeof k];
+  if (e.moreHospitals) out.moreHospitals = e.moreHospitals.map(fix);
+  return out;
+}
+
 /**
  * Every phone typed into Settings that isn't numbers only, by its path ("vipCallers.0.phone"), before anything is
  * normalised: the normaliser keeps only the digits, so "303 CALL NOW" would otherwise be saved as a number.
  */
 export function phoneTypingIssues(body: unknown): { path: string; message: string }[] {
   if (!body || typeof body !== 'object') return [];
-  const c = body as { phoneNumbers?: unknown; vipCallers?: unknown; emergencyHospital?: unknown; moreEmergencyHospitals?: unknown; routing?: unknown };
+  const c = body as { phoneNumbers?: unknown; vipCallers?: unknown; emergencies?: unknown; routing?: unknown };
   const out: { path: string; message: string }[] = [];
   const check = (path: string, v: unknown) => { if (typeof v === 'string' && phoneProblem(v.replace(/^tel:/, ''))) out.push({ path, message: PHONE_NUMBERS_ONLY }); };
   if (Array.isArray(c.phoneNumbers)) c.phoneNumbers.forEach((n, i) => check(`phoneNumbers.${i}`, n));
   if (Array.isArray(c.vipCallers)) c.vipCallers.forEach((v, i) => check(`vipCallers.${i}.phone`, (v as { phone?: unknown })?.phone));
-  if (c.emergencyHospital && typeof c.emergencyHospital === 'object') check('emergencyHospital.phone', (c.emergencyHospital as { phone?: unknown }).phone);
-  if (Array.isArray(c.moreEmergencyHospitals)) c.moreEmergencyHospitals.forEach((h, i) => check(`moreEmergencyHospitals.${i}.phone`, (h as { phone?: unknown })?.phone));
+  if (c.emergencies && typeof c.emergencies === 'object') {
+    const e = c.emergencies as Record<string, unknown>;
+    check('emergencies.number', e.number);
+    for (const k of EMERGENCY_HOSPITAL_KEYS) if (e[k] && typeof e[k] === 'object') check(`emergencies.${k}.phone`, (e[k] as { phone?: unknown }).phone);
+    if (Array.isArray(e.moreHospitals)) e.moreHospitals.forEach((h, i) => check(`emergencies.moreHospitals.${i}.phone`, (h as { phone?: unknown })?.phone));
+  }
   // a transfer is a phone (tel:) or a SIP address; only the phone ones are numbers only
   if (Array.isArray(c.routing)) c.routing.forEach((r, i) => { const uri = (r as { uri?: unknown })?.uri; if (typeof uri === 'string' && uri.startsWith('tel:')) check(`routing.${i}.uri`, uri); });
   return out;

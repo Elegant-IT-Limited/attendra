@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { type ClinicConfig, hospitalFor, resolveTransfer } from '@attendra/core';
+import { type ClinicConfig, hospitalNow, resolveTransfer } from '@attendra/core';
 import { createHash } from 'node:crypto';
 
 /**
@@ -34,7 +34,7 @@ export function fallbackEntry(clinic: ClinicConfig, now: Date): FallbackEntry {
     // a line forwarded to the assistant would ring straight back into the outage
     return own.has(digits(n)) ? null : n;
   };
-  const hospital = hospitalFor(clinic, now);
+  const hospital = hospitalNow(clinic, now);
   return {
     clinic: clinic.name,
     language: clinic.primaryLanguage === 'es' ? 'es' : 'en',

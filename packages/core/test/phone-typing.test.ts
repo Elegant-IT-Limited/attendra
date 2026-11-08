@@ -25,7 +25,7 @@ describe('phone fields take numbers only', () => {
     expect(phoneTypingIssues({
       phoneNumbers: ['+13035550100', '303 555 CALL'],
       vipCallers: [{ name: 'Partner', phone: 'vip 555 0101' }],
-      emergencyHospital: { name: 'ER', phone: '303-555-0102', address: 'x' },
+      emergencies: { mode: 'refer', hospital: { name: 'ER', phone: '303-555-0102', address: 'x' } },
       routing: [{ target: 'front_desk', uri: 'tel:303FRONT' }, { target: 'billing', uri: 'sip:billing@example.com' }],
     }).map((i) => i.path)).toEqual(['phoneNumbers.1', 'vipCallers.0.phone', 'routing.0.uri']);
   });

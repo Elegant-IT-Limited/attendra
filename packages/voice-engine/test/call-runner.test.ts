@@ -3,7 +3,7 @@ import { DEMO_CLINIC, INDUSTRY_PACKS, RIVERBEND_CLINIC, Texting, zonedInstant } 
 import { createLogger } from '@attendra/observability';
 import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { CallMarks, CallRunner, conversationPrompt, type Sideband, type SidebandConnection, type SidebandEvent, type VoiceEngine } from '../src';
+import { CallMarks, CallRunner, conversationPrompt, SILENT_START_DEADLINE_MS, type Sideband, type SidebandConnection, type SidebandEvent, type VoiceEngine } from '../src';
 
 const log = createLogger({ name: 'test', destination: new Writable({ write: (_c, _e, done) => done() }) });
 const NOW = zonedInstant('2026-09-28', '20:00', DEMO_CLINIC.timezone);
@@ -72,6 +72,49 @@ describe('the GPT-Live call runner', () => {
     // the same session.started after a reconnect sends no second opening
     await h.runner.handle({ type: 'session.started', event_id: 's2' });
     expect(h.sent).toHaveLength(1);
+    vi.useRealTimers();
+  });
+
+  it('never leaves a caller in silence: 9 s with no word from the assistant, the call goes to the front desk, or ends (batch 1e)', async () => {
+    vi.useFakeTimers();
+    // a clinic with a front desk: the caller is put through, once
+    const silent = harness(new ScriptedPlanner([]));
+    silent.runner.silentStartUri = 'tel:+13035550142';
+    void silent.runner.start();
+    await vi.advanceTimersByTimeAsync(SILENT_START_DEADLINE_MS - 100);
+    expect(silent.engine.transfer).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(silent.engine.transfer).toHaveBeenCalledWith('live_1', 'tel:+13035550142');
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(silent.engine.transfer).toHaveBeenCalledTimes(1);
+    expect(silent.engine.hangup).not.toHaveBeenCalled();
+    // no front desk (or a browser test call): the call ends instead of a silent line until the session expires
+    const noDesk = harness(new ScriptedPlanner([]));
+    noDesk.runner.silentStartUri = null;
+    void noDesk.runner.start();
+    await vi.advanceTimersByTimeAsync(SILENT_START_DEADLINE_MS);
+    expect(noDesk.engine.hangup).toHaveBeenCalledWith('live_1');
+    // recorded as a call the caller never heard, with the deadline as its close reason
+    await noDesk.runner.handle({ type: 'session.closed', event_id: 'x1', reason: 'remote_hangup' } as never);
+    expect(noDesk.closes).toEqual([expect.objectContaining({ reason: 'silent_start', outcome: 'no_audio' })]);
+    // a caller who spoke and got no answer is not left either
+    const spoke = harness(new ScriptedPlanner([]));
+    spoke.runner.silentStartUri = null;
+    void spoke.runner.start();
+    await spoke.runner.handle(delta('in', 'c1', 'Hello?', 3000));
+    await vi.advanceTimersByTimeAsync(SILENT_START_DEADLINE_MS);
+    expect(spoke.engine.hangup).toHaveBeenCalledTimes(1);
+    // an assistant that spoke, even late, is never cut off; nor a runner the voice service did not set
+    const greeted = harness(new ScriptedPlanner([]));
+    greeted.runner.silentStartUri = null;
+    void greeted.runner.start();
+    await greeted.runner.handle(delta('out', 'g1', 'Thanks for calling Maple Street.', 8000));
+    const unset = harness(new ScriptedPlanner([]));
+    void unset.runner.start();
+    await vi.advanceTimersByTimeAsync(SILENT_START_DEADLINE_MS + 1000);
+    expect(greeted.engine.hangup).not.toHaveBeenCalled();
+    expect(unset.engine.hangup).not.toHaveBeenCalled();
+    expect(unset.engine.transfer).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 

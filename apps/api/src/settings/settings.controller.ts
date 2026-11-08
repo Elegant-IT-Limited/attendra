@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { applyListChange, ClinicConfig, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
+import { applyListChange, ClinicConfig, SETTINGS_LIMITS, EmergencyDraft, emergencyFormFor, emergencyFormView, emergencyNumberProblem, phoneTypingIssues, settingsFieldProblems, inClinicCountry, LANGUAGES, LIST_NAMES, type ListName, PACKS, PREVIEW_VOICES, viewerConfig, voiceLabel, withPhonesAsE164 } from '@attendra/core';
 import { can } from '../access';
 import { type Database, type FrontDeskRepository, PostgresAuditLog, schema, staffNames } from '@attendra/db';
 import { and, eq } from 'drizzle-orm';
-import { Body, ConflictException, Controller, Get, Headers, Inject, NotFoundException, Param, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
+import { Body, ConflictException, Controller, Get, Headers, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, Res, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, DB, FRONT_DESK } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, CLOCK, DB, FRONT_DESK } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
 import { AssistantChoices, AssistantChoicesQuery, ListChange } from '../contracts';
 import type { z } from 'zod';
@@ -18,7 +18,7 @@ import type { z } from 'zod';
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/settings')
 export class SettingsController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(API_OPTIONS) private readonly options: ApiOptions, @Inject(DB) private readonly db: Database, @Inject(CLOCK) private readonly now: () => Date) {}
 
   @Get()
   @Requires('clinic:read')
@@ -62,7 +62,38 @@ export class SettingsController {
       voices: PREVIEW_VOICES.map((id) => ({ id, label: voiceLabel(id) })),
       suggested: Object.fromEntries(LANGUAGES.map((l) => [l, PACKS[l].greeting({ assistantName: (q.assistantName ?? c.assistantName)?.trim() || null, clinicName: c.name })])),
       savedIsSuggested: c.greeting === suggest(c.assistantName?.trim() || null),
+      limits: SETTINGS_LIMITS,
     };
+  }
+
+  /**
+   * The emergency form for the hosted setup page (batch 1e): the same choices, wording and limits Settings > Emergencies
+   * reads from core, and the saved setting as the form's draft. One source for the words on both pages.
+   */
+  @Get('emergencies')
+  @Requires('settings:read')
+  @ApiOperation({ summary: 'The emergency form: its three choices, every label and hint, the limits, and the saved setting as a draft (the same constants Settings > Emergencies uses)' })
+  async emergencyForm(@Param('clinicId') clinicId: string) {
+    return emergencyFormFor(await this.config(clinicId));
+  }
+
+  /**
+   * A draft of the emergency form, checked as Settings checks it: what is still needed, the setting it makes (null
+   * until complete; save it with PUT as `emergencies`), the "Right now" line and what callers will hear. Saves nothing.
+   */
+  @Post('emergencies/preview')
+  @HttpCode(200)
+  @Requires('settings:read')
+  @ApiOperation({ summary: 'Check an emergency form draft: { issues, setting, callLine, preview }, built by the same schema, route and preview as Settings > Emergencies. Saves nothing.' })
+  @ApiBody({ schema: schemaOf(EmergencyDraft) })
+  async emergencyPreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EmergencyDraft)) draft: z.infer<typeof EmergencyDraft>) {
+    return emergencyFormView(await this.config(clinicId), draft, this.now());
+  }
+
+  private async config(clinicId: string): Promise<ClinicConfig> {
+    const stored = await this.desk.settings(clinicId);
+    if (!stored) throw new NotFoundException({ error: 'not_found' });
+    return ClinicConfig.parse(stored);
   }
 
   /**

@@ -84,6 +84,10 @@ export const CEDAR_PARK_CLINIC = ClinicConfig.parse({
 });
 
 const VET_DAY = [{ open: '08:00', close: '18:00' }];
+/** The veterinary demo clinic's emergency hospital (made up, 555-01xx). */
+export const RIVERBEND_HOSPITAL = { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' };
+/** The same clinic referring emergencies to that hospital instead of taking them on call. */
+export const REFER_TO_RIVERBEND_HOSPITAL = { mode: 'refer' as const, hospital: RIVERBEND_HOSPITAL };
 
 /**
  * The veterinary demo clinic, on the vet industry pack, in an organization of its own.
@@ -124,8 +128,8 @@ export const RIVERBEND_CLINIC = ClinicConfig.parse({
     { id: 'faq_first_visit', question: 'What should I bring to the first visit?', answer: 'Bring any records from your previous vet, and bring dogs on a leash and cats in a carrier.' },
     { id: 'faq_boarding', question: 'Do you board pets? Do you offer grooming?', answer: 'We do not offer boarding or grooming. The front desk can suggest places nearby.' },
   ],
-  emergencyTransferEnabled: true,
-  emergencyHospital: { name: 'Front Range Pet Emergency', phone: '+17205550188', address: '1200 Larkspur Avenue, Denver' },
+  // emergencies go to the team's on-call line at any hour, with a backup hospital for a caller who can't wait
+  emergencies: { mode: 'handle', number: '+17205550179', backupHospital: RIVERBEND_HOSPITAL },
   afterHours: 'requests',
   address: '88 Riverbend Road, Denver',
   // texts during a call, after a yes: the demo shows them as not sent, since it has no Twilio

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig } from './clinic';
+import { type ClinicConfig, emergencyHospitalsOf } from './clinic';
 import { industryPack } from './industries';
 import type { EmergencyDestination } from './industries/types';
 import { emergencyNumberFor, LANGUAGES, PACKS } from './locales';
@@ -60,9 +60,9 @@ const spoken = (instruction: string) => [...instruction.matchAll(/"([^"]+)"/g)].
  * emergency the assistant acts on, examples of what callers say, and the exact words the
  * caller hears, with this clinic's emergency hospital and emergency number in them.
  */
-export function emergencyReviewSheet(clinic: Pick<ClinicConfig, 'industry' | 'emergencyHospital' | 'emergencyNumber' | 'phoneNumbers'>) {
+export function emergencyReviewSheet(clinic: Pick<ClinicConfig, 'industry' | 'emergencies' | 'emergencyNumber' | 'phoneNumbers'>) {
   const pack = industryPack(clinic.industry);
-  const to: EmergencyDestination = { hospital: clinic.emergencyHospital ?? null, emergencyNumber: emergencyNumberFor(clinic) };
+  const to: EmergencyDestination = { hospital: emergencyHospitalsOf(clinic.emergencies)[0] ?? null, emergencyNumber: emergencyNumberFor(clinic) };
   const animal = !!pack.emergency;
   // the script spells the hospital's number out for the voice; the reviewer reads it as written
   const readable = (text: string, language: 'en' | 'es') => {
@@ -80,7 +80,8 @@ export function emergencyReviewSheet(clinic: Pick<ClinicConfig, 'industry' | 'em
       animal: animal ? { en: readable(spoken(pack.emergency!.script('en', to)), 'en'), es: readable(spoken(pack.emergency!.script('es', to)), 'es') } : null,
       person: { en: spoken(PACKS.en.emergencyScript(to.emergencyNumber)), es: spoken(PACKS.es.emergencyScript(to.emergencyNumber)) },
     },
-    hospitalSet: !!clinic.emergencyHospital,
+    // a hospital the words can name: the emergency setting's first (Settings > Emergencies)
+    hospitalSet: !!to.hospital,
   };
 }
 export type EmergencyReviewSheet = ReturnType<typeof emergencyReviewSheet>;

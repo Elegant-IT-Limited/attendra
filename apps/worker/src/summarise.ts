@@ -38,7 +38,8 @@ export const SUMMARY_INSTRUCTIONS = [
   'Summarise only what was said and done on the call. Do not add medical advice, diagnoses, guesses about symptoms, or anything the caller did not say.',
   'Write in English, for staff, even when the call was in another language. Two or three plain sentences. Name no one except by their role (the caller, the assistant).',
   'intent is what the caller mainly wanted. sentiment is how the caller came across: calm, frustrated or distressed.',
-  'Set needsReview when staff should look at the call: emergency language, a caller who could not be verified, a request the assistant could not complete, an upset caller, or anything unclear. Give the reason in one short sentence.',
+  'Set needsReview when staff should look at the call: emergency language, a caller who could not be verified, an upset caller, or something the caller wanted that was left unfinished with no request created for staff. Give the reason in one short sentence.',
+  'Do not set needsReview only because the caller hung up early or said little, or because a request for staff was created (staff already see the request).',
   'followUp is one short action for staff, such as "Call the patient back about the refill", or null when nothing is needed.',
   'When the assistant offered a callback and the caller said no, say so in the summary ("The caller said no to a callback."), and set followUp to null unless something else needs staff.',
   'When the assistant put the caller straight through to the team at the start (a caller on the clinic\'s VIP list), the team took the call: say so, and do not set needsReview or followUp only because the caller\'s request was not heard.',
@@ -78,11 +79,27 @@ export function requiredReview(call: CallForSummary): { reason: string; followUp
   return null;
 }
 
-/** The model's flag, combined with the fixed rules: a rule that applies always flags the call. */
+/** Fewer caller words than this, all told, is a caller who hung up before saying what they wanted. */
+export const FEW_CALLER_WORDS = 4;
+
+/**
+ * Why the model's own flag is not kept on a call no fixed rule flags, or null to keep it. One clinic's Quality page said
+ * "Flagged for review 100%" (2026-11-08): 55 of its 61 flagged calls had no fixed rule, and 32 of those were hang-ups
+ * of a line or two. A hang-up shows in the Calls list by its outcome, and a call that made a request reaches staff as
+ * that request, so neither is flagged again, unless the caller came across upset.
+ */
+export function modelFlagDropped(call: CallForSummary, s: Pick<CallSummary, 'sentiment'>): 'hung_up_early' | 'request_created' | null {
+  const callerWords = call.transcript.filter((t) => t.speaker === 'caller').flatMap((t) => t.text.split(/\s+/).filter(Boolean)).length;
+  if (callerWords < FEW_CALLER_WORDS) return 'hung_up_early';
+  if (call.tasks.length > 0 && s.sentiment === 'calm') return 'request_created';
+  return null;
+}
+
+/** The model's flag, combined with the fixed rules: a rule that applies always flags the call; the model's own flag is kept unless modelFlagDropped. */
 function enforce(call: CallForSummary, s: CallSummary): CallSummary {
   const rule = requiredReview(call);
   const out = call.emergency ? { ...s, intent: 'emergency' as const } : s;
-  if (!rule) return out;
+  if (!rule) return out.needsReview && modelFlagDropped(call, out) ? { ...out, needsReview: false, reviewReason: null } : out;
   return { ...out, needsReview: true, reviewReason: s.needsReview && s.reviewReason ? s.reviewReason : rule.reason, followUp: s.followUp ?? rule.followUp };
 }
 

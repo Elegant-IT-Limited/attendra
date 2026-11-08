@@ -1,5 +1,5 @@
 import { PROGRESS_NOTE } from '../src/delegation';
-import { DEMO_CLINIC, EMERGENCY_LINES, localDateOf, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
+import { DEMO_CLINIC, EMERGENCY_LINES, localDateOf, REFER_TO_RIVERBEND_HOSPITAL, RIVERBEND_CLINIC, starterClinic } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CallAgent, ToolResult } from '../src';
@@ -15,7 +15,7 @@ const spoken = (out: Out) => out.flatMap((o) => (o.type === 'commentary' ? [o.co
 const bookings = () => w.backend.scheduler.upcoming(DEMO_CLINIC.id, w.patientIds.maria!, new Date('2026-09-28T00:00:00Z'));
 
 describe('the call record', () => {
-  const patientOf = async (callId: string) => ((await w.t.db.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
+  const patientOf = async (callId: string) => ((await w.t.owner.execute(sql`select patient_id from calls where id = ${callId}`)).rows[0] as { patient_id: string | null }).patient_id;
 
   it('links a call to the patient once, and only once, the caller is verified', async () => {
     const c = await w.call('+13035550147', { record: true });
@@ -196,7 +196,7 @@ describe('booking over the phone', () => {
     expect(c.state.offered.size).toBeGreaterThan(0);
     expect([...c.state.offered.values()].every((s) => ['prov_okafor', 'prov_raman'].includes(s.providerId))).toBe(true);
     // the front desk is asked to check the new record
-    const [review] = await w.t.db.execute(sql`select type, status from tasks where call_id = ${c.callId}`).then((r) => r.rows);
+    const [review] = await w.t.owner.execute(sql`select type, status from tasks where call_id = ${c.callId}`).then((r) => r.rows);
     expect(review).toEqual({ type: 'review', status: 'open' });
   });
 
@@ -340,7 +340,7 @@ describe('safety', () => {
     pet.agent.onAgentTranscript("I'm putting you through to our team now. Please stay on the line.", 9000, 11_000);
     expect(pet.agent.canEndByStaff()).toBe(true);
     // a clinic that refers emergencies: the hospital, said with the person-in-danger number
-    const referring = await w.call('+17205550172', { clinic: { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false } });
+    const referring = await w.call('+17205550172', { clinic: { ...RIVERBEND_CLINIC, emergencies: REFER_TO_RIVERBEND_HOSPITAL } });
     referring.caller('my dog got into the antifreeze');
     referring.assistant(EMERGENCY_LINES.question('en'));
     const sent = referring.caller('yes');
@@ -930,8 +930,8 @@ describe('what the review found on calls', () => {
 
   it('names the emergency hospital that is open at the time of the call', async () => {
     // Monday 8 pm: the day hospital is closed, the night one is open
-    const clinic = { ...RIVERBEND_CLINIC, emergencyTransferEnabled: false, emergencyHospital: { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } },
-      moreEmergencyHospitals: [{ name: 'Night Vets', phone: '+17205550101', address: '1 Night Road, Denver' }] };
+    const clinic = { ...RIVERBEND_CLINIC, emergencies: { mode: 'refer' as const, hospital: { name: 'Day Referral', phone: '+17205550102', address: '2 Day Road, Denver', hours: { open: '08:00', close: '18:00' } },
+      moreHospitals: [{ name: 'Night Vets', phone: '+17205550101', address: '1 Night Road, Denver' }] } };
     const c = await w.call('+17205550172', { clinic });
     c.caller('my cat ate a lily');
     c.assistant(EMERGENCY_LINES.question('en'));

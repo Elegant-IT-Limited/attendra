@@ -798,6 +798,8 @@ export const AssistantChoices = z.object({
   suggested: z.record(z.string(), z.string()),
   /** The saved greeting is still the suggested one for the saved name, so it can follow a new name. */
   savedIsSuggested: z.boolean(),
+  /** The limits the setup page's fields share with Settings (core SETTINGS_LIMITS). */
+  limits: z.object({ greeting: z.number().int(), assistantName: z.object({ min: z.number().int(), max: z.number().int() }), faqQuestion: z.number().int(), faqAnswer: z.number().int() }),
 });
 /** The plan and this month's phone minutes, for every member. Counts only; a self-hosted install has no plan. */
 export const ClinicPlan = z.object({ plan: HostingPlan.nullable(), minutesUsed: z.number().int().nullable(), textsUsed: z.number().int().nullable().default(null) });

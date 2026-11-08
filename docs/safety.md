@@ -49,7 +49,7 @@ Every pack's phrases are checked on every call, whichever languages the clinic o
 
 ### Animal emergencies (the veterinary pack)
 
-A clinic on the veterinary industry pack (see [industries](industries.md)) has a second list, checked before the language's own: an animal in danger. Its script sends the caller to the clinic's chosen 24-hour emergency hospital (name, address and phone, set as `emergencyHospital`), or to the nearest 24-hour emergency vet when none is set, and then tells a person who is hurt or in danger to call the emergency number. It gives no first-aid advice and asks no questions about symptoms. Staff cannot end the call until the hospital's name has been said, or the grace period has passed.
+A clinic on the veterinary industry pack (see [industries](industries.md)) has a second list, checked before the language's own: an animal in danger. Its script sends the caller to the clinic's chosen 24-hour emergency hospital (name, address and phone, set under Settings > Emergencies as `emergencies`), or to the nearest 24-hour emergency vet when none is set, and then tells a person who is hurt or in danger to call the emergency number. It gives no first-aid advice and asks no questions about symptoms. Staff cannot end the call until the hospital's name has been said, or the grace period has passed.
 
 The person on the phone is still covered by the engine's list: someone with chest pain calling a vet hears the 911 script, and self-harm language always gets the crisis script first, before anything about an animal.
 

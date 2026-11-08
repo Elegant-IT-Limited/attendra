@@ -203,12 +203,42 @@ export type EmergencyHospital = z.infer<typeof EmergencyHospital>;
  */
 export const EMERGENCY_MODES = ['refer', 'handle', 'hours'] as const;
 export type EmergencyMode = (typeof EMERGENCY_MODES)[number];
+/** The most hospitals after the first a clinic can list, in its order of choice (Settings > Emergencies). */
+export const MORE_HOSPITALS_MAX = 4;
+/**
+ * The clinic's next choices after the mode's hospital, in order: the assistant names the first of them all that is open
+ * at that moment (each may have its own hours). Optional, so the setup page's required fields are the same as Settings'.
+ */
+const moreHospitals = z.array(EmergencyHospital).max(MORE_HOSPITALS_MAX, `up to ${MORE_HOSPITALS_MAX} more hospitals`).optional();
 export const EmergencySettings = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('refer'), hospital: EmergencyHospital }),
-  z.object({ mode: z.literal('handle'), number: e164, backupHospital: EmergencyHospital.optional() }),
-  z.object({ mode: z.literal('hours'), number: e164, hours: WeeklyHours.optional(), afterHoursHospital: EmergencyHospital }),
+  z.object({ mode: z.literal('refer'), hospital: EmergencyHospital, moreHospitals }),
+  z.object({ mode: z.literal('handle'), number: e164, backupHospital: EmergencyHospital.optional(), moreHospitals }),
+  z.object({ mode: z.literal('hours'), number: e164, hours: WeeklyHours.optional(), afterHoursHospital: EmergencyHospital, moreHospitals }),
 ]);
 export type EmergencySettings = z.infer<typeof EmergencySettings>;
+
+/**
+ * Every hospital in an emergency setting with its path in the setting ("emergencies.moreHospitals.0"), the mode's own
+ * hospital first, then the next choices in order. The one list the route, the assistant's facts, the texts and the field
+ * checks read.
+ */
+export function emergencyHospitalPaths(e: EmergencySettings | null | undefined): { path: string; hospital: EmergencyHospital }[] {
+  if (!e) return [];
+  const first = e.mode === 'refer' ? { key: 'hospital', h: e.hospital } : e.mode === 'hours' ? { key: 'afterHoursHospital', h: e.afterHoursHospital } : { key: 'backupHospital', h: e.backupHospital };
+  return [
+    ...(first.h ? [{ path: `emergencies.${first.key}`, hospital: first.h }] : []),
+    ...(e.moreHospitals ?? []).map((hospital, i) => ({ path: `emergencies.moreHospitals.${i}`, hospital })),
+  ];
+}
+
+/** The hospitals of an emergency setting, in the clinic's order of choice. */
+export const emergencyHospitalsOf = (e: EmergencySettings | null | undefined): EmergencyHospital[] => emergencyHospitalPaths(e).map((x) => x.hospital);
+
+/**
+ * The limits of the fields the setup page edits too, one source for Settings, the setup page (served with the assistant
+ * choices, GET /clinics/:id/settings/assistant) and the schema: a greeting, the assistant's name, a common question.
+ */
+export const SETTINGS_LIMITS = { greeting: 400, assistantName: { min: 2, max: 24 }, faqQuestion: 200, faqAnswer: 600 } as const;
 
 /** What the assistant may text a caller during a call, after a spoken yes; and the automatic change confirmations. */
 export const TEXT_KINDS = ['change_confirmed', 'directions', 'hours', 'emergency_hospital', 'provider', 'answer', 'link'] as const;
@@ -309,7 +339,7 @@ export const VipCaller = z.object({
 export const Faq = z.object({
   id: z.string(),
   question: z.string(),
-  answer: z.string().max(600),
+  answer: z.string().max(SETTINGS_LIMITS.faqAnswer),
 });
 
 /** The longest a clinic keeps call transcripts and summaries: three years. */
@@ -351,9 +381,9 @@ const ClinicConfigShape = z.object({
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)
-  greeting: z.string().max(400),
+  greeting: z.string().max(SETTINGS_LIMITS.greeting),
   // the greeting in each other language the assistant speaks; absent: that language's suggested greeting
-  greetings: z.partialRecord(LanguageSchema, z.string().trim().min(10).max(400)).optional(),
+  greetings: z.partialRecord(LanguageSchema, z.string().trim().min(10).max(SETTINGS_LIMITS.greeting)).optional(),
   // how it talks: pace, style, acknowledgements
   talk: TalkStyle.optional(),
   // a first name the assistant introduces itself with ("Maya"); without one it is "the clinic's assistant"
@@ -385,14 +415,14 @@ const ClinicConfigShape = z.object({
   texting: Texting.optional(),
   // numbers that go straight to the front desk while it takes transfers
   vipCallers: z.array(VipCaller).max(50).optional(),
+  // a person's emergency at a medical practice rings the on-call line once (delegation); never a vet clinic's route, which is `emergencies`
   emergencyTransferEnabled: z.boolean().default(false),
   // how this location handles emergencies: refer to a hospital, handle them any time, or handle them in hours and refer
-  // after (batch 1b). Absent on a clinic saved before it: read from the fields below (emergencySettingsOf)
+  // after (batch 1b), with its hospitals in order. The ONLY source of a vet clinic's emergency route (batch 1e): absent,
+  // callers hear "the nearest 24-hour emergency vet"
   emergencies: EmergencySettings.optional(),
-  // where the veterinary pack sends an animal in danger: the clinic's first choice of emergency hospital
-  emergencyHospital: EmergencyHospital.optional(),
-  // and its next choices, in order, for the hours the first one is closed or too far
-  moreEmergencyHospitals: z.array(EmergencyHospital).max(4).optional(),
+  /** @deprecated batch 1e: folded into `emergencies` by `pnpm db:emergency-settings`; kept only so an un-migrated stored configuration parses. Nothing reads it. */
+  emergencyHospital: EmergencyHospital.optional(), moreEmergencyHospitals: z.array(EmergencyHospital).max(4).optional(),
   // while the clinic is closed: book as usual, or take requests for the team to book in the morning
   afterHours: z.enum(['book', 'requests']).default('book'),
   // what a visit is worth on average, in the clinic's currency: the weekly report multiplies the bookings made after hours by it
@@ -493,11 +523,10 @@ export type ClinicConfig = z.infer<typeof ClinicConfig>;
  * callers should not hear it; but a clinic may be called something like it, so
  * this is a warning, never a reason ClinicConfig.parse fails and calls stop.
  */
-export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address' | 'industry' | 'emergencyHospital' | 'emergencies' | 'emergencyTransferEnabled'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address' | 'emergency'; message: string }[] {
+export function clinicWarnings(c: Pick<ClinicConfig, 'greeting' | 'assistantName'> & Partial<Pick<ClinicConfig, 'routing' | 'phoneNumbers' | 'texting' | 'address' | 'industry' | 'emergencies'>>): { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address' | 'emergency'; message: string }[] {
   const out: { path: 'greeting' | 'assistantName' | 'routing' | 'texting' | 'address' | 'emergency'; message: string }[] = [];
-  // no emergency setting, and nothing an older one meant (a hospital, or an on-call line it transferred to): emergencySettingsOf
-  const onCall = c.emergencyTransferEnabled && (c.routing ?? []).some((r) => r.target === 'on_call' && r.uri.startsWith('tel:'));
-  if (c.industry === 'vet' && !c.emergencies && !c.emergencyHospital && !onCall) out.push({ path: 'emergency', message: 'No emergency setting yet. An owner whose animal is in danger hears only "go to the nearest 24-hour emergency vet". Choose how this location handles emergencies under Settings > Emergencies.' });
+  // no emergency setting: the one source of the route (batch 1e)
+  if (c.industry === 'vet' && !c.emergencies) out.push({ path: 'emergency', message: 'No emergency setting yet. An owner whose animal is in danger hears only "go to the nearest 24-hour emergency vet". Choose how this location handles emergencies under Settings > Emergencies.' });
   if (!c.address?.trim()) out.push({ path: 'address', message: 'No address yet. Callers who ask where you are hear that the assistant does not have it. Add it below, under Address.' });
   if (c.texting?.enabled && c.texting.kinds.directions && !c.address?.trim()) out.push({ path: 'texting', message: 'Directions texts are on, but the clinic has no address. Add it under General.' });
   if (/attendra/i.test(c.greeting)) out.push({ path: 'greeting', message: 'The greeting names the software. Callers should hear the clinic\'s name, not Attendra\'s.' });
@@ -654,7 +683,7 @@ export const HAS_NAME = /[\p{L}\p{N}]/u;
  * limit still loads and calls keep running): names that are names, the lengths Settings' fields allow, and what a caller
  * hears said as a full sentence. Each problem is under its field's path, in words that say what to type.
  */
-export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencyHospital' | 'moreEmergencyHospitals' | 'vipCallers'>): { path: string; message: string }[] {
+export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencies' | 'vipCallers'>): { path: string; message: string }[] {
   const out: { path: string; message: string }[] = [];
   const name = (path: string, v: string | undefined, max: number, what: string) => {
     const t = (v ?? '').trim();
@@ -663,9 +692,9 @@ export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes
   };
   name('name', c.name, 100, 'Clinic name');
   c.visitTypes.forEach((v, i) => name(`visitTypes.${i}.name`, v.name, 60, 'Visit type name'));
-  (c.faqs ?? []).forEach((f, i) => { if (!f.question.trim()) out.push({ path: `faqs.${i}.question`, message: 'Question: type the question callers ask' }); else if (f.question.length > 200) out.push({ path: `faqs.${i}.question`, message: 'Question: at most 200 characters' }); });
+  (c.faqs ?? []).forEach((f, i) => { if (!f.question.trim()) out.push({ path: `faqs.${i}.question`, message: 'Question: type the question callers ask' }); else if (f.question.length > SETTINGS_LIMITS.faqQuestion) out.push({ path: `faqs.${i}.question`, message: `Question: at most ${SETTINGS_LIMITS.faqQuestion} characters` }); });
   if (c.recording.notice && c.recording.notice.length > 300) out.push({ path: 'recording.notice', message: 'Recording notice: at most 300 characters' });
-  [c.emergencyHospital, ...(c.moreEmergencyHospitals ?? [])].forEach((h, i) => { if (h && h.address.length > 200) out.push({ path: i ? `moreEmergencyHospitals.${i - 1}.address` : 'emergencyHospital.address', message: 'Address: at most 200 characters' }); });
+  emergencyHospitalPaths(c.emergencies).forEach(({ path, hospital }) => { if (hospital.address.length > 200) out.push({ path: `${path}.address`, message: 'Address: at most 200 characters' }); });
   (c.vipCallers ?? []).forEach((v, i) => { if (!HAS_NAME.test(v.name)) out.push({ path: `vipCallers.${i}.name`, message: 'Name: type a name, not only spaces or symbols' }); });
   return out;
 }

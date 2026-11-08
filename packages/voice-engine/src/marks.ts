@@ -7,7 +7,7 @@
  */
 export const SETUP_STEPS = [
   'webhook', 'accept_sent', 'accepted', 'call_opened', 'attached', 'history', 'runner_started',
-  'sideband_open', 'transport_answered', 'session_started', 'opening_sent', 'nudged', 'first_audio', 'first_words',
+  'sideband_open', 'transport_answered', 'session_started', 'opening_sent', 'nudged', 'first_audio', 'first_words', 'silent_start',
 ] as const;
 export type SetupStep = (typeof SETUP_STEPS)[number];
 

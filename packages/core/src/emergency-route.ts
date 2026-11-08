@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig, EmergencyHospital, EmergencyMode, EmergencySettings } from './clinic';
-import { hospitalFor, specialDayOf, windowsOn } from './hours';
+import { type ClinicConfig, type EmergencyHospital, emergencyHospitalsOf, type EmergencyMode, type EmergencySettings } from './clinic';
+import { firstOpenHospital, specialDayOf, windowsOn } from './hours';
 import { type Language, PACKS } from './locales';
 import { localParts, toMinutes, weekdayOf } from './time';
 
@@ -33,21 +33,23 @@ export interface EmergencyRoute {
 }
 
 /**
- * The clinic's emergency settings, or for a clinic saved before them, what its older fields meant: an on-call line it
- * transferred emergencies to is `handle` (its highest-priority phone number, at any hour; its hospital the backup); a
- * hospital alone is `refer`; nothing is null.
+ * The clinic's emergency setting: the ONLY source of a vet clinic's route (batch 1e). A clinic without one has no route
+ * yet (callers hear "the nearest 24-hour emergency vet"); one saved before batch 1b is folded into it by
+ * `pnpm db:emergency-settings`, never read from its older fields here.
  */
-export function emergencySettingsOf(clinic: Pick<ClinicConfig, 'emergencies' | 'emergencyHospital' | 'emergencyTransferEnabled' | 'routing'>): EmergencySettings | null {
-  if (clinic.emergencies) return clinic.emergencies;
-  const onCall = clinic.emergencyTransferEnabled
-    ? [...clinic.routing].filter((r) => r.target === 'on_call' && /^tel:\+[1-9]\d{7,14}$/.test(r.uri)).sort((a, b) => b.priority - a.priority)[0]
-    : undefined;
-  if (onCall) return { mode: 'handle', number: onCall.uri.slice(4), ...(clinic.emergencyHospital ? { backupHospital: clinic.emergencyHospital } : {}) };
-  if (clinic.emergencyHospital) return { mode: 'refer', hospital: clinic.emergencyHospital };
-  return null;
+export function emergencySettingsOf(clinic: Pick<ClinicConfig, 'emergencies'>): EmergencySettings | null {
+  return clinic.emergencies ?? null;
 }
 
-type RouteClinic = Pick<ClinicConfig, 'emergencies' | 'emergencyHospital' | 'moreEmergencyHospitals' | 'emergencyTransferEnabled' | 'routing' | 'hours' | 'holidays' | 'specialDays' | 'timezone'>;
+type RouteClinic = Pick<ClinicConfig, 'emergencies' | 'hours' | 'holidays' | 'specialDays' | 'timezone'>;
+
+/**
+ * The hospital to name now outside the route's own steps (the guardrail's immediate script, a paused assistant, the
+ * backup line): the first of the setting's hospitals open at this moment, or null.
+ */
+export function hospitalNow(clinic: Pick<ClinicConfig, 'emergencies' | 'timezone'>, at: Date): EmergencyHospital | null {
+  return firstOpenHospital(emergencyHospitalsOf(clinic.emergencies), clinic.timezone, at);
+}
 
 /**
  * Whether the team takes emergencies now, in `hours` mode: its emergency hours (the opening hours unless set), with
@@ -63,13 +65,13 @@ export function emergencyHoursOpen(clinic: Pick<ClinicConfig, 'hours' | 'holiday
 /** The route for a clinic with its emergency hours open or closed, as the Settings preview shows both. */
 export function routeWhen(clinic: RouteClinic, open: boolean, at: Date, closesAt: string | null = null): EmergencyRoute {
   const e = emergencySettingsOf(clinic);
-  // the first of the clinic's hospitals open at this moment (each may have its own hours)
-  const first = (h: EmergencyHospital) => hospitalFor({ emergencyHospital: h, moreEmergencyHospitals: clinic.moreEmergencyHospitals, timezone: clinic.timezone }, at) ?? h;
-  if (!e) return { mode: null, open: false, action: 'none', hospital: hospitalFor(clinic, at), number: null, backup: null, closesAt: null };
+  // the first of the clinic's hospitals open at this moment (each may have its own hours); none open, the first anyway
+  const first = (h: EmergencyHospital) => firstOpenHospital([h, ...(e?.moreHospitals ?? [])], clinic.timezone, at) ?? h;
+  if (!e) return { mode: null, open: false, action: 'none', hospital: null, number: null, backup: null, closesAt: null };
   if (e.mode === 'refer') return { mode: 'refer', open: false, action: 'refer', hospital: first(e.hospital), number: null, backup: null, closesAt: null };
-  if (e.mode === 'handle') return { mode: 'handle', open: true, action: 'transfer', hospital: null, number: e.number, backup: e.backupHospital ?? null, closesAt: null };
+  if (e.mode === 'handle') return { mode: 'handle', open: true, action: 'transfer', hospital: null, number: e.number, backup: e.backupHospital ? first(e.backupHospital) : null, closesAt: null };
   return open
-    ? { mode: 'hours', open: true, action: 'transfer', hospital: null, number: e.number, backup: e.afterHoursHospital, closesAt }
+    ? { mode: 'hours', open: true, action: 'transfer', hospital: null, number: e.number, backup: first(e.afterHoursHospital), closesAt }
     : { mode: 'hours', open: false, action: 'refer', hospital: first(e.afterHoursHospital), number: e.number, backup: null, closesAt: null };
 }
 
@@ -144,7 +146,7 @@ export function emergencyCallLine(clinic: RouteClinic & Pick<ClinicConfig, 'phon
   const r = emergencyRoute(clinic, now);
   const twelve = (clinic.phoneNumbers[0] ?? '').startsWith('+1');
   const after = r.backup?.name ?? 'the hospital';
-  if (r.mode === null) return r.hospital ? `Emergency calls here: sent to ${r.hospital.name}. Choose how this location handles emergencies under Settings > Emergencies.` : 'Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Set one under Settings > Emergencies.';
+  if (r.mode === null) return 'Emergency calls here: no emergency setting yet, so callers hear "the nearest 24-hour emergency vet". Set one under Settings > Emergencies.';
   if (r.mode === 'refer') return `Emergency calls here: sent to ${r.hospital?.name ?? 'the nearest 24-hour emergency vet'}, any time.`;
   if (r.mode === 'handle') return 'Emergency calls here: transfer to the team now, any time.';
   if (r.open) return `Emergency calls here: transfer to the team now (open until ${clock(r.closesAt ?? '00:00', twelve)}), ${after} after.`;

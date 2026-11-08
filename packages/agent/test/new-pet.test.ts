@@ -11,7 +11,7 @@ let w: Awaited<ReturnType<typeof world>>;
 beforeAll(async () => { w = await world(seedRiverbend); }, 60_000);
 afterAll(() => w.t.close());
 const clinic = { ...RIVERBEND_CLINIC, afterHours: 'book' as const };
-const pets = async () => Number((await w.t.db.execute(sql`select count(*)::int as n from patients where clinic_id = ${clinic.id}`)).rows[0]!.n);
+const pets = async () => Number((await w.t.owner.execute(sql`select count(*)::int as n from patients where clinic_id = ${clinic.id}`)).rows[0]!.n);
 const say = (out: { results: { data: Record<string, unknown> }[] }) => out.results.map((r) => String(r.data.say ?? '')).join(' ');
 
 describe('a caller who says the pet is new (2026-11)', () => {

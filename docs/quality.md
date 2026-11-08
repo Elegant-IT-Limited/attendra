@@ -13,7 +13,7 @@ Owners and practice managers (`quality:read`) see `/c/<clinic>/quality`: the las
 | Turns to a booking | How many times the caller spoke, on calls that ended in a booking. |
 | Why the assistant said no | The refusals the code enforced, from `call_actions` errors: `no_clear_yes`, `slot_not_offered`, `not_verified`, `medical_question` and the rest. |
 | Transferred to a person | Share of calls transferred. |
-| Flagged for review | Share of calls whose summary said someone should look at them. |
+| Flagged for review | Share of calls someone should look at: emergency language, a caller who could not be verified, security or abusive language, an upset caller, or something left unfinished with no request for the team. Hang-ups before the caller said what they wanted, and calm calls that already made a request, are not counted (`modelFlagDropped` in apps/worker/src/summarise.ts). |
 | After-hours calls answered | Calls outside the clinic's hours. |
 | Cost per call, per booking | Voice minutes at the list price, the same estimate as Today. The planner, the summaries and texts are extra. |
 

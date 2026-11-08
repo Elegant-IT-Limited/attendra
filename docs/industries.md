@@ -2,7 +2,7 @@
 
 Attendra's engine does not know what trade it works in. Booking, the identity check, the emergency guardrail, requests, the clinic's knowledge, live calls and the audit log are the same everywhere. An **industry pack** adds what depends on the trade: what things are called, and the lines of the conversation prompt that only make sense there.
 
-Each account picks one in its settings (`industry`, default `clinic`). Two account settings matter most to the veterinary pack: `emergencyHospital` (where an animal in danger is sent) and `afterHours` (`book` as usual, or `requests`: out of hours nothing is booked and the caller's visit becomes a request for the team). Packs live in `packages/core/src/industries/`, one file each, as data:
+Each account picks one in its settings (`industry`, default `clinic`). Two account settings matter most to the veterinary pack: `emergencies` (how an animal in danger is handled: a hospital, the team, or the team in its hours and a hospital after; Settings > Emergencies) and `afterHours` (`book` as usual, or `requests`: out of hours nothing is booked and the caller's visit becomes a request for the team). Packs live in `packages/core/src/industries/`, one file each, as data:
 
 - `terms`: what the business, the people who are booked for, and the people who can be booked are called. The dashboard menu and page titles use them, and so does the conversation prompt. They are English, like the dashboard and the prompt; callers still hear their own language.
 - `prompt.identify`: how to find out who a booking is for, and what to ask to look them up or add them.
