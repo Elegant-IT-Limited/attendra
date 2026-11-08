@@ -16,17 +16,18 @@ const twice = (seen: string[]) => [...new Set(seen.filter((x, i) => seen.indexOf
 test('Today asks the API for each answer once on the way in (note 17)', async ({ browser }) => {
   let seen: string[] = [];
   const page = await openAs(browser, 'manager', async (p) => { seen = apiRequests(p); });
-  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   await expect(page.locator('[aria-label="At a glance"]')).toBeVisible();
   // everything Today asks for has gone out well within this; the slow safety poll is minutes away
   await page.waitForTimeout(4000);
   test.info().annotations.push({ type: 'Today API requests', description: `${seen.length}: ${seen.join(', ')}` });
+  process.stdout.write(`Today API requests: ${seen.length}, asked twice: ${twice(seen).length}\n  ${seen.join('\n  ')}\n`);
   expect(twice(seen), `asked for twice: ${seen.join(', ')}`).toEqual([]);
 });
 
 test('pointing at a sidebar link asks for its page\'s data ahead, and the page opens without asking again', async ({ browser }) => {
   const page = await openAs(browser, 'manager');
-  await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
   const seen = apiRequests(page);
   const doctors = (x: string) => /^GET \/api\/v1\/clinics\/[^/]+\/doctors$/.test(x);
   await page.getByRole('navigation', { name: 'Main' }).first().getByRole('link', { name: 'Doctors' }).hover();

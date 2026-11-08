@@ -109,7 +109,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     await signInPatiently(page, () => page.getByRole('button', { name: 'Sign in', exact: true }).click());
     await expect(page).toHaveURL(new RegExp(`/c/${clinicId}$`), { timeout: 30_000 });
     const api = page.request; // the owner's cookies, through the dashboard's own /api
-    const origin = { origin: 'http://localhost:3000' }; // a write from anywhere else is turned away
+    const origin = { origin: new URL(page.url()).origin }; // a write from anywhere else is turned away (E2E_WEB_PORT too)
 
     // the roster, as a clinic imports it: six specialties in turn, Monday to Friday 8 to 5, the last vet away all week
     const hours = Array(5).fill('08:00-17:00');
@@ -415,6 +415,7 @@ test.describe.serial('the schedule of a clinic with 200 veterinarians', () => {
     // the dev server and the machine's load as much as the page)
     test.info().annotations.push({ type: 'render', description: Object.entries(timings).map(([k, v]) => `${k}: ${Math.round(v)} ms`).join(', ') });
     test.info().annotations.push({ type: 'page load to first row', description: Object.entries(loaded).map(([k, v]) => `${k}: ${Math.round(v)} ms`).join(', ') });
+    process.stdout.write(`render alone (median of 3): ${test.info().annotations.at(-2)!.description}; page load to first row: ${test.info().annotations.at(-1)!.description}\n`);
     // One budget, on a developer's machine and on CI alike. The CI runner used to get twice the room because the old
     // check timed the whole navigation, dev server included; the render alone does not depend on how fast next dev serves
     for (const [name, ms] of Object.entries(timings)) expect(ms, `${name} render: ${Math.round(ms)} ms (budget ${RENDER_BUDGET_MS})`).toBeLessThan(RENDER_BUDGET_MS);

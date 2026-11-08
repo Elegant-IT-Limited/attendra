@@ -19,7 +19,7 @@ test('the phone fields left over take numbers only: letters typed or pasted are 
 
   // a transfer number: letters go, with the note; a SIP address (letters and all) is still a transfer
   const transfers = page.locator('#transfers');
-  await transfers.getByRole('button', { name: 'Transfer number' }).click();
+  await transfers.getByRole('button', { name: 'Transfer number', exact: true }).click();
   const transfer = transfers.getByLabel('Phone number').first();
   await isPhoneField(transfer);
   await transfer.fill('');
