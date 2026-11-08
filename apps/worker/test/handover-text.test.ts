@@ -62,7 +62,8 @@ describe('the text after a visit is handed to another vet', () => {
 
   it('with the clinic\'s texting off, or no number of its own, nobody is texted and the reason is kept', async () => {
     bodies.length = 0;
-    await saveClinic(t.db, 'org_handover', { ...VETS, texting: Texting.parse({ enabled: false }) });
+    const off: typeof VETS = { ...VETS, texting: Texting.parse({ enabled: false }) };
+    await saveClinic(t.db, 'org_handover', off);
     const id = await visit(zonedInstant('2026-10-12', '10:00', tz));
     expect(await h().visitHandedOver({ clinicId: VETS.id, appointmentId: id, providerId: 'prov_lindqvist' })).toBe('off');
     const [row] = (await t.owner.execute(sql`select status, failure_reason from sms_messages where appointment_id = ${id}`)).rows;

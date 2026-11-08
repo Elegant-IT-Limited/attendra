@@ -10,6 +10,13 @@ if (process.env.E2E_CLOCK && !process.env.E2E_CLOCK_OFFSET) process.env.E2E_CLOC
 const clockOffset = process.env.E2E_CLOCK_OFFSET;
 const shifted: Record<string, string> = clockOffset ? { E2E_CLOCK_OFFSET: clockOffset, NODE_OPTIONS: `--import ${fileURLToPath(new URL('./e2e/fake-clock.mjs', import.meta.url))}` } : {};
 
+// E2E_WEB_PORT, E2E_API_PORT and E2E_VOICE_PORT run the suite on other ports (3000, 8081 and 8080 by default), so two
+// runs on one machine (two working copies) do not share servers. Specs that write the origin out as localhost:3000
+// need the default ports.
+const webPort = Number(process.env.E2E_WEB_PORT ?? 3000);
+const apiPort = Number(process.env.E2E_API_PORT ?? 8081);
+const ports: Record<string, string> = { API_PORT: String(apiPort), PUBLIC_URL: `http://localhost:${webPort}`, ...(process.env.E2E_VOICE_PORT ? { VOICE_PORT: process.env.E2E_VOICE_PORT } : {}) };
+
 // The demo API (in-memory Postgres, two demo clinics and their recorded calls) and the dashboard, started fresh
 // for every run. The setup project signs in once per role (sign-in is rate limited,
 // as it should be); the specs then run in order against that one shared demo clinic,
@@ -20,7 +27,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  use: { baseURL: 'http://localhost:3000', trace: 'retain-on-failure' },
+  use: { baseURL: `http://localhost:${webPort}`, trace: 'retain-on-failure' },
   // next dev compiles each page the first time it is opened, which on a busy machine takes
   // longer than the default 5 seconds; a check still fails when the page is wrong, only later
   expect: { timeout: 15_000 },
@@ -38,7 +45,9 @@ export default defineConfig({
   webServer: [
     // test calls stay off even when a .env holds an OpenAI key: these specs never spend credit. The provisioning
     // token is this suite's own, made up here: first-day.spec.ts opens an empty clinic the way the hosting layer does
-    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on', ATTENDRA_WEBHOOKS_ALLOW_LOCAL: 'on', ATTENDRA_PROVISIONING_TOKEN: E2E_PROVISIONING_TOKEN, ...shifted }, url: 'http://127.0.0.1:8081/api/v1/health', reuseExistingServer: !process.env.CI && !process.env.E2E_CLOCK, timeout: 120_000 },
-    { command: 'pnpm --filter @attendra/web dev', url: 'http://localhost:3000/sign-in', reuseExistingServer: !process.env.CI, timeout: 120_000 },
+    { command: 'pnpm --filter @attendra/api demo', env: { ATTENDRA_TEST_CALLS: 'off', ATTENDRA_SIMULATED_CALLS: 'on', ATTENDRA_WEBHOOKS_ALLOW_LOCAL: 'on', ATTENDRA_PROVISIONING_TOKEN: E2E_PROVISIONING_TOKEN, ...shifted, ...ports }, url: `http://127.0.0.1:${apiPort}/api/v1/health`, reuseExistingServer: !process.env.CI && !process.env.E2E_CLOCK, timeout: 120_000 },
+    webPort === 3000 && apiPort === 8081
+      ? { command: 'pnpm --filter @attendra/web dev', url: 'http://localhost:3000/sign-in', reuseExistingServer: !process.env.CI, timeout: 120_000 }
+      : { command: `pnpm --filter @attendra/web exec next dev --port ${webPort}`, env: { API_URL: `http://127.0.0.1:${apiPort}` }, url: `http://localhost:${webPort}/sign-in`, reuseExistingServer: false, timeout: 120_000 },
   ],
 });

@@ -8,8 +8,10 @@
 --
 -- The double-booking guard (the exclusion constraint) now holds for every state that keeps the vet's time:
 -- booked, arrived and completed (core HOLDS_TIME). A no-show frees its time for a walk-in, as a cancel does.
--- The constraint's own range is kept as it is: only its WHERE changes, so whatever range an earlier
--- migration gave it (the visit, or the visit and its break) stays.
+-- After 0053 (appointments.blocks_until, the visit and its cleaning time) the guard is appointments_no_overlap
+-- on [starts_at, blocks_until): it is dropped and made again BY NAME on that same range, never on ends_at, so
+-- the buffer stays protected. On a database without blocks_until (0053 not applied), the existing constraint
+-- keeps its own range and only its WHERE changes. No row is arrived or completed yet, so nothing can clash.
 --
 -- patients.deleted_at / deleted_by  a record staff deleted (Patients, "Delete"): every encrypted column is
 --                                replaced by a fixed placeholder or emptied, every keyed hash and search key is
@@ -31,6 +33,13 @@ declare
   def text;
   fixed text;
 begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'appointments' and column_name = 'blocks_until') then
+    alter table appointments drop constraint if exists appointments_no_overlap;
+    alter table appointments add constraint appointments_no_overlap
+      exclude using gist (clinic_id with =, provider_id with =, tstzrange(starts_at, blocks_until) with &&)
+      where (status in ('booked', 'arrived', 'completed'));
+    return;
+  end if;
   for c in select conname, pg_get_constraintdef(oid) as d from pg_constraint
            where conrelid = 'appointments'::regclass and contype = 'x' loop
     def := c.d;
@@ -78,7 +87,9 @@ grant execute on function delete_notes_of_deleted_patients(uuid[]) to attendra_a
 --   update appointments set status = 'booked' where status in ('arrived', 'completed', 'no_show');
 --   alter table appointments drop constraint appointments_status_check;
 --   alter table appointments add constraint appointments_status_check check (status in ('booked', 'cancelled'));
---   (the exclusion constraint: the same DO block with WHERE ((status = 'booked'::text)))
+--   after 0053: alter table appointments drop constraint appointments_no_overlap; then 0053's own add constraint
+--     appointments_no_overlap ... tstzrange(starts_at, blocks_until) ... where (status = 'booked')
+--   without 0053: the same DO block with WHERE ((status = 'booked'::text))
 --   alter table appointments drop column status_changed_at, drop column status_changed_by;
 --   revoke delete on patients from attendra_app; drop function delete_notes_of_deleted_patients(uuid[]);
 --   alter table patients drop constraint patients_phone_required;
