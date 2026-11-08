@@ -79,6 +79,6 @@ test('visit types show three fields, and More options closed with what is set on
   for (const closed of await section.getByTestId('visit-more-options').all()) await expect(closed).not.toHaveAttribute('open', '');
   await more.locator('summary').click();
   await expect(row.getByLabel('Who can book it')).toBeVisible();
-  await expect(row.getByText('Team books it')).toBeVisible();
-  await expect(row.getByText('Break after (minutes)')).toBeVisible();
+  await expect(row.getByText('Team books it', { exact: true })).toBeVisible();
+  await expect(row.getByText('Break after (minutes)', { exact: true })).toBeVisible();
 });
