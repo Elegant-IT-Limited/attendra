@@ -51,7 +51,7 @@ describe('the Calls list filtered by how an emergency ended (CALL-2)', () => {
   });
 
   it('uses an index for the outcome, the emergency result and the browser-test filters', async () => {
-    const indexes = (await t.owner.execute(sql`select indexname from pg_indexes where tablename in ('calls', 'audit_logs')`)).rows.map((r) => (r as { indexname: string }).indexname);
+    const indexes = (await t.owner.execute(sql`select indexname from pg_indexes where tablename in ('calls', 'audit_logs')`)).rows.map((r: unknown) => (r as { indexname: string }).indexname);
     expect(indexes).toEqual(expect.arrayContaining(['calls_by_outcome', 'calls_by_emergency_result', 'calls_browser_tests', 'audit_logs_task_history']));
   });
 });
