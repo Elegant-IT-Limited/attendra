@@ -138,15 +138,22 @@ export function vapiDestination(uri: string): { type: 'number'; number: string }
   return null;
 }
 
-/** Only Vapi's own hosts get our control commands: a message is signed with our secret, and the address is checked too. */
-const controlUrlOf = (m: VapiMessage): string | null => {
-  const raw = m.call?.monitor?.controlUrl;
+/**
+ * The control address Vapi gives in a call's messages, or null. Only Vapi's own hosts get our control commands: the
+ * message is already authenticated by the location's secret, and the address must also be a plain https URL on vapi.ai
+ * or a subdomain of it (an exact suffix match, so evilvapi.ai or vapi.ai.example.com fail), with no user name or
+ * password and the default port. The host itself is not pinned: Vapi's docs say it can change between calls.
+ */
+export function vapiControlUrl(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
-  try {
-    const u = new URL(raw);
-    return u.protocol === 'https:' && (u.hostname === 'vapi.ai' || u.hostname.endsWith('.vapi.ai')) ? u.toString() : null;
-  } catch { return null; }
-};
+  let u: URL;
+  try { u = new URL(raw); } catch { return null; }
+  if (u.protocol !== 'https:' || u.username !== '' || u.password !== '' || u.port !== '') return null;
+  const host = u.hostname.toLowerCase();
+  if (host !== 'vapi.ai' && !host.endsWith('.vapi.ai')) return null;
+  return u.toString();
+}
+const controlUrlOf = (m: VapiMessage): string | null => vapiControlUrl(m.call?.monitor?.controlUrl);
 
 /** A Vapi call is forgotten after this long without a word from Vapi (its end-of-call report never came). */
 const SESSION_TTL_MS = 2 * 3_600_000;
@@ -177,8 +184,9 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
   async function control(s: Session, body: Record<string, unknown>) {
     if (!s.controlUrl || s.closed) return;
     try {
-      const res = await post(s.controlUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
-      if (!res.ok) throw new Error(`control ${String(body.type)}: ${res.status}`);
+      // never follows a redirect (a redirect is a failure, like any answer that is not 2xx), and gives up after 5 s
+      const res = await post(s.controlUrl, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+      if (!res.ok || res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Error(`control ${String(body.type)}: ${res.status}`);
     } catch (err) {
       deps.log.error({ call_id: s.callId, type: body.type, err: { message: (err as Error).message } }, 'vapi: a call control command failed');
       deps.alerts?.alert('vapi_control_failed', `A Vapi call could not be ${body.type === 'transfer' ? 'transferred' : body.type === 'end-call' ? 'ended' : 'told what to say'} (${(err as Error).message.slice(0, 80)}). Clinic ${s.clinicId}.`);

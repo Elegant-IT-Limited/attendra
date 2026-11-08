@@ -6,7 +6,7 @@ import { BuiltinScheduler } from '@attendra/scheduling';
 import Fastify from 'fastify';
 import { Writable } from 'node:stream';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { quotedLines, registerVapi, vapiDestination } from '../src/vapi';
+import { quotedLines, registerVapi, vapiControlUrl, vapiDestination } from '../src/vapi';
 
 // Vapi as a location's backup engine (batch 6; path C of the bake-off before it): a Vapi assistant whose tools are ours.
 // Same agent, same rules, its own engine on the call row. Made-up demo data only; nothing here reaches Vapi.
@@ -24,6 +24,7 @@ describe('Vapi calling our tools', () => {
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (_r, body, done) => done(null, body));
   let oak: ClinicConfig = ClinicConfig.parse({ ...DEMO_CLINIC, id: OAK, voiceEngine: 'vapi' });
   const controls: { url: string; body: Record<string, unknown> }[] = [];
+  const redirectModes: (string | undefined)[] = [];
   const alerts: string[] = [];
   const allAlerts: string[] = [];
 
@@ -41,7 +42,13 @@ describe('Vapi calling our tools', () => {
       secretMatches: async (id, presented) => vapiSecretMatches(cipher, id, presented, await vapiSecretHashOf(t.db, id)),
       calls: { live: (id, at, alertAt) => vapiCallLive(t.db, id, at, alertAt), ended: (id, at) => vapiCallEnded(t.db, id, at) },
       maxConcurrency: 4,
-      fetch: (async (url: string, init: { body: string }) => { controls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> }); return new Response('{"status":"ok"}'); }) as unknown as typeof fetch,
+      fetch: (async (url: string, init: { body: string; redirect?: string }) => {
+        redirectModes.push(init.redirect);
+        // a control address that redirects: fetch with redirect 'error' throws, as Node's does
+        if (url.includes('/redirect-me/')) throw new TypeError('fetch failed: unexpected redirect');
+        controls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+        return new Response('{"status":"ok"}');
+      }) as unknown as typeof fetch,
       later: (_ms, fn) => fn(),
       clinicById: async (id) => (id === clinic.id ? clinic : id === OAK ? oak : null),
       openCall: (clinicId, sessionId, from, channel, startedBy, last4, how) => calls.open(clinicId, sessionId, from, channel, startedBy, last4, how),
@@ -192,6 +199,18 @@ describe('Vapi calling our tools', () => {
     expect(quotedLines('The caller used insulting language.')).toBe('');
   });
 
+  it('follows no redirect from a control address: a redirect is a failure, said to the team, never thrown into the call', async () => {
+    controls.length = 0; redirectModes.length = 0; alerts.length = 0;
+    const c = { id: 'vapi-oak-redirect', type: 'inboundPhoneCall', monitor: { controlUrl: 'https://phone-call-websocket.vapi.ai/redirect-me/control' } };
+    await post({ type: 'tool-calls', call: c, toolCallList: [{ id: 'r1', function: { name: 'clinic_now', arguments: {} } }] }, LOCATION_SECRET, OAK);
+    await post({ type: 'conversation-update', call: c, messages: [{ role: 'user', message: "I've got chest pain right now and my left arm is numb.", secondsFromStart: 5, duration: 2500 }] }, LOCATION_SECRET, OAK);
+    expect(redirectModes.length).toBeGreaterThan(0);
+    expect(new Set(redirectModes)).toEqual(new Set(['error']));
+    expect(controls).toEqual([]);
+    expect(alerts.some((a) => a.includes('could not be'))).toBe(true);
+    await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 5 }, LOCATION_SECRET, OAK);
+  });
+
   it('never sends a control command to a host that is not Vapi\'s', async () => {
     controls.length = 0;
     const c = { id: 'vapi-oak-evil', type: 'inboundPhoneCall', monitor: { controlUrl: 'https://evil.example.com/control' } };
@@ -202,5 +221,35 @@ describe('Vapi calling our tools', () => {
     const next = resultOf(await post({ type: 'tool-calls', call: c, toolCallList: [{ id: 'v2', function: { name: 'clinic_now', arguments: {} } }] }, LOCATION_SECRET, OAK));
     expect(next.say ?? '').toContain('911');
     await post({ type: 'end-of-call-report', call: c, endedReason: 'customer-ended-call', durationSeconds: 5 }, LOCATION_SECRET, OAK);
+  });
+});
+
+/** A Vapi address carrying a user name (and password): built with URL, so the source holds no address-like text. */
+function withCredentials(user: string, password: string): string {
+  const u = new URL('https://phone.vapi.ai/call-x/control');
+  u.username = user;
+  u.password = password;
+  return u.toString();
+}
+
+describe('the control address a Vapi message may carry (CodeQL #20: checked, then trusted)', () => {
+  it('takes only https on vapi.ai or a subdomain, with no credentials and the default port', () => {
+    expect(vapiControlUrl('https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/call-x/control')).toBe('https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/call-x/control');
+    expect(vapiControlUrl('https://vapi.ai/call-x/control')).toBe('https://vapi.ai/call-x/control');
+    expect(vapiControlUrl('https://PHONE.Vapi.AI:443/call-x/control')).toBe('https://phone.vapi.ai/call-x/control');
+    for (const bad of [
+      'https://evilvapi.ai/call-x/control',
+      'https://vapi.ai.evil.com/call-x/control',
+      'http://phone.vapi.ai/call-x/control',
+      withCredentials('user', 'pass'),
+      withCredentials('user', ''),
+      'https://phone.vapi.ai:8443/call-x/control',
+      'https://phone.vapi.ai.:444/x',
+      'javascript:alert(1)',
+      'not a url',
+      '',
+    ]) expect(vapiControlUrl(bad), bad).toBeNull();
+    expect(vapiControlUrl(undefined)).toBeNull();
+    expect(vapiControlUrl(42)).toBeNull();
   });
 });
