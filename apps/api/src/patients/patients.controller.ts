@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import type { PatientCard as Card, PatientRecords, SaveResult } from '@attendra/db';
-import { ageOn, asE164, ClinicConfig, industryPack, leftOffList, listRowNote, localDateOf, managedList, notOnListProblem, onList, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
-import { type FrontDeskRepository, type PhiCipher, PostgresPatientDirectory, staffNames, type Database, withClinic } from '@attendra/db';
+import { ageOn, asE164, ClinicConfig, type EventSink, industryPack, leftOffList, listRowNote, localDateOf, managedList, notOnListProblem, onList, readCustomValues, readPatients, readPets, usualProviderOf, withListValues } from '@attendra/core';
+import { type FrontDeskRepository, type MergeProblem, type PhiCipher, PatientRemoval, PostgresPatientDirectory, staffNames, type Database, withClinic } from '@attendra/db';
 import { Body, ConflictException, Controller, Get, HttpCode, Inject, NotFoundException, Param, Patch, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
 import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CustomFieldValues, Household, HouseholdQuery, PatientFilter, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
+import { CustomFieldValues, Household, HouseholdQuery, PatientDelete, PatientDeleteCounts, PatientFilter, ImportInput, ImportResult, type PatientCard, PatientInput, PatientList, PatientListQuery, PatientMerge, PatientMergeCounts, PatientProfile, PatientSaved, PatientSearch } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CIPHER, CLOCK, DB, FRONT_DESK, PATIENTS } from '../http/tokens';
+import { CIPHER, CLOCK, DB, EVENTS, FRONT_DESK, PATIENTS } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
@@ -26,7 +26,12 @@ export class PatientsController {
     @Inject(CLOCK) private readonly now: () => Date,
     @Inject(FRONT_DESK) private readonly desk: FrontDeskRepository,
     @Inject(CIPHER) private readonly cipher: PhiCipher,
-  ) {}
+    @Inject(EVENTS) private readonly events: EventSink,
+  ) {
+    this.removal = new PatientRemoval(db, cipher);
+  }
+
+  private readonly removal: PatientRemoval;
 
   private async clinic(clinicId: string) {
     const stored = await this.desk.settings(clinicId);
@@ -252,6 +257,87 @@ export class PatientsController {
     }
     for (const r of report.rows) report.counts[r.status]++;
     return report;
+  }
+
+  /** Why a merge cannot be done, in the words the dialog shows. */
+  private mergeRefused(problem: MergeProblem): never {
+    if (problem === 'not_found') throw new NotFoundException({ error: 'not_found' });
+    const message: Record<Exclude<MergeProblem, 'not_found'>, string> = {
+      same_record: 'Choose two different records.',
+      same_household: 'These two are already on the same number: merge the two pets instead, if they are one pet.',
+      different_household_needed: 'Choose a record on another number.',
+      no_phone: 'Both records need a phone number to merge their households.',
+    };
+    throw new ConflictException({ error: 'merge_refused', reason: problem, message: message[problem] });
+  }
+
+  /** Merging two records, before it is done: what would move, as counts. Nothing changes and nothing is read in clear for the answer. */
+  @Post('merge/preview')
+  @HttpCode(200)
+  @Requires('patients:merge')
+  @ApiOperation({ summary: 'What merging two records would move: the same pet twice, or the same owner on two numbers. Counts only; nothing changes.' })
+  @ApiBody({ schema: schemaOf(PatientMerge) })
+  @ApiOkResponse({ schema: schemaOf(PatientMergeCounts) })
+  async mergePreview(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientMerge)) body: z.infer<typeof PatientMerge>): Promise<PatientMergeCounts> {
+    const clinic = await this.clinic(clinicId);
+    const r = await this.removal.previewMerge(clinicId, body.kind, body.keepId, body.mergeId, industryPack(clinic.industry).identity === 'pet');
+    if ('problem' in r) this.mergeRefused(r.problem);
+    return r;
+  }
+
+  /**
+   * Merges two records into the one kept: its appointments, calls, requests and texts move, and the
+   * other record is deleted. A household merge puts every pet of the other number under the number
+   * and owner kept. Audited with who, when, which ids and counts.
+   */
+  @Post('merge')
+  @HttpCode(200)
+  @Requires('patients:merge')
+  @ApiOperation({ summary: 'Merge two records into the one kept (the same pet twice, or one owner on two numbers). Managers only. Audited with counts.' })
+  @ApiBody({ schema: schemaOf(PatientMerge) })
+  @ApiOkResponse({ schema: schemaOf(PatientMergeCounts) })
+  @ApiConflictResponse({ description: 'The two cannot be merged; `reason` says why' })
+  async merge(@Param('clinicId') clinicId: string, @Body(new ZodPipe(PatientMerge)) body: z.infer<typeof PatientMerge>, @CurrentStaff() staff: Staff): Promise<PatientMergeCounts> {
+    const clinic = await this.clinic(clinicId);
+    const r = await this.removal.merge(clinicId, body.kind, body.keepId, body.mergeId, staff.userId, industryPack(clinic.industry).identity === 'pet');
+    if ('problem' in r) this.mergeRefused(r.problem);
+    return r;
+  }
+
+  /** Deleting a record, before it is done: what would go, as counts. Nothing changes. */
+  @Post(':patientId/delete/preview')
+  @HttpCode(200)
+  @Requires('patients:merge')
+  @ApiOperation({ summary: 'What deleting a pet (or everyone on its number) would do: visits cancelled, visits kept with no name, requests emptied, calls unlinked. Counts only; nothing changes.' })
+  @ApiBody({ schema: schemaOf(PatientDelete) })
+  @ApiOkResponse({ schema: schemaOf(PatientDeleteCounts) })
+  async deletePreview(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(PatientDelete)) body: z.infer<typeof PatientDelete>): Promise<PatientDeleteCounts> {
+    await this.clinic(clinicId);
+    const r = isUuid(id) ? await this.removal.previewDelete(clinicId, id, body.scope, this.now()) : null;
+    if (!r) throw new NotFoundException({ error: 'not_found' });
+    return r;
+  }
+
+  /**
+   * Deletes a pet's record, or everyone on its number: its name, number, date of birth and details
+   * are removed and its search keys go; visits still to come are cancelled; the row stays, empty,
+   * so the visits that were still count. Audited per record, with counts.
+   */
+  @Post(':patientId/delete')
+  @HttpCode(200)
+  @Requires('patients:merge')
+  @ApiOperation({ summary: 'Delete a pet\'s record (or every record on its number): personal details and search keys removed, visits to come cancelled, past visits kept with no name. Managers only. Audited.' })
+  @ApiBody({ schema: schemaOf(PatientDelete) })
+  @ApiOkResponse({ schema: schemaOf(PatientDeleteCounts) })
+  async remove(@Param('clinicId') clinicId: string, @Param('patientId') id: string, @Body(new ZodPipe(PatientDelete)) body: z.infer<typeof PatientDelete>, @CurrentStaff() staff: Staff): Promise<PatientDeleteCounts> {
+    await this.clinic(clinicId);
+    const r = isUuid(id) ? await this.removal.delete(clinicId, id, body.scope, staff.userId, this.now()) : null;
+    if (!r) throw new NotFoundException({ error: 'not_found' });
+    // the visits it cancelled, to the clinic's webhooks; the patient's id is the deleted record's, which names nobody now
+    for (const appointmentId of r.cancelled) {
+      await this.events.emit(clinicId, { type: 'appointment.cancelled', key: appointmentId, data: { appointmentId, patientId: id, by: 'staff', callId: null, reason: 'other' } });
+    }
+    return r.counts;
   }
 
   private answer(r: SaveResult): PatientSaved {

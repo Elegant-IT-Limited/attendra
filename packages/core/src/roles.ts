@@ -28,6 +28,8 @@ export const PERMISSIONS = {
   'patients:write': DESK(),
   // a whole list of patients from a spreadsheet: managers only
   'patients:import': MANAGERS(),
+  // merge two records of one pet or one owner, or delete a record: managers only, after a preview
+  'patients:merge': MANAGERS(),
   // the schedule grid: visits by vet and time; names only for roles with schedule:read
   'schedule:list': ALL(),
   'schedule:read': DESK(),
@@ -83,6 +85,7 @@ export const CAPABILITIES: { permission: Permission; text: string }[] = [
   { permission: 'tasks:list', text: 'See requests' },
   { permission: 'tasks:work', text: 'Work requests: claim, call back, close' },
   { permission: 'patients:read', text: 'Find and edit pets and owners' },
+  { permission: 'patients:merge', text: 'Merge or delete pet and owner records' },
   { permission: 'calls:test', text: 'Make test calls from the browser' },
   { permission: 'settings:read', text: 'See the assistant\'s settings and vets' },
   { permission: 'settings:write', text: 'Change settings' },

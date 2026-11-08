@@ -624,6 +624,32 @@ export const PatientSaved = z.object({
   /** Someone else is on file with this name and date of birth, on another phone. Saved anyway: worth a look. */
   similar: z.boolean().optional(),
 });
+/** Delete one pet's record, or every record on its number (the household). */
+export const PatientDelete = z.object({ scope: z.enum(['pet', 'household']).default('pet') });
+/** What a delete does (or would do), as counts. */
+export const PatientDeleteCounts = z.object({
+  /** Records deleted: 1 for a pet, every record on the number for a household. */
+  records: z.number().int(),
+  /** Visits still to come, cancelled. */
+  upcomingCancelled: z.number().int(),
+  /** Visits that have been, kept with no name so the clinic's counts stay right. */
+  visitsKept: z.number().int(),
+  /** Requests whose details and notes are removed (their number, type and outcome stay). */
+  requests: z.number().int(),
+  /** Calls no longer linked to the record; the call records follow the clinic's retention period. */
+  callsUnlinked: z.number().int(),
+});
+/** Merge one record into another: the same pet twice, or the same owner on two numbers (every pet of the other number joins the one kept). */
+export const PatientMerge = z.object({ kind: z.enum(['pet', 'household']), keepId: z.uuid(), mergeId: z.uuid() });
+/** What a merge moves (or would move), as counts. */
+export const PatientMergeCounts = z.object({
+  /** Records merged away: 1 for a pet, every record of the other number for a household. */
+  records: z.number().int(),
+  /** In a household merge, pets on both numbers that become one record. */
+  duplicates: z.number().int(),
+  appointments: z.number().int(), calls: z.number().int(), requests: z.number().int(), texts: z.number().int(),
+});
+
 /** The clinic's own details on a record, the whole set: an empty value leaves a field blank. */
 /** A POST: a field's value can be anything staff wrote, and URLs end up in logs. */
 export const PatientFilter = z.object({
@@ -933,6 +959,8 @@ export type CancelledList = z.infer<typeof CancelledList>;
 export type PatientList = z.infer<typeof PatientList>;
 export type PatientInput = z.infer<typeof PatientInput>;
 export type PatientSaved = z.infer<typeof PatientSaved>;
+export type PatientDeleteCounts = z.infer<typeof PatientDeleteCounts>;
+export type PatientMergeCounts = z.infer<typeof PatientMergeCounts>;
 export type PatientProfile = z.infer<typeof PatientProfile>;
 export type Overview = z.infer<typeof Overview>;
 export type WaitingTasks = z.infer<typeof WaitingTasks>;

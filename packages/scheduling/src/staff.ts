@@ -52,7 +52,8 @@ export class StaffScheduler {
     const visitType = clinic.visitTypes.find((v) => v.id === input.visitTypeId);
     const check = await withClinic(this.db, clinic.id, async (tx) => {
       const [patient] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinic.id), eq(patients.id, input.patientId)));
-      if (!patient) return { kind: 'no_patient' } as const;
+      // a deleted record (Patients, Delete) keeps its row for the counts, and is booked for nothing
+      if (!patient || patient.deletedAt) return { kind: 'no_patient' } as const;
       const problem = slotProblem(clinic, await this.busy(tx, clinic, input.providerId, input.start), input, this.now(), { override: !!input.overrideReason });
       if (problem) return { kind: 'problem', problem } as const;
       const end = new Date(input.start.getTime() + (visitType?.minutes ?? 0) * 60_000);

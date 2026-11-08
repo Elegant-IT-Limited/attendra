@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { Outcome } from '@/components/calls/outcome';
 import { CustomFieldsForm } from '@/components/patients/custom-fields';
 import { PatientForm } from '@/components/patients/patient-form';
+import { RecordTools } from '@/components/patients/record-tools';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
 import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
 import { TextStatus } from '@/components/calls/text-status';
@@ -104,8 +105,9 @@ export default function PatientPage() {
           )}
           <p className="text-xs text-text-muted">Times are {zoneLabel(tz)}. Opening this record is in the audit log.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {p.status === 'new' && can('patients:write') && <Button variant="outline" disabled={confirm.isPending} onClick={() => confirm.mutate()}><CheckCircle2 /> Details checked</Button>}
+          {can('patients:merge') && <RecordTools clinicId={clinicId} patient={{ id: p.id, name: p.name, phone: p.phone }} pet={pet} householdSize={p.household.length + 1} />}
           {can('schedule:write') && <Button onClick={() => setBooking(true)}><CalendarPlus /> Book</Button>}
         </div>
       </div>

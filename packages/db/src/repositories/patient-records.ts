@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { type Gender, namesMatch, normalizeName, parseDob, soundsLike } from '@attendra/core';
-import { and, asc, desc, eq, inArray, isNotNull, ne, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, or, type SQL, sql } from 'drizzle-orm';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
 import { appointments, auditLogs, calls, patients, tasks } from '../schema';
@@ -149,7 +149,7 @@ export class PatientRecords {
    * `pnpm db:rehash-lookups --apply` has run.
    */
   private async hits(tx: Tx, clinicId: string, q: NonNullable<ReturnType<typeof readQuery>>, requestNumber: number | null, status?: PatientStatus) {
-    const base = and(eq(patients.clinicId, clinicId), status ? eq(patients.status, status) : undefined);
+    const base = and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), status ? eq(patients.status, status) : undefined);
     // the patients of the request with this number, when the clinic numbers its requests (migration 0041)
     const ofRequest = new Set(requestNumber === null ? [] : (await tx.select({ id: tasks.patientId }).from(tasks)
       .where(and(eq(tasks.clinicId, clinicId), eq(tasks.number, requestNumber), isNotNull(tasks.patientId)))).map((t) => t.id!));
@@ -212,7 +212,7 @@ export class PatientRecords {
   async newest(clinicId: string, userId: string, opts: { status?: PatientStatus; limit?: number } = {}): Promise<PatientCard[]> {
     return withClinic(this.db, clinicId, async (tx) => {
       const rows = await tx.select().from(patients)
-        .where(and(eq(patients.clinicId, clinicId), opts.status ? eq(patients.status, opts.status) : undefined))
+        .where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), opts.status ? eq(patients.status, opts.status) : undefined))
         .orderBy(desc(patients.createdAt), desc(patients.id)).limit(opts.limit ?? NEWEST_PATIENTS);
       const cards = rows.map((r) => this.card(clinicId, r));
       await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.list.viewed', entity: 'patient', entityId: patientSetKey(cards.map((c) => c.id)) }, 5);
@@ -227,7 +227,7 @@ export class PatientRecords {
    */
   async filtered(clinicId: string, userId: string, f: { species?: string; field?: { id: string; value: string; multi: boolean } }): Promise<{ patients: PatientCard[]; truncated: boolean }> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const rows = await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(desc(patients.createdAt), desc(patients.id)).limit(PATIENT_SCAN_LIMIT);
+      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt))).orderBy(desc(patients.createdAt), desc(patients.id)).limit(PATIENT_SCAN_LIMIT);
       const want = (v: string | undefined) => (v ?? '').trim().toLowerCase();
       const match = (c: PatientCard) => (!f.species || want(c.species ?? '') === want(f.species))
         && (!f.field || (f.field.multi
@@ -255,7 +255,7 @@ export class PatientRecords {
    */
   async profile(clinicId: string, patientId: string, userId: string) {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      const [row] = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), eq(patients.id, patientId)));
       if (!row) return null;
       // everyone on the same phone: a parent and their children, an owner's pets
       const family = row.phoneHash
@@ -297,7 +297,7 @@ export class PatientRecords {
         .groupBy(auditLogs.entityId).orderBy(desc(sql`max(${auditLogs.id})`)).limit(10);
       const ids = opened.map((o) => o.id!).filter((id) => /^[0-9a-f-]{36}$/.test(id));
       if (!ids.length) return [];
-      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), inArray(patients.id, ids)));
+      const rows = await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), inArray(patients.id, ids)));
       await recordView(tx, { clinicId, actor: actorOf(userId), action: 'patient.recent.viewed', entity: 'patient', entityId: patientSetKey(rows.map((r) => r.id)) }, 5);
       const byId = new Map(rows.map((r) => [r.id, this.card(clinicId, r)]));
       return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
@@ -338,7 +338,7 @@ export class PatientRecords {
   /** Replaces a patient's details, recomputing every hash. */
   async update(clinicId: string, patientId: string, p: PatientFields, userId: string): Promise<SaveResult> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.select({ id: patients.id, smsConsentAt: patients.smsConsentAt }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)));
+      const [row] = await tx.select({ id: patients.id, smsConsentAt: patients.smsConsentAt }).from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), eq(patients.id, patientId)));
       if (!row) return { status: 'not_found' };
       const same = await findSameIdentity(tx, this.cipher, clinicId, p, patientId);
       if (same) return { status: 'exists', id: same };
@@ -357,7 +357,7 @@ export class PatientRecords {
   async setCustomFields(clinicId: string, patientId: string, values: Record<string, string>, userId: string): Promise<'saved' | 'not_found'> {
     return withClinic(this.db, clinicId, async (tx) => {
       const customEnc = Object.keys(values).length ? this.cipher.encrypt(JSON.stringify(values), phiContext(clinicId, 'patients.custom')) : null;
-      const [row] = await tx.update(patients).set({ customEnc }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId))).returning({ id: patients.id });
+      const [row] = await tx.update(patients).set({ customEnc }).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), eq(patients.id, patientId))).returning({ id: patients.id });
       if (!row) return 'not_found';
       await tx.insert(auditLogs).values({ clinicId, actor: actorOf(userId), action: 'patient.fields.updated', entity: 'patient', entityId: patientId });
       return 'saved';
@@ -370,7 +370,7 @@ export class PatientRecords {
    */
   async confirm(clinicId: string, patientId: string, userId: string): Promise<'confirmed' | 'not_found'> {
     return withClinic(this.db, clinicId, async (tx) => {
-      const [row] = await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId), eq(patients.status, 'new'))).returning({ id: patients.id });
+      const [row] = await tx.update(patients).set({ status: 'active' }).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt), eq(patients.id, patientId), eq(patients.status, 'new'))).returning({ id: patients.id });
       if (!row) return 'not_found';
       await tx.update(tasks).set({ status: 'done', doneAt: new Date(), doneByUserId: userId, outcome: 'details_confirmed' })
         .where(and(eq(tasks.clinicId, clinicId), eq(tasks.patientId, patientId), eq(tasks.type, 'review'), eq(tasks.status, 'open')));
@@ -401,7 +401,7 @@ export class PatientRecords {
     return withClinic(this.db, clinicId, async (tx) => {
       const cards: Found[] = q
         ? (await this.hits(tx, clinicId, q, null)).hits.sort((a, b) => a.rank - b.rank || byName(a.hit, b.hit)).map((x) => x.hit)
-        : (await tx.select().from(patients).where(eq(patients.clinicId, clinicId)).orderBy(desc(patients.createdAt), desc(patients.id)).limit(CALL_AS_SCAN)).map((r) => this.found(clinicId, r));
+        : (await tx.select().from(patients).where(and(eq(patients.clinicId, clinicId), isNull(patients.deletedAt))).orderBy(desc(patients.createdAt), desc(patients.id)).limit(CALL_AS_SCAN)).map((r) => this.found(clinicId, r));
       // in the order found, one row per phone: the owner's own record when it is there
       const households = new Map<string, Found[]>();
       for (const c of cards) {

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   ApiKeyRepository, authenticateApiKey, avatarFor, CallRepository, callStats, callTimeline, CallSummaryRepository, cleanTitles, createPhiCipher, type Database,
-  FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, phoneUsage, PostgresAuditLog,
+  FrontDeskRepository, householdOf, inviteToTeam, KnowledgeRepository, listMembers, normalisePhones, PatientRecords, PatientRemoval, phoneUsage, PostgresAuditLog,
   PostgresPatientDirectory, PostgresTaskQueue, qualityRows, saveAvatar, ScheduleRepository, seedCedarPark, seedDemo, seedDemoSchedule, staffNames,
   teamInvitations, visitTypeCoverageReport, WebhookRepository, withClinic, withClinicScope,
 } from '../src';
@@ -137,6 +137,18 @@ const CASES: Record<string, Case> = {
     },
     other: async () => {
       expect((await new PatientRecords(db, cipher).newest(B, 'u_cara')).map((p) => p.id)).not.toContain(patientsA.maria);
+    },
+  },
+  'patient-removal.ts': {
+    tables: ['patients', 'patient_search_keys', 'appointments', 'tasks', 'calls', 'sms_messages'],
+    own: async () => {
+      // a preview only: the record stays for the other cases
+      expect(await new PatientRemoval(db, cipher).previewDelete(A, patientsA.maria!, 'pet', new Date())).toMatchObject({ records: 1 });
+    },
+    other: async () => {
+      expect(await new PatientRemoval(db, cipher).previewDelete(B, patientsA.maria!, 'household', new Date())).toBeNull();
+      expect(await new PatientRemoval(db, cipher).delete(B, patientsA.maria!, 'pet', 'u_cara', new Date())).toBeNull();
+      expect(await new PatientRemoval(db, cipher).previewMerge(B, 'pet', patientsA.maria!, patientsA.james!)).toEqual({ problem: 'not_found' });
     },
   },
   'patients.ts': {

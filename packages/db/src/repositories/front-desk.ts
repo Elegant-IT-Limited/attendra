@@ -643,7 +643,7 @@ export class FrontDeskRepository {
 
   /** Whether a record is this clinic's: an id only, no patient data, so no audit row. */
   async patientExists(clinicId: string, patientId: string): Promise<boolean> {
-    return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId)))).length);
+    return withClinic(this.db, clinicId, async (tx) => !!(await tx.select({ id: patients.id }).from(patients).where(and(eq(patients.clinicId, clinicId), eq(patients.id, patientId), isNull(patients.deletedAt)))).length);
   }
 
   /** Time held in [from, to) (booked, arrived or completed visits), for the open-slot search. No patient data, so no audit row. */
