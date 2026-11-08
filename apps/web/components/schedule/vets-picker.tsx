@@ -12,8 +12,9 @@ import { MAX_CHOSEN, worksOn } from '@/lib/schedule-lanes';
 type Provider = ClinicConfig['providers'][number];
 
 /**
- * Which lanes a big clinic's day grid draws: up to MAX_CHOSEN providers, found by name,
- * narrowed by specialty or to the ones working on the day shown. The choice applies at
+ * Which lanes a big clinic's grid draws first ("My vets"): up to MAX_CHOSEN providers, found by name,
+ * narrowed by specialty or to the ones working on the day shown; the grid fills the rest of its MAX_CHOSEN
+ * lanes with the others in use (capLanes). The choice applies at
  * once and is kept in this browser for this clinic (lib/schedule-lanes.ts).
  */
 export function VetsPicker({ clinic, providers, date, chosen, onChange, word, onGrid }: {
@@ -57,7 +58,7 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word, on
       <div className="space-y-3" data-testid="vets-picker">
         <div>
           <p className="text-sm font-medium">My {word === 'veterinarians' ? 'vets' : 'providers'}</p>
-          <p className="text-xs text-text-muted">The {word} working with a visit on the day always have a lane. Pick up to {MAX_CHOSEN} more to keep on screen; they are saved as My {word === 'veterinarians' ? 'vets' : 'providers'} in this browser.</p>
+          <p className="text-xs text-text-muted">The grid shows up to {MAX_CHOSEN} {word}: yours first, then the others with visits. Pick up to {MAX_CHOSEN}; they are saved as My {word === 'veterinarians' ? 'vets' : 'providers'} in this browser. The Agenda lists everyone.</p>
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${id}-find`} className="sr-only">Find a {one}</Label>

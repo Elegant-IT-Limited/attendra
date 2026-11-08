@@ -44,6 +44,7 @@ const ACTIONS: Record<string, string> = {
   'patient.texts_ok.call': 'Said yes to reminder texts on a call',
   'appointment.rescheduled.staff': 'Moved an appointment',
   'appointment.cancelled.staff': 'Cancelled an appointment at the desk',
+  'appointment.kept_outside_hours': 'Kept a booked visit where it was when the hours changed',
   'patient.searched': 'Searched for a patient',
   'patient.viewed': 'Opened a patient\'s record',
   'patient.recent.viewed': 'Looked at recent patients',

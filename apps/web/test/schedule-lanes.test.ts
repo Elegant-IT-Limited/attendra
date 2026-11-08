@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { blockHeight, initials, laneProviders, MANY_PROVIDERS, MAX_CHOSEN, MIN_BLOCK, placeBlocks, PX, readChosen, worksOn, writeChosen } from '../lib/schedule-lanes';
+import { blockHeight, capLanes, columnsThatFit, initials, laneProviders, MANY_PROVIDERS, MAX_CHOSEN, MIN_BLOCK, placeBlocks, placeLane, PX, readChosen, worksOn, writeChosen } from '../lib/schedule-lanes';
 
 const weekdays = { open: '08:00', close: '17:00' };
 type Hours = Partial<Record<'0' | '1' | '2' | '3' | '4' | '5' | '6', { open: string; close: string }[]>>;
@@ -112,6 +112,69 @@ describe('visit blocks on the day grid', () => {
 
   it('puts short visits stretched to the minimum side by side when their blocks would meet', () => {
     expect(place([at('a', 480, 5), at('b', 485, 5), at('c', 490, 10)])).toEqual({ a: [0, 3], b: [1, 3], c: [2, 3] });
+  });
+});
+
+describe('a busy moment in a narrow lane (note 13: the week view)', () => {
+  const at = (id: string, start: number, minutes: number, status = 'booked') => ({ id, status, span: [start, start + minutes] as const });
+  const lay = (items: ReturnType<typeof at>[], max: number) => {
+    const { blocks, more } = placeLane(items, (x) => x.span, max);
+    return { blocks: Object.fromEntries(blocks.map((b) => [b.item.id, [b.column, b.columns]])), more: more.map((m) => ({ ids: m.items.map((i) => i.id), column: m.column, columns: m.columns, start: m.start, end: m.end })) };
+  };
+
+  it('fits as many side by side as stay 24 pixels wide with their gap: four in a day lane (7rem), two in a week lane (5rem)', () => {
+    expect(columnsThatFit(7 * 16)).toBe(4);
+    expect(columnsThatFit(5 * 16)).toBe(2);
+    expect(columnsThatFit(10)).toBe(1);
+    for (const lane of [5 * 16, 7 * 16, 200]) expect(lane / columnsThatFit(lane) - 4).toBeGreaterThanOrEqual(MIN_BLOCK);
+  });
+
+  it('keeps the first visit and gathers the rest into "+N more" in the last column, booked before cancelled', () => {
+    const three = [at('a', 540, 30), at('b', 545, 30), at('gone', 540, 30, 'cancelled')];
+    expect(lay(three, 2)).toEqual({ blocks: { a: [0, 2] }, more: [{ ids: ['gone', 'b'], column: 1, columns: 2, start: 540, end: 575 }] }); // the list in time order
+    // as many as fit stay blocks, and a quieter moment of the same lane is untouched
+    expect(lay([...three, at('later', 660, 20)], 4)).toEqual({ blocks: { a: [0, 3], b: [1, 3], gone: [2, 3], later: [0, 1] }, more: [] });
+    const five = [at('v1', 600, 20), at('v2', 600, 20), at('v3', 600, 20), at('v4', 605, 20), at('v5', 610, 20)];
+    const laid = lay(five, 2);
+    expect(Object.keys(laid.blocks)).toEqual(['v1']);
+    expect(laid.more).toEqual([{ ids: ['v2', 'v3', 'v4', 'v5'], column: 1, columns: 2, start: 600, end: 630 }]);
+  });
+
+  it('never loses a visit: each is a block or in a "+N more" list', () => {
+    const items = Array.from({ length: 9 }, (_, i) => at(`v${i}`, 480 + i * 5, 30));
+    for (const max of [1, 2, 3, 4]) {
+      const { blocks, more } = placeLane(items, (x) => x.span, max);
+      expect([...blocks.map((b) => b.item.id), ...more.flatMap((m) => m.items.map((x) => x.id))].sort()).toEqual(items.map((x) => x.id).sort());
+      expect(Math.max(...blocks.map((b) => b.columns), ...more.map((m) => m.columns))).toBeLessThanOrEqual(max);
+    }
+  });
+});
+
+describe('a big clinic\'s grid (note 24): at most eight lanes, My vets first', () => {
+  // a hundred vets, all working Monday; sixty have a visit
+  const hundred = Array.from({ length: 100 }, (_, i) => vet(i + 1));
+  const withVisits = hundred.slice(0, 60).map((p) => p.id);
+
+  it('draws eight of the sixty in use, in the list\'s order, and says it is capped', () => {
+    const inUse = laneProviders(clinic, hundred, [monday], withVisits, []);
+    expect(inUse).toHaveLength(60);
+    const { lanes, capped } = capLanes(inUse, [], true);
+    expect(MAX_CHOSEN).toBe(8);
+    expect(lanes.map((p) => p.id)).toEqual(hundred.slice(0, 8).map((p) => p.id));
+    expect(capped).toBe(true);
+  });
+
+  it('puts My vets first, even ones with nothing booked who are working, then fills with the others in use', () => {
+    const mine = ['prov_90', 'prov_30', 'prov_95'];
+    const inUse = laneProviders(clinic, hundred, [monday], withVisits, mine);
+    const { lanes } = capLanes(inUse, mine, true);
+    expect(lanes.map((p) => p.id)).toEqual(['prov_30', 'prov_90', 'prov_95', 'prov_1', 'prov_2', 'prov_3', 'prov_4', 'prov_5']);
+  });
+
+  it('is not capped at a clinic of a few, at eight or fewer in use, or with one vet picked in the dropdown', () => {
+    expect(capLanes(many.slice(0, 8), [], false)).toEqual({ lanes: many.slice(0, 8), capped: false });
+    expect(capLanes(hundred.slice(0, 8), [], true).capped).toBe(false);
+    expect(capLanes(hundred.slice(0, 20), [], false).lanes).toHaveLength(20);
   });
 });
 

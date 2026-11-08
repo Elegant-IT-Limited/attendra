@@ -6,8 +6,7 @@ type Clinic = Pick<ClinicConfig, 'hours' | 'holidays' | 'specialDays' | 'timezon
 
 /** Past this many bookable providers the day grid shows only the lanes in use, and the Vets picker appears. */
 export const MANY_PROVIDERS = 8;
-/** Past this many bookable providers the Schedule opens on the Agenda, which reads at any size. */
-/** How many lanes the picker lets one person pin: more than this no longer fits a screen. */
+/** How many lanes a big clinic's grid draws, and how many the picker lets one person pin: more no longer fits a screen. */
 export const MAX_CHOSEN = 8;
 
 /** A provider's bookable hours on a date, by the same rule every booking follows (bookableWindows): their own decide. */
@@ -114,6 +113,50 @@ export function placeBlocks<T extends { status: string }>(items: T[], span: (ite
     const ordered = [...g].sort((a, b) => Number(a.item.status === 'cancelled') - Number(b.item.status === 'cancelled') || a.top - b.top);
     return ordered.map((d, column) => ({ item: d.item, column, columns: g.length }));
   });
+}
+
+/** The space between two blocks side by side, in pixels: each is drawn 2px in from its share of the lane on each side. */
+const BLOCK_GAP = 4;
+/** How many visits fit side by side in a lane this many pixels wide, each still a 24-pixel target (WCAG 2.2, 2.5.8). */
+export const columnsThatFit = (lanePx: number) => Math.max(1, Math.floor(lanePx / (MIN_BLOCK + BLOCK_GAP)));
+
+/**
+ * One lane's visits, placed: each group of blocks that meet side by side (placeBlocks), at most `maxColumns` across.
+ * A group with more than that keeps the first `maxColumns - 1` as blocks (booked before cancelled) and gathers the
+ * rest into one "+N more" target in the last column, from the earliest start to the latest end among them, which
+ * lists them: nothing is ever drawn narrower than a 24-pixel target, and nothing booked is out of reach.
+ */
+export function placeLane<T extends { status: string }>(items: T[], span: (item: T) => readonly [number, number], maxColumns: number): {
+  blocks: { item: T; column: number; columns: number }[];
+  more: { items: T[]; column: number; columns: number; start: number; end: number }[];
+} {
+  const blocks: { item: T; column: number; columns: number }[] = [];
+  const more: { items: T[]; column: number; columns: number; start: number; end: number }[] = [];
+  const placed = placeBlocks(items, span);
+  // placeBlocks lists each group together, in its column order
+  for (let i = 0; i < placed.length;) {
+    const group = placed.slice(i, i + placed[i]!.columns);
+    i += group.length;
+    if (group.length <= maxColumns) { blocks.push(...group); continue; }
+    const columns = Math.max(1, maxColumns);
+    const kept = group.slice(0, columns - 1).map((g) => ({ ...g, columns }));
+    const rest = group.slice(columns - 1).map((g) => g.item).sort((a, b) => span(a)[0] - span(b)[0]);
+    blocks.push(...kept);
+    more.push({ items: rest, column: columns - 1, columns, start: Math.min(...rest.map((r) => span(r)[0])), end: Math.max(...rest.map((r) => span(r)[1])) });
+  }
+  return { blocks, more };
+}
+
+/**
+ * The lanes a big clinic's grid draws, at most MAX_CHOSEN (note 24, 2026-11-02: a hundred vets is a hundred columns
+ * nobody can read): this person's chosen vets first ("My vets"), then the others in use in the list's order. The Day
+ * and the Week say how many of how many they show, and the Agenda lists everyone. A clinic of a few, or one vet picked
+ * in the dropdown, draws what it is given.
+ */
+export function capLanes<P extends { id: string }>(inUse: P[], chosen: readonly string[], many: boolean): { lanes: P[]; capped: boolean } {
+  if (!many || inUse.length <= MAX_CHOSEN) return { lanes: inUse, capped: false };
+  const mine = inUse.filter((p) => chosen.includes(p.id));
+  return { lanes: [...mine, ...inUse.filter((p) => !chosen.includes(p.id))].slice(0, MAX_CHOSEN), capped: true };
 }
 
 type ScheduleView = 'day' | 'week' | 'month' | 'agenda';

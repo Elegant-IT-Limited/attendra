@@ -5,7 +5,7 @@ import { type ClinicConfig, industryPack, localDateOf, providerName } from '@att
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { capital } from '@/components/schedule/booking-dialog';
 import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +24,7 @@ type Mode = 'view' | 'reschedule' | 'cancel';
 export const LINK_BUTTON = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-strong bg-surface px-4 text-sm font-medium hover:bg-surface-sunken focus-ring';
 
 /** One appointment, opened from the schedule. Closes with Escape; every change says how it went. */
-export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, canWrite, patientHref }: {
+export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, canWrite, patientHref, startMoving }: {
   clinicId: string;
   clinic: ClinicConfig;
   appointmentId: string | null;
@@ -32,6 +32,8 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
   canWrite: boolean;
   /** Where the patient's profile lives, once there is one. */
   patientHref?: (patientId: string) => string;
+  /** Open on Reschedule (the "Move" of a change of hours that would strand it), when it can still be moved. */
+  startMoving?: boolean;
 }) {
   const queries = useQueryClient();
   const [mode, setMode] = useState<Mode>('view');
@@ -78,6 +80,12 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
 
   const close = (open: boolean) => { if (!open) { setMode('view'); setMessage(null); setSlot(null); onClose(); } };
   const a = detail.data;
+  // asked to open on Reschedule: once, when the visit has loaded and can still be moved
+  const [moveStarted, setMoveStarted] = useState<string | null>(null);
+  useEffect(() => {
+    if (!startMoving || !a || !canWrite || moveStarted === a.id || !offersChanges(a, new Date(), false)) return;
+    setMoveStarted(a.id); setMode('reschedule'); setFrom(localDateOf(new Date(), tz));
+  }, [startMoving, a, canWrite, moveStarted, tz]);
   const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
   const pets = industryPack(clinic.industry).identity === 'pet';
   const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id);

@@ -230,6 +230,15 @@ export const VISIT_TONES = [
   'border-l-[var(--visit-5)] bg-[var(--visit-5-soft)]',
   'border-l-[var(--visit-6)] bg-[var(--visit-6-soft)]',
 ];
+/** The tail drawn after a visit for the minutes its type keeps free (cleaning time): its colour, lighter and hatched. */
+export const VISIT_TAILS = [
+  'border-l-[var(--visit-1)] bg-[repeating-linear-gradient(135deg,var(--visit-1-soft),var(--visit-1-soft)_4px,transparent_4px,transparent_8px)]',
+  'border-l-[var(--visit-2)] bg-[repeating-linear-gradient(135deg,var(--visit-2-soft),var(--visit-2-soft)_4px,transparent_4px,transparent_8px)]',
+  'border-l-[var(--visit-3)] bg-[repeating-linear-gradient(135deg,var(--visit-3-soft),var(--visit-3-soft)_4px,transparent_4px,transparent_8px)]',
+  'border-l-[var(--visit-4)] bg-[repeating-linear-gradient(135deg,var(--visit-4-soft),var(--visit-4-soft)_4px,transparent_4px,transparent_8px)]',
+  'border-l-[var(--visit-5)] bg-[repeating-linear-gradient(135deg,var(--visit-5-soft),var(--visit-5-soft)_4px,transparent_4px,transparent_8px)]',
+  'border-l-[var(--visit-6)] bg-[repeating-linear-gradient(135deg,var(--visit-6-soft),var(--visit-6-soft)_4px,transparent_4px,transparent_8px)]',
+];
 export const VISIT_DOTS = ['bg-[var(--visit-1)]', 'bg-[var(--visit-2)]', 'bg-[var(--visit-3)]', 'bg-[var(--visit-4)]', 'bg-[var(--visit-5)]', 'bg-[var(--visit-6)]'];
 
 /** Whole years on `today`, the clinic's date (YYYY-MM-DD), not the browser's: a birthday turns over at the clinic's midnight. */
