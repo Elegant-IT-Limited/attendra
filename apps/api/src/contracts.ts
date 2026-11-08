@@ -189,7 +189,8 @@ const actionKey = z.string().min(8).max(100);
 export const LiveCoach = z.object({ note: z.string().trim().min(1, 'write a note first').max(300, 'keep it to 300 characters'), key: actionKey });
 export const LiveTakeOver = z.object({ target: z.enum(['front_desk', 'me']), key: actionKey });
 export const LiveEnd = z.object({ key: actionKey });
-export const TransferNumber = z.object({ number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'a full number with the country code, like +13035550123').nullable() });
+/** Typed as the person writes it (numbers only); the API keeps it as E.164 in the clinic's country. Empty or null clears it. */
+export const TransferNumber = z.object({ number: z.string().trim().max(30).regex(PHONE_TYPED, PHONE_NUMBERS_ONLY).nullable().transform((v) => v || null) });
 
 /** A document in the clinic's knowledge. Clinic information, never patient data. */
 export const KnowledgeDocument = z.object({

@@ -11,10 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup } from '@/components/ui/controls';
 import { Panel } from '@/components/ui/dialog';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
-import { Input, Textarea } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/input';
+import { PhoneInput } from '@/components/ui/phone-input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { countryCopy } from '@attendra/core';
-import { api, ApiFailure, newKey, useClinic, useClinicConfig } from '@/lib/api';
+import { api, ApiFailure, newKey, saveProblem, useClinic, useClinicConfig } from '@/lib/api';
 import { clock, REFUSALS, TOOLS } from '@/lib/format';
 import { useLiveCalls } from '@/lib/live';
 import { cn } from '@/lib/utils';
@@ -324,12 +325,13 @@ export default function LiveCallPage() {
           )}
           {target === 'me' && (!mine.data?.number || changing) && (
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); saveNumber.mutate(number.trim()); }}>
-              <Input aria-label="Your number" placeholder={example.e164} value={number} onChange={(e) => setNumber(e.target.value)} className="flex-1" />
+              <PhoneInput aria-label="Your number" placeholder={example.local || example.e164} value={number} onValue={(n) => { setNumber(n); saveNumber.reset(); }} className="flex-1"
+                aria-invalid={saveNumber.isError || undefined} aria-describedby={saveNumber.isError ? 'my-number-error' : undefined} />
               <Button type="submit" variant="outline" loading={saveNumber.isPending}>Save</Button>
               {changing && <Button type="button" variant="ghost" onClick={() => { setChanging(false); setNumber(''); }}>Keep it</Button>}
             </form>
           )}
-          {saveNumber.isError && <p className="text-sm text-danger">Give the full number with the country code, like {example.e164}. It must be in the clinic's country.</p>}
+          {saveNumber.isError && <p id="my-number-error" className="text-sm text-danger">{saveProblem(saveNumber.error)}</p>}
         </div>
       </Panel>
       <Panel open={confirm === 'end'} onOpenChange={(o) => setConfirm(o ? 'end' : null)} title="End this call?"

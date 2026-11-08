@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { allowedEmergencyNumbers, type ClinicConfig, DEFAULT_ASSISTANT_NAME, EMERGENCY_COUNTRIES, emergencyCountry, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
+import { allowedEmergencyNumbers, cleanDigitsTyping, type ClinicConfig, DIGITS_ONLY, DEFAULT_ASSISTANT_NAME, EMERGENCY_COUNTRIES, emergencyCountry, emergencyNumberFor, type Language, LANGUAGES, normalise, PACKS } from '@attendra/core';
 import { Field, Section } from '@/components/settings/section';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
 import { Input, Select, Textarea } from '@/components/ui/input';
+import { useState } from 'react';
 
 /** Whatever a language pack says, marked with its language so screen readers pick it up. */
 export function Spoken({ language, children }: { language: Language; children: string }) {
@@ -21,6 +22,8 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
   const allowed = allowedEmergencyNumbers(c.phoneNumbers, c.country);
   const country = emergencyCountry(c.phoneNumbers, c.country);
   const fromPhone = emergencyCountry(c.phoneNumbers);
+  // letters typed or pasted into the emergency number are dropped with a note, never silently
+  const [digitsNote, setDigitsNote] = useState(false);
   const toggle = (l: Language, on: boolean) => set({ languages: on ? LANGUAGES.filter((x) => x === l || c.languages.includes(x)) : c.languages.filter((x) => x !== l) });
 
   return (
@@ -39,11 +42,11 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
             ))}
           </Select>
         </Field>
-        <Field label="Emergency number" htmlFor="emergency-number" hint={allowed.length
+        <Field label="Emergency number" htmlFor="emergency-number" hint={(digitsNote ? `${DIGITS_ONLY} ` : '') + (allowed.length
           ? `${defaultNumber}, from ${country}. Leave it empty unless your area uses another number${allowed.length > 1 ? ` (${allowed.join(' or ')})` : ''}.`
-          : 'Your country isn\'t on our list, so the assistant says "call your local emergency number". Choose your country if it is listed.'}>
-          <Input id="emergency-number" inputMode="numeric" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={allowed.length ? defaultNumber : 'None'} maxLength={5}
-            disabled={disabled || !allowed.length} onChange={(e) => set({ emergencyNumber: e.target.value.replace(/\D/g, '') || undefined })} />
+          : 'Your country isn\'t on our list, so the assistant says "call your local emergency number". Choose your country if it is listed.')}>
+          <Input id="emergency-number" inputMode="numeric" autoComplete="off" className="font-mono" value={c.emergencyNumber ?? ''} placeholder={allowed.length ? defaultNumber : 'None'} maxLength={5}
+            disabled={disabled || !allowed.length} onChange={(e) => { const { value, dropped } = cleanDigitsTyping(e.target.value); setDigitsNote(dropped || (digitsNote && !!value)); set({ emergencyNumber: value || undefined }); }} />
         </Field>
       </div>
       <p className="text-sm text-text-muted" data-testid="emergency-line">A person in danger is told: &ldquo;If a person is hurt or in danger, call {defaultNumber}.&rdquo;</p>

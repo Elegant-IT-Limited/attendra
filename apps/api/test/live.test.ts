@@ -1,4 +1,4 @@
-import { DEMO_CLINIC } from '@attendra/core';
+import { DEMO_CLINIC, PHONE_NUMBERS_ONLY } from '@attendra/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { LiveActionResult, VoiceClient } from '../src/http/tokens';
@@ -118,8 +118,14 @@ describe('staff actions', () => {
     expect((await act('take-over', as.staff, { target: 'front_desk', key: 'take-key-1' })).statusCode).toBe(202);
     expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.staff, byName: 'Ana Front', key: 'take-key-1', target: { kind: 'front_desk' } });
     expect((await act('take-over', as.admin, { target: 'me', key: 'take-key-2' })).json()).toEqual({ error: 'no_number' });
-    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '3035550123' } })).statusCode).toBe(422);
-    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '+13035550123' } })).statusCode).toBe(200);
+    // numbers only (note 14): letters, a + in the middle and a number too short are refused with what to type
+    const lettered = await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '303 CALL NOW' } });
+    expect(lettered.statusCode).toBe(422);
+    expect(lettered.json().issues[0]).toMatchObject({ path: 'number', message: PHONE_NUMBERS_ONLY });
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '303+5550123' } })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '555 01' } })).json().issues[0].message).toBe('a full phone number, like +13035550123');
+    // typed as people write it, kept by the one normaliser as E.164
+    expect((await api.request('PUT', `${C}/my-transfer-number`, { cookie: as.admin, body: { number: '(303) 555-0123' } })).json()).toEqual({ number: '+13035550123' });
     expect((await api.request('GET', `${C}/my-transfer-number`, { cookie: as.admin })).json()).toEqual({ number: '+13035550123' });
     await act('take-over', as.admin, { target: 'me', key: 'take-key-3' });
     expect(voice.takeOver).toHaveBeenLastCalledWith(DEMO_CLINIC.id, api.callId, { userId: api.users.admin, byName: 'Olga Admin', key: 'take-key-3', target: { kind: 'number', number: '+13035550123' } });

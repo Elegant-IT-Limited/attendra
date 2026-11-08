@@ -334,8 +334,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="doc-other-phones">Other numbers</Label>
-              <Input id="doc-other-phones" type="text" inputMode="tel" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
-                onChange={(e) => { set({ otherPhones: e.target.value.replace(/[^\d\s().,+-]/g, '') }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
+              <PhoneInput id="doc-other-phones" mode="several" autoComplete="off" value={d.otherPhones} placeholder="Separated by commas" aria-invalid={!!fieldErrors.otherPhones || undefined} aria-describedby={fieldErrors.otherPhones ? 'doc-other-phones-error' : undefined}
+                onValue={(otherPhones) => { set({ otherPhones }); setFieldErrors((f) => ({ ...f, otherPhones: undefined })); }} />
               {fieldErrors.otherPhones && <p id="doc-other-phones-error" className="text-xs text-danger">{fieldErrors.otherPhones}</p>}
             </div>
           </div>

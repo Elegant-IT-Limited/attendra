@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, cleanPhoneTyping, PHONE_NUMBERS_ONLY, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
+import { asE164, providerName, RETENTION_CHOICES, callingCode, defaultTalkStyle, hasPreview, PREVIEW_VOICES, type TalkStyle, type ClinicConfig, type Terms, clinicWarnings, countryCopy, emergencyNumberFor, voiceLabel, DEFAULT_RECORDING_NOTICE, noticeIsSentence, openingWords, noProviderWarnings, SETTINGS_LIMITS } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -210,7 +210,8 @@ export default function Settings() {
   // shown as a plain phone number; stored as the tel: address a transfer dials (a sip: address is kept as typed)
   const shownUri = (uri: string) => (uri.startsWith('tel:') ? uri.slice(4) : uri);
   // as typed while typing; as E.164 once the field is left (and again on save), so a half-typed number is never rewritten
-  const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
+  // a SIP address as typed, and the start of one while it is being typed ("si"); anything else is a number, kept as tel:+…
+  const storedUri = (v: string, done = false) => (/^sips?:/i.test(v.trim()) || (!done && !!v.trim() && 'sips:'.startsWith(v.trim().toLowerCase())) ? v.trim() : `tel:${done ? asE164(c, v) : v.replace(/[^\d+()\s.-]/g, '')}`);
 
   return (
     <SaveIssues.Provider value={issuesFor}>
@@ -416,7 +417,7 @@ export default function Settings() {
                   </Select>
                 </Field>
                 <Field label="Phone number" hint="With the country code.">
-                  <Input type="tel" value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onChange={(e) => upd('routing', i, { uri: storedUri(e.target.value) })} onBlur={(e) => upd('routing', i, { uri: storedUri(e.target.value, true) })} />
+                  <PhoneInput mode="transfer" autoComplete="off" maxLength={200} value={shownUri(r.uri)} placeholder={countryCopy(c).phone.e164} onValue={(v) => upd('routing', i, { uri: storedUri(v) })} onBlur={(e) => upd('routing', i, { uri: storedUri(e.target.value, true) })} />
                 </Field>
                 <Field label="When">
                   <Select value={r.when} onChange={(e) => upd('routing', i, { when: e.target.value as typeof r.when })}>
@@ -523,9 +524,8 @@ export default function Settings() {
             ) : (
               <li key={`own-${i}`} className="flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                 {/* typed as the clinic writes it; kept as +1… so forwarding checks and texts can use it */}
-                <Input aria-label="Your clinic's own line" data-own-line={n} type="tel" inputMode="tel" autoComplete="off" className="h-8 w-48 tabular-nums" defaultValue={n ? phone(n) : ''} disabled={!writable}
-                  onChange={(e) => { const clean = cleanPhoneTyping(e.target.value); if (clean.dropped) e.target.value = clean.value; }} title={PHONE_NUMBERS_ONLY} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
-                  onBlur={(e) => { const v = e.target.value.trim() ? asE164(c, e.target.value) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
+                <OwnLine stored={n} shown={n ? phone(n) : ''} disabled={!writable} placeholder={/^\+1\d{10}$/.test(c.phoneNumbers[0] ?? '') ? `(${c.phoneNumbers[0]!.slice(2, 5)}) 555-0100` : countryCopy(c).phone.local}
+                  onDone={(typed) => { const v = typed.trim() ? asE164(c, typed) : ''; if (v !== n) set({ phoneNumbers: c.phoneNumbers.map((x, j) => (j === i ? v : x)) }); }} />
                 <span className="text-text-muted">Your clinic&apos;s own line: forward it to the assistant&apos;s number</span>
                 {writable && <Button type="button" size="sm" variant="ghost" onClick={() => set({ phoneNumbers: c.phoneNumbers.filter((_, j) => j !== i) })}>Remove</Button>}
               </li>
@@ -556,5 +556,20 @@ export default function Settings() {
         </div>
       )}
     </SaveIssues.Provider>
+  );
+}
+
+/**
+ * One of the clinic's own lines, typed as the clinic writes it and kept as +1… once the field is left, so forwarding
+ * checks and texts can use it. Letters are dropped with a note (PhoneInput); a save from elsewhere shows here.
+ */
+function OwnLine({ stored, shown, disabled, placeholder, onDone }: { stored: string; shown: string; disabled: boolean; placeholder: string; onDone: (typed: string) => void }) {
+  const [typed, setTyped] = useState(shown);
+  useEffect(() => setTyped(shown), [shown]);
+  return (
+    <span className="inline-flex flex-col gap-1">
+      <PhoneInput aria-label="Your clinic's own line" data-own-line={stored} autoComplete="off" className="h-8 w-48 tabular-nums" value={typed} disabled={disabled}
+        placeholder={placeholder} onValue={setTyped} onBlur={(e) => onDone(e.target.value)} />
+    </span>
   );
 }
