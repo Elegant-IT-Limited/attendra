@@ -15,6 +15,10 @@ All notable changes are recorded here. The project follows [Semantic Versioning]
 - **`PUT /provisioning/clinics/:clinicId/realtime-model`**: one clinic on `gpt-realtime-2.1-mini` for a phone trial, its calls priced as that model.
 - **Path A says a tool's refusal line word for word on real calls**: the check read the result before it was shaped for the voice, so it never fired.
 
+### Added (two-step sign-in by role)
+
+- **`ATTENDRA_TWO_FACTOR=managers`:** two-step sign-in is required of owners and practice managers (the people who manage the team, API keys and webhooks) and a choice for front desk and viewers. A person with either role at any of their locations must have it on; a promotion counts from the next request. `/me` says whether this person must (`twoFactorRequired`) and which roles must (`twoFactorRoles`). `required` stays the default.
+
 ### Changed (batch 1c: scheduling on path A)
 
 - **A booking is read back before it is made, in the words themselves**: the assistant's words after a proposal must carry its day and time (EN/ES, digits or words) before a yes counts. Any speech after the proposal used to count, so a "yes" after "I found Biscuit" could book.
