@@ -174,6 +174,9 @@ test.describe.serial('the front desk, end to end on the demo clinic', () => {
       for (const tab of ['', '/emergencies', '/texting', '/fields', '/knowledge', '/integrations', '/api-keys']) {
         await page.goto(`/c/${clinic}/settings${tab}`);
         await expect(row.getByRole('link', { name: 'Fields and lists' })).toBeVisible();
+        // once the tab's data is in (its loading state has the same header, but the row is drawn again)
+        await page.waitForLoadState('networkidle');
+        await expect.poll(async () => (await row.boundingBox())?.y ?? null).not.toBeNull();
         tops[`${width}${tab}`] = Math.round((await row.boundingBox())!.y);
       }
       expect(new Set(Object.entries(tops).filter(([k]) => k.startsWith(String(width))).map(([, y]) => y)).size, `tab row at ${width}px: ${JSON.stringify(tops)}`).toBe(1);

@@ -162,7 +162,7 @@ test('a doctor\'s visit types: ticked one by one or all in one click, and a warn
   // ticked for one doctor, the warning goes
   await card.getByRole('button', { name: 'Edit hours and details' }).click();
   panel = manager.getByRole('dialog', { name: 'Edit Dr. Ann Lindqvist' });
-  await panel.getByRole('checkbox', { name: 'ear check', exact: true }).check();
+  await panel.getByRole('checkbox', { name: 'Ear check', exact: true }).check();
   await panel.getByRole('button', { name: 'Save' }).click();
   await expect(panel).toBeHidden();
   await expect(manager.getByTestId('no-provider-warnings')).toHaveCount(0);

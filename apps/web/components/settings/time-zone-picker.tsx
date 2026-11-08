@@ -4,6 +4,7 @@ import { Command } from 'cmdk';
 import { Check, ChevronDown } from 'lucide-react';
 import { Popover as P } from 'radix-ui';
 import { useEffect, useMemo, useState } from 'react';
+import { timeOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 /** Every IANA zone this browser knows, with the saved one kept even if it does not. */
@@ -14,7 +15,8 @@ function zones(current: string) {
 
 /** "1:31 PM" in a zone, or null for a name the browser cannot use. */
 export function nowIn(zone: string, at = new Date()) {
-  try { return new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(at); } catch { return null; }
+  // on the clinic's clock like every other time (lib/format timeOf): 12-hour at a US clinic, 24-hour elsewhere
+  try { return timeOf(at, zone); } catch { return null; }
 }
 
 /**
