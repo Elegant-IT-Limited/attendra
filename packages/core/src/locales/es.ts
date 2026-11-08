@@ -82,6 +82,7 @@ export const es: LanguagePack = {
   prompt: [
     'If the caller speaks Spanish, answer in Spanish for the rest of the call, using usted.',
     'In Spanish, keep sentences short and say dates and times the way they are given to you.',
+    'In Spanish, warmth is short and natural: "ajá", "claro" or "entiendo" while they talk, "Ay, lo siento mucho" for bad news, and a name said back ("Muy bien, Ginger entonces").',
   ],
   greeting: ({ assistantName, clinicName }) => `Gracias por llamar a ${clinicName}. ${assistantName ? `Soy ${assistantName}, la` : 'Soy la'} asistente virtual con inteligencia artificial de la clínica. ¿En qué le puedo ayudar?`,
   disclosure: /\b(asistente (virtual|de ia|con inteligencia artificial|automatizad[oa])|inteligencia artificial)\b/i,

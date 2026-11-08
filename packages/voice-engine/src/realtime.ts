@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { voiceToolDefinitions } from '@attendra/agent';
-import { type ClinicConfig, industryPack, PREVIEW_VOICES, type VoiceFlow } from '@attendra/core';
+import { type ClinicConfig, DEFAULT_VOICE, industryPack, REALTIME_VOICES, type VoiceFlow } from '@attendra/core';
 import OpenAI from 'openai';
 import { OpenAIRealtimeWS } from 'openai/realtime/ws';
 import type { CallOptions, Sideband, SidebandCommand, SidebandEvent, VoiceEngine } from './engine';
@@ -184,7 +184,7 @@ export interface RealtimeSocket {
 }
 
 /** A voice GPT-Live has that the Realtime models may not: the clinic's own if it is one of both, else a warm default. */
-const voiceFor = (voice: string) => ((PREVIEW_VOICES as readonly string[]).includes(voice) ? voice : 'marin');
+const voiceFor = (voice: string) => ((REALTIME_VOICES as readonly string[]).includes(voice) ? voice : DEFAULT_VOICE);
 
 /**
  * OpenAI's Realtime models (gpt-realtime-2.1 by default), for phone calls over SIP and

@@ -51,6 +51,7 @@ describe('provisioning', () => {
       ['PUT', `${P}/clinics/${c}/voice-engine`, { engine: 'grok' }],
       ['PUT', `${P}/clinics/${c}/voice-flow`, { flow: 'direct' }],
       ['PUT', `${P}/clinics/${c}/realtime-model`, { model: 'gpt-4o' }],
+      ['PUT', `${P}/clinics/${c}/voice`, { voice: 'beacon' }],
       ['PUT', `${P}/clinics/${c}/numbers/12345`, undefined],
       ['GET', `${P}/clinics/${c}/usage?from=yesterday`, undefined],
       ['POST', `${P}/clinics/${c}/calls-check`, {}],
@@ -199,6 +200,15 @@ describe('provisioning', () => {
     expect((await api.request('PUT', S, { cookie, body: { ...trial, realtimeModel: undefined } })).json().realtimeModel).toBe('gpt-realtime-2.1-mini');
     expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/realtime-model`, { body: { model: null }, authorization: auth })).statusCode).toBe(204);
     expect((await api.request('GET', S, { cookie })).json().realtimeModel).toBeUndefined();
+    // and the voice, to try two or three by ear on a test call (note 18): one gpt-realtime speaks too, audited, back to the default
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice`, { body: { voice: 'cedar' }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().voice).toBe('cedar');
+    // a GPT-Live-only voice would be heard as the default on gpt-realtime: not offered here
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice`, { body: { voice: 'beacon' }, authorization: auth })).statusCode).toBe(422);
+    expect((await api.request('PUT', `${P}/clinics/clinic_none/voice`, { body: { voice: 'sage' }, authorization: auth })).statusCode).toBe(404);
+    expect((await api.t.owner.execute(sql`select actor from audit_logs where action = 'clinic.voice.cedar'`)).rows).toEqual([{ actor: 'user:provisioning' }]);
+    expect((await api.request('PUT', `${P}/clinics/${DEMO_CLINIC.id}/voice`, { body: { voice: null }, authorization: auth })).statusCode).toBe(204);
+    expect((await api.request('GET', S, { cookie })).json().voice).toBe('marin');
   });
 
   it('sets test-call time, points numbers, and reads minutes and the weekly report', async () => {

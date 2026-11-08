@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, bookableProviders, ClinicConfig, countryCopy, INDUSTRIES, localDateOf, openMinutes, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
+import { addDays, bookableProviders, ClinicConfig, countryCopy, DEFAULT_VOICE, INDUSTRIES, localDateOf, openMinutes, REALTIME_VOICES, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
 import {
   addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
   openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls,
@@ -90,6 +90,8 @@ const PurgeQuery = z.object({ force: Flag, keepLogins: Flag });
 const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
 const FlowChoice = z.object({ flow: z.enum(['planner', 'tools']).nullable() });
 const ModelChoice = z.object({ model: z.enum(['gpt-realtime-2.1', 'gpt-realtime-2.1-mini']).nullable() });
+/** A voice both engines speak (core REALTIME_VOICES), or null for the default (core DEFAULT_VOICE). */
+const VoiceChoice = z.object({ voice: z.enum(REALTIME_VOICES).nullable() });
 const Period = z.object({ from: z.iso.datetime(), to: z.iso.datetime() }).refine((p) => p.from < p.to, 'from must be before to');
 const ReportQuery = z.object({ weeks: z.coerce.number().int().min(1).max(8).default(1) });
 // a POST body, so a caller's number is never in an address: since when, and optionally the number a check call comes from
@@ -387,6 +389,23 @@ export class ProvisioningController {
       const c = ClinicConfig.parse(current);
       if ((c.realtimeModel ?? null) === body.model) return { result: true };
       return { save: { ...c, realtimeModel: body.model ?? undefined }, result: true };
+    });
+    if (!done) throw new NotFoundException({ error: 'not_found' });
+  }
+
+  /**
+   * The clinic's voice, for trying two or three by ear on a test call (note 18): one the gpt-realtime models speak as well
+   * as GPT-Live, or null for the default. The same field as Settings > Greeting and voice, so the clinic sees it there and
+   * may change it again. Audited.
+   */
+  @Put('clinics/:clinicId/voice')
+  @HttpCode(204)
+  async voice(@Param('clinicId') clinicId: string, @Body(new ZodPipe(VoiceChoice)) body: z.infer<typeof VoiceChoice>) {
+    const voice = body.voice ?? DEFAULT_VOICE;
+    const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.voice.${voice}`, clinicId, (current) => {
+      const c = ClinicConfig.parse(current);
+      if (c.voice === voice) return { result: true };
+      return { save: { ...c, voice }, result: true };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
   }

@@ -74,6 +74,7 @@ export const en: LanguagePack = {
   locale: 'en-US',
   prompt: [
     'In English, say dates and times the way they are given to you.',
+    'In English, warmth is short and plain: "mm-hm" or "okay" while they talk, "Oh no, I\'m sorry to hear that" for bad news.',
   ],
   greeting: ({ assistantName, clinicName }) => `Thanks for calling ${clinicName}. ${assistantName ? `I'm ${assistantName}, the` : "I'm the"} clinic's AI assistant. How can I help you today?`,
   disclosure: /\b(ai|artificial intelligence|automated|virtual)\b.{0,20}\b(assistant|receptionist|agent)\b/i,
