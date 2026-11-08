@@ -55,7 +55,7 @@ export function VisitMoreOptions({ v, pet, onChange, disabled }: { v: Visit; pet
           <Field label="Book at least ___ ahead (notice)" htmlFor={`${id}-notice`} hint='For example "Surgery: at least 72 hours ahead". Empty: 2 hours.'>
             <div className="flex gap-2">
               <Input id={`${id}-notice`} type="number" inputMode="numeric" min={0} max={unit === 'days' ? 30 : 720} value={shown} placeholder="2"
-                aria-label={`${name}: book at least this far ahead, in ${unit}`} aria-invalid={noDayPossible(v) || undefined} aria-describedby={noDayPossible(v) ? `${id}-nodays` : undefined}
+                aria-label={`${name}: book at least this far ahead, in ${unit}`} aria-invalid={noDayPossible(v) || undefined} aria-describedby={[`${id}-notice-hint`, noDayPossible(v) ? `${id}-nodays` : null].filter(Boolean).join(' ')}
                 onChange={(e) => { const n = num(e.target.value); onChange({ noticeHours: n === undefined ? undefined : unit === 'days' ? n * 24 : n }); }} />
               <Select aria-label={`${name}: notice in hours or days`} className="w-28" value={unit} onChange={(e) => setUnit(e.target.value as 'hours' | 'days')}>
                 <option value="hours">hours</option>

@@ -93,7 +93,7 @@ export default function TextingSettings() {
 
         <Section id="map" title="Map link" description="The link texted with your address.">
           <Field label="Map link (optional)" hint="Leave empty to send a Google Maps link to your address.">
-            <Input id="map-url" type="url" placeholder="https://" value={draft.mapUrl ?? ''} onChange={(e) => set({ mapUrl: e.target.value.trim() ? e.target.value : undefined })} />
+            <Input id="map-url" type="url" maxLength={300} placeholder="https://" value={draft.mapUrl ?? ''} onChange={(e) => set({ mapUrl: e.target.value.trim() ? e.target.value : undefined })} />
           </Field>
         </Section>
 
@@ -111,7 +111,7 @@ export default function TextingSettings() {
               <Item handle={handle} id={`link-${i}`} removeLabel={`Remove ${l.label || 'this link'}`} onRemove={() => set({ links: draft.links.filter((_, j) => j !== i) })}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label="What the text calls it"><Input maxLength={40} value={l.label} placeholder="e.g. New client form" onChange={(e) => upd({ label: e.target.value })} /></Field>
-                  <Field label="Link"><Input type="url" maxLength={300} value={l.url} placeholder="https://" onChange={(e) => upd({ url: e.target.value })} /></Field>
+                  <Field label="Link" hint="Starts with https://"><Input type="url" maxLength={300} value={l.url} placeholder="https://" onChange={(e) => upd({ url: e.target.value })} /></Field>
                   <Field label="When to offer it" className="sm:col-span-2"><Input maxLength={120} value={l.when} placeholder="e.g. a new client asks about paperwork" onChange={(e) => upd({ when: e.target.value })} /></Field>
                 </div>
               </Item>
@@ -125,11 +125,11 @@ export default function TextingSettings() {
           {r.enabled && (
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Hours before the visit" htmlFor="reminder-hours" hint="Between 2 and 168. 24 is the day before.">
-                <Input id="reminder-hours" type="number" min={3} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
+                <Input id="reminder-hours" type="number" inputMode="numeric" min={2} max={168} value={r.hoursBefore} onChange={(e) => rem({ hoursBefore: Number(e.target.value) })} />
               </Field>
               <Field label="Quiet hours" htmlFor="quiet-from" hint="No texts between these times, in your time zone. One that would fall in them goes out when they end." className="sm:col-span-2">
                 <div className="flex items-center gap-2">
-                  <Input id="quiet-from" type="time" className="w-32" value={r.quietFrom} onChange={(e) => rem({ quietFrom: e.target.value })} />
+                  <Input id="quiet-from" aria-describedby="quiet-from-hint" type="time" className="w-32" value={r.quietFrom} onChange={(e) => rem({ quietFrom: e.target.value })} />
                   <span className="text-sm text-text-muted">to</span>
                   <Input aria-label="Quiet hours end" type="time" className="w-32" value={r.quietTo} onChange={(e) => rem({ quietTo: e.target.value })} />
                 </div>

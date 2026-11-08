@@ -144,9 +144,9 @@ export default function Integrations() {
           <CardContent>
             <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
               <Field label="URL" hint="A public https address. It is checked now, and again at every delivery.">
-                <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://n8n.example.com/webhook/attendra" className="font-mono" />
+                <Input type="url" inputMode="url" maxLength={2000} autoComplete="off" spellCheck={false} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://n8n.example.com/webhook/attendra" className="font-mono" />
               </Field>
-              <Field label="Description"><Input value={description} maxLength={200} onChange={(e) => setDescription(e.target.value)} placeholder="n8n: bookings to the practice sheet" /></Field>
+              <Field label="Description"><Input value={description} maxLength={200} autoComplete="off" onChange={(e) => setDescription(e.target.value)} placeholder="n8n: bookings to the practice sheet" /></Field>
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Events</legend>
                 {EVENTS.map((ev) => (

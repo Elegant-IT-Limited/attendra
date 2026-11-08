@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
-import { type ClinicConfig, managedList, providerName } from '@attendra/core';
+import { type ClinicConfig, managedList, providerName, SEARCH_MAX } from '@attendra/core';
 import { Users } from 'lucide-react';
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -62,7 +62,7 @@ export function VetsPicker({ clinic, providers, date, chosen, onChange, word, on
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${id}-find`} className="sr-only">Find a {one}</Label>
-          <Input id={`${id}-find`} type="search" className="h-8" placeholder="Find by name" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Input id={`${id}-find`} type="search" maxLength={SEARCH_MAX} autoComplete="off" className="h-8" placeholder="Find by name" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         {specialties.length > 0 && (
           <div className="space-y-1">

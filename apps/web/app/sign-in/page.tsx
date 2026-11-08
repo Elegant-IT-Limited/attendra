@@ -106,7 +106,7 @@ function SignIn() {
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" autoComplete="username" required value={email} aria-invalid={!!error} aria-describedby={error ? 'sign-in-error' : undefined} onChange={(e) => setEmail(e.target.value)} />
+          <Input id="email" type="email" autoComplete="username" required maxLength={254} value={email} aria-invalid={!!error} aria-describedby={error ? 'sign-in-error' : undefined} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">

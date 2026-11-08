@@ -149,7 +149,8 @@ export function BookingDialog({ clinicId, clinic, open, onOpenChange, patient: f
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="override-reason">Why (required)</Label>
-                <Input id="override-reason" maxLength={120} placeholder="e.g. Sick visit, the vet agreed" value={override.reason} onChange={(e) => setOverride({ ...override, reason: e.target.value })} />
+                <Input id="override-reason" required aria-required minLength={3} maxLength={120} autoComplete="off" aria-describedby="override-reason-hint" placeholder="e.g. Sick visit, the vet agreed" value={override.reason} onChange={(e) => setOverride({ ...override, reason: e.target.value })} />
+                <p id="override-reason-hint" className="text-xs text-text-muted">At least 3 characters, kept with the visit for the team.</p>
               </div>
             </div>
           )}

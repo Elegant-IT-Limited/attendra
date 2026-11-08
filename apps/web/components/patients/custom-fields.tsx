@@ -72,13 +72,13 @@ export function CustomFieldInputs({ fields, values, onChange, compact, idPrefix 
           <div key={f.id} className="space-y-1.5">
             <Label htmlFor={id}>{f.label}{f.required && <span className="text-danger" aria-label="required"> *</span>}</Label>
             {f.kind === 'yesno' ? (
-              <Select id={id} value={values[f.id] ?? ''} onChange={set(f.id)}>
+              <Select id={id} aria-required={f.required || undefined} value={values[f.id] ?? ''} onChange={set(f.id)}>
                 <option value="">Not filled in</option><option value="yes">Yes</option><option value="no">No</option>
               </Select>
             ) : f.kind === 'date' ? (
-              <DatePicker id={id} value={values[f.id] ?? ''} onChange={set(f.id)} />
+              <DatePicker id={id} aria-required={f.required || undefined} value={values[f.id] ?? ''} onChange={set(f.id)} />
             ) : f.kind === 'choice' ? (
-              <Select id={id} value={values[f.id] ?? ''} onChange={set(f.id)}>
+              <Select id={id} aria-required={f.required || undefined} value={values[f.id] ?? ''} onChange={set(f.id)}>
                 <option value="">Not filled in</option>
                 {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
               </Select>
@@ -93,7 +93,7 @@ export function CustomFieldInputs({ fields, values, onChange, compact, idPrefix 
                 })}
               </div>
             ) : (
-              <Input id={id} maxLength={200} autoComplete="off" inputMode={f.kind === 'number' ? 'decimal' : undefined} value={values[f.id] ?? ''} onChange={set(f.id)} />
+              <Input id={id} aria-required={f.required || undefined} maxLength={200} autoComplete="off" inputMode={f.kind === 'number' ? 'decimal' : undefined} value={values[f.id] ?? ''} onChange={set(f.id)} />
             )}
           </div>
         );

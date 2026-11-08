@@ -277,9 +277,10 @@ function AddPeople({ clinicId, clinicName, locations, canAllLocations, open, onO
           <fieldset disabled={add.isPending} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="people-emails">Emails</Label>
-              <Textarea id="people-emails" rows={4} required value={text} onChange={(e) => setText(e.target.value)} placeholder={'riley@example.com\nSam Lee <sam@example.com>'} />
-              <p className="text-xs text-text-muted">One per line, or separated by commas. To give someone new a name, write it before the email: Sam Lee &lt;sam@example.com&gt;.</p>
-              {invalid.length > 0 && <p className="text-sm text-danger">Not an email address: {invalid.join(', ')}</p>}
+              <Textarea id="people-emails" rows={4} required maxLength={5000} autoComplete="off" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)}
+                aria-describedby={['people-emails-hint', invalid.length > 0 ? 'people-emails-error' : null].filter(Boolean).join(' ')} aria-invalid={invalid.length > 0 || undefined} placeholder={'riley@example.com\nSam Lee <sam@example.com>'} />
+              <p id="people-emails-hint" className="text-xs text-text-muted">One per line, or separated by commas. To give someone new a name, write it before the email: Sam Lee &lt;sam@example.com&gt;.</p>
+              {invalid.length > 0 && <p id="people-emails-error" className="text-sm text-danger">Not an email address: {invalid.join(', ')}</p>}
             </div>
             {rows.map((r) => {
               const s = settings(r.email);

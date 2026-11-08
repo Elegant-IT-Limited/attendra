@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { ReactNode } from 'react';
-import { CUSTOM_FIELD_KINDS, type CustomField } from '@attendra/core';
+import { CHOICE_MAX, CUSTOM_FIELD_KINDS, type CustomField } from '@attendra/core';
 import { Minus, Plus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { EmptyNote, Field, Item, Section, TeamOnly } from '@/components/settings/section';
@@ -139,10 +139,11 @@ function Choices({ field, options, disabled, onChange }: { field: string; option
           <>
             {handle ?? <span className="size-8 shrink-0" aria-hidden />}
             <div className="min-w-0 flex-1">
-              <Input data-choice maxLength={60} value={o} disabled={disabled} placeholder={`Choice ${i + 1}`} aria-label={`${field || 'Dropdown'}: choice ${i + 1}`} aria-invalid={seen[i] || undefined}
+              <Input data-choice maxLength={CHOICE_MAX} autoComplete="off" value={o} disabled={disabled} placeholder={`Choice ${i + 1}`} aria-label={`${field || 'Dropdown'}: choice ${i + 1}`} aria-invalid={seen[i] || undefined}
+                aria-describedby={seen[i] ? `${field || 'dropdown'}-choice-${i}-taken`.replace(/\s+/g, '-') : undefined}
                 onChange={(e) => set(i, e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBelow(i); } }} />
-              {seen[i] && <p className="mt-1 text-xs text-danger">Already a choice above.</p>}
+              {seen[i] && <p id={`${field || 'dropdown'}-choice-${i}-taken`.replace(/\s+/g, '-')} className="mt-1 text-xs text-danger">Already a choice above.</p>}
             </div>
             <Button type="button" size="icon" variant="outline" aria-label={`Add a choice after ${o || `choice ${i + 1}`}`} disabled={disabled || rows.length >= 30} onClick={() => addBelow(i)}><Plus /></Button>
             <Button type="button" size="icon" variant="outline" className="text-text-muted hover:text-danger" aria-label={`Remove ${o || `choice ${i + 1}`}`} disabled={disabled || (rows.length === 1 && !o)} onClick={() => remove(i)}><Minus /></Button>

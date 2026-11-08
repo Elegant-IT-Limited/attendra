@@ -13,7 +13,7 @@ import { dayTitle } from '@/lib/format';
  * assistant says ("Christmas Eve"). Added from the top, kept in date order. A date
  * already a holiday or already listed is refused.
  */
-export function SpecialDaysEditor({ days, holidays, providers = [], onChange }: { days: SpecialDay[]; holidays: string[]; providers?: { id: string; name: string }[]; onChange: (days: SpecialDay[]) => void }) {
+export function SpecialDaysEditor({ days, holidays, providers = [], onChange, today }: { days: SpecialDay[]; holidays: string[]; providers?: { id: string; name: string }[]; onChange: (days: SpecialDay[]) => void; /** The clinic's own date: a special day is today or later. */ today: string }) {
   const [date, setDate] = useState('');
   // the row just added is kept in date order: bring it into view, outlined, with the cursor in it
   const [added, setAdded] = useState<string | null>(null);
@@ -32,12 +32,13 @@ export function SpecialDaysEditor({ days, holidays, providers = [], onChange }: 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Input type="date" aria-label="Special day date" className="w-44" value={date} onChange={(e) => setDate(e.target.value)} />
-        <Button type="button" variant="outline" disabled={!date || taken(date) || days.length >= 60}
+        <Input type="date" aria-label="Special day date" className="w-44" min={today} value={date} onChange={(e) => setDate(e.target.value)}
+          aria-invalid={(!!date && (taken(date) || date < today)) || undefined} aria-describedby={date && (taken(date) || date < today) ? 'special-day-problem' : undefined} />
+        <Button type="button" variant="outline" disabled={!date || taken(date) || date < today || days.length >= 60}
           onClick={() => { onChange([...days, { date, windows: [{ open: '08:00', close: '12:00' }] }].sort((a, b) => a.date.localeCompare(b.date))); setAdded(date); setDate(''); }}>
           <Plus /> Add special day
         </Button>
-        {date && taken(date) && <span className="text-sm text-text-muted">This date is already listed.</span>}
+        {date && (taken(date) || date < today) && <span id="special-day-problem" className="text-sm font-medium text-danger">{taken(date) ? 'This date is already listed.' : 'Pick today or a day to come.'}</span>}
       </div>
       {days.length > 0 && (
         <ul className="divide-y divide-border rounded-lg border border-border">

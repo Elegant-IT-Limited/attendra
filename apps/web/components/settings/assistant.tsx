@@ -30,7 +30,7 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
     <Section id="assistant" title="Assistant and languages" description="What the assistant is called, which languages it answers in, and the emergency number it gives. The dashboard stays in English.">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Assistant name" htmlFor="assistant-name" hint={`One word, 2 to 24 letters. Without one it is "${DEFAULT_ASSISTANT_NAME}". A name never replaces the AI disclosure.`}>
-          <Input id="assistant-name" value={c.assistantName ?? ''} placeholder="e.g. Maya" maxLength={24}
+          <Input id="assistant-name" autoComplete="off" value={c.assistantName ?? ''} placeholder="e.g. Maya" maxLength={24}
             onChange={(e) => set({ assistantName: e.target.value.trim() ? e.target.value : undefined })} />
         </Field>
         <Field label="Country" htmlFor="clinic-country" hint="Sets the emergency number the assistant gives a person in danger.">
@@ -97,8 +97,8 @@ export function AssistantSection({ c, set, disabled }: { c: ClinicConfig; set: (
               {primary ? <Spoken language={l}>{c.greeting}</Spoken> : (
                 <>
                   <Textarea id={`greeting-${l}`} lang={PACKS[l].locale} maxLength={400} rows={2} value={own ?? suggested} disabled={disabled}
-                    aria-invalid={missing || undefined} onChange={(e) => setOther(e.target.value === suggested ? undefined : e.target.value)} />
-                  {missing && <p className="text-xs text-danger">The {PACKS[l].name} greeting must say the caller is speaking with an AI assistant.</p>}
+                    aria-invalid={missing || undefined} aria-describedby={missing ? `greeting-${l}-error` : undefined} onChange={(e) => setOther(e.target.value === suggested ? undefined : e.target.value)} />
+                  {missing && <p id={`greeting-${l}-error`} className="text-xs text-danger">The {PACKS[l].name} greeting must say the caller is speaking with an AI assistant.</p>}
                 </>
               )}
             </div>
@@ -120,7 +120,7 @@ export function LocalNames({ thing, languages, onChange, what }: {
     <>
       {others.map((l) => (
         <Field key={l} label={`In ${PACKS[l].name}`}>
-          <Input lang={PACKS[l].locale} value={thing.names?.[l] ?? ''} placeholder={thing.name} aria-label={`${what} ${thing.name} in ${PACKS[l].name}`}
+          <Input lang={PACKS[l].locale} maxLength={80} autoComplete="off" value={thing.names?.[l] ?? ''} placeholder={thing.name} aria-label={`${what} ${thing.name} in ${PACKS[l].name}`}
             onChange={(e) => {
               const names = { ...thing.names, [l]: e.target.value || undefined };
               const kept = Object.fromEntries(Object.entries(names).filter(([, v]) => v)) as Partial<Record<Language, string>>;

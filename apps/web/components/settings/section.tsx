@@ -50,7 +50,10 @@ export function Field({ label, hint, htmlFor, children, className }: { label: st
   const only = Children.count(children) === 1 && isValidElement(children) ? (children as ReactElement<{ id?: string; 'aria-describedby'?: string }>) : null;
   const id = htmlFor ?? only?.props.id ?? auto;
   const hintId = hint ? `${id}-hint` : undefined;
-  const control = only ? cloneElement(only, { id, 'aria-describedby': hintId }) : children;
+  // a wrapper around the control (a field and a button, two times) is left as it is: the input inside has the id the
+  // label names (htmlFor) and ties the hint itself, so no id is on the page twice and the label reaches the input
+  const wraps = !!only && htmlFor !== undefined && only.props.id !== htmlFor;
+  const control = only && !wraps ? cloneElement(only, { id, 'aria-describedby': hintId }) : children;
   return (
     <div className={cn('min-w-0 space-y-1.5', className)}>
       <label htmlFor={id} className="block text-sm font-medium">{label}</label>

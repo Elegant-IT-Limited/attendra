@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { PatientCard, PatientList } from '@attendra/api/contracts';
-import { countryCopy, localDateOf } from '@attendra/core';
+import { countryCopy, localDateOf, SEARCH_MAX } from '@attendra/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useParams } from 'next/navigation';
@@ -71,7 +71,7 @@ export function PatientSearch({ clinicId, onPick, renderResult, autoFocus, empty
         <Label htmlFor="patient-search">{pets ? 'Find a pet' : 'Find a patient'}</Label>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-text-muted" aria-hidden />
-          <Input id="patient-search" type="search" autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
+          <Input id="patient-search" type="search" maxLength={SEARCH_MAX} autoComplete="off" spellCheck={false} autoFocus={autoFocus} className="pl-9" value={text}
             onChange={(e) => setText(e.target.value)} placeholder={pets ? 'Pet or owner name, phone, or birthday' : 'Name, date of birth, or phone number'} />
         </div>
         <p className="text-xs text-text-muted">{hint}</p>

@@ -88,7 +88,7 @@ export const Provider = z.object({
 
 export const VisitType = z.object({
   id: z.string(),
-  name: z.string(), // "new patient visit", said to callers as written
+  name: z.string().trim(), // "new patient visit", said to callers as written
   names: LocalNames.optional(), // the same, in another language: { es: 'consulta por enfermedad' }
   minutes: z.number().int().min(5).max(240),
   // who may book it: everyone, only new patients ("new patient visit") or only patients already on file
@@ -141,7 +141,11 @@ export const MenuLink = z.object({
 /** A detail the clinic keeps on each pet or patient that Attendra has no field for: microchip, insurer, a note. Staff fill it in. */
 export const CUSTOM_FIELD_KINDS = ['text', 'number', 'yesno', 'date', 'choice', 'multi'] as const;
 /** One choice a dropdown offers: a few words, never the separator multi-choice values are stored with. */
-const FieldOption = z.string().trim().min(1).max(40).regex(/^[^|]*$/, 'an option cannot contain |');
+/** The longest choice in a clinic's own dropdown: the field editor's box takes no more. */
+export const CHOICE_MAX = 40;
+/** The longest search the API reads (calls, requests, patients, cancelled visits, numbers to call as): search boxes take no more. */
+export const SEARCH_MAX = 100;
+const FieldOption = z.string().trim().min(1).max(CHOICE_MAX).regex(/^[^|]*$/, 'an option cannot contain |');
 export const CustomField = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,40}$/),
   label: z.string().trim().min(1).max(40),
@@ -338,8 +342,8 @@ export const VipCaller = z.object({
 
 export const Faq = z.object({
   id: z.string(),
-  question: z.string(),
-  answer: z.string().max(SETTINGS_LIMITS.faqAnswer),
+  question: z.string().trim(),
+  answer: z.string().trim().max(SETTINGS_LIMITS.faqAnswer),
 });
 
 /** The longest a clinic keeps call transcripts and summaries: three years. */
@@ -381,7 +385,7 @@ const ClinicConfigShape = z.object({
   // days whose hours differ from the week's: shorter, or closed with a reason
   specialDays: z.array(SpecialDay).max(60).optional(),
   // callers must know they are talking to software; the greeting has to say so (checked below, in the clinic's languages)
-  greeting: z.string().max(SETTINGS_LIMITS.greeting),
+  greeting: z.string().trim().max(SETTINGS_LIMITS.greeting),
   // the greeting in each other language the assistant speaks; absent: that language's suggested greeting
   greetings: z.partialRecord(LanguageSchema, z.string().trim().min(10).max(SETTINGS_LIMITS.greeting)).optional(),
   // how it talks: pace, style, acknowledgements
@@ -438,7 +442,7 @@ const ClinicConfigShape = z.object({
   // transcripts and call summaries older than this are deleted: a year by default, three at most (a longer value saved
   // before this limit is kept at three years); the medical record itself lives in the clinic's own system
   retentionDays: z.number().int().min(30, 'keep call records for at least 30 days').max(3650).default(365).transform((d) => Math.min(d, MAX_RETENTION_DAYS)),
-  recording: z.object({ enabled: z.boolean(), notice: z.string().optional() })
+  recording: z.object({ enabled: z.boolean(), notice: z.string().trim().optional() })
     .default({ enabled: false })
     .refine((r) => !r.enabled || !!r.notice, 'recording needs a notice that plays before the call is recorded'),
 }).superRefine((c, ctx) => {
@@ -678,12 +682,15 @@ export function listUsage(c: Pick<ClinicConfig, 'providers'>, name: ListName): R
 /** A name has at least one letter or digit (pets and clinics may have digits): never only spaces or symbols. */
 export const HAS_NAME = /[\p{L}\p{N}]/u;
 
+/** A YYYY-MM-DD that is a day on the calendar (not 2026-02-31). */
+export const realDate = (d: string) => { const t = Date.parse(`${d}T12:00:00Z`); return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d; };
+
 /**
  * The field standard for Settings, checked when a change is saved (not in the schema, so a configuration saved before a
  * limit still loads and calls keep running): names that are names, the lengths Settings' fields allow, and what a caller
  * hears said as a full sentence. Each problem is under its field's path, in words that say what to type.
  */
-export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencies' | 'vipCallers'>): { path: string; message: string }[] {
+export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes' | 'faqs' | 'recording' | 'emergencies' | 'vipCallers'> & Partial<Pick<ClinicConfig, 'holidays' | 'specialDays'>>): { path: string; message: string }[] {
   const out: { path: string; message: string }[] = [];
   const name = (path: string, v: string | undefined, max: number, what: string) => {
     const t = (v ?? '').trim();
@@ -694,7 +701,13 @@ export function settingsFieldProblems(c: Pick<ClinicConfig, 'name' | 'visitTypes
   c.visitTypes.forEach((v, i) => name(`visitTypes.${i}.name`, v.name, 60, 'Visit type name'));
   (c.faqs ?? []).forEach((f, i) => { if (!f.question.trim()) out.push({ path: `faqs.${i}.question`, message: 'Question: type the question callers ask' }); else if (f.question.length > SETTINGS_LIMITS.faqQuestion) out.push({ path: `faqs.${i}.question`, message: `Question: at most ${SETTINGS_LIMITS.faqQuestion} characters` }); });
   if (c.recording.notice && c.recording.notice.length > 300) out.push({ path: 'recording.notice', message: 'Recording notice: at most 300 characters' });
-  emergencyHospitalPaths(c.emergencies).forEach(({ path, hospital }) => { if (hospital.address.length > 200) out.push({ path: `${path}.address`, message: 'Address: at most 200 characters' }); });
+  emergencyHospitalPaths(c.emergencies).forEach(({ path, hospital }) => {
+    if (!HAS_NAME.test(hospital.name)) out.push({ path: `${path}.name`, message: 'Hospital name: type a name, not only spaces or symbols' });
+    if (hospital.address.length > 200) out.push({ path: `${path}.address`, message: 'Address: at most 200 characters' });
+  });
   (c.vipCallers ?? []).forEach((v, i) => { if (!HAS_NAME.test(v.name)) out.push({ path: `vipCallers.${i}.name`, message: 'Name: type a name, not only spaces or symbols' }); });
+  // a day that is on the calendar: "2026-02-31" has the right shape and is no day at all
+  (c.holidays ?? []).forEach((d, i) => { if (!realDate(d)) out.push({ path: `holidays.${i}`, message: `Holiday: ${d} is not a day on the calendar` }); });
+  (c.specialDays ?? []).forEach((d, i) => { if (!realDate(d.date)) out.push({ path: `specialDays.${i}.date`, message: `Special day: ${d.date} is not a day on the calendar` }); });
   return out;
 }

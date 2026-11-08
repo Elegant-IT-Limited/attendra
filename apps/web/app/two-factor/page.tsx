@@ -54,7 +54,7 @@ export default function TwoFactor() {
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="code">{backup ? 'Backup code' : 'Code'}</Label>
-          <Input id="code" autoFocus required inputMode={backup ? 'text' : 'numeric'} autoComplete="one-time-code" value={code}
+          <Input id="code" autoFocus required maxLength={64} spellCheck={false} inputMode={backup ? 'text' : 'numeric'} autoComplete="one-time-code" value={code}
             aria-invalid={!!error} aria-describedby={error ? 'code-error' : undefined} onChange={(e) => setCode(e.target.value)} />
         </div>
         {error && <div id="code-error"><Alert tone="danger">{error}</Alert></div>}

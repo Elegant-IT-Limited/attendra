@@ -291,7 +291,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
       <form id="doctor-form" onSubmit={submit} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div className="space-y-1.5"><Label htmlFor="doc-name">Name</Label>
-            <Input id="doc-name" required minLength={2} maxLength={80} value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Jane Example" aria-describedby="doc-name-hint" />
+            <Input id="doc-name" required minLength={2} maxLength={80} autoComplete="off" value={d.name} onChange={(e) => set({ name: e.target.value })} placeholder="Jane Example" aria-describedby="doc-name-hint" />
             <p id="doc-name-hint" className="text-xs text-text-muted">
               {d.kind === 'room' ? 'As callers hear it, e.g. "the X-ray room".' : hadTitle(d.name) ? `We add ${titleOf(d) === 'dr' ? 'Dr.' : 'no title'} for you: saved as "${bareName(d.name)}".` : `We add Dr. for you: callers hear "${providerName({ ...d, gender: d.gender || undefined })}".`}
             </p>
@@ -354,8 +354,8 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="doc-credentials">Qualifications and certifications</Label>
-          <Input id="doc-credentials" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder={pets ? 'e.g. DVM, Fear Free Certified' : 'e.g. MD, Board-certified in family medicine'} />
-          <p className="text-xs text-text-muted">Separated by commas. Shown on this page, and the assistant mentions them when a caller asks.</p>
+          <Input id="doc-credentials" maxLength={500} autoComplete="off" aria-describedby="doc-credentials-hint" value={credentials} onChange={(e) => setCredentials(e.target.value)} placeholder={pets ? 'e.g. DVM, Fear Free Certified' : 'e.g. MD, Board-certified in family medicine'} />
+          <p id="doc-credentials-hint" className="text-xs text-text-muted">Separated by commas, up to 8, each 2 to 60 characters. Shown on this page, and the assistant mentions them when a caller asks.</p>
         </div>
         {providerFields.length > 0 && (
           <fieldset className="space-y-3 rounded-lg border border-border p-4">
@@ -437,7 +437,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
           <Button type="button" size="sm" variant="outline" onClick={() => set({ timeOff: [{ from: today, to: today }, ...d.timeOff] })}><Plus /> Days off</Button>
           {d.timeOff.map((t, i) => (
             <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
-              <Input type="date" aria-label={t.start ? 'Day' : 'First day off'} className="h-8 w-38" value={t.from} min={editing.id ? undefined : today}
+              <Input type="date" aria-label={t.start ? 'Day' : 'First day off'} className="h-8 w-38" value={t.from} min={editing.id && t.from < today ? undefined : today}
                 onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, from: e.target.value, to: x.start || x.to < e.target.value ? e.target.value : x.to } : x)) })} />
               {t.start ? (
                 <>
@@ -458,7 +458,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
                   onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? (e.target.checked ? { ...x, to: x.from, start: '12:00', end: '17:00' } : { from: x.from, to: x.to, note: x.note }) : x)) })} />
                 Part of the day
               </label>
-              <Input aria-label="Note" className="h-8 flex-1" maxLength={80} value={t.note ?? ''} placeholder="Note (optional)"
+              <Input aria-label="Note" className="h-8 flex-1" maxLength={80} autoComplete="off" value={t.note ?? ''} placeholder="Note (optional)"
                 onChange={(e) => set({ timeOff: d.timeOff.map((x, j) => (j === i ? { ...x, note: e.target.value || undefined } : x)) })} />
               <Button type="button" size="sm" variant="ghost" aria-label="Remove these days off" onClick={() => set({ timeOff: d.timeOff.filter((_, j) => j !== i) })}><X /></Button>
             </div>
