@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import type { ClinicConfig } from '@attendra/core';
+import { type ClinicConfig, openAiEngineOf } from '@attendra/core';
 import type { CallOptions, Sideband, VoiceEngine } from './engine';
 
 /**
@@ -15,9 +15,13 @@ export class EngineRouter implements VoiceEngine {
     if (!engines[fallback]) throw new Error(`no engine named ${fallback}`);
   }
 
-  /** The engine for a clinic: its own choice when this deployment has it, else the default. */
-  engineFor(clinic: Pick<ClinicConfig, 'voiceEngine'>): VoiceEngine {
-    return (clinic.voiceEngine && this.engines[clinic.voiceEngine]) || this.engines[this.fallback]!;
+  /**
+   * The engine for a clinic: its own choice when this deployment has it, else the default. A clinic on Vapi whose call
+   * still reaches us (a browser test call, or Twilio's overflow to our SIP path) gets the engine it had before (batch 6).
+   */
+  engineFor(clinic: Pick<ClinicConfig, 'voiceEngine' | 'vapi'>): VoiceEngine {
+    const own = openAiEngineOf(clinic);
+    return (own && this.engines[own]) || this.engines[this.fallback]!;
   }
 
   /** The engine with this name, for a phone call that arrived on it (OpenAI decides that by the kind of call). */

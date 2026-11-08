@@ -2,9 +2,9 @@
 import { type PlannerSpeed, ResponsesPlanner } from '@attendra/agent';
 import {
   CallRepository, CallSummaryRepository, claimDelivery, clinicById, clinicForNumber, type Database, type PhiCipher,
-  PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify,
+  PostgresAuditLog, PostgresPatientDirectory, PostgresTaskQueue, throttledNotify, vapiCallEnded, vapiCallLive, vapiSecretHashOf, vapiSecretMatches,
 } from '@attendra/db';
-import { callUsNumber, type KnowledgeBase, PACKS, readablePhone, speakSlot } from '@attendra/core';
+import { callUsNumber, type KnowledgeBase, PACKS, readablePhone, speakSlot, VAPI_FREE_CONCURRENCY } from '@attendra/core';
 import type { Alerter, Logger } from '@attendra/observability';
 import { eventSink, type JobQueue, noJobs, SMS_STATUSES } from '@attendra/worker/queue';
 import { BuiltinScheduler } from '@attendra/scheduling';
@@ -47,8 +47,13 @@ export interface VoiceRuntime {
   simulatedCalls?: boolean;
   /** The clinic's own documents, searched by the assistant. */
   knowledge?: KnowledgeBase;
-  /** Path C of the bake-off (Vapi): the shared secret of /webhooks/vapi/v1/events; unset, the route does not exist. */
+  /**
+   * VAPI_SERVER_SECRET: the deployment-wide secret of /webhooks/vapi/v1/events, for the test clinics only (the bake-off's).
+   * Every location on Vapi has its own (vapi_secrets), so the route is there with or without it.
+   */
   vapiSecret?: string;
+  /** VAPI_MAX_CONCURRENCY: Vapi calls this subscription takes at once (the free tier's 4 by default), for the 70% alert. */
+  vapiMaxConcurrency?: number;
   /** gpt-realtime on the tools path: run a likely lookup before the reply. Defaults to off. */
   lookupAhead?: boolean;
 }
@@ -169,7 +174,12 @@ function wire(rt: Omit<VoiceRuntime, 'openaiApiKey' | 'liveModel' | 'realtimeMod
     } : undefined,
     log: rt.log,
     internalToken: rt.internalToken,
-    vapiSecret: rt.vapiSecret,
+    vapi: {
+      testSecret: rt.vapiSecret,
+      secretMatches: async (clinicId, presented) => vapiSecretMatches(cipher, clinicId, presented, await vapiSecretHashOf(db, clinicId)),
+      calls: { live: (id, at, alertAt) => vapiCallLive(db, id, at, alertAt), ended: (id, at) => vapiCallEnded(db, id, at) },
+      maxConcurrency: rt.vapiMaxConcurrency ?? VAPI_FREE_CONCURRENCY,
+    },
     lookupAhead: rt.lookupAhead,
     browserCallMaxSeconds: rt.browserCallMaxSeconds,
     simulator: sim ? { engine: sim, callFor: simulatedCallFor } : undefined,

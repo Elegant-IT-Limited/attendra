@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { TWO_FACTOR_MODES } from '@attendra/core';
+import { TWO_FACTOR_MODES, VAPI_FREE_CONCURRENCY } from '@attendra/core';
 import { z } from 'zod';
 
 // an empty line in .env (VOICE_URL=) means not set
@@ -68,6 +68,17 @@ const Env = z.object({
   // The way back for one release (v0.10): searches also read and match the newest 20,000 patients and the newest 5,000
   // calls' numbers on every keystroke, as before the search keys. Off by default; turn it on only if a search misses records.
   ATTENDRA_SEARCH_SCAN: flag,
+  // Vapi, a location's backup voice engine (batch 6, docs/provisioning.md): the private key the API creates and updates
+  // each location's assistant and number with. Unset, the Vapi provisioning routes answer 503 and no clinic can be switched.
+  VAPI_API_KEY: optional(z.string().min(10)),
+  // The BYO SIP trunk credential at Vapi for our Twilio Vapi trunk (made once, docs/provisioning.md), and Vapi's SIP host
+  // for its region (sip.eu.vapi.ai in the EU)
+  VAPI_SIP_CREDENTIAL_ID: optional(z.string().min(1).max(100)),
+  VAPI_SIP_HOST: z.preprocess(blank, z.string().regex(/^sip(\.[a-z]{2})?\.vapi\.ai$/, 'sip.vapi.ai or sip.<region>.vapi.ai').default('sip.vapi.ai')),
+  // The public https address Vapi reaches the voice service at (its /webhooks/vapi/v1/events); unset, PUBLIC_URL
+  VAPI_SERVER_URL: optional(z.url().startsWith('https://')),
+  // Vapi calls the subscription takes at the same moment (free 4, Core 10, +1 per line bought): the alert is at 70%
+  VAPI_MAX_CONCURRENCY: z.preprocess(blank, z.coerce.number().int().min(1).max(1000).default(VAPI_FREE_CONCURRENCY)),
   LOG_LEVEL: z.preprocess(blank, z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
 });
 export type ApiEnv = z.infer<typeof Env>;

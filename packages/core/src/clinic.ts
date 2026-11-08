@@ -2,6 +2,8 @@
 import { z } from 'zod';
 import { INDUSTRIES } from './industries/types';
 import { type Language, LANGUAGES, normalise, PACKS } from './locales';
+import { VOICE_ENGINES } from './call-costs';
+import { VapiLink } from './vapi';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'expected HH:MM');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD');
@@ -369,8 +371,12 @@ const ClinicConfigShape = z.object({
   holidays: z.array(isoDate).default([]),
   // who the assistant books with when the caller names nobody
   booking: BookingRules.optional(),
-  // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default
-  voiceEngine: z.enum(['gpt-live', 'gpt-realtime']).optional(),
+  // which voice engine answers: set by the operator (provisioning), never in Settings; absent is the deployment's default.
+  // 'vapi' (batch 6): the location's number reaches Vapi, whose tools are ours; a call that still reaches our own SIP
+  // path is answered by `vapi.overflowEngine` (openAiEngineOf)
+  voiceEngine: z.enum(VOICE_ENGINES).optional(),
+  // the location's Vapi assistant and number resource (ids only), set by provisioning, never in Settings (batch 6)
+  vapi: VapiLink.optional(),
   // how the voice answers each turn: 'planner' (one hand-off per turn to the planner, today's way) or 'tools' (the voice
   // calls the tools API itself: path A). Set by the operator (provisioning), never in Settings; absent is 'planner'; the hosted
   // service opens every new clinic on 'tools' (NEW_CLINIC_VOICE in the provisioning controller)

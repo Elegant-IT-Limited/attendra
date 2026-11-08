@@ -11,6 +11,7 @@ import { mailHook } from './mail-hook';
 import { loadEnv } from './config';
 import { httpVoiceClient } from './voice';
 import { openAiVoiceSampler } from './voice-samples/samplers';
+import { vapiClient } from '@attendra/voice-engine';
 
 const env = loadEnv();
 const log = createLogger({ name: 'api', level: env.LOG_LEVEL });
@@ -50,6 +51,15 @@ const app = await createApi({
   knowledge: { base: new HybridKnowledgeBase(new KnowledgeRepository(db), embedder), answerer, embeddingModel: embedder.model },
   voiceSamples,
   mail,
+  // Vapi, a location's backup engine (batch 6): with VAPI_API_KEY, provisioning creates and updates each location's assistant
+  vapi: {
+    client: env.VAPI_API_KEY ? vapiClient(env.VAPI_API_KEY) : null,
+    credentialId: env.VAPI_SIP_CREDENTIAL_ID,
+    sipHost: env.VAPI_SIP_HOST,
+    serverBase: env.VAPI_SERVER_URL ?? env.PUBLIC_URL,
+    maxConcurrency: env.VAPI_MAX_CONCURRENCY,
+  },
+  alerts,
 });
 
 await app.listen({ port: env.API_PORT, host: '0.0.0.0' });

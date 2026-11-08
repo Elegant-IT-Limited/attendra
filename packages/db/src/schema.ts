@@ -411,3 +411,25 @@ export const apiKeys = pgTable('api_keys', {
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
+
+/** Each location's own Vapi secret: encrypted, and as a keyed hash for checking (migration 0056, batch 6). */
+export const vapiSecrets = pgTable('vapi_secrets', {
+  clinicId: text('clinic_id').primaryKey(),
+  secretEnc: text('secret_enc').notNull(),
+  secretHash: text('secret_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The Vapi calls going on now, across every location: ids and times only (migration 0056). */
+export const vapiLiveCalls = pgTable('vapi_live_calls', {
+  vapiCallId: text('vapi_call_id').primaryKey(),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+});
+
+/** The most Vapi calls live at once each day (UTC), and when that day's 70% alert went out (migration 0056). */
+export const vapiConcurrencyDays = pgTable('vapi_concurrency_days', {
+  day: date('day', { mode: 'string' }).primaryKey(),
+  peak: integer('peak').notNull().default(0),
+  alertedAt: timestamp('alerted_at', { withTimezone: true }),
+});

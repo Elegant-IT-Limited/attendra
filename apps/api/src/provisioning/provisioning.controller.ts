@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, bookableProviders, ClinicConfig, countryCopy, DEFAULT_VOICE, INDUSTRIES, localDateOf, openMinutes, REALTIME_VOICES, sharedProviderPhones, starterClinic, textingOf, zonedInstant } from '@attendra/core';
+import { addDays, bookableProviders, ClinicConfig, countryCopy, DEFAULT_VOICE, INDUSTRIES, localDateOf, openMinutes, REALTIME_VOICES, sharedProviderPhones, starterClinic, textingOf, vapiAlertAt, VapiVoiceChoice, VOICE_ENGINES, type VoiceEngineName, zonedInstant } from '@attendra/core';
 import {
-  addClinicToOrganization, addMembership, assignNumber, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
-  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls,
+  addClinicToOrganization, addMembership, assignNumber, clinicCosts, clinicOwners, confirmEmail, createOrganizationWithClinic, type Database, type FrontDeskRepository,
+  openOrganizationForOwner, type PhiCipher, phoneCallsSince, phoneUsage, purgeClinic, qualityRows, releaseNumber, removeUnconfirmedAccount, resetTwoFactor, schema, setClinicClosed, setHostingPlan, setTestCallLimit, testCallStarts, topUpTestCalls, vapiConcurrency,
 } from '@attendra/db';
 import { eq } from 'drizzle-orm';
 import type { Logger } from '@attendra/observability';
@@ -14,12 +14,13 @@ import { z } from 'zod';
 import type { Auth } from '../auth';
 import { checkSignature } from '../http/signature';
 import { Public } from '../http/staff.guard';
-import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER } from '../http/tokens';
+import { API_OPTIONS, type ApiOptions, AUTH, CIPHER, CLOCK, DB, FRONT_DESK, LOGGER, VAPI } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
 import { ClinicName, ClinicOverview, HostingPlan, type ProviderPhoneReport } from '../contracts';
 import { createAccount, deleteNewAccount, findAccount } from '../members';
 import { COST_PER_MINUTE } from '../overview/overview.controller';
 import { qualityWeeks, weekStart } from '../quality/metrics';
+import { VapiLocations, VapiRefusal } from './vapi';
 
 /** How long an unconfirmed sign-up is kept before a new one may replace it: the hosting layer's link lifetime. */
 const UNCONFIRMED_KEPT_MS = 48 * 3_600_000;
@@ -87,7 +88,10 @@ const PlanBody = z.object({ plan: HostingPlan.nullable() });
 const Closed = z.object({ closed: z.boolean() });
 const Flag = z.enum(['0', '1']).default('0').transform((v) => v === '1');
 const PurgeQuery = z.object({ force: Flag, keepLogins: Flag });
-const EngineChoice = z.object({ engine: z.enum(['gpt-live', 'gpt-realtime']).nullable() });
+// 'vapi' (batch 6): the location's calls come through Vapi, once its assistant and number are there (PUT clinics/:id/vapi)
+const EngineChoice = z.object({ engine: z.enum(VOICE_ENGINES).nullable() });
+/** The location's own voice on Vapi (null: the default; absent: kept), and which of its numbers goes to Vapi (absent: its first). */
+const VapiBody = z.object({ voice: VapiVoiceChoice.nullable().optional(), number: z.string().regex(/^\+[1-9]\d{7,14}$/, 'expected E.164, like +13035550100').optional() }).strict();
 const FlowChoice = z.object({ flow: z.enum(['planner', 'tools']).nullable() });
 const ModelChoice = z.object({ model: z.enum(['gpt-realtime-2.1', 'gpt-realtime-2.1-mini']).nullable() });
 /** A voice both engines speak (core REALTIME_VOICES), or null for the default (core DEFAULT_VOICE). */
@@ -153,6 +157,7 @@ export class ProvisioningController {
     @Inject(LOGGER) private readonly log: Logger,
     @Inject(CLOCK) private readonly now: () => Date,
     @Inject(CIPHER) private readonly cipher: PhiCipher,
+    @Inject(VAPI) private readonly vapi: VapiLocations | null,
   ) {}
 
   /** A new organization, its clinic with the pack's first settings, and its owner, who signs in once the email is confirmed. */
@@ -351,16 +356,99 @@ export class ProvisioningController {
     return { deleted: result.counts };
   }
 
-  /** Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic sets. */
+  /**
+   * Which voice engine answers this clinic's calls; null goes back to the deployment's default. Not something the clinic
+   * sets. 'vapi' (batch 6) needs the location's Vapi assistant and number first (`PUT clinics/:id/vapi`; 409
+   * vapi_not_provisioned otherwise), and keeps the engine it had as `vapi.overflowEngine`: the one that answers a call still
+   * reaching our own SIP path. Answers 200 `{ previous }`, the engine it replaced (null: the deployment's default), so
+   * switching back restores exactly what the clinic had (it was 204 with no body before batch 6). Audited as
+   * clinic.voice_engine.<engine>.
+   */
   @Put('clinics/:clinicId/voice-engine')
-  @HttpCode(204)
-  async voiceEngine(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EngineChoice)) body: z.infer<typeof EngineChoice>) {
-    const done = await this.desk.updateSettings(clinicId, 'provisioning', `clinic.voice_engine.${body.engine ?? 'default'}`, clinicId, (current) => {
+  @HttpCode(200)
+  async voiceEngine(@Param('clinicId') clinicId: string, @Body(new ZodPipe(EngineChoice)) body: z.infer<typeof EngineChoice>): Promise<{ previous: VoiceEngineName | null }> {
+    type Done = { previous: VoiceEngineName | null } | 'not_provisioned';
+    const done = await this.desk.updateSettings<Done>(clinicId, 'provisioning', `clinic.voice_engine.${body.engine ?? 'default'}`, clinicId, (current) => {
       const c = ClinicConfig.parse(current);
-      if ((c.voiceEngine ?? null) === body.engine) return { result: true };
-      return { save: { ...c, voiceEngine: body.engine ?? undefined }, result: true };
+      const previous = c.voiceEngine ?? null;
+      if (previous === body.engine) return { result: { previous } };
+      if (body.engine === 'vapi') {
+        if (!c.vapi?.assistantId || !c.vapi.phoneNumberId) return { result: 'not_provisioned' };
+        return { save: { ...c, voiceEngine: 'vapi', vapi: { ...c.vapi, overflowEngine: VapiLocations.overflowOf(c.voiceEngine, c.vapi.overflowEngine) } }, result: { previous } };
+      }
+      return { save: { ...c, voiceEngine: body.engine ?? undefined }, result: { previous } };
     });
     if (!done) throw new NotFoundException({ error: 'not_found' });
+    if (done === 'not_provisioned') throw new HttpException({ error: 'vapi_not_provisioned' }, 409);
+    // the engine it replaced (null: the deployment's default), so switching back restores exactly what the clinic had
+    return done;
+  }
+
+  /**
+   * Creates or updates the location's Vapi assistant from its settings, and its number as a BYO SIP number on our Twilio
+   * Vapi trunk, answered by that assistant (idempotent: the ids kept in its settings are reused). The location's own secret
+   * is made the first time and never leaves the engine except to Vapi. `{ assistantId, phoneNumberId, sipUri, updatedAt }`.
+   * 503 vapi_not_configured (no VAPI_API_KEY) or vapi_sip_credential_missing; 409 no_number or number_not_assigned; 502
+   * vapi_failed when Vapi refused. Sending it again is the manual resync.
+   */
+  @Put('clinics/:clinicId/vapi')
+  @HttpCode(200)
+  async vapiProvision(@Param('clinicId') clinicId: string, @Body(new ZodPipe(VapiBody)) body: z.infer<typeof VapiBody>) {
+    return this.vapiDo(() => this.vapiLocations().provision(clinicId, body));
+  }
+
+  /** Where the location stands with Vapi: its ids, whether it is on Vapi, its overflow engine, voice, and whether its assistant matches its settings now. */
+  @Get('clinics/:clinicId/vapi')
+  async vapiStatus(@Param('clinicId') clinicId: string) {
+    return this.vapiDo(() => this.vapiLocations().status(clinicId));
+  }
+
+  /** Removes the number's resource at Vapi (the assistant stays), once the location is back on our engine: 409 on_vapi before. */
+  @Delete('clinics/:clinicId/vapi')
+  @HttpCode(204)
+  async vapiRemove(@Param('clinicId') clinicId: string) {
+    await this.vapiDo(() => this.vapiLocations().removeNumber(clinicId));
+  }
+
+  /** Vapi calls live at this moment across every location, today's (UTC) peak, the limit (VAPI_MAX_CONCURRENCY) and the alert's level (70%). */
+  @Get('vapi/concurrency')
+  async vapiConcurrencyNow() {
+    const limit = this.vapi?.maxConcurrency ?? null;
+    const now = await vapiConcurrency(this.db, this.now());
+    return { now: now.live, todayPeak: now.todayPeak, day: now.day, limit, alertAt: limit ? vapiAlertAt(limit) : null, alertedAt: now.alertedAt };
+  }
+
+  private vapiLocations(): VapiLocations {
+    if (!this.vapi) throw new HttpException({ error: 'vapi_not_configured' }, 503);
+    return this.vapi;
+  }
+
+  private async vapiDo<T>(fn: () => Promise<T>): Promise<T> {
+    try { return await fn(); } catch (err) {
+      if (err instanceof VapiRefusal) throw new HttpException({ error: err.code, ...err.extra }, err.status);
+      throw err;
+    }
+  }
+
+  /**
+   * A location's calls in a period, for the hosting layer's margin page: `engines`, its phone calls per engine
+   * (`{ engine, calls, minutes, voiceUsd, totalUsd }`; engine null for calls from before 0045 recorded it), `texts` the
+   * carrier took, `testCalls` (browser test calls, never billed), and `breakdown` per engine, flow and channel with every
+   * cost part. Money in US dollars from call_costs; counts and money only. The hosting layer adds the revenue and its own
+   * Twilio prices.
+   */
+  @Get('clinics/:clinicId/costs')
+  async costs(@Param('clinicId') clinicId: string, @Query(new ZodPipe(Period)) q: z.infer<typeof Period>) {
+    if (!(await this.desk.settings(clinicId))) throw new NotFoundException({ error: 'not_found' });
+    const { engines: breakdown, texts } = await clinicCosts(this.db, clinicId, new Date(q.from), new Date(q.to));
+    const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 ** places;
+    const total = (rows: typeof breakdown) => ({
+      calls: rows.reduce((a, r) => a + r.calls, 0), minutes: round(rows.reduce((a, r) => a + r.seconds, 0) / 60, 2),
+      voiceUsd: round(rows.reduce((a, r) => a + r.voiceUsd, 0), 6), totalUsd: round(rows.reduce((a, r) => a + r.totalUsd, 0), 6),
+    });
+    const phone = breakdown.filter((r) => r.channel === 'phone');
+    const engines = [...new Set(phone.map((r) => r.engine))].map((engine) => ({ engine, ...total(phone.filter((r) => r.engine === engine)) }));
+    return { from: q.from, to: q.to, currency: 'USD', engines, texts, testCalls: total(breakdown.filter((r) => r.channel !== 'phone')), breakdown };
   }
 
   /**

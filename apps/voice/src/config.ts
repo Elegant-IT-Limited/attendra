@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { VAPI_FREE_CONCURRENCY } from '@attendra/core';
 import { z } from 'zod';
 
 // an empty line in .env (TWILIO_AUTH_TOKEN=) means not set
@@ -38,8 +39,11 @@ const Env = z.object({
   BROWSER_CALL_MAX_SECONDS: z.preprocess(blank, z.coerce.number().int().min(30).max(1800).default(900)),
   // where alerts go: a Slack incoming webhook for the people who run Attendra; without it they are only logged
   ATTENDRA_SLACK_WEBHOOK_URL: optional(z.string().url().startsWith('https://hooks.slack.com/')),
-  // path C of the bake-off only: the secret a Vapi assistant sends to /webhooks/vapi/v1/events; unset, the route does not exist
+  // the test clinics only (the bake-off's): a deployment-wide secret a Vapi assistant may send to /webhooks/vapi/v1/events;
+  // every location on Vapi has its own (batch 6), so the route is there without it
   VAPI_SERVER_SECRET: optional(z.string().min(32, 'VAPI_SERVER_SECRET must be at least 32 characters')),
+  // calls Vapi takes at the same moment on this subscription (free 4, Core 10, +1 per line bought): the alert is at 70%
+  VAPI_MAX_CONCURRENCY: z.preprocess(blank, z.coerce.number().int().min(1).max(1000).default(VAPI_FREE_CONCURRENCY)),
   LOG_LEVEL: z.preprocess(blank, z.string().default('info')),
 });
 export type Env = z.infer<typeof Env>;
