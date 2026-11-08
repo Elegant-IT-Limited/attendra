@@ -156,6 +156,7 @@ const CLINIC_ID = /^clinic_[A-Za-z0-9_]{1,60}$/;
 
 export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
   const sessions = new Map<string, Session>();
+  const refused = new Set<string>();
   const testSecret = deps.testSecret ? digest(deps.testSecret) : null;
   const post = deps.fetch ?? fetch;
   const later = deps.later ?? ((ms: number, fn: () => void) => { setTimeout(fn, ms).unref?.(); });
@@ -223,20 +224,23 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     await deps.calls?.ended(vapiId, deps.now()).catch((err: unknown) => deps.log.warn({ err: { message: (err as Error).message } }, 'vapi: a call end could not be counted'));
   }
 
-  /** The call's session, opened on its first tool call; null when this location does not take Vapi calls now. */
+  /** The call's session, opened on its first message; null when this location does not take Vapi calls now. */
   async function session(m: VapiMessage, clinicId: string): Promise<Session | null> {
     const vapiId = m.call?.id;
     if (!vapiId) return null;
     const known = sessions.get(vapiId);
     if (known) { known.controlUrl ??= controlUrlOf(m); return known; }
+    // a call refused once stays refused, without a second alert for each of its messages
+    if (refused.has(vapiId)) return null;
     const parsed = ClinicConfig.safeParse(await deps.clinicById(clinicId));
-    if (!parsed.success) return null;
+    if (!parsed.success) { refused.add(vapiId); return null; }
     const clinic = parsed.data;
     const test = isVapiTestClinic(clinic.id);
     // a new call only for a location on Vapi: one switched back sends its calls to our own engine again
     if (!test && clinic.voiceEngine !== 'vapi') {
       deps.log.warn({ clinic_id: clinic.id, engine: clinic.voiceEngine ?? 'default' }, 'vapi: a new call for a location not on Vapi; refused');
       deps.alerts?.alert('vapi_call_refused', `Vapi sent a new call for ${clinic.id}, which is not on Vapi: its number may still point at Vapi's trunk.`);
+      refused.add(vapiId);
       return null;
     }
     const web = m.call?.type === 'webCall';
@@ -285,6 +289,7 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
     let m: VapiMessage;
     try { m = (JSON.parse(req.body as string) as { message?: VapiMessage }).message ?? {}; } catch { return reply.code(400).send({ error: 'invalid body' }); }
     for (const [id, s] of sessions) if (Date.now() - s.startedAt > SESSION_TTL_MS) sessions.delete(id);
+    if (refused.size > 10_000) refused.clear();
     const vapiId = m.call?.id;
 
     // the calls live at once, for Vapi's limit: from the call's status, or its first tool call if the status was missed
@@ -308,7 +313,10 @@ export function registerVapi(app: FastifyInstance, deps: VapiDeps) {
       }
       return reply.code(200).send({ results });
     }
-    const s = vapiId ? sessions.get(vapiId) : undefined;
+    // the call is ours from its first message (its status, or the conversation): our guardrails hear the caller's words
+    // even when the model calls no tool (an emergency in the first sentence), and the call is on file from its start
+    const opens = m.type === 'conversation-update' || m.type === 'end-of-call-report' || (m.type === 'status-update' && m.status === 'in-progress');
+    const s = vapiId ? sessions.get(vapiId) ?? (opens ? await session(m, clinicId) ?? undefined : undefined) : undefined;
     if (s) s.controlUrl ??= controlUrlOf(m);
     if (m.type === 'conversation-update' && s) sync(s, m.messages);
     if (m.type === 'end-of-call-report' && s) {

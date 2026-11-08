@@ -118,6 +118,7 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
       onCallerWords = true;
       await post({ type: 'conversation-update', messages: [...lines] });
       onCallerWords = false;
+      let proposed: string | null = null;
       for (const step of turn.delegate ?? []) {
         if (over()) break;
         const [tool, raw] = Object.entries(step)[0]! as [string, Record<string, unknown>];
@@ -128,10 +129,12 @@ export async function runScenarioOnVapi(scenario: Scenario): Promise<VapiPathRes
         const out = JSON.parse(r.result) as (typeof outputs)[number];
         outputs.push(out);
         for (const slot of Array.isArray(out.data.slots) ? out.data.slots as { slot_id: string }[] : []) if (!offered.includes(slot.slot_id)) offered.push(slot.slot_id);
-        if (tool === 'propose_booking' && out.ok && out.spoken) lastReadback = out.spoken;
+        if (out.ok && out.spoken && (tool.startsWith('propose_') || (out as { stage?: string }).stage === 'readback_pending')) proposed = lastReadback = out.spoken;
       }
+      // a read-back given this turn is said word for word, as Vapi's model says a tool's spoken words (the script's own
+      // reply paraphrases it for the planner path, whose voice is handed the words separately)
+      if (proposed && !(turn.reply ?? '').includes('{readback}')) say('bot', proposed);
       if (turn.reply) {
-        // the voice's reply, with the read-back it was given said word for word (as Vapi's model says a tool's spoken words)
         const offeredWords = outputs.flatMap((o) => (Array.isArray(o.data.slots) ? (o.data.slots as { when: string }[]).map((x) => x.when) : []));
         const text = turn.reply
           .replace(/\{offered\.(\d+)\}/g, (_, i: string) => offeredWords[Number(i)] ?? 'another time')
