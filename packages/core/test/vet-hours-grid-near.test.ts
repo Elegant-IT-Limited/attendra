@@ -90,10 +90,21 @@ describe('start times on the clinic\'s grid (item 2)', () => {
     expect(gridStarts(8 * 60 + 5, 9 * 60, 20, 10).map((m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`)).toEqual(['8:05', '8:10', '8:20', '8:30', '8:40']);
   });
 
-  it('a visit and its buffer fit inside the window: the last start moves earlier', () => {
-    // Friday 2 to 6: a 30-minute consultation keeps 10 minutes after it, so 5:20 is the last start, not 5:30
+  it('the visit fits inside the window; its buffer (cleaning time) may run past the close (approved 2026-11-08, SCH-11)', () => {
+    // Friday 2 to 6: a 30-minute consultation keeps 10 minutes after it, and 5:30 is still the last start: it ends at 6
     const fri = findSlots(clinic, [], { visitType: vt('vt_consult'), providers: [vet('prov_marlow')], from: '2026-11-06', days: 1, now, limit: 500, allStarts: true });
-    expect(times(fri).at(-1)).toBe('Fri 17:20');
+    expect(times(fri).at(-1)).toBe('Fri 17:30');
+    // the morning window too: 12:30 ends at 1, its cleaning time runs into the break
+    expect(times(fri.filter((s) => hm(s.start) < 'Fri 14:00')).at(-1)).toBe('Fri 12:30');
+    // a 20-minute visit with 10 minutes after it may start at 4:40 on a 5:00 close
+    const exam = { ...vt('vt_exam'), bufferMinutes: 10 };
+    const late = findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, [], { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true });
+    expect(times(late).at(-1)).toBe('Thu 16:40');
+    // and the buffer still keeps the next visit off: one booked at 4:40 leaves nothing at 4:20 for a buffered exam (4:20-4:40, then 10 free)
+    const booked = [{ providerId: 'prov_nolan', start: zonedInstant('2026-11-05', '16:40', tz), end: zonedInstant('2026-11-05', '17:00', tz), visitTypeId: 'vt_exam' }];
+    const around = times(findSlots({ ...clinic, visitTypes: clinic.visitTypes.map((v) => (v.id === 'vt_exam' ? exam : v)) }, booked, { visitType: exam, providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true }));
+    expect(around).not.toContain('Thu 16:20');
+    expect(around.at(-1)).toBe('Thu 16:10');
     // and the window end: a 20-minute visit at a clinic that closes at 5 starts 4:40 at the latest
     expect(times(findSlots(clinic, [], { visitType: vt('vt_exam'), providers: [vet('prov_nolan')], from: '2026-11-05', days: 1, now, limit: 500, allStarts: true })).at(-1)).toBe('Thu 16:40');
   });

@@ -118,6 +118,13 @@ export const appointments = pgTable('appointments', {
   confirmedVia: text('confirmed_via', { enum: ['text', 'staff'] }),
   /** Why the front desk booked it outside the hours, when it did. */
   overrideReason: text('override_reason'),
+  /**
+   * ends_at plus the visit type's buffer (cleaning time), set by the database on every write (migration 0053): the
+   * double-booking exclusion covers [starts_at, blocks_until). Never written by the application.
+   */
+  blocksUntil: timestamp('blocks_until', { withTimezone: true }),
+  /** When it was cancelled: set by the cancel (and by the database when a cancel did not say). */
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

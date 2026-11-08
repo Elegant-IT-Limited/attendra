@@ -109,7 +109,7 @@ export class StaffScheduler {
     return withClinic(this.db, clinic.id, async (tx) => {
       // one conditional update, so a cancel racing another cancel, or a move, changes the row once
       const cancelled = await tx.update(appointments).set({
-        status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date(),
+        status: 'cancelled', cancelledByUserId: userId, cancelReason: input.reason ?? null, updatedAt: new Date(), cancelledAt: new Date(),
         // like the assistant's cancels, a staff cancel carries a key, so a retry of it is recognised as one
         cancelKey: `staff:${userId}:${appointmentId}`,
       }).where(and(eq(appointments.clinicId, clinic.id), eq(appointments.id, appointmentId), eq(appointments.status, 'booked'), gt(appointments.startsAt, this.now())))

@@ -29,6 +29,7 @@ export * from './phones';
 export * from './routing';
 export * from './slots';
 export * from './starter';
+export * from './stranded';
 export * from './time';
 export * from './readback';
 export * from './tool-notes';

@@ -502,9 +502,29 @@ export const SlotQuery = z.object({
   /** Who the visit is for: with no providerId, only providers who see their age (and take new patients, if they are new). */
   patientId: z.uuid().optional(),
 });
-/** Visits booked on a provider's day off or a holiday, by day and provider. */
-export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: z.enum(['holiday', 'away']), count: z.number() })) });
+/** Why a booked visit no longer sits in bookable time (core strandedReason). */
+export const StrandedReason = z.enum(['holiday', 'away', 'outside_hours']);
+/** Visits booked on a provider's day off, a holiday, or outside the hours they are booked by, by day and provider. */
+export const ScheduleConflicts = z.object({ conflicts: z.array(z.object({ date: z.string(), providerId: z.string(), reason: StrandedReason, count: z.number() })) });
 export type ScheduleConflicts = z.infer<typeof ScheduleConflicts>;
+/**
+ * The 409 a save of hours, a vet's hours or days off, holidays or special days answers when it would leave booked
+ * visits outside any bookable time: the "move or keep" list, earliest first. The same save sent again with
+ * `?keepStranded=true` goes through and keeps them where they are (audited).
+ */
+export const StrandedVisits = z.object({
+  error: z.literal('strands_visits'),
+  message: z.string(),
+  visits: z.array(z.object({
+    appointmentId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), providerId: z.string(), visitTypeId: z.string(),
+    /** The patient (the pet, at a vet clinic) as the schedule names them; empty for a role that sees the schedule without names. */
+    patientName: z.string(),
+    reason: StrandedReason,
+  })),
+});
+export type StrandedVisits = z.infer<typeof StrandedVisits>;
+/** `?keepStranded=true` on a save: keep the visits it leaves outside the hours where they are. */
+export const KeepStrandedQuery = z.object({ keepStranded: z.enum(['true', 'false']).optional() });
 
 export const SlotList = z.object({
   slots: z.array(z.object({ providerId: z.string(), visitTypeId: z.string(), startsAt: z.iso.datetime(), endsAt: z.iso.datetime(), outsideClinicHours: z.boolean().optional() })),

@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { allVisitTypeIds, ClinicConfig, configProblems, leftOffList, listRowNote, newProviderId, noProviderWarnings, notOnListProblem, onList, type Provider, providerPhoneIssues, readCustomValues, readDoctors, withListValues } from '@attendra/core';
-import type { FrontDeskRepository, Tx } from '@attendra/db';
-import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, UnprocessableEntityException } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import type { FrontDeskRepository, ScheduleRepository, Tx } from '@attendra/db';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, Inject, NotFoundException, Param, Post, Put, Query, UnprocessableEntityException } from '@nestjs/common';
+import { ApiBody, ApiConflictResponse, ApiCookieAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
 import type { z } from 'zod';
-import { DoctorInput, DoctorList, ImportInput, ImportResult } from '../contracts';
+import { DoctorInput, DoctorList, ImportInput, ImportResult, KeepStrandedQuery } from '../contracts';
 import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
-import { CLOCK, FRONT_DESK } from '../http/tokens';
+import { CLOCK, FRONT_DESK, SCHEDULE } from '../http/tokens';
 import { issuesOf, ZodPipe } from '../http/zod.pipe';
+import { keeps, type StrandedHit, strandedBy, strandedConflict } from '../schedule/stranded';
 
 type Issues = ReturnType<typeof issuesOf>;
 type Change = { config: ClinicConfig } | { error: string; status: 404 | 409 | 422 } | { issues: Issues };
+type Outcome = Exclude<Change, { config: ClinicConfig }> | { config: ClinicConfig; kept: StrandedHit[] } | { stranded: StrandedHit[] };
 
 /**
  * The clinic's doctors, and rooms booked like one: who they are, what they see people
@@ -68,7 +70,7 @@ const listOf = (c: ClinicConfig): DoctorList => ({ providers: c.providers, visit
 @ApiParam({ name: 'clinicId', example: 'clinic_maple' })
 @Controller('clinics/:clinicId/doctors')
 export class DoctorsController {
-  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(CLOCK) private readonly now: () => Date) {}
+  constructor(@Inject(FRONT_DESK) private readonly desk: FrontDeskRepository, @Inject(CLOCK) private readonly now: () => Date, @Inject(SCHEDULE) private readonly schedule: ScheduleRepository) {}
 
   @Get()
   @Requires('settings:read')
@@ -88,7 +90,7 @@ export class DoctorsController {
   @ApiOkResponse({ schema: schemaOf(DoctorList) })
   async add(@Param('clinicId') clinicId: string, @Body(new ZodPipe(DoctorInput)) body: z.infer<typeof DoctorInput>, @CurrentStaff() staff: Staff): Promise<DoctorList> {
     const id = body.id ?? newProviderId(body.name);
-    return this.change(clinicId, staff, 'clinic.doctor.added', id, (c) => {
+    return this.change(clinicId, staff, 'clinic.doctor.added', id, null, (c) => {
       if (c.providers.some((p) => p.id === id)) return { error: `a doctor with the id ${id} is already on file`, status: 409 };
       const checked = fieldIssues(c, body);
       if ('issues' in checked) return checked;
@@ -103,8 +105,12 @@ export class DoctorsController {
   @ApiOperation({ summary: 'Change a doctor: details, hours, days off. Audited.' })
   @ApiBody({ schema: schemaOf(DoctorInput) })
   @ApiOkResponse({ schema: schemaOf(DoctorList) })
-  async update(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @Body(new ZodPipe(DoctorInput)) body: z.infer<typeof DoctorInput>, @CurrentStaff() staff: Staff): Promise<DoctorList> {
-    return this.change(clinicId, staff, 'clinic.doctor.updated', providerId, (c) => {
+  @ApiConflictResponse({ description: 'strands_visits: the hours or days off would leave booked visits outside any bookable time (StrandedVisits); send it again with ?keepStranded=true to keep them' })
+  @ApiQuery({ name: 'keepStranded', required: false, enum: ['true', 'false'], description: 'Keep the booked visits this change leaves outside the doctor\'s hours where they are (audited)' })
+  async update(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @Body(new ZodPipe(DoctorInput)) body: z.infer<typeof DoctorInput>, @CurrentStaff() staff: Staff,
+    @Query(new ZodPipe(KeepStrandedQuery)) q: z.infer<typeof KeepStrandedQuery> = {}): Promise<DoctorList> {
+    // hours or days off that would leave booked visits outside any bookable time are never saved silently
+    return this.change(clinicId, staff, 'clinic.doctor.updated', providerId, { keep: keeps(q) }, (c) => {
       const current = c.providers.find((p) => p.id === providerId);
       if (!current) return { error: 'not_found', status: 404 };
       const checked = fieldIssues(c, body, current);
@@ -122,7 +128,7 @@ export class DoctorsController {
   @ApiConflictResponse({ description: 'They still have booked visits to come, or they are the last doctor' })
   async remove(@Param('clinicId') clinicId: string, @Param('providerId') providerId: string, @CurrentStaff() staff: Staff): Promise<DoctorList> {
     // counted with the settings row locked, so a booking made a moment before is seen
-    return this.change(clinicId, staff, 'clinic.doctor.removed', providerId, async (c, tx) => {
+    return this.change(clinicId, staff, 'clinic.doctor.removed', providerId, null, async (c, tx) => {
       if (!c.providers.some((p) => p.id === providerId)) return { error: 'not_found', status: 404 };
       const upcoming = await this.desk.upcomingForProvider(clinicId, providerId, this.now(), tx);
       if (upcoming) return { error: `They have ${upcoming} booked ${upcoming === 1 ? 'visit' : 'visits'} still to come. Move or cancel ${upcoming === 1 ? 'it' : 'them'} on the Schedule first.`, status: 409 };
@@ -173,18 +179,29 @@ export class DoctorsController {
     return out.report;
   }
 
-  private async change(clinicId: string, staff: Staff, action: string, entityId: string, fn: (c: ClinicConfig, tx: Tx) => Change | Promise<Change>): Promise<DoctorList> {
-    const out = await this.desk.updateSettings<Change>(clinicId, staff.userId, action, entityId, async (stored, tx) => {
-      const next = await fn(ClinicConfig.parse(stored), tx);
+  /**
+   * One change to the doctors, in one locked update of the settings. With `stranded`, a change that would leave booked
+   * visits outside any bookable time is refused with the "move or keep" list, or saved with them kept where they are.
+   */
+  private async change(clinicId: string, staff: Staff, action: string, entityId: string, stranded: { keep: boolean } | null, fn: (c: ClinicConfig, tx: Tx) => Change | Promise<Change>): Promise<DoctorList> {
+    const now = this.now();
+    const out = await this.desk.updateSettings<Outcome>(clinicId, staff.userId, action, entityId, async (stored, tx) => {
+      const before = ClinicConfig.parse(stored);
+      const next = await fn(before, tx);
       if (!('config' in next)) return { result: next };
       next.config.providers = await withoutStandIn(this.desk, clinicId, next.config.providers, tx);
       // the same checks as saving Settings: ids unique, visit types that exist, hours that make sense
       const parsed = ClinicConfig.safeParse(next.config);
       if (!parsed.success) return { result: { issues: issuesOf(parsed.error) } };
       if (configProblems(parsed.data).length) return { result: { issues: configProblems(parsed.data) } };
-      return { save: parsed.data, result: { config: parsed.data } };
+      // read with the settings row locked, so a booking made a moment before is seen
+      const hits = stranded ? await strandedBy(this.desk, clinicId, before, parsed.data, now, tx) : [];
+      if (hits.length && !stranded?.keep) return { result: { stranded: hits } };
+      return { save: parsed.data, result: { config: parsed.data, kept: hits } };
     });
     if (!out) throw new NotFoundException({ error: 'not_found' });
+    if ('stranded' in out) throw await strandedConflict(this.schedule, clinicId, out.stranded, staff);
+    if ('kept' in out && out.kept.length) await this.schedule.keepStranded(clinicId, out.kept.map((v) => v.id), staff.userId, now);
     if ('issues' in out) throw new UnprocessableEntityException({ error: 'invalid_doctor', issues: out.issues });
     if ('error' in out) {
       if (out.status === 404) throw new NotFoundException({ error: 'not_found' });

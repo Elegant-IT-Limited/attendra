@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { normalizeName } from '@attendra/core';
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, type SQL, sql } from 'drizzle-orm';
 import { clinicAccess, clinicMemberships, memberships } from '../auth-schema';
 import { type Database, type Tx, withClinic } from '../client';
 import { type PhiCipher, phiContext } from '../crypto';
@@ -651,6 +651,17 @@ export class FrontDeskRepository {
     return withClinic(this.db, clinicId, (tx) => tx.select({ providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, visitTypeId: appointments.visitTypeId })
       .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'),
         lt(appointments.startsAt, q.to), sql`${appointments.endsAt} > ${q.from}`, q.except ? sql`${appointments.id} <> ${q.except}` : undefined)));
+  }
+
+  /**
+   * Booked visits that start in [from, to), with their ids and whether they were squeezed in outside the hours: what a
+   * change of hours is checked against (strandedReason). No patient data, so no audit row.
+   */
+  async bookedAhead(clinicId: string, q: { from: Date; to: Date }, within?: Tx): Promise<{ id: string; providerId: string; start: Date; end: Date; overrideReason: string | null }[]> {
+    const read = (tx: Tx) => tx.select({ id: appointments.id, providerId: appointments.providerId, start: appointments.startsAt, end: appointments.endsAt, overrideReason: appointments.overrideReason })
+      .from(appointments).where(and(eq(appointments.clinicId, clinicId), eq(appointments.status, 'booked'), sql`${appointments.startsAt} >= ${q.from}`, lt(appointments.startsAt, q.to)))
+      .orderBy(asc(appointments.startsAt), asc(appointments.id));
+    return within ? read(within) : withClinic(this.db, clinicId, read);
   }
 
   /**

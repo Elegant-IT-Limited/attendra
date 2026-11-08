@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { addDays, ageOn, awayOn, bookingOf, DESK_LEAD_MINUTES, awayWindows, ClinicConfig, type EventSink, localDateOf, localParts, normalizeName, specialDayOf, toMinutes, zonedInstant } from '@attendra/core';
+import { addDays, ageOn, bookingOf, DESK_LEAD_MINUTES, ClinicConfig, type EventSink, localDateOf, normalizeName, strandedReason, zonedInstant } from '@attendra/core';
 import { appointmentFacts, type Database, type FrontDeskRepository, nameMatches, type ScheduleEntry, type ScheduleRepository } from '@attendra/db';
 import { openSlots, type SlotProblem, type StaffChange, type StaffScheduler } from '@attendra/scheduling';
 import { Body, ConflictException, Controller, ForbiddenException, Get, HttpCode, Inject, NotFoundException, Param, Post, Query, UnprocessableEntityException } from '@nestjs/common';
@@ -14,6 +14,7 @@ import { schemaOf } from '../http/openapi';
 import { CurrentStaff, Requires, type Staff } from '../http/staff.guard';
 import { CLOCK, DB, EVENTS, FRONT_DESK, SCHEDULE, STAFF_SCHEDULER } from '../http/tokens';
 import { ZodPipe } from '../http/zod.pipe';
+import { STRANDED_CHECK_DAYS } from './stranded';
 
 const isUuid = (s: string) => z.uuid().safeParse(s).success;
 
@@ -114,37 +115,26 @@ export class AppointmentsController {
   }
 
   /**
-   * Visits still booked on a day their provider is now away, or the clinic now closed
-   * for a holiday: what a change to days off or holidays left behind. Counts by day and
+   * Visits still booked on a day their provider is now away, the clinic now closed for a holiday, or outside the hours
+   * their provider is booked by: what a change of hours, days off or holidays left behind (core strandedReason, the
+   * rule a save of those checks before it goes through). A visit squeezed in outside the hours with Override is there
+   * on purpose and is not counted as outside the hours (on a holiday or a day off it still is). Counts by day and
    * provider only, so no patient data and no audit row.
    */
   @Get('conflicts')
   @Requires('schedule:list')
-  @ApiOperation({ summary: 'Booked visits on a provider\'s days off or a holiday, from today: counts by day and provider. No patient data.' })
+  @ApiOperation({ summary: 'Booked visits on a provider\'s days off, a holiday or outside the hours, from now: counts by day and provider. No patient data.' })
   @ApiOkResponse({ schema: schemaOf(ScheduleConflicts) })
   async conflicts(@Param('clinicId') clinicId: string): Promise<ScheduleConflicts> {
     const clinic = await this.clinic(clinicId);
     const now = this.now();
     const today = localDateOf(now, clinic.timezone);
-    const booked = await this.desk.busy(clinicId, { from: now, to: zonedInstant(addDays(today, 366), '00:00', clinic.timezone) });
-    const found = new Map<string, { date: string; providerId: string; reason: 'holiday' | 'away'; count: number }>();
+    const booked = await this.desk.bookedAhead(clinicId, { from: now, to: zonedInstant(addDays(today, STRANDED_CHECK_DAYS), '00:00', clinic.timezone) });
+    const found = new Map<string, ScheduleConflicts['conflicts'][number]>();
     for (const b of booked) {
-      if (b.start < now) continue;
+      const reason = strandedReason(clinic, clinic.providers.find((p) => p.id === b.providerId), b);
+      if (!reason || (reason === 'outside_hours' && b.overrideReason)) continue;
       const date = localDateOf(b.start, clinic.timezone);
-      const provider = clinic.providers.find((p) => p.id === b.providerId);
-      const special = specialDayOf(clinic, date);
-      const minutes = localParts(b.start, clinic.timezone).minutes;
-      const end = minutes + Math.round((b.end.getTime() - b.start.getTime()) / 60_000);
-      // closed all day, or a special day whose hours no longer hold the whole visit
-      const closedDay = special
-        ? !special.windows.some((w) => toMinutes(w.open) <= minutes && end <= toMinutes(w.close))
-        : clinic.holidays.includes(date);
-      // a vet the special day lists keeps their own hours that day
-      const listed = !!provider && !!special?.providerIds?.includes(provider.id);
-      // a booking that overlaps a part-day absence counts too
-      const awayThen = !!provider && (awayOn(provider, date) || awayWindows(provider, date).some((a) => minutes < a.end && end > a.start));
-      const reason = closedDay && !listed ? 'holiday' : awayThen ? 'away' : null;
-      if (!reason) continue;
       const key = `${date}|${b.providerId}`;
       const entry = found.get(key) ?? { date, providerId: b.providerId, reason, count: 0 };
       entry.count++;

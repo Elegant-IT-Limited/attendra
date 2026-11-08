@@ -54,7 +54,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       startsAt: input.slot.start, endsAt: input.slot.end, idempotencyKey: input.idempotencyKey, createdByCallId: input.callId,
       noteEnc: input.note?.trim() && this.cipher ? this.cipher.encrypt(input.note.trim(), phiContext(clinicId, 'appointments.note')) : null,
     }, { actor: this.actor, action: 'appointment.booked', callId: input.callId }, replaces ? async (tx) => {
-      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date() })
+      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: `replaced:${input.idempotencyKey}`, cancelledByCallId: input.callId, updatedAt: new Date(), cancelledAt: new Date() })
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, replaces), eq(appointments.patientId, input.patientId), eq(appointments.status, 'booked')))
         .returning({ id: appointments.id });
       if (done.length) await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: replaces, callId: input.callId });
@@ -72,7 +72,7 @@ export class BuiltinScheduler implements SchedulerAdapter {
       if (!row) return { status: 'not_found' } as const; // includes someone else's appointment
       if (row.status === 'cancelled') return { status: row.cancelKey === input.idempotencyKey ? 'already_done' : 'not_found' } as const;
       // only a booked row is cancelled: of two cancels that both read it as booked, one wins
-      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId, updatedAt: new Date() })
+      const done = await tx.update(appointments).set({ status: 'cancelled', cancelKey: input.idempotencyKey, cancelledByCallId: input.callId, updatedAt: new Date(), cancelledAt: new Date() })
         .where(and(eq(appointments.clinicId, clinicId), eq(appointments.id, row.id), eq(appointments.status, 'booked'))).returning({ id: appointments.id });
       if (!done.length) return { status: 'not_found' } as const;
       await tx.insert(auditLogs).values({ clinicId, actor: this.actor, action: 'appointment.cancelled', entity: 'appointment', entityId: row.id, callId: input.callId });
