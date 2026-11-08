@@ -113,6 +113,32 @@ describe('the review flag', () => {
     const s = await new ModelSummariser(fixed({ ...GOOD, needsReview: true, reviewReason: 'The caller sounded confused about the time.' }).client, 'm').summarise(CALL);
     expect(s).toMatchObject({ needsReview: true, reviewReason: 'The caller sounded confused about the time.' });
   });
+
+  // one clinic's Quality page, 2026-11-08: "Flagged for review 100%", most of it the model flagging hang-ups as unclear
+  const flagged = { ...GOOD, needsReview: true, reviewReason: 'The call ended before the caller said what they needed.' };
+  const hangUp: CallForSummary = { ...CALL, outcome: 'abandoned', closeReason: 'remote_hangup', actions: [], transcript: [CALL.transcript[0]!, { speaker: 'caller', text: 'Hello?' }] };
+
+  it('does not keep the model\'s flag on a hang-up before the caller said what they wanted, or with no caller words at all', async () => {
+    for (const call of [hangUp, { ...hangUp, transcript: [CALL.transcript[0]!] }, { ...hangUp, transcript: [] }]) {
+      expect(await new ModelSummariser(fixed(flagged).client, 'm').summarise(call)).toMatchObject({ needsReview: false, reviewReason: null });
+    }
+  });
+
+  it('does not flag a calm call that already made a request for staff, but keeps the flag when that caller was upset', async () => {
+    const withRequest: CallForSummary = { ...CALL, outcome: 'task_created', actions: [{ tool: 'verify_caller', result: { ok: true, verified: true } }], tasks: [{ type: 'callback' }] };
+    expect(await new ModelSummariser(fixed(flagged).client, 'm').summarise(withRequest)).toMatchObject({ needsReview: false });
+    expect(await new ModelSummariser(fixed({ ...flagged, sentiment: 'frustrated' }).client, 'm').summarise(withRequest)).toMatchObject({ needsReview: true });
+  });
+
+  it('still flags a hang-up a fixed rule covers: emergency language is never dropped', async () => {
+    const s = await new ModelSummariser(fixed(flagged).client, 'm').summarise({ ...hangUp, emergency: true });
+    expect(s).toMatchObject({ needsReview: true, intent: 'emergency' });
+  });
+
+  it('tells the model not to flag hang-ups or calls that already made a request', () => {
+    expect(SUMMARY_INSTRUCTIONS).not.toContain('anything unclear');
+    expect(SUMMARY_INSTRUCTIONS).toContain('Do not set needsReview only because the caller hung up early');
+  });
 });
 
 describe('the local summariser', () => {
