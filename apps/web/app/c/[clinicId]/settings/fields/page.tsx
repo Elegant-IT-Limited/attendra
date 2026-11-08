@@ -8,8 +8,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { BuiltIn, cleanFields, FieldsEditor } from '@/components/settings/fields-editor';
 import { ListEditor } from '@/components/settings/list-editor';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
-import { PageHeader } from '@/components/shell';
+import { SettingsHeader } from '@/components/settings/settings-nav';
 import { Button } from '@/components/ui/button';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input } from '@/components/ui/input';
@@ -59,8 +58,8 @@ function FieldsAndLists() {
       : { title: 'Not saved', message: 'The changes did not reach the server. Check your connection and press Save changes again.' }),
   });
 
-  if (slice.isError) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
-  if (!draft || !config) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Skeleton className="h-96" /></>;
+  if (slice.isError) return <><SettingsHeader clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
+  if (!draft || !config) return <><SettingsHeader clinicId={clinicId} /><Skeleton className="h-96" /></>;
   const writable = can('settings:write');
   const pet = config.industry === 'vet';
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
@@ -79,8 +78,7 @@ function FieldsAndLists() {
 
   return (
     <>
-      <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <Tabs label="Fields and lists for" value={tab} onValueChange={setTab} className="mb-6"
         tabs={[{ value: 'patients', label: terms.title('patients') }, { value: 'providers', label: terms.title('providers') }, { value: 'requests', label: 'Requests' }]} />

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { weeklyHoursLine } from '@attendra/core';
-import { age, ago, clinicTime, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName } from '../lib/format';
+import { age, ago, clinicTime, firstWeekday, hourMark, localTime, NEW_MEMBER, personName, phone, setClinicCountry, telHref, tenDigitPhones, timeOf, usd, visitTypeName, weekdayHeads } from '../lib/format';
 
 afterEach(() => setClinicCountry(['+13035550100']));
 
@@ -106,5 +106,16 @@ describe('a visit type\'s name as a label', () => {
     expect(visitTypeName('Dental cleaning')).toBe('Dental cleaning');
     expect(visitTypeName('X-ray')).toBe('X-ray');
     expect(visitTypeName('')).toBe('');
+  });
+});
+
+describe('the first day of the week', () => {
+  it('is Sunday at a North American clinic and Monday elsewhere', () => {
+    setClinicCountry(['+13035550100']);
+    expect(firstWeekday()).toBe(0);
+    expect(weekdayHeads()).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+    setClinicCountry(['+442079460123']);
+    expect(firstWeekday()).toBe(1);
+    expect(weekdayHeads()).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   });
 });

@@ -5,8 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Search, Trash2, Upload } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { SettingsNav } from '@/components/settings/settings-nav';
-import { PageHeader } from '@/components/shell';
+import { SettingsHeader, SettingsIntro } from '@/components/settings/settings-nav';
 import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -106,8 +105,8 @@ export default function Knowledge() {
 
   return (
     <>
-      <PageHeader title="Settings" description="What the assistant knows about the clinic, from your own documents. It answers only from them, and says so when they do not answer a question." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
+      <SettingsIntro>What the assistant knows about the clinic, from your own documents. It answers only from them, and says so when they do not answer a question.</SettingsIntro>
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           {writable && (

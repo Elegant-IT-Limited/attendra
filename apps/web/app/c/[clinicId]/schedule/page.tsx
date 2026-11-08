@@ -20,7 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { dayTitle, VISIT_DOTS, visitTypeName, zoneLabel } from '@/lib/format';
+import { dayTitle, firstWeekday, VISIT_DOTS, visitTypeName, zoneLabel } from '@/lib/format';
 import { capLanes, laneProviders, MANY_PROVIDERS, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
@@ -42,6 +42,13 @@ export default function SchedulePage() {
 }
 
 const mondayOf = (date: string) => addDays(date, -((weekdayOf(date) + 6) % 7));
+/** The first day of the week a date is in on the clinic's calendar: the Sunday before at a US clinic (lib/format firstWeekday). */
+const weekStartOf = (date: string) => addDays(date, -((weekdayOf(date) - firstWeekday() + 7) % 7));
+/**
+ * What the schedule shows when nobody chose: booked visits only, in every view, as ezyVet and Provet open theirs.
+ * Cancelled ones are a choice away (Booked and cancelled, or the Cancelled history), and the page says when any are hidden.
+ */
+const DEFAULT_SHOW = 'booked';
 /** The first of the month a date is in, and of the months before and after it. */
 const monthOf = (date: string) => `${date.slice(0, 7)}-01`;
 const shiftMonth = (date: string, by: number) => {
@@ -90,10 +97,9 @@ function ScheduleScreen() {
   const providerList = clinic?.providers;
   useEffect(() => { if (providerList) setChosen(readChosen(clinicId, providerList)); }, [clinicId, providerList]);
   const choose = (ids: string[]) => { setChosen(ids); writeChosen(clinicId, ids); };
-  // booked only, booked and cancelled, or cancelled only (a history list). In a week the columns are narrow
-  // and a cancelled block sits on top of the booking that replaced it, so a week starts with booked only
+  // booked only, booked and cancelled, or cancelled only (a history list); booked only unless chosen, in every view
   const shown = params.get('show');
-  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : view === 'day' || view === 'agenda' ? 'all' : 'booked';
+  const show: 'booked' | 'all' | 'cancelled' = shown === 'booked' || shown === 'all' || shown === 'cancelled' ? shown : DEFAULT_SHOW;
   // ?new=1 (the command palette and the N key) opens New booking straight away
   const [booking, setBookingState] = useState(params.get('new') === '1');
   const setBooking = (open: boolean) => { setBookingState(open); if (!open && params.get('new')) set({ new: null }); };
@@ -107,9 +113,9 @@ function ScheduleScreen() {
     router.replace(`${pathname}?${q}`, { scroll: false });
   };
 
-  // a month is six whole weeks, from the Monday before the 1st
+  // a month is six whole weeks, from the first day of the week the 1st is in (Sunday at a US clinic)
   const weekly = view === 'week' || agendaWeek;
-  const from = view === 'month' ? mondayOf(monthOf(date)) : weekly ? mondayOf(date) : date;
+  const from = view === 'month' ? weekStartOf(monthOf(date)) : weekly ? mondayOf(date) : date;
   const days = view === 'month' ? 42 : weekly ? 7 : 1;
   const schedule = useQuery({
     queryKey: ['schedule', clinicId, from, days, providerId],

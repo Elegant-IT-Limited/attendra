@@ -6,8 +6,7 @@ import { Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
-import { PageHeader } from '@/components/shell';
+import { SettingsHeader } from '@/components/settings/settings-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox, RadioGroup, Switch } from '@/components/ui/controls';
@@ -48,8 +47,8 @@ export default function EmergencySettingsPage() {
       : { title: 'Not saved', message: 'The changes did not reach the server. Check your connection and press Save changes again.' }),
   });
 
-  if (slice.isError) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
-  if (!draft || !slice.config) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Skeleton className="h-96" /></>;
+  if (slice.isError) return <><SettingsHeader clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
+  if (!draft || !slice.config) return <><SettingsHeader clinicId={clinicId} /><Skeleton className="h-96" /></>;
   const c = slice.config;
   const writable = can('settings:write');
   const set = (patch: Partial<EmergencyDraft>) => setDraft({ ...draft, ...patch });
@@ -91,8 +90,7 @@ export default function EmergencySettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <Alert className="mb-6" title={W.rightNow}>{view.callLine}</Alert>
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">

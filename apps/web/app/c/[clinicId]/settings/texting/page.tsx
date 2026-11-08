@@ -6,9 +6,8 @@ import { Plus } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyNote, Field, Item, Section } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
+import { SettingsHeader } from '@/components/settings/settings-nav';
 import { TextsEditor } from '@/components/settings/texts-editor';
-import { PageHeader } from '@/components/shell';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/controls';
 import { Alert, Skeleton } from '@/components/ui/feedback';
@@ -52,8 +51,8 @@ export default function TextingSettings() {
       : { title: 'Not saved', message: 'The changes did not reach the server. Check your connection and press Save changes again.' }),
   });
 
-  if (slice.isError) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
-  if (!draft || !slice.config) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Skeleton className="h-96" /></>;
+  if (slice.isError) return <><SettingsHeader clinicId={clinicId} /><Alert tone="danger">The settings did not load. Refresh the page.</Alert></>;
+  if (!draft || !slice.config) return <><SettingsHeader clinicId={clinicId} /><Skeleton className="h-96" /></>;
   const c = slice.config;
   const writable = can('settings:write');
   const pet = c.industry === 'vet';
@@ -75,8 +74,7 @@ export default function TextingSettings() {
 
   return (
     <>
-      <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <fieldset disabled={!writable || save.isPending} className="min-w-0 space-y-6 pb-24">
         <Section id="texting" title="Texting" description={'What the assistant may text a caller during a call, after they say yes. Texts go only to the number they are calling from, or the number on their file, and every text ends with "Reply STOP to opt out."'}>

@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react';
 import { MarkedIcon, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
 import { Popover } from '@/components/ui/overlay';
-import { dayTitle, hourMark, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES, visitTypeName } from '@/lib/format';
+import { dayTitle, hourMark, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES, visitTypeName, weekdayHeads } from '@/lib/format';
 import { blockHeight, clinicHoursFor, closedDay, columnsThatFit, hoursFor, initials, MIN_BLOCK, outsideDesk, placeLane, PX } from '@/lib/schedule-lanes';
 import { RENDER_MARKS, useRenderMark } from '@/lib/render-mark';
 import { cn } from '@/lib/utils';
@@ -300,7 +300,7 @@ export function MonthGrid({ clinic, month, dates, appointments, today, onOpen, o
     <div role="region" aria-label="Month schedule" tabIndex={0} className="max-h-[calc(100dvh-13rem)] overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
       <div className="min-w-[640px]" role="grid" aria-label="Month">
         <div className="grid grid-cols-7 border-b border-border text-xs font-medium text-text-muted" role="row">
-          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} role="columnheader" className="px-2 py-2">{d}</div>)}
+          {weekdayHeads().map((d) => <div key={d} role="columnheader" className="px-2 py-2">{d}</div>)}
         </div>
         {/* a row per week, so the grid reads as one to a screen reader */}
         {Array.from({ length: Math.ceil(dates.length / 7) }, (_, w) => dates.slice(w * 7, w * 7 + 7)).map((week) => (

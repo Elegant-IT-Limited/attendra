@@ -189,6 +189,14 @@ export function waited(iso: string, now = Date.now()) {
 
 export const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+/**
+ * The day a week starts on the clinic's calendar, as a weekday (0 is Sunday): Sunday in North America, as US and
+ * Canadian clinics and their calendars count, Monday elsewhere. The Month view's columns follow it.
+ */
+export const firstWeekday = () => (country.us ? 0 : 1);
+/** The Month view's column heads, from the clinic's first weekday: "Sun" to "Sat" at a US clinic. */
+export const weekdayHeads = () => Array.from({ length: 7 }, (_, i) => DAYS[(firstWeekday() + i) % 7]!.slice(0, 3));
+
 /** "Tue 6 Oct 3:00 PM", in the clinic's zone: the short form the schedule and call page use. */
 export function shortWhen(iso: string, timeZone: string) {
   const d = new Date(iso);

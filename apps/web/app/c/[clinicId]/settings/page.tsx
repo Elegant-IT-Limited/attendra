@@ -12,7 +12,7 @@ import { VisitMoreOptions } from '@/components/settings/visit-options';
 import { AssistantSection, LocalNames } from '@/components/settings/assistant';
 import { BookingRulesSection } from '@/components/settings/booking-rules';
 import { EmptyNote, Field, Item, SaveIssues, Section, TeamOnly } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
+import { SettingsHeader } from '@/components/settings/settings-nav';
 import { SpecialDaysEditor } from '@/components/settings/special-days';
 import { moved, Sortable } from '@/components/ui/sortable';
 import { TimeZonePicker } from '@/components/settings/time-zone-picker';
@@ -21,8 +21,7 @@ import { ConflictsAlert } from '@/components/schedule/conflicts-alert';
 import { StrandedDialog, strandedOf } from '@/components/schedule/stranded-dialog';
 import type { StrandedVisits } from '@attendra/api/contracts';
 import { Switch } from '@/components/ui/controls';
-import { PageHeader } from '@/components/shell';
-import { Button, buttonStyles } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { type Conflict, SettingsConflict } from '@/components/settings/settings-conflict';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -49,7 +48,6 @@ const PARTS: { id: string; label: (t: T) => string }[] = [
   { id: 'vip', label: () => 'VIP callers' },
   { id: 'answers', label: () => 'Common questions' },
   { id: 'offers', label: () => 'Offers' },
-  { id: 'fields', label: () => 'Fields and lists' },
   { id: 'links', label: () => 'Menu links' },
   { id: 'records', label: () => 'Call records' },
   { id: 'numbers', label: () => 'Phone numbers' },
@@ -60,7 +58,7 @@ function issueLabel(path: string) {
   const top = path.split('.')[0] ?? '';
   const names: Record<string, string> = {
     greeting: 'Greeting', name: 'Clinic name', routing: 'Transfers', visitTypes: 'Visit types', faqs: 'Common questions', offers: 'Offers',
-    requestTopics: 'Kinds of request', customFields: 'Fields', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencies: 'Emergencies (Settings > Emergencies)',
+    requestTopics: 'Kinds of request (Settings > Fields and lists)', customFields: 'Fields (Settings > Fields and lists)', vipCallers: 'VIP callers', menuLinks: 'Menu links', emergencies: 'Emergencies (Settings > Emergencies)',
     hours: 'Opening hours', holidays: 'Holidays', specialDays: 'Special days', assistantName: 'Assistant name', emergencyNumber: 'Emergency number', languages: 'Languages', retentionDays: 'Call records',
     address: 'Address', website: 'Website', industry: 'Kind of practice', timezone: 'Time zone', voice: 'Voice', primaryLanguage: 'Languages', afterHours: 'After hours',
     booking: 'Booking rules', talk: 'How the assistant talks', greetings: 'Greetings', texting: 'Texting', emergencyTransferEnabled: 'Transfer emergencies to on-call', recording: 'Call records', phoneNumbers: 'Phone numbers', providers: 'Doctors and veterinarians',
@@ -71,7 +69,7 @@ function issueLabel(path: string) {
 /** The settings card a save problem belongs in, by the setting's top key. */
 const SECTION_OF: Record<string, string> = {
   greeting: 'greeting-voice', greetings: 'greeting-voice', name: 'greeting-voice', address: 'greeting-voice', website: 'greeting-voice', voice: 'greeting-voice', talk: 'greeting-voice',
-  recording: 'records', retentionDays: 'records', routing: 'transfers', visitTypes: 'visits', faqs: 'answers', offers: 'offers', requestTopics: 'fields', customFields: 'fields',
+  recording: 'records', retentionDays: 'records', routing: 'transfers', visitTypes: 'visits', faqs: 'answers', offers: 'offers',
   vipCallers: 'vip', menuLinks: 'links', emergencyTransferEnabled: 'greeting-voice', hours: 'hours',
   holidays: 'holidays', specialDays: 'holidays', assistantName: 'assistant', emergencyNumber: 'assistant', country: 'assistant', languages: 'assistant', primaryLanguage: 'assistant',
   booking: 'booking', texting: 'your-texts', phoneNumbers: 'numbers',
@@ -193,8 +191,8 @@ export default function Settings() {
     },
   });
 
-  if (saved.isError) return <><PageHeader title="Settings" /><Alert tone="danger">The clinic settings did not load. Refresh the page; if it keeps failing, check that the API is running.</Alert></>;
-  if (!draft) return <><PageHeader title="Settings" /><Skeleton className="h-96" /></>;
+  if (saved.isError) return <><SettingsHeader clinicId={clinicId} /><Alert tone="danger">The clinic settings did not load. Refresh the page; if it keeps failing, check that the API is running.</Alert></>;
+  if (!draft) return <><SettingsHeader clinicId={clinicId} /><Skeleton className="h-96" /></>;
   const c = draft;
   const set = (patch: Partial<ClinicConfig>) => setDraft({ ...c, ...patch });
   const dirty = JSON.stringify(c) !== JSON.stringify(saved.data);
@@ -217,8 +215,7 @@ export default function Settings() {
 
   return (
     <SaveIssues.Provider value={issuesFor}>
-      <PageHeader title="Settings" description="What the assistant says, when the clinic is open, and what it can book. Changes apply to the next call." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
       {!writable && <Alert className="mb-6">You can read these settings. A practice manager or owner can change them.</Alert>}
       <StrandedDialog clinicId={clinicId} clinic={c} stranded={stranded?.visits ?? null} pending={save.isPending}
         onKeep={() => stranded && save.mutate({ config: stranded.config, keep: true })} onClose={() => setStranded(null)} />
@@ -485,13 +482,7 @@ export default function Settings() {
           </Sortable>
         </Section>
 
-        <Section id="fields" title="Fields and lists" description={`Your own fields on ${terms.patients}, ${terms.providers} and requests, the kinds of request the assistant labels, and the lists they pick from have their own tab.`}>
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/c/${clinicId}/settings/fields?tab=patients`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>Fields on {terms.patients}</Link>
-            <Link href={`/c/${clinicId}/settings/fields?tab=providers`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>{terms.title('providers')} and their lists</Link>
-            <Link href={`/c/${clinicId}/settings/fields?tab=requests`} className={buttonStyles({ variant: 'outline', size: 'sm' })}>Requests and kinds of request</Link>
-          </div>
-        </Section>
+        {/* Fields and lists has one entry point: its own tab in the row above (it was also a part of this page) */}
 
         {SHOW_MENU_LINKS && (
         <Section id="links" title="Links in your menu" description="Shortcuts for your team, not for callers: your practice software, a lab portal, a form. Each shows in this dashboard's menu on the left, for everyone at the clinic, and opens in a new tab. The assistant does not use them; links it may text a caller are under Texting."

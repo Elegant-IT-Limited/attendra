@@ -2,6 +2,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { PageHeader } from '@/components/shell';
 import { ScrollRegion } from '@/components/ui/scroll-region';
 import { useClinic } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -38,4 +39,26 @@ export function SettingsNav({ clinicId }: { clinicId: string }) {
       </nav>
     </ScrollRegion>
   );
+}
+
+/** The one line under "Settings" on every tab: the same words, so the header keeps its height and the tab row stays put. */
+export const SETTINGS_DESCRIPTION = 'How the assistant answers, what it knows and can book, and where the clinic\'s events go. Changes apply to the next call.';
+
+/**
+ * Every Settings tab's header, loading and error states included: the title, the one description and the tab row. What a
+ * tab is for goes under the row (SettingsIntro), so moving between tabs never moves the row (it did: each tab had its own
+ * description, one to three lines long).
+ */
+export function SettingsHeader({ clinicId }: { clinicId: string }) {
+  return (
+    <>
+      <PageHeader title="Settings" description={SETTINGS_DESCRIPTION} />
+      <SettingsNav clinicId={clinicId} />
+    </>
+  );
+}
+
+/** What one Settings tab is for, under the tab row. */
+export function SettingsIntro({ children }: { children: React.ReactNode }) {
+  return <p className="mb-6 max-w-3xl text-sm text-text-muted" data-testid="settings-intro">{children}</p>;
 }

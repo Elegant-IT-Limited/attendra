@@ -32,7 +32,7 @@ test('every visit on the day grid can be tapped and opens its panel: short, rebo
     if (!v) return route.fallback();
     return route.fulfill({ json: { ...v, note: null, updatedAt: v.createdAt, patient: { id: v.patientId, name: v.patientName, dob: '1990-01-01', phone: '+13035550101' } } });
   });
-  await page.goto(`/c/${clinic}/schedule?view=day&date=${DAY}`);
+  await page.goto(`/c/${clinic}/schedule?view=day&date=${DAY}&show=all`);
   await expect(page.getByTestId('schedule')).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
   const blocks = page.getByTestId('lane').filter({ has: page.getByRole('button', { name: /Ada Brooks/ }) }).getByTestId('appointment');
   await expect(blocks).toHaveCount(VISITS.length);

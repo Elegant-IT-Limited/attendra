@@ -6,8 +6,7 @@ import { Copy, KeyRound, Plus, RotateCcw, Send, Trash2, Webhook } from 'lucide-r
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { Field } from '@/components/settings/section';
-import { SettingsNav } from '@/components/settings/settings-nav';
-import { PageHeader } from '@/components/shell';
+import { SettingsHeader, SettingsIntro } from '@/components/settings/settings-nav';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,13 +125,13 @@ export default function Integrations() {
   });
 
   const tz = clinic?.timezone ?? 'UTC';
-  if (!isPending && !allowed) return <><PageHeader title="Settings" /><SettingsNav clinicId={clinicId} /><Empty title="Not available">Only owners and practice managers manage integrations.</Empty></>;
+  if (!isPending && !allowed) return <><SettingsHeader clinicId={clinicId} /><Empty title="Not available">Only owners and practice managers manage integrations.</Empty></>;
   const failed = (list.data?.endpoints ?? []).filter((e) => e.disabledReason === 'repeated_failures');
 
   return (
     <>
-      <PageHeader title="Settings" description="Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never names or what was said, and no record ids unless you turn that on for an endpoint." />
-      <SettingsNav clinicId={clinicId} />
+      <SettingsHeader clinicId={clinicId} />
+      <SettingsIntro>Send the clinic's events to n8n, Zapier, Make or your own systems. Events carry ids, times and outcomes, never names or what was said, and no record ids unless you turn that on for an endpoint.</SettingsIntro>
       {failed.map((e) => (
         <Alert key={e.id} tone="danger" title="An endpoint was turned off" className="mb-6">
           {e.url} failed {e.consecutiveFailures} events in a row, each after a day of retries. Fix the receiver, then turn it back on.
