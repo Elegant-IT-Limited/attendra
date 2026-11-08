@@ -8,7 +8,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigat
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Agenda } from '@/components/schedule/agenda';
 import { AppointmentPanel } from '@/components/schedule/appointment-panel';
-import { BookingDialog, capital } from '@/components/schedule/booking-dialog';
+import { BookingDialog } from '@/components/schedule/booking-dialog';
 import { Calendar, MonthGrid, ScheduleList } from '@/components/schedule/calendar';
 import { CancelledHistory } from '@/components/schedule/cancelled-history';
 import { PatientPicker } from '@/components/patients/patient-picker';
@@ -20,7 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Alert, Empty, Skeleton } from '@/components/ui/feedback';
 import { Input, Label, Select } from '@/components/ui/input';
 import { api, useClinic, useClinicConfig } from '@/lib/api';
-import { dayTitle, VISIT_DOTS, zoneLabel } from '@/lib/format';
+import { dayTitle, VISIT_DOTS, visitTypeName, zoneLabel } from '@/lib/format';
 import { capLanes, laneProviders, MANY_PROVIDERS, readChosen, readView, writeChosen, writeView } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 import { SAFETY_POLL_MS } from '@/lib/changes';
@@ -274,7 +274,7 @@ function Legend({ clinic }: { clinic: ClinicConfig }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted" aria-label="Legend">
       {clinic.visitTypes.map((v, i) => (
-        <li key={v.id} className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full', VISIT_DOTS[i % VISIT_DOTS.length])} aria-hidden />{capital(v.name)}</li>
+        <li key={v.id} className="flex items-center gap-1.5"><span className={cn('size-2.5 rounded-full', VISIT_DOTS[i % VISIT_DOTS.length])} aria-hidden />{visitTypeName(v.name)}</li>
       ))}
       <li className="flex items-center gap-1"><Bot className="size-3.5" aria-hidden /> Booked by the assistant</li>
       <li className="flex items-center gap-1"><User className="size-3.5" aria-hidden /> Booked by staff</li>

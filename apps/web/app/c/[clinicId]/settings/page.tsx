@@ -28,7 +28,7 @@ import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Input, Select, Textarea } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, apiTagged, useClinic } from '@/lib/api';
-import { clinicTime, DAYS, dayTitle, phone } from '@/lib/format';
+import { clinicTime, DAYS, dayTitle, phone, visitTypeName } from '@/lib/format';
 import { useActiveSection } from '@/lib/scroll-spy';
 import { cn } from '@/lib/utils';
 import { useTerms } from '@/lib/terms';
@@ -385,7 +385,7 @@ export default function Settings() {
             })}>
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
-                  <Field label="Name"><Input value={v.name} maxLength={60} placeholder="e.g. Dental cleaning" onChange={(e) => visit(i, { name: e.target.value })} /></Field>
+                  <Field label="Name" hint={v.name && visitTypeName(v.name) !== v.name ? `Your team sees "${visitTypeName(v.name)}" on the schedule; the assistant says it as typed.` : undefined}><Input value={v.name} maxLength={60} placeholder="e.g. Dental cleaning" onChange={(e) => visit(i, { name: e.target.value })} /></Field>
                   <Field label="Minutes"><Input type="number" inputMode="numeric" min={5} max={240} step={5} value={v.minutes} onChange={(e) => visit(i, { minutes: Number(e.target.value) })} /></Field>
                 </div>
                 {c.languages.some((l) => l !== 'en') && <div className="grid gap-4 sm:grid-cols-2"><LocalNames thing={v} languages={c.languages} what="Visit type" onChange={(names) => visit(i, { names })} /></div>}

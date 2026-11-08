@@ -200,6 +200,28 @@ export function shortWhen(iso: string, timeZone: string) {
 export const timeOf = (iso: string | Date, timeZone: string) =>
   new Intl.DateTimeFormat('en-US', { timeZone, ...hours() }).format(new Date(iso));
 
+/**
+ * "8:00 AM" for a local HH:MM (clinic hours, a vet's hours, time off), on the clinic's clock like every other time in
+ * the dashboard: 12-hour at a US clinic, "08:00" at a 24-hour one. No time zone arithmetic; "24:00" reads as midnight.
+ */
+export function localTime(hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number) as [number, number];
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...hours() }).format(new Date(Date.UTC(2000, 0, 1, h, m)));
+}
+
+/** A schedule's hour mark from minutes after midnight: "8 AM" on a 12-hour clock, "08:00" on a 24-hour one. */
+export function hourMark(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  return country.hour12 ? `${((h + 11) % 12) + 1} ${h % 24 < 12 ? 'AM' : 'PM'}` : `${String(h).padStart(2, '0')}:00`;
+}
+
+/**
+ * A visit type's name wherever it stands as a label (the legend, a calendar block, a vet's card, a list): sentence
+ * case, "Wellness exam", whatever the clinic typed. The name is stored as typed, often lowercase because the assistant
+ * and the texts say it mid-sentence ("your wellness exam"); Settings edits that stored text.
+ */
+export const visitTypeName = (name: string) => name.charAt(0).toUpperCase() + name.slice(1);
+
 /** "Tuesday 29 September" for a local YYYY-MM-DD, with no time zone arithmetic. */
 export function dayTitle(date: string, style: 'long' | 'short' = 'long') {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];

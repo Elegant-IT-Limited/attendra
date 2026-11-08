@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 'use client';
 import type { DoctorInput, DoctorList, StrandedVisits } from '@attendra/api/contracts';
-import { agesLine, bareName, doctorGuide, OWN_HOURS_NOTE, hadTitle, providerName, titleOf, doctorTemplate, type Gender, genderWord, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine, allVisitTypeIds, doesEveryVisitType } from '@attendra/core';
+import { agesLine, bareName, doctorGuide, OWN_HOURS_NOTE, hadTitle, providerName, titleOf, doctorTemplate, type Gender, type Language, localDateOf, managedList, needsPhone, onList, type Provider, shownProviders, type VisitType, weeklyHoursLine, allVisitTypeIds, doesEveryVisitType } from '@attendra/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarOff, FileUp, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
@@ -25,12 +25,11 @@ import { Input, Label, Select } from '@/components/ui/input';
 import { PhoneInput } from '@/components/ui/phone-input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure, useClinic, useClinicConfig } from '@/lib/api';
-import { dayTitle } from '@/lib/format';
+import { dayTitle, localTime, phone, visitTypeName } from '@/lib/format';
 import { useAddToList } from '@/lib/lists';
 import { providerTerms, useTerms } from '@/lib/terms';
 import { pageData } from '@/lib/page-data';
 
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAYS = [['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'], ['4', 'Thursday'], ['5', 'Friday'], ['6', 'Saturday'], ['0', 'Sunday']] as const;
 type Hours = NonNullable<Provider['hours']>;
 type Draft = Omit<DoctorInput, 'gender' | 'otherPhones' | 'visitTypeIds'> & { gender: Gender | ''; ownHours: boolean; /** As typed, separated by commas. */ otherPhones: string; visitTypeIds: string[] };
@@ -98,7 +97,7 @@ export default function DoctorsPage() {
   if (isPending || doctors.isPending) return <><PageHeader title={terms.title('providers')} /><Skeleton className="h-64" /></>;
   if (doctors.isError || !doctors.data) return <><PageHeader title={terms.title('providers')} /><Alert tone="danger">The list of {terms.providers} did not load. Refresh to try again.</Alert></>;
   const { visitTypes, noProvider } = doctors.data;
-  const visitName = (id: string) => visitTypes.find((v) => v.id === id)?.name ?? id;
+  const visitName = (id: string) => visitTypeName(visitTypes.find((v) => v.id === id)?.name ?? id);
 
   return (
     <>
@@ -151,19 +150,20 @@ export default function DoctorsPage() {
                     <p className="truncate font-medium">{providerName(p)}</p>
                     {p.placeholder && <p className="mt-1"><Badge tone="warn">A stand-in: offered only until you add your own</Badge></p>}
                     {config.data && needsPhone(config.data, p) && <p className="mt-1"><Badge tone="warn">Add a phone number</Badge></p>}
-                    <p className="text-sm text-text-muted">{[p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set'), p.gender && p.kind === 'person' ? capitalize(genderWord(p.gender)) : null].filter(Boolean).join(', ')}</p>
+                    {/* the specialty alone: sex beside it read as part of it ("Breath Issues, Female"); it stays in the vet's details */}
+                    <p className="text-sm text-text-muted" data-testid="doctor-subtitle">{p.specialty || (p.kind === 'room' ? 'A room' : 'No specialty set')}</p>
                   </div>
                   {p.acceptingNewPatients ? <Badge tone="ok">Takes new {terms.patients}</Badge> : <Badge>No new {terms.patients}</Badge>}
                 </div>
                 <dl className="grid flex-1 grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-5 py-4 text-sm">
                   {terms.patient !== 'pet' && <><dt className="text-text-muted">Sees</dt><dd>{agesLine(p).replace(/^./, (c) => c.toUpperCase())}</dd></>}
-                  {p.phone && <><dt className="text-text-muted">Phone</dt><dd>{[p.phone, ...(p.otherPhones ?? [])].join(', ')}</dd></>}
+                  {p.phone && <><dt className="text-text-muted">Phone</dt><dd className="tabular-nums" data-testid="doctor-phone">{[p.phone, ...(p.otherPhones ?? [])].map(phone).join(', ')}</dd></>}
                   {!!p.credentials?.length && <><dt className="text-text-muted">Qualified</dt><dd>{p.credentials.join(', ')}</dd></>}
                   {p.categories.length > 0 && <><dt className="text-text-muted">{providerTerms(terms.patient === 'pet').sees}</dt><dd className="flex flex-wrap content-start items-start gap-1">{p.categories.map((c) => <Badge key={c} tone="accent">{c}</Badge>)}</dd></>}
                   {providerFields.filter((f) => p.custom?.[f.id]).map((f) => <div key={f.id} className="contents"><dt className="text-text-muted">{f.label}</dt><dd>{shownValue(f, p.custom?.[f.id])}</dd></div>)}
                   <dt className="text-text-muted">Visit types they do</dt><dd>{doesEveryVisitType(p, { visitTypes }) ? 'All visit types' : p.visitTypeIds.map(visitName).join(', ')}</dd>
-                  <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
-                  {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t, i) => <span key={`${t.from}-${i}`} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start ? `, ${t.start} to ${t.end}` : ''}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
+                  <dt className="text-text-muted">Hours</dt><dd className="space-y-0.5">{weeklyHoursLine(p.hours ?? clinicHours, localTime).split('; ').map((line) => <span key={line} className="block">{line}</span>)}{!p.hours && <span className="block text-text-muted">The clinic&apos;s hours</span>}</dd>
+                  {away.length > 0 && <><dt className="text-text-muted">Away</dt><dd className="space-y-0.5">{away.slice(0, 3).map((t, i) => <span key={`${t.from}-${i}`} className="flex items-center gap-1"><CalendarOff className="size-3.5 text-text-muted" aria-hidden />{t.from === t.to ? dayTitle(t.from) : `${dayTitle(t.from)} to ${dayTitle(t.to)}`}{t.start && t.end ? `, ${localTime(t.start)} to ${localTime(t.end)}` : ''}{t.note ? `, ${t.note}` : ''}</span>)}</dd></>}
                 </dl>
                 {manager && (
                   <div className="flex justify-end border-t border-border px-5 py-3">
@@ -393,7 +393,7 @@ function DoctorPanel({ clinicId, editing, visitTypes, clinicHours, languages, to
               <label key={v.id} className="flex items-center gap-2 text-sm">
                 <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={d.visitTypeIds.includes(v.id)}
                   onChange={(e) => set({ visitTypeIds: e.target.checked ? [...d.visitTypeIds, v.id] : d.visitTypeIds.filter((x) => x !== v.id) })} />
-                {v.name}
+                {visitTypeName(v.name)}
               </label>
             ))}
           </div>

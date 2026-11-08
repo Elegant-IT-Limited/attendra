@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { capital } from '@/components/schedule/booking-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/controls';
@@ -14,7 +13,7 @@ import { Panel } from '@/components/ui/dialog';
 import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
 import { api, ApiFailure } from '@/lib/api';
-import { dayTitle, timeOf } from '@/lib/format';
+import { dayTitle, timeOf, visitTypeName } from '@/lib/format';
 
 /**
  * Removing a vet who still has visits to come (note 32): their visits go to other vets at the
@@ -36,7 +35,7 @@ export function HandoverDialog({ clinicId, clinic, providerId, open, onClose, on
   const tz = clinic.timezone;
   const nameOf = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
   const leaving = nameOf(providerId);
-  const visitName = (id: string) => capital(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
+  const visitName = (id: string) => visitTypeName(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
 
   const preview = useQuery({
     queryKey: ['handover', clinicId, providerId, to],

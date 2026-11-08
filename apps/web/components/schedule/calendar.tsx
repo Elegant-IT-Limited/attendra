@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react';
 import { MarkedIcon, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
 import { Popover } from '@/components/ui/overlay';
-import { dayTitle, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES } from '@/lib/format';
+import { dayTitle, hourMark, timeOf, VISIT_DOTS, VISIT_TAILS, VISIT_TONES, visitTypeName } from '@/lib/format';
 import { blockHeight, clinicHoursFor, closedDay, columnsThatFit, hoursFor, initials, MIN_BLOCK, outsideDesk, placeLane, PX } from '@/lib/schedule-lanes';
 import { RENDER_MARKS, useRenderMark } from '@/lib/render-mark';
 import { cn } from '@/lib/utils';
@@ -94,7 +94,7 @@ export function Calendar({ clinic, dates, providers, appointments, today, now, o
           <div className="sticky left-0 z-[25] bg-surface">
             {hours.map((h) => (
               <span key={h} className="absolute right-2 -translate-y-1/2 whitespace-nowrap text-xs tabular-nums text-text-muted" style={{ top: (h - start) * PX }}>
-                {h === start ? '' : `${((Math.floor(h / 60) + 11) % 12) + 1} ${h < 12 * 60 ? 'AM' : 'PM'}`}
+                {h === start ? '' : hourMark(h)}
               </span>
             ))}
           </div>
@@ -206,7 +206,7 @@ function Lane({ clinic, provider, date, start, end, appointments, onOpen, visitI
  */
 function MoreVisits({ clinic, items, onOpen, style }: { clinic: ClinicConfig; items: Appointment[]; onOpen: (id: string) => void; style: CSSProperties }) {
   const tz = clinic.timezone;
-  const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? '';
+  const visit = (id: string) => visitTypeName(clinic.visitTypes.find((v) => v.id === id)?.name ?? '');
   return (
     <Popover className="w-64 p-1" trigger={
       <button type="button" data-testid="more-visits" style={style}
@@ -235,7 +235,7 @@ function MoreVisits({ clinic, items, onOpen, style }: { clinic: ClinicConfig; it
 export function ScheduleList({ clinic, dates, appointments, onOpen }: { clinic: ClinicConfig; dates: string[]; appointments: Appointment[]; onOpen: (id: string) => void }) {
   const tz = clinic.timezone;
   const provider = (id: string) => { const p = clinic.providers.find((x) => x.id === id); return p ? providerName(p) : id; };
-  const visit = (id: string) => clinic.visitTypes.find((v) => v.id === id)?.name ?? id;
+  const visit = (id: string) => visitTypeName(clinic.visitTypes.find((v) => v.id === id)?.name ?? id);
   const idx = (id: string) => Math.max(0, clinic.visitTypes.findIndex((v) => v.id === id));
   const days = dates.map((d) => ({ date: d, items: appointments.filter((a) => localParts(new Date(a.startsAt), tz).date === d) })).filter((d) => d.items.length || dates.length === 1);
   if (!days.length) return <Empty title="Nothing booked">No appointments in this range.</Empty>;

@@ -18,7 +18,7 @@ import { useClinic, useClinicConfig } from '@/lib/api';
 import { type CallAs, NO_CALLER_ID } from '@/lib/call-as';
 import { canRecord } from '@/lib/call-recording';
 import { clock } from '@/lib/format';
-import { limitIsTimeLeft, testCallLimitLabel } from '@/lib/test-call-limit';
+import { limitIsTimeLeft, testCallLimitLabel, testTimeLeftLine } from '@/lib/test-call-limit';
 import { cn } from '@/lib/utils';
 import { pageData } from '@/lib/page-data';
 
@@ -106,7 +106,7 @@ export default function TestCallPage() {
             )}
             {/* the time left, unless the line above already says it */}
             {left !== null && (noTime || phase !== 'idle' || !limitIsTimeLeft(allowance.data)) && (
-              <p className="text-sm text-text-muted" data-testid="test-minutes-left">{noTime ? 'No test-call time left.' : `${clock(left * 1000)} of test calls left`}</p>
+              <p className="text-sm text-text-muted" data-testid="test-minutes-left">{noTime ? 'No test-call time left.' : testTimeLeftLine(left)}</p>
             )}
             {phase === 'ended' && callId && can('calls:read') && (
               <Link href={`/c/${clinicId}/calls/${callId}`} className="text-sm text-primary hover:underline">Open the call record</Link>

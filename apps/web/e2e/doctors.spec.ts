@@ -45,7 +45,8 @@ test('a manager adds a doctor with hours and days off, and the front desk sees t
   await panel.getByRole('button', { name: 'Days off' }).click();
   await panel.getByRole('button', { name: 'Save' }).click();
   await expect(panel).toBeHidden();
-  await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toContainText('Dermatology, Female');
+  // the specialty alone under the name: sex beside it read as part of it ("Dermatology, Female")
+  await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' }).getByTestId('doctor-subtitle')).toHaveText('Dermatology');
 
   // the front desk's open page updates on its own
   await expect(desk.getByTestId('doctor').filter({ hasText: 'Dr. Lena Ortiz' })).toBeVisible({ timeout: 10_000 });
@@ -117,7 +118,7 @@ test('a doctor\'s visit types: ticked one by one or all in one click, and a warn
   await manager.getByRole('link', { name: 'Doctors' }).click();
   const card = manager.getByTestId('doctor').filter({ hasText: 'Dr. Ann Lindqvist' });
   await expect(card).toContainText('Visit types they do');
-  await expect(card).toContainText('sick visit, annual physical');
+  await expect(card).toContainText('Sick visit, Annual physical');
 
   // "All visit types" ticks every one, and the card says so
   await card.getByRole('button', { name: 'Edit hours and details' }).click();
@@ -125,7 +126,7 @@ test('a doctor\'s visit types: ticked one by one or all in one click, and a warn
   const all = panel.getByRole('checkbox', { name: 'All visit types' });
   await expect(all).not.toBeChecked();
   await all.check();
-  for (const name of ['sick visit', 'annual physical', 'new patient visit']) await expect(panel.getByRole('checkbox', { name, exact: true })).toBeChecked();
+  for (const name of ['Sick visit', 'Annual physical', 'New patient visit']) await expect(panel.getByRole('checkbox', { name, exact: true })).toBeChecked();
   await panel.getByRole('button', { name: 'Save' }).click();
   await expect(panel).toBeHidden();
   await expect(card).toContainText('All visit types');
@@ -134,17 +135,17 @@ test('a doctor\'s visit types: ticked one by one or all in one click, and a warn
   await card.getByRole('button', { name: 'Edit hours and details' }).click();
   panel = manager.getByRole('dialog', { name: 'Edit Dr. Ann Lindqvist' });
   await panel.getByRole('checkbox', { name: 'All visit types' }).uncheck();
-  await expect(panel.getByRole('checkbox', { name: 'sick visit', exact: true })).not.toBeChecked();
+  await expect(panel.getByRole('checkbox', { name: 'Sick visit', exact: true })).not.toBeChecked();
   await panel.getByRole('button', { name: 'Save' }).click();
   const problem = manager.getByRole('dialog', { name: 'Not saved' });
   await expect(problem).toContainText('Choose at least one visit type they do.');
   await problem.getByRole('button', { name: 'OK' }).click();
-  await panel.getByRole('checkbox', { name: 'sick visit', exact: true }).check();
-  await panel.getByRole('checkbox', { name: 'annual physical', exact: true }).check();
+  await panel.getByRole('checkbox', { name: 'Sick visit', exact: true }).check();
+  await panel.getByRole('checkbox', { name: 'Annual physical', exact: true }).check();
   await expect(panel.getByRole('checkbox', { name: 'All visit types' })).not.toBeChecked();
   await panel.getByRole('button', { name: 'Save' }).click();
   await expect(panel).toBeHidden();
-  await expect(card).toContainText('sick visit, annual physical');
+  await expect(card).toContainText('Sick visit, Annual physical');
 
   // a visit type nobody does: Settings and the Doctors page say it in the same words
   const warning = 'No doctor does ear check: callers can\'t book it';
@@ -210,4 +211,34 @@ test('removing a doctor with visits to come moves them to another doctor first, 
   await expect(handover.getByTestId('handover-result')).toContainText('No owner was texted.');
   await handover.getByTestId('handover-remove').click();
   await expect(manager.getByTestId('doctor').filter({ hasText: 'Dr. Rhea Vance' })).toHaveCount(0);
+});
+
+test('a vet card writes hours and time off on the clinic\'s 12-hour clock and phones the one way, from what the server stores', async ({ browser }) => {
+  const manager = await openAs(browser, 'manager');
+  const clinic = new URL(manager.url()).pathname.split('/')[2]!;
+  const origin = { origin: new URL(manager.url()).origin };
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(testDate(9 * 86_400_000));
+  const added = await manager.request.post(`/api/v1/clinics/${clinic}/doctors`, { headers: origin, data: {
+    name: 'Dr. Wren Halloway', gender: 'female', phone: '+13035550142', otherPhones: ['+13035550143'], acceptingNewPatients: true, categories: [],
+    hours: { '1': [{ open: '08:00', close: '18:00' }] }, timeOff: [{ from: day, to: day, start: '13:00', end: '15:30' }],
+  } });
+  expect(added.status(), await added.text()).toBe(201);
+  const stored = ((await added.json()) as { providers: { id: string; name: string; phone?: string; otherPhones?: string[]; hours?: Record<string, { open: string; close: string }[]> }[] }).providers.find((p) => p.name === 'Wren Halloway')!;
+  try {
+    await manager.goto(`/c/${clinic}/doctors`);
+    const card = manager.getByTestId('doctor').filter({ hasText: 'Dr. Wren Halloway' });
+    // the server's E.164, shown as US numbers are written everywhere else: "(303) 555-0142"
+    const shown = (e164: string) => `(${e164.slice(2, 5)}) ${e164.slice(5, 8)}-${e164.slice(8)}`;
+    await expect(card.getByTestId('doctor-phone')).toHaveText([stored.phone!, ...stored.otherPhones!].map(shown).join(', '));
+    // the server's 08:00-18:00, on the same clock as Settings and the schedule
+    expect(stored.hours!['1']).toEqual([{ open: '08:00', close: '18:00' }]);
+    await expect(card).toContainText('Mon 8:00 AM-6:00 PM');
+    await expect(card).toContainText('1:00 PM to 3:30 PM');
+    await expect(card).not.toContainText(/\b\d{2}:\d{2}\b/);
+    await expect(card).not.toContainText('+1303');
+    // no specialty: the subtitle says so, and nothing else
+    await expect(card.getByTestId('doctor-subtitle')).toHaveText('No specialty set');
+  } finally {
+    await manager.request.delete(`/api/v1/clinics/${clinic}/doctors/${stored.id}`, { headers: origin });
+  }
 });

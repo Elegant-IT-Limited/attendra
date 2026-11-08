@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, CalendarClock, Phone, User, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { type ReactNode, useEffect, useState } from 'react';
-import { capital } from '@/components/schedule/booking-dialog';
 import { MarkedBadge } from '@/components/schedule/visit-status';
 import { type PickedSlot, SlotPicker } from '@/components/schedule/slot-picker';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +15,7 @@ import { Alert, Skeleton } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
 import { useProblem, useToast } from '@/components/ui/toast';
 import { api, ApiFailure } from '@/lib/api';
-import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf } from '@/lib/format';
+import { CANCEL_REASONS, clinicTime, dayTitle, dob, phone, telHref, timeOf, visitTypeName } from '@/lib/format';
 import { offersChanges } from '@/lib/visit';
 import { patchAppointment } from '@/lib/optimistic';
 
@@ -210,7 +209,7 @@ export function AppointmentPanel({ clinicId, clinic, appointmentId, onClose, can
                   <h3 className="text-xs font-medium uppercase tracking-wide text-text-muted">Visit</h3>
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                     <dt className="text-text-muted">With</dt><dd>{provider(a.providerId)}</dd>
-                    <dt className="text-text-muted">Type</dt><dd>{capital(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
+                    <dt className="text-text-muted">Type</dt><dd>{visitTypeName(visit(a.visitTypeId)?.name ?? a.visitTypeId)}, {visit(a.visitTypeId)?.minutes} minutes</dd>
                     <dt className="text-text-muted">Note</dt><dd className="whitespace-pre-wrap">{a.note ?? <span className="text-text-muted">None</span>}</dd>
                     {a.overrideReason && <><dt className="text-text-muted">Hours</dt><dd><Badge tone="warn">Override</Badge> {a.overrideReason}</dd></>}
                     {(a.reminderSentAt || a.confirmedAt) && (

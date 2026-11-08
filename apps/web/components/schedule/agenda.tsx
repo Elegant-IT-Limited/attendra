@@ -9,7 +9,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { MarkedBadge, markedWords } from '@/components/schedule/visit-status';
 import { Empty } from '@/components/ui/feedback';
 import { Label, Select } from '@/components/ui/input';
-import { dayTitle, timeOf, VISIT_DOTS } from '@/lib/format';
+import { dayTitle, timeOf, VISIT_DOTS, visitTypeName } from '@/lib/format';
 import { closedDay } from '@/lib/schedule-lanes';
 import { cn } from '@/lib/utils';
 import { RENDER_MARKS, useRenderMark } from '@/lib/render-mark';
@@ -92,7 +92,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
           <Label htmlFor={`${id}-visit`} className="sr-only">Visit type</Label>
           <Select id={`${id}-visit`} className="h-9 w-52" value={visitTypeId} onChange={(e) => setVisitTypeId(e.target.value)}>
             <option value="">Every visit type</option>
-            {clinic.visitTypes.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            {clinic.visitTypes.map((v) => <option key={v.id} value={v.id}>{visitTypeName(v.name)}</option>)}
           </Select>
         </div>
         <p className="text-xs text-text-muted tabular-nums" aria-live="polite">{visits} {visits === 1 ? 'visit' : 'visits'}{narrowed ? ' match' : ''}</p>
@@ -117,7 +117,7 @@ export function Agenda({ clinic, dates, appointments, onOpen, word }: {
               const cancelled = a.status === 'cancelled';
               const confirmed = !cancelled && !!a.confirmedAt;
               const Icon = a.bookedBy.kind === 'assistant' ? Bot : User;
-              const visit = visitOf(a.visitTypeId)?.name ?? '';
+              const visit = visitTypeName(visitOf(a.visitTypeId)?.name ?? '');
               const who = (() => { const p = providerOf(a.providerId); return p ? providerName(p) : a.providerId; })();
               return (
                 <li key={a.id} className="absolute inset-x-0 border-b border-border/70" style={{ top, height: ROW }}>
